@@ -37,7 +37,7 @@ Deux points de méthode :
 Le dépôt RoboSats contient deux formules qui donnent des clés différentes :
 
 - `sha256(sha512(token))` : le code actuel de l'app (`frontend/src/models/Slot.model.ts:34-38`). C'est le choix par défaut (`NostrKeyDerivation.currentFrontend`). Aucun fichier du dépôt ne permet de vérifier son résultat pour un token.
-- `sha256(token)` : la formule qui redonne les fichiers `tests/robots/N/nostr_pubkey` et que décrit `development/docs.md:82` (`NostrKeyDerivation.repositoryFixtures`).
+- `sha256(token)` : la formule qui redonne les fichiers `tests/robots/N/nostr_pubkey` et que décrit `development/docs.md:80` (`NostrKeyDerivation.repositoryFixtures`).
 
 Le coordinateur enregistre la clé une seule fois, à la création du robot, sans contrôle. Une mauvaise formule ne produit aucune erreur : le robot ne recevrait simplement ni notifications ni chat Nostr dans l'app officielle. À trancher avant le premier robot réel, en créant un robot avec l'app officielle sur un coordinateur de test et en lisant `nostr_pubkey` dans la réponse de `GET /api/robot/`.
 

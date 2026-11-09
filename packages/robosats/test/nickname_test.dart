@@ -150,6 +150,15 @@ void main() {
       expect(derivation?.rehashIterations, 0);
     });
 
+    test('reaches the last adjective of the dictionary', () {
+      // Expected values produced by running the RoboSats coordinator code on this hash.
+      final derivation = deriveNickname('ffffffc0${'0' * 56}');
+      expect(derivation?.nickname, 'SimplisticZonkey93');
+      expect(derivation?.nickname, startsWith(nicknameAdjectives.last));
+      expect(derivation?.nickId, 60778871382);
+      expect(derivation?.rehashIterations, 0);
+    });
+
     test('has no nickname when the quotient rounds up to one', () {
       // The RoboSats code raises IndexError there: the adjective index is past the dictionary.
       expect(deriveNickname('f' * 64), isNull);

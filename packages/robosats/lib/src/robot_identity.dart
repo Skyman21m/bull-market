@@ -20,7 +20,7 @@ enum NostrKeyDerivation {
   /// The default, on the reading that the frontend is authoritative; no file of the repository confirms its output for a token.
   currentFrontend,
 
-  /// `sha256(utf8(token))`, the formula that reproduces `tests/robots/{1,2,3}/nostr_pubkey` and that `development/docs.md:82` describes.
+  /// `sha256(utf8(token))`, the formula that reproduces `tests/robots/{1,2,3}/nostr_pubkey` and that `development/docs.md:80` describes.
   ///
   /// Probably an older formula that the fixtures and the documentation still carry.
   repositoryFixtures,

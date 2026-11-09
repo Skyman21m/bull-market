@@ -1,5 +1,4 @@
-// Ported verbatim, in file order, from RoboSats `api/nick_generator/dicts/en/nouns.py`
-// (https://github.com/RoboSats/robosats, commit ff1998caed30888b2fb60e15022c29063a60f1ba).
+// Ported verbatim, in file order, from RoboSats `api/nick_generator/dicts/en/nouns.py` (https://github.com/RoboSats/robosats, commit ff1998caed30888b2fb60e15022c29063a60f1ba).
 // SHA-256 of the source file: 68bb81980d92fd3d7a7e6823a19fe6158ca8482024d704b40deabb68e694473f.
 // RoboSats is licensed under AGPL-3.0, as is this fork.
 // The order and spelling of the words are part of the nickname algorithm: do not edit, sort or deduplicate.
