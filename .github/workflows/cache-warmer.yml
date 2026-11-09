@@ -19,6 +19,7 @@ on:
       - '**.md'
       - 'docs/**'
       - 'LICENSE'
+      - 'LICENSE-*'
       - '.gitignore'
       - '.git-blame-ignore-revs'
       - '.github/ISSUE_TEMPLATE/**'

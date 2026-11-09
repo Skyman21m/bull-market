@@ -75,7 +75,7 @@ jobs:
             while IFS= read -r path; do
               file_count=$((file_count + 1))
               case "$path" in
-                *.md|docs/*|LICENSE|.gitignore|.git-blame-ignore-revs|.github/ISSUE_TEMPLATE/*)
+                *.md|docs/*|LICENSE|LICENSE-*|.gitignore|.git-blame-ignore-revs|.github/ISSUE_TEMPLATE/*)
                   ;;
                 *)
                   run_app_checks=true
