@@ -1,4 +1,4 @@
-.PHONY: secrets-api-docs secrets-api-docs-check custody-check custody-ci-check all setup clean deps deps-update bootstrap analyze build-runner translations hooks ios-pod-update ios-simulator ios-release drift-migrations devcontainer devcontainer-up container-tools container-app android release debug beta verify verify-rustc-pins action-pins-check pr-governance-ci-test test unit-test integration-test catalogue fvm-check
+.PHONY: secrets-api-docs secrets-api-docs-check custody-check custody-ci-check all setup clean deps deps-update bootstrap analyze build-runner translations hooks ios-pod-update ios-simulator ios-release drift-migrations devcontainer devcontainer-up container-tools container-app android release debug beta verify verify-rustc-pins action-pins-check custody-ci-test test unit-test integration-test catalogue fvm-check
 
 fvm-check:
 	@echo "🔍 Checking FVM"
@@ -44,7 +44,7 @@ analyze:
 	@echo "🔍 Analyze whole project (matches CI: --fatal-warnings --fatal-infos)"
 	@fvm flutter analyze --fatal-warnings --fatal-infos
 
-# Local Dart/Flutter gates. CI also runs the Node-based custody import and PR governance checks; Node is not required for `make checks`. The pre-commit hook deliberately does NOT call fix-check/format-check: it runs its own staged-only variants in parallel with `make analyze` for speed.
+# Local Dart/Flutter gates. CI also runs the Node-based custody import checks; Node is not required for `make checks`. The pre-commit hook deliberately does NOT call fix-check/format-check: it runs its own staged-only variants in parallel with `make analyze` for speed.
 fix-check:
 	@echo "🧹 dart fix should have nothing to suggest"
 	@bash -c 'set -o pipefail; fvm dart fix --dry-run | tee /dev/stderr | grep -q "Nothing to fix!"'
@@ -64,7 +64,7 @@ custody-check:
 	@echo "🔒 custody key material: resolved Dart symbols"
 	@fvm dart packages/secrets/tool/key_material_gate.dart
 
-# CI-only import/dependency/internal-seal policy, shared with PR custody review.
+# CI-only import/dependency/internal-seal policy.
 # Node is confined to these explicit CI targets, outside `make checks`.
 custody-ci-check:
 	@echo "🔒 custody imports and internal seal (CI only)"
@@ -86,9 +86,9 @@ action-pins-check:
 	@echo "📌 Checking GitHub Actions are pinned to a commit SHA"
 	@bash tools/check_action_pins.sh
 
-pr-governance-ci-test:
-	@echo "🛡️ Testing PR governance and custody policy (CI only)"
-	@node --test tools/pr_governance/policy.test.js tools/pr_governance/custody.test.js
+custody-ci-test:
+	@echo "🛡️ Testing custody policy (CI only)"
+	@node --test tools/pr_governance/custody.test.js
 
 build-runner:
 	@echo "🏗️ Build runner for json_serializable and flutter_gen"

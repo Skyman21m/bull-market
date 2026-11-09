@@ -1,33 +1,31 @@
-## Linked issue
+## Ticket lié
 
-Closes #<!-- issue number; use a local open issue labelled `ready` -->
+Closes #<!-- numéro du ticket -->
 
-## Problem
+## Problème
 
-<!-- What problem does this solve? -->
+<!-- Quel problème cette PR résout-elle ? -->
 
-## Changes
+## Changements
 
-<!-- Summarize the implementation. -->
+<!-- Résumé de ce qui a été fait. -->
 
-## Non-goals
+## Hors périmètre
 
-<!-- What is deliberately out of scope? -->
+<!-- Ce qui est volontairement laissé de côté. -->
 
-## Risk and security
+## Risques et sécurité
 
-<!-- Describe user, funds, privacy, and security impact. Never include secrets. -->
+<!-- Impact pour l'utilisateur, les fonds, la vie privée. Jamais de secrets. -->
 
-## Architecture and dependencies
+## Base de données et fichiers générés
 
-<!-- Explain layer/facade boundaries and any dependency changes. -->
+<!-- Migrations de schéma ? Fichiers générés modifiés ? -->
 
-## Database and generated files
+## Vérification
 
-<!-- State whether schema migrations or generated outputs changed. -->
+<!-- Commandes exactes et résultats. Captures d'écran pour l'interface. -->
 
-## Verification
+## Relecture indépendante
 
-<!-- List exact commands and their results. -->
-
-This project is issue-first: maintainers or triagers apply `ready` when an issue is ready for implementation by any contributor. PRs must link an open local `ready` issue unless the PR has the `no-issue-needed` exemption (Dependabot PRs are also exempt). The readiness check is introduced by workflow here; an administrator must separately make it required in the repository ruleset.
+<!-- Résumé de la relecture par un agent sans contexte, et ce qui a été corrigé. -->
