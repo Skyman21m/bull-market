@@ -1,0 +1,1753 @@
+{
+  "_titre": "Vecteurs de test - identite d'un robot RoboSats (preparation du spike 2 de Troc)",
+  "_avertissement": "Ces valeurs proviennent d'une RE-IMPLEMENTATION autonome de l'algorithme de reference (script Node.js, module crypto integre uniquement, aucun paquet npm), et non de l'execution du frontend RoboSats. Elles doivent etre recoupees UNE FOIS contre le vrai frontend RoboSats (ou ses bibliotheques : base-ex, js-sha256, @scure/bip32, nostr-tools, robo-identities-wasm) avant de servir de reference definitive. Exceptions signalees ci-dessous : les champs 'expected_from_robosats_repo' sont lus tels quels dans le depot RoboSats, et les pseudos 'nickname_reference_python' / 'jeu_de_pseudos_reference' sont produits par le code Python du coordinateur lui-meme.",
+  "_genere_le": "2026-11-09",
+  "_reference": {
+    "depot": "RoboSats/robosats",
+    "commit": "ff1998caed30888b2fb60e15022c29063a60f1ba",
+    "node": "v24.15.0",
+    "python": "3.12.3",
+    "dictionnaires_pseudos_sha256": {
+      "api/nick_generator/dicts/en/adjectives.py": "b17c0ddba6dfd25dc4e428fda895f3dd78a1d93984ad30d3934608e16ace3c0b",
+      "api/nick_generator/dicts/en/nouns.py": "68bb81980d92fd3d7a7e6823a19fe6158ca8482024d704b40deabb68e694473f"
+    },
+    "dictionnaires_pseudos_tailles": {
+      "adjectives": 4832,
+      "nouns": 12591,
+      "pool_size": 60778872288
+    }
+  },
+  "_comment_chaque_valeur_est_produite": {
+    "token": "Chaine de 36 caracteres base62. Robots de test : lue dans tests/robots/N/token. Garage Key : derivee (voir 'derived_private_key_hex').",
+    "token_utf8_hex": "Octets UTF-8 du token, en hexadecimal (ce sont ces octets qui sont haches).",
+    "entropy": "Regle cote client de frontend/src/utils/token.ts:19-45. bitsEntropy = log2(nbCaracteresDistincts ^ longueur) ; shannonEntropy = -somme(p*log2(p)) ; hasEnoughEntropy = bitsEntropy > 128 ET shannonEntropy > 4.",
+    "sha256_hex": "SHA-256 (1 tour) des octets UTF-8 du token, en hexadecimal minuscule. Equivaut a sha256(token) de js-sha256 (Slot.model.ts:32).",
+    "token_sha256_base91": "basE91 (algorithme de Joachim Henke) des 32 octets BRUTS du SHA-256 (pas de la chaine hexadecimale). Alphabet copie de api/utils.py:668. C'est la valeur 'tokenSHA256' envoyee au coordinateur.",
+    "token_sha256_base91_length": "Longueur de la valeur precedente : 39 ou 40 (le coordinateur refuse toute autre longueur, api/utils.py:662-669).",
+    "authorization_header_short": "En-tete des requetes suivantes : 'Token ' + token_sha256_base91.",
+    "hash_id": "SHA-256 de la CHAINE hexadecimale (64 caracteres ASCII minuscules) de sha256_hex, en hexadecimal. = sha256(sha256(token)) de js-sha256 (Slot.model.ts:21) = robosats/middleware.py:145-146.",
+    "sha512_hex": "SHA-512 des octets UTF-8 du token (valeur intermediaire de la cle Nostr).",
+    "nostr_seckey_hex": "Cle secrete Nostr ACTUELLE : SHA-256 des 64 octets BRUTS de sha512_hex (Slot.model.ts:34-35). SECRET : ne jamais l'envoyer.",
+    "nostr_pubkey_hex": "Cle publique Nostr ACTUELLE : coordonnee X (32 octets, hexadecimal minuscule) du point secp256k1 nostr_seckey * G (cle 'x-only' BIP340), calculee avec crypto.createECDH('secp256k1') de Node. Aucun fichier du depot ne permet de la recouper pour un token ; la meme chaine de calcul est en revanche recoupee pour la Garage Key (voir 'verifications').",
+    "legacy_nostr_seckey_sha256_token_hex": "ANCIENNE derivation (cle secrete = SHA-256 du token, soit sha256_hex). Fournie parce que les fichiers tests/robots/N/nostr_pubkey du depot correspondent a celle-ci et non a la derivation actuelle.",
+    "legacy_nostr_pubkey_sha256_token_hex": "Cle publique x-only de l'ancienne derivation. Egale au contenu de tests/robots/N/nostr_pubkey pour les 3 robots de test.",
+    "nickname": "Pseudo calcule par la re-implementation JS de api/nick_generator/nick_generator.py avec les parametres de robosats/middleware.py:19-21 et :149 (anglais, sans adverbe, max_num=999, longueur max 18).",
+    "nickname_detail": "nick_id = partie entiere de (entier(hash)/2^256 en flottant double) * taille_du_pool ; adjective_index = nick_id div (999*nb_noms) ; noun_index puis number par division/reste ; rehash_iterations = nombre de re-hachages sha256(hash + '42') necessaires pour obtenir 18 caracteres au plus ; final_hash = hash ayant produit le pseudo.",
+    "nickname_reference_python": "Le meme pseudo, produit en executant le code Python du depot RoboSats (NickGenerator.short_from_SHA256) : valeur de reference, pas une re-implementation.",
+    "pgp_user_id": "Identifiant utilisateur de la cle PGP attendu par le client officiel : 'RoboSats ID ' + hash_id (frontend/src/pgp/index.ts:26).",
+    "websocket_query_token_sha256_hex": "Valeur du parametre token_sha256_hex du websocket de chat (robosats/middleware.py:204-207) : sha256_hex.",
+    "expected_from_robosats_repo": "Valeurs lues telles quelles dans tests/robots/N/ du depot RoboSats (b91_token, nickname, nostr_pubkey).",
+    "derived_private_key_hex": "Cle privee BIP32 au chemin m/44'/88'/{index}'/0, graine = SHA-512 des 32 octets de la Garage Key (frontend/src/utils/garageKey.ts:75-95). Le token = les 36 chiffres base62 de poids faible de cet entier (alphabet A-Z a-z 0-9), complete a gauche par 'A' (garageKey.ts:97-118). SECRET."
+  },
+  "verifications": {
+    "resume": "30 verifications, 0 echec",
+    "limites": "Recoupe par des valeurs presentes dans le depot : base91 (3 robots), pseudo (3 robots + 200 hash via le code Python), hash_id (identifiant utilisateur de la cle PGP du robot 1), Garage Key (bech32, BIP32, base62, cle Nostr : frontend/src/utils/__tests__/garageKey.test.ts:16-37). NON recoupe par le depot : la cle Nostr actuelle derivee d'un token. La comparaison par execution avec base-ex 0.8.1 et base91 1.0.1 (PyPI) n'a pas ete faite (execution de code telecharge non autorisee dans cette session) ; leurs sources ont ete lues et decrivent le meme algorithme et le meme alphabet.",
+    "detail": [
+      {
+        "check": "robot 1: base91(sha256(token)) == tests/robots/1/b91_token",
+        "ok": true,
+        "got": "Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED",
+        "expected": "Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED"
+      },
+      {
+        "check": "robot 1: pseudo == tests/robots/1/nickname",
+        "ok": true,
+        "got": "UptightPub730",
+        "expected": "UptightPub730"
+      },
+      {
+        "check": "robot 1: cle publique Nostr HISTORIQUE (secret = sha256(token)) == tests/robots/1/nostr_pubkey",
+        "ok": true,
+        "got": "3d3e420ed359e415b51d2a0c495102b0c82cc8b5a7ac7db0654a3a6068eb1c04",
+        "expected": "3d3e420ed359e415b51d2a0c495102b0c82cc8b5a7ac7db0654a3a6068eb1c04"
+      },
+      {
+        "check": "robot 1: la cle Nostr ACTUELLE (sha256(sha512(token))) differe bien du fichier tests/robots/1/nostr_pubkey",
+        "ok": true,
+        "got": "true",
+        "expected": "true"
+      },
+      {
+        "check": "robot 2: base91(sha256(token)) == tests/robots/2/b91_token",
+        "ok": true,
+        "got": "ltdCXV@ZH=5aR;^,\"gQHJ*S#|o/H,RD;:m^>0p[D",
+        "expected": "ltdCXV@ZH=5aR;^,\"gQHJ*S#|o/H,RD;:m^>0p[D"
+      },
+      {
+        "check": "robot 2: pseudo == tests/robots/2/nickname",
+        "ok": true,
+        "got": "EquivalentWool707",
+        "expected": "EquivalentWool707"
+      },
+      {
+        "check": "robot 2: cle publique Nostr HISTORIQUE (secret = sha256(token)) == tests/robots/2/nostr_pubkey",
+        "ok": true,
+        "got": "53d7c688804fab096605c8e7ae0ce676b3d8cd490de5b8086c36e336a762b188",
+        "expected": "53d7c688804fab096605c8e7ae0ce676b3d8cd490de5b8086c36e336a762b188"
+      },
+      {
+        "check": "robot 2: la cle Nostr ACTUELLE (sha256(sha512(token))) differe bien du fichier tests/robots/2/nostr_pubkey",
+        "ok": true,
+        "got": "true",
+        "expected": "true"
+      },
+      {
+        "check": "robot 3: base91(sha256(token)) == tests/robots/3/b91_token",
+        "ok": true,
+        "got": "CUNL>XIEm:ID9E3dhvQN<B7tMe?:70CHtwcoU{qF",
+        "expected": "CUNL>XIEm:ID9E3dhvQN<B7tMe?:70CHtwcoU{qF"
+      },
+      {
+        "check": "robot 3: pseudo == tests/robots/3/nickname",
+        "ok": true,
+        "got": "UniformTownsman766",
+        "expected": "UniformTownsman766"
+      },
+      {
+        "check": "robot 3: cle publique Nostr HISTORIQUE (secret = sha256(token)) == tests/robots/3/nostr_pubkey",
+        "ok": true,
+        "got": "f0dd4064e92d67b5aba8b8764467ccad7df7da397951e2f7aa6fb18279e6f34a",
+        "expected": "f0dd4064e92d67b5aba8b8764467ccad7df7da397951e2f7aa6fb18279e6f34a"
+      },
+      {
+        "check": "robot 3: la cle Nostr ACTUELLE (sha256(sha512(token))) differe bien du fichier tests/robots/3/nostr_pubkey",
+        "ok": true,
+        "got": "true",
+        "expected": "true"
+      },
+      {
+        "check": "garage key: hrp",
+        "ok": true,
+        "got": "robo",
+        "expected": "robo"
+      },
+      {
+        "check": "garage key: octets decodes",
+        "ok": true,
+        "got": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        "expected": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+      },
+      {
+        "check": "garage key: re-encodage bech32",
+        "ok": true,
+        "got": "robo180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsg9czpj",
+        "expected": "robo180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsg9czpj"
+      },
+      {
+        "check": "garage key: cle secrete Nostr",
+        "ok": true,
+        "got": "3d1e68e14a13ba230f910b407323ba63172d939d1be8b22db35d744ca7f9cf1f",
+        "expected": "3d1e68e14a13ba230f910b407323ba63172d939d1be8b22db35d744ca7f9cf1f"
+      },
+      {
+        "check": "garage key: cle publique Nostr",
+        "ok": true,
+        "got": "be3721d252e99fd1698a5fc13cada0d014780be06a553fc189d8f6323efddbd6",
+        "expected": "be3721d252e99fd1698a5fc13cada0d014780be06a553fc189d8f6323efddbd6"
+      },
+      {
+        "check": "garage key: cle secrete Nostr historique",
+        "ok": true,
+        "got": "f3c521230c05cf9e6000d2fb8eff61dea5a134a44ed07c2a7705fb5f2a6d6ba3",
+        "expected": "f3c521230c05cf9e6000d2fb8eff61dea5a134a44ed07c2a7705fb5f2a6d6ba3"
+      },
+      {
+        "check": "garage key: token de l'index 0",
+        "ok": true,
+        "got": "2gYWvCarekOrMwc2LwA30tnUdyqcuPB8xsAx",
+        "expected": "2gYWvCarekOrMwc2LwA30tnUdyqcuPB8xsAx"
+      },
+      {
+        "check": "garage key: token de l'index 1",
+        "ok": true,
+        "got": "94PXnMt4tcXGi33QS9wNYjg2dPawXA9r6h5t",
+        "expected": "94PXnMt4tcXGi33QS9wNYjg2dPawXA9r6h5t"
+      },
+      {
+        "check": "garage key: token de l'index 18",
+        "ok": true,
+        "got": "9bagGwV1l8JzixhBzjDyflNmQlEfNha8AA6I",
+        "expected": "9bagGwV1l8JzixhBzjDyflNmQlEfNha8AA6I"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id ed7d3b2b2e58...)",
+        "ok": true,
+        "got": "UptightPub730",
+        "expected": "UptightPub730"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id e4c0d4014ff7...)",
+        "ok": true,
+        "got": "EquivalentWool707",
+        "expected": "EquivalentWool707"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 42a3cd379f64...)",
+        "ok": true,
+        "got": "UniformTownsman766",
+        "expected": "UniformTownsman766"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 008d1b70fda4...)",
+        "ok": true,
+        "got": "ImpreciseDetail839",
+        "expected": "ImpreciseDetail839"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 0cfa48fc75c8...)",
+        "ok": true,
+        "got": "JocularPenalty254",
+        "expected": "JocularPenalty254"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 774c38e75dc5...)",
+        "ok": true,
+        "got": "FreakyBerth866",
+        "expected": "FreakyBerth866"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 008d1b70fda4...)",
+        "ok": true,
+        "got": "ImpreciseDetail839",
+        "expected": "ImpreciseDetail839"
+      },
+      {
+        "check": "pseudo JS == pseudo du code Python RoboSats (hash_id 767111ce4d70...)",
+        "ok": true,
+        "got": "JabberingPound776",
+        "expected": "JabberingPound776"
+      },
+      {
+        "check": "jeu de 200 pseudos: re-implementation JS == code Python RoboSats (pseudo, nick_id, iterations)",
+        "ok": true,
+        "got": "0",
+        "expected": "0"
+      }
+    ]
+  },
+  "robots_de_test_robosats": [
+    {
+      "source": "tests/robots/1/",
+      "token": "C2etfi7nPeUD7rCcwAOy4XoLvEAxbTRGSK6H",
+      "token_utf8_hex": "433265746669376e506555443772436377414f7934586f4c7645417862545247534b3648",
+      "entropy": {
+        "uniqueChars": 32,
+        "bitsEntropy": 180,
+        "shannonEntropy": 4.947702779220088,
+        "hasEnoughEntropy": true
+      },
+      "sha256_hex": "7d96ae3f903f8e3d982612ecd75f6e525b092051f6ab66a411f52f53273e838a",
+      "token_sha256_base91": "Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED",
+      "token_sha256_base91_length": 40,
+      "authorization_header_short": "Token Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED",
+      "hash_id": "ed7d3b2b2e589ab26720605e7414ab4fbca21cb4b31e5b4e62a6fa51c24a9eab",
+      "sha512_hex": "0994f66453c37282387d319b612ed8a000084f920007aaf90453eaf2a838201b6c10cb94abe2c0edd7e2637e33c0c409ccd77ff21aa097c0c79958c391d7202b",
+      "nostr_seckey_hex": "debd3216302e3dc4a4f0f31aeecf0666e3ef1ea8fecf5c2b079746513816fb52",
+      "nostr_pubkey_hex": "c7d8cd24e5d7f1eddb42d3df3928ef8d0d1ab9ad39d7b6d943ad03a834e54206",
+      "legacy_nostr_seckey_sha256_token_hex": "7d96ae3f903f8e3d982612ecd75f6e525b092051f6ab66a411f52f53273e838a",
+      "legacy_nostr_pubkey_sha256_token_hex": "3d3e420ed359e415b51d2a0c495102b0c82cc8b5a7ac7db0654a3a6068eb1c04",
+      "nickname": "UptightPub730",
+      "nickname_detail": {
+        "nick_id": 56384081209,
+        "adjective_index": 4482,
+        "noun_index": 7659,
+        "number": 730,
+        "rehash_iterations": 0,
+        "final_hash": "ed7d3b2b2e589ab26720605e7414ab4fbca21cb4b31e5b4e62a6fa51c24a9eab"
+      },
+      "pgp_user_id": "RoboSats ID ed7d3b2b2e589ab26720605e7414ab4fbca21cb4b31e5b4e62a6fa51c24a9eab",
+      "websocket_query_token_sha256_hex": "7d96ae3f903f8e3d982612ecd75f6e525b092051f6ab66a411f52f53273e838a",
+      "expected_from_robosats_repo": {
+        "b91_token": "Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED",
+        "nickname": "UptightPub730",
+        "nostr_pubkey": "3d3e420ed359e415b51d2a0c495102b0c82cc8b5a7ac7db0654a3a6068eb1c04"
+      },
+      "nickname_reference_python": "UptightPub730"
+    },
+    {
+      "source": "tests/robots/2/",
+      "token": "oKrH73YD4ISQ0wzLNyPBeGp2OK7JTKghDfJe",
+      "token_utf8_hex": "6f4b7248373359443449535130777a4c4e795042654770324f4b374a544b676844664a65",
+      "entropy": {
+        "uniqueChars": 30,
+        "bitsEntropy": 176.64806144190666,
+        "shannonEntropy": 4.815622570826658,
+        "hasEnoughEntropy": true
+      },
+      "sha256_hex": "24701a389e9964b6ef92ae86ccbaab5140e23bfbe88c859461d5ccad811f3bb1",
+      "token_sha256_base91": "ltdCXV@ZH=5aR;^,\"gQHJ*S#|o/H,RD;:m^>0p[D",
+      "token_sha256_base91_length": 40,
+      "authorization_header_short": "Token ltdCXV@ZH=5aR;^,\"gQHJ*S#|o/H,RD;:m^>0p[D",
+      "hash_id": "e4c0d4014ff7ca90e2eb6b88987a7f9865c3b5b11ccd1191b6cfbd7afc48f1a2",
+      "sha512_hex": "0d090f29884a252a222b8a58f36ff34f64ce84c080662dedc5d9d1c68dfaea980eb10aa2dd35d418bbbcde8d009e9d20dac10b1b5be40c0f4346eaa3dad5d5f8",
+      "nostr_seckey_hex": "4443d5bb54deaa36f040b69e5340e543fe2f655be873ba472a26ae358ee6c80c",
+      "nostr_pubkey_hex": "802670c78d7acdd285675d6d0ac5aece3064ad512c5be4a749bb4e3491d530be",
+      "legacy_nostr_seckey_sha256_token_hex": "24701a389e9964b6ef92ae86ccbaab5140e23bfbe88c859461d5ccad811f3bb1",
+      "legacy_nostr_pubkey_sha256_token_hex": "53d7c688804fab096605c8e7ae0ce676b3d8cd490de5b8086c36e336a762b188",
+      "nickname": "EquivalentWool707",
+      "nickname_detail": {
+        "nick_id": 19733271683,
+        "adjective_index": 1568,
+        "noun_index": 10336,
+        "number": 707,
+        "rehash_iterations": 1,
+        "final_hash": "531dc89b1cdb01753bad37cef4385d33fbe6766ecb98327f8f647a5da1af5538"
+      },
+      "pgp_user_id": "RoboSats ID e4c0d4014ff7ca90e2eb6b88987a7f9865c3b5b11ccd1191b6cfbd7afc48f1a2",
+      "websocket_query_token_sha256_hex": "24701a389e9964b6ef92ae86ccbaab5140e23bfbe88c859461d5ccad811f3bb1",
+      "expected_from_robosats_repo": {
+        "b91_token": "ltdCXV@ZH=5aR;^,\"gQHJ*S#|o/H,RD;:m^>0p[D",
+        "nickname": "EquivalentWool707",
+        "nostr_pubkey": "53d7c688804fab096605c8e7ae0ce676b3d8cd490de5b8086c36e336a762b188"
+      },
+      "nickname_reference_python": "EquivalentWool707"
+    },
+    {
+      "source": "tests/robots/3/",
+      "token": "1mQo1opOKjzoVrWbndKzGJmvOc5IqfMzt5F3",
+      "token_utf8_hex": "316d516f316f704f4b6a7a6f567257626e644b7a474a6d764f63354971664d7a74354633",
+      "entropy": {
+        "uniqueChars": 27,
+        "bitsEntropy": 171.17595007788486,
+        "shannonEntropy": 4.627986806877674,
+        "hasEnoughEntropy": true
+      },
+      "sha256_hex": "1ec77eec21ba40a733426a3054d6f0959c021d68ab3af5adfc133d91ca99faf8",
+      "token_sha256_base91": "CUNL>XIEm:ID9E3dhvQN<B7tMe?:70CHtwcoU{qF",
+      "token_sha256_base91_length": 40,
+      "authorization_header_short": "Token CUNL>XIEm:ID9E3dhvQN<B7tMe?:70CHtwcoU{qF",
+      "hash_id": "42a3cd379f645ddbf200a7392eaf2b9ad1b598c7e8d0ebfd6c1c20205bc00657",
+      "sha512_hex": "60820a5c90ed5263f9e383fdf3051408fdc46c18353871236bf2c442c34b87cd2f05fd55a9564a74f8d277c064ca5735e6151c1d0b421b1f1b93e04a6ca0b52c",
+      "nostr_seckey_hex": "fdeed749d948b156cf281b2d11b7a0d662ef3223c795e678f61097d9f869071a",
+      "nostr_pubkey_hex": "582cb219f3e4280d7af5a6a61170f12b670ab2661d2feaa010dc54914aa871fc",
+      "legacy_nostr_seckey_sha256_token_hex": "1ec77eec21ba40a733426a3054d6f0959c021d68ab3af5adfc133d91ca99faf8",
+      "legacy_nostr_pubkey_sha256_token_hex": "f0dd4064e92d67b5aba8b8764467ccad7df7da397951e2f7aa6fb18279e6f34a",
+      "nickname": "UniformTownsman766",
+      "nickname_detail": {
+        "nick_id": 31845501388,
+        "adjective_index": 2531,
+        "noun_index": 9557,
+        "number": 766,
+        "rehash_iterations": 1,
+        "final_hash": "862207d81c688d7fa6031e6f8207f976b8e08936e765c90c1eb24641d0116d7e"
+      },
+      "pgp_user_id": "RoboSats ID 42a3cd379f645ddbf200a7392eaf2b9ad1b598c7e8d0ebfd6c1c20205bc00657",
+      "websocket_query_token_sha256_hex": "1ec77eec21ba40a733426a3054d6f0959c021d68ab3af5adfc133d91ca99faf8",
+      "expected_from_robosats_repo": {
+        "b91_token": "CUNL>XIEm:ID9E3dhvQN<B7tMe?:70CHtwcoU{qF",
+        "nickname": "UniformTownsman766",
+        "nostr_pubkey": "f0dd4064e92d67b5aba8b8764467ccad7df7da397951e2f7aa6fb18279e6f34a"
+      },
+      "nickname_reference_python": "UniformTownsman766"
+    }
+  ],
+  "exemple_entete_premier_contact": {
+    "note": "Format de l'en-tete Authorization du premier contact (ApiWebClient/index.ts:27), construit ici avec les cles du robot de test 1 : chaque saut de ligne des cles ASCII est remplace par une barre oblique inverse (Robot.model.ts:82-83). Illustration de format uniquement : le fichier pub_key du depot est la version re-exportee par GnuPG, alors que le client officiel envoie la cle telle que produite par OpenPGP.js ; et la cle Nostr inseree est celle de la derivation actuelle.",
+    "authorization": "Token Y#>]mLP@:Ka2/t_;no*:0GeGd}j2rSQ{}1qwZCED | Public -----BEGIN PGP PUBLIC KEY BLOCK-----\\\\mDMEZVO9bxYJKwYBBAHaRw8BAQdAVyePBQK63FB2r5ZpIqO998WaqZjmro+LFNH+\\sw2raQC0TFJvYm9TYXRzIElEIGVkN2QzYjJiMmU1ODlhYjI2NzIwNjA1ZTc0MTRh\\YjRmYmNhMjFjYjRiMzFlNWI0ZTYyYTZmYTUxYzI0YTllYWKIjAQQFgoAPgWCZVO9\\bwQLCQcICZAuNFtLSY2XJAMVCAoEFgACAQIZAQKbAwIeARYhBDIhViOFpzWovPuw\\vC40W0tJjZckAACTeAEA+AdXmA8p6I+FFqXaFVRh5JRa5ZoO4xhGb+QY00kgZisB\\AJee8XdW6FHBj2J3b4M9AYqufdpvuj+lLmaVAshN9U4MuDgEZVO9bxIKKwYBBAGX\\VQEFAQEHQORkbvSesg9oJeCRKigTNdQ5tkgmVGXfdz/+vwBIl3E3AwEIB4h4BBgW\\CAAqBYJlU71vCZAuNFtLSY2XJAKbDBYhBDIhViOFpzWovPuwvC40W0tJjZckAABZ\\1AD/RIJM/WNb28pYqtq4XmeOaqLCrbQs2ua8mXpGBZSl8E0BALWSlbHICYTNy9L6\\KV0a5pXbxcXpzejcjpJmVwzuWz8P\\=32+r\\-----END PGP PUBLIC KEY BLOCK-----\\ | Private -----BEGIN PGP PRIVATE KEY BLOCK-----\\\\xYYEZVO9bxYJKwYBBAHaRw8BAQdAVyePBQK63FB2r5ZpIqO998WaqZjmro+L\\FNH+sw2raQD+CQMIHkZZZnDa6d/gHioGTKf6JevirkCBWwz8tFLGFs5DFwjD\\tI4ew9CJd09AUxfMq2WvTilhMNrdw2nmqtmAoaIyIo43azVT1VQoxSDnWxFv\\Tc1MUm9ib1NhdHMgSUQgZWQ3ZDNiMmIyZTU4OWFiMjY3MjA2MDVlNzQxNGFi\\NGZiY2EyMWNiNGIzMWU1YjRlNjJhNmZhNTFjMjRhOWVhYsKMBBAWCgA+BYJl\\U71vBAsJBwgJkC40W0tJjZckAxUICgQWAAIBAhkBApsDAh4BFiEEMiFWI4Wn\\Nai8+7C8LjRbS0mNlyQAAJN4AQD4B1eYDynoj4UWpdoVVGHklFrlmg7jGEZv\\5BjTSSBmKwEAl57xd1boUcGPYndvgz0Biq592m+6P6UuZpUCyE31TgzHiwRl\\U71vEgorBgEEAZdVAQUBAQdA5GRu9J6yD2gl4JEqKBM11Dm2SCZUZd93P/6/\\AEiXcTcDAQgH/gkDCGSRul0JyboW4JZSQVlHNVlx2mrfE1gRTh2R5hJWU9Kg\\aw2gET8OwWDYU4F8wKTo/s7BGn+HN4jrZeLw1k/etKUKLzuPC06KUXhj3rMF\\Ti3CeAQYFggAKgWCZVO9bwmQLjRbS0mNlyQCmwwWIQQyIVYjhac1qLz7sLwu\\NFtLSY2XJAAAWdQA/0SCTP1jW9vKWKrauF5njmqiwq20LNrmvJl6RgWUpfBN\\AQC1kpWxyAmEzcvS+ildGuaV28XF6c3o3I6SZlcM7ls/Dw==\\=YAfZ\\-----END PGP PRIVATE KEY BLOCK----- | Nostr c7d8cd24e5d7f1eddb42d3df3928ef8d0d1ab9ad39d7b6d943ad03a834e54206"
+  },
+  "cle_pgp_reference_robot_1": {
+    "note": "Caracteristiques lues avec 'gpg --list-packets' (GnuPG 2.4.4, trousseau temporaire isole) sur tests/robots/1/enc_priv_key et pub_key. Sert de gabarit pour le spike 3.",
+    "fingerprint": "3221562385A735A8BCFBB0BC2E345B4B498D9724",
+    "user_id": "RoboSats ID ed7d3b2b2e589ab26720605e7414ab4fbca21cb4b31e5b4e62a6fa51c24a9eab",
+    "cle_primaire": "version 4, algorithme 22 (EdDSA historique), courbe ed25519 (OID 1.3.6.1.4.1.11591.15.1), usages 0x03 (certifier + signer), sans expiration",
+    "sous_cle": "version 4, algorithme 18 (ECDH), courbe cv25519 (OID 1.3.6.1.4.1.3029.1.5.1), parametres KDF 03 01 08 07 (SHA-256, AES-128), usages 0x0C (chiffrement)",
+    "auto_signature": "type 0x10, condensat SHA-512 (algo 10) ; preferences : chiffrements 9,7,8 ; condensats 8,10 ; compression 0,2,1 ; features 01",
+    "liaison_sous_cle": "type 0x18, condensat SHA-256 (algo 8)",
+    "protection_cle_privee": "S2K itere et sale (type 3), condensat SHA-256 (8), compteur code 224 (16 777 216 octets), chiffrement AES-256 (9) en mode CFB, controle SHA-1 (usage 254)",
+    "phrase_de_passe": "le token du robot (verifie : GnuPG signe avec tests/robots/1/token comme phrase de passe)"
+  },
+  "garage_key": {
+    "garage_key": "robo180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsg9czpj",
+    "plain_key_hex": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "bip32_seed_sha512_hex": "caebc13ca1f11dd5ab55a55bbc9389f1beed655f208d3ae594a559cedd558417c4ca9026221ea337fed61c00ea4017cb1b69e69c2df682990dcc9e8639e10f54",
+    "nostr_seckey_hex": "3d1e68e14a13ba230f910b407323ba63172d939d1be8b22db35d744ca7f9cf1f",
+    "nostr_pubkey_hex": "be3721d252e99fd1698a5fc13cada0d014780be06a553fc189d8f6323efddbd6",
+    "legacy_nostr_seckey_hex": "f3c521230c05cf9e6000d2fb8eff61dea5a134a44ed07c2a7705fb5f2a6d6ba3",
+    "legacy_nostr_pubkey_hex": "5bcac21600a5cb6e4f110e61feac98ca11a9743347167b13fbccabde211158a6",
+    "derived": [
+      {
+        "account_index": 0,
+        "derivation_path": "m/44'/88'/0'/0",
+        "derived_private_key_hex": "82f8fe4d1b00c23cd7000f5d91bb6bacc1b2ab38c07b74ed3bdb376f90de02b9",
+        "token": "2gYWvCarekOrMwc2LwA30tnUdyqcuPB8xsAx",
+        "token_utf8_hex": "3267595776436172656b4f724d7763324c77413330746e55647971637550423878734178",
+        "entropy": {
+          "uniqueChars": 30,
+          "bitsEntropy": 176.64806144190666,
+          "shannonEntropy": 4.836591668108977,
+          "hasEnoughEntropy": true
+        },
+        "sha256_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+        "token_sha256_base91": "vF,M?4f0<5qUUFNa`Qr8j1Mf>eb~RdSfd=m6+Y}D",
+        "token_sha256_base91_length": 40,
+        "authorization_header_short": "Token vF,M?4f0<5qUUFNa`Qr8j1Mf>eb~RdSfd=m6+Y}D",
+        "hash_id": "008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f",
+        "sha512_hex": "c05150424d77ef4618a16982c214ea3f7c719ede66ae08c648b77e3117b87db2cd743ac00d324a7709158a442e175a09c3d3f75eaa15792a42b70162bde0d295",
+        "nostr_seckey_hex": "b9b6677cbb842ec9a135e001cba730fcd2dac091b170f6de9a987da59fe7bcb3",
+        "nostr_pubkey_hex": "37be822a81de54d9db5cace740ce0e38d1525b6f0a659838b01e9c8dc46fbd35",
+        "legacy_nostr_seckey_sha256_token_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+        "legacy_nostr_pubkey_sha256_token_hex": "0606875c86e631b348b74e1b3aa6c9eb0a973b338d6254cd8ed7d0d00ab74211",
+        "nickname": "ImpreciseDetail839",
+        "nickname_detail": {
+          "nick_id": 25784583446,
+          "adjective_index": 2049,
+          "noun_index": 11434,
+          "number": 839,
+          "rehash_iterations": 1,
+          "final_hash": "6c9aba65109f8cbc62e6272872b90834b8da38168fe7b87a55e4886d4551b489"
+        },
+        "pgp_user_id": "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f",
+        "websocket_query_token_sha256_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+        "nickname_reference_python": "ImpreciseDetail839"
+      },
+      {
+        "account_index": 1,
+        "derivation_path": "m/44'/88'/1'/0",
+        "derived_private_key_hex": "d481cebd48c6b891638166c4b4aa0d96aea7b623c48e904c6b641e0f2946c53f",
+        "token": "94PXnMt4tcXGi33QS9wNYjg2dPawXA9r6h5t",
+        "token_utf8_hex": "393450586e4d743474635847693333515339774e596a6732645061775841397236683574",
+        "entropy": {
+          "uniqueChars": 26,
+          "bitsEntropy": 169.21582985307933,
+          "shannonEntropy": 4.5514621540397995,
+          "hasEnoughEntropy": true
+        },
+        "sha256_hex": "ae636073492be598baca7b98812af3844fca8c51387b04cd8e1f3bc043557e45",
+        "token_sha256_base91": "gK\";7zHd@aIPoF0t^1S?X0%I^2bGw<IL7AW7ms*A",
+        "token_sha256_base91_length": 40,
+        "authorization_header_short": "Token gK\";7zHd@aIPoF0t^1S?X0%I^2bGw<IL7AW7ms*A",
+        "hash_id": "0cfa48fc75c885ca2ff0cec01682a33e5137ad4c016e59219b5212999f64e3b4",
+        "sha512_hex": "66a7cb7f88731de961e6341bfbbb9384026fc269aabd5171fd269a26909004c3bf3f9b09a0b007dccbaba8f2f9b67767b044b52f1794c499c1a1b8675696188b",
+        "nostr_seckey_hex": "5515f8150718574ba83e0cae26c5b733420b621b714b96d29c66aa69bf7de34e",
+        "nostr_pubkey_hex": "4c525d7b910c6f44ebabf15168de1989cd02ff853a1667732e0b46d0919d8e2c",
+        "legacy_nostr_seckey_sha256_token_hex": "ae636073492be598baca7b98812af3844fca8c51387b04cd8e1f3bc043557e45",
+        "legacy_nostr_pubkey_sha256_token_hex": "211b86c9dd9467ffe1fc1e6ecbd019a4038c1aa047be4ae87f7aae07b3c4863d",
+        "nickname": "JocularPenalty254",
+        "nickname_detail": {
+          "nick_id": 3081127043,
+          "adjective_index": 244,
+          "noun_index": 12007,
+          "number": 254,
+          "rehash_iterations": 0,
+          "final_hash": "0cfa48fc75c885ca2ff0cec01682a33e5137ad4c016e59219b5212999f64e3b4"
+        },
+        "pgp_user_id": "RoboSats ID 0cfa48fc75c885ca2ff0cec01682a33e5137ad4c016e59219b5212999f64e3b4",
+        "websocket_query_token_sha256_hex": "ae636073492be598baca7b98812af3844fca8c51387b04cd8e1f3bc043557e45",
+        "nickname_reference_python": "JocularPenalty254"
+      },
+      {
+        "account_index": 18,
+        "derivation_path": "m/44'/88'/18'/0",
+        "derived_private_key_hex": "510ffc3f1ab819aada5445da853ffefe21c3be38302488d1a1bcb9ea11a46354",
+        "token": "9bagGwV1l8JzixhBzjDyflNmQlEfNha8AA6I",
+        "token_utf8_hex": "39626167477756316c384a7a697868427a6a4479666c4e6d516c45664e68613841413649",
+        "entropy": {
+          "uniqueChars": 27,
+          "bitsEntropy": 171.17595007788486,
+          "shannonEntropy": 4.648955904159992,
+          "hasEnoughEntropy": true
+        },
+        "sha256_hex": "7688c4ec230cac7f967a89251b139112c418d3eaaf63680245fbc2d45a528085",
+        "token_sha256_base91": "/XZRYZ,(oWl]b!xJDw5BmR]8`;/4h4g}k6\"0W\"qB",
+        "token_sha256_base91_length": 40,
+        "authorization_header_short": "Token /XZRYZ,(oWl]b!xJDw5BmR]8`;/4h4g}k6\"0W\"qB",
+        "hash_id": "774c38e75dc5d584e56e4b614c8f5925ed257aef9ce21e40fee30264ad3ee040",
+        "sha512_hex": "569c7acf78949e52d13de24875532d3768568f1a35161796e429cf96c95f54f52d5d1899e7def27a87296e5f5be8c01dbadcefe1c5229998d8c3c6d289529085",
+        "nostr_seckey_hex": "36d342531f3e768a89c9b489c824ff25df5f3358271e26efa3f9eb6069ab73ff",
+        "nostr_pubkey_hex": "a319fac1601a1fbda12310e583274eedcce6debe333ade7b5a27263ca1a90bf2",
+        "legacy_nostr_seckey_sha256_token_hex": "7688c4ec230cac7f967a89251b139112c418d3eaaf63680245fbc2d45a528085",
+        "legacy_nostr_pubkey_sha256_token_hex": "367e232aec5d2b3aa4f191cbfdb4f8fcf94f814619a3abbb929706caed4ae80a",
+        "nickname": "FreakyBerth866",
+        "nickname_detail": {
+          "nick_id": 42767476580,
+          "adjective_index": 3400,
+          "noun_index": 886,
+          "number": 866,
+          "rehash_iterations": 1,
+          "final_hash": "b422dcd40f1f52f3957df4601d9ccaf173a232a4e7a0655c6025983f62b31694"
+        },
+        "pgp_user_id": "RoboSats ID 774c38e75dc5d584e56e4b614c8f5925ed257aef9ce21e40fee30264ad3ee040",
+        "websocket_query_token_sha256_hex": "7688c4ec230cac7f967a89251b139112c418d3eaaf63680245fbc2d45a528085",
+        "nickname_reference_python": "FreakyBerth866"
+      }
+    ]
+  },
+  "cas_limites": {
+    "note": "Trouves en parcourant les index de la Garage Key de test : un hash base91 de 39 caracteres, et un pseudo qui necessite un re-hachage.",
+    "nickname_rehash": {
+      "account_index": 0,
+      "derivation_path": "m/44'/88'/0'/0",
+      "derived_private_key_hex": "82f8fe4d1b00c23cd7000f5d91bb6bacc1b2ab38c07b74ed3bdb376f90de02b9",
+      "token": "2gYWvCarekOrMwc2LwA30tnUdyqcuPB8xsAx",
+      "token_utf8_hex": "3267595776436172656b4f724d7763324c77413330746e55647971637550423878734178",
+      "entropy": {
+        "uniqueChars": 30,
+        "bitsEntropy": 176.64806144190666,
+        "shannonEntropy": 4.836591668108977,
+        "hasEnoughEntropy": true
+      },
+      "sha256_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+      "token_sha256_base91": "vF,M?4f0<5qUUFNa`Qr8j1Mf>eb~RdSfd=m6+Y}D",
+      "token_sha256_base91_length": 40,
+      "authorization_header_short": "Token vF,M?4f0<5qUUFNa`Qr8j1Mf>eb~RdSfd=m6+Y}D",
+      "hash_id": "008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f",
+      "sha512_hex": "c05150424d77ef4618a16982c214ea3f7c719ede66ae08c648b77e3117b87db2cd743ac00d324a7709158a442e175a09c3d3f75eaa15792a42b70162bde0d295",
+      "nostr_seckey_hex": "b9b6677cbb842ec9a135e001cba730fcd2dac091b170f6de9a987da59fe7bcb3",
+      "nostr_pubkey_hex": "37be822a81de54d9db5cace740ce0e38d1525b6f0a659838b01e9c8dc46fbd35",
+      "legacy_nostr_seckey_sha256_token_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+      "legacy_nostr_pubkey_sha256_token_hex": "0606875c86e631b348b74e1b3aa6c9eb0a973b338d6254cd8ed7d0d00ab74211",
+      "nickname": "ImpreciseDetail839",
+      "nickname_detail": {
+        "nick_id": 25784583446,
+        "adjective_index": 2049,
+        "noun_index": 11434,
+        "number": 839,
+        "rehash_iterations": 1,
+        "final_hash": "6c9aba65109f8cbc62e6272872b90834b8da38168fe7b87a55e4886d4551b489"
+      },
+      "pgp_user_id": "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f",
+      "websocket_query_token_sha256_hex": "f66191dcd04df9488dce76584a05e6afeacb8885af7c3f98ba587c9b983aa3b4",
+      "nickname_reference_python": "ImpreciseDetail839"
+    },
+    "base91_39_chars": {
+      "account_index": 6,
+      "derivation_path": "m/44'/88'/6'/0",
+      "derived_private_key_hex": "34467a0682501c885750f8fd91d093ea0521487d7ecf6437213209a7944c442f",
+      "token": "o9ThxA33XLYtc3KWdx4kizVG3QIHcP5iVCQv",
+      "token_utf8_hex": "6f39546878413333584c597463334b576478346b697a5647335149486350356956435176",
+      "entropy": {
+        "uniqueChars": 28,
+        "bitsEntropy": 173.06477719407374,
+        "shannonEntropy": 4.66992500144231,
+        "hasEnoughEntropy": true
+      },
+      "sha256_hex": "e9f869a42717b6042b2459552e99ed7c51262f4302cc80269e33b21082c90c2e",
+      "token_sha256_base91": "H+cJ@bYi<t?yQ8aQXmsh{a^RkA1\":_xx(Lt1WCX",
+      "token_sha256_base91_length": 39,
+      "authorization_header_short": "Token H+cJ@bYi<t?yQ8aQXmsh{a^RkA1\":_xx(Lt1WCX",
+      "hash_id": "767111ce4d7093520e7b08347b8a8bc2accb25f844488a0768f687e6e74c645e",
+      "sha512_hex": "40328d1d30519133fc412ce598fa4926cfe02e6592149c39024f31d3f6a2032f4e2fd309b29e4ca7ca2dcd4ac2863fa8ad397eda18ab0da06fd3fb76a3923c46",
+      "nostr_seckey_hex": "f1e32517a2f3bec4eaa9459b88322e9995260d4869fdd43237e88fe6b27daa84",
+      "nostr_pubkey_hex": "b0e899f49c2b427fcbbe4a09b455a5f5e9c465dd902cf292608e3362af7eb05c",
+      "legacy_nostr_seckey_sha256_token_hex": "e9f869a42717b6042b2459552e99ed7c51262f4302cc80269e33b21082c90c2e",
+      "legacy_nostr_pubkey_sha256_token_hex": "08adea540c8fd72930807f2058fa2a05e6c570bfd200d7d730be8d892dabfd07",
+      "nickname": "JabberingPound776",
+      "nickname_detail": {
+        "nick_id": 28120123505,
+        "adjective_index": 2235,
+        "noun_index": 7386,
+        "number": 776,
+        "rehash_iterations": 0,
+        "final_hash": "767111ce4d7093520e7b08347b8a8bc2accb25f844488a0768f687e6e74c645e"
+      },
+      "pgp_user_id": "RoboSats ID 767111ce4d7093520e7b08347b8a8bc2accb25f844488a0768f687e6e74c645e",
+      "websocket_query_token_sha256_hex": "e9f869a42717b6042b2459552e99ed7c51262f4302cc80269e33b21082c90c2e",
+      "nickname_reference_python": "JabberingPound776"
+    }
+  },
+  "jeu_de_pseudos_reference": {
+    "note": "200 hash_id = sha256('troc-nick-vector-<i>') pour i de 0 a 199 (chaine UTF-8, resultat hexadecimal). Les pseudos, nick_id et nombres d'iterations sont la SORTIE DU CODE PYTHON de RoboSats (NickGenerator.short_from_SHA256(hash, max_length=18)), et la re-implementation JS donne exactement les memes. A utiliser pour valider l'arithmetique flottante du portage Dart.",
+    "vecteurs": [
+      {
+        "hash_id": "1914bcf39d78ff70f4fa4c684b10114398cae1e2b15da38b7f2db1c9113ca9de",
+        "nickname": "AccusedTownship508",
+        "nick_id": 11342693461,
+        "rehash_iterations": 7
+      },
+      {
+        "hash_id": "746762463ffc561b7b4c97dec0830a798d988a7c161125cb93cc45aeb5bafa0f",
+        "nickname": "OnerousAcrylic194",
+        "nick_id": 36251074832,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "0dfcdfcdf0d9c5cf7eacfca34d7d9909be848356592ff5543d54288b01956a1e",
+        "nickname": "UppityResponse898",
+        "nick_id": 50598317932,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "b0e510059e7427d794f8edc32fd1ea70651c37efe7e77463257f42916460e311",
+        "nickname": "CornyBlank36",
+        "nick_id": 41997910086,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "77f82a35735230445eee1374812c4793236c35d929090eb33e3cefc16b1ea5de",
+        "nickname": "BronzedKarma339",
+        "nick_id": 28482829998,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "fbb7ad5eae0189abdaec5f16b6dd3ad6b5b6e72986b540b774045a4ff2f60df6",
+        "nickname": "AlterableHead536",
+        "nick_id": 13400446676,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "0fa8befd133820d9c90fc9b2005fb4a1dd06e886f2ae68ebaa181f2acff68389",
+        "nickname": "ConnectingPick637",
+        "nick_id": 3717759157,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "1ab82b5e148774d94043f6bbca54cfa994439a46ef9ff611c3172f7409b9704c",
+        "nickname": "OssifiedGlum135",
+        "nick_id": 6343655130,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "a21194a97620c15d9be8e6d0be007205b418e1ea9603e54d7f38c764bf674b27",
+        "nickname": "FlexibleAtom132",
+        "nick_id": 38477934681,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "22975180f9ec048c5e0608882b692dcc01b0f376da4558a1eb4989f1af10c7d1",
+        "nickname": "SmashingDeep199",
+        "nick_id": 8212528450,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "e8b2d2975e1212ebac881132539ffaa196b8b6b35fcfede7a07dbf88bea31c34",
+        "nickname": "StillCrawlspace252",
+        "nick_id": 55246695255,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "c82e6266e8c6317cc99696365638b0a786fd0cbd5f8ee93035b7bf2f0472038b",
+        "nickname": "HistoricalJumbo492",
+        "nick_id": 47526511407,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "ad64c804b91872164276cbb70677a3b45ca04c4ce4f81dfcec6e610f5ef13470",
+        "nickname": "SmearedWalkover989",
+        "nick_id": 41166688094,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "8bb60b92eb68661b0ccf7d898f94b235f128ef5fb99be7f3a8ba4dbacfb422c0",
+        "nickname": "NonverbalAttic285",
+        "nick_id": 33169859223,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "aa895643193ffbcc8ae0bb8931762fd9366e1ab9fd058e3bb6609a5e5a3810e3",
+        "nickname": "DryMissive586",
+        "nick_id": 26873623063,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "6ee7a94a633688c6ccf295470aebb820acf9ca6891ba70a17cd27bae0d92b31c",
+        "nickname": "LikelyBeep648",
+        "nick_id": 56867833890,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "f5784bb1ecd623e84c8b3f0603376c78efde590da5c3e7182c4eb3e28c78f712",
+        "nickname": "WeightyDungeon958",
+        "nick_id": 58278843778,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "e6b46c27bca6bf0ec0a778f97b2a5335b963313d138f6df9d3c125b8e82689db",
+        "nickname": "EminentPatsy216",
+        "nick_id": 54773344044,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "4ab88f73fc918792a6c27cffd8b2f908ae5b70c0abbee1ada5ef07765685c2cc",
+        "nickname": "ActiveAxiom318",
+        "nick_id": 29975009304,
+        "rehash_iterations": 5
+      },
+      {
+        "hash_id": "0bc829f1ce2763cfb42b35bb5df6afa745c9585773447af1abcc84f54da1a164",
+        "nickname": "IntangibleSquaw87",
+        "nick_id": 15442504125,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "00ecfbf65b8ed4459a19dfe5d55d9950596edf7bed170e11dec54468950499f8",
+        "nickname": "HollowMeadow16",
+        "nick_id": 219782014,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "b3d500e9369853e5a9f889fbcf6678c421ac2b06aa09edafc9da40e0bf73e092",
+        "nickname": "InfuriatedRent869",
+        "nick_id": 17181678992,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "044b2e0a711ca771069172dc82eaa703ea93e2801fcafea2092c5a292fd59bde",
+        "nickname": "ChewableCollar323",
+        "nick_id": 33432140717,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "56c7988dbbc27491cb9ff404ce79ce29e9fbfa13f3360f4e81abe8cfb70f1ad3",
+        "nickname": "SoreReply685",
+        "nick_id": 20603010052,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "163192eb13a725bc12be982ff2ccbb5597f16b0bd9a590983eb0711ea3ed0d41",
+        "nickname": "EuphoricGrowl827",
+        "nick_id": 16343629838,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "8b5a43ce31d14c53b6a7043f526d8bf1b3edc58c31aa71d18620e6ed172db72c",
+        "nickname": "GraciousGo983",
+        "nick_id": 7219050707,
+        "rehash_iterations": 4
+      },
+      {
+        "hash_id": "2daac428a11f5f3d72c207584194bb609a15b4e1d58981d6db320c83d9e5cc25",
+        "nickname": "PurringRelease816",
+        "nick_id": 10842156807,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "9563fd2672a059cc697b35bf2fa012dbd67b4a92b254d1f167f5735cbbf4111a",
+        "nickname": "SinuousThiamin323",
+        "nick_id": 35467933886,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "723d6755716275de8e0c93c477b01aad36d07c7f93699f6a80ee8af9093730e2",
+        "nickname": "AmphibianIon417",
+        "nick_id": 33727854801,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "c93cef07214079d85943e58cfac27509be43357bb4f965b14d283d914372bff5",
+        "nickname": "PrizeHorn338",
+        "nick_id": 47777422091,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "13067b464689eb3034a941e01b3cbd24b43d6140e9ea77510ee86a4440cd22a3",
+        "nickname": "WornBusiness450",
+        "nick_id": 4516942986,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "a34ce3fbb213b28e73e964d6f3ca5d9bad8bc264ce2895c2ab7cf459a63d0b76",
+        "nickname": "CharmingFit981",
+        "nick_id": 38770356816,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "b08100e924f5dfa165312eac467a49c861fc4090f876299db680f634570ded26",
+        "nickname": "ListlessNewt205",
+        "nick_id": 41905114144,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "fa578538ed84ba3f82709ab4ebf29c6c31f4e9b3cfd36e6c00422472ff7c5f9b",
+        "nickname": "MajorWork664",
+        "nick_id": 22188296158,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "d3ab351172d708d02f0194a4fa5d58e4c006230e9bded5ae9fa7bfc55b222c7d",
+        "nickname": "StraightEcstasy14",
+        "nick_id": 50253865844,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "85e35258560f8347ce5a818cb262793481ac97c859cbcca8a110be5787c6b7ae",
+        "nickname": "FrivolousFeast939",
+        "nick_id": 41046931920,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "77e8f889ae7a4502f65fe9eb22fa449e547eb4cf2edd0a3068ec0b1006c11837",
+        "nickname": "HardPlain698",
+        "nick_id": 56232687722,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "3ae286151710892c8691e916ee6dddafc52c189e6d600c0dc108c9a8897a428b",
+        "nickname": "WellreadPeak643",
+        "nick_id": 31981290340,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "f5938c3b45fd470585f1d1d1751e8cf7989f69d0535ab5db1a50d3338ebf6034",
+        "nickname": "SenselessElm179",
+        "nick_id": 58304117699,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "c5cf084abcedfc4f1df21b1cc4551a24fac0cb3de32183300468d27ccc568008",
+        "nickname": "WarningExercise254",
+        "nick_id": 25462126640,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "73e7ef5a2cd694c917b48d448cf62efffa01cfa9daa8fc70a4561793397feea1",
+        "nickname": "JazzySupport960",
+        "nick_id": 27518108307,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "dd00aafc3e321df68389024c3c4085f3b3db06edeae6fce8bf226f66702d6045",
+        "nickname": "NegativeWheel183",
+        "nick_id": 40992997152,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "bc7a428345b743c37b4531f748ff27ef04f54470dff856990f8b04bd7d9c4589",
+        "nickname": "FloatingNominee217",
+        "nick_id": 44747869555,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "e14cc540aa5b5785ffe585846488f4678d84e1c8bfe617cd02d273c7d33129ef",
+        "nickname": "NearOutfit292",
+        "nick_id": 53490128620,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "d6c7bb6d53bce6789ccddcdd0ccd0815b5ad4ebf9bb142e17142dabe50c744ea",
+        "nickname": "DiplomaticHoly736",
+        "nick_id": 26230566913,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "26d217f35b5a7d8c864f5d6c68fe24fb78a2b988413060cc55e2e016084bc061",
+        "nickname": "IgnorantIdea913",
+        "nick_id": 45507804556,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "3cb5ba50b9feb3fe34cf6df1ed679ac3a85bb65e134088c0361709885aa141bf",
+        "nickname": "PrivateManse136",
+        "nick_id": 34797735568,
+        "rehash_iterations": 4
+      },
+      {
+        "hash_id": "b5f229b5b17b330435c3b113198ae0e62f07e88e196da36ddc461c62babfd165",
+        "nickname": "TerrifyingAbuse110",
+        "nick_id": 20174245670,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "b9c5f41261e06e9e80f1afcc961edc09db66d33b459251a7115fd4c09431ded4",
+        "nickname": "TerribleYunx515",
+        "nick_id": 45280423766,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "f5aeec91bceb116b423d702aeebe7b2dfb30b8fedbd259cf3aa7c6ca2eda27a0",
+        "nickname": "TrainedExemplar720",
+        "nick_id": 58329506826,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "538bfb48c667114172c61044373e9efcac51dc7f32db6505c9fc46fe5de60ff0",
+        "nickname": "HourlongMother919",
+        "nick_id": 19835470594,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "6e87c3d235093bcd2727a923baaa0b8f35dbe7050cc8c32945600f88944b33c0",
+        "nickname": "SumptuousVortex605",
+        "nick_id": 39128959478,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "1995ab29c4c4e4f8c9e5d4573716350e743cd94fb2eeaaed9ba4cdfeb01f5eb2",
+        "nickname": "CloggedBottom968",
+        "nick_id": 19620938390,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "1d0293b395ae17ece34bfeb0df41fa6b2d042c4275e47efae9eeea07df9851c2",
+        "nickname": "HideousAttempt653",
+        "nick_id": 59810925857,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "cb37fcd9cbebecb496355f92c4c6f120c8ebcae42aa1bf74450aea59a3d9c4a3",
+        "nickname": "MotherTiptop13",
+        "nick_id": 48247670047,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "03dcf3108c182a7c8c84239d671d04fa44754a4f1a6101c63c745a5911c7229f",
+        "nickname": "BillableHub116",
+        "nick_id": 24758973359,
+        "rehash_iterations": 7
+      },
+      {
+        "hash_id": "a6d30c9356ae2d5d2ddd6dc945dabdd8ec3fce4982275923c8a5c184062eb803",
+        "nickname": "BiasedWbai162",
+        "nick_id": 39607029486,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "57de4d836f5ca6b6dbd5fe93eda9071cd12512e13019590e5cda57a95479bf2d",
+        "nickname": "ExpertSuntan359",
+        "nick_id": 15216399728,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "1ef897def24db8f350a742374b929326c2df9a969e01dd9396a22082cdbc8916",
+        "nickname": "DismissiveEarth924",
+        "nick_id": 59884701279,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "02a854740fcf714ae0b88db58f88eadcc24f3aecd1513e1d6ae33251ef2ce563",
+        "nickname": "LecherousElegy972",
+        "nick_id": 9059635269,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "96d13da4085080f5ba20830bdc034d492db12db89d89b598679fba67b7be4c69",
+        "nickname": "WistfulSlippage408",
+        "nick_id": 35806672893,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "7326615d07ae482e20fee12a6a75c61b012af6c22602c2b1536996f127189190",
+        "nickname": "SalientLots378",
+        "nick_id": 27338603409,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "4fca3a5a755babb46f59b7ce5f1dca84f54698f70cb0dd9cc65a71eebb9cd1fa",
+        "nickname": "UrbaneSaxophone617",
+        "nick_id": 49567029971,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "cf59862a6f80cc2e406b33c2ca9ad00f04040b09e36b3b5fbf7019a294c2d3be",
+        "nickname": "MiddleNomad182",
+        "nick_id": 10672956542,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "6f5cf2ce840b90349a45f40a487bc0fd764f99837cc52028135a5639881ca4c7",
+        "nickname": "GildedSmile681",
+        "nick_id": 26439540675,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "4c219b03f8b3d35c8e96a65ce3d1e5096f0313c19af51723b1bccdd8f6e6a46e",
+        "nickname": "FadingSleep867",
+        "nick_id": 18074893881,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2617377c1e1adaa68be93900db66cbaefb0effb14cde878e7f7cde23f73a7198",
+        "nickname": "DownwardArm495",
+        "nick_id": 43609829013,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "21319c8ed6aa94643e4e68c0f425a100faffd7bf49b04661b1db7e1013064d96",
+        "nickname": "OversizedOrigin531",
+        "nick_id": 7880786856,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "198d12c29b4ec5de6d30189136a58df08494011559b5a7fd2220d07c8f0a85c9",
+        "nickname": "UnafraidFalsity864",
+        "nick_id": 18229651965,
+        "rehash_iterations": 6
+      },
+      {
+        "hash_id": "644bc97ae68c354b9e2e205f2cf2ef442647fc21b775b0aab9beb2c1028b7f96",
+        "nickname": "EitherSojourn966",
+        "nick_id": 25140272529,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "1b455f3ce7ae29d8e3af825e4e95a7b03cf38b3e97ff7730a9d499e0079afb02",
+        "nickname": "ExteriorFellow700",
+        "nick_id": 17814630238,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "ce18ac755948f0de7a0862d43a14e9f661cd0dbfb684ef71a4b9e95b9bc1d141",
+        "nickname": "PerkyBend308",
+        "nick_id": 48930881447,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "d5ea4d41c503f2e051b91bc14245ed19a511f98d51b57ac97e1e365d21356b8a",
+        "nickname": "ImminentDebt937",
+        "nick_id": 43146457291,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "1a6a9f6403e5a81117563d5ee97aa34719db6d8fe802f7373b1743c36a5d62ae",
+        "nickname": "BafflingPurple327",
+        "nick_id": 6271737312,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "172bc7287a6a2c27fae82234a09f8eccd908acc088cab984daf14a94c72a1f1d",
+        "nickname": "RuttedHazard721",
+        "nick_id": 5501202013,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "0367d9f308b7c09569b35150d16c0fa832ac03efc845bc6f2aeb7335cbef4e9a",
+        "nickname": "MentalFantasia784",
+        "nick_id": 808565410,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "cbaf823db293c1258ef114bd16aba2ea4b9f830dd25da1db360be4f08b3b63f6",
+        "nickname": "UnnervingPause34",
+        "nick_id": 45779786422,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "aefbbd4ad2e90b1d09854c08e769f51879ced8f17429a9f7d19888204876a172",
+        "nickname": "ReputedWeakness608",
+        "nick_id": 41544105917,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "708e2b3588cce9a8c75cecfecfa375e1b874d1c073a9e6d058345f430679d9df",
+        "nickname": "BlackMigration17",
+        "nick_id": 26722605662,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "de75a78374b53a4e5942d7fd018414a0225ccb4232154160c457d8efd8776e2d",
+        "nickname": "MeanderingSewer962",
+        "nick_id": 18259583102,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "abaf6aa812cd15029c4434db4d6004199c7a2180b26c248647a1a6341ec33dda",
+        "nickname": "UnaidedShanty893",
+        "nick_id": 57353292191,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "03f249e605058898f86aeb4b2a2abcc6cd0d40f570226150138f0edd3a4da276",
+        "nickname": "BrighteyedMitre714",
+        "nick_id": 936953823,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2f000de0ff9eddb6eb640e9475d63db083161ee390e034d11df75ef03d6cec51",
+        "nickname": "ArduousCheese204",
+        "nick_id": 11158671363,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "32ffe539ddb70c2864506e26a26ab858ba8bbc8327f99399418531ede69ac125",
+        "nickname": "SweatyTreble788",
+        "nick_id": 53870385479,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "3567012f91610fefc772afc60f45342144c28c98a00d353eb25a71fa5271b091",
+        "nickname": "CloseableRoom978",
+        "nick_id": 12678653634,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2e1b9c94caa6dbd36987bfdbb347a4b232c02c44b75832b1eb05d1f4daae3e1d",
+        "nickname": "ImperialHunt255",
+        "nick_id": 40582636995,
+        "rehash_iterations": 5
+      },
+      {
+        "hash_id": "9e21328d2ba991c41ffe56baabc74b73ec3f2129eb12f253fa9fb1895c50905a",
+        "nickname": "FirstSpree296",
+        "nick_id": 37542747968,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "dcddeb8a8e50dba58466d910e6f522303aa2eca5139f57c449d46f2a78c02648",
+        "nickname": "ValiantTendency863",
+        "nick_id": 53731725353,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "c9c392af462563ba6974f81866377f319bcaf512c3463591a6ec1cedf7bfabf1",
+        "nickname": "OldConfusion833",
+        "nick_id": 28693403708,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "c4743173819ad34c5a9b57a1700fe7ac381a2dcd2995b6afaf48c3c0602632f0",
+        "nickname": "PhobicKonga823",
+        "nick_id": 60482397883,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "9497a55afe9b57d8e3ccd4ef25eb7e91d28e2362fe0557cc56087ca1b61627ff",
+        "nickname": "NumbSnapback522",
+        "nick_id": 35278423785,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "794686e1f9f098e6b95fcd3ed4fed021cc682a1f1707ad9b09aeeac162924aa7",
+        "nickname": "SpatialLayette115",
+        "nick_id": 37338209530,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "b6331795d9aa790dafe2067fab7c7f65b0a95348cf3cdd4e8934b7984abce266",
+        "nickname": "PompousHalftime499",
+        "nick_id": 6369036088,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "70d085e4b52cf6c4ee46a5f988a10de361863bb8458b04b595865381f157a4de",
+        "nickname": "TantalizingBall189",
+        "nick_id": 25295884983,
+        "rehash_iterations": 4
+      },
+      {
+        "hash_id": "e69d065881a2c769119fe1e9097750eb8c88605f8d16519e445bd4091f0d9109",
+        "nickname": "DivisiveGarbage19",
+        "nick_id": 12086879041,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "51f1b48d5d83bc1e865fa1df67879e882531c8805b741171652701f0a1f890a3",
+        "nickname": "MeekConduct67",
+        "nick_id": 18416813818,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "1d3e5a2cbe5e8cf66f04e2f768aa2f42cf890cd0d09ba042c2f302eb79b7b507",
+        "nickname": "OdorlessCove95",
+        "nick_id": 32680991390,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "6c55653656e941e123672802797b13b0c540949d3fc2a14789f5356e11ce9a00",
+        "nickname": "ChoiceVestal456",
+        "nick_id": 25720283427,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "9274bd7472abe1d5a93c6b3f3f162e31b2dd14e3764c19ebbbcc5435aa669f3d",
+        "nickname": "LesserknownHelp753",
+        "nick_id": 34771216731,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "d68233f531a08d5470e57c36f987588b299bca68029ee70845067f4d0644237f",
+        "nickname": "PoliticalCredit464",
+        "nick_id": 19570801073,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "bc14c57a35aa708f5c986a5a8b1080d6ca69b979d63524b1ccc6fcd5051dcaac",
+        "nickname": "ModifiedSailor607",
+        "nick_id": 35843906821,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "c2029f27216aa8fe2a92335e1ea1215eb4f4cb704d928355c09982caaf789927",
+        "nickname": "AlikeMenu71",
+        "nick_id": 46061420543,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "af77e2930f917f876e0661c6695f85384c7b3174e19a6596a57ee3be9e231573",
+        "nickname": "GratisRecipe8",
+        "nick_id": 41659240067,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "717454acb9626527f4bced64b477a054b26523cc88f3045e31b3b2b4f1dad463",
+        "nickname": "InstructiveLoft661",
+        "nick_id": 26936060638,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "0fb98a98ac880cd950430039b17a0f9abc0feff3d608dd39b32ee89435bab805",
+        "nickname": "CoughingMatrix335",
+        "nick_id": 3968129234,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "9fadac7435e25438028af638ddebd7b7801357fbf6e47fd485c8438ded40c68c",
+        "nickname": "VaryingIdea127",
+        "nick_id": 37910444734,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "eb2555ac522404805ac9298efa80e7070906062c2d9eab038081f0a69454f73d",
+        "nickname": "RustlingSheik971",
+        "nick_id": 1039772159,
+        "rehash_iterations": 5
+      },
+      {
+        "hash_id": "9a7a09548ee7189028025068b448e47be80c7a849372a91eafa431b6fcc13e1a",
+        "nickname": "BitingCountrey981",
+        "nick_id": 3813520644,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "326f3b79d84841eb823ed98e0137e20b1ac5d554081c88b6884799b94ce53401",
+        "nickname": "RankPack705",
+        "nick_id": 11974031688,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "38f9c27078d79e38d2be4044b155ed82992e0cee5189204c84d5c5890ec51eb3",
+        "nickname": "InsipidJeweler842",
+        "nick_id": 13527008294,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "7849ec1bc972a6dbcb9e197e31eaea32286124fa39fa5e81e061f0955b4685e5",
+        "nickname": "GrossLoan51",
+        "nick_id": 28558652811,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "85cc519605e009b2c8bbdc069028fdbe83cd866ce5715686ce7d5511c46740d6",
+        "nickname": "OutspokenLie132",
+        "nick_id": 49853821407,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "04e68e158b81eb549d6e472f544e300d6f3f2a03f410bfbbbd3e5475a431867d",
+        "nickname": "CelestialMule20",
+        "nick_id": 1163489366,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "4f297d887dfca163f5280969d8e60fb1f1d15461fc7b0f2087e69fba4fb2b595",
+        "nickname": "FerventHegemony335",
+        "nick_id": 49248950087,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "096ab88d22caf2ce45d24ff36e5ca2a56f3571cfc500606d2e54a448bb190db2",
+        "nickname": "LaughingAssay228",
+        "nick_id": 43169644371,
+        "rehash_iterations": 5
+      },
+      {
+        "hash_id": "ccb3eefa8f4e090b81c5da7d8d595062a5341c46050e31cd5375f84d3d87ea64",
+        "nickname": "IncandescentLid647",
+        "nick_id": 17049330251,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "49514d8f03a1fc535ab519d0956091ba86cbd3e86fe4204886ef780cf5bb14ed",
+        "nickname": "WordlessReverie953",
+        "nick_id": 18850423661,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "9849aa4ca6746aa342864a194c811631bcdaa72b2ae66be7210a4115cd07648c",
+        "nickname": "FifthLeash619",
+        "nick_id": 14458103044,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "1f81626e96332638267a602c7b5adb5fac7c8005ba7beda12e15427ccc6ab5c8",
+        "nickname": "UngallantGirdle959",
+        "nick_id": 13236578132,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "95bb00f01961698cb0f23e4f49a0318150aa4057294aa9651f8c7be6d461f1d8",
+        "nickname": "FaithlessFix506",
+        "nick_id": 16288034168,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "18b678d4375d978c6120c8d25537c56ad037539e74a5de9433b71773628c0d3d",
+        "nickname": "CoquettishLoop105",
+        "nick_id": 5867245986,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "bdf46f9c9961f77882f08ed840e0bbae7239a3684903cb9cac31fa3b585680fe",
+        "nickname": "SpikyRole36",
+        "nick_id": 29307306393,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "f596773b40dc9222b44d4d99e7ebe3fc1672fd19c29d518923836c9498d7b1ab",
+        "nickname": "SenselessMartini47",
+        "nick_id": 58306823858,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "f405b822c6dc36937b3f86c0b08a64f3b4f4061aec517544cbb357c2d4f61326",
+        "nickname": "MilitaryMeaning513",
+        "nick_id": 12295060146,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "d7ddeb1f18873872c00267b42141787d6881523fde116d92b74e07c32b1297b4",
+        "nickname": "LeatherHander701",
+        "nick_id": 57236141267,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "98ecbb0c9a67662d8aad54e543c05e336a65eda2448685b456f82f6f0eb4490a",
+        "nickname": "ScreamingLord619",
+        "nick_id": 36307002274,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "ae072eae9734760af5cc34f1dc07f4f3ce8eb71fe0c7ada56fe575da6b77b220",
+        "nickname": "LuxuriousFalcon598",
+        "nick_id": 55662990889,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "27b5893db5c457571f3ae3ac003ba647cd0e1ad5c7132f1ea0a31f16ddb327bb",
+        "nickname": "WeedyChief786",
+        "nick_id": 28064068626,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "9cf313c3a5007abce40d519b2e830b25e9822d03c5ec14d2f1b62da2bb54ba9b",
+        "nickname": "LameKangaroo871",
+        "nick_id": 37262558014,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "375d4933b6e1ac356cc53ee361153f16a19587b2d6bd5bed409f5550ff5f6b98",
+        "nickname": "CharmedGalley769",
+        "nick_id": 280706782,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "9ac97b9f997637798114f5bb35b1e4bf0ecf39e83ecfc18d3d50b838a257607d",
+        "nickname": "TauntingPanic608",
+        "nick_id": 36514514543,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "4d6147b933a97c31474d23ce5379f0420e424b9625c55ab2c5e2ed95fc0b6656",
+        "nickname": "JuicyParish729",
+        "nick_id": 18371363976,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "e03335a56f5d9f9bc4cbeee5c4db79609ae088cb103c37d0beff90425a444c0f",
+        "nickname": "ShockedTweed894",
+        "nick_id": 53229005607,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "b036092a8e5d2e30e6cd1955461b17f35548c256ac39e5034c70ccad79161943",
+        "nickname": "SizzlingStudent617",
+        "nick_id": 41835588152,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "b7957ecb68e23a0d9324513d1e4856a3ad6179c0f1fde1698477a509ad822496",
+        "nickname": "AverageCoiner382",
+        "nick_id": 43586040712,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "86f0ac1e8744eb3b0a6c9c84b20efa3cd6dde7512be4446e829c631f5f021ae2",
+        "nickname": "LifelessCoach192",
+        "nick_id": 17334849990,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "b8c12032298978b27eccc501a889a7c986df612a4e4067e76d1805a8beeab945",
+        "nickname": "SpiralMillion714",
+        "nick_id": 33112461108,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "86014bddb7fbcf56b7c88fee8b171f9de5903a8c03523a87a42654b819e2434f",
+        "nickname": "TestedHacksaw205",
+        "nick_id": 31815143215,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "3d2faab352dd0b77dc39b38294b04c3e6466a5ff8cd8fd27a813309bd676af2d",
+        "nickname": "CoweringWeek554",
+        "nick_id": 51495962045,
+        "rehash_iterations": 4
+      },
+      {
+        "hash_id": "c9ee7e84324329fd98299f000fd8420f5a7338168b5988be8400c8d040a33139",
+        "nickname": "AngryMadman913",
+        "nick_id": 47942093830,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2810f88c1422defeaf993fb0bebc39d17a2b09921f0ae5bdc5ce899f81e761ea",
+        "nickname": "HurtfulDaddy370",
+        "nick_id": 39058418854,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "a969c86963477849388ccccc73924980925645e9d914e27631dc489161728e45",
+        "nickname": "ZestySkillet617",
+        "nick_id": 40221656699,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "a08ed7ba88052f27dfdf00f380e54162039ef3bc4f3853649837e46a1ced9f70",
+        "nickname": "ReassuringHole405",
+        "nick_id": 13835349207,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "2401122c0d2135c13333c198cc424330e68801f93bbd7aee51b9802393caa682",
+        "nickname": "UnselfishPolice737",
+        "nick_id": 8548022159,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "995996e9754e7b9ce9d55fe3c9400de7d12bd367b6780dd2e297935bc30109ba",
+        "nickname": "SureMicrofilm670",
+        "nick_id": 36407959267,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "57cc8bf3e913340102da54a05fbe094ce0ea2eadd66c21f463013faabc5a77e7",
+        "nickname": "ApplaudingSwain277",
+        "nick_id": 57266078875,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "c0d1d4e73d8647be9a8d56ac60cb9455dbe8934baef0b56881a215134486bc35",
+        "nickname": "UntroubledOral749",
+        "nick_id": 17792544395,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "8a5f44949b3c57e62437b2d6582efe7844b2de2fb9c16145d627e7969c56d1f5",
+        "nickname": "GuardedCradle644",
+        "nick_id": 29360313941,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "7eebefa6e2f6a17dbeff601fa7523a5491c05d64d34e48c28f3758523dab484e",
+        "nickname": "SnugglyEvening890",
+        "nick_id": 30036178646,
+        "rehash_iterations": 7
+      },
+      {
+        "hash_id": "4e707e61c4099232df692614d7c055434b7dc0cb718a12b0f78ea00e3776b3ff",
+        "nickname": "SmellyUnion391",
+        "nick_id": 35596809949,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "ad5745fd4877a8b9148ded204369213d234d4f9212ab654e9fd323ca3fb10489",
+        "nickname": "PersistentZed449",
+        "nick_id": 54802353239,
+        "rehash_iterations": 4
+      },
+      {
+        "hash_id": "1305275149b30bf560f0b5907b1bba73e581ac7e2ff574f923e934aef4c49602",
+        "nickname": "InformedAirmen887",
+        "nick_id": 40917787142,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "3e3a91b65207bce24a834dc88fb38ef631c7b47bd7d5b2923a7692292c98ee0a",
+        "nickname": "WhichStriptease337",
+        "nick_id": 25442526343,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "48cc4337447d9e84b986ad396d3d68bc5acad7bfb1f9954c997d3fb78e004238",
+        "nickname": "TrimCrocodile810",
+        "nick_id": 21461133195,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "7c6672916157ec95c7d21ee1bb71162e4877db5d78190f7a8426550dcddfada4",
+        "nickname": "SuddenBack674",
+        "nick_id": 29534777333,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "9cc4f98581465ec7db28cbe9efb7763bc4f2df106670f1d4fa8eaf4e71755797",
+        "nickname": "WorseAlveoli52",
+        "nick_id": 37219801993,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "0c8197f837c8c714ab13b57e0285e2e9c4be3cd465c571c1fff468ff278a93aa",
+        "nickname": "SnideBadminton494",
+        "nick_id": 2969196326,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "eb544def62a425093e4d6163181d105fdb8c34a8ec245daf92a103afaf410f45",
+        "nickname": "OnlyPatio23",
+        "nick_id": 41477954549,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "1199b1c6192d9e2a64a6435610a6ce42d9cc825a2174f807fec41cd85455b673",
+        "nickname": "CrabbyDemocracy861",
+        "nick_id": 4178635044,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2894e10a1ffff8f03185e719fdf02f7837ee787e3861bcb114438f2f62ab38f1",
+        "nickname": "AdoredSink436",
+        "nick_id": 9634771021,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "67a6225ea2acd62a5a032bc6a4b6a6078c1d9bd8093a1ed41292441a02ce3c1f",
+        "nickname": "ProblematicHybrid5",
+        "nick_id": 24608074298,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "ab7ff9fddd5345a31298f8987dae1b63c91a98a440b9a0a8223cabd2ae485040",
+        "nickname": "CarefreeAnxiety723",
+        "nick_id": 33748273668,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "bd5fc7d6b2a3f20a19b3d70b0799e9d750357183ce5834d34d47eb7bf071c0a9",
+        "nickname": "ClearheadedLead636",
+        "nick_id": 44960729901,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "524e548c79cad00774614d92a6625c89663ef9ef8d94647d1aa1d664b6e97c00",
+        "nickname": "SpiffyYule78",
+        "nick_id": 57883985151,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "c2015315b1a2ef88cc9316a30891507f0c15d876efb1e7c3c0a7ae6f0589c28b",
+        "nickname": "AlikeYockel882",
+        "nick_id": 46060217559,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2a0eb6ef8fa6e0f4c7f0a836ff85bce2a74eabf7a416df5e66b875d335e7fd14",
+        "nickname": "TruculentYacare399",
+        "nick_id": 9985180224,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "3bfaf344690b1f74125370d4d155910c1ec30d18a194c2e78c99825afd7a75be",
+        "nickname": "PalatableChasm624",
+        "nick_id": 14240365005,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "3db7b68ee6c433c4c842c25dda7afa68a0c2ef2038f1462aa787daf0b4908ac7",
+        "nickname": "ObtainableFloor921",
+        "nick_id": 14652843411,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "502af9d4171d9cf2dcbcc199466c76bfc28bb1c2a69a12af33843682c4b36bce",
+        "nickname": "CharmedBorder215",
+        "nick_id": 287919008,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "dd2324a88acc6a23ec2a5f6e0b35ea86d55dbbe09f864507af7f78103fbcaef0",
+        "nickname": "NeutralRepeat471",
+        "nick_id": 52501853064,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "926d862a0009c51b01c51357f5548cec1f60acf1c462ce913971eaa7ae9e5709",
+        "nickname": "NimbleX-ray868",
+        "nick_id": 34764524545,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "729e0153e9636be8d69f2125cb38fed7e62f45f960e72e9caedaf57af842d2f8",
+        "nickname": "IntuitiveWare593",
+        "nick_id": 37556700299,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "067e7c919f668ed006fe265c6540b32bac33c145e9d1ede714d7b1fb6a462779",
+        "nickname": "HerPlenitude359",
+        "nick_id": 1541810006,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "3267254fb1287c2727ee687c0677a1c7f825199febc588b18d026ac766752884",
+        "nickname": "RankHeartbreak606",
+        "nick_id": 11966532096,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2e33b1c91ddd87ffa64b8da5ee8e577cbba558a0f9d226bd4ca8ae8104f89791",
+        "nickname": "MagentaSuburb300",
+        "nick_id": 54322623300,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "fcc3371d5fd2baa14c2f1043c035edd6266c114bd47d30632add9fc2ff6f4e9b",
+        "nickname": "BrutalCryostat603",
+        "nick_id": 33196817556,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "e6e488827ddf81a64c78c73a2cc552d967fb49b87e69500c4e3550bac018a095",
+        "nickname": "AncientBully374",
+        "nick_id": 54817962539,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "d07286db4e2598fcd018c214de5d63db3e61784ac55a60925996e26a3a3dc7af",
+        "nickname": "InevitableLid831",
+        "nick_id": 49489047246,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "c6441e5eba5125137bf3b0c951b4d02bbc68aa7753f01f01484e78ae3658bf79",
+        "nickname": "ImpishExercise24",
+        "nick_id": 47071833072,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "9ce56e4e3bf485fa09b7ef0bc72584b8e7aa0b976298f02812cb070020981c12",
+        "nickname": "AbsorbedJoblot440",
+        "nick_id": 37249902251,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "fd22b1b45c1dc5ce76ef745f4ef13a6df1531afcfecc8d721c56f194a50edda0",
+        "nickname": "AnxiousInternal610",
+        "nick_id": 60098795656,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "ac15f8a68153ec04c72c835cb56770d6af3527b2b1bca65f1588fa65126da8b0",
+        "nickname": "KnavishLuster975",
+        "nick_id": 30797701446,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "a760ddf078e625639d4a2a3b17fbdabba2ce0cf794e1215c13630e91201a9683",
+        "nickname": "MirthfulEssence371",
+        "nick_id": 39738553040,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "2c28a33d1cbc3ad5c84f0f86e8e067380675645357e78c594207dee627c66362",
+        "nickname": "FurthestAbdomen815",
+        "nick_id": 29735367683,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "0a358481a44e4e62bc884adfa10c8f5501f5076a93cef9bd4e8b6462481177fe",
+        "nickname": "LatentZechin936",
+        "nick_id": 47682972234,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "59d1c15ed5f2a7fdaac7f8e4084de5a2580bacb4c8ed5febc1731a5b27ae7c1d",
+        "nickname": "DemonicGrumble478",
+        "nick_id": 21324684448,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "8af5c2a54c0c7ca2c965eeaae94c6e3786e9f2d78b9d350c087c48b509d23259",
+        "nickname": "TotalComplexion595",
+        "nick_id": 39208868479,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "9a8332f9a5a09f3a7eacf2099e373038aec33d044c7217919bb699565be10aa9",
+        "nickname": "CaringKindred525",
+        "nick_id": 19049080377,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "112f3e13a62b9e221b13c3fc6404be717a12243b3e25c38f161c7a77f9950956",
+        "nickname": "WorldlyHerb231",
+        "nick_id": 4079910237,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "7123aed875667ad63b52b6ab788336360c711acddcba433852e031881186c6de",
+        "nickname": "VelvetyNato84",
+        "nick_id": 26861266929,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "5cb619dff72a929b2b48f57bdeaa108bd34808fe399a56461d623b668e6354a6",
+        "nickname": "EmotionalHand270",
+        "nick_id": 22011289947,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "7b5db68e5f62b5dcc9c43644f5893a57a031b9680062eca340004c0ccff95ea7",
+        "nickname": "MumbledOunce34",
+        "nick_id": 29289259456,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "4aa65e16ef9b65c1a5517b44733f602eef4534d8473d9363fd80e0fb2c44dc95",
+        "nickname": "DroopyAgreement944",
+        "nick_id": 17723184020,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "0d701cfbbf9ffae94d121eb48a856a9805b0abf29152283677c1a7ed55561811",
+        "nickname": "GiftedFeature109",
+        "nick_id": 30883579615,
+        "rehash_iterations": 2
+      },
+      {
+        "hash_id": "afce7113b27a7e2cd0d43c18d6e36de7aba5ad28c9653f2a3bab835d98c12a7d",
+        "nickname": "NeedlessHair37",
+        "nick_id": 41739513742,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "0d955f041ecc6f82d2c29631488a49e8c1d0d1e2a32eaad3aeb387d1d2a5bcf7",
+        "nickname": "TeasingInd893",
+        "nick_id": 3224955710,
+        "rehash_iterations": 0
+      },
+      {
+        "hash_id": "7f29a84f9711cd0e348c37f60dd71b6541606f163cff2021276fc072c23827ac",
+        "nickname": "WellmadeTale698",
+        "nick_id": 5417964311,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "07adbabc6f2389691d253e6e2fc0d7a331fc0868bb305941c90f60c2bf7a4c6d",
+        "nickname": "ClassifiedEve580",
+        "nick_id": 59373474673,
+        "rehash_iterations": 1
+      },
+      {
+        "hash_id": "9e174bbf3cb97b9338b97a80c173b608d884b506e5e5d88c5e23000a3f1c6f28",
+        "nickname": "ShoddyCamera678",
+        "nick_id": 31256004387,
+        "rehash_iterations": 3
+      },
+      {
+        "hash_id": "7c5b51d1bfce65f09f821f69b30f155f84037aad31142268a766fe2808c5e40b",
+        "nickname": "UnexpectedMuff415",
+        "nick_id": 5666556187,
+        "rehash_iterations": 1
+      }
+    ]
+  }
+}

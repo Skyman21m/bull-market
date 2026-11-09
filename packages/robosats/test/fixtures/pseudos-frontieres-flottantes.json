@@ -1,0 +1,325 @@
+{
+  "_titre": "nick_id RoboSats pour des hash places sur des frontieres de l'arithmetique flottante",
+  "_avertissement": "Valeurs calculees par l'arithmetique de CPython avec la formule de api/nick_generator/nick_generator.py:83-88, SANS executer le code de RoboSats. Elles valident la conversion grand entier -> double (arrondi au plus proche, pair en cas d'egalite) et la multiplication flottante, pas le choix des mots.",
+  "_genere_le": "2026-11-10",
+  "_reference": {
+    "depot": "RoboSats/robosats",
+    "commit": "ff1998caed30888b2fb60e15022c29063a60f1ba",
+    "python": "3.12.3",
+    "pool_size": 60778872288
+  },
+  "_comment_chaque_valeur_est_produite": {
+    "hash_id": "Hash construit pour tomber sur une frontiere (graine aleatoire fixe 20261109), 64 caracteres hexadecimaux.",
+    "unit_fraction_hex": "float.hex() de int(hash,16) / 2**256 en CPython : le double attendu, bit pour bit.",
+    "nick_id_python_float": "VALEUR DE REFERENCE : int((int(hash,16) / 2**256) * 60778872288) en CPython. Quand elle vaut 60778872288 (quotient arrondi a 1.0), l'indice d'adjectif sort du dictionnaire et le code de RoboSats leve IndexError.",
+    "nick_id_exact_integer": "Ce que donnerait un calcul en entiers exacts (h * pool // 2**256) : a NE PAS reproduire, fourni pour montrer l'ecart.",
+    "nick_id_truncated_mantissa": "Ce que donnerait une conversion du grand entier en double par troncature a 53 bits : a NE PAS reproduire.",
+    "kind": "float_differs_from_exact_integer : le flottant franchit un entier que le calcul exact ne franchit pas ; round_to_nearest_differs_from_truncation : l'arrondi de la conversion change le resultat ; tie_round_half_to_even : hash exactement a mi-chemin entre deux doubles ; autres : valeurs extremes."
+  },
+  "vecteurs": [
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "03529b72c41fb1ccb7b366c87212670f3846ee08bea551401297c742bae13616",
+      "unit_fraction_hex": "0x1.a94db9620fd8ep-7",
+      "nick_id_python_float": 788863336,
+      "nick_id_exact_integer": 788863335,
+      "nick_id_truncated_mantissa": 788863336
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "034c82e57e51ccb27a144884115efe403a159b427545b80a4ab54951c2ef3281",
+      "unit_fraction_hex": "0x1.a64172bf28e66p-7",
+      "nick_id_python_float": 783209920,
+      "nick_id_exact_integer": 783209919,
+      "nick_id_truncated_mantissa": 783209919
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "de8e816b373b3ded6a4c0215c9b8e9b6c892b1dcc0a7d1cfa92fcaee16e4ac78",
+      "unit_fraction_hex": "0x1.bd1d02d66e768p-1",
+      "nick_id_python_float": 52838839661,
+      "nick_id_exact_integer": 52838839660,
+      "nick_id_truncated_mantissa": 52838839660
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "ad495f60fbe193f7287eae4f1d0729e45039cd8ce60ea14da1bea56ea3477392",
+      "unit_fraction_hex": "0x1.5a92bec1f7c32p-1",
+      "nick_id_python_float": 41141268893,
+      "nick_id_exact_integer": 41141268892,
+      "nick_id_truncated_mantissa": 41141268893
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "27934ce9624f0aa092259c3e2f0256b6e3ce072e84dd035481f8b437a8d8d6a3",
+      "unit_fraction_hex": "0x1.3c9a674b12785p-3",
+      "nick_id_python_float": 9395889516,
+      "nick_id_exact_integer": 9395889515,
+      "nick_id_truncated_mantissa": 9395889516
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "4ac49df4f61320df4984cdc0f29de9afd3ff98833e0d665baac63616aad554b8",
+      "unit_fraction_hex": "0x1.2b1277d3d84c8p-2",
+      "nick_id_python_float": 17751237752,
+      "nick_id_exact_integer": 17751237751,
+      "nick_id_truncated_mantissa": 17751237752
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "2c8570fcc2a3a3b2419b81d8896865c4aaf76b6cfa649156412a083e65b3b3ec",
+      "unit_fraction_hex": "0x1.642b87e6151d2p-3",
+      "nick_id_python_float": 10570123789,
+      "nick_id_exact_integer": 10570123788,
+      "nick_id_truncated_mantissa": 10570123788
+    },
+    {
+      "kind": "float_differs_from_exact_integer",
+      "hash_id": "0171f4779a15b5911955b0f969862cd304d92fdbf2b87dc7fe79b596f22c1cf1",
+      "unit_fraction_hex": "0x1.71f4779a15b59p-8",
+      "nick_id_python_float": 343100657,
+      "nick_id_exact_integer": 343100656,
+      "nick_id_truncated_mantissa": 343100657
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "b2f3c3b8cd41aca648a798d53737cc32f434e24160d7c688a0cd5bc1c516b5f8",
+      "unit_fraction_hex": "0x1.65e787719a836p-1",
+      "nick_id_python_float": 42486379794,
+      "nick_id_exact_integer": 42486379793,
+      "nick_id_truncated_mantissa": 42486379793
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "82531b7352a9141303b5d795782bda604da39bff760e61306612c429e56bd2b8",
+      "unit_fraction_hex": "0x1.04a636e6a5523p-1",
+      "nick_id_python_float": 30941345724,
+      "nick_id_exact_integer": 30941345723,
+      "nick_id_truncated_mantissa": 30941345723
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "d0c467c8fcc06efe397de6635b385f8ebd63d551680cbeed6c850b617d7b7e86",
+      "unit_fraction_hex": "0x1.a188cf91f980ep-1",
+      "nick_id_python_float": 49564982467,
+      "nick_id_exact_integer": 49564982466,
+      "nick_id_truncated_mantissa": 49564982466
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "f885ce1ca36c9cc71065409a3b688426ffdae43f9cb1f5caf9707a0d3b2bffa8",
+      "unit_fraction_hex": "0x1.f10b9c3946d94p-1",
+      "nick_id_python_float": 59003625006,
+      "nick_id_exact_integer": 59003625005,
+      "nick_id_truncated_mantissa": 59003625005
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "a6f460fd913f2c0e328650673b109cfd3544b22e2a2596c103cc2a84156b2ed7",
+      "unit_fraction_hex": "0x1.4de8c1fb227e6p-1",
+      "nick_id_python_float": 39637939893,
+      "nick_id_exact_integer": 39637939892,
+      "nick_id_truncated_mantissa": 39637939892
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "c9add12cfc9697413b6651baa95466e4ecdf1d5948972a7b3c0dc679c1980bcb",
+      "unit_fraction_hex": "0x1.935ba259f92d3p-1",
+      "nick_id_python_float": 47882111501,
+      "nick_id_exact_integer": 47882111500,
+      "nick_id_truncated_mantissa": 47882111500
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "e6603c4b24968ef929678f7d212dd6eeefa603bc4be4bfe189ac4f2d7c3b2915",
+      "unit_fraction_hex": "0x1.ccc07896492d2p-1",
+      "nick_id_python_float": 54695268048,
+      "nick_id_exact_integer": 54695268047,
+      "nick_id_truncated_mantissa": 54695268047
+    },
+    {
+      "kind": "round_to_nearest_differs_from_truncation",
+      "hash_id": "e2bc56aa53ffc5548c0ecb9563ff39fbc5a2a53b747881c24c3959151b1c379b",
+      "unit_fraction_hex": "0x1.c578ad54a7ff9p-1",
+      "nick_id_python_float": 53831015609,
+      "nick_id_exact_integer": 53831015608,
+      "nick_id_truncated_mantissa": 53831015608
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "8000000000000400000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000000p-1",
+      "nick_id_python_float": 30389436144,
+      "nick_id_exact_integer": 30389436144,
+      "nick_id_truncated_mantissa": 30389436144
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000800000000000040000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000000p-53",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000000000000000000000000000000000000000020000000000001",
+      "unit_fraction_hex": "0x1.0000000000000p-203",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "8000000000000c00000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000002p-1",
+      "nick_id_python_float": 30389436144,
+      "nick_id_exact_integer": 30389436144,
+      "nick_id_truncated_mantissa": 30389436144
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "00000000000008000000000000c0000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000002p-53",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000000000000000000000000000000000000000020000000000003",
+      "unit_fraction_hex": "0x1.0000000000002p-203",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "8000020000000400000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000040000000p-1",
+      "nick_id_python_float": 30389443389,
+      "nick_id_exact_integer": 30389443389,
+      "nick_id_truncated_mantissa": 30389443389
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000800002000000040000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000040000000p-53",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000000000000000000000000000000000000000020000080000001",
+      "unit_fraction_hex": "0x1.0000040000000p-203",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "8000020000000c00000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000040000002p-1",
+      "nick_id_python_float": 30389443389,
+      "nick_id_exact_integer": 30389443389,
+      "nick_id_truncated_mantissa": 30389443389
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "00000000000008000020000000c0000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000040000002p-53",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000000000000000000000000000000000000000020000080000003",
+      "unit_fraction_hex": "0x1.0000040000002p-203",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "fffffffffffffc00000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000000p+0",
+      "nick_id_python_float": 60778872288,
+      "nick_id_exact_integer": 60778872287,
+      "nick_id_truncated_mantissa": 60778872287
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "0000000000000fffffffffffffc0000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000000p-52",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "tie_round_half_to_even",
+      "hash_id": "000000000000000000000000000000000000000000000000003fffffffffffff",
+      "unit_fraction_hex": "0x1.0000000000000p-202",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "zero",
+      "hash_id": "0000000000000000000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x0.0p+0",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "one",
+      "hash_id": "0000000000000000000000000000000000000000000000000000000000000001",
+      "unit_fraction_hex": "0x1.0000000000000p-256",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "largest_exact_small_integer",
+      "hash_id": "000000000000000000000000000000000000000000000000001fffffffffffff",
+      "unit_fraction_hex": "0x1.fffffffffffffp-204",
+      "nick_id_python_float": 0,
+      "nick_id_exact_integer": 0,
+      "nick_id_truncated_mantissa": 0
+    },
+    {
+      "kind": "largest_double_below_one",
+      "hash_id": "fffffffffffff800000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.fffffffffffffp-1",
+      "nick_id_python_float": 60778872287,
+      "nick_id_exact_integer": 60778872287,
+      "nick_id_truncated_mantissa": 60778872287
+    },
+    {
+      "kind": "largest_value_rounding_below_one",
+      "hash_id": "fffffffffffffbffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "unit_fraction_hex": "0x1.fffffffffffffp-1",
+      "nick_id_python_float": 60778872287,
+      "nick_id_exact_integer": 60778872287,
+      "nick_id_truncated_mantissa": 60778872287
+    },
+    {
+      "kind": "smallest_value_rounding_up_to_one",
+      "hash_id": "fffffffffffffc00000000000000000000000000000000000000000000000000",
+      "unit_fraction_hex": "0x1.0000000000000p+0",
+      "nick_id_python_float": 60778872288,
+      "nick_id_exact_integer": 60778872287,
+      "nick_id_truncated_mantissa": 60778872287
+    },
+    {
+      "kind": "all_ones_rounds_up_to_one",
+      "hash_id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "unit_fraction_hex": "0x1.0000000000000p+0",
+      "nick_id_python_float": 60778872288,
+      "nick_id_exact_integer": 60778872287,
+      "nick_id_truncated_mantissa": 60778872287
+    }
+  ]
+}
