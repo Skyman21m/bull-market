@@ -24,7 +24,7 @@ Bull Bitcoin Mobile: self-custodial Bitcoin + Liquid + Lightning wallet. Flutter
   - `make unit-test` / `make integration-test` / `make test`
   - `make drift-migrations` — after changing Drift schema
   - `make android` / `make android release` — reproducible build
-  - `make android beta` — beta tester channel APK (`.beta` applicationId, installs alongside production)
+  - `make android beta` — beta tester channel APK (`.beta` applicationId, installs alongside production). Troc's applicationId is `io.github.skyman21m.troc` (the Gradle `namespace` stays `com.bullbitcoin.mobile`), so every variant also installs alongside the official Bull Bitcoin app
   - `make verify` — verify a built APK matches a published release
   - `make build-runner-watch` — codegen in watch mode during dev
 - **Analyze the whole project, never specific files.** `fvm flutter analyze` (no path arg). CI runs `--fatal-warnings --fatal-infos` ([analyze_and_test.yml](.github/workflows/analyze_and_test.yml)) — match it locally.
