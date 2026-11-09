@@ -5,7 +5,7 @@
          falls back to production. src/main is left untouched so the production
          variant stays byte-reproducible. -->
     <application
-        android:label="Bull Beta"
+        android:label="Troc Beta"
         tools:replace="android:label"
     />
 </manifest>

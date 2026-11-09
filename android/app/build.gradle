@@ -53,7 +53,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = 'com.bullbitcoin.mobile'
+        // Troc's own applicationId, so it installs next to the official Bull Bitcoin app.
+        // The `namespace` below (Kotlin package, R class) keeps Bull's value on purpose: it is internal, and changing it would only create conflicts on every upstream sync.
+        applicationId = 'io.github.skyman21m.troc'
         minSdkVersion project.properties['android.minSdk'].toInteger()
         targetSdkVersion project.properties['android.targetSdk'].toInteger()
         versionCode flutterVersionCode.toInteger()
