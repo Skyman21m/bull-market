@@ -9,7 +9,7 @@ Troc est un fork du portefeuille [Bull Bitcoin Mobile](https://github.com/Satosh
 
 ## Où en est le projet
 
-Le travail est découpé en phases, suivies par des [jalons](https://github.com/Skyman21m/troc/milestones) et un [tableau de projet](https://github.com/users/Skyman21m/projects/1).
+Le travail est découpé en phases, suivies par des [jalons](https://github.com/Skyman21m/troc/milestones) et des [tickets](https://github.com/Skyman21m/troc/issues).
 
 | Phase | Contenu |
 |---|---|
@@ -20,7 +20,7 @@ Le travail est découpé en phases, suivies par des [jalons](https://github.com/
 | 4 | Confort et robustesse : chat Nostr, notifications, litiges |
 | 5 | Finition, audit de sécurité indépendant, bêta |
 
-Android d'abord. Rien n'est encore publié.
+Android d'abord. Rien n'est encore publié. À ce stade, l'application affiche encore par endroits le nom et le logo de Bull : leur retrait est suivi dans les tickets [#4](https://github.com/Skyman21m/troc/issues/4) et [#17](https://github.com/Skyman21m/troc/issues/17).
 
 ## Le portefeuille
 
@@ -28,9 +28,9 @@ Toutes les fonctions du portefeuille (Bitcoin, Liquid, Lightning par swaps, sauv
 
 ## Compiler
 
-La chaîne de compilation est celle de Bull, inchangée : voir [AGENTS.md](AGENTS.md) pour les commandes (`make setup`, `make checks`, `make android debug`) et [reproducibility/](reproducibility/README.md) pour la compilation reproductible en conteneur.
+La chaîne de compilation est celle de Bull, inchangée : voir [AGENTS.md](AGENTS.md) pour les commandes de développement (`make setup`, `make checks`) et [reproducibility/](reproducibility/README.md) pour la compilation reproductible en conteneur. `make android debug` (cible du [makefile](makefile)) produit un APK de debug ; elle utilise podman par défaut, ou Docker avec `CONTAINER=docker`.
 
-Chaque pull request produit un APK de debug, téléchargeable depuis l'onglet [Actions](https://github.com/Skyman21m/troc/actions/workflows/build-android.yml). Son identifiant porte le suffixe `.debug` : il s'installe à côté de l'application Bull officielle.
+Chaque pull request qui touche au code produit un APK de debug, téléchargeable pendant 30 jours depuis l'onglet [Actions](https://github.com/Skyman21m/troc/actions/workflows/build-android.yml) (compte GitHub requis). Son identifiant porte le suffixe `.debug` : il s'installe à côté de l'application Bull officielle.
 
 ## Contribuer
 
