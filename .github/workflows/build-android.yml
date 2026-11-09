@@ -1,6 +1,25 @@
 name: Build Android
 
+# Compile l'APK avec la chaîne reproductible de Bull (Containerfile.tools +
+# Containerfile.app via podman). Sur chaque PR vers `main` : APK debug en
+# artefact, téléchargeable depuis l'onglet Actions (l'applicationId debug porte
+# le suffixe `.debug`, donc il s'installe à côté de l'app Bull officielle). Sur
+# un tag `v*` : APK release. À la main : mode et format au choix.
 on:
+  pull_request:
+    branches:
+      - main
+    # Keep in sync with the docs-only classification in analyze_and_test.yml.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.git-blame-ignore-revs'
+      - '.github/ISSUE_TEMPLATE/**'
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       mode:
@@ -12,29 +31,41 @@ on:
         options: [apk, aab]
         default: apk
 
+permissions:
+  contents: read
+
+# A newer push to the same PR supersedes the previous build; tag and manual
+# builds are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
-    # Pinned to 24.04. 26.04 runner not yet provided by GitHub
-    # (tracked in actions/runner-images#13855). Bump when available.
+    # Pinned to 24.04: ships podman 4.9.3 preinstalled, which the makefile uses.
     runs-on: ubuntu-24.04
+    # The tools image (Debian + Flutter + Android SDK + Rust) is rebuilt on every
+    # run; the whole chain takes well over an hour the first time.
+    timeout-minutes: 150
     # Least privilege: this job only checks out and uploads an artifact.
     permissions:
       contents: read
+    env:
+      # PR → debug ; tag → release ; manual → as chosen.
+      MODE: ${{ inputs.mode || (github.event_name == 'push' && 'release') || 'debug' }}
+      FORMAT: ${{ inputs.format || 'apk' }}
     steps:
-      # Pinned to a commit SHA (not the mutable v7 tag): this job handles the
+      # Pinned to a commit SHA (not the mutable v7 tag): this job can handle the
       # beta signing secrets below, so a retag must not run here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Short SHA for the artifact name so each build is traceable to a commit.
-      # `github` context has no short-SHA field; compute it from the checkout.
       - name: Resolve short commit SHA
         id: meta
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Free disk space
-        # Pinned to a commit SHA (not the mutable v1.3.1 tag): this third-party
-        # action runs on a runner that holds the beta signing secrets, so a
-        # retagged/compromised release must not be able to execute here.
+        # Pinned to a commit SHA (not the mutable v1.3.1 tag): third-party action.
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
           tool-cache: true
@@ -45,15 +76,13 @@ jobs:
           swap-storage: false
 
       # Dedicated beta signing key, written before the build so the container
-      # image (Containerfile.app copies the repo) picks it up. A beta that ships
-      # to testers must be signed with the real beta key; build.gradle leaves it
-      # unsigned (never the public debug keystore) when the key is absent, so we
-      # require all four secrets here and fail loud rather than produce an
-      # uninstallable/unsigned artifact. The secret presence check lives in the
-      # run body on purpose: the `secrets` context is not available in a step
-      # `if:` (only `inputs`/`env` etc. are), so gating on it there would not work.
+      # image (Containerfile.app copies the repo) picks it up. build.gradle
+      # leaves the beta flavor unsigned when the key is absent, so we require
+      # all four secrets here and fail loud rather than produce an
+      # uninstallable artifact. The `secrets` context is not available in a
+      # step `if:`, hence the check in the run body.
       - name: Configure beta signing key
-        if: ${{ inputs.mode == 'beta' }}
+        if: ${{ env.MODE == 'beta' }}
         env:
           BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
           BETA_KEY_ALIAS: ${{ secrets.BETA_KEY_ALIAS }}
@@ -74,24 +103,21 @@ jobs:
           EOF
 
       - name: Build
-        # makefile uses `podman` directly; ubuntu-24.04 ships podman 4.9.3 preinstalled.
-        run: make android ${{ inputs.mode }} FORMAT=${{ inputs.format }}
+        run: make android "$MODE" FORMAT="$FORMAT"
 
       # Publishes the sha256 of the exact bytes uploaded below, so anyone
-      # comparing this run's artifact against a locally reproduced build (or
-      # against what later gets signed and released) has a tamper-evident
-      # value to check against beyond trusting the artifact download itself.
+      # comparing this run's artifact against a locally reproduced build has a
+      # tamper-evident value to check against.
       - name: Record artifact hash
         run: |
           echo "### Artifact hash" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          sha256sum "BULL-${{ inputs.mode }}.${{ inputs.format }}" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "BULL-${MODE}.${FORMAT}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      # Pinned to a commit SHA (not the mutable v7 tag): this job handles the
-      # beta signing secrets above, so a retag must not run here.
+      # Pinned to a commit SHA (not the mutable v7 tag).
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: BULL-${{ inputs.mode }}-${{ steps.meta.outputs.sha_short }}-${{ inputs.format }}
-          path: BULL-${{ inputs.mode }}.${{ inputs.format }}
+          name: troc-${{ env.MODE }}-${{ steps.meta.outputs.sha_short }}-${{ env.FORMAT }}
+          path: BULL-${{ env.MODE }}.${{ env.FORMAT }}
           retention-days: 30

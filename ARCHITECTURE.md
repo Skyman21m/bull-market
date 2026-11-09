@@ -32,7 +32,7 @@ The codebase has **two coexisting patterns**, which is expected mid-migration:
 
 **The `public/` facade exists but is still a minority pattern (9 `*_facade.dart` files under `lib/features/`, 2026-08-25 count) and `watchers/` barely exists (0 found).** So "facade-only cross-feature" is progressing but not complete — features still reach into each other directly in places, which we are fixing.
 
-**Documentation-only PRs still produce the final `CI` status.** The `Analyze and Test` workflow ([analyze_and_test.yml](.github/workflows/analyze_and_test.yml)) runs changed-file classification and the action-pin gate for every PR; docs-only changes skip the heavy application checks and integration job, then the final `CI` job reports success. The repository ruleset is not yet updated to require this status, so it is not mandatory until an administrator activates that requirement.
+**Documentation-only PRs still produce the final `CI` status.** The `Analyze and Test` workflow ([analyze_and_test.yml](.github/workflows/analyze_and_test.yml)) runs changed-file classification and the action-pin gate for every PR; docs-only changes skip the heavy application checks, then the final `CI` job reports success. `CI` is the single status to require on `main`.
 
 This split maps almost 1:1 onto the melos target (see Monorepo Migration): `lib/core/<domain>` → `packages/<domain>` (shared data + domain, no UI), `lib/features/<feature>` → `features/<feature>` (presentation + ui). The migration is mostly a **relocation**, not a rewrite.
 

@@ -3,16 +3,15 @@ name: Cache Warmer
 # PR-saved Actions caches are scoped to the PR branch — they are NOT shared
 # between PRs. Caches saved on the base branch ARE visible to every PR
 # targeting it. This workflow runs the shared setup (FVM SDK, pub, build_runner
-# outputs) on each develop push so every fresh PR restores warm caches instead
-# of paying the full ~10min prefix. Matrix over both arches because the
-# analyze_and_test jobs run on x64 (checks) and arm64 (integration), and the
-# FVM + build_runner caches are arch-keyed. The Cargo cache is NOT warmed here:
+# outputs) on each main push so every fresh PR restores warm caches instead
+# of paying the full ~10min prefix. x64 only: Troc's analyze_and_test runs its
+# single `checks` job on x64 (the arm64 integration job of Bull was dropped). The Cargo cache is NOT warmed here:
 # it only fills during an actual Rust build, which this workflow deliberately
 # avoids.
 on:
   push:
     branches:
-      - develop
+      - main
     # Docs-only merges don't change any cache input — skip the ~2x10min warm.
     # Keep in sync with the paths-ignore in analyze_and_test.yml.
     paths-ignore:
@@ -26,7 +25,7 @@ on:
 permissions:
   contents: read
 
-# Only the newest develop push matters for cache freshness.
+# Only the newest main push matters for cache freshness.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
@@ -38,7 +37,7 @@ jobs:
       # failure must not cancel the other's warm.
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner: [ubuntu-24.04]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
