@@ -44,7 +44,7 @@ analyze:
 	@echo "🔍 Analyze whole project (matches CI: --fatal-warnings --fatal-infos)"
 	@fvm flutter analyze --fatal-warnings --fatal-infos
 
-# Local Dart/Flutter gates. CI also runs the Node-based custody import and PR governance checks; Node is not required for `make checks`. The pre-commit hook deliberately does NOT call fix-check/format-check: it runs its own staged-only variants in parallel with `make analyze` for speed.
+# Local Dart/Flutter gates. CI also runs the Node-based custody import checks; Node is not required for `make checks`. The pre-commit hook deliberately does NOT call fix-check/format-check: it runs its own staged-only variants in parallel with `make analyze` for speed.
 fix-check:
 	@echo "🧹 dart fix should have nothing to suggest"
 	@bash -c 'set -o pipefail; fvm dart fix --dry-run | tee /dev/stderr | grep -q "Nothing to fix!"'

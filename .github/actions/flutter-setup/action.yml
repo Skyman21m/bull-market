@@ -1,9 +1,9 @@
-# Shared Flutter toolchain setup for the analyze_and_test jobs. Both jobs pay
-# this prefix (checks needs generated code for analyze/tests; integration needs
-# it to build the app), so it lives here to keep the two copies from drifting.
+# Shared Flutter toolchain setup. The `checks` job of analyze_and_test and the
+# cache-warmer workflow both pay this prefix (generated code is needed for
+# analyze/tests), so it lives here to keep the two copies from drifting.
 #
 # Cache notes: keys derive from lockfiles, so they self-invalidate when deps
-# change. When both parallel jobs miss the same key (lockfile just changed),
+# change. When two concurrent runs miss the same key (lockfile just changed),
 # both build and both try to save — the first save wins, the second logs a
 # benign "cache already exists" warning. No restore-keys on the pub cache on
 # purpose: it holds the bull_sdk git clone, and a fuzzy fallback can restore a
@@ -15,7 +15,7 @@ description: FVM + pub caches, FVM install, deps, build_runner, translations
 
 inputs:
   cargo-cache:
-    description: Also restore the Cargo cache (only the integration job compiles the FRB native crates)
+    description: Also restore the Cargo cache (no caller today; kept for a future job that compiles the FRB native crates)
     required: false
     default: 'false'
 

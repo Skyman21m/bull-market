@@ -16,7 +16,6 @@ on:
 # Checkout + tests only; no writes to the repo via the token.
 permissions:
   contents: read
-  issues: read
   pull-requests: read
 
 # Cancel superseded runs on the same PR — these builds are heavy, so don't run

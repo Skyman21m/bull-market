@@ -45,8 +45,9 @@ jobs:
     # Pinned to 24.04: ships podman 4.9.3 preinstalled, which the makefile uses.
     runs-on: ubuntu-24.04
     # The tools image (Debian + Flutter + Android SDK + Rust) is rebuilt on every
-    # run; the whole chain takes well over an hour the first time.
-    timeout-minutes: 150
+    # run and the Rust crates compile for two ABIs. Generous until the real
+    # duration has been measured over a few runs; tighten afterwards.
+    timeout-minutes: 300
     # Least privilege: this job only checks out and uploads an artifact.
     permissions:
       contents: read
