@@ -94,6 +94,9 @@ final class FederationBookReader {
   }
 
   /// Waits for every request of [requestAll] and merges them.
+  ///
+  /// It completes only when the last coordinator has answered, so it relies on the [CoordinatorTransport] contract: every call completes, within a total deadline, without throwing.
+  /// Screens should prefer [requestAll] and show each book as it arrives, so that one slow coordinator does not delay the others.
   Future<FederationBook> read(
     Federation federation,
     RobosatsNetwork network, {

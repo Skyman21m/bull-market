@@ -15,7 +15,8 @@ import 'package:robosats/src/robosats_failure.dart';
 
 /// Reads the public endpoints of one coordinator at a time, through a [CoordinatorTransport].
 ///
-/// Every method returns a [CoordinatorFailure] instead of throwing, whatever the coordinator sends and even if the transport throws an [Exception].
+/// Every method returns a [CoordinatorFailure] instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception].
+/// Only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
 /// Methods are independent: call them concurrently, one future per coordinator.
 final class CoordinatorClient {
   final CoordinatorTransport _transport;

@@ -20,7 +20,7 @@ final class CoordinatorRequest {
 
   final Uint8List? body;
 
-  /// The largest body this request accepts: the adapter should stop reading beyond it and fail with [CoordinatorResponseTooLarge].
+  /// The largest body this request accepts, in bytes: the adapter must stop reading and fail with [CoordinatorResponseTooLarge] before buffering more.
   final int maxResponseBytes;
 
   const CoordinatorRequest({
@@ -42,7 +42,7 @@ final class CoordinatorRequest {
 final class CoordinatorResponse {
   final int statusCode;
 
-  /// The response headers this package reads, with lowercase names: at least `content-type` when the coordinator sent one.
+  /// The response headers, with names in lowercase as the adapter must give them: at least `content-type` when the coordinator sent one.
   final Map<String, String> headers;
 
   final Uint8List body;
@@ -63,8 +63,15 @@ final class CoordinatorResponse {
 
 /// Performs one HTTP request to a coordinator: the port this package needs and never implements.
 ///
-/// The Tor-backed adapter lives in `features/p2p`: it owns the Tor sessions, the deadlines, the retries and the `User-Agent`, and maps everything that can go wrong into a [CoordinatorTransportFailure].
-/// It must not follow redirects, and it should stop reading a body at [CoordinatorRequest.maxResponseBytes].
+/// The Tor-backed adapter lives in `features/p2p`: it owns the Tor sessions, the retries and the `User-Agent`.
+/// Its contract, which this package relies on:
+/// - it must always complete, with an [Ok] or an [Err]: never throw, never leave the future pending;
+/// - it must enforce a total deadline on the whole exchange, connection and body included, and fail with [CoordinatorTimedOut] when it passes, since a coordinator can send its body a byte at a time;
+/// - it must stop reading a body at [CoordinatorRequest.maxResponseBytes] and fail with [CoordinatorResponseTooLarge] before buffering more;
+/// - it must give header names in lowercase;
+/// - it must not follow redirects;
+/// - it maps everything else that goes wrong into a [CoordinatorTransportFailure].
+///
 /// Calls may run concurrently, one per coordinator.
 abstract interface class CoordinatorTransport {
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
