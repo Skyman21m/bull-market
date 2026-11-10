@@ -82,7 +82,9 @@ Future<void> main({bool isInitialized = false}) async {
               'state': state.name,
               'ms': watch.elapsedMilliseconds,
             });
-            if (state == P2pTorState.ready) torReadyMs ??= watch.elapsedMilliseconds;
+            if (state == P2pTorState.ready) {
+              torReadyMs ??= watch.elapsedMilliseconds;
+            }
           });
 
           try {
@@ -169,7 +171,10 @@ Future<void> main({bool isInitialized = false}) async {
               'testnetAnswered': answeredTestnet,
             });
 
-            expect(answeredMainnet.length, greaterThanOrEqualTo(_mainnetQuorum));
+            expect(
+              answeredMainnet.length,
+              greaterThanOrEqualTo(_mainnetQuorum),
+            );
             expect(Duration(milliseconds: coldMs), lessThan(_loadBound));
           } finally {
             await torStates.cancel();
