@@ -81,23 +81,26 @@ void main() {
     expect(tor.openedSessions, 0);
   });
 
-  test('a book request fails per coordinator when Tor gives no session', () async {
-    final books = locator<P2pFacade>().requestBooks(RobosatsNetwork.testnet);
+  test(
+    'a book request fails per coordinator when Tor gives no session',
+    () async {
+      final books = locator<P2pFacade>().requestBooks(RobosatsNetwork.testnet);
 
-    final outcomes = await Future.wait(books.values);
+      final outcomes = await Future.wait(books.values);
 
-    expect(outcomes.map((o) => o.coordinator.shortAlias), ['temple', 'lake']);
-    for (final outcome in outcomes) {
-      expect(
-        outcome.result,
-        isA<Err<OrderBook, CoordinatorFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<CoordinatorUnreachable>(),
-        ),
-      );
-    }
-  });
+      expect(outcomes.map((o) => o.coordinator.shortAlias), ['temple', 'lake']);
+      for (final outcome in outcomes) {
+        expect(
+          outcome.result,
+          isA<Err<OrderBook, CoordinatorFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<CoordinatorUnreachable>(),
+          ),
+        );
+      }
+    },
+  );
 
   test('an info request fails as a value when Tor gives no session', () async {
     final facade = locator<P2pFacade>();

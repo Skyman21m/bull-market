@@ -64,6 +64,17 @@ final class _Server {
   Future<void> close() => _server.close(force: true);
 }
 
+/// A coordinator written byte by byte: [onRequest] runs once the request arrives.
+final class _RawServer {
+  final ServerSocket _socket;
+
+  _RawServer._(this._socket);
+
+  Uri url(String path) => Uri.parse('http://127.0.0.1:${_socket.port}$path');
+
+  Future<void> close() => _socket.close();
+}
+
 /// Answers with [body] as JSON, with a `Content-Length`.
 Future<void> Function(HttpRequest) _json(String body) => (request) async {
   final bytes = utf8.encode(body);
@@ -128,6 +139,7 @@ final class _ToServer implements CoordinatorTransport {
 void main() {
   late _Sessions sessions;
   final servers = <_Server>[];
+  final rawServers = <_RawServer>[];
   final transports = <TorCoordinatorTransport>[];
 
   setUp(() => sessions = _Sessions());
@@ -141,6 +153,10 @@ void main() {
       await server.close();
     }
     servers.clear();
+    for (final server in rawServers) {
+      await server.close();
+    }
+    rawServers.clear();
   });
 
   Future<_Server> serve(
@@ -148,6 +164,21 @@ void main() {
   ) async {
     final server = await _Server.start(routes);
     servers.add(server);
+    return server;
+  }
+
+  Future<_RawServer> rawServer(Future<void> Function(Socket) onRequest) async {
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    socket.listen((client) {
+      var answered = false;
+      client.listen((_) {
+        if (answered) return;
+        answered = true;
+        onRequest(client).catchError((Object _) {});
+      }, onError: (Object _) {});
+    });
+    final server = _RawServer._(socket);
+    rawServers.add(server);
     return server;
   }
 
@@ -193,7 +224,7 @@ void main() {
       }
     });
 
-    test('sends no User-Agent and no Accept-Encoding header', () async {
+    test('sends no User-Agent and asks for no compression', () async {
       final server = await serve({'/api/info/': _json('{}')});
 
       await transport().send(
@@ -208,7 +239,7 @@ void main() {
 
       final headers = server.received.single;
       expect(headers.value(HttpHeaders.userAgentHeader), isNull);
-      expect(headers.value(HttpHeaders.acceptEncodingHeader), isNull);
+      expect(headers.value(HttpHeaders.acceptEncodingHeader), 'identity');
       expect(headers.value(HttpHeaders.acceptHeader), 'application/json');
     });
 
@@ -278,23 +309,26 @@ void main() {
       );
     });
 
-    test('reuses one session per origin, even for concurrent requests', () async {
-      final first = await serve({'/api/info/': _json('{}')});
-      final second = await serve({'/api/info/': _json('{}')});
-      final tor = transport();
+    test(
+      'reuses one session per origin, even for concurrent requests',
+      () async {
+        final first = await serve({'/api/info/': _json('{}')});
+        final second = await serve({'/api/info/': _json('{}')});
+        final tor = transport();
 
-      final results = await Future.wait([
-        tor.send(_get(first.url('/api/info/'))),
-        tor.send(_get(first.url('/api/info/'))),
-        tor.send(_get(first.url('/api/info/'))),
-      ]);
-      await tor.send(_get(first.url('/api/info/')));
-      await tor.send(_get(second.url('/api/info/')));
+        final results = await Future.wait([
+          tor.send(_get(first.url('/api/info/'))),
+          tor.send(_get(first.url('/api/info/'))),
+          tor.send(_get(first.url('/api/info/'))),
+        ]);
+        await tor.send(_get(first.url('/api/info/')));
+        await tor.send(_get(second.url('/api/info/')));
 
-      expect(results, everyElement(isA<Ok<Object?, Failure>>()));
-      expect(sessions.opened, hasLength(2));
-      expect(sessions.closed, isEmpty);
-    });
+        expect(results, everyElement(isA<Ok<Object?, Failure>>()));
+        expect(sessions.opened, hasLength(2));
+        expect(sessions.closed, isEmpty);
+      },
+    );
   });
 
   group('size cap', () {
@@ -337,37 +371,74 @@ void main() {
 
     test('stops reading a body that never ends and drops the connection', () async {
       final serverStopped = Completer<int>();
-      final server = await serve({
-        '/api/book/': (request) async {
-          request.response.headers.contentType = ContentType.json;
-          final chunk = Uint8List(16 * 1024);
-          var sent = 0;
-          try {
-            // Bounded only so that a broken transport fails this test instead of filling the memory.
-            while (sent < 256 * 1024 * 1024) {
-              request.response.add(chunk);
-              await request.response.flush();
-              sent += chunk.length;
-            }
-          } on Object {
-            // The client went away: what this test waits for.
+      final raw = await rawServer((socket) async {
+        socket.add(
+          utf8.encode(
+            'HTTP/1.1 200 OK\r\n'
+            'Content-Type: application/json\r\n'
+            'Transfer-Encoding: chunked\r\n'
+            '\r\n',
+          ),
+        );
+        final chunk = utf8.encode('4000\r\n${' ' * 0x4000}\r\n');
+        var sent = 0;
+        try {
+          // Bounded only so that a broken transport fails this test instead of filling the memory.
+          while (sent < 256 * 1024 * 1024) {
+            socket.add(chunk);
+            await socket.flush();
+            sent += 0x4000;
           }
-          serverStopped.complete(sent);
-        },
+        } on Object {
+          // The client went away: what this test waits for.
+        }
+        serverStopped.complete(sent);
       });
       final watch = Stopwatch()..start();
+
+      final result = await transport().send(
+        _get(raw.url('/api/book/'), maxResponseBytes: 64 * 1024),
+      );
+
+      expect(result, _failsWith<CoordinatorResponseTooLarge>());
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+      // The server sees the connection closed: the client neither reads on nor keeps it open.
+      final sent = await serverStopped.future.timeout(
+        const Duration(seconds: 10),
+      );
+      expect(sent, lessThan(64 * 1024 * 1024));
+    });
+
+    test('neither asks for nor inflates a compressed body', () async {
+      final compressed = gzip.encode(Uint8List(8 * 1024 * 1024));
+      final server = await serve({
+        '/api/book/': (request) async {
+          request.response
+            ..headers.contentType = ContentType.json
+            ..headers.set(HttpHeaders.contentEncodingHeader, 'gzip')
+            ..contentLength = compressed.length
+            ..add(compressed);
+          await request.response.close();
+        },
+      });
 
       final result = await transport().send(
         _get(server.url('/api/book/'), maxResponseBytes: 64 * 1024),
       );
 
-      expect(result, _failsWith<CoordinatorResponseTooLarge>());
-      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
-      // The server notices the closed connection: the client really stopped reading.
-      final sent = await serverStopped.future.timeout(
-        const Duration(seconds: 10),
+      expect(
+        server.received.single.value(HttpHeaders.acceptEncodingHeader),
+        'identity',
       );
-      expect(sent, lessThan(256 * 1024 * 1024));
+      // The 8 MB of zeros stay the few kilobytes that arrived, which the coordinator client then rejects as not JSON.
+      expect(
+        result,
+        isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>().having(
+          (ok) => ok.value.body,
+          'body',
+          compressed,
+        ),
+      );
     });
   });
 
@@ -430,7 +501,10 @@ void main() {
 
       final result = await tor.send(_get(server.url('/api/info/')));
 
-      expect(result, isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>());
+      expect(
+        result,
+        isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+      );
       expect(sessions.opened, hasLength(2));
       expect(sessions.closed, {0});
       // The new session serves the next request.
@@ -465,18 +539,19 @@ void main() {
     });
 
     test('never retries a request that is not a GET', () async {
-      final result = await transport(
-        createHttpClient: (_) =>
-            _socksRefusal(CommandReplyCode.hostUnreachable),
-      ).send(
-        CoordinatorRequest(
-          method: CoordinatorHttpMethod.post,
-          url: Uri.parse('http://127.0.0.1:1/api/make/'),
-          headers: const {'Content-Type': 'application/json'},
-          body: Uint8List.fromList('{}'.codeUnits),
-          maxResponseBytes: 4096,
-        ),
-      );
+      final result =
+          await transport(
+            createHttpClient: (_) =>
+                _socksRefusal(CommandReplyCode.hostUnreachable),
+          ).send(
+            CoordinatorRequest(
+              method: CoordinatorHttpMethod.post,
+              url: Uri.parse('http://127.0.0.1:1/api/make/'),
+              headers: const {'Content-Type': 'application/json'},
+              body: Uint8List.fromList('{}'.codeUnits),
+              maxResponseBytes: 4096,
+            ),
+          );
 
       expect(result, _failsWith<CoordinatorUnreachable>());
       expect(sessions.opened, hasLength(1));
@@ -484,58 +559,50 @@ void main() {
     });
 
     test('reports a connection lost in the middle of the body', () async {
-      final raw = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      raw.listen((socket) {
-        var answered = false;
-        socket.listen((_) {
-          if (answered) return;
-          answered = true;
-          socket.add(
-            utf8.encode(
-              'HTTP/1.1 200 OK\r\n'
-              'Content-Type: application/json\r\n'
-              'Content-Length: 1000\r\n'
-              '\r\n'
-              '0123456789',
-            ),
-          );
-          socket.flush().then((_) => socket.destroy());
-        });
-      });
-      try {
-        final result = await transport().send(
-          _get(Uri.parse('http://127.0.0.1:${raw.port}/api/book/')),
+      final raw = await rawServer((socket) async {
+        socket.add(
+          utf8.encode(
+            'HTTP/1.1 200 OK\r\n'
+            'Content-Type: application/json\r\n'
+            'Content-Length: 1000\r\n'
+            '\r\n'
+            '0123456789',
+          ),
         );
+        await socket.flush();
+        socket.destroy();
+      });
 
-        expect(result, _failsWith<CoordinatorUnreachable>());
-        expect(sessions.opened, hasLength(1));
-      } finally {
-        await raw.close();
-      }
+      final result = await transport().send(_get(raw.url('/api/book/')));
+
+      expect(result, _failsWith<CoordinatorUnreachable>());
+      expect(sessions.opened, hasLength(1));
     });
   });
 
   group('never throws', () {
     test('when Tor cannot give a session', () async {
       final result = await transport(
-        openSession: () async => throw const TorBackendException(
-          TorBootstrapFailure('no network'),
-        ),
+        openSession: () async =>
+            throw const TorBackendException(TorBootstrapFailure('no network')),
       ).send(_get(Uri.parse('http://127.0.0.1:1/api/info/')));
 
       expect(result, _failsWith<CoordinatorUnreachable>());
     });
 
-    test('when the HTTP client factory throws, and closes the session', () async {
-      final result = await transport(
-        createHttpClient: (_) => throw const TorBackendException(
-          TorUnexpectedFailure('not an IP literal'),
-        ),
-      ).send(_get(Uri.parse('http://127.0.0.1:1/api/info/')));
+    test(
+      'when the HTTP client factory throws, and closes the session',
+      () async {
+        final result = await transport(
+          createHttpClient: (_) => throw const TorBackendException(
+            TorUnexpectedFailure('not an IP literal'),
+          ),
+        ).send(_get(Uri.parse('http://127.0.0.1:1/api/info/')));
 
-      expect(result, _failsWith<CoordinatorTransportFailed>());
-      expect(sessions.closed, {0});
-    });
+        expect(result, _failsWith<CoordinatorTransportFailed>());
+        expect(sessions.closed, {0});
+      },
+    );
 
     test('when the URL is not HTTP', () async {
       final result = await transport().send(
@@ -571,20 +638,26 @@ void main() {
   });
 
   group('closeSessions', () {
-    test('closes every session, and the next request opens a new one', () async {
-      final first = await serve({'/api/info/': _json('{}')});
-      final second = await serve({'/api/info/': _json('{}')});
-      final tor = transport();
-      await tor.send(_get(first.url('/api/info/')));
-      await tor.send(_get(second.url('/api/info/')));
+    test(
+      'closes every session, and the next request opens a new one',
+      () async {
+        final first = await serve({'/api/info/': _json('{}')});
+        final second = await serve({'/api/info/': _json('{}')});
+        final tor = transport();
+        await tor.send(_get(first.url('/api/info/')));
+        await tor.send(_get(second.url('/api/info/')));
 
-      await tor.closeSessions();
+        await tor.closeSessions();
 
-      expect(sessions.closed, {0, 1});
-      final result = await tor.send(_get(first.url('/api/info/')));
-      expect(result, isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>());
-      expect(sessions.opened, hasLength(3));
-    });
+        expect(sessions.closed, {0, 1});
+        final result = await tor.send(_get(first.url('/api/info/')));
+        expect(
+          result,
+          isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        expect(sessions.opened, hasLength(3));
+      },
+    );
 
     test('fails a request in progress without opening a new session', () async {
       final arrived = Completer<void>();

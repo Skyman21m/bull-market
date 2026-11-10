@@ -43,7 +43,7 @@ const coordinatorConnectRetries = 2;
 ///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// The header is the same for every Troc user, so it does not single one out among them, and Troc does not pretend to be the official client.
-/// `Accept-Encoding` is not sent either and bodies are never decompressed, so the size cap counts the bytes that actually arrive.
+/// `Accept-Encoding` is `identity` for every request, where `dart:io` would ask for `gzip`, and a body is never decompressed: the size cap counts the bytes that arrive, so a small compressed body cannot inflate in memory.
 final class TorCoordinatorTransport
     implements CoordinatorTransport, CoordinatorSessionsPort {
   final OpenTorSession _openSession;
@@ -60,6 +60,12 @@ final class TorCoordinatorTransport
   /// Incremented by [closeSessions]: a session that finishes opening after it is closed at once.
   int _epoch = 0;
 
+  /// The headers this adapter decides, whatever the request says.
+  static const _ownHeaders = {
+    HttpHeaders.userAgentHeader,
+    HttpHeaders.acceptEncodingHeader,
+  };
+
   /// [tor] is read when the first session opens, so the transport can be built before Tor is registered.
   TorCoordinatorTransport(Tor Function() tor, TorHttpClientFactory httpClients)
     : this.withSeams(
@@ -72,13 +78,11 @@ final class TorCoordinatorTransport
   /// [deadline] bounds a whole request, [attemptTimeout] the connection, the upload and every wait for data of one attempt.
   @visibleForTesting
   TorCoordinatorTransport.withSeams({
-    required OpenTorSession openSession,
-    required CreateTorHttpClient createHttpClient,
+    required this._openSession,
+    required this._createHttpClient,
     Duration? deadline,
     Duration? attemptTimeout,
-  }) : _openSession = openSession,
-       _createHttpClient = createHttpClient,
-       _deadline = deadline ?? coordinatorRequestDeadline,
+  }) : _deadline = deadline ?? coordinatorRequestDeadline,
        _attemptTimeout = attemptTimeout ?? torConnectDeadline;
 
   @override
@@ -239,8 +243,8 @@ final class TorCoordinatorTransport
             method: request.method.name.toUpperCase(),
             headers: {
               for (final MapEntry(:key, :value) in request.headers.entries)
-                if (key.toLowerCase() != HttpHeaders.userAgentHeader)
-                  key: value,
+                if (!_ownHeaders.contains(key.toLowerCase())) key: value,
+              HttpHeaders.acceptEncodingHeader: 'identity',
             },
           ),
           cancelToken: cancel,
@@ -292,7 +296,8 @@ final class TorCoordinatorTransport
     int maxBytes,
     CancelToken cancel,
   ) {
-    final completer = Completer<Result<Uint8List, CoordinatorTransportFailure>>();
+    final completer =
+        Completer<Result<Uint8List, CoordinatorTransportFailure>>();
     final bytes = BytesBuilder(copy: false);
     late final StreamSubscription<Uint8List> subscription;
     subscription = stream.listen(
@@ -321,41 +326,40 @@ final class TorCoordinatorTransport
   }
 
   /// What a failure before any response header means.
-  static _Attempt _failureBeforeHeaders(DioException exception) =>
-      switch (exception.type) {
-        DioExceptionType.cancel ||
-        DioExceptionType.sendTimeout ||
-        DioExceptionType.receiveTimeout => const _Answered(
-          Err(CoordinatorTimedOut()),
-        ),
-        DioExceptionType.badCertificate ||
-        DioExceptionType.badResponse => const _Answered(
-          Err(CoordinatorTransportFailed()),
-        ),
-        DioExceptionType.connectionTimeout ||
-        DioExceptionType.connectionError ||
-        DioExceptionType.unknown => switch (exception.error) {
-          // Dio wraps whatever the stack threw: an Error there is a bug, not a connection problem.
-          Error() => const _Answered(Err(CoordinatorTransportFailed())),
-          final Object cause => _ConnectFailed(
-            TorHttpClientFactory.classify(cause),
-          ),
-          null => const _ConnectFailed(TorConnectFailure.other),
-        },
-      };
+  static _Attempt _failureBeforeHeaders(
+    DioException exception,
+  ) => switch (exception.type) {
+    DioExceptionType.cancel ||
+    DioExceptionType.sendTimeout ||
+    DioExceptionType.receiveTimeout ||
+    DioExceptionType.transformTimeout => const _Answered(
+      Err(CoordinatorTimedOut()),
+    ),
+    DioExceptionType.badCertificate || DioExceptionType.badResponse =>
+      const _Answered(Err(CoordinatorTransportFailed())),
+    DioExceptionType.connectionTimeout ||
+    DioExceptionType.connectionError ||
+    DioExceptionType.unknown => switch (exception.error) {
+      // Dio wraps whatever the stack threw: an Error there is a bug, not a connection problem.
+      Error() => const _Answered(Err(CoordinatorTransportFailed())),
+      final Object cause => _ConnectFailed(
+        TorHttpClientFactory.classify(cause),
+      ),
+      null => const _ConnectFailed(TorConnectFailure.other),
+    },
+  };
 
   /// What a failure while the body arrives means: the connection worked, so it is not retried.
   static CoordinatorTransportFailure _failureWhileReading(Object error) =>
       switch (error) {
         DioException(
-          type:
-            DioExceptionType.cancel ||
-            DioExceptionType.receiveTimeout ||
-            DioExceptionType.sendTimeout,
+          type: DioExceptionType.cancel ||
+              DioExceptionType.receiveTimeout ||
+              DioExceptionType.sendTimeout,
         ) =>
           const CoordinatorTimedOut(),
-        DioException(error: IOException()) || IOException() =>
-          const CoordinatorUnreachable(),
+        DioException(error: IOException()) ||
+        IOException() => const CoordinatorUnreachable(),
         _ => const CoordinatorTransportFailed(),
       };
 

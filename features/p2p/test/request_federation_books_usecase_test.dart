@@ -33,12 +33,11 @@ final class _HoldingTransport implements CoordinatorTransport {
   }
 }
 
-Coordinator _named(String alias) => switch (Federation.robosats.byAlias(
-  alias,
-)) {
-  final coordinator? => coordinator,
-  null => throw StateError('no coordinator $alias'),
-};
+Coordinator _named(String alias) =>
+    switch (Federation.robosats.byAlias(alias)) {
+      final coordinator? => coordinator,
+      null => throw StateError('no coordinator $alias'),
+    };
 
 String _host(Coordinator coordinator, RobosatsNetwork network) =>
     Uri.parse(coordinator.origins(network).onion ?? '').host;
