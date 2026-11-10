@@ -132,3 +132,77 @@ final class PgpPlaintextContainsToken extends PgpFailure {
 final class PgpMessageUndecryptable extends PgpFailure {
   const PgpMessageUndecryptable();
 }
+
+/// A failure to read what a coordinator publishes: it could not be reached, or what it sent cannot be trusted.
+///
+/// Coordinators are untrusted: no failure carries text they sent, only fixed labels and numbers.
+/// A failure concerns one coordinator and one request, never the rest of the federation.
+sealed class CoordinatorFailure extends RobosatsFailure {
+  const CoordinatorFailure();
+}
+
+/// The coordinator has no onion address on the selected network, so no request was sent.
+final class CoordinatorNotOnNetwork extends CoordinatorFailure {
+  const CoordinatorNotOnNetwork();
+}
+
+/// The request did not complete: the transport adapter maps what went wrong into one of these.
+sealed class CoordinatorTransportFailure extends CoordinatorFailure {
+  const CoordinatorTransportFailure();
+}
+
+/// The coordinator could not be reached: no circuit, the onion service is down, or the connection was refused or reset.
+final class CoordinatorUnreachable extends CoordinatorTransportFailure {
+  const CoordinatorUnreachable();
+}
+
+/// The request did not complete within the deadline the adapter enforces for the whole exchange.
+final class CoordinatorTimedOut extends CoordinatorTransportFailure {
+  const CoordinatorTimedOut();
+}
+
+/// The response body is larger than the request allowed: the adapter stopped reading it, or this package refused it.
+final class CoordinatorResponseTooLarge extends CoordinatorTransportFailure {
+  const CoordinatorResponseTooLarge();
+}
+
+/// Any other transport failure, including an exception the adapter let through.
+final class CoordinatorTransportFailed extends CoordinatorTransportFailure {
+  const CoordinatorTransportFailed();
+}
+
+/// The coordinator answered with an HTTP status this request does not expect.
+final class CoordinatorUnexpectedStatus extends CoordinatorFailure {
+  /// The HTTP status code, a number the coordinator chose.
+  final int statusCode;
+
+  const CoordinatorUnexpectedStatus(this.statusCode);
+}
+
+/// The response is not JSON: wrong or missing content type, invalid UTF-8, or a body that does not parse.
+final class CoordinatorNotJson extends CoordinatorFailure {
+  const CoordinatorNotJson();
+}
+
+/// The response is JSON but not what the endpoint returns: a required field is missing, has the wrong type or is out of range.
+final class CoordinatorResponseMalformed extends CoordinatorFailure {
+  /// The name of the first rejected field, as this package spells it: never text from the coordinator.
+  final String field;
+
+  const CoordinatorResponseMalformed(this.field);
+}
+
+/// The coordinator answered, but not as the coordinator of the federation list: a security warning for the user.
+sealed class CoordinatorIdentityFailure extends CoordinatorFailure {
+  const CoordinatorIdentityFailure();
+}
+
+/// The coordinator announces another network than the one selected, or one this package does not know.
+final class CoordinatorNetworkMismatch extends CoordinatorIdentityFailure {
+  const CoordinatorNetworkMismatch();
+}
+
+/// The Lightning node the coordinator announces is not one the federation list gives for it on this network.
+final class CoordinatorNodeIdMismatch extends CoordinatorIdentityFailure {
+  const CoordinatorNodeIdMismatch();
+}
