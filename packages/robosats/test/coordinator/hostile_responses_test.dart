@@ -57,11 +57,8 @@ T _value<T, F extends Failure>(Result<T, F> result) => switch (result) {
   Err(:final failure) => fail('expected a value, got $failure'),
 };
 
-String? _droppedField(Map<String, Object?> order) =>
-    switch (PublicOrder.parse(order, coordinatorNamed('temple'))) {
-      Ok() => null,
-      Err(:final failure) => failure.field,
-    };
+DroppedOrderReason? _dropped(Object? element) =>
+    PublicOrder.parse(element, coordinatorNamed('temple')).dropped;
 
 void main() {
   final temple = coordinatorNamed('temple');
@@ -143,15 +140,29 @@ void main() {
         }
       });
 
-      test('$path rejects a body above its bound, as the decoy does', () async {
-        final bound = switch (path) {
-          '/api/book/' => CoordinatorReadBounds.bookBytes,
-          _ => CoordinatorReadBounds.infoBytes,
-        };
-        serve(path, Ok(rawResponse(List.filled(bound + 1, 0x20))));
-        expect(_failure(await fetch()), isA<CoordinatorResponseTooLarge>());
-        expect(transport.requests.last.maxResponseBytes, bound);
-      });
+      test(
+        '$path accepts a body of exactly its bound and refuses one byte more',
+        () async {
+          final (bound, valid) = switch (path) {
+            '/api/book/' => (CoordinatorReadBounds.bookBytes, '[]'),
+            '/api/limits/' => (CoordinatorReadBounds.limitsBytes, '{}'),
+            _ => (CoordinatorReadBounds.infoBytes, jsonEncode(_info())),
+          };
+          List<int> padded(int length) {
+            final bytes = utf8.encode(valid);
+            return [...bytes, ...List.filled(length - bytes.length, 0x20)];
+          }
+
+          serve(path, Ok(rawResponse(padded(bound))));
+          expect(switch (await fetch()) {
+            Ok() => null,
+            Err(:final failure) => failure,
+          }, isNull);
+          serve(path, Ok(rawResponse(padded(bound + 1))));
+          expect(_failure(await fetch()), isA<CoordinatorResponseTooLarge>());
+          expect(transport.requests.last.maxResponseBytes, bound);
+        },
+      );
 
       test('$path rejects JSON of the wrong shape', () async {
         for (final body in [null, 1, 'text', true]) {
@@ -431,7 +442,11 @@ void main() {
         _order({'id': 3}),
       ]);
       expect(book.orders.map((o) => o.id), [1, 3]);
-      expect(book.droppedOrders, 3);
+      expect(book.dropped, [
+        DroppedOrderReason.premium,
+        DroppedOrderReason.notAnObject,
+        DroppedOrderReason.notAnObject,
+      ]);
     });
 
     test('drops every copy of a duplicated id', () async {
@@ -441,7 +456,10 @@ void main() {
         _order({'id': 1, 'premium': '5.00'}),
       ]);
       expect(book.orders.map((o) => o.id), [2]);
-      expect(book.droppedOrders, 2);
+      expect(book.dropped, [
+        DroppedOrderReason.duplicateId,
+        DroppedOrderReason.duplicateId,
+      ]);
     });
 
     test('reads a fixed, explicitly priced order with a location', () async {
@@ -491,22 +509,35 @@ void main() {
   });
 
   group('a book entry is dropped', () {
-    final invalid = <String, List<Object?>>{
-      'id': [null, 0, -1, '1', 1.5],
-      'created_at': [null, 'yesterday', '2026-11-09T16:07:33', 7],
-      'expires_at': [
+    // Each case: the changes to a valid order, and the reason it must be dropped for.
+    final cases = <(Map<String, Object?>, DroppedOrderReason)>[
+      for (final value in [null, 0, -1, '1', 1.5, (1 << 53) + 1])
+        ({'id': value}, DroppedOrderReason.id),
+      for (final value in [null, 'yesterday', '2026-11-09T16:07:33', 7])
+        ({'created_at': value}, DroppedOrderReason.createdAt),
+      for (final value in [
         null,
         '2026-11-09T16:07:33.375335Z',
         '2026-11-08T00:00:00Z',
-      ],
-      'type': [null, 2, -1, '1'],
-      'currency': [null, 0, 79, 999, '2'],
-      'has_range': [null, 'true'],
-      'min_amount': [null, '0', '-1', '0.5e-3', 'NaN', 0.0021, '0.03'],
-      'max_amount': [null, '0.002', 'Infinity', '1e400'],
-      'payment_method': [null, 5, 'x' * 71],
-      'is_explicit': [null, 0],
-      'premium': [
+      ])
+        ({'expires_at': value}, DroppedOrderReason.expiresAt),
+      for (final value in [null, 2, -1, '1'])
+        ({'type': value}, DroppedOrderReason.type),
+      for (final value in [null, 0, 79, 999, '2'])
+        ({'currency': value}, DroppedOrderReason.currency),
+      for (final value in [null, 'true'])
+        ({'has_range': value}, DroppedOrderReason.hasRange),
+      for (final value in [null, '0', '-1', '0.5e-3', 'NaN', 0.0021])
+        ({'min_amount': value}, DroppedOrderReason.minAmount),
+      for (final value in [null, 'Infinity', '1e400'])
+        ({'max_amount': value}, DroppedOrderReason.maxAmount),
+      ({'min_amount': '0.03'}, DroppedOrderReason.maxAmount),
+      ({'max_amount': '0.002'}, DroppedOrderReason.maxAmount),
+      for (final value in [null, 5, 'x' * 71])
+        ({'payment_method': value}, DroppedOrderReason.paymentMethod),
+      for (final value in [null, 0])
+        ({'is_explicit': value}, DroppedOrderReason.isExplicit),
+      for (final value in [
         null,
         -5,
         '1000',
@@ -516,75 +547,80 @@ void main() {
         '1e2',
         ' 5',
         '+5',
-      ],
-      'satoshis': ['250000', -1],
-      'satoshis_now': [-1, 2100000000000001, '5'],
-      'price': ['0.9995', -1],
-      'escrow_duration': [null, 1799, 36001, '28800', 28800.5],
-      'bond_size': [null, '1.99', '15.01', 3, '-3'],
-      'latitude': ['91', '45'],
-      'longitude': ['181', '2.3'],
-      'maker_hash_id': [
+      ])
+        ({'premium': value}, DroppedOrderReason.premium),
+      for (final value in ['250000', -1])
+        ({'satoshis': value}, DroppedOrderReason.satoshis),
+      for (final value in [-1, 2100000000000001, '5'])
+        ({'satoshis_now': value}, DroppedOrderReason.satoshisNow),
+      for (final value in ['0.9995', -1])
+        ({'price': value}, DroppedOrderReason.price),
+      for (final value in [null, 1799, 36001, '28800', 28800.5])
+        ({'escrow_duration': value}, DroppedOrderReason.escrowDuration),
+      for (final value in [null, '1.99', '15.01', 3, '-3'])
+        ({'bond_size': value}, DroppedOrderReason.bondSize),
+      for (final value in ['91', '-90.000001', '90.5'])
+        ({'latitude': value, 'longitude': '2.3'}, DroppedOrderReason.latitude),
+      ({'latitude': '45'}, DroppedOrderReason.longitude),
+      for (final value in ['181', '-180.5'])
+        ({'latitude': '45', 'longitude': value}, DroppedOrderReason.longitude),
+      ({'longitude': '2.3'}, DroppedOrderReason.longitude),
+      for (final value in [
         null,
         'E302B62121555C64060E8CB3B32E6040D544342203486FA7E17689CF735D0CAE',
         'e302',
         'f' * 64,
-      ],
-      'maker_nick': ['SomebodyElse1', 7],
-      'maker_status': [5],
-    };
+      ])
+        ({'maker_hash_id': value}, DroppedOrderReason.makerHashId),
+      for (final value in ['SomebodyElse1', 'abundantx516', 'ABUNDANTX516', 7])
+        ({'maker_nick': value}, DroppedOrderReason.makerNick),
+      ({'maker_status': 5}, DroppedOrderReason.makerStatus),
+      ({'has_range': false, 'amount': null}, DroppedOrderReason.amount),
+      ({'has_range': false, 'amount': '0'}, DroppedOrderReason.amount),
+      ({'is_explicit': true, 'satoshis': null}, DroppedOrderReason.satoshis),
+      (
+        {'min_amount': '2.0', 'max_amount': '1.0'},
+        DroppedOrderReason.maxAmount,
+      ),
+    ];
 
-    for (final MapEntry(key: field, value: values) in invalid.entries) {
-      test('for an invalid $field', () {
-        for (final value in values) {
-          final changes = <String, Object?>{field: value};
-          // A location needs both coordinates: '45' is paired with an invalid longitude, '2.3' with a missing latitude.
-          if (field == 'latitude' && value == '45') {
-            changes['longitude'] = '200';
-          }
-          if (field == 'longitude' && value == '2.3') {
-            changes['latitude'] = null;
-          }
-          expect(
-            _droppedField(_order(changes)),
-            isNotNull,
-            reason: '$field = $value',
-          );
-        }
-      });
-    }
+    test('for the field that is invalid', () {
+      for (final (changes, reason) in cases) {
+        expect(_dropped(_order(changes)), reason, reason: '$changes');
+      }
+    });
 
-    test(
-      'for a fixed order without an amount, or an explicit one without sats',
-      () {
-        expect(
-          _droppedField(_order({'has_range': false, 'amount': null})),
-          'amount',
-        );
-        expect(
-          _droppedField(_order({'has_range': false, 'amount': '0'})),
-          'amount',
-        );
-        expect(
-          _droppedField(_order({'is_explicit': true, 'satoshis': null})),
-          'satoshis',
-        );
-      },
-    );
+    test('with a reason for every field it reads', () {
+      final fields = {for (final (changes, _) in cases) ...changes.keys};
+      for (final reason in DroppedOrderReason.values) {
+        final field = reason.field;
+        if (field == null) continue;
+        expect(fields, contains(field), reason: '$reason has no test');
+        expect(DroppedOrderReason.forField(field), reason);
+      }
+    });
 
-    test('for a range whose minimum is above its maximum', () {
-      expect(
-        _droppedField(_order({'min_amount': '2.0', 'max_amount': '1.0'})),
-        'max_amount',
-      );
+    test('at the bounds it accepts', () {
+      for (final changes in <Map<String, Object?>>[
+        {'id': 1 << 53},
+        {'id': 1},
+        {'latitude': '90', 'longitude': '180'},
+        {'latitude': '-90', 'longitude': '-180'},
+        {'escrow_duration': 1800},
+        {'escrow_duration': 36000},
+        {'bond_size': '2.00'},
+        {'bond_size': '15.00'},
+        {'premium': '-100'},
+        {'premium': '999'},
+        {'min_amount': '0.021'},
+      ]) {
+        expect(_dropped(_order(changes)), isNull, reason: '$changes');
+      }
     });
 
     test('for a book element that is not an object', () {
       for (final element in [null, 1, 'order', [], true]) {
-        expect(
-          PublicOrder.parse(element, temple),
-          isA<Err<PublicOrder, CoordinatorResponseMalformed>>(),
-        );
+        expect(_dropped(element), DroppedOrderReason.notAnObject);
       }
     });
 
@@ -600,8 +636,20 @@ void main() {
         'maker_status',
         'maker',
       ]) {
-        expect(_droppedField(_without(_order(), field)), isNull, reason: field);
+        expect(_dropped(_without(_order(), field)), isNull, reason: field);
       }
+    });
+  });
+
+  group('OrderLocation', () {
+    test('bounds latitude and longitude', () {
+      expect(OrderLocation.tryCreate(90, 180), isNotNull);
+      expect(OrderLocation.tryCreate(-90, -180), isNotNull);
+      expect(OrderLocation.tryCreate(90.000001, 0), isNull);
+      expect(OrderLocation.tryCreate(-90.000001, 0), isNull);
+      expect(OrderLocation.tryCreate(0, 180.000001), isNull);
+      expect(OrderLocation.tryCreate(0, -180.000001), isNull);
+      expect(OrderLocation.tryCreate(double.nan, 0), isNull);
     });
   });
 

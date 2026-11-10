@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
+import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/payment_methods.dart';
@@ -71,18 +72,18 @@ final class PublicOrder {
     required this.makerActivity,
   });
 
-  /// Reads one element of the book, rejecting it with the first invalid field.
+  /// Reads one element of the book: the order, or the reason it is left out, the first invalid field.
   ///
   /// Every field the user needs to understand or take the order is required and checked.
   /// `maker_status` is the only lenient one: an unknown label is read as `null`.
   /// `maker` (the maker's database id) is not read.
   @internal
-  static Result<PublicOrder, CoordinatorResponseMalformed> parse(
+  static ({PublicOrder? order, DroppedOrderReason? dropped}) parse(
     Object? element,
     Coordinator coordinator,
   ) {
     if (element is! Map<String, Object?>) {
-      return const Err(CoordinatorResponseMalformed('order'));
+      return const (order: null, dropped: DroppedOrderReason.notAnObject);
     }
     final fields = JsonFields(element);
     final id = fields.requiredInt('id', min: 1, max: 1 << 53);
@@ -131,34 +132,42 @@ final class PublicOrder {
     final makerNick = fields.optionalString('maker_nick', maxLength: 64);
     final makerStatus = fields.optionalString('maker_status', maxLength: 64);
     if (fields.rejected case final field?) {
-      return Err(CoordinatorResponseMalformed(field));
+      return (order: null, dropped: DroppedOrderReason.forField(field));
     }
 
-    Err<PublicOrder, CoordinatorResponseMalformed> reject(String field) =>
-        Err(CoordinatorResponseMalformed(field));
+    ({PublicOrder? order, DroppedOrderReason? dropped}) reject(
+      DroppedOrderReason reason,
+    ) => (order: null, dropped: reason);
 
     final type = OrderType.fromWire(typeWire);
-    if (type == null) return reject('type');
+    if (type == null) return reject(DroppedOrderReason.type);
     final currency = RobosatsCurrency.fromId(currencyId);
-    if (currency == null) return reject('currency');
-    if (createdAt == null || expiresAt == null) return reject('created_at');
-    if (!expiresAt.isAfter(createdAt)) return reject('expires_at');
+    if (currency == null) return reject(DroppedOrderReason.currency);
+    if (createdAt == null || expiresAt == null) {
+      return reject(DroppedOrderReason.createdAt);
+    }
+    if (!expiresAt.isAfter(createdAt)) {
+      return reject(DroppedOrderReason.expiresAt);
+    }
 
     final OrderAmount amount;
     if (hasRange) {
       final min = rangeMin == null ? null : FiatAmount.tryCreate(rangeMin);
       final max = rangeMax == null ? null : FiatAmount.tryCreate(rangeMax);
-      if (min == null || max == null) return reject('min_amount');
+      if (min == null) return reject(DroppedOrderReason.minAmount);
+      if (max == null) return reject(DroppedOrderReason.maxAmount);
       final range = RangeOrderAmount.tryCreate(min, max);
-      if (range == null) return reject('max_amount');
+      if (range == null) return reject(DroppedOrderReason.maxAmount);
       amount = range;
     } else {
       final value = fixed == null ? null : FiatAmount.tryCreate(fixed);
-      if (value == null) return reject('amount');
+      if (value == null) return reject(DroppedOrderReason.amount);
       amount = FixedOrderAmount(value);
     }
 
-    if (isExplicit && satoshis == null) return reject('satoshis');
+    if (isExplicit && satoshis == null) {
+      return reject(DroppedOrderReason.satoshis);
+    }
 
     final OrderLocation? location;
     switch ((latitude, longitude)) {
@@ -166,26 +175,27 @@ final class PublicOrder {
         location = null;
       case (final double lat, final double lon):
         location = OrderLocation.tryCreate(lat, lon);
-        if (location == null) return reject('latitude');
+        if (location == null) return reject(DroppedOrderReason.latitude);
       default:
-        return reject('longitude');
+        return reject(DroppedOrderReason.longitude);
     }
 
     final maker = RobotHashId.parse(makerHashId);
     if (maker is! Ok<RobotHashId, RobosatsFailure>) {
-      return reject('maker_hash_id');
+      return reject(DroppedOrderReason.makerHashId);
     }
     if (makerNick != null && makerNick != maker.value.nickname) {
-      return reject('maker_nick');
+      return reject(DroppedOrderReason.makerNick);
     }
 
     final premiumValue = Premium.tryCreate(premium);
     final bondValue = BondSize.tryCreate(bond);
-    if (premiumValue == null) return reject('premium');
-    if (bondValue == null) return reject('bond_size');
+    if (premiumValue == null) return reject(DroppedOrderReason.premium);
+    if (bondValue == null) return reject(DroppedOrderReason.bondSize);
 
-    return Ok(
-      PublicOrder._(
+    return (
+      dropped: null,
+      order: PublicOrder._(
         coordinator: coordinator,
         id: id,
         createdAt: createdAt,

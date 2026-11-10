@@ -18,6 +18,7 @@ export 'src/coordinator/coordinator_transport.dart'
         CoordinatorRequest,
         CoordinatorResponse,
         CoordinatorTransport;
+export 'src/coordinator/dropped_order_reason.dart' show DroppedOrderReason;
 export 'src/coordinator/currency_limits.dart'
     show CurrencyLimit, CurrencyLimits;
 export 'src/coordinator/federation.dart' show Federation;
