@@ -3,18 +3,18 @@
 import sys
 from PIL import Image, ImageDraw
 root = sys.argv[1] if len(sys.argv) > 1 else "."
-N = 1080  # canevas adaptatif 108dp x10
+N = 1080  # adaptive canvas, 108dp x10
 ORANGE, WHITE = (247,147,26,255), (245,245,245,255)
 
 def arrow(d, y, x0, x1, color, thick=62, head=118):
-    # flèche horizontale de x0 vers x1
+    # horizontal arrow from x0 to x1
     s = 1 if x1 > x0 else -1
     d.rectangle([min(x0, x1 - s*head), y - thick//2, max(x0, x1 - s*head), y + thick//2], fill=color)
     d.polygon([(x1, y), (x1 - s*head, y - head), (x1 - s*head, y + head)], fill=color)
 
 def foreground():
     im = Image.new('RGBA', (N, N), (0,0,0,0)); d = ImageDraw.Draw(im)
-    # zone sûre : cercle central de 66dp => x de 300 à 780 environ
+    # safe zone: central 66dp circle => x from about 300 to 780
     arrow(d, 440, 330, 750, ORANGE)
     arrow(d, 640, 750, 330, WHITE)
     return im
@@ -23,7 +23,7 @@ def background(color):
     return Image.new('RGBA', (N, N), color)
 
 def legacy(bg, fg):
-    # icône classique : carré arrondi, contenu = zone centrale 72/108
+    # legacy icon: rounded square, content = central 72/108 area
     full = Image.alpha_composite(bg, fg)
     c = full.crop((180, 180, 900, 900))
     mask = Image.new('L', c.size, 0)
