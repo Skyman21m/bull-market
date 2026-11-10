@@ -256,7 +256,7 @@ final class RobotPgpKey {
 
   /// Unlocks the private key with the token of [identity], to sign and to read and write chat messages.
   ///
-  /// Hashing the passphrase takes 32 MiB of SHA-256: call it off the UI isolate, and unlock once for a batch of messages rather than once per message.
+  /// Hashing the passphrase takes 32 MiB of SHA-256 for a key of the official client, and up to 130 MiB for a key GnuPG protected: call it off the UI isolate, and unlock once for a batch of messages rather than once per message.
   /// Fails with [PgpWrongPassphrase], or with [PgpKeyUnsupported] when the secret values do not match the public key.
   Result<UnlockedRobotPgpKey, PgpFailure> unlock(RobotIdentity identity) {
     final passphrase = utf8.encode(identity.token.reveal());

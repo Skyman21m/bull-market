@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/pgp/armor.dart';
 import 'package:test/test.dart';
@@ -144,6 +146,50 @@ void main() {
           ),
         ).validSignature,
         isFalse,
+      );
+    });
+  });
+
+  group('what GnuPG wrote beyond a short message is read', () {
+    test('a long message, its data packet framed with partial lengths', () {
+      final message = interopFile('gpg_chat_long_to_troc.asc');
+      // GnuPG starts the tag 18 packet, after two 96-byte session key packets, with a partial length: 0xd2, then a byte from 0xe0 to 0xfe.
+      final bytes = armorDecode(ArmorBlock.message, message) ?? Uint8List(194);
+      expect(bytes[192], 0xd2);
+      expect(bytes[193], inInclusiveRange(0xe0, 0xfe));
+      expect(transcript, contains('tag=18 hlen=2 plen=0 partial'));
+      final decrypted = expectOk(
+        unlocked.decryptChatMessage(
+          message,
+          sender: expectOk(PgpPublicKey.parse(interopFile('gpg_peer_pub_key'))),
+          now: interopReplayTime,
+        ),
+      );
+      expect(decrypted.text, interopLongChatText);
+      expect(decrypted.text.length, greaterThan(3900));
+      expect(decrypted.validSignature, isTrue);
+    });
+
+    test('a private key GnuPG protected: S2K count 255, SHA-1, AES-128', () {
+      final protected = expectOk(
+        RobotPgpKey.parse(
+          publicKey: interopFile('gpg_protected_pub_key'),
+          encryptedPrivateKey: interopFile('gpg_protected_enc_priv_key'),
+        ),
+      );
+      expect(protected.publicKey.userId, 'RoboSats ID gnupg-protected');
+      expect(transcript, contains('protect count: 65011712 (255)'));
+      final signed = expectOk(
+        expectOk(
+          protected.unlock(interopPeerIdentity),
+        ).signCleartext('text', now: interopReplayTime),
+      );
+      expectOk(
+        protected.publicKey.verifyCleartext(signed, now: interopReplayTime),
+      );
+      expect(
+        expectErr(protected.unlock(interopIdentity)),
+        isA<PgpWrongPassphrase>(),
       );
     });
   });
