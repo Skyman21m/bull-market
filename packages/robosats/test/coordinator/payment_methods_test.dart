@@ -1,0 +1,63 @@
+import 'package:robosats/robosats.dart';
+import 'package:test/test.dart';
+
+List<String> _names(String text) =>
+    PaymentMethods.parse(text).recognized.map((m) => m.name).toList();
+
+void main() {
+  group('PaymentMethods.parse', () {
+    test('recognises the methods of real orders, in list order', () {
+      expect(_names('Revolut Wise Instant SEPA'), [
+        'Instant SEPA',
+        'Revolut',
+        'Wise',
+      ]);
+      expect(_names('On-Chain BTC LBTC WBTC'), ['On-Chain BTC', 'LBTC', 'WBTC']);
+      expect(_names('HalCash Amazon ES GiftCard Revolut Instant SEPA'), [
+        'Amazon ES GiftCard',
+        'HalCash',
+        'Instant SEPA',
+        'Revolut',
+      ]);
+      expect(PaymentMethods.parse('USDT USDC').hasOtherText, isFalse);
+    });
+
+    test('matches whole words, ignoring case', () {
+      expect(_names('revolut'), ['Revolut']);
+      expect(_names('Revolution'), isEmpty);
+      expect(_names('Amazon GiftCard'), ['Amazon GiftCard']);
+      expect(_names('Pouchxph'), isEmpty);
+    });
+
+    test('flags free text besides the recognised methods', () {
+      final methods = PaymentMethods.parse('Instant SEPA, Sepa Standard');
+      expect(methods.recognized.map((m) => m.name), ['Instant SEPA']);
+      expect(methods.hasOtherText, isTrue);
+      expect(PaymentMethods.parse('TED / Depósito PIX').hasOtherText, isTrue);
+      expect(PaymentMethods.parse('').hasOtherText, isFalse);
+      expect(PaymentMethods.parse('').recognized, isEmpty);
+    });
+
+    test('ignores emoji, as the official client does', () {
+      final methods = PaymentMethods.parse('Revolut ⚡');
+      expect(methods.recognized.map((m) => m.name), ['Revolut']);
+      expect(methods.hasOtherText, isFalse);
+    });
+
+    test('flags reversible methods', () {
+      expect(PaymentMethods.parse('PIX').hasReversible, isTrue);
+      expect(PaymentMethods.parse('Wise').hasReversible, isFalse);
+    });
+
+    test('recognises the default text', () {
+      expect(_names('not specified'), ['not specified']);
+    });
+
+    test('prints only the recognised names', () {
+      expect(
+        '${PaymentMethods.parse('Revolut call me at +33 6 00 00 00 00')}',
+        'PaymentMethods(Revolut, other)',
+      );
+    });
+  });
+}

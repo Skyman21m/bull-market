@@ -27,8 +27,11 @@ final class JsonFields {
       };
 
   /// A finite number between [min] and [max], written with or without a fractional part.
-  double requiredDouble(String key, {required double min, required double max}) =>
-      optionalDouble(key, min: min, max: max) ?? _reject(key, 0);
+  double requiredDouble(
+    String key, {
+    required double min,
+    required double max,
+  }) => optionalDouble(key, min: min, max: max) ?? _reject(key, 0);
 
   double? optionalDouble(
     String key, {
@@ -36,8 +39,7 @@ final class JsonFields {
     required double max,
   }) => switch (_object[key]) {
     null => null,
-    final num value
-        when value.isFinite && value >= min && value <= max =>
+    final num value when value.isFinite && value >= min && value <= max =>
       value.toDouble(),
     _ => _reject(key, null),
   };
@@ -68,18 +70,24 @@ final class JsonFields {
   };
 
   /// A decimal number sent as a string, as the coordinator serializes its `DecimalField`s: see [parseDecimal].
-  double? optionalDecimal(String key, {required double min, required double max}) =>
-      switch (_object[key]) {
-        null => null,
-        final String text => switch (parseDecimal(text)) {
-          final double value when value >= min && value <= max => value,
-          _ => _reject(key, null),
-        },
-        _ => _reject(key, null),
-      };
+  double? optionalDecimal(
+    String key, {
+    required double min,
+    required double max,
+  }) => switch (_object[key]) {
+    null => null,
+    final String text => switch (parseDecimal(text)) {
+      final double value when value >= min && value <= max => value,
+      _ => _reject(key, null),
+    },
+    _ => _reject(key, null),
+  };
 
-  double requiredDecimal(String key, {required double min, required double max}) =>
-      optionalDecimal(key, min: min, max: max) ?? _reject(key, 0);
+  double requiredDecimal(
+    String key, {
+    required double min,
+    required double max,
+  }) => optionalDecimal(key, min: min, max: max) ?? _reject(key, 0);
 }
 
 final RegExp _decimal = RegExp(r'^-?\d{1,12}(\.\d{1,12})?$');

@@ -52,16 +52,10 @@ final class CoordinatorClient {
     RobosatsCurrency? currency,
     OrderType? type,
   }) async {
-    final response = await _exchange(
-      coordinator,
-      network,
-      '/api/book/',
-      {
-        if (currency != null) 'currency': '${currency.id}',
-        if (type != null) 'type': '${type.wire}',
-      },
-      CoordinatorReadBounds.bookBytes,
-    );
+    final response = await _exchange(coordinator, network, '/api/book/', {
+      if (currency != null) 'currency': '${currency.id}',
+      if (type != null) 'type': '${type.wire}',
+    }, CoordinatorReadBounds.bookBytes);
     if (response case Ok(value: CoordinatorResponse(statusCode: 404))) {
       return switch (_decode(response)) {
         Ok(value: final Map<String, Object?> body)

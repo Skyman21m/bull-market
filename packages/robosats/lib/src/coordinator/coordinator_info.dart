@@ -15,14 +15,12 @@ final class CoordinatorVersion implements Comparable<CoordinatorVersion> {
   const CoordinatorVersion(this.major, this.minor, this.patch);
 
   @override
-  int compareTo(CoordinatorVersion other) => switch ((
-    major.compareTo(other.major),
-    minor.compareTo(other.minor),
-  )) {
-    (0, 0) => patch.compareTo(other.patch),
-    (0, final minorOrder) => minorOrder,
-    (final majorOrder, _) => majorOrder,
-  };
+  int compareTo(CoordinatorVersion other) =>
+      switch ((major.compareTo(other.major), minor.compareTo(other.minor))) {
+        (0, 0) => patch.compareTo(other.patch),
+        (0, final minorOrder) => minorOrder,
+        (final majorOrder, _) => majorOrder,
+      };
 
   @override
   bool operator ==(Object other) =>
@@ -184,7 +182,11 @@ final class CoordinatorInfo {
       return const Err(CoordinatorResponseMalformed('info'));
     }
     final fields = JsonFields(body);
-    final buy = fields.requiredInt('num_public_buy_orders', min: 0, max: _counts);
+    final buy = fields.requiredInt(
+      'num_public_buy_orders',
+      min: 0,
+      max: _counts,
+    );
     final sell = fields.requiredInt(
       'num_public_sell_orders',
       min: 0,
@@ -195,7 +197,11 @@ final class CoordinatorInfo {
       min: 0,
       max: CoordinatorReadBounds.maxSats,
     );
-    final robots = fields.requiredInt('active_robots_today', min: 0, max: _counts);
+    final robots = fields.requiredInt(
+      'active_robots_today',
+      min: 0,
+      max: _counts,
+    );
     final premium = fields.requiredDouble(
       'last_day_nonkyc_btc_premium',
       min: -100,
@@ -261,7 +267,10 @@ final class CoordinatorInfo {
       'market_price_apis',
       maxLength: 4096,
     );
-    final federationHash = fields.optionalString('federation_hash', maxLength: 128);
+    final federationHash = fields.optionalString(
+      'federation_hash',
+      maxLength: 128,
+    );
     if (fields.rejected case final field?) {
       return Err(CoordinatorResponseMalformed(field));
     }

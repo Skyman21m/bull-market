@@ -19,7 +19,12 @@ final class CurrencyLimit {
   /// The largest order, in [currency], at least [minAmount].
   final double maxAmount;
 
-  const CurrencyLimit._(this.currency, this.price, this.minAmount, this.maxAmount);
+  const CurrencyLimit._(
+    this.currency,
+    this.price,
+    this.minAmount,
+    this.maxAmount,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -83,8 +88,16 @@ final class CurrencyLimits {
     final fields = JsonFields(value);
     final code = fields.requiredString('code', maxLength: 16);
     final price = fields.requiredDouble('price', min: 0, max: double.maxFinite);
-    final min = fields.requiredDouble('min_amount', min: 0, max: double.maxFinite);
-    final max = fields.requiredDouble('max_amount', min: 0, max: double.maxFinite);
+    final min = fields.requiredDouble(
+      'min_amount',
+      min: 0,
+      max: double.maxFinite,
+    );
+    final max = fields.requiredDouble(
+      'max_amount',
+      min: 0,
+      max: double.maxFinite,
+    );
     if (fields.rejected != null || code != currency.code) return null;
     if (price <= 0 || min > max) return null;
     return CurrencyLimit._(currency, price, min, max);

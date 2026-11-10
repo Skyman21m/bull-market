@@ -8,10 +8,13 @@ import 'package:robosats/robosats.dart';
 /// The responses recorded from the live federation, under `test/fixtures/coordinator/`: see its README.
 ///
 /// Tests run with the package directory as working directory, as `make unit-test` does.
-Uint8List recordedBody(String alias, RobosatsNetwork network, String endpoint) =>
-    File(
-      'test/fixtures/coordinator/$alias-${network.name}-$endpoint.json',
-    ).readAsBytesSync();
+Uint8List recordedBody(
+  String alias,
+  RobosatsNetwork network,
+  String endpoint,
+) => File(
+  'test/fixtures/coordinator/$alias-${network.name}-$endpoint.json',
+).readAsBytesSync();
 
 /// The coordinators and endpoints recorded, as (alias, network).
 const recordedCoordinators = [
@@ -24,11 +27,11 @@ const recordedCoordinators = [
 ];
 
 /// The coordinator of the embedded federation with this alias.
-Coordinator coordinatorNamed(String alias) => switch (Federation.robosats
-    .byAlias(alias)) {
-  final coordinator? => coordinator,
-  null => throw StateError('no coordinator $alias'),
-};
+Coordinator coordinatorNamed(String alias) =>
+    switch (Federation.robosats.byAlias(alias)) {
+      final coordinator? => coordinator,
+      null => throw StateError('no coordinator $alias'),
+    };
 
 /// A JSON response such as a coordinator sends it.
 CoordinatorResponse jsonResponse(
@@ -54,7 +57,12 @@ CoordinatorResponse rawResponse(
 
 /// An in-memory [CoordinatorTransport] that answers by onion host and path, and records every request.
 final class FakeCoordinatorTransport implements CoordinatorTransport {
-  final Map<String, Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> Function(CoordinatorRequest)>
+  final Map<
+    String,
+    Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> Function(
+      CoordinatorRequest,
+    )
+  >
   _routes = {};
   final List<CoordinatorRequest> requests = [];
 

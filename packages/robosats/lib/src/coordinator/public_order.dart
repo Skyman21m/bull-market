@@ -94,7 +94,10 @@ final class PublicOrder {
     final fixed = fields.optionalDecimal('amount', min: 0, max: 1e10);
     final rangeMin = fields.optionalDecimal('min_amount', min: 0, max: 1e10);
     final rangeMax = fields.optionalDecimal('max_amount', min: 0, max: 1e10);
-    final paymentMethod = fields.requiredString('payment_method', maxLength: 70);
+    final paymentMethod = fields.requiredString(
+      'payment_method',
+      maxLength: 70,
+    );
     final isExplicit = fields.requiredBool('is_explicit');
     final premium = fields.requiredDecimal(
       'premium',
@@ -227,7 +230,9 @@ final class PublicOrder {
   /// Orders are identified by their coordinator and their number.
   @override
   bool operator ==(Object other) =>
-      other is PublicOrder && other.coordinator == coordinator && other.id == id;
+      other is PublicOrder &&
+      other.coordinator == coordinator &&
+      other.id == id;
 
   @override
   int get hashCode => Object.hash(coordinator, id);

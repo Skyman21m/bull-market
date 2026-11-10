@@ -154,7 +154,8 @@ final class Premium implements Comparable<Premium> {
   int compareTo(Premium other) => percent.compareTo(other.percent);
 
   @override
-  bool operator ==(Object other) => other is Premium && other.percent == percent;
+  bool operator ==(Object other) =>
+      other is Premium && other.percent == percent;
 
   @override
   int get hashCode => percent.hashCode;
@@ -184,7 +185,8 @@ final class BondSize implements Comparable<BondSize> {
   int compareTo(BondSize other) => percent.compareTo(other.percent);
 
   @override
-  bool operator ==(Object other) => other is BondSize && other.percent == percent;
+  bool operator ==(Object other) =>
+      other is BondSize && other.percent == percent;
 
   @override
   int get hashCode => percent.hashCode;

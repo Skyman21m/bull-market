@@ -20,10 +20,11 @@ final class CoordinatorBookOutcome {
   const CoordinatorBookOutcome(this.coordinator, this.result);
 
   @override
-  String toString() => 'CoordinatorBookOutcome(${coordinator.shortAlias}, ${switch (result) {
-    Ok(:final value) => value,
-    Err(:final failure) => failure,
-  }})';
+  String toString() =>
+      'CoordinatorBookOutcome(${coordinator.shortAlias}, ${switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => failure,
+      }})';
 }
 
 /// The books of several coordinators, merged: a coordinator that fails or misbehaves only loses its own orders.
