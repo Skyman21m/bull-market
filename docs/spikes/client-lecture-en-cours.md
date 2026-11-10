@@ -40,8 +40,10 @@ Dossier `packages/robosats/lib/src/coordinator/`.
 
 ## En cours / reste
 
-- [ ] fichiers de types et port, échecs
-- [ ] constantes générées + tests d'égalité avec les JSON
-- [ ] lecteurs info / book / limits + tests réels + hostiles
-- [ ] contrôle d'identité, agrégation, moyens de paiement
-- [ ] README du paquet, puce AGENTS.md, analyse / format / fix / custody, suppression de cette note
+- [x] fichiers de types et port, échecs
+- [x] constantes générées (`tool/generate_coordinator_data.dart`) + tests d'égalité avec les JSON
+- [x] lecteurs info / book / limits + tests réels + hostiles
+- [x] contrôle d'identité (`Coordinator.verifyIdentity`, appliqué par `fetchInfo`), agrégation (`FederationBookReader`), moyens de paiement
+- [x] README du paquet, README des fixtures, puce AGENTS.md
+- [x] 10/11 ~18:10 : 530 tests verts (401 + 129), analyse, format, fix, custody (42 fichiers, 0 violation) propres
+- [ ] dernière relecture, suppression de cette note

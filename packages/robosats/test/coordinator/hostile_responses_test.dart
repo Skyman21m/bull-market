@@ -181,6 +181,44 @@ void main() {
       );
     }
 
+    test('deep nesting and huge numbers neither throw nor pass', () async {
+      const depth = 400000;
+      serve(
+        '/api/book/',
+        Ok(rawResponse(utf8.encode('${'[' * depth}${']' * depth}'))),
+      );
+      final book = _value(await client.fetchBook(temple, _mainnet));
+      expect(book.orders, isEmpty);
+      expect(book.droppedOrders, 1);
+
+      String infoWith(String field, String number) {
+        final text = jsonEncode(_info({field: 0}));
+        return text.replaceFirst('"$field":0', '"$field":$number');
+      }
+
+      for (final (field, number) in [
+        ('maker_fee', '1e400'),
+        ('maker_fee', '-1e400'),
+        ('book_liquidity', '99999999999999999999999'),
+        ('num_public_buy_orders', '1e3'),
+      ]) {
+        serve(
+          '/api/info/',
+          Ok(rawResponse(utf8.encode(infoWith(field, number)))),
+        );
+        final failure = _failure(await client.fetchInfo(temple, _mainnet));
+        expect(
+          failure,
+          isA<CoordinatorResponseMalformed>().having(
+            (f) => f.field,
+            'field',
+            field,
+          ),
+          reason: number,
+        );
+      }
+    });
+
     test('a failure never prints coordinator text', () async {
       serve('/api/info/', Ok(jsonResponse(_info({'node_alias': 42}))));
       final failure = _failure(await client.fetchInfo(temple, _mainnet));

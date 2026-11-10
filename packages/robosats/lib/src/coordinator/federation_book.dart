@@ -74,7 +74,7 @@ final class FederationBookReader {
   /// Starts one book request per coordinator of [federation], in its order, and returns them without waiting.
   ///
   /// A coordinator without an onion address on [network] completes at once with [CoordinatorNotOnNetwork].
-  /// No future completes with an error, so the caller can show each book as it arrives.
+  /// Failures are values, so a future completes with an error only on a programming error, and the caller can show each book as it arrives.
   List<Future<CoordinatorBookOutcome>> requestAll(
     Federation federation,
     RobosatsNetwork network, {
