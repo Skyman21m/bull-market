@@ -104,6 +104,32 @@ Elles suivent OpenPGP.js 5, sans tolérance, contre une horloge injectable (`now
 
 **Propriété inhérente à RoboSats.** Une signature de chat et une signature « en clair » sont le même objet (signature de texte par la clé primaire). Une signature faite pour un message de chat vaut donc signature en clair du même texte, et inversement. Ne jamais faire signer en chat un texte qui serait une facture ou une adresse à soi.
 
+## Ce que la revue de sécurité a demandé, et ce qui a été rejoué
+
+**Entrées de déni de service du relecteur**, relues par `decryptChatMessage` (exécutable compilé, sur ce poste) : toutes rejetées par un échec typé.
+
+| Entrée | Taille armurée | Avant | Maintenant |
+|---|---|---|---|
+| 3 couches de compression, 4 Gio | 415 caractères | processus tué (plus de 1,5 Gio) | `PgpMessageUndecryptable`, 0,09 ms, 12 Mio |
+| 3 couches de compression, 256 Mio | 366 caractères | pic de 1 038 Mio | `PgpMessageUndecryptable`, 0,08 ms, 12 Mio |
+| 2 000 paquets compressés imbriqués | 5 495 caractères | | `PgpMessageUndecryptable`, 0,4 ms, 11 Mio |
+| 10 000 paquets compressés imbriqués | 27 186 caractères | | `PgpMessageUndecryptable`, 1,6 ms, 11 Mio |
+| 50 000 paquets compressés imbriqués | 135 628 caractères | 690 Mio | `PgpInputTooLarge`, 0,02 ms, 11 Mio |
+| paquets vides, 50 à 400 ko | 69 467 à 555 300 caractères | jusqu'à 26 s | `PgpInputTooLarge`, 0,02 ms, 13 Mio au plus |
+
+La mémoire indiquée est celle du processus entier, dont 12 Mio avant l'appel. Les deux bombes de compression sont des jeux d'essai du paquet (`test/fixtures/pgp_hostile/`) ; les autres entrées sont reconstruites par les tests. Une bombe placée à l'intérieur d'un message correctement chiffré par un pair (16 Mio de zéros) est refusée de même : la décompression s'arrête à 256 Kio.
+
+**Clés hostiles** : chaque variante du relecteur (champ KDF vide, tronqué, à condensat ou chiffrement inconnu, MD5 et 3DES, 200 octets, point nul) est maintenant refusée à la lecture par `PgpKeyUnsupported`, avec les sept points X25519 d'ordre faible connus. SHA-512 avec AES-256 et SHA-384 avec AES-192 sont acceptés et testés en aller-retour. Une modification d'un octet, à chaque position, d'une clé publique, d'une clé privée, d'un texte signé et d'un message de chat ne lève jamais d'exception (4 tests).
+
+**Mutants.** 75 altérations du code de `lib/src/pgp/` et de `robot_pgp_key.dart` (celles du relecteur portant sur la sécurité, adaptées au nouveau code, plus 34 sur le code nouveau : contrôle d'intégrité, enveloppe, bornes, dates, KDF, secret partagé nul) ont été appliquées une à une, la suite de tests étant relancée à chaque fois. 73 font échouer au moins un test. Les 2 qui passent sont sans effet observable :
+
+- accepter du texte après la ligne `-----END …-----` : la ligne `END` se retrouve alors dans le corps, qui n'est plus du base64 valide, et le bloc reste refusé ;
+- ne plus vérifier qu'un paquet de sous-clé est du bon genre (public dans un bloc public) : il reste alors des octets non lus, ou il en manque, et la sous-clé reste écartée.
+
+Les 18 survivants signalés par la revue ont chacun leur test, avec des paquets réellement re-signés (`test/support/craft.dart`).
+
+**Vérification plus stricte** : signature expirée, datée du futur, antérieure à la clé, sans en-tête `Hash:` : refusées ; blancs ajoutés en fin de ligne : le texte rendu est le texte signé, sans eux.
+
 ## Écarts
 
 Avec la note de préparation :
