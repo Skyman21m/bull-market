@@ -134,6 +134,14 @@ void main() {
       await locator.reset();
     });
 
+    /// The scrollable list of the order page.
+    final details = find
+        .descendant(
+          of: find.byType(OrderDetailsScreen),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+
     Future<void> open(
       WidgetTester tester, {
       RobosatsNetwork network = RobosatsNetwork.mainnet,
@@ -236,6 +244,11 @@ void main() {
       expect(find.text('17h 00m 00s'), findsOneWidget);
       expect(find.text('Deposit'), findsOneWidget);
       expect(find.text('3h'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byType(BullButton),
+        200,
+        scrollable: details,
+      );
       expect(find.text('Order maker · Active'), findsOneWidget);
       final take = tester.widget<BullButton>(find.byType(BullButton));
       expect(take.label, 'Take Order');
@@ -257,6 +270,8 @@ void main() {
       await settle(tester);
       expect(find.text('Reversible payments'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Acknowledged'));
+      await settle(tester);
       await tester.tap(find.text('Acknowledged'));
       await settle(tester);
       expect(find.text('Reversible payments'), findsNothing);
@@ -272,7 +287,13 @@ void main() {
       await tester.tap(find.text('50-300 EUR', findRichText: true));
       await settle(tester);
 
-      expect(find.text('Instant SEPA'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(OrderDetailsScreen),
+          matching: find.text('Instant SEPA'),
+        ),
+        findsOneWidget,
+      );
       expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
     });
 
@@ -286,6 +307,9 @@ void main() {
       await settle(tester);
 
       expect(find.text('Ordre'), findsOneWidget);
+      expect(find.textContaining('C 0,025'), findsOneWidget);
+      // The on-chain payout fee with one decimal, as the official client writes it.
+      expect(find.textContaining('3,4\u00a0%'), findsOneWidget);
       expect(find.text("Hôte de l'ordre"), findsOneWidget);
       expect(find.text("Détails de l'ordre"), findsOneWidget);
       expect(find.text('Montant'), findsOneWidget);
@@ -299,21 +323,13 @@ void main() {
       expect(find.text('Expire dans'), findsOneWidget);
       expect(find.text('17 h 00 min 00 s'), findsOneWidget);
       expect(find.text('Dépôt'), findsOneWidget);
-      expect(find.textContaining('Créateur de l'), findsWidgets);
       await tester.scrollUntilVisible(
         find.text("Prendre l'ordre"),
         200,
-        scrollable: find
-            .descendant(
-              of: find.byType(OrderDetailsScreen),
-              matching: find.byType(Scrollable),
-            )
-            .first,
+        scrollable: details,
       );
+      expect(find.textContaining('Créateur de l'), findsWidgets);
       expect(find.text("Prendre l'ordre"), findsOneWidget);
-      expect(find.textContaining('C 0,025'), findsOneWidget);
-      // The on-chain payout fee with one decimal, as the official client writes it.
-      expect(find.textContaining('3,4\u00a0%'), findsOneWidget);
     });
 
     testWidgets('testnet shows its banner', (tester) async {
