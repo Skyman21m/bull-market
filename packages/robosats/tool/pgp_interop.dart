@@ -43,6 +43,8 @@ void main(List<String> arguments) {
         ),
       );
       _write('chat.txt', interopChatText);
+      _write('chat_long.txt', interopLongChatText);
+      _write('gpg_protected_token', interopPeerIdentity.token.reveal());
       _write('troc_chat_to_peer.asc', encryptInteropChatMessage(unlocked));
       stdout
         ..writeln('ok   dart: encrypt and sign the deterministic chat message')
@@ -132,6 +134,28 @@ void _checkGnuPg(RobotPgpKey key, UnlockedRobotPgpKey unlocked) {
   _check(
     decrypted.text == interopChatText && decrypted.validSignature,
     'the message GnuPG encrypted is the chat text, signed by the peer',
+  );
+  final long = _ok(
+    unlocked.decryptChatMessage(
+      _read('gpg_chat_long_to_troc.asc'),
+      sender: peer,
+    ),
+    'decrypt the long message GnuPG framed with partial lengths',
+  );
+  _check(
+    long.text == interopLongChatText && long.validSignature,
+    'the long message is the long chat text, signed by the peer',
+  );
+  final protected = _ok(
+    RobotPgpKey.parse(
+      publicKey: _read('gpg_protected_pub_key'),
+      encryptedPrivateKey: _read('gpg_protected_enc_priv_key'),
+    ),
+    'read a key pair GnuPG generated and protected with a passphrase',
+  );
+  _ok(
+    protected.unlock(interopPeerIdentity),
+    'unlock the private key GnuPG protected (S2K count 255)',
   );
   final own = _ok(
     unlocked.decryptChatMessage(

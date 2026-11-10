@@ -409,25 +409,28 @@ void main() {
       },
     );
 
-    test('is unlocked with the largest S2K count, the one GnuPG 2.4 writes', () {
-      // Coded count 255 is 65 011 712 bytes, the most the format can ask for.
-      expect(s2kByteCount(255), PgpLimits.s2kBytes);
-      final parsed = expectOk(
-        _parsePair(
-          key,
-          key.privatePackets(
-            _token,
-            protect: (secret, passphrase) =>
-                protectSecret(secret, passphrase, codedCount: 255),
+    test(
+      'is unlocked with the largest S2K count, the one GnuPG 2.4 writes',
+      () {
+        // Coded count 255 is 65 011 712 bytes, the most the format can ask for.
+        expect(s2kByteCount(255), PgpLimits.s2kBytes);
+        final parsed = expectOk(
+          _parsePair(
+            key,
+            key.privatePackets(
+              _token,
+              protect: (secret, passphrase) =>
+                  protectSecret(secret, passphrase, codedCount: 255),
+            ),
           ),
-        ),
-      );
-      expectOk(parsed.unlock(_identity));
-      expect(
-        expectErr(parsed.unlock(interopPeerIdentity)),
-        isA<PgpWrongPassphrase>(),
-      );
-    });
+        );
+        expectOk(parsed.unlock(_identity));
+        expect(
+          expectErr(parsed.unlock(interopPeerIdentity)),
+          isA<PgpWrongPassphrase>(),
+        );
+      },
+    );
 
     test('never prints its secret values once unlocked', () {
       final secretKeys = TransferableKey.parse(

@@ -401,7 +401,10 @@ void main() {
               .unlockedFor(interopPeerIdentity)
               .decryptChatMessage(
                 _armor([
-                  ...craftSessionKeyPacket(reader, encodeSessionKey(sessionKey)),
+                  ...craftSessionKeyPacket(
+                    reader,
+                    encodeSessionKey(sessionKey),
+                  ),
                   ...craftDataPacket(sessionKey, good),
                 ]),
                 sender: _alice.publicKey,
@@ -451,22 +454,25 @@ void main() {
       }
     });
 
-    test('is refused when one byte of the padding is wrong, or there is none', () {
-      for (final damage in [
-        (Uint8List encoded) => encoded[encoded.length - 2] ^= 1,
-        (Uint8List encoded) => encoded[encoded.length - 5] = 0,
-        (Uint8List encoded) => encoded[encoded.length - 1] = 0,
-        (Uint8List encoded) => encoded[encoded.length - 1] = 6,
-        (Uint8List encoded) => encoded[encoded.length - 1] = 39,
-      ]) {
-        final encoded = encodeSessionKey(sessionKey);
-        damage(encoded);
-        _expectRefused([
-          ...craftSessionKeyPacket(_bobKey, encoded),
-          ...craftDataPacket(sessionKey, good),
-        ]);
-      }
-    });
+    test(
+      'is refused when one byte of the padding is wrong, or there is none',
+      () {
+        for (final damage in [
+          (Uint8List encoded) => encoded[encoded.length - 2] ^= 1,
+          (Uint8List encoded) => encoded[encoded.length - 5] = 0,
+          (Uint8List encoded) => encoded[encoded.length - 1] = 0,
+          (Uint8List encoded) => encoded[encoded.length - 1] = 6,
+          (Uint8List encoded) => encoded[encoded.length - 1] = 39,
+        ]) {
+          final encoded = encodeSessionKey(sessionKey);
+          damage(encoded);
+          _expectRefused([
+            ...craftSessionKeyPacket(_bobKey, encoded),
+            ...craftDataPacket(sessionKey, good),
+          ]);
+        }
+      },
+    );
 
     test('is refused when the checksum of the session key is wrong', () {
       for (final offset in [1, 256, 65535]) {
@@ -511,64 +517,76 @@ void main() {
       ]);
     });
 
-    test('is refused, without an exception, when the wrapped key is cut short', () {
-      for (final length in [0, 8, 16, 23, 40, 47]) {
+    test(
+      'is refused, without an exception, when the wrapped key is cut short',
+      () {
+        for (final length in [0, 8, 16, 23, 40, 47]) {
+          _expectRefused([
+            ...craftSessionKeyPacket(
+              _bobKey,
+              encodeSessionKey(sessionKey),
+              wrappedLength: length,
+            ),
+            ...craftDataPacket(sessionKey, good),
+          ], reason: '$length bytes');
+        }
+        // A wrapped key too short to hold a cipher, a key and a checksum.
         _expectRefused([
           ...craftSessionKeyPacket(
             _bobKey,
-            encodeSessionKey(sessionKey),
-            wrappedLength: length,
+            Uint8List.fromList(List.filled(16, 8)),
           ),
           ...craftDataPacket(sessionKey, good),
-        ], reason: '$length bytes');
-      }
-      // A wrapped key too short to hold a cipher, a key and a checksum.
-      _expectRefused([
-        ...craftSessionKeyPacket(_bobKey, Uint8List.fromList(List.filled(16, 8))),
-        ...craftDataPacket(sessionKey, good),
-      ]);
-    });
+        ]);
+      },
+    );
 
-    test('is refused when its last 22 bytes are a right SHA-1 without the header of a modification detection code', () {
-      final sessionKeyPacket = craftSessionKeyPacket(
-        _bobKey,
-        encodeSessionKey(sessionKey),
-      );
-      expectOk(read(sessionKeyPacket, craftDataPacket(sessionKey, good)));
-      for (final header in [
-        [0xd3, 0x13],
-        [0xd4, 0x14],
-        [0x00, 0x00],
-      ]) {
+    test(
+      'is refused when its last 22 bytes are a right SHA-1 without the header of a modification detection code',
+      () {
+        final sessionKeyPacket = craftSessionKeyPacket(
+          _bobKey,
+          encodeSessionKey(sessionKey),
+        );
+        expectOk(read(sessionKeyPacket, craftDataPacket(sessionKey, good)));
+        for (final header in [
+          [0xd3, 0x13],
+          [0xd4, 0x14],
+          [0x00, 0x00],
+        ]) {
+          _expectRefused([
+            ...sessionKeyPacket,
+            ...craftDataPacket(sessionKey, good, mdcHeader: header),
+          ], reason: '$header');
+        }
+      },
+    );
+
+    test(
+      'is refused, without an exception, when the data packet is too short for a prefix',
+      () {
+        final sessionKeyPacket = craftSessionKeyPacket(
+          _bobKey,
+          encodeSessionKey(sessionKey),
+        );
+        // Each plaintext ends with the header and carries a right SHA-1: only its length is wrong.
+        for (final length in [0, 1, 15, 17]) {
+          _expectRefused([
+            ...sessionKeyPacket,
+            ...craftDataPacketOver(sessionKey, [
+              ...List.filled(length, 0x41),
+              0xd3,
+              0x14,
+            ]),
+          ], reason: '$length bytes before the header');
+        }
+        // The shortest well-formed one holds no packet at all.
         _expectRefused([
           ...sessionKeyPacket,
-          ...craftDataPacket(sessionKey, good, mdcHeader: header),
-        ], reason: '$header');
-      }
-    });
-
-    test('is refused, without an exception, when the data packet is too short for a prefix', () {
-      final sessionKeyPacket = craftSessionKeyPacket(
-        _bobKey,
-        encodeSessionKey(sessionKey),
-      );
-      // Each plaintext ends with the header and carries a right SHA-1: only its length is wrong.
-      for (final length in [0, 1, 15, 17]) {
-        _expectRefused([
-          ...sessionKeyPacket,
-          ...craftDataPacketOver(sessionKey, [
-            ...List.filled(length, 0x41),
-            0xd3,
-            0x14,
-          ]),
-        ], reason: '$length bytes before the header');
-      }
-      // The shortest well-formed one holds no packet at all.
-      _expectRefused([
-        ...sessionKeyPacket,
-        ...craftDataPacket(sessionKey, const []),
-      ]);
-    });
+          ...craftDataPacket(sessionKey, const []),
+        ]);
+      },
+    );
 
     test('is read when GnuPG frames the data packet with partial lengths', () {
       // GnuPG does so from about 500 bytes on: here, chunks of 512 and 2 bytes, then the rest.
@@ -577,11 +595,18 @@ void main() {
         craftDataPacket(sessionKey, long),
         maxPackets: 1,
       ).single.body;
+      final rest = data.length - 514;
+      expect(rest, inInclusiveRange(192, 8383));
       final partial = [
         0xc0 | PacketTag.integrityProtectedData,
-        0xe9, ...data.sublist(0, 512),
-        0xe1, ...data.sublist(512, 514),
-        data.length - 514, ...data.sublist(514),
+        0xe9,
+        ...data.sublist(0, 512),
+        0xe1,
+        ...data.sublist(512, 514),
+        // A two-byte definite length ends the chain.
+        ((rest - 192) >> 8) + 192,
+        (rest - 192) & 0xff,
+        ...data.sublist(514),
       ];
       final decrypted = expectOk(
         _read([

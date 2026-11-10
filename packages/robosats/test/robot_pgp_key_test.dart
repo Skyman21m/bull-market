@@ -439,33 +439,36 @@ void main() {
       );
     });
 
-    test('fails, without throwing, on a clock outside the range of OpenPGP dates', () {
-      for (final now in [
-        DateTime.utc(1969),
-        // The key would be dated before the Unix epoch.
-        DateTime.utc(1970, 1, 1, 12),
-        DateTime.utc(2107),
-        DateTime.utc(275760, 9, 13),
-      ]) {
-        expect(
-          expectErr(
-            RobotPgpKey.generateWith(
-              _identity,
-              now: now,
-              random: DeterministicRandom('troc'),
+    test(
+      'fails, without throwing, on a clock outside the range of OpenPGP dates',
+      () {
+        for (final now in [
+          DateTime.utc(1969),
+          // The key would be dated before the Unix epoch.
+          DateTime.utc(1970, 1, 1, 12),
+          DateTime.utc(2107),
+          DateTime.utc(275760, 9, 13),
+        ]) {
+          expect(
+            expectErr(
+              RobotPgpKey.generateWith(
+                _identity,
+                now: now,
+                random: DeterministicRandom('troc'),
+              ),
             ),
+            isA<PgpClockOutOfRange>(),
+          );
+        }
+        expectOk(
+          RobotPgpKey.generateWith(
+            _identity,
+            now: DateTime.utc(1970, 1, 2),
+            random: DeterministicRandom('troc'),
           ),
-          isA<PgpClockOutOfRange>(),
         );
-      }
-      expectOk(
-        RobotPgpKey.generateWith(
-          _identity,
-          now: DateTime.utc(1970, 1, 2),
-          random: DeterministicRandom('troc'),
-        ),
-      );
-    });
+      },
+    );
   });
 
   group('a clock outside 1970 to 2106', () {
@@ -477,32 +480,39 @@ void main() {
     );
 
     for (final now in [DateTime.utc(1969, 12, 31), DateTime.utc(2107)]) {
-      test('is a failure of every operation, never an exception: ${now.year}', () {
-        expect(
-          expectErr(unlocked.signCleartext('lnbc1', now: now)),
-          isA<PgpClockOutOfRange>(),
-        );
-        expect(
-          expectErr(key.publicKey.verifyCleartext(signed, now: now)),
-          isA<PgpClockOutOfRange>(),
-        );
-        expect(
-          expectErr(
-            unlocked.encryptChatMessage('hello', peer: key.publicKey, now: now),
-          ),
-          isA<PgpClockOutOfRange>(),
-        );
-        expect(
-          expectErr(
-            unlocked.decryptChatMessage(
-              message,
-              sender: key.publicKey,
-              now: now,
+      test(
+        'is a failure of every operation, never an exception: ${now.year}',
+        () {
+          expect(
+            expectErr(unlocked.signCleartext('lnbc1', now: now)),
+            isA<PgpClockOutOfRange>(),
+          );
+          expect(
+            expectErr(key.publicKey.verifyCleartext(signed, now: now)),
+            isA<PgpClockOutOfRange>(),
+          );
+          expect(
+            expectErr(
+              unlocked.encryptChatMessage(
+                'hello',
+                peer: key.publicKey,
+                now: now,
+              ),
             ),
-          ),
-          isA<PgpClockOutOfRange>(),
-        );
-      });
+            isA<PgpClockOutOfRange>(),
+          );
+          expect(
+            expectErr(
+              unlocked.decryptChatMessage(
+                message,
+                sender: key.publicKey,
+                now: now,
+              ),
+            ),
+            isA<PgpClockOutOfRange>(),
+          );
+        },
+      );
     }
   });
 

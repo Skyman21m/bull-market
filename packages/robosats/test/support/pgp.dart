@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/pgp/armor.dart';
@@ -78,6 +79,13 @@ RobotIdentity get interopOpenPgpJsIdentity => repositoryRobotIdentity(2);
 /// The invoice and the chat text of the interoperability run.
 const interopInvoice = 'lnbcrt500u1p5xyzzypp5examplexexamplexexample';
 const interopChatText = 'Hola, envío 50 € por Bizum ⚡\nGracias';
+
+/// A chat text of about 4 000 characters that barely compresses: GnuPG frames its encryption with partial body lengths.
+final interopLongChatText = [
+  for (var line = 0; line < 50; line++)
+    '${sha256.convert(utf8.encode('long chat line $line'))}'
+        '${sha256.convert(utf8.encode('second half $line')).toString().substring(0, 15)}',
+].join('\n');
 
 /// The chat message of the run that is a pure function of its inputs: from the robot to itself and to [generateInteropPeerKey].
 String encryptInteropChatMessage(UnlockedRobotPgpKey unlocked) => expectOk(

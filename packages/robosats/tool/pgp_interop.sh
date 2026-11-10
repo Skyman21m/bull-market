@@ -227,12 +227,35 @@ gpg --homedir "$peer" --batch --quiet --armor --trust-model always --sign --encr
   --output "$artefacts/gpg_chat_to_troc.asc" "$artefacts/chat.txt" 2>>"$transcript"
 pass "peer: gpg --sign --encrypt to both keys"
 
+say "## 9b. GnuPG encrypts a long message, which it frames with partial body lengths"
+gpg --homedir "$peer" --batch --quiet --armor --trust-model always --sign --encrypt \
+  --recipient "$fingerprint" --recipient "$peer_fingerprint" \
+  --output "$artefacts/gpg_chat_long_to_troc.asc" "$artefacts/chat_long.txt" 2>>"$transcript"
+listing=$(gpg --homedir "$peer" --batch --list-packets "$artefacts/gpg_chat_long_to_troc.asc" 2>/dev/null | grep '^# off' | head -n 4)
+say "$listing"
+grep -q "tag=18 .*partial" <<<"$listing" || die "GnuPG did not use partial lengths for the long message"
+pass "peer: long message, tag 18 framed with partial body lengths"
+
+say "## 9c. GnuPG generates a key protected by a passphrase, as an API user would upload it"
+protected="$work/protected"
+mkdir -m 700 "$protected"
+gpg --homedir "$protected" --batch --quiet --pinentry-mode loopback --passphrase "$(cat "$artefacts/gpg_protected_token")" \
+  --default-new-key-algo "ed25519/cert,sign+cv25519/encr" --quick-gen-key "RoboSats ID gnupg-protected" default default never 2>>"$transcript"
+gpg --homedir "$protected" --batch --armor --export >"$artefacts/gpg_protected_pub_key"
+gpg --homedir "$protected" --batch --pinentry-mode loopback --passphrase "$(cat "$artefacts/gpg_protected_token")" \
+  --armor --export-secret-keys >"$artefacts/gpg_protected_enc_priv_key"
+count=$(gpg --homedir "$protected" --batch --list-packets "$artefacts/gpg_protected_enc_priv_key" 2>/dev/null | grep -m 1 'protect count')
+say "$count"
+gpgconf --homedir "$protected" --kill gpg-agent 2>/dev/null || true
+pass "protected key exported:$count"
+
 say "## 10. Dart verifies and decrypts what GnuPG and OpenPGP.js made"
 dart_tool check
 
 say "## All checks passed"
 if $update_fixtures; then
-  rm -f "$artefacts/token" "$artefacts/openpgpjs_token" "$artefacts/invoice.txt" "$artefacts/chat.txt"
+  rm -f "$artefacts/token" "$artefacts/openpgpjs_token" "$artefacts/gpg_protected_token" \
+    "$artefacts/invoice.txt" "$artefacts/chat.txt" "$artefacts/chat_long.txt"
   rm -rf "$package/test/fixtures/pgp_interop"
   mkdir -p "$package/test/fixtures/pgp_interop"
   cp "$artefacts"/* "$package/test/fixtures/pgp_interop/"

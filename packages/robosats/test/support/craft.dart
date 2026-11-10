@@ -337,7 +337,11 @@ Uint8List craftSessionKeyPacket(
     Uint8List.fromList(List.generate(32, (i) => 0x40 + i)),
   );
   final body = recipient.subkeyBody;
-  final point = Uint8List.sublistView(body, body.length - 4 - 32, body.length - 4);
+  final point = Uint8List.sublistView(
+    body,
+    body.length - 4 - 32,
+    body.length - 4,
+  );
   final shared = x25519SharedSecret(ephemeral, point);
   if (shared == null) throw StateError('low-order recipient');
   final kdfHash = body[body.length - 2];
