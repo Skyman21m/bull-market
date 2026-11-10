@@ -1,0 +1,401 @@
+{
+  "@@locale": "en",
+  "p2pTabLabel": "P2P",
+  "@p2pTabLabel": {
+    "description": "Label of the third tab of the wallet's bottom bar, between Wallet and Exchange. Fits in every language; final label still to be confirmed."
+  },
+  "p2pTestnetBanner": "Using Testnet Bitcoin",
+  "@p2pTestnetBanner": {
+    "description": "Italic banner at the top of the P2P pages, only when the P2P network is testnet. The RoboSats French text drops the article; the wallet writes « Bitcoin Testnet »."
+  },
+  "p2pTorWaitingLine": "Coordinators are only ever reached through Tor.",
+  "@p2pTorWaitingLine": {
+    "description": "Line under the progress bar while Tor connects inside the P2P tab. Corrected on 10/11/2026 after review of the mock-up: payments may go through the wallet's swap service, so only the coordinators are said to be reached through Tor."
+  },
+  "p2pTorInitializing": "Initializing Tor daemon",
+  "@p2pTorInitializing": {
+    "description": "First step of the Tor wait. The RoboSats French text keeps the English word « daemon »: « service » here."
+  },
+  "p2pTorConnecting": "Connecting to Tor network",
+  "@p2pTorConnecting": {
+    "description": "Tor is starting (RoboSats state 'STARTING'). Also the title of the Tor wait inside the P2P tab."
+  },
+  "p2pTorConnected": "Connected to Tor network",
+  "@p2pTorConnected": {
+    "description": "Tor is ready (RoboSats state 'ON'). The federation (coordinators, book) loads only after this state."
+  },
+  "p2pTorConnectionError": "Connection error",
+  "@p2pTorConnectionError": {
+    "description": "Tor could not start. Default value of the Tor state in RoboSats, shown until another state is known."
+  },
+  "p2pNavOffers": "Offers",
+  "@p2pNavOffers": {
+    "description": "Destination inside the P2P tab: the order book. « Offers » because the RoboSats English says Offers."
+  },
+  "p2pNavCreate": "Create",
+  "@p2pNavCreate": {
+    "description": "Middle destination when the robot has no active order: opens the maker form (phase 3). Disabled in phase 1."
+  },
+  "p2pNavGarage": "Garage",
+  "@p2pNavGarage": {
+    "description": "Destination of the robots; the same word in English and French."
+  },
+  "p2pNavOrder": "Order",
+  "@p2pNavOrder": {
+    "description": "Middle destination when the robot has an active order; also the title of the page of an order."
+  },
+  "p2pCommonSearch": "Search",
+  "@p2pCommonSearch": {
+    "description": "Narrow button (a quarter of the width, below the book): opens « Search order ». The RoboSats French text is left in English."
+  },
+  "p2pBookViewList": "List",
+  "@p2pBookViewList": {
+    "description": "View switch below the book. The RoboSats French text uses a verb (« Lister ») next to nouns: a noun here. Narrow segment."
+  },
+  "p2pBookViewChart": "Chart",
+  "@p2pBookViewChart": {
+    "description": "View switch below the book, and header of the depth chart. The longest of the four narrow segments."
+  },
+  "p2pBookViewMap": "Map",
+  "@p2pBookViewMap": {
+    "description": "View switch below the book, header of the map, and title of the meeting place map."
+  },
+  "p2pBookFilterIWantTo": "I want to",
+  "@p2pBookFilterIWantTo": {
+    "description": "Start of the filter sentence « I want to [type] and use [currency] pay with [method] hosted by [host] »."
+  },
+  "p2pBookFilterAny": "ANY",
+  "@p2pBookFilterAny": {
+    "description": "The « any » value of the four selectors (type, currency, payment method, host), and the value of {currencyCode} in the empty book message."
+  },
+  "p2pBookFilterBuy": "Buy",
+  "@p2pBookFilterBuy": {
+    "description": "Choosing « Buy » shows the SELL orders (type 1)."
+  },
+  "p2pBookFilterSell": "Sell",
+  "@p2pBookFilterSell": {
+    "description": "Choosing « Sell » shows the BUY orders (type 0)."
+  },
+  "p2pBookFilterSelectOrderType": "Select Order Type",
+  "@p2pBookFilterSelectOrderType": {
+    "description": "Title of the order type selector."
+  },
+  "p2pBookFilterAndUse": "and use",
+  "@p2pBookFilterAndUse": {
+    "description": "Linking words of the filter sentence, before the currency."
+  },
+  "p2pBookFilterSelectCurrency": "Select Payment Currency",
+  "@p2pBookFilterSelectCurrency": {
+    "description": "Title of the currency selector."
+  },
+  "p2pBookFilterPayWith": "pay with",
+  "@p2pBookFilterPayWith": {
+    "description": "Linking words of the filter sentence, before the payment method (fiat mode)."
+  },
+  "p2pBookFilterSelectMethod": "Select Payment Method",
+  "@p2pBookFilterSelectMethod": {
+    "description": "Title of the payment method selector."
+  },
+  "p2pBookFilterHostedBy": "hosted by",
+  "@p2pBookFilterHostedBy": {
+    "description": "Linking words of the filter sentence, before the host selector."
+  },
+  "p2pBookFilterSelectHost": "Select Host",
+  "@p2pBookFilterSelectHost": {
+    "description": "Title of the host (coordinator) selector."
+  },
+  "p2pBookMakerStatusActive": "Active",
+  "@p2pBookMakerStatusActive": {
+    "description": "The maker was seen in the last 2 minutes (`maker_status` of the API). Missing from the RoboSats French texts."
+  },
+  "p2pBookMakerStatusSeenRecently": "Seen recently",
+  "@p2pBookMakerStatusSeenRecently": {
+    "description": "The maker was seen in the last 10 minutes. Missing from the RoboSats French texts."
+  },
+  "p2pBookMakerStatusInactive": "Inactive",
+  "@p2pBookMakerStatusInactive": {
+    "description": "The maker was not seen for 10 minutes or more. Missing from the RoboSats French texts."
+  },
+  "p2pBookRoleSeller": "Seller",
+  "@p2pBookRoleSeller": {
+    "description": "Role pill of an order of type 1: its maker sells bitcoin."
+  },
+  "p2pBookRoleBuyer": "Buyer",
+  "@p2pBookRoleBuyer": {
+    "description": "Role pill of an order of type 0: its maker buys bitcoin."
+  },
+  "p2pBookColumnAmount": "Amount",
+  "@p2pBookColumnAmount": {
+    "description": "Amount column header, and caption of a fixed amount on the order page (where RoboSats leaves it untranslated)."
+  },
+  "p2pBookColumnPremium": "Premium",
+  "@p2pBookColumnPremium": {
+    "description": "Label of the premium of an offer in the book."
+  },
+  "p2pBookColumnBond": "Bond",
+  "@p2pBookColumnBond": {
+    "description": "Label of the bond of an offer in the book."
+  },
+  "p2pBookLowBond": "Low bond: This maker has set a bond below the default {defaultBond}%. Lower bonds mean reduced trade security.",
+  "@p2pBookLowBond": {
+    "description": "Tooltip of a bond below the default (3 %). Left in English in the RoboSats French texts.",
+    "placeholders": {
+      "defaultBond": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookError": "An error occurred.",
+  "@p2pBookError": {
+    "description": "Generic error of a coordinator whose answer could not be read."
+  },
+  "p2pBookEmptySell": "No orders found to sell BTC for {currencyCode}",
+  "@p2pBookEmptySell": {
+    "description": "Empty book when the filter is « Sell ». {currencyCode} is the currency code or « ANY ».",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookEmptyBuy": "No orders found to buy BTC for {currencyCode}",
+  "@p2pBookEmptyBuy": {
+    "description": "Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency code or « ANY ».",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookEmptyBeFirst": "Be the first one to create an order",
+  "@p2pBookEmptyBeFirst": {
+    "description": "Below the empty book message, in the primary colour."
+  },
+  "p2pOrderHost": "Order host",
+  "@p2pOrderHost": {
+    "description": "Caption under the long name of the coordinator that hosts the order."
+  },
+  "p2pOrderId": "ID",
+  "@p2pOrderId": {
+    "description": "Label of the order number (shown after a # sign). « Numéro » in French rather than the English abbreviation."
+  },
+  "p2pOrderFeeMaker": "Maker",
+  "@p2pOrderFeeMaker": {
+    "description": "RoboSats shows only the initial of this word before the maker fee in the fee row: the first character of the translation is used."
+  },
+  "p2pOrderFeeMakerTooltip": "Maker fee",
+  "@p2pOrderFeeMakerTooltip": {
+    "description": "Tooltip of the maker fee in the fee row."
+  },
+  "p2pOrderFeeTaker": "Taker",
+  "@p2pOrderFeeTaker": {
+    "description": "RoboSats shows only the initial of this word before the taker fee in the fee row."
+  },
+  "p2pOrderFeeTakerTooltip": "Taker fee",
+  "@p2pOrderFeeTakerTooltip": {
+    "description": "Tooltip of the taker fee in the fee row."
+  },
+  "p2pOrderOnchainEnabled": "Onchain payouts enabled",
+  "@p2pOrderOnchainEnabled": {
+    "description": "Tooltip of the green on-chain fee chip of the fee row. Spelled « on-chain » as in the wallet."
+  },
+  "p2pOrderOnchainDisabled": "Onchain payouts disabled",
+  "@p2pOrderOnchainDisabled": {
+    "description": "Tooltip of the grey on-chain icon of the fee row. Spelled « on-chain » as in the wallet."
+  },
+  "p2pOrderDetailsDivider": "Order Details",
+  "@p2pOrderDetailsDivider": {
+    "description": "Heading of the order details."
+  },
+  "p2pOrderAmountRange": "Amount Range",
+  "@p2pOrderAmountRange": {
+    "description": "Caption of a range amount on the order page (RoboSats leaves it untranslated). « Fourchette » in French."
+  },
+  "p2pOrderYouSendVia": "You send via {method} {amount}",
+  "@p2pOrderYouSendVia": {
+    "description": "Seen by the taker who buys bitcoin. {method} is the maker's payment method text, {amount} the amount with its currency code.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouReceiveSats": "You receive {amount} Sats (Approx)",
+  "@p2pOrderYouReceiveSats": {
+    "description": "Seen by the taker who buys bitcoin: sats estimated with the taker fee and a 0.1 % routing budget; {amount} can be a range « min-max ».",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouSendLightning": "You send via Lightning {amount} Sats (Approx)",
+  "@p2pOrderYouSendLightning": {
+    "description": "Seen by the taker who sells bitcoin: sats estimated with the taker fee.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouReceiveVia": "You receive via {method} {amount}",
+  "@p2pOrderYouReceiveVia": {
+    "description": "Seen by the taker who sells bitcoin. {method} is the maker's payment method text, {amount} the amount with its currency code.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderSwapDestination": "Swap destination",
+  "@p2pOrderSwapDestination": {
+    "description": "Caption of the payment methods when the currency is BTC (swap order)."
+  },
+  "p2pOrderAcceptedMethods": "Accepted payment methods",
+  "@p2pOrderAcceptedMethods": {
+    "description": "Caption of the payment methods of the order."
+  },
+  "p2pOrderPriceAndPremiumValue": "{price} {currencyCode}/BTC - Premium: {premium}%",
+  "@p2pOrderPriceAndPremiumValue": {
+    "description": "Price per bitcoin and premium. French typography adds spaces before « : » and « % ».",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      },
+      "premium": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderPriceAndPremium": "Price and Premium",
+  "@p2pOrderPriceAndPremium": {
+    "description": "Caption when the current price is known."
+  },
+  "p2pOrderAmountOfSatoshis": "Amount of Satoshis",
+  "@p2pOrderAmountOfSatoshis": {
+    "description": "Caption of an order priced in sats when the current price is unknown."
+  },
+  "p2pOrderPremiumOverMarket": "Premium over market price",
+  "@p2pOrderPremiumOverMarket": {
+    "description": "Caption when the current price is unknown (value « x% »)."
+  },
+  "p2pOrderExpiresIn": "Expires in",
+  "@p2pOrderExpiresIn": {
+    "description": "Caption of the live countdown (orange under 25 % of the time left, red under 10 %, bold under 25 %)."
+  },
+  "p2pOrderExpired": "The order has expired",
+  "@p2pOrderExpired": {
+    "description": "Replaces the countdown when it reaches zero."
+  },
+  "p2pOrderDeposit": "Deposit",
+  "@p2pOrderDeposit": {
+    "description": "Time left to the parties to lock the escrow once the order is taken (« 3h »)."
+  },
+  "p2pTakeOrder": "Take Order",
+  "@p2pTakeOrder": {
+    "description": "Button of the order page. Taking an order comes in phase 2: in phase 1 the button is shown disabled."
+  },
+  "p2pCoordinatorOffline": "Coordinator offline",
+  "@p2pCoordinatorOffline": {
+    "description": "A coordinator that does not answer: in the book, next to its name."
+  },
+  "p2pOrderMaker": "Order maker",
+  "@p2pOrderMaker": {
+    "description": "Not in the RoboSats texts: caption under the maker's nickname at the bottom of the order details, as in the validated mock-up."
+  },
+  "p2pCommonRetry": "Retry",
+  "@p2pCommonRetry": {
+    "description": "Not in the RoboSats texts: asks again the coordinators whose book failed, or restarts Tor after a connection error."
+  },
+  "p2pBookCoordinatorsLoading": "{count, plural, =1{1 coordinator is still loading} other{{count} coordinators are still loading}}",
+  "@p2pBookCoordinatorsLoading": {
+    "description": "Not in the RoboSats texts: shown above the book while some coordinators have not answered yet; the orders of the others are already listed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pDurationHours": "{hours}h",
+  "@p2pDurationHours": {
+    "description": "Hours of a duration: the expiry ring of the book and the deposit time of an order. RoboSats writes `5h` in code, without translation.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pDurationMinutes": "{minutes}m",
+  "@p2pDurationMinutes": {
+    "description": "Minutes of a duration under one hour: the expiry ring of the book and the deposit time. RoboSats writes `12m` in code.",
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pDurationHoursMinutes": "{hours}h {minutes}m",
+  "@p2pDurationHoursMinutes": {
+    "description": "A deposit time of hours and minutes. RoboSats writes `1h 30m` in code; {minutes} has two digits.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCountdownHms": "{hours}h {minutes}m {seconds}s",
+  "@p2pCountdownHms": {
+    "description": "The live countdown of an order: RoboSats writes `{h}h {mm}m {ss}s` in code; {minutes} and {seconds} have two digits.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookOthers": "Others",
+  "@p2pBookOthers": {
+    "description": "Stands for payment methods written by the maker that are not in the official list."
+  },
+  "p2pReversibleTitle": "Reversible payments",
+  "@p2pReversibleTitle": {
+    "description": "Title of the dialog opened by the orange warning next to the payment methods of an order whose methods the community reports as reversible (PIX, Revolut…)."
+  },
+  "p2pReversibleIntro": "This order offers one or multiple payment methods that the community has consistently reported as reverting their transactions.",
+  "@p2pReversibleIntro": {
+    "description": "First paragraph of the reversible payments dialog, followed by the names of the reversible methods of the order."
+  },
+  "p2pReversible80Days": "If you receive a fiat transaction, it can be unilatery reverted up to 80 days after the trade has been completed.",
+  "@p2pReversible80Days": {
+    "description": "First point of the reversible payments dialog, in bold. The English typo « unilatery » is RoboSats' own and kept."
+  },
+  "p2pReversibleNoControl": "Robosats and their coordinators have no control over the fiat system.",
+  "@p2pReversibleNoControl": {
+    "description": "Second point of the reversible payments dialog."
+  },
+  "p2pReversibleScammers": "Scammers can exploit this vulnerability in the fiat system to take away both your bitcoin and your fiat.",
+  "@p2pReversibleScammers": {
+    "description": "Third point of the reversible payments dialog."
+  },
+  "p2pCommonAcknowledged": "Acknowledged",
+  "@p2pCommonAcknowledged": {
+    "description": "Button that closes a warning the user has read."
+  }
+}

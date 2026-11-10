@@ -44,14 +44,16 @@ class BullPickerSheet<T> extends StatelessWidget {
           Row(
             children: [
               const Gap(48),
-              const Spacer(),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.headlineMedium?.copyWith(color: colors.onSurface),
+              // A long title wraps under itself instead of pushing the close button off screen.
+              Expanded(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineMedium?.copyWith(color: colors.onSurface),
+                ),
               ),
-              const Spacer(),
               IconButton(
                 iconSize: 20,
                 onPressed: () => Navigator.pop(context),

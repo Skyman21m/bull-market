@@ -77,20 +77,25 @@ class _BullSegmentedState extends State<BullSegmented> {
             borderRadius: BorderRadius.circular(BullRadius.xxs),
           ),
           children: {
+            // A label too long for its segment shrinks to one line rather than wrapping mid-word.
             for (final item in widget.items)
-              item: Text(
-                item,
-                style: item == selectedSegment
-                    ? Theme.of(
-                        context,
-                      ).textTheme.labelLarge?.copyWith(color: colors.primary)
-                    : widget.disabledItems.contains(item)
-                    ? Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.outline.withValues(alpha: 0.5),
-                      )
-                    : Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.secondary,
-                      ),
+              item: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  item,
+                  maxLines: 1,
+                  style: item == selectedSegment
+                      ? Theme.of(
+                          context,
+                        ).textTheme.labelLarge?.copyWith(color: colors.primary)
+                      : widget.disabledItems.contains(item)
+                      ? Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: colors.outline.withValues(alpha: 0.5),
+                        )
+                      : Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: colors.secondary,
+                        ),
+                ),
               ),
           },
         ),

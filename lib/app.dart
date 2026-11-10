@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show appFlavor;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:p2p/p2p.dart' show P2pLocalizations;
 
 @visibleForTesting
 void resumePayjoinsOnAppResume(
@@ -176,6 +177,7 @@ class _BullBitcoinWalletAppState extends State<BullBitcoinWalletApp> {
                     localizationsDelegates: [
                       ...AppLocalizations.localizationsDelegates,
                       LogsLocalizations.delegate,
+                      P2pLocalizations.delegate,
                     ],
                     supportedLocales: AppLocalizations.supportedLocales,
                     builder: (context, child) {

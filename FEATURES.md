@@ -81,6 +81,7 @@ graph TB
     P2P --> TOR
     P2P --> PRIMITIVES
     P2P --> BULL_LOGGER
+    P2P --> BULL_UI
     CORE --> BULL_PAYJOIN
     BULL_PAYJOIN --> PRIMITIVES
     CORE --> BULL_PRICER
@@ -287,7 +288,7 @@ graph TB
 - **Send**: Depends on Fees, Network, Payjoin, Swaps, UTXO Management, Wallets
 - **Receive**: Depends on Payjoin, Swaps
 - **Backups**: Depends on BIP85, Tor, Wallets
-- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol and on Tor for the transport; no screen yet, and no feature depends on it
+- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book, order details, read-only); the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
 
 ### Exchange-Related Features
 
