@@ -77,7 +77,8 @@ Uint8List? encryptPackets(
 
 /// Opens [message] with the X25519 [scalar] of the encryption subkey [recipient], or returns `null`.
 ///
-/// Only what the official client and GnuPG write is accepted: session key packets, then one version 1 integrity-protected data packet and nothing else.
+/// Only the envelope the official client and GnuPG write is accepted: session key packets, then one version 1 integrity-protected data packet and nothing else.
+/// GnuPG frames that data packet with partial body lengths from about 500 bytes on, so stream lengths are read here too, within the size bound of the caller.
 /// Inside it, after the modification detection code has been checked: one-pass signatures, one literal data packet and signatures, either directly or in a single compressed data packet.
 /// Nothing is inflated before that check, and never beyond [PgpLimits.decompressedBytes].
 /// `null` covers every refusal: not encrypted to this subkey, tampered with, not integrity-protected, any other packet, or a bound of [PgpLimits] exceeded.
@@ -90,6 +91,7 @@ OpenedMessage? decryptPackets(
     final packets = decodePackets(
       message,
       maxPackets: PgpLimits.sessionKeyPackets + 1,
+      streamLengths: true,
     );
     if (packets.length < 2 ||
         packets.last.tag != PacketTag.integrityProtectedData) {
@@ -214,9 +216,11 @@ Uint8List? _unwrapSessionKey(
 }
 
 /// Takes the padding, the cipher and the checksum off an unwrapped session key, or returns `null` when one of them is wrong.
+///
+/// RFC 6637 section 8 lets a sender pad up to 40 bytes, so the padding may be longer than a block: every byte of it is checked.
 Uint8List? _sessionKeyOf(Uint8List encoded) {
   final padding = encoded.last;
-  if (padding < 1 || padding > 8 || padding > encoded.length - 3) return null;
+  if (padding < 1 || padding > encoded.length - 3) return null;
   var mismatch = 0;
   for (var i = encoded.length - padding; i < encoded.length; i++) {
     mismatch |= encoded[i] ^ padding;

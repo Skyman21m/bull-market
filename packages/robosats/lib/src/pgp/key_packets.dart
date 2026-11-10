@@ -181,7 +181,8 @@ final class ProtectedSecret {
 
   /// Reads the secret part that follows the public part in a secret key packet body.
   ///
-  /// Throws an [UnsupportedPgpException] for an unprotected key, for any other protection, and for an iteration count above [PgpLimits.s2kBytes].
+  /// Throws an [UnsupportedPgpException] for an unprotected key and for any other protection.
+  /// The iteration count needs no check: one byte codes it, and its largest value is [PgpLimits.s2kBytes].
   factory ProtectedSecret.read(ByteReader reader) {
     if (reader.u8() != _sha1CheckUsage) throw const UnsupportedPgpException();
     final cipherId = reader.u8();
@@ -193,9 +194,6 @@ final class ProtectedSecret {
     if (_s2kHash(s2kHashId) == null) throw const UnsupportedPgpException();
     final salt = reader.take(8);
     final codedCount = reader.u8();
-    if (s2kByteCount(codedCount) > PgpLimits.s2kBytes) {
-      throw const UnsupportedPgpException();
-    }
     final iv = reader.take(16);
     final ciphertext = reader.rest();
     // An integer of at least one byte, then the 20 bytes of the SHA-1 check.

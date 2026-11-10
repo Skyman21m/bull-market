@@ -26,14 +26,11 @@ const _utf8LiteralFormat = 0x75;
 
 /// [time], or the system clock, moved [back] and truncated to the whole seconds OpenPGP dates hold.
 ///
-/// Throws an [ArgumentError] outside the range of an OpenPGP date, 1970 to 2106.
-int _epochSeconds(DateTime? time, {Duration back = Duration.zero}) {
+/// `null` outside the range of an OpenPGP date, 1970 to 2106.
+int? _epochSeconds(DateTime? time, {Duration back = Duration.zero}) {
   final seconds =
       (time ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000 - back.inSeconds;
-  if (seconds < 0 || seconds > 0xffffffff) {
-    throw ArgumentError.value(time, 'now', 'outside the OpenPGP date range');
-  }
-  return seconds;
+  return seconds < 0 || seconds > 0xffffffff ? null : seconds;
 }
 
 /// An OpenPGP public key of the kind RoboSats robots use: the robot's own, or the one of its trade peer.
@@ -94,7 +91,7 @@ final class PgpPublicKey {
   /// This is the check a coordinator runs on an invoice or a payout address, with the date rules of the official client: the signature must not be dated after [now], expired, older than the key, or made when the key was expired.
   /// The text returned is the signed text itself: trailing spaces and tabs, which a cleartext signature does not cover, are dropped from every line.
   /// A `Hash` header naming the hash of the signature is required, as coordinators require `Hash: SHA512` (`api/utils.py:642`).
-  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpSignatureInvalid].
+  /// Fails with [PgpInputTooLarge], [PgpClockOutOfRange], [PgpArmorMalformed] or [PgpSignatureInvalid].
   Result<String, PgpFailure> verifyCleartext(
     String signedMessage, {
     DateTime? now,
@@ -102,6 +99,8 @@ final class PgpPublicKey {
     if (signedMessage.length > PgpLimits.cleartextChars) {
       return const Err(PgpInputTooLarge());
     }
+    final time = _epochSeconds(now);
+    if (time == null) return const Err(PgpClockOutOfRange());
     final parts = cleartextDecode(signedMessage);
     if (parts == null || parts.hashes.isEmpty) {
       return const Err(PgpArmorMalformed());
@@ -116,7 +115,6 @@ final class PgpPublicKey {
       return const Err(PgpSignatureInvalid());
     }
     final canonical = canonicalText(parts.text);
-    final time = _epochSeconds(now);
     for (final packet in packets) {
       if (packet.tag != PacketTag.signature) continue;
       final signature = _tryParseSignature(packet.body);
@@ -171,34 +169,40 @@ final class RobotPgpKey {
   /// The key is version 4, Ed25519 with a Curve25519 encryption subkey, named `RoboSats ID <hash id>`, locked by the token, and dated exactly 24 hours in the past.
   /// The official client subtracts one calendar day in local time instead, which differs by an hour on the two days a year the clock changes.
   /// Hashing the passphrase takes 32 MiB of SHA-256: call it off the UI isolate.
-  static RobotPgpKey generate(RobotIdentity identity) =>
-      generateWith(identity, now: DateTime.now(), random: Random.secure());
+  /// Fails with [PgpClockOutOfRange] on a device whose clock is not between 2 January 1970 and 2106.
+  static Result<RobotPgpKey, PgpClockOutOfRange> generate(
+    RobotIdentity identity,
+  ) => generateWith(identity, now: DateTime.now(), random: Random.secure());
 
   /// [generate] with a given clock and source of randomness: with both fixed, the result is fixed, byte for byte.
   ///
   /// For tests only: a key is only as strong as [random].
   @visibleForTesting
-  static RobotPgpKey generateWith(
+  static Result<RobotPgpKey, PgpClockOutOfRange> generateWith(
     RobotIdentity identity, {
     required DateTime now,
     required Random random,
   }) {
+    final createdAt = _epochSeconds(now, back: _backdating);
+    if (createdAt == null) return const Err(PgpClockOutOfRange());
     final passphrase = utf8.encode(identity.token.reveal());
     final generated = TransferableKey.generate(
       userId: identity.pgpUserId,
       passphrase: passphrase,
-      createdAt: _epochSeconds(now, back: _backdating),
+      createdAt: createdAt,
       random: random,
     );
     wipe(passphrase);
     final publicArmored = armorEncode(ArmorBlock.publicKey, generated.public);
-    return RobotPgpKey._(
-      PgpPublicKey._(
-        publicArmored,
-        TransferableKey.parse(generated.public, secret: false),
+    return Ok(
+      RobotPgpKey._(
+        PgpPublicKey._(
+          publicArmored,
+          TransferableKey.parse(generated.public, secret: false),
+        ),
+        armorEncode(ArmorBlock.privateKey, generated.private),
+        TransferableKey.parse(generated.private, secret: true),
       ),
-      armorEncode(ArmorBlock.privateKey, generated.private),
-      TransferableKey.parse(generated.private, secret: true),
     );
   }
 
@@ -296,7 +300,7 @@ final class UnlockedRobotPgpKey {
   /// It reproduces `signCleartextMessage` of `frontend/src/pgp/index.ts:102-119`: a text signature over SHA-512 by the primary key, dated [now].
   /// The result starts with exactly `-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n`, the string a coordinator splits on (`api/utils.py:642-644`).
   /// A clock that runs behind the date of the key would give a signature GnuPG and the official client refuse: the signature is then dated like the key.
-  /// Fails with [PgpInputTooLarge], or with [PgpCleartextUnsuitable] when the coordinator's parser would not hand [text] back intact.
+  /// Fails with [PgpInputTooLarge], [PgpClockOutOfRange], or with [PgpCleartextUnsuitable] when the coordinator's parser would not hand [text] back intact.
   Result<String, PgpFailure> signCleartext(String text, {DateTime? now}) {
     if (text.length > PgpLimits.cleartextChars ~/ 2) {
       return const Err(PgpInputTooLarge());
@@ -304,6 +308,8 @@ final class UnlockedRobotPgpKey {
     if (!_survivesCoordinatorParsing(text)) {
       return const Err(PgpCleartextUnsuitable());
     }
+    final time = _epochSeconds(now);
+    if (time == null) return const Err(PgpClockOutOfRange());
     final primary = key._secretKey.primary;
     return Ok(
       cleartextEncode(
@@ -315,7 +321,7 @@ final class UnlockedRobotPgpKey {
             primary: primary,
             canonicalData: canonicalText(text),
             seed: _secretKeys.ed25519Seed,
-            createdAt: max(_epochSeconds(now), primary.createdAt),
+            createdAt: max(time, primary.createdAt),
           ),
         ),
       ),
@@ -328,7 +334,7 @@ final class UnlockedRobotPgpKey {
   /// The official client refuses a signature older than its key, so the signature is never dated before the key of this robot.
   /// On `POST /api/chat/` the result travels in the `PGP_message` field with its line breaks turned into backslashes: see [pgpArmorToWire].
   /// The plaintext never leaves the device: a coordinator stores only this block (`chat/models.py:87`), and the robot reads its own messages back by decrypting them.
-  /// Fails with [PgpInputTooLarge], with [PgpPlaintextContainsToken], as the official client refuses to send a message that contains the robot token, with [PgpKeyOutOfDate] when either key cannot be used at [now], and with [PgpKeyUnsupported] when [peer] cannot be encrypted to.
+  /// Fails with [PgpInputTooLarge], [PgpClockOutOfRange], with [PgpPlaintextContainsToken], as the official client refuses to send a message that contains the robot token, with [PgpKeyOutOfDate] when either key cannot be used at [now], and with [PgpKeyUnsupported] when [peer] cannot be encrypted to.
   Result<String, PgpFailure> encryptChatMessage(
     String plaintext, {
     required PgpPublicKey peer,
@@ -359,6 +365,7 @@ final class UnlockedRobotPgpKey {
     }
     final own = key._secretKey;
     final time = _epochSeconds(now);
+    if (time == null) return const Err(PgpClockOutOfRange());
     if (!own.canReceiveAt(time) || !peer._key.canReceiveAt(time)) {
       return const Err(PgpKeyOutOfDate());
     }
@@ -400,8 +407,8 @@ final class UnlockedRobotPgpKey {
   /// It reproduces `decryptMessage` of `frontend/src/pgp/index.ts:70-99`: a missing or invalid signature does not hide the text, it is reported as [DecryptedChatMessage.validSignature].
   /// A signature dated after [now], expired, older than the key of [sender] or made when that key was expired is invalid, as in the official client.
   /// [sender] is this robot's own public key when the coordinator attributes the message to this robot's nickname, and the peer's otherwise (`EncryptedApiChat/index.tsx:156`).
-  /// Only the structure the official client and GnuPG write is read, within the bounds of `PgpLimits`, and nothing is inflated before the message has been authenticated.
-  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpMessageUndecryptable].
+  /// Only the envelope the official client and GnuPG write is read, with the partial lengths GnuPG uses for long messages, within the bounds of `PgpLimits`, and nothing is inflated before the message has been authenticated.
+  /// Fails with [PgpInputTooLarge], [PgpClockOutOfRange], [PgpArmorMalformed] or [PgpMessageUndecryptable].
   Result<DecryptedChatMessage, PgpFailure> decryptChatMessage(
     String armored, {
     required PgpPublicKey sender,
@@ -410,6 +417,8 @@ final class UnlockedRobotPgpKey {
     if (armored.length > PgpLimits.messageArmorChars) {
       return const Err(PgpInputTooLarge());
     }
+    final time = _epochSeconds(now);
+    if (time == null) return const Err(PgpClockOutOfRange());
     final bytes = armorDecode(ArmorBlock.message, pgpArmorFromWire(armored));
     if (bytes == null) return const Err(PgpArmorMalformed());
     final opened = decryptPackets(
@@ -419,7 +428,6 @@ final class UnlockedRobotPgpKey {
     );
     if (opened == null) return const Err(PgpMessageUndecryptable());
     final text = _nativeText(opened.literalData);
-    final time = _epochSeconds(now);
     for (final body in opened.signatures) {
       // A signature this package cannot read counts as no signature, as in the official client.
       final signature = _tryParseSignature(body);

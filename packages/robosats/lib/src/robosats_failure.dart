@@ -77,6 +77,13 @@ final class PgpInputTooLarge extends PgpFailure {
   const PgpInputTooLarge();
 }
 
+/// The clock, or the time given as `now`, is outside what an OpenPGP date can hold: 1970 to 2106.
+///
+/// A key is dated one day back, so generating one also fails during the first day of 1970.
+final class PgpClockOutOfRange extends PgpFailure {
+  const PgpClockOutOfRange();
+}
+
 /// The text is not one ASCII-armored block of the expected kind: wrong or missing header lines, a cleartext message without `Hash` header, invalid base64, or a CRC-24 that does not match.
 final class PgpArmorMalformed extends PgpFailure {
   const PgpArmorMalformed();
@@ -84,7 +91,7 @@ final class PgpArmorMalformed extends PgpFailure {
 
 /// The block holds OpenPGP data this package does not handle.
 ///
-/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, with SHA-2 and AES as KDF parameters and a point that is not of low order, and, for a private key, a passphrase-protected secret part whose iteration count stays within `PgpLimits.s2kBytes`.
+/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, with SHA-2 and AES as KDF parameters and a point that is not of low order, and, for a private key, a passphrase-protected secret part (S2K usage 254, iterated and salted, AES).
 final class PgpKeyUnsupported extends PgpFailure {
   const PgpKeyUnsupported();
 }

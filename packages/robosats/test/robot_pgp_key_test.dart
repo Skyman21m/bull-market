@@ -16,10 +16,12 @@ final _now = DateTime.utc(2026, 11, 9, 12);
 /// A robot of the vectors file that the RoboSats repository has no key for: index 0 of the example Garage Key.
 final _identity = identityOf(garageKeyRobots.first['token'] as String);
 
-RobotPgpKey _generate([String label = 'troc']) => RobotPgpKey.generateWith(
-  _identity,
-  now: _now,
-  random: DeterministicRandom(label),
+RobotPgpKey _generate([String label = 'troc']) => expectOk(
+  RobotPgpKey.generateWith(
+    _identity,
+    now: _now,
+    random: DeterministicRandom(label),
+  ),
 );
 
 /// `_is_well_formed_pgp_key` of `api/utils.py:496-518`, the shape check a coordinator runs before GnuPG sees the public key.
@@ -314,10 +316,12 @@ void main() {
     });
 
     test('drops the fraction of a second, as OpenPGP dates do', () {
-      final late = RobotPgpKey.generateWith(
-        _identity,
-        now: _now.add(const Duration(milliseconds: 999)),
-        random: DeterministicRandom('troc'),
+      final late = expectOk(
+        RobotPgpKey.generateWith(
+          _identity,
+          now: _now.add(const Duration(milliseconds: 999)),
+          random: DeterministicRandom('troc'),
+        ),
       );
       expect(late.publicKey.armored, key.publicKey.armored);
     });
@@ -400,10 +404,12 @@ void main() {
 
     test('handles an Ed25519 seed that starts with a zero byte', () {
       // One key in 256: the secret integer is then stored on 31 bytes, which dart_pg 2.0.0 cannot read back.
-      final shortSeedKey = RobotPgpKey.generateWith(
-        _identity,
-        now: _now,
-        random: ScriptedRandom([0, 0, ...List.filled(30, 7)]),
+      final shortSeedKey = expectOk(
+        RobotPgpKey.generateWith(
+          _identity,
+          now: _now,
+          random: ScriptedRandom([0, 0, ...List.filled(30, 7)]),
+        ),
       );
       final parsed = expectOk(
         RobotPgpKey.parse(
@@ -422,34 +428,82 @@ void main() {
 
     test('uses the system clock and a secure generator by default', () {
       final before = DateTime.now().toUtc();
-      final fresh = RobotPgpKey.generate(_identity);
+      final fresh = expectOk(RobotPgpKey.generate(_identity));
       final age = before.difference(fresh.publicKey.createdAt);
       expect(age, greaterThanOrEqualTo(const Duration(hours: 24)));
       expect(age, lessThan(const Duration(hours: 24, minutes: 1)));
       expect(fresh.publicKey.fingerprint, isNot(key.publicKey.fingerprint));
       expect(
-        RobotPgpKey.generate(_identity).publicKey.fingerprint,
+        expectOk(RobotPgpKey.generate(_identity)).publicKey.fingerprint,
         isNot(fresh.publicKey.fingerprint),
       );
     });
 
-    test('refuses a clock outside the range of OpenPGP dates', () {
+    test('fails, without throwing, on a clock outside the range of OpenPGP dates', () {
       for (final now in [
         DateTime.utc(1969),
         // The key would be dated before the Unix epoch.
         DateTime.utc(1970, 1, 1, 12),
         DateTime.utc(2107),
+        DateTime.utc(275760, 9, 13),
       ]) {
         expect(
-          () => RobotPgpKey.generateWith(
-            _identity,
-            now: now,
-            random: DeterministicRandom('troc'),
+          expectErr(
+            RobotPgpKey.generateWith(
+              _identity,
+              now: now,
+              random: DeterministicRandom('troc'),
+            ),
           ),
-          throwsArgumentError,
+          isA<PgpClockOutOfRange>(),
         );
       }
+      expectOk(
+        RobotPgpKey.generateWith(
+          _identity,
+          now: DateTime.utc(1970, 1, 2),
+          random: DeterministicRandom('troc'),
+        ),
+      );
     });
+  });
+
+  group('a clock outside 1970 to 2106', () {
+    final key = _generate();
+    final unlocked = expectOk(key.unlock(_identity));
+    final signed = expectOk(unlocked.signCleartext('lnbc1', now: _now));
+    final message = expectOk(
+      unlocked.encryptChatMessage('hello', peer: key.publicKey, now: _now),
+    );
+
+    for (final now in [DateTime.utc(1969, 12, 31), DateTime.utc(2107)]) {
+      test('is a failure of every operation, never an exception: ${now.year}', () {
+        expect(
+          expectErr(unlocked.signCleartext('lnbc1', now: now)),
+          isA<PgpClockOutOfRange>(),
+        );
+        expect(
+          expectErr(key.publicKey.verifyCleartext(signed, now: now)),
+          isA<PgpClockOutOfRange>(),
+        );
+        expect(
+          expectErr(
+            unlocked.encryptChatMessage('hello', peer: key.publicKey, now: now),
+          ),
+          isA<PgpClockOutOfRange>(),
+        );
+        expect(
+          expectErr(
+            unlocked.decryptChatMessage(
+              message,
+              sender: key.publicKey,
+              now: now,
+            ),
+          ),
+          isA<PgpClockOutOfRange>(),
+        );
+      });
+    }
   });
 
   group('first-contact Authorization value with a generated key', () {
@@ -1075,6 +1129,7 @@ void main() {
     test('no PGP failure carries a value', () {
       const List<PgpFailure> failures = [
         PgpInputTooLarge(),
+        PgpClockOutOfRange(),
         PgpArmorMalformed(),
         PgpKeyUnsupported(),
         PgpKeyOutOfDate(),

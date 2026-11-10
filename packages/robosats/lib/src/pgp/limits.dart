@@ -24,6 +24,6 @@ abstract final class PgpLimits {
   /// Bytes a compressed chat message may inflate to.
   static const decompressedBytes = 262144;
 
-  /// Bytes an iterated S2K may hash: twice the 16 MiB OpenPGP.js 5 asks for.
-  static const s2kBytes = 33554432;
+  /// Bytes an iterated S2K can hash at most: the format itself stops at 65 011 712, the count GnuPG 2.4 writes, four times what OpenPGP.js 5 asks for.
+  static const s2kBytes = 65011712;
 }

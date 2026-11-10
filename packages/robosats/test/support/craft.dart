@@ -302,3 +302,105 @@ Uint8List literalPacket(String text, {int format = 0x75}) => encodePacket(
   PacketTag.literalData,
   [format, 0, 0, 0, 0, 0, ...utf8.encode(text)],
 );
+
+/// A session key as it is wrapped for a recipient: cipher, key, checksum, then [padding] bytes each equal to [padding].
+///
+/// By default the padding fills the last 8-byte block, as OpenPGP.js and GnuPG pad.
+Uint8List encodeSessionKey(
+  List<int> key, {
+  int cipherId = CipherId.aes256,
+  int? padding,
+  int checksumOffset = 0,
+}) {
+  final checksum =
+      (key.fold<int>(0, (sum, byte) => sum + byte) + checksumOffset) & 0xffff;
+  final length = 1 + key.length + 2;
+  final count = padding ?? 8 - length % 8;
+  return Uint8List.fromList([
+    cipherId,
+    ...key,
+    ...u16Bytes(checksum),
+    ...List.filled(count, count),
+  ]);
+}
+
+/// A session key packet for [recipient], written without the code under test: the ECDH of RFC 6637 from its text, on the primitives only.
+///
+/// [encoded] is wrapped as it is, so that a test decides every byte of what the recipient unwraps.
+Uint8List craftSessionKeyPacket(
+  CraftedKey recipient,
+  Uint8List encoded, {
+  List<int> trailing = const [],
+  int? wrappedLength,
+}) {
+  final ephemeral = clampX25519Scalar(
+    Uint8List.fromList(List.generate(32, (i) => 0x40 + i)),
+  );
+  final body = recipient.subkeyBody;
+  final point = Uint8List.sublistView(body, body.length - 4 - 32, body.length - 4);
+  final shared = x25519SharedSecret(ephemeral, point);
+  if (shared == null) throw StateError('low-order recipient');
+  final kdfHash = body[body.length - 2];
+  final kdfCipher = body[body.length - 1];
+  final fingerprint = sha1(_prefixed(body));
+  final digest = (_hashes[kdfHash] ?? crypto.sha256).convert([
+    0,
+    0,
+    0,
+    1,
+    ...shared,
+    curve25519Oid.length,
+    ...curve25519Oid,
+    18,
+    3,
+    1,
+    kdfHash,
+    kdfCipher,
+    ...utf8.encode('Anonymous Sender    '),
+    ...fingerprint,
+  ]);
+  final kek = Uint8List.fromList(
+    digest.bytes.sublist(0, aesKeyLength(kdfCipher) ?? 16),
+  );
+  final wrapped = aesKeyWrap(kek, encoded);
+  final carried = wrapped.sublist(0, wrappedLength ?? wrapped.length);
+  return encodePacket(PacketTag.publicKeyEncryptedSessionKey, [
+    3,
+    ...fingerprint.sublist(12),
+    18,
+    ...mpiEncode([0x40, ...x25519PublicKey(ephemeral)]),
+    carried.length,
+    ...carried,
+    ...trailing,
+  ]);
+}
+
+/// An integrity-protected data packet under [sessionKey] whose plaintext is exactly [plaintext], followed by its SHA-1.
+Uint8List craftDataPacketOver(Uint8List sessionKey, List<int> plaintext) {
+  final plain = Uint8List.fromList(plaintext);
+  return encodePacket(PacketTag.integrityProtectedData, [
+    1,
+    ...aesCfb(
+      encrypt: true,
+      key: sessionKey,
+      iv: Uint8List(16),
+      data: Uint8List.fromList([...plain, ...sha1(plain)]),
+    ),
+  ]);
+}
+
+/// A well-formed integrity-protected data packet holding [inner], with a fixed prefix and the [mdcHeader] given.
+Uint8List craftDataPacket(
+  Uint8List sessionKey,
+  List<int> inner, {
+  List<int> mdcHeader = const [0xd3, 0x14],
+}) {
+  final prefix = List.generate(16, (i) => 0x30 + i);
+  return craftDataPacketOver(sessionKey, [
+    ...prefix,
+    prefix[14],
+    prefix[15],
+    ...inner,
+    ...mdcHeader,
+  ]);
+}

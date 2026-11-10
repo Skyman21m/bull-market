@@ -52,20 +52,24 @@ RobotIdentity get interopIdentity =>
     identityOf(garageKeyRobots.first['token'] as String);
 
 /// The key `tool/pgp_interop.sh` showed to GnuPG, generated again: same identity, same clock, same bytes of randomness.
-RobotPgpKey generateInteropKey() => RobotPgpKey.generateWith(
-  interopIdentity,
-  now: interopNow,
-  random: DeterministicRandom('troc'),
+RobotPgpKey generateInteropKey() => expectOk(
+  RobotPgpKey.generateWith(
+    interopIdentity,
+    now: interopNow,
+    random: DeterministicRandom('troc'),
+  ),
 );
 
 /// A second robot, the peer of the deterministic chat message: index 1 of the example Garage Key.
 RobotIdentity get interopPeerIdentity =>
     identityOf(garageKeyRobots[1]['token'] as String);
 
-RobotPgpKey generateInteropPeerKey() => RobotPgpKey.generateWith(
-  interopPeerIdentity,
-  now: interopNow,
-  random: DeterministicRandom('troc-peer'),
+RobotPgpKey generateInteropPeerKey() => expectOk(
+  RobotPgpKey.generateWith(
+    interopPeerIdentity,
+    now: interopNow,
+    random: DeterministicRandom('troc-peer'),
+  ),
 );
 
 /// The robot whose token locks the key OpenPGP.js generates during the run: test robot 2 of the RoboSats repository.

@@ -409,22 +409,24 @@ void main() {
       },
     );
 
-    test('is refused when it asks for more hashing than the bound', () {
-      Result<RobotPgpKey, PgpFailure> withCount(int codedCount) => _parsePair(
-        key,
-        key.privatePackets(
-          _token,
-          // Only the count byte matters here: nothing is hashed before the key is unlocked.
-          protect: (secret, passphrase) => Uint8List.fromList(
-            protectSecret(secret, passphrase)..[12] = codedCount,
+    test('is unlocked with the largest S2K count, the one GnuPG 2.4 writes', () {
+      // Coded count 255 is 65 011 712 bytes, the most the format can ask for.
+      expect(s2kByteCount(255), PgpLimits.s2kBytes);
+      final parsed = expectOk(
+        _parsePair(
+          key,
+          key.privatePackets(
+            _token,
+            protect: (secret, passphrase) =>
+                protectSecret(secret, passphrase, codedCount: 255),
           ),
         ),
       );
-      expect(s2kByteCount(240), PgpLimits.s2kBytes);
-      expectOk(withCount(240));
-      for (final codedCount in [241, 255]) {
-        expect(expectErr(withCount(codedCount)), isA<PgpKeyUnsupported>());
-      }
+      expectOk(parsed.unlock(_identity));
+      expect(
+        expectErr(parsed.unlock(interopPeerIdentity)),
+        isA<PgpWrongPassphrase>(),
+      );
     });
 
     test('never prints its secret values once unlocked', () {
