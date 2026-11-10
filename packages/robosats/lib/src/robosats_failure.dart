@@ -64,3 +64,52 @@ final class HashIdMalformed extends RobosatsFailure {
 final class NicknameUnavailable extends RobosatsFailure {
   const NicknameUnavailable();
 }
+
+/// A failure of the OpenPGP operations of a robot: its key, its signed messages and its chat.
+///
+/// No failure carries the rejected input, a passphrase or a plaintext.
+sealed class PgpFailure extends RobosatsFailure {
+  const PgpFailure();
+}
+
+/// The text is not one ASCII-armored block of the expected kind: wrong or missing header lines, invalid base64, or a CRC-24 that does not match.
+final class PgpArmorMalformed extends PgpFailure {
+  const PgpArmorMalformed();
+}
+
+/// The block holds OpenPGP data this package does not handle.
+///
+/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, and, for a private key, a passphrase-protected secret part.
+final class PgpKeyUnsupported extends PgpFailure {
+  const PgpKeyUnsupported();
+}
+
+/// The private key does not belong to the public key it was given with.
+final class PgpKeyPairMismatch extends PgpFailure {
+  const PgpKeyPairMismatch();
+}
+
+/// The robot token does not unlock the private key.
+final class PgpWrongPassphrase extends PgpFailure {
+  const PgpWrongPassphrase();
+}
+
+/// The text cannot be clear-signed for a coordinator, whose parser would not hand it back intact: it is empty, starts or ends with whitespace, has a line that starts with a dash or ends with a space, or contains a carriage return.
+final class PgpCleartextUnsuitable extends PgpFailure {
+  const PgpCleartextUnsuitable();
+}
+
+/// The cleartext signature is not a valid signature of the text by the primary key of the given public key.
+final class PgpSignatureInvalid extends PgpFailure {
+  const PgpSignatureInvalid();
+}
+
+/// The chat message contains the robot token: the official client refuses to send it, and so does this package.
+final class PgpPlaintextContainsToken extends PgpFailure {
+  const PgpPlaintextContainsToken();
+}
+
+/// The message cannot be opened with this key: it is not encrypted to it, it was tampered with, or it is not an integrity-protected OpenPGP message.
+final class PgpMessageUndecryptable extends PgpFailure {
+  const PgpMessageUndecryptable();
+}

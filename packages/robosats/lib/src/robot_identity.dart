@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/base91.dart';
 import 'package:robosats/src/nostr_key_pair.dart';
+import 'package:robosats/src/pgp_wire.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_hash_id.dart';
 import 'package:robosats/src/robot_token.dart';
@@ -118,8 +119,8 @@ final class RobotIdentity {
     NostrKeyDerivation nostrKeyDerivation = NostrKeyDerivation.currentFrontend,
   }) =>
       '${authorizationHeader()}'
-      ' | Public ${_onOneLine(pgpPublicKey)}'
-      ' | Private ${_onOneLine(pgpEncryptedPrivateKey)}'
+      ' | Public ${pgpArmorToWire(pgpPublicKey)}'
+      ' | Private ${pgpArmorToWire(pgpEncryptedPrivateKey)}'
       ' | Nostr ${nostrKeyPair(nostrKeyDerivation).publicKeyHex}';
 
   @override
@@ -133,9 +134,3 @@ final class RobotIdentity {
   String toString() =>
       'RobotIdentity(nickname: $nickname, hashId: ${hashId.hex})';
 }
-
-final RegExp _carriageReturn = RegExp(r'\r\n?');
-
-/// `key.replace(/\r\n?/g, '\n').split('\n').join('\\')`.
-String _onOneLine(String armored) =>
-    armored.replaceAll(_carriageReturn, '\n').split('\n').join(r'\');

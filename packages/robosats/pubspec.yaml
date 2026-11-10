@@ -1,8 +1,9 @@
 name: robosats
 description: >-
   Pure-Dart RoboSats client primitives for the Troc monorepo: Garage Key,
-  robot token and the robot identity derived from it (coordinator token hash,
-  hash id, nickname, Nostr key, Authorization header).
+  robot token, the robot identity derived from it (coordinator token hash,
+  hash id, nickname, Nostr key, Authorization header) and the robot OpenPGP
+  key (generation, clear-signed invoices, encrypted and signed chat).
 publish_to: "none"
 version: 0.1.0
 
