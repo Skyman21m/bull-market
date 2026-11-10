@@ -217,7 +217,7 @@ void main() {
   group('GarageKey.generate', () {
     test('takes 32 bytes from the injected generator', () {
       final values = List.generate(32, (i) => 255 - i);
-      final key = GarageKey.generate(random: _ReplayRandom(values));
+      final key = GarageKey.generateWith(_ReplayRandom(values));
       expect(key.revealBytes(), values);
     });
 

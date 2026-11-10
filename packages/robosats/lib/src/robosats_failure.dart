@@ -64,3 +64,71 @@ final class HashIdMalformed extends RobosatsFailure {
 final class NicknameUnavailable extends RobosatsFailure {
   const NicknameUnavailable();
 }
+
+/// A failure of the OpenPGP operations of a robot: its key, its signed messages and its chat.
+///
+/// No failure carries the rejected input, a passphrase or a plaintext.
+sealed class PgpFailure extends RobosatsFailure {
+  const PgpFailure();
+}
+
+/// The input is larger than anything a robot exchanges, and was not read: see the bounds of `PgpLimits`.
+final class PgpInputTooLarge extends PgpFailure {
+  const PgpInputTooLarge();
+}
+
+/// The clock, or the time given as `now`, is outside what an OpenPGP date can hold: 1970 to 2106.
+///
+/// A key is dated one day back, so generating one also fails during the first day of 1970.
+final class PgpClockOutOfRange extends PgpFailure {
+  const PgpClockOutOfRange();
+}
+
+/// The text is not one ASCII-armored block of the expected kind: wrong or missing header lines, a cleartext message without `Hash` header, invalid base64, or a CRC-24 that does not match.
+final class PgpArmorMalformed extends PgpFailure {
+  const PgpArmorMalformed();
+}
+
+/// The block holds OpenPGP data this package does not handle.
+///
+/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, with SHA-2 and AES as KDF parameters and a point that is not of low order, and, for a private key, a passphrase-protected secret part (S2K usage 254, iterated and salted, AES).
+final class PgpKeyUnsupported extends PgpFailure {
+  const PgpKeyUnsupported();
+}
+
+/// A key cannot be used at the given time: it is dated after it, it has expired, or the signature that certifies or binds it has.
+///
+/// The official client refuses to encrypt to such a key.
+final class PgpKeyOutOfDate extends PgpFailure {
+  const PgpKeyOutOfDate();
+}
+
+/// The private key does not belong to the public key it was given with.
+final class PgpKeyPairMismatch extends PgpFailure {
+  const PgpKeyPairMismatch();
+}
+
+/// The robot token does not unlock the private key.
+final class PgpWrongPassphrase extends PgpFailure {
+  const PgpWrongPassphrase();
+}
+
+/// The text cannot be clear-signed for a coordinator, whose parser would not hand it back intact: it is empty, starts or ends with whitespace, has a line that starts with a dash or ends with a space, or contains a carriage return.
+final class PgpCleartextUnsuitable extends PgpFailure {
+  const PgpCleartextUnsuitable();
+}
+
+/// The cleartext signature is not a valid signature of the text by the primary key of the given public key, or it is dated in the future, expired, or older than the key.
+final class PgpSignatureInvalid extends PgpFailure {
+  const PgpSignatureInvalid();
+}
+
+/// The chat message contains the robot token: the official client refuses to send it, and so does this package.
+final class PgpPlaintextContainsToken extends PgpFailure {
+  const PgpPlaintextContainsToken();
+}
+
+/// The message cannot be opened with this key: it is not encrypted to it, it was tampered with, or it is not an integrity-protected OpenPGP message.
+final class PgpMessageUndecryptable extends PgpFailure {
+  const PgpMessageUndecryptable();
+}

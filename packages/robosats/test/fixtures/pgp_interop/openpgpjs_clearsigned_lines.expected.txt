@@ -1,0 +1,5 @@
+première ligne
+-dash line
+trailing space
+
+last ⚡
