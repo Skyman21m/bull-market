@@ -10,7 +10,7 @@
 6. **Nobody pushes directly to `main`.** No force-push.
 7. **Merging** is done by the repository owner or by delegation from them. Their explicit approval is still required for any public version or release, any change to the repository settings, and any change of name, license or architecture.
 
-The code rules are those of the upstream repository: read [AGENTS.md](AGENTS.md) before writing code (always `fvm`, `make analyze` and `make checks`, no hard-coded colors or texts, nothing new in `lib/core`, `FEATURES.md` kept up to date). The P2P code lives in `lib/features/p2p/`.
+The code rules are those of the upstream repository: read [AGENTS.md](AGENTS.md) before writing code (always `fvm`, `make analyze` and `make checks`, no hard-coded colors or texts, nothing new in `lib/core`, `FEATURES.md` kept up to date). The P2P code lives in `features/p2p/` (package `p2p`).
 
 ## Pulling in Bull Bitcoin updates
 

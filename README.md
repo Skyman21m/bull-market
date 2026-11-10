@@ -32,7 +32,7 @@ These are goals: the "Project status" section says what actually exists.
     <td align="center"><img src="docs/mockup/en-order-book.png" width="170" alt="Mock-up: order book with filters and offers"><br><sub>The order book</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/mockup/en-order.png" width="170" alt="Mock-up: details of an offer"><br><sub>An offer's details</sub></td>
+    <td align="center"><img src="docs/mockup/en-order.png" width="170" alt="Mock-up: details of an order"><br><sub>Order details</sub></td>
     <td align="center"><img src="docs/mockup/en-bond.png" width="170" alt="Mock-up: bond invoice to lock, with QR code"><br><sub>Locking the bond</sub></td>
     <td align="center"><img src="docs/mockup/en-chat.png" width="170" alt="Mock-up: encrypted chat with the seller"><br><sub>Encrypted chat with the seller</sub></td>
     <td align="center"><img src="docs/mockup/en-finished.png" width="170" alt="Mock-up: trade finished, summary and sats received"><br><sub>Trade finished</sub></td>
@@ -49,6 +49,8 @@ A few notes on what the mock-up shows:
 <summary>Captures en français (maquette)</summary>
 
 <br>
+
+*Maquette uniquement : ces écrans montrent la cible, pas l'application actuelle. Les offres, les montants, les pseudos et les messages sont inventés.*
 
 <table>
   <tr>
@@ -98,7 +100,7 @@ What already exists in the code, with no screen yet:
 - **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js, not yet tried against a coordinator ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
 - **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC for now, not yet on a phone ([measurements](docs/spikes/tor-robosats.md)).
-- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC, not yet on a phone ([report](docs/spikes/tor-transport.md)).
+- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC behind a VPN, before the review fixes (not rerun since), and not yet on a phone ([report](docs/spikes/tor-transport.md)).
 
 In progress: the first screens ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
