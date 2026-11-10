@@ -8,9 +8,9 @@
   "@p2pTestnetBanner": {
     "description": "fr.json : « Utilisation Testnet Bitcoin » (article manquant, ordre des mots anglais). Le portefeuille écrit « Bitcoin Testnet ». Bandeau en italique, seulement si le réseau P2P est testnet."
   },
-  "p2pTorWaitingLine": "Your trades only ever go through Tor.",
+  "p2pTorWaitingLine": "Coordinators are only ever reached through Tor.",
   "@p2pTorWaitingLine": {
-    "description": "Ligne affichée dans l'onglet P2P pendant que Tor se connecte (l'attente se fait dans l'onglet, pas au démarrage de l'app). Texte de la maquette validée du 10/11/2026."
+    "description": "Line under the progress bar while Tor connects inside the P2P tab. Corrected on 10/11/2026 after review of the mock-up: payments may go through the wallet's swap service, so only the coordinators are said to be reached through Tor."
   },
   "p2pTorInitializing": "Initializing Tor daemon",
   "@p2pTorInitializing": {

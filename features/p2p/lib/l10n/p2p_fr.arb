@@ -2,7 +2,7 @@
   "@@locale": "fr",
   "p2pTabLabel": "P2P",
   "p2pTestnetBanner": "Utilisation du Bitcoin Testnet",
-  "p2pTorWaitingLine": "Vos échanges passent uniquement par Tor.",
+  "p2pTorWaitingLine": "La connexion aux coordinateurs passe uniquement par Tor.",
   "p2pTorInitializing": "Initialisation du service Tor",
   "p2pTorConnecting": "Connexion au réseau Tor",
   "p2pTorConnected": "Connecté au réseau Tor",

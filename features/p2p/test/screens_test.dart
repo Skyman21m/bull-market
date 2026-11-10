@@ -42,7 +42,7 @@ void main() {
       expect(find.text('Initializing Tor daemon'), findsOneWidget);
       expect(find.text('Connected to Tor network'), findsOneWidget);
       expect(
-        find.text('Your trades only ever go through Tor.'),
+        find.text('Coordinators are only ever reached through Tor.'),
         findsOneWidget,
       );
       expect(find.text('Retry'), findsNothing);
@@ -89,7 +89,7 @@ void main() {
       expect(find.text('Connexion au réseau Tor'), findsNWidgets(2));
       expect(find.text('Initialisation du service Tor'), findsOneWidget);
       expect(
-        find.text('Vos échanges passent uniquement par Tor.'),
+        find.text('La connexion aux coordinateurs passe uniquement par Tor.'),
         findsOneWidget,
       );
     });
