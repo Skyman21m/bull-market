@@ -158,10 +158,10 @@ abstract class P2pLocalizations {
   /// **'Using Testnet Bitcoin'**
   String get p2pTestnetBanner;
 
-  /// Ligne affichée dans l'onglet P2P pendant que Tor se connecte (l'attente se fait dans l'onglet, pas au démarrage de l'app). Texte de la maquette validée du 10/11/2026.
+  /// Line under the progress bar while Tor connects inside the P2P tab. Corrected on 10/11/2026 after review of the mock-up: payments may go through the wallet's swap service, so only the coordinators are said to be reached through Tor.
   ///
   /// In en, this message translates to:
-  /// **'Your trades only ever go through Tor.'**
+  /// **'Coordinators are only ever reached through Tor.'**
   String get p2pTorWaitingLine;
 
   /// fr.json : « Initialisation du daemon Tor » ; « daemon » est de l'anglais. Aussi affiché dans le menu P2P.

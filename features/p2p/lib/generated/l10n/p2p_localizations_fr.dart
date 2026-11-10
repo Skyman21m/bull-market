@@ -15,7 +15,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pTestnetBanner => 'Utilisation du Bitcoin Testnet';
 
   @override
-  String get p2pTorWaitingLine => 'Vos échanges passent uniquement par Tor.';
+  String get p2pTorWaitingLine =>
+      'La connexion aux coordinateurs passe uniquement par Tor.';
 
   @override
   String get p2pTorInitializing => 'Initialisation du service Tor';
