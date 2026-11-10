@@ -22,6 +22,7 @@ workspace:
   - packages/bull_pricer
   - packages/robosats
   - features/logs
+  - features/p2p
 
 dependencies:
   flutter:
@@ -35,6 +36,7 @@ dependencies:
   screen_privacy:
   bull_logger:
   bull_logs:
+  p2p:
   flutter_bloc: ^9.1.1
   get_it: ^9.1.1
   flutter_svg: ^2.2.4

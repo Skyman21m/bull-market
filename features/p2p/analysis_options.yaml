@@ -1,0 +1,13 @@
+include: package:lints/recommended.yaml
+
+linter:
+  rules:
+    - implementation_imports
+    - prefer_final_locals
+    - require_trailing_commas
+    - use_super_parameters
+
+analyzer:
+  errors:
+    # Reaching into another package's src/ is a boundary violation, not a style preference.
+    implementation_imports: error
