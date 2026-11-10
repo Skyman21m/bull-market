@@ -41,7 +41,35 @@ Côté service (`request_federation_books_usecase_test.dart`, `p2p_feature_test.
 
 ## Mesures réelles
 
-À COMPLÉTER après le lancement du test d'intégration.
+Un lancement, le 10/11/2026 entre 18:20:03 et 18:22:27 UTC, avec `integration_test/p2p_book_tor_test.dart`. Les 18 lignes de mesure brutes sont versionnées dans [transport-tor-mesures.jsonl](transport-tor-mesures.jsonl).
+
+**Conditions** : app compilée pour Linux de bureau en mode debug, lancée sans écran (Xvfb) dans un conteneur Docker, sur le PC du projet (AMD Ryzen 7 5700U). **Le PC est derrière un VPN Mullvad.** Démarrage à froid : aucun état Tor sur disque, Tor démarré par les premières requêtes du test, comme le fera le premier affichage du carnet. Un seul lancement, un seul créneau : des ordres de grandeur, pas des garanties.
+
+**Résultat : test vert.** Les 5 coordinateurs du réseau principal ont donné une identité vérifiée et un carnet lu ; sur le réseau de test, temple a répondu, lake n'a pas répondu (comme pendant la plus grande partie du spike précédent).
+
+**Démarrage de Tor** : 62,3 s entre les premières requêtes et l'état « prêt » (57,3 s pour Arti, puis la retenue de 5 s de Bull). C'est plus que les 14 à 28 s du spike : un seul lancement, cause non établie.
+
+**Chargement à froid** : les 14 requêtes (infos et carnet de 7 coordinateurs) partent en même temps. Temps en secondes depuis le début ; entre parenthèses, depuis que Tor est prêt.
+
+| Coordinateur | Réseau | Infos | Carnet | Ordres gardés | Ordres écartés | Tronqué |
+|---|---|---|---|---|---|---|
+| bazaar | mainnet | 66,2 (3,9) | 66,7 (4,3) | 18 | 0 | non |
+| ammanaya | mainnet | 78,6 (16,3) | 79,3 (16,9) | 10 | 0 | non |
+| lake | mainnet | 79,1 (16,8) | 80,3 (17,9) | 37 | 0 | non |
+| temple | mainnet | 85,2 (22,9) | 85,6 (23,2) | 32 | 0 | non |
+| freeport | mainnet | 130,7 | 130,6 | 0 (carnet vide) | 0 | non |
+| temple | testnet | 77,6 (15,2) | 77,9 (15,6) | 0 (carnet vide) | 0 | non |
+| lake | testnet | échec `CoordinatorTimedOut` à 132,0 | échec `CoordinatorTimedOut` à 132,0 | — | — | — |
+
+- **Le nouvel essai a servi** : à 18:22:05, 60,1 s après que Tor fut prêt, quatre premières tentatives ont échoué sur l'expiration du budget de connexion de Tor (`timeout`, 60 s) et ont été relancées sur une nouvelle session. Les seules requêtes encore en cours à ce moment étaient les deux de freeport et les deux de lake testnet. freeport a alors répondu en 8 s environ ; lake testnet n'a pas répondu dans les 9,6 s qui restaient avant l'échéance totale.
+- **L'échéance totale tient** : le chargement complet a duré 132,0 s, exactement l'échéance de la requête la plus lente (lake testnet), sous la borne de 3 minutes du test.
+- **Premiers contacts plus lents que dans le spike** : 3,9 à 23,2 s après que Tor fut prêt, contre 2 à 13 s une par une dans le spike. Ici 7 sessions s'ouvrent en même temps juste après le démarrage de Tor ; l'effet propre du parallélisme n'est pas isolé.
+- **Aucun ordre écarté** par le paquet `robosats` sur 97 ordres reçus, aucun carnet tronqué.
+- **Aucun refus lié aux en-têtes** : sans `User-Agent` et avec `Accept-Encoding: identity`, les 6 coordinateurs joints ont répondu en JSON valide (le leurre envoyé à `curl` n'est pas apparu).
+
+**Chargement à chaud** (les 5 carnets du réseau principal relus aussitôt après, sur les sessions déjà ouvertes) : 0,8 à 4,3 s par coordinateur, 4,3 s en tout, 5 sur 5.
+
+**Conséquence pour les écrans (#29)** : à froid, l'échéance totale court pendant le démarrage de Tor. Ici Tor a pris 62 s sur 132 : un premier contact qui échoue au bout des 60 s du budget Tor ne laisse plus qu'environ 10 s au nouvel essai. Deux pistes, à trancher avec les écrans : attendre l'état « prêt » (`watchTorState`) avant de lancer les carnets, ou relancer automatiquement les coordinateurs en échec une fois Tor prêt.
 
 ## Ce qui n'est pas vérifié
 
