@@ -67,13 +67,28 @@ final class _Server {
 /// A coordinator written byte by byte: [onRequest] runs once the request arrives.
 final class _RawServer {
   final ServerSocket _socket;
+  final _clientGone = Completer<void>();
+
+  /// The connections the server accepted.
+  int connections = 0;
 
   _RawServer._(this._socket);
 
   Uri url(String path) => Uri.parse('http://127.0.0.1:${_socket.port}$path');
 
+  /// Completes when a client closes its connection: the server sees it go away.
+  Future<void> get clientGone => _clientGone.future;
+
   Future<void> close() => _socket.close();
 }
+
+/// The headers of a JSON answer that announces [length] bytes.
+List<int> _jsonHead(int length) => utf8.encode(
+  'HTTP/1.1 200 OK\r\n'
+  'Content-Type: application/json\r\n'
+  'Content-Length: $length\r\n'
+  '\r\n',
+);
 
 /// Answers with [body] as JSON, with a `Content-Length`.
 Future<void> Function(HttpRequest) _json(String body) => (request) async {
@@ -169,19 +184,29 @@ void main() {
 
   Future<_RawServer> rawServer(Future<void> Function(Socket) onRequest) async {
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    socket.listen((client) {
-      var answered = false;
-      client.listen((_) {
-        if (answered) return;
-        answered = true;
-        onRequest(client).catchError((Object _) {});
-      }, onError: (Object _) {});
-    });
     final server = _RawServer._(socket);
+    socket.listen((client) {
+      server.connections++;
+      var answered = false;
+      void gone() {
+        if (!server._clientGone.isCompleted) server._clientGone.complete();
+      }
+
+      client.listen(
+        (_) {
+          if (answered) return;
+          answered = true;
+          onRequest(client).catchError((Object _) {});
+        },
+        onError: (Object _) => gone(),
+        onDone: gone,
+      );
+    });
     rawServers.add(server);
     return server;
   }
 
+  /// A transport that reaches the loopback servers of these tests instead of onion services.
   TorCoordinatorTransport transport({
     Duration deadline = const Duration(seconds: 5),
     HttpClient Function(TorProxyEndpoint endpoint)? createHttpClient,
@@ -192,6 +217,7 @@ void main() {
       createHttpClient: createHttpClient ?? (_) => HttpClient(),
       deadline: deadline,
       attemptTimeout: const Duration(seconds: 10),
+      acceptsHost: (host) => host == '127.0.0.1',
     );
     transports.add(transport);
     return transport;
@@ -359,6 +385,26 @@ void main() {
       expect(result, _failsWith<CoordinatorResponseTooLarge>());
     });
 
+    test(
+      'refuses at once a body announced too large, and drops the connection',
+      () async {
+        final raw = await rawServer((socket) async {
+          // No body follows: only the announced length can refuse the answer.
+          socket.add(_jsonHead(1024 * 1024 * 1024));
+          await socket.flush();
+        });
+        final watch = Stopwatch()..start();
+
+        final result = await transport().send(
+          _get(raw.url('/api/book/'), maxResponseBytes: 64 * 1024),
+        );
+
+        expect(result, _failsWith<CoordinatorResponseTooLarge>());
+        expect(watch.elapsed, lessThan(const Duration(seconds: 1)));
+        await raw.clientGone.timeout(const Duration(seconds: 1));
+      },
+    );
+
     test('stops reading a chunked body one byte over the cap', () async {
       final server = await serve({'/api/book/': _chunked(4097)});
 
@@ -443,41 +489,64 @@ void main() {
   });
 
   group('deadline', () {
-    test('cuts a body sent a byte at a time', () async {
-      final server = await serve({
-        '/api/book/': (request) async {
-          request.response
-            ..headers.contentType = ContentType.json
-            ..contentLength = 1000;
-          for (var i = 0; i < 1000; i++) {
-            request.response.add(const [0x20]);
-            await request.response.flush();
-            await Future<void>.delayed(const Duration(milliseconds: 50));
-          }
-          await request.response.close();
-        },
+    test('cuts a body sent a byte at a time, and drops the connection', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(_jsonHead(1000));
+        for (var i = 0; i < 1000; i++) {
+          socket.add(const [0x20]);
+          await socket.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
       });
       final watch = Stopwatch()..start();
 
       final result = await transport(
         deadline: const Duration(seconds: 1),
-      ).send(_get(server.url('/api/book/')));
+      ).send(_get(raw.url('/api/book/')));
 
       expect(result, _failsWith<CoordinatorTimedOut>());
       expect(watch.elapsed, greaterThanOrEqualTo(const Duration(seconds: 1)));
       expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+      // The request is abandoned, not only answered for.
+      await raw.clientGone.timeout(const Duration(seconds: 1));
     });
 
-    test('cuts a coordinator that never sends its headers', () async {
-      final server = await serve({
-        '/api/info/': (request) => Completer<void>().future,
-      });
+    test(
+      'cuts a coordinator that never sends its headers, and drops the connection',
+      () async {
+        final raw = await rawServer((socket) => Completer<void>().future);
+
+        final result = await transport(
+          deadline: const Duration(seconds: 1),
+        ).send(_get(raw.url('/api/info/')));
+
+        expect(result, _failsWith<CoordinatorTimedOut>());
+        await raw.clientGone.timeout(const Duration(seconds: 1));
+        expect(sessions.closed, {0});
+      },
+    );
+
+    test('cancels a connection still being made', () async {
+      var cancelled = 0;
 
       final result = await transport(
-        deadline: const Duration(seconds: 1),
-      ).send(_get(server.url('/api/info/')));
+        deadline: const Duration(milliseconds: 300),
+        createHttpClient: (_) => HttpClient()
+          ..connectionFactory = (uri, proxyHost, proxyPort) async =>
+              ConnectionTask.fromSocket(
+                Completer<Socket>().future,
+                () => cancelled++,
+              ),
+      ).send(_get(Uri.parse('http://127.0.0.1:1/api/info/')));
 
       expect(result, _failsWith<CoordinatorTimedOut>());
+      final watch = Stopwatch()..start();
+      while (cancelled == 0 && watch.elapsed < const Duration(seconds: 1)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      // Without this, the connection would wait for the timeout of the attempt, ten seconds here.
+      expect(cancelled, 1);
+      expect(sessions.closed, {0});
     });
 
     test('cuts a Tor session that never opens', () async {
@@ -558,6 +627,82 @@ void main() {
       expect(sessions.closed, {0});
     });
 
+    test('retries a connection closed before the headers', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(utf8.encode('HTTP/1.1 200 OK\r\nContent-Type: appl'));
+        await socket.flush();
+        socket.destroy();
+      });
+
+      final result = await transport().send(_get(raw.url('/api/info/')));
+
+      expect(result, _failsWith<CoordinatorUnreachable>());
+      expect(sessions.opened, hasLength(1 + coordinatorConnectRetries));
+    });
+
+    test(
+      'closes a replaced session only when its last request ends',
+      () async {
+        final arrived = Completer<void>();
+        final release = Completer<void>();
+        final server = await serve({
+          '/slow': (request) async {
+            request.response
+              ..headers.contentType = ContentType.json
+              ..write('[');
+            await request.response.flush();
+            arrived.complete();
+            await release.future;
+            request.response.write(']');
+            await request.response.close();
+          },
+          '/fast': _json('{}'),
+        });
+        var connections = 0;
+        final tor = transport(
+          createHttpClient: (endpoint) {
+            if (_Sessions.indexOf(endpoint) != 0) return HttpClient();
+            // The first session connects once, then Tor refuses it.
+            return HttpClient()
+              ..connectionFactory = (uri, proxyHost, proxyPort) async {
+                connections++;
+                if (connections > 1) {
+                  throw SocksClientConnectionCommandFailedException(
+                    CommandReplyCode.hostUnreachable,
+                  );
+                }
+                return ConnectionTask.fromSocket(
+                  Socket.connect(uri.host, uri.port),
+                  () {},
+                );
+              };
+          },
+        );
+
+        final slow = tor.send(_get(server.url('/slow')));
+        await arrived.future;
+        final fast = await tor.send(_get(server.url('/fast')));
+
+        expect(
+          fast,
+          isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        expect(sessions.opened, hasLength(2));
+        // The first session is replaced, but its slow request still runs on it.
+        expect(sessions.closed, isEmpty);
+
+        release.complete();
+        expect(
+          await slow,
+          isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(sessions.closed, {0});
+        await tor.send(_get(server.url('/fast')));
+        expect(sessions.opened, hasLength(2));
+      },
+    );
+
     test('reports a connection lost in the middle of the body', () async {
       final raw = await rawServer((socket) async {
         socket.add(
@@ -578,6 +723,133 @@ void main() {
       expect(result, _failsWith<CoordinatorUnreachable>());
       expect(sessions.opened, hasLength(1));
     });
+  });
+
+  group('answers that are not HTTP fail at once, without retry', () {
+    for (final (name, answer) in [
+      ('garbage instead of a status line', 'GARBAGE GARBAGE\r\n\r\n'),
+      (
+        'a negative Content-Length',
+        'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n'
+            'Content-Length: -5\r\n\r\n{}',
+      ),
+      (
+        'two Content-Lengths',
+        'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n'
+            'Content-Length: 2\r\nContent-Length: 900000\r\n\r\n{}',
+      ),
+      (
+        'a NUL in a header',
+        'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n'
+            'X-A: a\u0000b\r\nContent-Length: 2\r\n\r\n{}',
+      ),
+    ]) {
+      test(name, () async {
+        final raw = await rawServer((socket) async {
+          socket.add(latin1.encode(answer));
+          await socket.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          socket.destroy();
+        });
+
+        final result = await transport().send(_get(raw.url('/api/book/')));
+
+        expect(result, _failsWith<CoordinatorTransportFailed>());
+        expect(sessions.opened, hasLength(1));
+      });
+    }
+
+    test('an endless header section', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(
+          utf8.encode('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n'),
+        );
+        final line = utf8.encode('X-Pad: ${'a' * 4000}\r\n');
+        // Bounded only so that a broken transport fails this test instead of filling the memory.
+        for (var sent = 0; sent < 64 * 1024 * 1024; sent += line.length) {
+          socket.add(line);
+          await socket.flush();
+        }
+      });
+
+      final result = await transport().send(_get(raw.url('/api/book/')));
+
+      expect(result, _failsWith<CoordinatorTransportFailed>());
+      expect(sessions.opened, hasLength(1));
+    });
+  });
+
+  group('only reaches onion services', () {
+    test('refuses by default anything but http to a .onion host', () async {
+      final tor = TorCoordinatorTransport.withSeams(
+        openSession: sessions.open,
+        createHttpClient: (_) => HttpClient(),
+      );
+      transports.add(tor);
+
+      for (final url in [
+        'https://ammannjgzybw4qm2odmci7xgolh5grzijidacjxose5tthm375dcopad.onion/api/info/',
+        'http://example.com/api/info/',
+        'http://127.0.0.1/api/info/',
+        'file:///etc/passwd',
+        'ftp://ammannjgzybw4qm2odmci7xgolh5grzijidacjxose5tthm375dcopad.onion/',
+      ]) {
+        expect(
+          await tor.send(_get(Uri.parse(url))),
+          _failsWith<CoordinatorTransportFailed>(),
+          reason: url,
+        );
+      }
+      // Nothing can be sent without a session.
+      expect(sessions.opened, isEmpty);
+    });
+
+    test('lets an http .onion URL through to Tor', () async {
+      var asked = 0;
+      final tor = TorCoordinatorTransport.withSeams(
+        openSession: () async {
+          asked++;
+          throw const TorBackendException(TorBootstrapFailure('offline'));
+        },
+        createHttpClient: (_) => HttpClient(),
+      );
+
+      final result = await tor.send(
+        _get(
+          Uri.parse(
+            'http://ammannjgzybw4qm2odmci7xgolh5grzijidacjxose5tthm375dcopad.onion/api/info/',
+          ),
+        ),
+      );
+
+      expect(result, _failsWith<CoordinatorUnreachable>());
+      expect(asked, 1);
+    });
+  });
+
+  group('programming errors', () {
+    test('an Error from the session opener reaches the caller', () async {
+      final tor = transport(openSession: () async => throw StateError('bug'));
+
+      await expectLater(
+        tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
+      'an Error from the client factory reaches the caller, and the session is closed',
+      () async {
+        final tor = transport(createHttpClient: (_) => throw ArgumentError());
+
+        await expectLater(
+          tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/'))),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(sessions.opened, hasLength(1));
+        expect(sessions.closed, {0});
+      },
+    );
   });
 
   group('never throws', () {
@@ -684,18 +956,28 @@ void main() {
       expect(sessions.closed, {0});
     });
 
-    test('closes a session that finishes opening afterwards', () async {
-      final opening = Completer<TorSession>();
-      final tor = transport(openSession: () => opening.future);
+    test(
+      'closes a session that finishes opening afterwards, unused',
+      () async {
+        final raw = await rawServer((socket) async {
+          socket.add(_jsonHead(2));
+          socket.add(utf8.encode('{}'));
+          await socket.flush();
+        });
+        final opening = Completer<TorSession>();
+        final tor = transport(openSession: () => opening.future);
 
-      final pending = tor.send(_get(Uri.parse('http://127.0.0.1:1/api/info/')));
-      await Future<void>.delayed(Duration.zero);
-      await tor.closeSessions();
-      opening.complete(await sessions.open());
+        final pending = tor.send(_get(raw.url('/api/info/')));
+        await Future<void>.delayed(Duration.zero);
+        await tor.closeSessions();
+        opening.complete(await sessions.open());
 
-      expect(await pending, _failsWith<CoordinatorTransportFailed>());
-      expect(sessions.closed, {0});
-    });
+        expect(await pending, _failsWith<CoordinatorTransportFailed>());
+        expect(sessions.closed, {0});
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(raw.connections, 0);
+      },
+    );
   });
 }
 
