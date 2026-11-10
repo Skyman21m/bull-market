@@ -451,6 +451,37 @@ void main() {
       ]);
     });
 
+    test('drops the orders that do not match the filters', () async {
+      serve(
+        '/api/book/',
+        Ok(
+          jsonResponse([
+            _order({'id': 1, 'currency': 2, 'type': 1}),
+            _order({'id': 2, 'currency': 1, 'type': 1}),
+            _order({'id': 3, 'currency': 2, 'type': 0}),
+            _order({'id': 4, 'currency': 2, 'type': 1}),
+          ]),
+        ),
+      );
+      final book = _value(
+        await client.fetchBook(
+          temple,
+          _mainnet,
+          currency: RobosatsCurrency.fromId(2),
+          type: OrderType.sell,
+        ),
+      );
+      expect(book.orders.map((o) => o.id), [1, 4]);
+      expect(book.dropped, [
+        DroppedOrderReason.filterMismatch,
+        DroppedOrderReason.filterMismatch,
+      ]);
+      final byType = _value(
+        await client.fetchBook(temple, _mainnet, type: OrderType.buy),
+      );
+      expect(byType.orders.map((o) => o.id), [3]);
+    });
+
     test('drops every copy of a duplicated id', () async {
       final book = await bookOf([
         _order({'id': 1}),

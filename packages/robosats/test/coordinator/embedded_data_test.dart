@@ -117,6 +117,65 @@ void main() {
       expect(coordinatorEstablished('temple'), DateTime.utc(2023, 12, 2));
     });
 
+    test('has no problem, and problems are found in a broken list', () {
+      expect(Federation.robosats.problems(), isEmpty);
+      final temple = Federation.robosats.coordinators.first;
+      Coordinator broken({
+        String? shortAlias,
+        CoordinatorOrigins? mainnet,
+        CoordinatorOrigins? testnet,
+        List<String>? testnetNodesPubkeys,
+        String? established,
+      }) => Coordinator(
+        shortAlias: shortAlias ?? temple.shortAlias,
+        longAlias: temple.longAlias,
+        identifier: temple.identifier,
+        description: temple.description,
+        motto: temple.motto,
+        color: temple.color,
+        established: established ?? temple.established,
+        nostrHexPubkey: temple.nostrHexPubkey,
+        contact: temple.contact,
+        badges: temple.badges,
+        policies: temple.policies,
+        mainnet: mainnet ?? temple.mainnet,
+        testnet: testnet ?? temple.testnet,
+        mainnetNodesPubkeys: temple.mainnetNodesPubkeys,
+        testnetNodesPubkeys: testnetNodesPubkeys ?? temple.testnetNodesPubkeys,
+        federated: temple.federated,
+      );
+      expect(Federation([temple, broken()]).problems(), [
+        'temple: duplicated alias',
+      ]);
+      expect(Federation([broken(shortAlias: 'Temple')]).problems(), [
+        'Temple: malformed alias',
+      ]);
+      expect(
+        Federation([broken(mainnet: const CoordinatorOrigins())]).problems(),
+        ['temple: no mainnet onion'],
+      );
+      expect(
+        Federation([
+          broken(
+            mainnet: const CoordinatorOrigins(onion: 'http://example.onion'),
+          ),
+        ]).problems(),
+        ['temple: malformed mainnet onion'],
+      );
+      expect(Federation([broken(testnetNodesPubkeys: [])]).problems(), [
+        'temple: no testnet node key',
+      ]);
+      expect(
+        Federation([
+          broken(testnetNodesPubkeys: ['04ab']),
+        ]).problems(),
+        ['temple: malformed testnet node key'],
+      );
+      expect(Federation([broken(established: '2023-13-45')]).problems(), [
+        'temple: malformed established date',
+      ]);
+    });
+
     test('lists the testnet coordinators', () {
       expect(
         Federation.robosats

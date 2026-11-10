@@ -62,8 +62,11 @@ final class PaymentMethods {
   ];
 
   /// Characters the official client removes before matching (`components/PaymentMethods/StringAsIcons.tsx:30`).
+  ///
+  /// Its pattern matches surrogate pairs one UTF-16 unit at a time; here the same characters are written as code point ranges.
   static final RegExp _emoji = RegExp(
-    '[✀-➿]|[-]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[‑-⛿]|\uD83E[\uDD10-\uDDFF]',
+    r'[\u{2700}-\u{27BF}]|[\u{E000}-\u{F8FF}]|[\u{1F000}-\u{1F3FF}]|[\u{1F400}-\u{1F7FF}]|[\u{2011}-\u{26FF}]|[\u{1F910}-\u{1F9FF}]',
+    unicode: true,
   );
 
   /// Recognises the methods in [text] as the official client does: a case-insensitive whole-word match of each name, emoji removed.

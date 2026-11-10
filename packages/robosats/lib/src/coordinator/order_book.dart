@@ -3,7 +3,9 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/public_order.dart';
+import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/read_bounds.dart';
+import 'package:robosats/src/coordinator/robosats_currency.dart';
 import 'package:robosats/src/robosats_failure.dart';
 
 /// The public orders of one coordinator, as `GET /api/book/` lists them.
@@ -38,13 +40,16 @@ final class OrderBook {
   /// Reads the decoded body of a `200` answer: a JSON array of orders.
   ///
   /// A body that is not an array rejects the response; of a longer array, only the first `CoordinatorReadBounds.maxOrders` elements are read and [truncated] is set, so a coordinator with a larger `MAX_PUBLIC_ORDERS` keeps a book.
+  /// An order of another [currency] or [type] than the book was asked for is dropped too.
   /// An invalid order is dropped alone, so a coordinator cannot blank its book, let alone the others, with one bad order; orders that share an id are all dropped, since none of them can be told apart.
   @internal
   static Result<OrderBook, CoordinatorFailure> parse(
     Object? body,
     Coordinator coordinator,
-    DateTime now,
-  ) {
+    DateTime now, {
+    RobosatsCurrency? currency,
+    OrderType? type,
+  }) {
     if (body is! List<Object?>) {
       return const Err(CoordinatorResponseMalformed('book'));
     }
@@ -53,6 +58,10 @@ final class OrderBook {
     final dropped = <DroppedOrderReason>[];
     for (final element in body.take(CoordinatorReadBounds.maxOrders)) {
       switch (PublicOrder.parse(element, coordinator, now)) {
+        case (order: final PublicOrder order, dropped: _)
+            when (currency != null && order.currency != currency) ||
+                (type != null && order.type != type):
+          dropped.add(DroppedOrderReason.filterMismatch);
         case (order: final PublicOrder order, dropped: _):
           parsed.add(order);
         case (order: _, dropped: final reason?):

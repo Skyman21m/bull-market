@@ -83,12 +83,15 @@ final class FederationBookReader {
     RobosatsNetwork network, {
     RobosatsCurrency? currency,
     OrderType? type,
-  }) => [
-    for (final coordinator in federation.coordinators)
-      _client
-          .fetchBook(coordinator, network, currency: currency, type: type)
-          .then((result) => CoordinatorBookOutcome(coordinator, result)),
-  ];
+  }) {
+    assert(federation.problems().isEmpty, 'invalid federation list');
+    return [
+      for (final coordinator in federation.coordinators)
+        _client
+            .fetchBook(coordinator, network, currency: currency, type: type)
+            .then((result) => CoordinatorBookOutcome(coordinator, result)),
+    ];
+  }
 
   /// Waits for every request of [requestAll] and merges them.
   Future<FederationBook> read(

@@ -5,6 +5,7 @@ import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/coordinator_info.dart';
 import 'package:robosats/src/coordinator/coordinator_transport.dart';
 import 'package:robosats/src/coordinator/currency_limits.dart';
+import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/order_book.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/read_bounds.dart';
@@ -49,6 +50,7 @@ final class CoordinatorClient {
   ///
   /// The official client sends no parameter, which is the same as asking for every currency and both types (`currency=0`, `type=2`).
   /// A coordinator with no order answers `404`, which gives an empty book.
+  /// An order that does not match the filters is dropped with [DroppedOrderReason.filterMismatch].
   Future<Result<OrderBook, CoordinatorFailure>> fetchBook(
     Coordinator coordinator,
     RobosatsNetwork network, {
@@ -69,7 +71,13 @@ final class CoordinatorClient {
     }
     return switch (_decodeOk(response)) {
       Err(:final failure) => Err(failure),
-      Ok(:final value) => OrderBook.parse(value, coordinator, _clock()),
+      Ok(:final value) => OrderBook.parse(
+        value,
+        coordinator,
+        _clock(),
+        currency: currency,
+        type: type,
+      ),
     };
   }
 

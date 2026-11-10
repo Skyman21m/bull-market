@@ -48,6 +48,33 @@ void main() {
       expect(methods.hasOtherText, isFalse);
     });
 
+    test('ignores the other characters the official client removes', () {
+      for (final codePoint in [
+        0xE000,
+        0xF8FF,
+        0x1F600,
+        0x1F3FF,
+        0x1F910,
+        0x2700,
+        0x2011,
+      ]) {
+        final methods = PaymentMethods.parse(
+          'Wise ${String.fromCharCode(codePoint)}',
+        );
+        expect(
+          methods.hasOtherText,
+          isFalse,
+          reason: codePoint.toRadixString(16),
+        );
+      }
+      expect(
+        PaymentMethods.parse(
+          'Wise ${String.fromCharCode(0x1F90F)}',
+        ).hasOtherText,
+        isTrue,
+      );
+    });
+
     test('flags reversible methods', () {
       expect(PaymentMethods.parse('PIX').hasReversible, isTrue);
       expect(PaymentMethods.parse('Wise').hasReversible, isFalse);
