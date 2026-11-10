@@ -35,14 +35,17 @@ final class GarageKey {
 
   const GarageKey._(this._bytes);
 
-  /// Draws a new key from [random], which defaults to the platform's cryptographically secure generator.
+  /// Draws a new key from the platform's cryptographically secure generator.
+  factory GarageKey.generate() => GarageKey.generateWith(Random.secure());
+
+  /// Draws a new key from [random].
   ///
-  /// Inject [random] in tests only.
-  factory GarageKey.generate({Random? random}) {
-    final source = random ?? Random.secure();
+  /// For tests only: a Garage Key is only as strong as [random].
+  @visibleForTesting
+  factory GarageKey.generateWith(Random random) {
     final bytes = Uint8List(byteLength);
     for (var i = 0; i < byteLength; i++) {
-      bytes[i] = source.nextInt(256);
+      bytes[i] = random.nextInt(256);
     }
     return GarageKey._(bytes);
   }

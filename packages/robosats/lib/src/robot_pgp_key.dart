@@ -8,6 +8,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/src/pgp/armor.dart';
 import 'package:robosats/src/pgp/bytes.dart';
 import 'package:robosats/src/pgp/key_packets.dart';
+import 'package:robosats/src/pgp/limits.dart';
 import 'package:robosats/src/pgp/message_cipher.dart';
 import 'package:robosats/src/pgp/primitives.dart';
 import 'package:robosats/src/pgp/signature_packets.dart';
@@ -21,8 +22,6 @@ import 'package:robosats/src/robot_identity.dart';
 /// A coordinator refuses a key younger than 12 hours (`api/utils.py:582-594`), and the offset absorbs a client clock that runs ahead.
 const _backdating = Duration(days: 1);
 
-const _onePassSignatureTag = 4;
-const _literalDataTag = 11;
 const _utf8LiteralFormat = 0x75;
 
 /// [time], or the system clock, moved [back] and truncated to the whole seconds OpenPGP dates hold.
@@ -70,8 +69,12 @@ final class PgpPublicKey {
 
   /// Reads an armored public key, with its line breaks or with the backslashes RoboSats puts in their place.
   ///
-  /// Fails with [PgpArmorMalformed] or [PgpKeyUnsupported].
+  /// The key is not checked against a clock: [verifyCleartext] and the chat methods do that.
+  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpKeyUnsupported].
   static Result<PgpPublicKey, PgpFailure> parse(String armored) {
+    if (armored.length > PgpLimits.keyArmorChars) {
+      return const Err(PgpInputTooLarge());
+    }
     final text = pgpArmorFromWire(armored);
     final bytes = armorDecode(ArmorBlock.publicKey, text);
     if (bytes == null) return const Err(PgpArmorMalformed());
@@ -86,30 +89,45 @@ final class PgpPublicKey {
     }
   }
 
-  /// Returns the text of [signedMessage] when its signature is a valid cleartext signature by the primary key of this key.
+  /// Returns the text [signedMessage] signs when its signature is a valid cleartext signature by the primary key of this key, as of [now].
   ///
-  /// This is the check a coordinator runs on an invoice or a payout address, without its requirement on the exact header.
-  /// Fails with [PgpArmorMalformed] or [PgpSignatureInvalid].
-  Result<String, PgpFailure> verifyCleartext(String signedMessage) {
+  /// This is the check a coordinator runs on an invoice or a payout address, with the date rules of the official client: the signature must not be dated after [now], expired, older than the key, or made when the key was expired.
+  /// The text returned is the signed text itself: trailing spaces and tabs, which a cleartext signature does not cover, are dropped from every line.
+  /// A `Hash` header naming the hash of the signature is required, as coordinators require `Hash: SHA512` (`api/utils.py:642`).
+  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpSignatureInvalid].
+  Result<String, PgpFailure> verifyCleartext(
+    String signedMessage, {
+    DateTime? now,
+  }) {
+    if (signedMessage.length > PgpLimits.cleartextChars) {
+      return const Err(PgpInputTooLarge());
+    }
     final parts = cleartextDecode(signedMessage);
-    if (parts == null) return const Err(PgpArmorMalformed());
-    final canonical = canonicalText(parts.text);
+    if (parts == null || parts.hashes.isEmpty) {
+      return const Err(PgpArmorMalformed());
+    }
+    final List<RawPacket> packets;
     try {
-      for (final packet in decodePackets(parts.signature)) {
-        if (packet.tag != PacketTag.signature) continue;
-        final signature = SignatureBody.parse(packet.body);
-        // GnuPG refuses a message whose `Hash` header disagrees with its signature.
-        if (signature.type == SignatureType.text &&
-            (parts.hashes.isEmpty ||
-                parts.hashes.contains(hashName(signature.hashId))) &&
-            signature.verify(canonical, _key.primary.point)) {
-          return Ok(parts.text);
-        }
-      }
+      packets = decodePackets(
+        parts.signature,
+        maxPackets: PgpLimits.signatures,
+      );
     } on FormatException {
       return const Err(PgpSignatureInvalid());
-    } on UnsupportedPgpException {
-      return const Err(PgpSignatureInvalid());
+    }
+    final canonical = canonicalText(parts.text);
+    final time = _epochSeconds(now);
+    for (final packet in packets) {
+      if (packet.tag != PacketTag.signature) continue;
+      final signature = _tryParseSignature(packet.body);
+      // GnuPG and OpenPGP.js refuse a message whose `Hash` header disagrees with its signature.
+      if (signature != null &&
+          signature.type == SignatureType.text &&
+          parts.hashes.contains(hashName(signature.hashId)) &&
+          _key.acceptsSignatureDates(signature, time) &&
+          signature.verify(canonical, _key.primary.point)) {
+        return Ok(canonicalLines(parts.text));
+      }
     }
     return const Err(PgpSignatureInvalid());
   }
@@ -148,41 +166,46 @@ final class RobotPgpKey {
     this._secretKey,
   );
 
-  /// Generates the key the official client would generate for [identity].
+  /// Generates the key the official client would generate for [identity], with the system clock and a cryptographically secure generator.
   ///
-  /// The key is version 4, Ed25519 with a Curve25519 encryption subkey, named `RoboSats ID <hash id>`, locked by the token, and created exactly 24 hours before [now].
+  /// The key is version 4, Ed25519 with a Curve25519 encryption subkey, named `RoboSats ID <hash id>`, locked by the token, and dated exactly 24 hours in the past.
   /// The official client subtracts one calendar day in local time instead, which differs by an hour on the two days a year the clock changes.
-  /// [random] defaults to `Random.secure()` and [now] to the system clock: with both fixed, the result is fixed, byte for byte.
   /// Hashing the passphrase takes 32 MiB of SHA-256: call it off the UI isolate.
-  static RobotPgpKey generate(
+  static RobotPgpKey generate(RobotIdentity identity) =>
+      generateWith(identity, now: DateTime.now(), random: Random.secure());
+
+  /// [generate] with a given clock and source of randomness: with both fixed, the result is fixed, byte for byte.
+  ///
+  /// For tests only: a key is only as strong as [random].
+  @visibleForTesting
+  static RobotPgpKey generateWith(
     RobotIdentity identity, {
-    DateTime? now,
-    Random? random,
+    required DateTime now,
+    required Random random,
   }) {
+    final passphrase = utf8.encode(identity.token.reveal());
     final generated = TransferableKey.generate(
       userId: identity.pgpUserId,
-      passphrase: utf8.encode(identity.token.reveal()),
+      passphrase: passphrase,
       createdAt: _epochSeconds(now, back: _backdating),
-      random: random ?? Random.secure(),
+      random: random,
     );
-    final publicArmored = armorEncode(
-      ArmorBlock.publicKey,
-      generated.key.encodePublic(generated.secretKeys),
-    );
+    wipe(passphrase);
+    final publicArmored = armorEncode(ArmorBlock.publicKey, generated.public);
     return RobotPgpKey._(
-      PgpPublicKey._(publicArmored, generated.key),
-      armorEncode(
-        ArmorBlock.privateKey,
-        generated.key.encodePrivate(generated.secretKeys),
+      PgpPublicKey._(
+        publicArmored,
+        TransferableKey.parse(generated.public, secret: false),
       ),
-      generated.key,
+      armorEncode(ArmorBlock.privateKey, generated.private),
+      TransferableKey.parse(generated.private, secret: true),
     );
   }
 
   /// Reads the two blocks of a robot, as generated earlier or as a coordinator returns them (`public_key` and `encrypted_private_key` of `GET /api/robot/`).
   ///
   /// The private key is not unlocked: no token is needed.
-  /// Fails with [PgpArmorMalformed], [PgpKeyUnsupported], or [PgpKeyPairMismatch] when the two blocks are not the same key.
+  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed], [PgpKeyUnsupported], or [PgpKeyPairMismatch] when the two blocks are not the same key.
   static Result<RobotPgpKey, PgpFailure> parse({
     required String publicKey,
     required String encryptedPrivateKey,
@@ -193,6 +216,9 @@ final class RobotPgpKey {
         public = value;
       case Err(:final failure):
         return Err(failure);
+    }
+    if (encryptedPrivateKey.length > PgpLimits.keyArmorChars) {
+      return const Err(PgpInputTooLarge());
     }
     final privateText = pgpArmorFromWire(encryptedPrivateKey);
     final bytes = armorDecode(ArmorBlock.privateKey, privateText);
@@ -229,14 +255,15 @@ final class RobotPgpKey {
   /// Hashing the passphrase takes 32 MiB of SHA-256: call it off the UI isolate, and unlock once for a batch of messages rather than once per message.
   /// Fails with [PgpWrongPassphrase], or with [PgpKeyUnsupported] when the secret values do not match the public key.
   Result<UnlockedRobotPgpKey, PgpFailure> unlock(RobotIdentity identity) {
+    final passphrase = utf8.encode(identity.token.reveal());
     try {
-      final secretKeys = _secretKey.unlock(
-        utf8.encode(identity.token.reveal()),
-      );
+      final secretKeys = _secretKey.unlock(passphrase);
       if (secretKeys == null) return const Err(PgpWrongPassphrase());
       return Ok(UnlockedRobotPgpKey._(this, identity, secretKeys));
     } on UnsupportedPgpException {
       return const Err(PgpKeyUnsupported());
+    } finally {
+      wipe(passphrase);
     }
   }
 
@@ -268,11 +295,12 @@ final class UnlockedRobotPgpKey {
   ///
   /// It reproduces `signCleartextMessage` of `frontend/src/pgp/index.ts:102-119`: a text signature over SHA-512 by the primary key, dated [now].
   /// The result starts with exactly `-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n`, the string a coordinator splits on (`api/utils.py:642-644`).
-  /// Fails with [PgpCleartextUnsuitable] when the coordinator's parser would not hand [text] back intact.
-  Result<String, PgpCleartextUnsuitable> signCleartext(
-    String text, {
-    DateTime? now,
-  }) {
+  /// A clock that runs behind the date of the key would give a signature GnuPG and the official client refuse: the signature is then dated like the key.
+  /// Fails with [PgpInputTooLarge], or with [PgpCleartextUnsuitable] when the coordinator's parser would not hand [text] back intact.
+  Result<String, PgpFailure> signCleartext(String text, {DateTime? now}) {
+    if (text.length > PgpLimits.cleartextChars ~/ 2) {
+      return const Err(PgpInputTooLarge());
+    }
     if (!_survivesCoordinatorParsing(text)) {
       return const Err(PgpCleartextUnsuitable());
     }
@@ -287,7 +315,7 @@ final class UnlockedRobotPgpKey {
             primary: primary,
             canonicalData: canonicalText(text),
             seed: _secretKeys.ed25519Seed,
-            createdAt: _epochSeconds(now),
+            createdAt: max(_epochSeconds(now), primary.createdAt),
           ),
         ),
       ),
@@ -297,59 +325,91 @@ final class UnlockedRobotPgpKey {
   /// Encrypts [plaintext] to this robot and to [peer], and signs it: the armored `PGP MESSAGE` a robot posts to the chat of an order.
   ///
   /// It reproduces `encryptMessage` of `frontend/src/pgp/index.ts:39-62`: both recipients in that order, so that each trader can read the whole history, AES-256, no compression, and a signature dated 24 hours before [now].
+  /// The official client refuses a signature older than its key, so the signature is never dated before the key of this robot.
   /// On `POST /api/chat/` the result travels in the `PGP_message` field with its line breaks turned into backslashes: see [pgpArmorToWire].
   /// The plaintext never leaves the device: a coordinator stores only this block (`chat/models.py:87`), and the robot reads its own messages back by decrypting them.
-  /// Fails with [PgpPlaintextContainsToken], as the official client refuses to send a message that contains the robot token.
-  Result<String, PgpPlaintextContainsToken> encryptChatMessage(
+  /// Fails with [PgpInputTooLarge], with [PgpPlaintextContainsToken], as the official client refuses to send a message that contains the robot token, with [PgpKeyOutOfDate] when either key cannot be used at [now], and with [PgpKeyUnsupported] when [peer] cannot be encrypted to.
+  Result<String, PgpFailure> encryptChatMessage(
     String plaintext, {
     required PgpPublicKey peer,
     DateTime? now,
+  }) => encryptChatMessageWith(
+    plaintext,
+    peer: peer,
+    now: now ?? DateTime.now(),
+    random: Random.secure(),
+  );
+
+  /// [encryptChatMessage] with a given source of randomness: with it and the clock fixed, the result is fixed, byte for byte.
+  ///
+  /// For tests only: a message is only as secret as [random].
+  @visibleForTesting
+  Result<String, PgpFailure> encryptChatMessageWith(
+    String plaintext, {
+    required PgpPublicKey peer,
+    required DateTime now,
+    required Random random,
   }) {
+    final text = utf8.encode(plaintext);
+    if (text.length > PgpLimits.messageTextBytes) {
+      return const Err(PgpInputTooLarge());
+    }
     if (plaintext.contains(_identity.token.reveal())) {
       return const Err(PgpPlaintextContainsToken());
     }
-    final primary = key._secretKey.primary;
-    final data = _canonicalLineEndings(utf8.encode(plaintext));
+    final own = key._secretKey;
+    final time = _epochSeconds(now);
+    if (!own.canReceiveAt(time) || !peer._key.canReceiveAt(time)) {
+      return const Err(PgpKeyOutOfDate());
+    }
+    final data = _canonicalLineEndings(text);
     final signature = textSignature(
-      primary: primary,
+      primary: own.primary,
       canonicalData: data,
       seed: _secretKeys.ed25519Seed,
-      createdAt: _epochSeconds(now, back: _backdating),
+      createdAt: max(time - _backdating.inSeconds, own.primary.createdAt),
     );
     final inner = Uint8List.fromList([
-      ...encodePacket(_onePassSignatureTag, [
+      ...encodePacket(PacketTag.onePassSignature, [
         3,
         SignatureType.text,
         HashId.sha512,
         KeyAlgorithm.eddsaLegacy,
-        ...primary.keyId,
+        ...own.primary.keyId,
         1,
       ]),
-      ...encodePacket(_literalDataTag, [
+      ...encodePacket(PacketTag.literalData, [
         _utf8LiteralFormat,
         0,
-        ...u32Bytes(_epochSeconds(now)),
+        ...u32Bytes(time),
         ...data,
       ]),
       ...encodePacket(PacketTag.signature, signature),
     ]);
-    return Ok(
-      armorEncode(
-        ArmorBlock.message,
-        encryptPackets(inner, [key._secretKey.subkey, peer._key.subkey]),
-      ),
-    );
+    final encrypted = encryptPackets(inner, [
+      own.subkey,
+      peer._key.subkey,
+    ], random: random);
+    wipe(inner);
+    if (encrypted == null) return const Err(PgpKeyUnsupported());
+    return Ok(armorEncode(ArmorBlock.message, encrypted));
   }
 
-  /// Decrypts a chat message, with its line breaks or with backslashes in their place, and checks that [sender] signed it.
+  /// Decrypts a chat message, with its line breaks or with backslashes in their place, and checks that [sender] signed it, as of [now].
   ///
   /// It reproduces `decryptMessage` of `frontend/src/pgp/index.ts:70-99`: a missing or invalid signature does not hide the text, it is reported as [DecryptedChatMessage.validSignature].
+  /// A signature dated after [now], expired, older than the key of [sender] or made when that key was expired is invalid, as in the official client.
   /// [sender] is this robot's own public key when the coordinator attributes the message to this robot's nickname, and the peer's otherwise (`EncryptedApiChat/index.tsx:156`).
-  /// Fails with [PgpArmorMalformed] or [PgpMessageUndecryptable].
+  /// Only the structure the official client and GnuPG write is read, within the bounds of `PgpLimits`, and nothing is inflated before the message has been authenticated.
+  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpMessageUndecryptable].
   Result<DecryptedChatMessage, PgpFailure> decryptChatMessage(
     String armored, {
     required PgpPublicKey sender,
+    DateTime? now,
   }) {
+    if (armored.length > PgpLimits.messageArmorChars) {
+      return const Err(PgpInputTooLarge());
+    }
     final bytes = armorDecode(ArmorBlock.message, pgpArmorFromWire(armored));
     if (bytes == null) return const Err(PgpArmorMalformed());
     final opened = decryptPackets(
@@ -359,34 +419,29 @@ final class UnlockedRobotPgpKey {
     );
     if (opened == null) return const Err(PgpMessageUndecryptable());
     final text = _nativeText(opened.literalData);
+    final time = _epochSeconds(now);
     for (final body in opened.signatures) {
-      final SignatureBody signature;
       // A signature this package cannot read counts as no signature, as in the official client.
-      try {
-        signature = SignatureBody.parse(body);
-      } on FormatException {
-        continue;
-      } on UnsupportedPgpException {
-        continue;
-      }
+      final signature = _tryParseSignature(body);
+      if (signature == null) continue;
       final signedData = switch (signature.type) {
         SignatureType.binary => opened.literalData,
         SignatureType.text => _canonicalLineEndings(opened.literalData),
         _ => null,
       };
+      final signedAt = signature.createdAt;
       if (signedData != null &&
+          signedAt != null &&
+          sender._key.acceptsSignatureDates(signature, time) &&
           signature.verify(signedData, sender._key.primary.point)) {
-        final signedAt = signature.createdAt;
         return Ok(
           DecryptedChatMessage._(
             text,
             validSignature: true,
-            signedAt: signedAt == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(
-                    signedAt * 1000,
-                    isUtc: true,
-                  ),
+            signedAt: DateTime.fromMillisecondsSinceEpoch(
+              signedAt * 1000,
+              isUtc: true,
+            ),
           ),
         );
       }
@@ -425,6 +480,16 @@ final class DecryptedChatMessage {
   @override
   String toString() =>
       'DecryptedChatMessage(<redacted>, validSignature: $validSignature)';
+}
+
+SignatureBody? _tryParseSignature(Uint8List body) {
+  try {
+    return SignatureBody.parse(body);
+  } on FormatException {
+    return null;
+  } on UnsupportedPgpException {
+    return null;
+  }
 }
 
 final RegExp _dashAtLineStart = RegExp('^-', multiLine: true);

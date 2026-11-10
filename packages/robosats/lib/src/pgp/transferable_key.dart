@@ -4,11 +4,28 @@ import 'dart:typed_data';
 
 import 'package:robosats/src/pgp/bytes.dart';
 import 'package:robosats/src/pgp/key_packets.dart';
+import 'package:robosats/src/pgp/limits.dart';
 import 'package:robosats/src/pgp/primitives.dart';
 import 'package:robosats/src/pgp/signature_packets.dart';
 
 /// The secret values of an unlocked robot key.
-typedef SecretKeys = ({Uint8List ed25519Seed, Uint8List x25519Scalar});
+final class SecretKeys {
+  final Uint8List ed25519Seed;
+
+  /// The scalar of the encryption subkey, little-endian.
+  final Uint8List x25519Scalar;
+
+  const SecretKeys(this.ed25519Seed, this.x25519Scalar);
+
+  @override
+  String toString() => 'SecretKeys(<redacted>)';
+}
+
+typedef _Subkey = ({
+  PublicKeyBody body,
+  ProtectedSecret? secret,
+  SignatureBody? binding,
+});
 
 /// An OpenPGP key of the shape RoboSats robots use: an Ed25519 primary key, one user ID and a Curve25519 encryption subkey.
 ///
@@ -22,6 +39,8 @@ final class TransferableKey {
   /// The most recent encryption subkey the primary key binds.
   final PublicKeyBody subkey;
 
+  final SignatureBody _certification;
+  final SignatureBody _binding;
   final ProtectedSecret? _primarySecret;
   final ProtectedSecret? _subkeySecret;
 
@@ -29,6 +48,8 @@ final class TransferableKey {
     this.primary,
     this.userId,
     this.subkey,
+    this._certification,
+    this._binding,
     this._primarySecret,
     this._subkeySecret,
   );
@@ -36,9 +57,10 @@ final class TransferableKey {
   /// Reads the packets of a public key block ([secret] false) or of a private key block ([secret] true).
   ///
   /// Throws a [FormatException] for malformed packets and an [UnsupportedPgpException] for a key outside the RoboSats shape: another algorithm or version, no certified user ID, no bound Curve25519 subkey, or a secret key that is not passphrase-protected.
-  /// Expiry and revocation are not evaluated: robot keys are disposable and carry neither.
+  /// Dates are not looked at here, since reading a key needs no clock: see [couldSignAt] and [canReceiveAt].
+  /// Revocation is not evaluated: a coordinator keeps the first key of a robot for good.
   factory TransferableKey.parse(Uint8List bytes, {required bool secret}) {
-    final packets = decodePackets(bytes);
+    final packets = decodePackets(bytes, maxPackets: PgpLimits.keyPackets);
     if (packets.isEmpty ||
         packets.first.tag !=
             (secret ? PacketTag.secretKey : PacketTag.publicKey)) {
@@ -50,11 +72,13 @@ final class TransferableKey {
       throw const UnsupportedPgpException();
     }
     final primarySecret = secret ? ProtectedSecret.read(primaryReader) : null;
+    if (!primaryReader.isDone) throw const UnsupportedPgpException();
 
     String? userId;
+    SignatureBody? certification;
     List<int>? pendingUserId;
-    ({PublicKeyBody body, ProtectedSecret? secret})? pendingSubkey;
-    ({PublicKeyBody body, ProtectedSecret? secret})? subkey;
+    _Subkey? pendingSubkey;
+    _Subkey? subkey;
     for (final packet in packets.skip(1)) {
       switch (packet.tag) {
         case PacketTag.userId:
@@ -78,9 +102,13 @@ final class TransferableKey {
             if (bound &&
                 (subkey == null ||
                     pendingSubkey.body.createdAt > subkey.body.createdAt)) {
-              subkey = pendingSubkey;
+              subkey = (
+                body: pendingSubkey.body,
+                secret: pendingSubkey.secret,
+                binding: signature,
+              );
             }
-          } else if (pendingUserId != null && userId == null) {
+          } else if (pendingUserId != null && certification == null) {
             final certified =
                 signature.type >= SignatureType.genericCertification &&
                 signature.type <= SignatureType.positiveCertification &&
@@ -90,25 +118,34 @@ final class TransferableKey {
                 );
             if (certified) {
               userId = utf8.decode(pendingUserId, allowMalformed: true);
+              certification = signature;
             }
           }
       }
     }
-    if (userId == null || subkey == null) throw const UnsupportedPgpException();
+    final binding = subkey?.binding;
+    if (userId == null ||
+        certification == null ||
+        subkey == null ||
+        binding == null) {
+      throw const UnsupportedPgpException();
+    }
     return TransferableKey._(
       primary,
       userId,
       subkey.body,
+      certification,
+      binding,
       primarySecret,
       subkey.secret,
     );
   }
 
-  /// Generates the key the official RoboSats client would generate, drawing 112 bytes from [random].
+  /// Generates the key the official RoboSats client would generate, drawing 112 bytes from [random], and returns its public and its private packets.
   ///
-  /// Both packets and both signatures carry [createdAt], in seconds since the Unix epoch.
+  /// Both key packets and both signatures carry [createdAt], in seconds since the Unix epoch.
   /// The result is a deterministic function of the arguments and of the bytes [random] returns.
-  static ({TransferableKey key, SecretKeys secretKeys}) generate({
+  static ({Uint8List public, Uint8List private}) generate({
     required String userId,
     required List<int> passphrase,
     required int createdAt,
@@ -116,34 +153,89 @@ final class TransferableKey {
   }) {
     final seed = randomBytes(random, 32);
     final scalar = clampX25519Scalar(randomBytes(random, 32));
-    final key = TransferableKey._(
-      PublicKeyBody.signing(
+    final primary = PublicKeyBody.signing(
+      createdAt: createdAt,
+      publicKey: ed25519PublicKey(seed),
+    );
+    final subkey = PublicKeyBody.encryption(
+      createdAt: createdAt,
+      publicKey: x25519PublicKey(scalar),
+    );
+    final seedInteger = ed25519SecretFromSeed(seed);
+    final scalarInteger = x25519SecretFromScalar(scalar);
+    final primarySecret = ProtectedSecret.lock(
+      passphrase: passphrase,
+      secret: seedInteger,
+      salt: randomBytes(random, 8),
+      iv: randomBytes(random, 16),
+    );
+    final subkeySecret = ProtectedSecret.lock(
+      passphrase: passphrase,
+      secret: scalarInteger,
+      salt: randomBytes(random, 8),
+      iv: randomBytes(random, 16),
+    );
+    final userIdBytes = utf8.encode(userId);
+    final certification = encodePacket(
+      PacketTag.signature,
+      selfCertification(
+        primary: primary,
+        userId: userIdBytes,
+        seed: seed,
         createdAt: createdAt,
-        publicKey: ed25519PublicKey(seed),
-      ),
-      userId,
-      PublicKeyBody.encryption(
-        createdAt: createdAt,
-        publicKey: x25519PublicKey(scalar),
-      ),
-      ProtectedSecret.lock(
-        passphrase: passphrase,
-        secret: ed25519SecretFromSeed(seed),
-        salt: randomBytes(random, 8),
-        iv: randomBytes(random, 16),
-      ),
-      ProtectedSecret.lock(
-        passphrase: passphrase,
-        secret: x25519SecretFromScalar(scalar),
-        salt: randomBytes(random, 8),
-        iv: randomBytes(random, 16),
       ),
     );
-    return (key: key, secretKeys: (ed25519Seed: seed, x25519Scalar: scalar));
+    final binding = encodePacket(
+      PacketTag.signature,
+      subkeyBinding(
+        primary: primary,
+        subkey: subkey,
+        seed: seed,
+        createdAt: createdAt,
+      ),
+    );
+    for (final secret in [seed, scalar, seedInteger, scalarInteger]) {
+      wipe(secret);
+    }
+    // The order and the framing are those of OpenPGP.js 5.
+    Uint8List block({required bool secret}) => Uint8List.fromList([
+      ...encodePacket(
+        secret ? PacketTag.secretKey : PacketTag.publicKey,
+        secret ? [...primary.bytes, ...primarySecret.encode()] : primary.bytes,
+      ),
+      ...encodePacket(PacketTag.userId, userIdBytes),
+      ...certification,
+      ...encodePacket(
+        secret ? PacketTag.secretSubkey : PacketTag.publicSubkey,
+        secret ? [...subkey.bytes, ...subkeySecret.encode()] : subkey.bytes,
+      ),
+      ...binding,
+    ]);
+    return (public: block(secret: false), private: block(secret: true));
   }
 
-  /// Whether this key carries its passphrase-protected secret part.
-  bool get hasSecret => _primarySecret != null && _subkeySecret != null;
+  /// Whether the primary key could have made a signature at [time], in seconds since the Unix epoch.
+  ///
+  /// OpenPGP.js 5 refuses a signature older than its key ("Key is newer than the signature") and one made when the key, or its self-certification, was not valid.
+  bool couldSignAt(int time) =>
+      primary.createdAt <= time &&
+      _certification.isCurrentAt(time) &&
+      !_isExpired(primary, _certification, time);
+
+  /// Whether the dates of [signature], a signature over data, are acceptable at [time]: not from the future, not expired, and made when this key could sign.
+  bool acceptsSignatureDates(SignatureBody signature, int time) {
+    final signedAt = signature.createdAt;
+    return signedAt != null &&
+        signature.isCurrentAt(time) &&
+        couldSignAt(signedAt);
+  }
+
+  /// Whether a message can be encrypted to the subkey at [time]: neither key is from the future, expired, or bound by an expired signature.
+  bool canReceiveAt(int time) =>
+      couldSignAt(time) &&
+      subkey.createdAt <= time &&
+      _binding.isCurrentAt(time) &&
+      !_isExpired(subkey, _binding, time);
 
   /// The secret values behind both packets, or `null` when [passphrase] is wrong.
   ///
@@ -157,7 +249,10 @@ final class TransferableKey {
     final primaryPlain = primarySecret.unlock(passphrase);
     if (primaryPlain == null) return null;
     final subkeyPlain = subkeySecret.unlock(passphrase);
-    if (subkeyPlain == null) return null;
+    if (subkeyPlain == null) {
+      wipe(primaryPlain);
+      return null;
+    }
     final Uint8List seed;
     final Uint8List scalar;
     try {
@@ -165,73 +260,32 @@ final class TransferableKey {
       scalar = x25519ScalarFromSecret(subkeyPlain);
     } on FormatException {
       throw const UnsupportedPgpException();
+    } finally {
+      wipe(primaryPlain);
+      wipe(subkeyPlain);
     }
     if (!bytesEqual(ed25519PublicKey(seed), primary.point) ||
         !bytesEqual(x25519PublicKey(scalar), subkey.point)) {
+      wipe(seed);
+      wipe(scalar);
       throw const UnsupportedPgpException();
     }
-    return (ed25519Seed: seed, x25519Scalar: scalar);
+    return SecretKeys(seed, scalar);
   }
 
-  /// The packets of the public key block, in the order and framing OpenPGP.js 5 writes, with freshly made self-signatures.
-  ///
-  /// Meant for a generated key: a parsed key is kept as the armored text it came from.
-  Uint8List encodePublic(SecretKeys secretKeys) =>
-      _encode(secretKeys, secret: false);
+  static bool _isExpired(PublicKeyBody key, SignatureBody by, int time) =>
+      by.keyExpiresAfter != 0 && time >= key.createdAt + by.keyExpiresAfter;
 
-  /// The packets of the private key block, each secret part protected by the passphrase.
-  Uint8List encodePrivate(SecretKeys secretKeys) =>
-      _encode(secretKeys, secret: true);
-
-  Uint8List _encode(SecretKeys secretKeys, {required bool secret}) {
-    final primarySecret = _primarySecret;
-    final subkeySecret = _subkeySecret;
-    if (primarySecret == null || subkeySecret == null) {
-      throw StateError('only a key with its secret part can be encoded');
-    }
-    final userIdBytes = utf8.encode(userId);
-    return Uint8List.fromList([
-      ...encodePacket(
-        secret ? PacketTag.secretKey : PacketTag.publicKey,
-        secret ? [...primary.bytes, ...primarySecret.encode()] : primary.bytes,
-      ),
-      ...encodePacket(PacketTag.userId, userIdBytes),
-      ...encodePacket(
-        PacketTag.signature,
-        selfCertification(
-          primary: primary,
-          userId: userIdBytes,
-          seed: secretKeys.ed25519Seed,
-          createdAt: primary.createdAt,
-        ),
-      ),
-      ...encodePacket(
-        secret ? PacketTag.secretSubkey : PacketTag.publicSubkey,
-        secret ? [...subkey.bytes, ...subkeySecret.encode()] : subkey.bytes,
-      ),
-      ...encodePacket(
-        PacketTag.signature,
-        subkeyBinding(
-          primary: primary,
-          subkey: subkey,
-          seed: secretKeys.ed25519Seed,
-          createdAt: primary.createdAt,
-        ),
-      ),
-    ]);
-  }
-
-  static ({PublicKeyBody body, ProtectedSecret? secret})? _readSubkey(
-    RawPacket packet, {
-    required bool secret,
-  }) {
+  static _Subkey? _readSubkey(RawPacket packet, {required bool secret}) {
     if (secret != (packet.tag == PacketTag.secretSubkey)) return null;
     // A subkey this package cannot use is skipped, as GnuPG and OpenPGP.js skip it.
     try {
       final reader = ByteReader(packet.body);
       final body = PublicKeyBody.read(reader);
       if (body.algorithm != KeyAlgorithm.ecdh) return null;
-      return (body: body, secret: secret ? ProtectedSecret.read(reader) : null);
+      final protected = secret ? ProtectedSecret.read(reader) : null;
+      if (!reader.isDone) return null;
+      return (body: body, secret: protected, binding: null);
     } on UnsupportedPgpException {
       return null;
     }

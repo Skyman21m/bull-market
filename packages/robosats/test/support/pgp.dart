@@ -52,17 +52,43 @@ RobotIdentity get interopIdentity =>
     identityOf(garageKeyRobots.first['token'] as String);
 
 /// The key `tool/pgp_interop.sh` showed to GnuPG, generated again: same identity, same clock, same bytes of randomness.
-RobotPgpKey generateInteropKey() => RobotPgpKey.generate(
+RobotPgpKey generateInteropKey() => RobotPgpKey.generateWith(
   interopIdentity,
   now: interopNow,
   random: DeterministicRandom('troc'),
 );
 
-/// The invoice and the chat text of the GnuPG interoperability run.
+/// A second robot, the peer of the deterministic chat message: index 1 of the example Garage Key.
+RobotIdentity get interopPeerIdentity =>
+    identityOf(garageKeyRobots[1]['token'] as String);
+
+RobotPgpKey generateInteropPeerKey() => RobotPgpKey.generateWith(
+  interopPeerIdentity,
+  now: interopNow,
+  random: DeterministicRandom('troc-peer'),
+);
+
+/// The robot whose token locks the key OpenPGP.js generates during the run: test robot 2 of the RoboSats repository.
+RobotIdentity get interopOpenPgpJsIdentity => repositoryRobotIdentity(2);
+
+/// The invoice and the chat text of the interoperability run.
 const interopInvoice = 'lnbcrt500u1p5xyzzypp5examplexexamplexexample';
 const interopChatText = 'Hola, envío 50 € por Bizum ⚡\nGracias';
 
-/// A file of `test/fixtures/pgp_interop/`, an artefact of the last run of `tool/pgp_interop.sh` against GnuPG: `gpg_transcript.txt`, next to it, is what GnuPG printed.
+/// The chat message of the run that is a pure function of its inputs: from the robot to itself and to [generateInteropPeerKey].
+String encryptInteropChatMessage(UnlockedRobotPgpKey unlocked) => expectOk(
+  unlocked.encryptChatMessageWith(
+    interopChatText,
+    peer: generateInteropPeerKey().publicKey,
+    now: interopNow,
+    random: DeterministicRandom('troc-chat'),
+  ),
+);
+
+/// A clock for reading the artefacts of the run: later than every date in them.
+final interopReplayTime = DateTime.utc(2027);
+
+/// A file of `test/fixtures/pgp_interop/`, an artefact of the last run of `tool/pgp_interop.sh` against GnuPG and OpenPGP.js: `transcript.txt`, next to it, is what they printed.
 String interopFile(String name) =>
     File('test/fixtures/pgp_interop/$name').readAsStringSync();
 
@@ -70,7 +96,7 @@ String interopFile(String name) =>
 List<RawPacket> packetsOf(ArmorBlock block, String armored) {
   final bytes = armorDecode(block, armored);
   if (bytes == null) fail('not an armored ${block.label}');
-  return decodePackets(bytes);
+  return decodePackets(bytes, maxPackets: 64);
 }
 
 /// The shape of a key block, with every value that legitimately differs between two keys left out: key material, times, salts, fingerprints, signatures.

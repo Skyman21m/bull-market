@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:robosats/src/pgp/bytes.dart';
+import 'package:robosats/src/pgp/limits.dart';
 import 'package:robosats/src/pgp/primitives.dart';
 
 /// Thrown inside this package when OpenPGP data is well formed but outside the subset RoboSats robots use.
@@ -19,12 +20,9 @@ abstract final class KeyAlgorithm {
 const _ed25519Oid = [0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47, 0x0f, 0x01];
 
 /// The curve identifier of a Curve25519 "legacy" ECDH key, 1.3.6.1.4.1.3029.1.5.1.
-const _curve25519Oid = [
+const curve25519Oid = [
   0x2b, 0x06, 0x01, 0x04, 0x01, 0x97, 0x55, 0x01, 0x05, 0x01, //
 ];
-
-/// The KDF parameters OpenPGP.js and GnuPG give a Curve25519 key: SHA-256 and AES-128.
-const _curve25519Kdf = [0x03, 0x01, HashId.sha256, CipherId.aes128];
 
 /// The prefix byte that marks a native, non-Weierstrass point in a "legacy" curve key.
 const _nativePointPrefix = 0x40;
@@ -43,10 +41,21 @@ final class PublicKeyBody {
   /// The 32-byte Ed25519 or X25519 public key.
   final Uint8List point;
 
+  /// The hash and the cipher an ECDH key asks its senders to derive and wrap with (RFC 6637 section 9), and 0 on a signing key.
+  final int kdfHashId;
+  final int kdfCipherId;
+
   /// The 20-byte version 4 fingerprint.
   late final Uint8List fingerprint = sha1(hashPrefixed);
 
-  PublicKeyBody._(this.bytes, this.createdAt, this.algorithm, this.point);
+  PublicKeyBody._(
+    this.bytes,
+    this.createdAt,
+    this.algorithm,
+    this.point, {
+    this.kdfHashId = 0,
+    this.kdfCipherId = 0,
+  });
 
   /// The Ed25519 primary key of a robot.
   factory PublicKeyBody.signing({
@@ -75,19 +84,25 @@ final class PublicKeyBody {
       4,
       ...u32Bytes(createdAt),
       KeyAlgorithm.ecdh,
-      _curve25519Oid.length,
-      ..._curve25519Oid,
+      curve25519Oid.length,
+      ...curve25519Oid,
       ...mpiEncode([_nativePointPrefix, ...publicKey]),
-      ..._curve25519Kdf,
+      // The KDF parameters OpenPGP.js and GnuPG give a Curve25519 key: SHA-256 and AES-128.
+      3,
+      1,
+      HashId.sha256,
+      CipherId.aes128,
     ]),
     createdAt,
     KeyAlgorithm.ecdh,
     publicKey,
+    kdfHashId: HashId.sha256,
+    kdfCipherId: CipherId.aes128,
   );
 
   /// Reads the public part at the start of a key packet body, leaving [reader] on the secret part, if any.
   ///
-  /// Throws an [UnsupportedPgpException] for any key that is not version 4 on Ed25519 or Curve25519.
+  /// Throws an [UnsupportedPgpException] for any key that is not version 4 on Ed25519 or Curve25519, for KDF parameters other than SHA-2 with AES, and for an X25519 point of low order.
   factory PublicKeyBody.read(ByteReader reader) {
     final start = reader.offset;
     if (reader.u8() != 4) throw const UnsupportedPgpException();
@@ -95,7 +110,7 @@ final class PublicKeyBody {
     final algorithm = reader.u8();
     final expectedOid = switch (algorithm) {
       KeyAlgorithm.eddsaLegacy => _ed25519Oid,
-      KeyAlgorithm.ecdh => _curve25519Oid,
+      KeyAlgorithm.ecdh => curve25519Oid,
       _ => throw const UnsupportedPgpException(),
     };
     if (!bytesEqual(reader.take(reader.u8()), expectedOid)) {
@@ -105,13 +120,28 @@ final class PublicKeyBody {
     if (point.length != 33 || point[0] != _nativePointPrefix) {
       throw const UnsupportedPgpException();
     }
-    if (algorithm == KeyAlgorithm.ecdh) reader.take(reader.u8());
-    final length = reader.offset - start;
+    final publicKey = Uint8List.fromList(point.sublist(1));
+    var kdfHashId = 0;
+    var kdfCipherId = 0;
+    if (algorithm == KeyAlgorithm.ecdh) {
+      final kdf = reader.take(reader.u8());
+      if (kdf.length != 3 ||
+          kdf[0] != 1 ||
+          ecdhKdfHash(kdf[1]) == null ||
+          aesKeyLength(kdf[2]) == null ||
+          isLowOrderX25519Point(publicKey)) {
+        throw const UnsupportedPgpException();
+      }
+      kdfHashId = kdf[1];
+      kdfCipherId = kdf[2];
+    }
     return PublicKeyBody._(
-      Uint8List.fromList(reader.lastRead(length)),
+      Uint8List.fromList(reader.lastRead(reader.offset - start)),
       createdAt,
       algorithm,
-      Uint8List.fromList(point.sublist(1)),
+      publicKey,
+      kdfHashId: kdfHashId,
+      kdfCipherId: kdfCipherId,
     );
   }
 
@@ -151,7 +181,7 @@ final class ProtectedSecret {
 
   /// Reads the secret part that follows the public part in a secret key packet body.
   ///
-  /// Throws an [UnsupportedPgpException] for an unprotected key and for any other protection.
+  /// Throws an [UnsupportedPgpException] for an unprotected key, for any other protection, and for an iteration count above [PgpLimits.s2kBytes].
   factory ProtectedSecret.read(ByteReader reader) {
     if (reader.u8() != _sha1CheckUsage) throw const UnsupportedPgpException();
     final cipherId = reader.u8();
@@ -163,14 +193,20 @@ final class ProtectedSecret {
     if (_s2kHash(s2kHashId) == null) throw const UnsupportedPgpException();
     final salt = reader.take(8);
     final codedCount = reader.u8();
+    if (s2kByteCount(codedCount) > PgpLimits.s2kBytes) {
+      throw const UnsupportedPgpException();
+    }
     final iv = reader.take(16);
+    final ciphertext = reader.rest();
+    // An integer of at least one byte, then the 20 bytes of the SHA-1 check.
+    if (ciphertext.length < 23) throw const UnsupportedPgpException();
     return ProtectedSecret._(
       cipherId,
       s2kHashId,
       salt,
       codedCount,
       iv,
-      reader.rest(),
+      ciphertext,
     );
   }
 
@@ -180,48 +216,49 @@ final class ProtectedSecret {
     required Uint8List secret,
     required Uint8List salt,
     required Uint8List iv,
-  }) => ProtectedSecret._(
-    CipherId.aes256,
-    HashId.sha256,
-    salt,
-    openPgpJsCodedCount,
-    iv,
-    aesCfb(
-      encrypt: true,
-      key: s2kIteratedSalted(
-        hash: crypto.sha256,
-        passphrase: passphrase,
-        salt: salt,
-        codedCount: openPgpJsCodedCount,
-        keyLength: 32,
-      ),
-      iv: iv,
-      data: Uint8List.fromList([...secret, ...sha1(secret)]),
-    ),
-  );
+  }) {
+    final key = s2kIteratedSalted(
+      hash: crypto.sha256,
+      passphrase: passphrase,
+      salt: salt,
+      codedCount: openPgpJsCodedCount,
+      keyLength: 32,
+    );
+    final plain = Uint8List.fromList([...secret, ...sha1(secret)]);
+    final ciphertext = aesCfb(encrypt: true, key: key, iv: iv, data: plain);
+    wipe(key);
+    wipe(plain);
+    return ProtectedSecret._(
+      CipherId.aes256,
+      HashId.sha256,
+      salt,
+      openPgpJsCodedCount,
+      iv,
+      ciphertext,
+    );
+  }
 
   /// The secret multiprecision integers, or `null` when [passphrase] is wrong.
   Uint8List? unlock(List<int> passphrase) {
     final hash = _s2kHash(s2kHashId);
     final keyLength = aesKeyLength(cipherId);
-    if (hash == null || keyLength == null || ciphertext.length < 20) {
+    if (hash == null || keyLength == null || ciphertext.length < 23) {
       return null;
     }
-    final plain = aesCfb(
-      encrypt: false,
-      key: s2kIteratedSalted(
-        hash: hash,
-        passphrase: passphrase,
-        salt: salt,
-        codedCount: codedCount,
-        keyLength: keyLength,
-      ),
-      iv: iv,
-      data: ciphertext,
+    final key = s2kIteratedSalted(
+      hash: hash,
+      passphrase: passphrase,
+      salt: salt,
+      codedCount: codedCount,
+      keyLength: keyLength,
     );
+    final plain = aesCfb(encrypt: false, key: key, iv: iv, data: ciphertext);
+    wipe(key);
     final secret = Uint8List.sublistView(plain, 0, plain.length - 20);
     final check = Uint8List.sublistView(plain, plain.length - 20);
-    return bytesEqual(sha1(secret), check) ? secret : null;
+    if (bytesEqual(sha1(secret), check)) return secret;
+    wipe(plain);
+    return null;
   }
 
   /// The bytes that follow the public part in a secret key packet body.

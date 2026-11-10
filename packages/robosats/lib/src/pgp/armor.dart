@@ -142,14 +142,16 @@ CleartextParts? cleartextDecode(String signed) {
   return (hashes: hashes, text: textLines.join('\n'), signature: signature);
 }
 
-/// The bytes a text signature covers: each line without its trailing spaces and tabs, lines joined by CR LF.
-Uint8List canonicalText(String text) => utf8.encode(
-  text
-      .replaceAll(_lineBreak, '\n')
-      .split('\n')
-      .map((line) => line.replaceFirst(_trailingWhitespace, ''))
-      .join('\r\n'),
-);
+/// The text a cleartext signature really covers: each line without its trailing spaces and tabs, lines separated by line feeds.
+String canonicalLines(String text) => text
+    .replaceAll(_lineBreak, '\n')
+    .split('\n')
+    .map((line) => line.replaceFirst(_trailingWhitespace, ''))
+    .join('\n');
+
+/// The bytes a cleartext signature covers: [canonicalLines], with CR LF between lines.
+Uint8List canonicalText(String text) =>
+    utf8.encode(canonicalLines(text).replaceAll('\n', '\r\n'));
 
 /// The CRC-24 of RFC 4880 section 6.1, as three bytes.
 Uint8List _crc24(List<int> data) {

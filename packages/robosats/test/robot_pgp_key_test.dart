@@ -16,7 +16,7 @@ final _now = DateTime.utc(2026, 11, 9, 12);
 /// A robot of the vectors file that the RoboSats repository has no key for: index 0 of the example Garage Key.
 final _identity = identityOf(garageKeyRobots.first['token'] as String);
 
-RobotPgpKey _generate([String label = 'troc']) => RobotPgpKey.generate(
+RobotPgpKey _generate([String label = 'troc']) => RobotPgpKey.generateWith(
   _identity,
   now: _now,
   random: DeterministicRandom(label),
@@ -314,7 +314,7 @@ void main() {
     });
 
     test('drops the fraction of a second, as OpenPGP dates do', () {
-      final late = RobotPgpKey.generate(
+      final late = RobotPgpKey.generateWith(
         _identity,
         now: _now.add(const Duration(milliseconds: 999)),
         random: DeterministicRandom('troc'),
@@ -400,7 +400,7 @@ void main() {
 
     test('handles an Ed25519 seed that starts with a zero byte', () {
       // One key in 256: the secret integer is then stored on 31 bytes, which dart_pg 2.0.0 cannot read back.
-      final shortSeedKey = RobotPgpKey.generate(
+      final shortSeedKey = RobotPgpKey.generateWith(
         _identity,
         now: _now,
         random: ScriptedRandom([0, 0, ...List.filled(30, 7)]),
@@ -441,7 +441,11 @@ void main() {
         DateTime.utc(2107),
       ]) {
         expect(
-          () => RobotPgpKey.generate(_identity, now: now),
+          () => RobotPgpKey.generateWith(
+            _identity,
+            now: now,
+            random: DeterministicRandom('troc'),
+          ),
           throwsArgumentError,
         );
       }
@@ -526,7 +530,7 @@ void main() {
         final signed = expectOk(unlocked.signCleartext(invoice, now: _now));
         final parts = cleartextDecode(signed);
         if (parts == null) fail('not a cleartext signed message');
-        final packets = decodePackets(parts.signature);
+        final packets = decodePackets(parts.signature, maxPackets: 8);
         expect(packets.map((packet) => packet.tag), [PacketTag.signature]);
         final signature = SignatureBody.parse(packets.single.body);
         expect(signature.type, SignatureType.text);
@@ -571,6 +575,27 @@ void main() {
           reason: jsonEncode(text),
         );
       }
+    });
+
+    test('never dates a signature before the key', () {
+      // A clock two days behind: GnuPG and the official client refuse a signature older than its key.
+      final early = _now.subtract(const Duration(days: 2));
+      final signed = expectOk(unlocked.signCleartext(invoice, now: early));
+      expectOk(
+        key.publicKey.verifyCleartext(signed, now: key.publicKey.createdAt),
+      );
+      expect(
+        expectErr(key.publicKey.verifyCleartext(signed, now: early)),
+        isA<PgpSignatureInvalid>(),
+      );
+    });
+
+    test('refuses a text beyond the size bound', () {
+      expectOk(unlocked.signCleartext('x' * 10000));
+      expect(
+        expectErr(unlocked.signCleartext('x' * 10001)),
+        isA<PgpInputTooLarge>(),
+      );
     });
 
     test('signs a text of several lines and non-ASCII characters', () {
@@ -625,6 +650,57 @@ void main() {
       expect(
         expectErr(repositoryRobotKey(2).publicKey.verifyCleartext(signed)),
         isA<PgpSignatureInvalid>(),
+      );
+    });
+
+    test(
+      'returns the signed text, not the blanks a signature does not cover',
+      () {
+        // Trailing spaces and tabs are outside a cleartext signature: anyone can add them.
+        const address = 'bcrt1qrrvml8tr4lkwlqpg9g394tye6s5950qf9tj9e9';
+        expect(
+          expectOk(
+            robot1.verifyCleartext(
+              signed.replaceFirst('$address\n', '$address \t \n'),
+            ),
+          ),
+          address,
+        );
+      },
+    );
+
+    test('rejects a message without Hash header', () {
+      expect(
+        expectErr(
+          robot1.verifyCleartext(signed.replaceFirst('Hash: SHA512\n', '')),
+        ),
+        isA<PgpArmorMalformed>(),
+      );
+    });
+
+    test('accepts a Hash header that names several algorithms', () {
+      expectOk(
+        robot1.verifyCleartext(
+          signed.replaceFirst('Hash: SHA512', 'Hash: SHA256,SHA512'),
+        ),
+      );
+    });
+
+    test('rejects a signature from the future of the given clock', () {
+      // GnuPG made this signature on 2024-06-26.
+      expectOk(robot1.verifyCleartext(signed, now: DateTime.utc(2024, 6, 27)));
+      expect(
+        expectErr(
+          robot1.verifyCleartext(signed, now: DateTime.utc(2024, 6, 26)),
+        ),
+        isA<PgpSignatureInvalid>(),
+      );
+    });
+
+    test('does not read a message beyond the size bound', () {
+      expect(
+        expectErr(robot1.verifyCleartext('$signed${' ' * 20000}')),
+        isA<PgpInputTooLarge>(),
       );
     });
 
@@ -739,6 +815,60 @@ void main() {
           ),
         ),
         isNot(message),
+      );
+    });
+
+    test(
+      'are a deterministic function of text, keys, clock and randomness',
+      () {
+        String encrypt(String label) => expectOk(
+          alice.encryptChatMessageWith(
+            plaintext,
+            peer: bob.key.publicKey,
+            now: _now,
+            random: DeterministicRandom(label),
+          ),
+        );
+        expect(encrypt('a'), encrypt('a'));
+        expect(encrypt('a'), isNot(encrypt('b')));
+      },
+    );
+
+    test('are never signed with a date before the key of the sender', () {
+      // A clock set back one hour after bob generated his key: 24 hours back would be one hour before the date of the key.
+      final message = expectOk(
+        bob.encryptChatMessage(
+          plaintext,
+          peer: alice.key.publicKey,
+          now: _now.subtract(const Duration(hours: 1)),
+        ),
+      );
+      final decrypted = expectOk(
+        alice.decryptChatMessage(message, sender: bob.key.publicKey),
+      );
+      expect(decrypted.validSignature, isTrue);
+      expect(decrypted.signedAt, bob.key.publicKey.createdAt);
+    });
+
+    test('are flagged when read with a clock behind their signature', () {
+      final decrypted = expectOk(
+        bob.decryptChatMessage(
+          message,
+          sender: alice.key.publicKey,
+          now: _now.subtract(const Duration(days: 1, seconds: 1)),
+        ),
+      );
+      expect(decrypted.text, plaintext);
+      expect(decrypted.validSignature, isFalse);
+    });
+
+    test('are refused beyond the size bound', () {
+      expectOk(alice.encryptChatMessage('é' * 15000, peer: bob.key.publicKey));
+      expect(
+        expectErr(
+          alice.encryptChatMessage('é' * 15001, peer: bob.key.publicKey),
+        ),
+        isA<PgpInputTooLarge>(),
       );
     });
 
@@ -873,6 +1003,50 @@ void main() {
     });
   });
 
+  group('damaged input', () {
+    // Every byte of a key, a signed text and a chat message, changed in turn: the outcome may be anything but an exception.
+    final key = _generate();
+    final unlocked = expectOk(key.unlock(_identity));
+    String flipped(String armored, int index) => String.fromCharCodes([
+      ...armored.codeUnits.take(index),
+      armored.codeUnitAt(index) ^ 0x01,
+      ...armored.codeUnits.skip(index + 1),
+    ]);
+
+    test('never throws from a public key', () {
+      final armored = key.publicKey.armored;
+      for (var i = 0; i < armored.length; i++) {
+        PgpPublicKey.parse(flipped(armored, i));
+      }
+    });
+
+    test('never throws from a private key, parsed', () {
+      final armored = key.encryptedPrivateKeyArmored;
+      for (var i = 0; i < armored.length; i++) {
+        RobotPgpKey.parse(
+          publicKey: key.publicKey.armored,
+          encryptedPrivateKey: flipped(armored, i),
+        );
+      }
+    });
+
+    test('never throws from a signed text', () {
+      final signed = expectOk(unlocked.signCleartext('lnbc1', now: _now));
+      for (var i = 0; i < signed.length; i++) {
+        key.publicKey.verifyCleartext(flipped(signed, i));
+      }
+    });
+
+    test('never throws from a chat message', () {
+      final message = expectOk(
+        unlocked.encryptChatMessage('hello', peer: key.publicKey, now: _now),
+      );
+      for (var i = 0; i < message.length; i++) {
+        unlocked.decryptChatMessage(flipped(message, i), sender: key.publicKey);
+      }
+    });
+  });
+
   group('secrecy', () {
     final identity = repositoryRobotIdentity(1);
     final key = repositoryRobotKey(1);
@@ -900,8 +1074,10 @@ void main() {
 
     test('no PGP failure carries a value', () {
       const List<PgpFailure> failures = [
+        PgpInputTooLarge(),
         PgpArmorMalformed(),
         PgpKeyUnsupported(),
+        PgpKeyOutOfDate(),
         PgpKeyPairMismatch(),
         PgpWrongPassphrase(),
         PgpCleartextUnsuitable(),

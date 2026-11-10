@@ -16,6 +16,8 @@ abstract final class SignatureType {
 /// Signature subpacket types (RFC 4880 section 5.2.3.1).
 abstract final class _Subpacket {
   static const creationTime = 2;
+  static const signatureExpiration = 3;
+  static const keyExpiration = 9;
   static const preferredSymmetric = 11;
   static const issuerKeyId = 16;
   static const preferredHash = 21;
@@ -25,11 +27,11 @@ abstract final class _Subpacket {
   static const features = 30;
   static const issuerFingerprint = 33;
 
-  /// The subpackets this package may meet marked critical without having to act on them.
+  /// The subpackets this package may meet marked critical: those it evaluates, and those it does not have to act on.
   static const understood = {
     creationTime,
-    3,
-    9,
+    signatureExpiration,
+    keyExpiration,
     preferredSymmetric,
     issuerKeyId,
     preferredHash,
@@ -61,6 +63,12 @@ final class SignatureBody {
   /// The key flags of the hashed area, when present.
   final int? keyFlags;
 
+  /// The seconds after [createdAt] at which this signature expires, or 0 when it never does.
+  final int expiresAfter;
+
+  /// The seconds after the creation of the key at which the key this signature certifies or binds expires, or 0 when it never does.
+  final int keyExpiresAfter;
+
   final Uint8List _hashedPortion;
   final Uint8List _digestPrefix;
   final Uint8List _signature;
@@ -71,6 +79,8 @@ final class SignatureBody {
     this.hashId,
     this.createdAt,
     this.keyFlags,
+    this.expiresAfter,
+    this.keyExpiresAfter,
     this._hashedPortion,
     this._digestPrefix,
     this._signature,
@@ -101,6 +111,8 @@ final class SignatureBody {
 
     int? createdAt;
     int? keyFlags;
+    var expiresAfter = 0;
+    var keyExpiresAfter = 0;
     var hasUnknownCriticalSubpacket = false;
     final subpackets = ByteReader(hashed);
     while (!subpackets.isDone) {
@@ -116,6 +128,12 @@ final class SignatureBody {
       final subpacketType = typeByte & 0x7f;
       if (subpacketType == _Subpacket.creationTime && data.length == 4) {
         createdAt = ByteReader(data).u32();
+      } else if (subpacketType == _Subpacket.signatureExpiration &&
+          data.length == 4) {
+        expiresAfter = ByteReader(data).u32();
+      } else if (subpacketType == _Subpacket.keyExpiration &&
+          data.length == 4) {
+        keyExpiresAfter = ByteReader(data).u32();
       } else if (subpacketType == _Subpacket.keyFlags && data.isNotEmpty) {
         keyFlags = data[0];
       } else if (typeByte & 0x80 != 0 &&
@@ -128,6 +146,8 @@ final class SignatureBody {
       hashId,
       createdAt,
       keyFlags,
+      expiresAfter,
+      keyExpiresAfter,
       Uint8List.fromList(hashedPortion),
       Uint8List.fromList(digestPrefix),
       signature,
@@ -135,7 +155,18 @@ final class SignatureBody {
     );
   }
 
+  /// Whether this signature states when it was made, was not made after [time] and has not expired by [time], in seconds since the Unix epoch.
+  ///
+  /// OpenPGP.js 5 applies the same two rules, without tolerance: "Signature creation time is in the future" and "Signature is expired".
+  bool isCurrentAt(int time) {
+    final created = createdAt;
+    if (created == null || created > time) return false;
+    return expiresAfter == 0 || time < created + expiresAfter;
+  }
+
   /// Whether this signature covers [signedData] and was made by the Ed25519 key [publicKey].
+  ///
+  /// Dates are not looked at here: see [isCurrentAt].
   bool verify(Uint8List signedData, Uint8List publicKey) {
     if (_hasUnknownCriticalSubpacket) return false;
     final digest = _digest(hashId, signedData, _hashedPortion);

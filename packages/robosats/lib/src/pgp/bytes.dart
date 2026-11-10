@@ -82,6 +82,9 @@ Uint8List u32Bytes(int value) => Uint8List.fromList([
   value & 0xff,
 ]);
 
+/// Overwrites a buffer that held a secret, as far as Dart allows: copies the runtime made are out of reach.
+void wipe(Uint8List secret) => secret.fillRange(0, secret.length, 0);
+
 /// Compares two byte sequences without stopping at the first difference.
 bool bytesEqual(List<int> a, List<int> b) {
   if (a.length != b.length) return false;
@@ -97,12 +100,17 @@ typedef RawPacket = ({int tag, Uint8List body});
 
 /// OpenPGP packet tags used by RoboSats keys and messages.
 abstract final class PacketTag {
+  static const publicKeyEncryptedSessionKey = 1;
   static const signature = 2;
+  static const onePassSignature = 4;
   static const secretKey = 5;
   static const publicKey = 6;
   static const secretSubkey = 7;
+  static const compressedData = 8;
+  static const literalData = 11;
   static const userId = 13;
   static const publicSubkey = 14;
+  static const integrityProtectedData = 18;
 }
 
 /// Frames [body] as a new-format packet with a definite length, as OpenPGP.js does.
@@ -119,41 +127,76 @@ Uint8List encodePacket(int tag, List<int> body) {
   return Uint8List.fromList([0xc0 | tag, ...header, ...body]);
 }
 
-/// Splits [bytes] into packets, accepting the old format GnuPG exports and the new format OpenPGP.js writes.
+/// Splits [bytes] into at most [maxPackets] packets, accepting the old format GnuPG exports and the new format OpenPGP.js writes.
 ///
-/// Throws a [FormatException] on truncated data, on a stray byte and on partial or indeterminate lengths, which keys and signatures never use.
-List<RawPacket> decodePackets(Uint8List bytes) {
+/// Throws a [FormatException] on truncated data, on a stray byte and on too many packets.
+/// Partial and indeterminate lengths, which only message contents use, are refused unless [streamLengths] is set.
+List<RawPacket> decodePackets(
+  Uint8List bytes, {
+  required int maxPackets,
+  bool streamLengths = false,
+}) {
   final reader = ByteReader(bytes);
   final packets = <RawPacket>[];
   while (!reader.isDone) {
+    if (packets.length == maxPackets) {
+      throw const FormatException('too many OpenPGP packets');
+    }
     final header = reader.u8();
     if (header & 0x80 == 0) {
       throw const FormatException('not an OpenPGP packet');
     }
-    final int tag;
-    final int length;
     if (header & 0x40 != 0) {
-      tag = header & 0x3f;
-      final first = reader.u8();
-      if (first < 192) {
-        length = first;
-      } else if (first < 224) {
-        length = ((first - 192) << 8) + reader.u8() + 192;
-      } else if (first == 255) {
-        length = reader.u32();
-      } else {
-        throw const FormatException('partial OpenPGP packet length');
-      }
-    } else {
-      tag = (header & 0x3f) >> 2;
-      length = switch (header & 0x03) {
-        0 => reader.u8(),
-        1 => reader.u16(),
-        2 => reader.u32(),
-        _ => throw const FormatException('indeterminate OpenPGP packet length'),
-      };
+      packets.add((
+        tag: header & 0x3f,
+        body: _newFormatBody(reader, streamLengths: streamLengths),
+      ));
+      continue;
     }
-    packets.add((tag: tag, body: reader.take(length)));
+    final Uint8List body;
+    switch (header & 0x03) {
+      case 0:
+        body = reader.take(reader.u8());
+      case 1:
+        body = reader.take(reader.u16());
+      case 2:
+        body = reader.take(reader.u32());
+      default:
+        // An indeterminate length runs to the end of the data: GnuPG frames compressed data so.
+        if (!streamLengths) {
+          throw const FormatException('indeterminate OpenPGP packet length');
+        }
+        body = reader.rest();
+    }
+    packets.add((tag: (header & 0x3f) >> 2, body: body));
   }
   return packets;
+}
+
+/// The body of a new-format packet, its partial chunks joined when [streamLengths] allows them.
+Uint8List _newFormatBody(ByteReader reader, {required bool streamLengths}) {
+  BytesBuilder? chunks;
+  while (true) {
+    final first = reader.u8();
+    final int length;
+    if (first < 192) {
+      length = first;
+    } else if (first < 224) {
+      length = ((first - 192) << 8) + reader.u8() + 192;
+    } else if (first == 255) {
+      length = reader.u32();
+    } else {
+      if (!streamLengths) {
+        throw const FormatException('partial OpenPGP packet length');
+      }
+      (chunks ??= BytesBuilder(
+        copy: false,
+      )).add(reader.take(1 << (first & 0x1f)));
+      continue;
+    }
+    final last = reader.take(length);
+    if (chunks == null) return last;
+    chunks.add(last);
+    return chunks.takeBytes();
+  }
 }

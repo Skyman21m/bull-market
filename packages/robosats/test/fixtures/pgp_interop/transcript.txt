@@ -1,7 +1,8 @@
-# gpg (GnuPG) 2.4.4, libgcrypt 1.10.3, 2026-11-10T07:07:38Z
-## 1. Dart writes a key, a clear-signed invoice and a chat text
+# gpg (GnuPG) 2.4.4, libgcrypt 1.10.3, 2026-11-10T08:24:59Z
+## 1. Dart writes a key, a clear-signed invoice and a chat message
 ok   dart: unlock the generated key
 ok   dart: clear-sign the invoice
+ok   dart: encrypt and sign the deterministic chat message
 fingerprint 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
 user id     RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f
 created     2026-11-08T12:00:00.000Z
@@ -16,7 +17,7 @@ gpg: Total number processed: 1
 gpg:               imported: 1
 [GNUPG:] IMPORT_RES 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0
 ok   gpg:  gpg.import_keys(pub_key): imported == 1, fingerprint 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
-tru::1:1794294463:0:3:1:5
+tru::1:1794299104:0:3:1:5
 pub:-:255:22:559D7D4672E2BF2B:1794139200:::-:::scESC:::::ed25519:::0:
 fpr:::::::::355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B:
 uid:-::::1794139200::A53520D3862CB7BA40D703EF50147B7A3CB7D98D::RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f::::::::::0:
@@ -102,40 +103,56 @@ ok   gpg:  signed_message.split(header)[1].split(footer)[0].strip() == invoice
 gpg: using "355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B" as default secret key for signing
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 2
 [GNUPG:] BEGIN_SIGNING H10
-[GNUPG:] SIG_CREATED C 22 10 01 1794294463 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
+[GNUPG:] SIG_CREATED C 22 10 01 1794299104 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
 ok   gpg:  gpg.sign(passphrase=token, extra_args=['--digest-algo', 'SHA512']): the token unlocks the key in GnuPG
 ## 6. GnuPG plays the peer: its own ed25519/cv25519 key, as api/oas_schemas.py:464-480 suggests
-ok   gpg:  peer key 3573C8190E63A3272D32C7456ED1E829B277632E generated, the robot key imported from the coordinator's export
-## 7. Dart encrypts and signs a chat message to itself and to the peer
+ok   gpg:  peer key 6D34A5EC1C42438526C1DCBDFE39AAF7527E8822 generated, the robot key imported from the coordinator's export
+## 6b. OpenPGP.js reads what Dart wrote, then plays the official client: its own key, clear-signed texts, chat messages
+ok   js:   decryptKey: the token unlocks the private key
+ok   js:   a wrong passphrase is refused
+ok   js:   user ID is RoboSats ID <hash id>
+ok   js:   creation time 2026-11-08T12:00:00.000Z
+ok   js:   primary key, user and encryption subkey are valid
+ok   js:   both blocks are byte-identical after a round trip through OpenPGP.js
+ok   js:   the clear-signed invoice verifies, text identical
+ok   js:   the deterministic chat message decrypts as the sender, signature valid
+ok   js:   OpenPGP.js 5.11.3 wrote a key, two clear-signed texts and two chat messages
+## 7. Dart encrypts and signs a chat message to itself and to each peer
 ok   dart: unlock the generated key
-ok   dart: read the public key GnuPG generated
-ok   dart: encrypt and sign the chat message
-peer fingerprint 3573C8190E63A3272D32C7456ED1E829B277632E
+ok   dart: read the public key gpg generated
+ok   dart: encrypt and sign the chat message to gpg
+ok   dart: read the public key openpgpjs generated
+ok   dart: encrypt and sign the chat message to openpgpjs
+ok   dart: read the key pair OpenPGP.js generated
+ok   dart: the key OpenPGP.js generated is named after its token
+ok   dart: unlock the key OpenPGP.js generated with its token
+ok   dart: clear-sign with the key OpenPGP.js generated
+signed at   1794212710
 ## 8. GnuPG decrypts it, as the peer and as the robot
 [GNUPG:] ENC_TO 2C47C8395B4003CE 18 0
-[GNUPG:] ENC_TO ACD4E396342058EE 18 0
-[GNUPG:] KEY_CONSIDERED 3573C8190E63A3272D32C7456ED1E829B277632E 0
-gpg: encrypted with cv25519 key, ID ACD4E396342058EE, created 2026-11-10
+[GNUPG:] ENC_TO D20E4BB2628CBDF3 18 0
+[GNUPG:] KEY_CONSIDERED 6D34A5EC1C42438526C1DCBDFE39AAF7527E8822 0
+gpg: encrypted with cv25519 key, ID D20E4BB2628CBDF3, created 2026-11-10
       "RoboSats ID gnupg-peer"
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
 gpg: encrypted with cv25519 key, ID 2C47C8395B4003CE, created 2026-11-08
       "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f"
-[GNUPG:] KEY_CONSIDERED 3573C8190E63A3272D32C7456ED1E829B277632E 0
-[GNUPG:] KEY_CONSIDERED 3573C8190E63A3272D32C7456ED1E829B277632E 0
-[GNUPG:] DECRYPTION_KEY 865E00AD02B908F2D183BCD5ACD4E396342058EE 3573C8190E63A3272D32C7456ED1E829B277632E u
+[GNUPG:] KEY_CONSIDERED 6D34A5EC1C42438526C1DCBDFE39AAF7527E8822 0
+[GNUPG:] KEY_CONSIDERED 6D34A5EC1C42438526C1DCBDFE39AAF7527E8822 0
+[GNUPG:] DECRYPTION_KEY B8E6A36C85149DECF227E461D20E4BB2628CBDF3 6D34A5EC1C42438526C1DCBDFE39AAF7527E8822 u
 [GNUPG:] NO_SECKEY 2C47C8395B4003CE
 [GNUPG:] BEGIN_DECRYPTION
 [GNUPG:] DECRYPTION_INFO 2 9 0
-[GNUPG:] PLAINTEXT 75 1794225600 
+[GNUPG:] PLAINTEXT 75 1794299110 
 [GNUPG:] PLAINTEXT_LENGTH 42
 [GNUPG:] NEWSIG
-gpg: Signature made Sun Nov  8 12:00:00 2026 UTC
+gpg: Signature made Mon Nov  9 08:25:10 2026 UTC
 gpg:                using EDDSA key 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
-[GNUPG:] SIG_ID Fdqd3e8ZEnRmCSaW3gs447M9nnk 2026-11-08 1794139200
+[GNUPG:] SIG_ID lOzh2Ijiiy1Fi0AmA7tzVLv/KOc 2026-11-09 1794212710
 [GNUPG:] GOODSIG 559D7D4672E2BF2B RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f
 gpg: Good signature from "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f" [unknown]
-[GNUPG:] VALIDSIG 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 2026-11-08 1794139200 0 4 0 22 10 01 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
+[GNUPG:] VALIDSIG 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 2026-11-09 1794212710 0 4 0 22 10 01 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
 [GNUPG:] TRUST_UNDEFINED 0 pgp
 gpg: WARNING: This key is not certified with a trusted signature!
 gpg:          There is no indication that the signature belongs to the owner.
@@ -145,15 +162,45 @@ Primary key fingerprint: 355E 3156 E8D2 E3CE F6B4  4F58 559D 7D46 72E2 BF2B
 [GNUPG:] END_DECRYPTION
 ok   gpg:  peer: decrypted (AES256, MDC good), text identical, good signature of the robot key dated 24 hours before
 [GNUPG:] ENC_TO 2C47C8395B4003CE 18 0
-[GNUPG:] ENC_TO ACD4E396342058EE 18 0
-gpg: encrypted with ECDH key, ID ACD4E396342058EE
+[GNUPG:] ENC_TO D20E4BB2628CBDF3 18 0
+gpg: encrypted with ECDH key, ID D20E4BB2628CBDF3
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
 gpg: encrypted with cv25519 key, ID 2C47C8395B4003CE, created 2026-11-08
       "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f"
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
 [GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
 [GNUPG:] DECRYPTION_KEY 44AF7C9F646199B214B374082C47C8395B4003CE 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B -
-[GNUPG:] NO_SECKEY ACD4E396342058EE
+[GNUPG:] NO_SECKEY D20E4BB2628CBDF3
+[GNUPG:] BEGIN_DECRYPTION
+[GNUPG:] DECRYPTION_INFO 2 9 0
+[GNUPG:] PLAINTEXT 75 1794299110 
+[GNUPG:] PLAINTEXT_LENGTH 42
+[GNUPG:] NEWSIG
+gpg: Signature made Mon Nov  9 08:25:10 2026 UTC
+gpg:                using EDDSA key 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
+[GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
+[GNUPG:] SIG_ID lOzh2Ijiiy1Fi0AmA7tzVLv/KOc 2026-11-09 1794212710
+[GNUPG:] GOODSIG 559D7D4672E2BF2B RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f
+gpg: Good signature from "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f" [unknown]
+[GNUPG:] VALIDSIG 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 2026-11-09 1794212710 0 4 0 22 10 01 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B
+[GNUPG:] TRUST_UNDEFINED 0 pgp
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 355E 3156 E8D2 E3CE F6B4  4F58 559D 7D46 72E2 BF2B
+[GNUPG:] DECRYPTION_OKAY
+[GNUPG:] GOODMDC
+[GNUPG:] END_DECRYPTION
+ok   gpg:  robot key in GnuPG, unlocked by the token: decrypted its own copy, text identical
+[GNUPG:] ENC_TO 2C47C8395B4003CE 18 0
+[GNUPG:] ENC_TO 0918F875B429AFEE 18 0
+gpg: encrypted with ECDH key, ID 0918F875B429AFEE
+[GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
+gpg: encrypted with cv25519 key, ID 2C47C8395B4003CE, created 2026-11-08
+      "RoboSats ID 008d1b70fda43449785e30c2b4c15bb9e2b8c561d1ee54a56b7b336b6826b70f"
+[GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
+[GNUPG:] KEY_CONSIDERED 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B 0
+[GNUPG:] DECRYPTION_KEY 44AF7C9F646199B214B374082C47C8395B4003CE 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B -
+[GNUPG:] NO_SECKEY 0918F875B429AFEE
 [GNUPG:] BEGIN_DECRYPTION
 [GNUPG:] DECRYPTION_INFO 2 9 0
 [GNUPG:] PLAINTEXT 75 1794225600 
@@ -173,7 +220,7 @@ Primary key fingerprint: 355E 3156 E8D2 E3CE F6B4  4F58 559D 7D46 72E2 BF2B
 [GNUPG:] DECRYPTION_OKAY
 [GNUPG:] GOODMDC
 [GNUPG:] END_DECRYPTION
-ok   gpg:  robot key in GnuPG, unlocked by the token: decrypted its own copy, text identical
+ok   gpg:  robot key in GnuPG: decrypted the deterministic chat message, good signature dated 24 hours before
 # off=0 ctb=c1 tag=1 hlen=2 plen=94 new-ctb
 :pubkey enc packet: version 3, algo 18, keyid K
 	data: D
@@ -202,9 +249,36 @@ ok   gpg:  robot key in GnuPG, unlocked by the token: decrypted its own copy, te
 	hashed subpkt 33 len 21 (issuer fpr v4 355E3156E8D2E3CEF6B44F58559D7D4672E2BF2B)
 	data: D
 	data: D
+## 8b. OpenPGP.js decrypts the message as the peer and verifies a text signed with its own key
+ok   js:   the chat message from the robot decrypts as the peer, signature valid
+ok   js:   checked against another key, the same message is flagged
+ok   js:   a text the Dart code clear-signed with the OpenPGP.js key verifies
+ok   gpg:  gpg --list-packets: a chat message of the Dart code has the packets of one made by OpenPGP.js
+:pubkey enc packet: version 3, algo 18, keyid K
+	data: D
+	data: D
+:pubkey enc packet: version 3, algo 18, keyid K
+	data: D
+	data: D
+:encrypted data packet:
+	length: L
+	mdc_method: 2
+:onepass_sig packet: keyid K
+	version 3, sigclass 0x01, digest 10, pubkey 22, last=1
+:literal data packet:
+	mode u (75), created T, name="",
+	raw data: D
+:signature packet: algo 22, keyid K
+	version 4, created T, md5len 0, sigclass 0x01
+	digest algo 10, begin of digest B
+	critical hashed subpkt 2 len 4 (sig created T)
+	critical hashed subpkt 16 len 8 (issuer key ID K)
+	hashed subpkt 33 len 21 (issuer fpr v4 F)
+	data: D
+	data: D
 ## 9. GnuPG encrypts and signs a chat message to the robot and to itself
 ok   gpg:  peer: gpg --sign --encrypt to both keys
-## 10. Dart verifies and decrypts what GnuPG made
+## 10. Dart verifies and decrypts what GnuPG and OpenPGP.js made
 ok   dart: unlock the generated key
 ok   dart: read the public key GnuPG generated
 ok   dart: read the public key as GnuPG exports it again
@@ -212,8 +286,16 @@ ok   dart: the key GnuPG exports again is the generated key
 ok   dart: verify the text GnuPG clear-signed with the generated key
 ok   dart: the text GnuPG clear-signed is the invoice
 ok   dart: decrypt the message GnuPG encrypted and signed
-ok   dart: the message GnuPG encrypted is the chat text
-ok   dart: the message GnuPG encrypted carries a valid signature of the peer
+ok   dart: the message GnuPG encrypted is the chat text, signed by the peer
 ok   dart: decrypt the own copy of the message sent to GnuPG
 ok   dart: the own copy reads back, signature valid
+ok   dart: read the public key OpenPGP.js generated
+ok   dart: verify openpgpjs_clearsigned, clear-signed by OpenPGP.js
+ok   dart: openpgpjs_clearsigned: the text returned is the text OpenPGP.js returns
+ok   dart: verify openpgpjs_clearsigned_lines, clear-signed by OpenPGP.js
+ok   dart: openpgpjs_clearsigned_lines: the text returned is the text OpenPGP.js returns
+ok   dart: decrypt the message OpenPGP.js encrypted and signed
+ok   dart: the message OpenPGP.js encrypted is the chat text, signed by the peer
+ok   dart: decrypt the unsigned message OpenPGP.js encrypted
+ok   dart: the unsigned message is shown and flagged
 ## All checks passed

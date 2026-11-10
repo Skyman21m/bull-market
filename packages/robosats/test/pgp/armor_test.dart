@@ -73,6 +73,40 @@ void main() {
     });
   });
 
+  group('what follows the checksum or the last line', () {
+    final armored = armorEncode(ArmorBlock.message, utf8.encode('hello'));
+
+    test('is refused even when the checksum covers it', () {
+      // The checksum line of `hello!!!!`, placed between two lines of data.
+      final whole = armorEncode(ArmorBlock.message, utf8.encode('hello!!!!'));
+      final checksum = whole.split('\n')[3];
+      expect(armorDecode(ArmorBlock.message, whole), utf8.encode('hello!!!!'));
+      expect(
+        armorDecode(
+          ArmorBlock.message,
+          '-----BEGIN PGP MESSAGE-----\n\naGVsbG8h\n$checksum\nISEh\n-----END PGP MESSAGE-----\n',
+        ),
+        isNull,
+      );
+    });
+
+    test('is refused after the END line, as text or as another block', () {
+      for (final tail in ['pay ATTACKER', '\npay ATTACKER\n', armored]) {
+        expect(armorDecode(ArmorBlock.message, '$armored$tail'), isNull);
+      }
+      final signed = cleartextEncode(
+        text: 'text',
+        hashName: 'SHA512',
+        signature: [1, 2, 3],
+      );
+      expect(cleartextDecode(signed), isNotNull);
+      for (final tail in ['pay ATTACKER', '\npay ATTACKER\n', signed]) {
+        expect(cleartextDecode('$signed$tail'), isNull);
+      }
+      expect(cleartextDecode('pay ATTACKER\n$signed'), isNull);
+    });
+  });
+
   group('cleartext framework', () {
     test('escapes and restores lines that start with a dash', () {
       const text = 'first\n-second\n--third\n- fourth';
@@ -101,6 +135,11 @@ void main() {
         )?.hashes,
         isEmpty,
       );
+    });
+
+    test('gives the signed text without the trailing blanks', () {
+      expect(canonicalLines('a \t\nb\r\n\nc '), 'a\nb\n\nc');
+      expect(canonicalLines(' a\rb'), ' a\nb');
     });
 
     test('hashes lines without trailing blanks, joined by CR LF', () {

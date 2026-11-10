@@ -72,16 +72,28 @@ sealed class PgpFailure extends RobosatsFailure {
   const PgpFailure();
 }
 
-/// The text is not one ASCII-armored block of the expected kind: wrong or missing header lines, invalid base64, or a CRC-24 that does not match.
+/// The input is larger than anything a robot exchanges, and was not read: see the bounds of `PgpLimits`.
+final class PgpInputTooLarge extends PgpFailure {
+  const PgpInputTooLarge();
+}
+
+/// The text is not one ASCII-armored block of the expected kind: wrong or missing header lines, a cleartext message without `Hash` header, invalid base64, or a CRC-24 that does not match.
 final class PgpArmorMalformed extends PgpFailure {
   const PgpArmorMalformed();
 }
 
 /// The block holds OpenPGP data this package does not handle.
 ///
-/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, and, for a private key, a passphrase-protected secret part.
+/// A key must be the kind the official client generates: version 4, an Ed25519 primary key with a self-certified user ID and a Curve25519 encryption subkey bound by it, with SHA-2 and AES as KDF parameters and a point that is not of low order, and, for a private key, a passphrase-protected secret part whose iteration count stays within `PgpLimits.s2kBytes`.
 final class PgpKeyUnsupported extends PgpFailure {
   const PgpKeyUnsupported();
+}
+
+/// A key cannot be used at the given time: it is dated after it, it has expired, or the signature that certifies or binds it has.
+///
+/// The official client refuses to encrypt to such a key.
+final class PgpKeyOutOfDate extends PgpFailure {
+  const PgpKeyOutOfDate();
 }
 
 /// The private key does not belong to the public key it was given with.
@@ -99,7 +111,7 @@ final class PgpCleartextUnsuitable extends PgpFailure {
   const PgpCleartextUnsuitable();
 }
 
-/// The cleartext signature is not a valid signature of the text by the primary key of the given public key.
+/// The cleartext signature is not a valid signature of the text by the primary key of the given public key, or it is dated in the future, expired, or older than the key.
 final class PgpSignatureInvalid extends PgpFailure {
   const PgpSignatureInvalid();
 }

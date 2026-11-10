@@ -97,12 +97,90 @@ void main() {
       );
     });
 
+    test('reproduces the shared secret of RFC 7748 section 6.1', () {
+      final alice = _bytes(
+        '77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a',
+      );
+      final bobPublic = _bytes(
+        'de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f',
+      );
+      expect(
+        hex.encode(x25519SharedSecret(alice, bobPublic) ?? const []),
+        '4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742',
+      );
+    });
+
+    test('gives no shared secret with a low-order point or a wrong length', () {
+      final scalar = clampX25519Scalar(Uint8List(32)..[5] = 9);
+      expect(x25519SharedSecret(scalar, Uint8List(32)), isNull);
+      expect(x25519SharedSecret(scalar, Uint8List(32)..[0] = 1), isNull);
+      expect(x25519SharedSecret(scalar, Uint8List(31)..[0] = 9), isNull);
+      expect(x25519SharedSecret(Uint8List(31), Uint8List(32)..[0] = 9), isNull);
+      expect(x25519SharedSecret(scalar, Uint8List(32)..[0] = 9), isNotNull);
+    });
+
     test('clamps a scalar as RFC 7748 section 5 requires', () {
       final clamped = clampX25519Scalar(Uint8List(32)..fillRange(0, 32, 0xff));
       expect(clamped[0], 0xf8);
       expect(clamped[31], 0x7f);
       expect(clamped.sublist(1, 31), everyElement(0xff));
       expect(clampX25519Scalar(Uint8List(32))[31], 0x40);
+    });
+  });
+
+  group('AES key wrap', () {
+    // RFC 3394 sections 4.1, 4.3 and 4.6.
+    const vectors = [
+      (
+        kek: '000102030405060708090a0b0c0d0e0f',
+        data: '00112233445566778899aabbccddeeff',
+        wrapped: '1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5',
+      ),
+      (
+        kek: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+        data: '00112233445566778899aabbccddeeff',
+        wrapped: '64e8c3f9ce0f5ba263e9777905818a2a93c8191e7d6e8ae7',
+      ),
+      (
+        kek: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+        data:
+            '00112233445566778899aabbccddeeff000102030405060708090a0b0c0d0e0f',
+        wrapped:
+            '28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326'
+            'cbc7f0e71a99f43bfb988b9b7a02dd21',
+      ),
+    ];
+
+    for (final vector in vectors) {
+      test(
+        'reproduces RFC 3394 for ${vector.kek.length * 4}-bit keys and ${vector.data.length * 4} bits',
+        () {
+          final kek = _bytes(vector.kek);
+          expect(
+            hex.encode(aesKeyWrap(kek, _bytes(vector.data))),
+            vector.wrapped,
+          );
+          expect(
+            aesKeyUnwrap(kek, _bytes(vector.wrapped)),
+            _bytes(vector.data),
+          );
+        },
+      );
+    }
+
+    test('refuses to unwrap what was changed, or under another key', () {
+      final kek = _bytes(vectors[0].kek);
+      final wrapped = _bytes(vectors[0].wrapped);
+      for (var i = 0; i < wrapped.length; i++) {
+        expect(
+          aesKeyUnwrap(kek, Uint8List.fromList(wrapped)..[i] ^= 1),
+          isNull,
+          reason: 'byte $i',
+        );
+      }
+      expect(aesKeyUnwrap(Uint8List.fromList(kek)..[0] ^= 1, wrapped), isNull);
+      expect(aesKeyUnwrap(kek, wrapped.sublist(0, 16)), isNull);
+      expect(aesKeyUnwrap(kek, wrapped.sublist(0, 23)), isNull);
     });
   });
 
@@ -228,5 +306,11 @@ void main() {
     expect(aesKeyLength(CipherId.aes192), 24);
     expect(aesKeyLength(CipherId.aes256), 32);
     expect(aesKeyLength(2), isNull);
+    // RFC 6637 section 12: an ECDH key derives with SHA-256, SHA-384 or SHA-512.
+    expect(ecdhKdfHash(HashId.sha256), isNotNull);
+    expect(ecdhKdfHash(HashId.sha384), isNotNull);
+    expect(ecdhKdfHash(HashId.sha512), isNotNull);
+    expect(ecdhKdfHash(HashId.sha224), isNull);
+    expect(ecdhKdfHash(HashId.sha1), isNull);
   });
 }

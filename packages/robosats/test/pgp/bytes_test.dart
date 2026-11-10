@@ -58,7 +58,10 @@ void main() {
     test('are read in both formats', () {
       for (final length in [0, 1, 191, 192, 8383, 8384]) {
         final body = List.generate(length, (i) => i & 0xff);
-        final packet = decodePackets(encodePacket(13, body)).single;
+        final packet = decodePackets(
+          encodePacket(13, body),
+          maxPackets: 1,
+        ).single;
         expect(packet.tag, 13);
         expect(packet.body, body);
       }
@@ -68,11 +71,17 @@ void main() {
         [0x99, 0, 2, 7, 8],
         [0x9a, 0, 0, 0, 2, 7, 8],
       ]) {
-        final packet = decodePackets(Uint8List.fromList(bytes)).single;
+        final packet = decodePackets(
+          Uint8List.fromList(bytes),
+          maxPackets: 1,
+        ).single;
         expect(packet.tag, 6);
         expect(packet.body, [7, 8]);
       }
-      final two = decodePackets(Uint8List.fromList([0x98, 1, 7, 0xcd, 1, 8]));
+      final two = decodePackets(
+        Uint8List.fromList([0x98, 1, 7, 0xcd, 1, 8]),
+        maxPackets: 2,
+      );
       expect(two.map((packet) => packet.tag), [6, 13]);
     });
 
@@ -85,7 +94,7 @@ void main() {
         [0x9b, 1],
       ]) {
         expect(
-          () => decodePackets(Uint8List.fromList(bytes)),
+          () => decodePackets(Uint8List.fromList(bytes), maxPackets: 4),
           throwsFormatException,
           reason: '$bytes',
         );

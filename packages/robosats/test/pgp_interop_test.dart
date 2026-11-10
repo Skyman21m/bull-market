@@ -1,18 +1,19 @@
 import 'package:robosats/robosats.dart';
+import 'package:robosats/src/pgp/armor.dart';
 import 'package:test/test.dart';
 
 import 'support/pgp.dart';
 
-/// Replays, without GnuPG, the last run of `tool/pgp_interop.sh` against GnuPG 2.4.4.
+/// Replays, without GnuPG or OpenPGP.js, the last run of `tool/pgp_interop.sh` against GnuPG 2.4.4 and OpenPGP.js 5.11.3.
 ///
-/// Key generation and signing are deterministic, so the first group pins the exact bytes GnuPG accepted: if the code ever writes anything else, the script has to be run again.
-/// The second group reads what GnuPG wrote during that run.
+/// Key generation, signing and, with given randomness, encryption are deterministic, so the first group pins the exact bytes both accepted: if the code ever writes anything else, the script has to be run again.
+/// The other groups read what GnuPG and OpenPGP.js wrote during that run.
 void main() {
   final key = generateInteropKey();
   final unlocked = expectOk(key.unlock(interopIdentity));
-  final transcript = interopFile('gpg_transcript.txt');
+  final transcript = interopFile('transcript.txt');
 
-  group('what GnuPG accepted is still what the code writes', () {
+  group('what GnuPG and OpenPGP.js accepted is still what the code writes', () {
     test('the transcript is the one of this key and ends well', () {
       expect(
         transcript,
@@ -20,35 +21,57 @@ void main() {
           'gpg.import_keys(pub_key): imported == 1, fingerprint ${key.publicKey.fingerprint}',
         ),
       );
+      expect(transcript, contains('OpenPGP.js 5.11.3 wrote a key'));
       expect(transcript, isNot(contains('FAIL')));
       expect(transcript.trimRight(), endsWith('## All checks passed'));
     });
 
-    test('the public key GnuPG imported, 24 hours old', () {
+    test('the public key both imported, 24 hours old', () {
       expect(key.publicKey.armored, interopFile('troc_pub_key'));
     });
 
-    test('the private key GnuPG imported and unlocked with the token', () {
+    test('the private key both unlocked with the token', () {
       expect(key.encryptedPrivateKeyArmored, interopFile('troc_enc_priv_key'));
     });
 
-    test('the clear-signed invoice GnuPG verified, SHA512 header included', () {
+    test('the clear-signed invoice both verified, SHA512 header included', () {
       expect(
         expectOk(unlocked.signCleartext(interopInvoice, now: interopNow)),
         interopFile('troc_invoice_signed.asc'),
       );
     });
 
-    test('the chat message GnuPG decrypted as peer and as robot', () {
-      final decrypted = expectOk(
-        unlocked.decryptChatMessage(
-          interopFile('troc_chat_to_gpg.asc'),
-          sender: key.publicKey,
-        ),
+    test('the chat message both decrypted with the key of the robot', () {
+      final message = interopFile('troc_chat_to_peer.asc');
+      expect(encryptInteropChatMessage(unlocked), message);
+      final peer = expectOk(
+        generateInteropPeerKey().unlock(interopPeerIdentity),
       );
-      expect(decrypted.text, interopChatText);
-      expect(decrypted.validSignature, isTrue);
-      expect(decrypted.signedAt, interopNow.subtract(const Duration(days: 1)));
+      for (final reader in [unlocked, peer]) {
+        final decrypted = expectOk(
+          reader.decryptChatMessage(message, sender: key.publicKey),
+        );
+        expect(decrypted.text, interopChatText);
+        expect(decrypted.validSignature, isTrue);
+        expect(
+          decrypted.signedAt,
+          interopNow.subtract(const Duration(days: 1)),
+        );
+      }
+    });
+
+    test('the chat messages their own keys decrypted', () {
+      for (final name in ['gpg', 'openpgpjs']) {
+        final decrypted = expectOk(
+          unlocked.decryptChatMessage(
+            interopFile('troc_chat_to_$name.asc'),
+            sender: key.publicKey,
+            now: interopReplayTime,
+          ),
+        );
+        expect(decrypted.text, interopChatText, reason: name);
+        expect(decrypted.validSignature, isTrue, reason: name);
+      }
     });
   });
 
@@ -86,9 +109,17 @@ void main() {
         signed,
         startsWith('-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n'),
       );
-      expect(expectOk(key.publicKey.verifyCleartext(signed)), interopInvoice);
       expect(
-        expectErr(peer.verifyCleartext(signed)),
+        expectOk(key.publicKey.verifyCleartext(signed, now: interopReplayTime)),
+        interopInvoice,
+      );
+      expect(
+        expectErr(peer.verifyCleartext(signed, now: interopReplayTime)),
+        isA<PgpSignatureInvalid>(),
+      );
+      // GnuPG signed on the day of the run: the day before, the signature is from the future.
+      expect(
+        expectErr(key.publicKey.verifyCleartext(signed, now: interopNow)),
         isA<PgpSignatureInvalid>(),
       );
     });
@@ -96,16 +127,151 @@ void main() {
     test('a compressed message GnuPG encrypted to both keys and signed', () {
       final message = interopFile('gpg_chat_to_troc.asc');
       final decrypted = expectOk(
-        unlocked.decryptChatMessage(message, sender: peer),
+        unlocked.decryptChatMessage(
+          message,
+          sender: peer,
+          now: interopReplayTime,
+        ),
       );
       expect(decrypted.text, interopChatText);
       expect(decrypted.validSignature, isTrue);
       expect(
         expectOk(
-          unlocked.decryptChatMessage(message, sender: key.publicKey),
+          unlocked.decryptChatMessage(
+            message,
+            sender: key.publicKey,
+            now: interopReplayTime,
+          ),
         ).validSignature,
         isFalse,
       );
     });
   });
+
+  group(
+    'what OpenPGP.js 5.11.3 wrote, with the calls of the official client, is read',
+    () {
+      final peerKey = expectOk(
+        RobotPgpKey.parse(
+          publicKey: interopFile('openpgpjs_peer_pub_key'),
+          encryptedPrivateKey: interopFile('openpgpjs_peer_enc_priv_key'),
+        ),
+      );
+      final peer = peerKey.publicKey;
+
+      test('a key pair it generated, unlocked by its token', () {
+        expect(peerKey.isNamedAfter(interopOpenPgpJsIdentity), isTrue);
+        final peerUnlocked = expectOk(peerKey.unlock(interopOpenPgpJsIdentity));
+        expect(
+          expectErr(peerKey.unlock(interopIdentity)),
+          isA<PgpWrongPassphrase>(),
+        );
+        // The same shape as the key this package generates, and as the newest key of the RoboSats repository.
+        expect(
+          keyShape(ArmorBlock.privateKey, peerKey.encryptedPrivateKeyArmored),
+          keyShape(ArmorBlock.privateKey, key.encryptedPrivateKeyArmored),
+        );
+        final decrypted = expectOk(
+          peerUnlocked.decryptChatMessage(
+            interopFile('troc_chat_to_openpgpjs.asc'),
+            sender: key.publicKey,
+            now: interopReplayTime,
+          ),
+        );
+        expect(decrypted.text, interopChatText);
+        expect(decrypted.validSignature, isTrue);
+      });
+
+      test('texts it clear-signed, returned as it returns them', () {
+        for (final name in [
+          'openpgpjs_clearsigned',
+          'openpgpjs_clearsigned_lines',
+        ]) {
+          expect(
+            expectOk(
+              peer.verifyCleartext(
+                interopFile('$name.asc'),
+                now: interopReplayTime,
+              ),
+            ),
+            interopFile('$name.expected.txt'),
+            reason: name,
+          );
+        }
+        // Lines that start with a dash, a line that ends with blanks: the second text exercises the whole framework.
+        expect(
+          interopFile('openpgpjs_clearsigned_lines.expected.txt'),
+          'première ligne\n-dash line\ntrailing space\n\nlast ⚡',
+        );
+      });
+
+      test('a text signed with its key by this package, which it verified', () {
+        expect(
+          expectOk(
+            peer.verifyCleartext(
+              interopFile('troc_clearsigned_by_openpgpjs_key.asc'),
+              now: interopReplayTime,
+            ),
+          ),
+          interopInvoice,
+        );
+      });
+
+      test('a chat message it encrypted to both keys and signed', () {
+        final message = interopFile('openpgpjs_chat_to_troc.asc');
+        final decrypted = expectOk(
+          unlocked.decryptChatMessage(
+            message,
+            sender: peer,
+            now: interopReplayTime,
+          ),
+        );
+        expect(decrypted.text, interopChatText);
+        expect(decrypted.validSignature, isTrue);
+        // The official client dates the key and the signature one day back, a moment apart.
+        expect(decrypted.signedAt?.isBefore(peer.createdAt), isFalse);
+        expect(
+          expectOk(
+            unlocked.decryptChatMessage(
+              message,
+              sender: key.publicKey,
+              now: interopReplayTime,
+            ),
+          ).validSignature,
+          isFalse,
+        );
+      });
+
+      test('a chat message it encrypted without signing', () {
+        final decrypted = expectOk(
+          unlocked.decryptChatMessage(
+            interopFile('openpgpjs_chat_unsigned.asc'),
+            sender: peer,
+            now: interopReplayTime,
+          ),
+        );
+        expect(decrypted.text, interopChatText);
+        expect(decrypted.validSignature, isFalse);
+      });
+
+      test(
+        'messages with the same packets as the ones this package writes',
+        () {
+          List<int> tags(String name) => [
+            for (final packet in packetsOf(
+              ArmorBlock.message,
+              interopFile(name),
+            ))
+              packet.tag,
+          ];
+          expect(tags('openpgpjs_chat_to_troc.asc'), [1, 1, 18]);
+          expect(tags('troc_chat_to_peer.asc'), [1, 1, 18]);
+          expect(
+            interopFile('openpgpjs_chat_to_troc.asc').length,
+            interopFile('troc_chat_to_peer.asc').length,
+          );
+        },
+      );
+    },
+  );
 }

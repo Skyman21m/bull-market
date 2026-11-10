@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Cross-checks the OpenPGP code of this package against GnuPG, the engine of RoboSats coordinators.
+# Cross-checks the OpenPGP code of this package against GnuPG, the engine of RoboSats coordinators, and against OpenPGP.js, the library of the official client.
 #
 # Run it on a host that has GnuPG 2.2 or later and the `bull-tools` container image:
-#   packages/robosats/tool/pgp_interop.sh [--update-fixtures]
+#   [OPENPGPJS=/path/to/openpgp.min.js] packages/robosats/tool/pgp_interop.sh [--update-fixtures]
+#
+# The OpenPGP.js steps run only when OPENPGPJS names a copy of OpenPGP.js 5 and Node.js is installed: nothing is downloaded.
 #
 # It replays, with the command lines python-gnupg 0.5 builds, what `validate_pgp_keys` and `verify_signed_message` of `api/utils.py` do in the RoboSats repository (commit ff1998c), then lets GnuPG produce a clear-signed text and an encrypted message that the Dart code must read.
 # GnuPG only ever touches throwaway home directories under a temporary directory: `--homedir` is on every call.
@@ -29,7 +31,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-transcript="$artefacts/gpg_transcript.txt"
+transcript="$artefacts/transcript.txt"
 say() { printf '%s\n' "${*//$work/<tmp>}" | tee -a "$transcript"; }
 pass() { say "ok   gpg:  $*"; }
 die() {
@@ -45,6 +47,17 @@ dart_tool() {
     -v troc-pub-cache:/home/bull/.pub-cache \
     bull-tools bash -c "fvm dart run tool/pgp_interop.dart $1 /artefacts" | tee -a "$transcript"
 }
+
+# The OpenPGP.js half runs on the host, with a stub for a module OpenPGP.js only loads for RSA and ECDSA keys.
+js_tool() {
+  mkdir -p "$work/node_modules/asn1.js"
+  echo 'module.exports = { define: () => ({}) };' >"$work/node_modules/asn1.js/index.js"
+  NODE_PATH="$work/node_modules" node "$package/tool/pgp_interop_openpgpjs.cjs" "$OPENPGPJS" "$1" "$artefacts" 2>&1 |
+    tee -a "$transcript"
+  return "${PIPESTATUS[0]}"
+}
+with_openpgpjs=false
+if [ -n "${OPENPGPJS:-}" ] && command -v node >/dev/null; then with_openpgpjs=true; fi
 
 # python-gnupg 0.5 starts every command with these options (`GPG.make_args`), and reads the status lines.
 pygpg() {
@@ -63,7 +76,7 @@ pygpg_passphrase() {
 }
 
 say "# $(gpg --version | head -n 1), libgcrypt $(gpg --version | sed -n 's/^libgcrypt //p'), $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-say "## 1. Dart writes a key, a clear-signed invoice and a chat text"
+say "## 1. Dart writes a key, a clear-signed invoice and a chat message"
 emitted=$(dart_tool emit)
 printf '%s\n' "$emitted"
 token=$(cat "$artefacts/token")
@@ -154,8 +167,17 @@ gpg --homedir "$peer" --batch --armor --export "$peer_fingerprint" >"$artefacts/
 gpg --homedir "$peer" --batch --quiet --import "$artefacts/troc_pub_key_reexported_by_gpg" 2>>"$transcript"
 pass "peer key $peer_fingerprint generated, the robot key imported from the coordinator's export"
 
-say "## 7. Dart encrypts and signs a chat message to itself and to the peer"
-dart_tool encrypt
+if $with_openpgpjs; then
+  say "## 6b. OpenPGP.js reads what Dart wrote, then plays the official client: its own key, clear-signed texts, chat messages"
+  js_tool make || die "OpenPGP.js refused something the Dart code wrote"
+else
+  say "## 6b. OpenPGP.js: skipped (set OPENPGPJS to a copy of openpgp.min.js)"
+fi
+
+say "## 7. Dart encrypts and signs a chat message to itself and to each peer"
+encrypted=$(dart_tool encrypt)
+printf '%s\n' "$encrypted"
+signed_at=$(awk '$1 == "signed" { print $3 }' <<<"$encrypted")
 
 say "## 8. GnuPG decrypts it, as the peer and as the robot"
 status=$(gpg --homedir "$peer" --batch --status-fd 2 --decrypt "$artefacts/troc_chat_to_gpg.asc" 2>&1 >"$work/peer_plain.txt")
@@ -165,7 +187,7 @@ grep -q "^\[GNUPG:\] DECRYPTION_OKAY" <<<"$status" || die "peer: no DECRYPTION_O
 grep -q "^\[GNUPG:\] GOODMDC" <<<"$status" || die "peer: no GOODMDC"
 validsig=$(grep "^\[GNUPG:\] VALIDSIG " <<<"$status") || die "peer: signature of the robot not valid"
 [ "$(awk '{ print $3 }' <<<"$validsig")" = "$fingerprint" ] || die "peer: signer is not the robot key"
-[ "$(awk '{ print $5 }' <<<"$validsig")" = "1794139200" ] || die "peer: signature is not dated 24 hours before"
+[ "$(awk '{ print $5 }' <<<"$validsig")" = "$signed_at" ] || die "peer: signature is not dated 24 hours before"
 pass "peer: decrypted (AES256, MDC good), text identical, good signature of the robot key dated 24 hours before"
 
 status=$(pygpg_passphrase "$coordinator" "$token" "$artefacts/troc_chat_to_gpg.asc" --decrypt 2>&1 >"$work/own_plain.txt")
@@ -173,8 +195,31 @@ say "$status"
 cmp -s "$work/own_plain.txt" "$artefacts/chat.txt" || die "the robot key in GnuPG does not read the chat text"
 grep -q "^\[GNUPG:\] DECRYPTION_OKAY" <<<"$status" || die "robot key in GnuPG: no DECRYPTION_OKAY"
 pass "robot key in GnuPG, unlocked by the token: decrypted its own copy, text identical"
-gpg --homedir "$peer" --batch --list-packets "$artefacts/troc_chat_to_gpg.asc" 2>/dev/null |
+status=$(pygpg_passphrase "$coordinator" "$token" "$artefacts/troc_chat_to_peer.asc" --decrypt 2>&1 >"$work/own_plain.txt")
+say "$status"
+cmp -s "$work/own_plain.txt" "$artefacts/chat.txt" || die "the robot key in GnuPG does not read the deterministic chat message"
+validsig=$(grep "^\[GNUPG:\] VALIDSIG " <<<"$status") || die "deterministic chat message: signature not valid"
+[ "$(awk '{ print $5 }' <<<"$validsig")" = "1794139200" ] || die "deterministic chat message: signature is not dated 24 hours before"
+pass "robot key in GnuPG: decrypted the deterministic chat message, good signature dated 24 hours before"
+gpg --homedir "$coordinator" --batch --list-packets "$artefacts/troc_chat_to_peer.asc" 2>/dev/null |
   sed -E 's/keyid [0-9A-F]+/keyid K/; s/data: .*/data: D/; s/created [0-9]+/created T/' >>"$transcript"
+if $with_openpgpjs; then
+  say "## 8b. OpenPGP.js decrypts the message as the peer and verifies a text signed with its own key"
+  js_tool read || die "OpenPGP.js refused something the Dart code wrote"
+  for message in troc_chat_to_peer openpgpjs_chat_to_troc; do
+    gpg --homedir "$coordinator" --batch --pinentry-mode loopback --passphrase "$token" --list-packets "$artefacts/$message.asc" 2>/dev/null |
+      grep -v '^# off' |
+      sed -E 's/keyid:? [0-9A-F]+/keyid K/; s/data: .*/data: D/; s/sig created [0-9-]+/sig created T/; s/created [0-9]+/created T/;
+              s/length: [0-9]+/length: L/; s/begin of digest .*/begin of digest B/; s/issuer key ID [0-9A-F]+/issuer key ID K/;
+              s/issuer fpr v4 [0-9A-F]+/issuer fpr v4 F/' >"$work/$message.shape"
+  done
+  if diff "$work/troc_chat_to_peer.shape" "$work/openpgpjs_chat_to_troc.shape" >>"$transcript"; then
+    pass "gpg --list-packets: a chat message of the Dart code has the packets of one made by OpenPGP.js"
+  else
+    die "gpg --list-packets: chat message differs from the one OpenPGP.js made"
+  fi
+  cat "$work/openpgpjs_chat_to_troc.shape" >>"$transcript"
+fi
 
 say "## 9. GnuPG encrypts and signs a chat message to the robot and to itself"
 gpg --homedir "$peer" --batch --quiet --armor --trust-model always --sign --encrypt \
@@ -182,12 +227,13 @@ gpg --homedir "$peer" --batch --quiet --armor --trust-model always --sign --encr
   --output "$artefacts/gpg_chat_to_troc.asc" "$artefacts/chat.txt" 2>>"$transcript"
 pass "peer: gpg --sign --encrypt to both keys"
 
-say "## 10. Dart verifies and decrypts what GnuPG made"
+say "## 10. Dart verifies and decrypts what GnuPG and OpenPGP.js made"
 dart_tool check
 
 say "## All checks passed"
 if $update_fixtures; then
-  rm -f "$artefacts/token" "$artefacts/invoice.txt" "$artefacts/chat.txt"
+  rm -f "$artefacts/token" "$artefacts/openpgpjs_token" "$artefacts/invoice.txt" "$artefacts/chat.txt"
+  rm -rf "$package/test/fixtures/pgp_interop"
   mkdir -p "$package/test/fixtures/pgp_interop"
   cp "$artefacts"/* "$package/test/fixtures/pgp_interop/"
   echo "fixtures updated in $package/test/fixtures/pgp_interop"

@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:pinenacl/ed25519.dart' as nacl;
 import 'package:pinenacl/tweetnacl.dart';
 import 'package:pointycastle/export.dart' as pc;
+import 'package:robosats/src/pgp/bytes.dart';
 
 /// OpenPGP hash algorithm identifiers (RFC 4880 section 9.4).
 abstract final class HashId {
@@ -30,6 +31,14 @@ crypto.Hash? signatureHash(int id) => switch (id) {
   HashId.sha384 => crypto.sha384,
   HashId.sha512 => crypto.sha512,
   HashId.sha224 => crypto.sha224,
+  _ => null,
+};
+
+/// The hash behind the KDF identifier of an ECDH key, or `null`: RFC 6637 section 12 allows SHA-256, SHA-384 and SHA-512 only.
+crypto.Hash? ecdhKdfHash(int id) => switch (id) {
+  HashId.sha256 => crypto.sha256,
+  HashId.sha384 => crypto.sha384,
+  HashId.sha512 => crypto.sha512,
   _ => null,
 };
 
@@ -96,6 +105,80 @@ Uint8List clampX25519Scalar(Uint8List bytes) => Uint8List.fromList(bytes)
 Uint8List x25519PublicKey(Uint8List scalar) =>
     TweetNaCl.crypto_scalarmult_base(Uint8List(32), scalar);
 
+/// The X25519 shared secret of a little-endian [scalar] and a peer's public key, or `null` when it is all zero.
+///
+/// An all-zero result means [publicKey] is one of the low-order points of RFC 7748 section 6.1: anyone could then compute the secret.
+Uint8List? x25519SharedSecret(Uint8List scalar, Uint8List publicKey) {
+  if (scalar.length != 32 || publicKey.length != 32) return null;
+  final shared = TweetNaCl.crypto_scalarmult(Uint8List(32), scalar, publicKey);
+  var bits = 0;
+  for (final byte in shared) {
+    bits |= byte;
+  }
+  return bits == 0 ? null : shared;
+}
+
+/// Whether [publicKey] is an X25519 point of low order, which no honest key is.
+///
+/// Every clamped scalar is a multiple of the cofactor, so one multiplication tells.
+bool isLowOrderX25519Point(Uint8List publicKey) =>
+    x25519SharedSecret(clampX25519Scalar(Uint8List(32)), publicKey) == null;
+
+const _keyWrapIv = [0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6];
+
+/// Wraps [data], a multiple of 8 bytes, under [kek] with the AES key wrap of RFC 3394.
+Uint8List aesKeyWrap(Uint8List kek, Uint8List data) {
+  final cipher = pc.AESEngine()..init(true, pc.KeyParameter(kek));
+  final blocks = data.length ~/ 8;
+  final a = Uint8List.fromList(_keyWrapIv);
+  final r = Uint8List.fromList(data);
+  final buffer = Uint8List(16);
+  for (var j = 0; j < 6; j++) {
+    for (var i = 0; i < blocks; i++) {
+      buffer
+        ..setRange(0, 8, a)
+        ..setRange(8, 16, r, i * 8);
+      cipher.processBlock(buffer, 0, buffer, 0);
+      a.setRange(0, 8, buffer);
+      _xorCounter(a, blocks * j + i + 1);
+      r.setRange(i * 8, i * 8 + 8, buffer, 8);
+    }
+  }
+  return Uint8List.fromList([...a, ...r]);
+}
+
+/// Unwraps [wrapped] under [kek], or returns `null` when the integrity check of RFC 3394 fails.
+Uint8List? aesKeyUnwrap(Uint8List kek, Uint8List wrapped) {
+  if (wrapped.length < 24 || wrapped.length % 8 != 0) return null;
+  final cipher = pc.AESEngine()..init(false, pc.KeyParameter(kek));
+  final blocks = wrapped.length ~/ 8 - 1;
+  final a = Uint8List.fromList(wrapped.sublist(0, 8));
+  final r = Uint8List.fromList(wrapped.sublist(8));
+  final buffer = Uint8List(16);
+  for (var j = 5; j >= 0; j--) {
+    for (var i = blocks - 1; i >= 0; i--) {
+      _xorCounter(a, blocks * j + i + 1);
+      buffer
+        ..setRange(0, 8, a)
+        ..setRange(8, 16, r, i * 8);
+      cipher.processBlock(buffer, 0, buffer, 0);
+      a.setRange(0, 8, buffer);
+      r.setRange(i * 8, i * 8 + 8, buffer, 8);
+    }
+  }
+  wipe(buffer);
+  if (!bytesEqual(a, _keyWrapIv)) {
+    wipe(r);
+    return null;
+  }
+  return r;
+}
+
+void _xorCounter(Uint8List a, int counter) {
+  a[7] ^= counter & 0xff;
+  a[6] ^= counter >> 8 & 0xff;
+}
+
 /// Encrypts or decrypts [data] with AES in the full-block CFB mode OpenPGP uses for secret keys.
 Uint8List aesCfb({
   required bool encrypt,
@@ -128,7 +211,7 @@ Uint8List s2kIteratedSalted({
   required int codedCount,
   required int keyLength,
 }) {
-  final unit = [...salt, ...passphrase];
+  final unit = Uint8List.fromList([...salt, ...passphrase]);
   final total = max(s2kByteCount(codedCount), unit.length);
   // Feeding whole copies of the unit in large chunks keeps the number of hash updates low.
   final copies = max(1, 65536 ~/ unit.length);
@@ -150,6 +233,9 @@ Uint8List s2kIteratedSalted({
       ..close();
     key.add(output.digest.bytes);
   }
+  // Both buffers hold copies of the passphrase.
+  wipe(unit);
+  wipe(chunk);
   return Uint8List.sublistView(key.takeBytes(), 0, keyLength);
 }
 
