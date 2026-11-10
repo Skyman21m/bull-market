@@ -644,6 +644,77 @@ void main() {
     });
   });
 
+  group('free text from a coordinator', () {
+    // JSON escapes, so the body carries the raw characters: NUL, ESC, CR, LF, RLO, LRI, an unpaired surrogate, NEL, U+2028.
+    const hostile =
+        r'Revolut\u0000 \u001b[31m\r\n\u202e\u2066\ud800\u0085\u2028x Depósito';
+    const cleaned = 'Revolut [31m    x Depósito';
+
+    String withRaw(Map<String, Object?> json, String field) => jsonEncode({
+      ...json,
+      field: 'PLACEHOLDER',
+    }).replaceFirst('"PLACEHOLDER"', '"$hostile"');
+
+    test('loses control and bidi characters in a payment method', () {
+      final order = PublicOrder.parse(
+        jsonDecode(withRaw(_order(), 'payment_method')),
+        temple,
+      ).order;
+      expect(order?.paymentMethods.text, cleaned);
+      expect(order?.paymentMethods.recognized.map((m) => m.name), ['Revolut']);
+    });
+
+    test('loses them in the notice and the node alias', () async {
+      for (final field in [
+        'notice_message',
+        'node_alias',
+        'lnd_version',
+        'alternative_name',
+      ]) {
+        serve(
+          '/api/info/',
+          Ok(rawResponse(utf8.encode(withRaw(_info(), field)))),
+        );
+        final info = _value(await client.fetchInfo(temple, _mainnet));
+        final value = switch (field) {
+          'notice_message' => info.noticeMessage,
+          'node_alias' => info.nodeAlias,
+          'lnd_version' => info.lndVersion,
+          _ => info.alternativeName,
+        };
+        expect(value, cleaned, reason: field);
+      }
+    });
+
+    test('keeps ordinary non-ASCII text', () {
+      for (final text in [
+        'Dep. Dinheiro Caixa (lotérica)',
+        'Dep. Dinheiro Imediato BB / Itaú',
+        'Сбербанк',
+        '支付宝 ⚡🔥',
+      ]) {
+        final order = PublicOrder.parse(
+          _order({'payment_method': text}),
+          temple,
+        ).order;
+        expect(order?.paymentMethods.text, text);
+      }
+    });
+
+    test('is capped in code points', () async {
+      serve('/api/info/', Ok(jsonResponse(_info({'node_alias': '🔥' * 1024}))));
+      expect(
+        _value(await client.fetchInfo(temple, _mainnet)).nodeAlias,
+        '🔥' * 1024,
+      );
+      serve('/api/info/', Ok(jsonResponse(_info({'node_alias': '🔥' * 1025}))));
+      expect(
+        _failure(await client.fetchInfo(temple, _mainnet)),
+        isA<CoordinatorResponseMalformed>(),
+      );
+    });
+  });
+
   group('OrderLocation', () {
     test('bounds latitude and longitude', () {
       expect(OrderLocation.tryCreate(90, 180), isNotNull);

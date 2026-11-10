@@ -63,7 +63,7 @@ final class JsonFields {
         _ => _reject(key, null),
       };
 
-  /// A string of at most [maxCodePoints] Unicode code points, as Django counts the `max_length` of a text field.
+  /// Free text for display: a string of at most [maxCodePoints] Unicode code points, as Django counts the `max_length` of a text field, cleaned by [displayText].
   String requiredText(String key, {required int maxCodePoints}) =>
       optionalText(key, maxCodePoints: maxCodePoints) ?? _reject(key, '');
 
@@ -76,7 +76,7 @@ final class JsonFields {
     final String value
         when value.length <= 2 * maxCodePoints &&
             value.runes.length <= maxCodePoints =>
-      value,
+      displayText(value),
     _ => _reject(key, null),
   };
 
@@ -112,3 +112,32 @@ final RegExp _decimal = RegExp(r'^-?\d{1,12}(\.\d{1,12})?$');
 /// Parses a plain decimal string such as `-0.05` or `0.00210000`, and nothing else: no exponent, sign `+`, whitespace, `NaN` or `Infinity`.
 double? parseDecimal(String text) =>
     _decimal.hasMatch(text) ? double.parse(text) : null;
+
+/// Free text from a coordinator, made safe to display and to put on one line.
+///
+/// C0 and C1 control characters and DEL are removed, except tab, line feed, vertical tab, form feed, carriage return and next line, which become a space, as do the line and paragraph separators.
+/// Unicode bidirectional controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069) and unpaired surrogates are removed.
+/// Everything else, accented letters and emoji included, is kept.
+String displayText(String text) {
+  final buffer = StringBuffer();
+  for (final rune in text.runes) {
+    if ((rune >= 0x09 && rune <= 0x0D) ||
+        rune == 0x85 ||
+        rune == 0x2028 ||
+        rune == 0x2029) {
+      buffer.write(' ');
+    } else if (rune < 0x20 ||
+        (rune >= 0x7F && rune <= 0x9F) ||
+        rune == 0x061C ||
+        rune == 0x200E ||
+        rune == 0x200F ||
+        (rune >= 0x202A && rune <= 0x202E) ||
+        (rune >= 0x2066 && rune <= 0x2069) ||
+        (rune >= 0xD800 && rune <= 0xDFFF)) {
+      continue;
+    } else {
+      buffer.writeCharCode(rune);
+    }
+  }
+  return buffer.toString();
+}

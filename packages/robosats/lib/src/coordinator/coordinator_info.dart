@@ -59,7 +59,7 @@ enum NoticeSeverity {
 /// What a coordinator says about itself on `GET /api/info/` (`InfoView`, `api/views.py:977-1074`).
 ///
 /// The identity fields, [network] and [nodeId], have been checked against the federation list when this comes from `CoordinatorClient.fetchInfo`.
-/// Every string is coordinator text: display it as text, never as markup, and never log it.
+/// Every free-text string is coordinator text, cleaned as the package README says: display it as text, never as markup, and never log it.
 @immutable
 final class CoordinatorInfo {
   final int numPublicBuyOrders;
@@ -217,22 +217,22 @@ final class CoordinatorInfo {
       min: 0,
       max: _btc,
     );
-    final lnd = fields.optionalString('lnd_version', maxLength: _text);
-    final cln = fields.optionalString('cln_version', maxLength: _text);
-    final commit = fields.optionalString(
+    final lnd = fields.optionalText('lnd_version', maxCodePoints: _text);
+    final cln = fields.optionalText('cln_version', maxCodePoints: _text);
+    final commit = fields.optionalText(
       'robosats_running_commit_hash',
-      maxLength: _text,
+      maxCodePoints: _text,
     );
     final versionObject = fields.requiredObject('version');
-    final alternativeSite = fields.optionalString(
+    final alternativeSite = fields.optionalText(
       'alternative_site',
-      maxLength: _text,
+      maxCodePoints: _text,
     );
-    final alternativeName = fields.optionalString(
+    final alternativeName = fields.optionalText(
       'alternative_name',
-      maxLength: _text,
+      maxCodePoints: _text,
     );
-    final nodeAlias = fields.requiredString('node_alias', maxLength: _text);
+    final nodeAlias = fields.requiredText('node_alias', maxCodePoints: _text);
     final nodeId = fields.requiredString('node_id', maxLength: 66);
     final network = fields.requiredString('network', maxLength: _text);
     final makerFee = fields.requiredDouble('maker_fee', min: 0, max: 1);
@@ -262,10 +262,10 @@ final class CoordinatorInfo {
     );
     final blossom = fields.optionalBool('blossom_enabled');
     final severity = fields.optionalString('notice_severity', maxLength: 64);
-    final notice = fields.optionalString('notice_message', maxLength: 16384);
-    final priceApis = fields.optionalString(
+    final notice = fields.optionalText('notice_message', maxCodePoints: 16384);
+    final priceApis = fields.optionalText(
       'market_price_apis',
-      maxLength: 4096,
+      maxCodePoints: 4096,
     );
     final federationHash = fields.optionalString(
       'federation_hash',
