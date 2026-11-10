@@ -1,0 +1,7 @@
+arb-dir: lib/l10n
+output-dir: lib/generated/l10n
+template-arb-file: p2p_en.arb
+output-localization-file: p2p_localizations.dart
+output-class: P2pLocalizations
+untranslated-messages-file: untranslated-messages.txt
+nullable-getter: false

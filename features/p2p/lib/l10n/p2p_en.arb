@@ -1,0 +1,373 @@
+{
+  "@@locale": "en",
+  "p2pTabLabel": "P2P",
+  "@p2pTabLabel": {
+    "description": "Libellé du 3e onglet de la barre du bas du portefeuille (entre Wallet et Exchange). Tient dans toutes les langues ; libellé définitif à confirmer (PLAN.md § 5 disait provisoirement « Buy NKYC P2P »)."
+  },
+  "p2pTestnetBanner": "Using Testnet Bitcoin",
+  "@p2pTestnetBanner": {
+    "description": "fr.json : « Utilisation Testnet Bitcoin » (article manquant, ordre des mots anglais). Le portefeuille écrit « Bitcoin Testnet ». Bandeau en italique, seulement si le réseau P2P est testnet."
+  },
+  "p2pTorWaitingLine": "Your trades only ever go through Tor.",
+  "@p2pTorWaitingLine": {
+    "description": "Ligne affichée dans l'onglet P2P pendant que Tor se connecte (l'attente se fait dans l'onglet, pas au démarrage de l'app). Texte de la maquette validée du 10/11/2026."
+  },
+  "p2pTorInitializing": "Initializing Tor daemon",
+  "@p2pTorInitializing": {
+    "description": "fr.json : « Initialisation du daemon Tor » ; « daemon » est de l'anglais. Aussi affiché dans le menu P2P."
+  },
+  "p2pTorConnecting": "Connecting to Tor network",
+  "@p2pTorConnecting": {
+    "description": "État 'STARTING'. Sert aussi de titre à l'écran d'attente dans l'onglet (maquette)."
+  },
+  "p2pTorConnected": "Connected to Tor network",
+  "@p2pTorConnected": {
+    "description": "État 'ON'. La fédération (coordinateurs, carnet) ne se charge qu'après cet état."
+  },
+  "p2pTorConnectionError": "Connection error",
+  "@p2pTorConnectionError": {
+    "description": "Valeur par défaut de l'état Tor chez RoboSats (affichée tant qu'aucun autre état n'est connu)."
+  },
+  "p2pNavOffers": "Offers",
+  "@p2pNavOffers": {
+    "description": "Destination interne à l'onglet P2P (carnet d'ordres). « Offres » gardé car l'anglais dit Offers (glossaire)."
+  },
+  "p2pNavCreate": "Create",
+  "@p2pNavCreate": {
+    "description": "Destination centrale quand le robot n'a pas d'ordre actif ; aussi bouton de l'étape 3 de l'assistant. Ouvre le formulaire de création (phase 3) : en phase 1 le bouton peut rester grisé."
+  },
+  "p2pNavGarage": "Garage",
+  "@p2pNavGarage": {
+    "description": "fr.json = EN (non traduit), mais le mot est identique en français."
+  },
+  "p2pNavOrder": "Order",
+  "@p2pNavOrder": {
+    "description": "Destination centrale quand le robot a un ordre actif ; sert aussi de titre à la page d'un ordre (maquette)."
+  },
+  "p2pCommonSearch": "Search",
+  "@p2pCommonSearch": {
+    "description": "fr.json = EN. Bouton étroit (segment du carnet, un quart de largeur) : « Rechercher » tient. Dans le carnet il ouvre « Search order » ; à l'étape 3 de l'assistant, la recherche guidée."
+  },
+  "p2pBookViewList": "List",
+  "@p2pBookViewList": {
+    "description": "fr.json : « Lister » (verbe, alors que les segments voisins sont des noms) ; la maquette reprenait « Lister ». Segment étroit (un quart de largeur)."
+  },
+  "p2pBookViewChart": "Chart",
+  "@p2pBookViewChart": {
+    "description": "Segment du carnet et en-tête du graphique de profondeur. Segment étroit : « Graphique » est le plus long des quatre, à vérifier à 320 px."
+  },
+  "p2pBookViewMap": "Map",
+  "@p2pBookViewMap": {
+    "description": "fr.json = EN. Segment du carnet, en-tête de la carte et titre de la carte du lieu de rencontre."
+  },
+  "p2pBookFilterIWantTo": "I want to",
+  "@p2pBookFilterIWantTo": {
+    "description": "Début de la phrase de filtres « Je veux [type] et utiliser [devise] payer avec [mode] hébergé par [hôte] ». Dans la recherche guidée, RoboSats ajoute « ... » après le texte."
+  },
+  "p2pBookFilterAny": "ANY",
+  "@p2pBookFilterAny": {
+    "description": "Valeur « indifférent » des quatre sélecteurs (type, devise, mode de paiement, hôte), et valeur de {currencyCode} dans le message de carnet vide. Le masculin pluriel ne s'accorde pas avec « devise » ; on garde un seul mot comme RoboSats."
+  },
+  "p2pBookFilterBuy": "Buy",
+  "@p2pBookFilterBuy": {
+    "description": "Choisir « Acheter » montre les ordres de VENTE (type 1). Aussi bouton de la recherche guidée."
+  },
+  "p2pBookFilterSell": "Sell",
+  "@p2pBookFilterSell": {
+    "description": "Montre les ordres d'ACHAT (type 0)."
+  },
+  "p2pBookFilterSelectOrderType": "Select Order Type",
+  "@p2pBookFilterSelectOrderType": {
+    "description": "fr.json : « Sélectionner Type d'Ordre » (majuscules à l'anglaise, article manquant). Étiquette du sélecteur de type."
+  },
+  "p2pBookFilterAndUse": "and use",
+  "@p2pBookFilterAndUse": {
+    "description": "Mot de liaison, affiché seulement si la largeur le permet. Dans la recherche guidée, suivi de « ... »."
+  },
+  "p2pBookFilterSelectCurrency": "Select Payment Currency",
+  "@p2pBookFilterSelectCurrency": {
+    "description": "fr.json : « Sélectionner la Devise de Paiement » (majuscules)."
+  },
+  "p2pBookFilterPayWith": "pay with",
+  "@p2pBookFilterPayWith": {
+    "description": "Mot de liaison en mode monnaie fiduciaire."
+  },
+  "p2pBookFilterSelectMethod": "Select Payment Method",
+  "@p2pBookFilterSelectMethod": {
+    "description": "fr.json : « Sélectionner le Mode de Paiement » (majuscules). Version étroite (liste à choix unique)."
+  },
+  "p2pBookFilterHostedBy": "hosted by",
+  "@p2pBookFilterHostedBy": {
+    "description": "Mot de liaison avant le sélecteur d'hôte."
+  },
+  "p2pBookFilterSelectHost": "Select Host",
+  "@p2pBookFilterSelectHost": {
+    "description": "fr.json : « Sélectionner Hôte » (article manquant, majuscule)."
+  },
+  "p2pBookMakerStatusActive": "Active",
+  "@p2pBookMakerStatusActive": {
+    "description": "Absent de fr.json : valeur renvoyée par l'API (maker_status) et passée à t(). Info-bulle de la pastille verte d'activité du créateur."
+  },
+  "p2pBookMakerStatusSeenRecently": "Seen recently",
+  "@p2pBookMakerStatusSeenRecently": {
+    "description": "Absent de fr.json. Pastille orange."
+  },
+  "p2pBookMakerStatusInactive": "Inactive",
+  "@p2pBookMakerStatusInactive": {
+    "description": "Absent de fr.json. Pastille rouge."
+  },
+  "p2pBookRoleSeller": "Seller",
+  "@p2pBookRoleSeller": {
+    "description": "Ordre de type 1 (le créateur vend des BTC)."
+  },
+  "p2pBookRoleBuyer": "Buyer",
+  "@p2pBookRoleBuyer": {
+    "description": "Ordre de type 0."
+  },
+  "p2pBookColumnAmount": "Amount",
+  "@p2pBookColumnAmount": {
+    "description": "En-tête de colonne ; aussi légende du montant fixe dans la fiche de l'ordre (où RoboSats l'affiche sans t(), donc toujours en anglais). Montants : 4 chiffres significatifs, fourchette « min-max » ; en échange, suffixe « M Sats »."
+  },
+  "p2pBookColumnPremium": "Premium",
+  "@p2pBookColumnPremium": {
+    "description": "En-tête de colonne et choix d'abscisse du graphique."
+  },
+  "p2pBookColumnBond": "Bond",
+  "@p2pBookColumnBond": {
+    "description": "book/table"
+  },
+  "p2pBookLowBond": "Low bond: This maker has set a bond below the default {defaultBond}%. Lower bonds mean reduced trade security.",
+  "@p2pBookLowBond": {
+    "description": "fr.json = EN. Info-bulle de la caution en orange quand elle est sous la valeur par défaut (3 %).",
+    "placeholders": {
+      "defaultBond": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookError": "An error occurred.",
+  "@p2pBookError": {
+    "description": "Message d'erreur générique du tableau (errorOverlayDefaultLabel). Les autres textes internes du tableau MUI (tri, filtres, colonnes) ne sont pas repris : ils n'ont pas d'équivalent dans l'interface du portefeuille."
+  },
+  "p2pBookEmptySell": "No orders found to sell BTC for {currencyCode}",
+  "@p2pBookEmptySell": {
+    "description": "fr.json : « …vendre des BTC pour {currencyCode} » (« pour EUR » est maladroit). Affiché quand le filtre est « Vendre ». {currencyCode} vaut le code devise ou « Tous » (p2pBookFilterAny).",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookEmptyBuy": "No orders found to buy BTC for {currencyCode}",
+  "@p2pBookEmptyBuy": {
+    "description": "Même correction. Affiché pour tout autre filtre que « Vendre » (RoboSats teste type 0, sinon ce texte).",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookEmptyBeFirst": "Be the first one to create an order",
+  "@p2pBookEmptyBeFirst": {
+    "description": "Sous le message de carnet vide, en couleur primaire."
+  },
+  "p2pOrderHost": "Order host",
+  "@p2pOrderHost": {
+    "description": "Sous le nom long du coordinateur ; la ligne ouvre la fiche du coordinateur. (La maquette mettait aussi « Coordinateur » ailleurs : on garde « Hôte de l'ordre ».)"
+  },
+  "p2pOrderId": "ID",
+  "@p2pOrderId": {
+    "description": "fr.json = EN. Légende sous le numéro de l'ordre (icône #). « Numéro » plutôt que l'abréviation anglaise."
+  },
+  "p2pOrderFeeMaker": "Maker",
+  "@p2pOrderFeeMaker": {
+    "description": "RoboSats n'affiche que l'initiale (« C ») devant les frais du créateur dans la ligne de frais : prendre le 1er caractère de la traduction, comme RoboSats."
+  },
+  "p2pOrderFeeMakerTooltip": "Maker fee",
+  "@p2pOrderFeeMakerTooltip": {
+    "description": "Info-bulle de la ligne de frais et libellé de la fiche coordinateur."
+  },
+  "p2pOrderFeeTaker": "Taker",
+  "@p2pOrderFeeTaker": {
+    "description": "Initiale « P » dans la ligne de frais (« C 0.025% · P 0.175% » dans la maquette)."
+  },
+  "p2pOrderFeeTakerTooltip": "Taker fee",
+  "@p2pOrderFeeTakerTooltip": {
+    "description": "order/details"
+  },
+  "p2pOrderOnchainEnabled": "Onchain payouts enabled",
+  "@p2pOrderOnchainEnabled": {
+    "description": "fr.json : « Paiements onchain activés » ; graphie « on-chain » du portefeuille. Info-bulle de la puce verte « 🔗 x.x% »."
+  },
+  "p2pOrderOnchainDisabled": "Onchain payouts disabled",
+  "@p2pOrderOnchainDisabled": {
+    "description": "fr.json : « …onchain désactivés » ; graphie « on-chain ». Info-bulle de l'icône grise ; aussi valeur rouge dans la fiche coordinateur."
+  },
+  "p2pOrderDetailsDivider": "Order Details",
+  "@p2pOrderDetailsDivider": {
+    "description": "Puce du séparateur."
+  },
+  "p2pOrderAmountRange": "Amount Range",
+  "@p2pOrderAmountRange": {
+    "description": "RoboSats l'affiche ici en dur, sans t() (toujours en anglais) ; fr.json a la clé (venant du formulaire) : « Plage de Montant ». Glossaire : fourchette. Pour un montant fixe, la légende est « Amount » (p2pBookColumnAmount)."
+  },
+  "p2pOrderYouSendVia": "You send via {method} {amount}",
+  "@p2pOrderYouSendVia": {
+    "description": "Vu par l'acheteur de BTC. {method} = texte libre des modes de paiement, {amount} = montant + code devise.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouReceiveSats": "You receive {amount} Sats (Approx)",
+  "@p2pOrderYouReceiveSats": {
+    "description": "Sats calculés avec les frais du rôle et 0,1 % de budget de routage ; {amount} peut être une fourchette « min-max ».",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouSendLightning": "You send via Lightning {amount} Sats (Approx)",
+  "@p2pOrderYouSendLightning": {
+    "description": "Vu par le vendeur de BTC.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderYouReceiveVia": "You receive via {method} {amount}",
+  "@p2pOrderYouReceiveVia": {
+    "description": "order/details",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderSwapDestination": "Swap destination",
+  "@p2pOrderSwapDestination": {
+    "description": "Légende des modes quand la devise est BTC (ordre d'échange)."
+  },
+  "p2pOrderAcceptedMethods": "Accepted payment methods",
+  "@p2pOrderAcceptedMethods": {
+    "description": "order/details"
+  },
+  "p2pOrderPriceAndPremiumValue": "{price} {currencyCode}/BTC - Premium: {premium}%",
+  "@p2pOrderPriceAndPremiumValue": {
+    "description": "fr.json : « - Prime: {premium}% » (typographie seulement : espaces avant « : » et « % »).",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      },
+      "premium": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderPriceAndPremium": "Price and Premium",
+  "@p2pOrderPriceAndPremium": {
+    "description": "Légende quand le prix courant est connu."
+  },
+  "p2pOrderAmountOfSatoshis": "Amount of Satoshis",
+  "@p2pOrderAmountOfSatoshis": {
+    "description": "fr.json : « Montant de Satoshis » (majuscule, préposition). Ordre à montant de sats explicite sans prix courant."
+  },
+  "p2pOrderPremiumOverMarket": "Premium over market price",
+  "@p2pOrderPremiumOverMarket": {
+    "description": "Légende quand le prix courant est inconnu (valeur « x% »)."
+  },
+  "p2pOrderExpiresIn": "Expires in",
+  "@p2pOrderExpiresIn": {
+    "description": "Compte à rebours « {h}h {mm}m {ss}s » (orange sous 25 %, rouge sous 10 %, gras sous 25 %). Format en dur chez RoboSats ; en français « 17 h 04 min 12 s » serait plus juste : à régler dans le composant de compte à rebours."
+  },
+  "p2pOrderExpired": "The order has expired",
+  "@p2pOrderExpired": {
+    "description": "Remplace le compte à rebours à zéro."
+  },
+  "p2pOrderDeposit": "Deposit",
+  "@p2pOrderDeposit": {
+    "description": "Délai laissé pour le séquestre (« 3h »)."
+  },
+  "p2pTakeOrder": "Take Order",
+  "@p2pTakeOrder": {
+    "description": "Bouton contour. La prise elle-même est en phase 2 ; en phase 1 le bouton s'affiche et mène au dialogue « pas de robot » ou au rappel de sauvegarde."
+  },
+  "p2pCoordinatorOffline": "Coordinator offline",
+  "@p2pCoordinatorOffline": {
+    "description": "Affiché à la place des sections quand le coordinateur ne répond pas (aussi une erreur que le client en lecture seule rencontre)."
+  },
+  "p2pOrderMaker": "Order maker",
+  "@p2pOrderMaker": {
+    "description": "Not in the RoboSats texts: caption under the maker's nickname at the bottom of the order details, as in the validated mock-up."
+  },
+  "p2pCommonRetry": "Retry",
+  "@p2pCommonRetry": {
+    "description": "Not in the RoboSats texts: asks again the coordinators whose book failed, or restarts Tor after a connection error."
+  },
+  "p2pBookCoordinatorsLoading": "{count, plural, =1{1 coordinator is still loading} other{{count} coordinators are still loading}}",
+  "@p2pBookCoordinatorsLoading": {
+    "description": "Not in the RoboSats texts: shown above the book while some coordinators have not answered yet; the orders of the others are already listed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pDurationHours": "{hours}h",
+  "@p2pDurationHours": {
+    "description": "Hours of a duration: the expiry ring of the book and the deposit time of an order. RoboSats writes `5h` in code, without translation.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pDurationMinutes": "{minutes}m",
+  "@p2pDurationMinutes": {
+    "description": "Minutes of a duration under one hour: the expiry ring of the book and the deposit time. RoboSats writes `12m` in code.",
+    "placeholders": {
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pDurationHoursMinutes": "{hours}h {minutes}m",
+  "@p2pDurationHoursMinutes": {
+    "description": "A deposit time of hours and minutes. RoboSats writes `1h 30m` in code; {minutes} has two digits.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCountdownHms": "{hours}h {minutes}m {seconds}s",
+  "@p2pCountdownHms": {
+    "description": "The live countdown of an order: RoboSats writes `{h}h {mm}m {ss}s` in code; {minutes} and {seconds} have two digits.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "String"
+      }
+    }
+  }
+}
