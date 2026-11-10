@@ -1,98 +1,98 @@
-# Spike 1 — Joindre un coordinateur RoboSats par le Tor embarqué
+# Spike 1 — Reaching a RoboSats coordinator through the embedded Tor
 
-Mesures du 10/11/2026, entre 07:01 et 07:30 UTC. Test : `integration_test/robosats_tor_test.dart`. Base du code : `main` à `50a931af8`.
+Measurements of 2026-11-10, between 07:01 and 07:30 UTC. Test: `integration_test/robosats_tor_test.dart`. Code base: `main` at `50a931af8`.
 
-## Verdict : ça fonctionne (sur Linux de bureau, en build debug)
+## Verdict: it works (on desktop Linux, in a debug build)
 
-Depuis Dart, avec le Tor déjà embarqué par Bull et sans aucune dépendance nouvelle, l'app appelle `GET /api/info/` sur l'adresse `.onion` d'un coordinateur RoboSats et reçoit la réponse attendue.
+From Dart, with the Tor already embedded by Bull and without any new dependency, the app calls `GET /api/info/` on the `.onion` address of a RoboSats coordinator and receives the expected response.
 
-## Résumé pour le propriétaire
+## Summary for the owner
 
-1. **Les 5 coordinateurs du réseau réel ont répondu**, ainsi que le coordinateur de test « temple ». Chacun a renvoyé la bonne identité (celle inscrite dans la liste officielle de RoboSats).
-2. **Le coordinateur de test « lake » n'a jamais répondu** : 9 essais, 9 échecs en 29 minutes, alors que son jumeau du réseau réel répondait. Un contrôle fait à la main avec un Tor classique, indépendant de l'app, a échoué de la même façon, mais sa sortie n'a pas été conservée. Il a répondu normalement lors d'un dixième lancement, vingt minutes plus tard : c'était une indisponibilité passagère. Les deux coordinateurs de test existent donc, mais leur disponibilité n'est pas garantie.
-3. **Démarrage de Tor** : 14 à 28 secondes la toute première fois, environ 10 secondes aux lancements suivants.
-4. **Premier contact avec un coordinateur** : 2 à 13 secondes, la moitié des essais entre 4,4 et 7,2 secondes.
-5. **Une fois la connexion ouverte, c'est rapide** : environ 1 seconde par requête.
-6. **Fiabilité** : sur 54 premiers contacts vers les 6 coordinateurs en ligne, 51 ont réussi et 3 ont échoué (dont un qui a attendu 60 secondes avant d'abandonner). Sur 90 requêtes enchaînées sur une connexion déjà ouverte, aucune n'a échoué.
-7. **Conséquence pour l'app** : prévoir un écran d'attente au premier affichage (estimation : 20 à 40 secondes à froid, le démarrage de Tor plus un premier contact ; l'interrogation en parallèle n'a pas été mesurée), interroger les coordinateurs en parallèle, réessayer automatiquement après un échec, et garder la connexion ouverte au lieu d'en rouvrir une à chaque fois.
-8. **Ce qui n'est pas encore prouvé** : le comportement sur un vrai téléphone Android (vitesse, réseau mobile, mise en veille). Ces mesures viennent d'un PC.
+1. **The 5 coordinators of the real network (mainnet) answered**, as did the "temple" test coordinator. Each one returned the right identity (the one listed in the official RoboSats list).
+2. **The "lake" test coordinator never answered**: 9 attempts, 9 failures in 29 minutes, while its twin on the real network was answering. A manual check with a regular Tor, independent of the app, failed the same way, but its output was not kept. It answered normally on a tenth run, twenty minutes later: it was a temporary outage. Both test coordinators therefore exist, but their availability is not guaranteed.
+3. **Tor startup**: 14 to 28 seconds the very first time, about 10 seconds on later runs.
+4. **First contact with a coordinator**: 2 to 13 seconds, half of the attempts between 4.4 and 7.2 seconds.
+5. **Once the connection is open, it is fast**: about 1 second per request.
+6. **Reliability**: of 54 first contacts with the 6 online coordinators, 51 succeeded and 3 failed (one of which waited 60 seconds before giving up). Of 90 requests chained on an already open connection, none failed.
+7. **Consequence for the app**: plan a waiting screen on first display (estimate: 20 to 40 seconds cold, Tor startup plus a first contact; querying in parallel was not measured), query the coordinators in parallel, retry automatically after a failure, and keep the connection open instead of reopening one each time.
+8. **What is not proven yet**: the behavior on a real Android phone (speed, mobile network, sleep). These measurements come from a PC.
 
-## Conditions de mesure
+## Measurement conditions
 
-- App compilée pour Linux de bureau en mode debug, lancée sans écran (Xvfb) dans un conteneur Docker, sur un PC (AMD Ryzen 7 5700U, 16 fils d'exécution). Flutter 3.44.9, Dart 3.12.2.
-- **Le PC est derrière un VPN Mullvad** (WireGuard, sortie à Zurich, vérifiée pendant la session). Tor s'est connecté en mode direct à chaque fois ; le repli Snowflake n'a jamais été déclenché.
-- 9 lancements de l'app en 29 minutes : 4 « à froid » (aucun état Tor sur disque, comme une première installation) et 5 « à chaud » (app relancée, état Tor du lancement précédent conservé sur disque).
-- Un seul créneau horaire, un seul réseau, une seule machine : ce sont des ordres de grandeur, pas des garanties.
-- Les 8 premiers lancements ont tourné avec des versions intermédiaires du test, le dernier avec la version du premier commit. Toutes mesuraient les mêmes temps bruts ; les statistiques ci-dessous sont recalculées à partir de ces temps.
-- **Les 81 lignes de mesure brutes sont versionnées** dans [tor-robosats-mesures.jsonl](tor-robosats-mesures.jsonl), dans l'ordre des lancements, pour que les chiffres puissent être revérifiés.
+- App built for desktop Linux in debug mode, run headless (Xvfb) in a Docker container, on a PC (AMD Ryzen 7 5700U, 16 threads). Flutter 3.44.9, Dart 3.12.2.
+- **The PC is behind a Mullvad VPN** (WireGuard, exit in Zurich, checked during the session). Tor connected in direct mode every time; the Snowflake fallback was never triggered.
+- 9 app runs in 29 minutes: 4 "cold" (no Tor state on disk, like a first install) and 5 "warm" (app restarted, Tor state of the previous run kept on disk).
+- A single time slot, a single network, a single machine: these are orders of magnitude, not guarantees.
+- The first 8 runs used intermediate versions of the test, the last one the version of the first commit. All of them measured the same raw times; the statistics below are recomputed from those times.
+- **The 81 raw measurement lines are versioned** in [tor-robosats-measurements.jsonl](tor-robosats-measurements.jsonl), in run order, so that the figures can be rechecked.
 
-## Relance après relecture (10/11/2026, 07:49 UTC)
+## Rerun after review (2026-11-10, 07:49 UTC)
 
-Un dixième lancement a été fait avec la version corrigée du test, vingt minutes après les neuf premiers : **les 7 coordinateurs ont répondu, lake testnet compris**, et le test est entièrement vert (10 cas réussis). L'absence de lake testnet pendant les neuf premiers lancements était donc une indisponibilité passagère, pas une adresse périmée. Tor a démarré à froid en 14,5 s ; la série de 10 requêtes a donné 0 échec, médiane 1,1 s. Les mesures de ce lancement sont dans [tor-robosats-mesures-relance.jsonl](tor-robosats-mesures-relance.jsonl). Les tableaux ci-dessous portent sur les neuf premiers lancements.
+A tenth run was made with the corrected version of the test, twenty minutes after the first nine: **all 7 coordinators answered, lake testnet included**, and the test is fully green (10 cases passed). The absence of lake testnet during the first nine runs was therefore a temporary outage, not an outdated address. Tor started cold in 14.5 s; the series of 10 requests gave 0 failures, median 1.1 s. The measurements of this run are in [tor-robosats-measurements-rerun.jsonl](tor-robosats-measurements-rerun.jsonl). The tables below cover the first nine runs.
 
-## Mesures
+## Measurements
 
-### Démarrage de Tor (`ensureReady()` jusqu'à `TorReady`)
+### Tor startup (`ensureReady()` until `TorReady`)
 
-| Cas | Lancements | Valeurs (s) |
+| Case | Runs | Values (s) |
 |---|---|---|
-| À froid | 4 | 14,0 · 14,1 · 19,7 · 27,7 |
-| À chaud | 5 | 9,7 · 9,8 · 9,9 · 10,0 · 10,0 |
+| Cold | 4 | 14.0 · 14.1 · 19.7 · 27.7 |
+| Warm | 5 | 9.7 · 9.8 · 9.9 · 10.0 · 10.0 |
 
-Ce temps inclut les 5 secondes de retenue volontaire de Bull après le signal « prêt » d'Arti (visible dans les journaux : « holding readiness for 5s »). Ouvrir une session une fois Tor prêt prend 3 à 15 ms.
+This time includes Bull's deliberate 5-second hold after Arti's "ready" signal (visible in the logs: "holding readiness for 5s"). Opening a session once Tor is ready takes 3 to 15 ms.
 
-### Première requête par coordinateur (nouvelle session Tor, nouvelle connexion)
+### First request per coordinator (new Tor session, new connection)
 
-| Coordinateur | Réseau | Réussites | Min (s) | Médiane (s) | Max (s) | Version | Échecs |
+| Coordinator | Network | Successes | Min (s) | Median (s) | Max (s) | Version | Failures |
 |---|---|---|---|---|---|---|---|
-| temple | mainnet | 8/9 | 5,6 | 7,0 | 9,5 | 0.8.8 | 1 × `timeout` après 60,1 s |
-| lake | mainnet | 8/9 | 3,7 | 5,2 | 9,0 | 0.8.8 | 1 × `other` après 5,1 s |
-| bazaar | mainnet | 9/9 | 3,3 | 6,5 | 13,4 | 0.8.7 | — |
-| freeport | mainnet | 9/9 | 3,6 | 5,9 | 7,7 | 0.8.7 | — |
-| ammanaya | mainnet | 9/9 | 2,1 | 3,9 | 4,9 | 0.8.8 | — |
-| temple | testnet | 8/9 | 4,3 | 6,2 | 9,4 | 0.8.6 | 1 × `other` après 5,2 s |
-| lake | testnet | 0/9 | — | — | — | — | 9 × `hostUnreachable` (4,0 à 43,9 s) |
+| temple | mainnet | 8/9 | 5.6 | 7.0 | 9.5 | 0.8.8 | 1 × `timeout` after 60.1 s |
+| lake | mainnet | 8/9 | 3.7 | 5.2 | 9.0 | 0.8.8 | 1 × `other` after 5.1 s |
+| bazaar | mainnet | 9/9 | 3.3 | 6.5 | 13.4 | 0.8.7 | — |
+| freeport | mainnet | 9/9 | 3.6 | 5.9 | 7.7 | 0.8.7 | — |
+| ammanaya | mainnet | 9/9 | 2.1 | 3.9 | 4.9 | 0.8.8 | — |
+| temple | testnet | 8/9 | 4.3 | 6.2 | 9.4 | 0.8.6 | 1 × `other` after 5.2 s |
+| lake | testnet | 0/9 | — | — | — | — | 9 × `hostUnreachable` (4.0 to 43.9 s) |
 
-Hors lake testnet : 51 réussites sur 54, médiane 5,6 s, de 2,1 à 13,4 s. Chaque réponse réussie avait le statut HTTP 200, le champ `network` attendu, un `node_id` égal à la clé inscrite dans `federation.json`, et les champs vérifiés par le test (`version`, `maker_fee`, `taker_fee`, `bond_size`, `min_order_size`, `max_order_size`, `num_public_buy_orders`, `num_public_sell_orders`).
+Excluding lake testnet: 51 successes out of 54, median 5.6 s, from 2.1 to 13.4 s. Every successful response had HTTP status 200, the expected `network` field, a `node_id` equal to the key listed in `federation.json`, and the fields checked by the test (`version`, `maker_fee`, `taker_fee`, `bond_size`, `min_order_size`, `max_order_size`, `num_public_buy_orders`, `num_public_sell_orders`).
 
-### 10 requêtes à la suite sur une même connexion
+### 10 requests in a row on the same connection
 
-9 séries de 10 requêtes (8 vers temple mainnet, 1 vers lake mainnet), une session et un client HTTP par série : **90 requêtes, 0 échec**.
+9 series of 10 requests (8 to temple mainnet, 1 to lake mainnet), one session and one HTTP client per series: **90 requests, 0 failures**.
 
-| Requêtes | Nombre | Min (s) | Médiane (s) | Max (s) |
+| Requests | Count | Min (s) | Median (s) | Max (s) |
 |---|---|---|---|---|
-| La première de chaque série (ouvre la connexion) | 9 | 5,6 | 8,0 | 11,6 |
-| Les suivantes (connexion réutilisée, d'après les temps) | 81 | 0,59 | 0,93 | 2,40 |
-| Toutes | 90 | 0,59 | 0,95 | 11,6 |
+| The first of each series (opens the connection) | 9 | 5.6 | 8.0 | 11.6 |
+| The following ones (connection reused, judging by the times) | 81 | 0.59 | 0.93 | 2.40 |
+| All | 90 | 0.59 | 0.95 | 11.6 |
 
-Par série de 10, la médiane va de 0,69 à 1,22 s. Trois requêtes sur 81 ont dépassé 1,5 s. À noter : `/api/info/` est mis en cache 30 secondes par le serveur, ces temps mesurent donc surtout le trajet Tor.
+Per series of 10, the median ranges from 0.69 to 1.22 s. Three requests out of 81 took more than 1.5 s. Note: `/api/info/` is cached for 30 seconds by the server, so these times mostly measure the Tor round trip.
 
-## Pièges constatés
+## Pitfalls found
 
-1. **Pas de nouvel essai automatique.** Dans ce modèle de code, rien ne retente un premier contact raté. Le cas le plus coûteux observé : 60 secondes d'attente (budget Tor `torConnectBudget`) avant l'échec `timeout`, sur temple mainnet, à la première requête d'un lancement à chaud. Les deux autres échecs sont tombés en 5 secondes. Une seule occurrence de chaque : la cause n'est pas établie.
-2. **Dio masque la raison de l'échec.** Les échecs de connexion arrivent en `DioException` de type `unknown`. Dans 11 échecs sur 12, `DioException.error` contenait une `SocksClientConnectionCommandFailedException` (le premier lancement n'enregistrait pas ce champ). La raison lisible (`timeout`, `hostUnreachable`…) s'obtient avec `TorHttpClientFactory.classify`, méthode publique et statique, ou par le rappel `onConnectFailure`. Préférer `classify` : le rappel alimente une variable partagée, qui devient fausse avec des requêtes en parallèle. Deux échecs ont été classés `other` : le code de réponse SOCKS n'a pas été relevé.
-3. **Le premier contact coûte cher, les requêtes suivantes non.** 2,1 à 13,4 s pour la première requête d'une session (5,6 à 11,6 s dans les séries enchaînées), environ 1 s ensuite. Le test ne sépare pas ce qui vient de la connexion HTTP gardée ouverte de ce qui vient de la réutilisation du circuit Tor. Une session par requête serait inutilisable.
-4. **Un coordinateur de test sur deux n'a jamais répondu.** lake testnet est resté injoignable depuis le Tor embarqué pendant toute la session. Il a répondu au dixième lancement, ce qui écarte une adresse périmée : c'était une indisponibilité passagère. Il faut s'attendre à ce que les tests testnet de la suite du projet ne puissent parfois compter que sur un seul des deux.
-5. **Un statut 200 ne suffit pas.** Vérification annexe faite à la main (Tor classique + `curl`, hors app), dont la sortie n'a pas été conservée : temple mainnet répond 200 à `curl` avec son en-tête par défaut, mais en `text/plain`, avec une taille annoncée de plusieurs Mo de données aléatoires envoyées au compte-gouttes. Avec un en-tête `User-Agent` de navigateur, de Dart, ou sans en-tête, il renvoie le JSON normal en 2 s. Le client de l'app (Dio sur `dart:io`, en-tête par défaut non relevé) n'a jamais reçu ce leurre. Il faut donc valider le type et la forme de la réponse, et ne pas changer l'en-tête `User-Agent` à la légère.
-6. **Le drapeau d'activation passe par l'environnement**, hérité par l'app sur Linux de bureau. Sur un téléphone ce n'est pas le cas : le test accepte aussi `--dart-define=RUN_LIVE_ROBOSATS_TEST=true`, forme **non essayée**.
-7. **Un coordinateur en panne ne doit pas rendre le test rouge.** Pendant les 9 lancements, chaque coordinateur injoignable faisait échouer son cas, et tous ont fini en « Some tests failed » à cause de lake testnet. Après relecture, le test a été modifié : un coordinateur injoignable est mesuré et signalé sans échec, un coordinateur qui répond avec une mauvaise identité ou une mauvaise forme échoue, et un cas final exige qu'au moins 3 coordinateurs mainnet et 1 testnet aient répondu. Sans le drapeau, tous les cas sont ignorés proprement (« All tests skipped », vérifié par un lancement).
+1. **No automatic retry.** In this code model, nothing retries a failed first contact. The costliest case observed: 60 seconds of waiting (Tor budget `torConnectBudget`) before the `timeout` failure, on temple mainnet, at the first request of a warm run. The two other failures came within 5 seconds. A single occurrence of each: the cause is not established.
+2. **Dio hides the reason for the failure.** Connection failures arrive as a `DioException` of type `unknown`. In 11 failures out of 12, `DioException.error` contained a `SocksClientConnectionCommandFailedException` (the first run did not record this field). The readable reason (`timeout`, `hostUnreachable`…) is obtained with `TorHttpClientFactory.classify`, a public static method, or through the `onConnectFailure` callback. Prefer `classify`: the callback feeds a shared variable, which becomes wrong with parallel requests. Two failures were classified as `other`: the SOCKS reply code was not recorded.
+3. **The first contact is expensive, the following requests are not.** 2.1 to 13.4 s for the first request of a session (5.6 to 11.6 s in the chained series), about 1 s afterwards. The test does not separate what comes from the HTTP connection kept open from what comes from reusing the Tor circuit. One session per request would be unusable.
+4. **One test coordinator out of two never answered.** lake testnet remained unreachable from the embedded Tor for the whole session. It answered on the tenth run, which rules out an outdated address: it was a temporary outage. Expect the project's later testnet tests to sometimes be able to rely on only one of the two.
+5. **A 200 status is not enough.** Side check done by hand (regular Tor + `curl`, outside the app), whose output was not kept: temple mainnet answers 200 to `curl` with its default header, but as `text/plain`, with an announced size of several MB of random data sent at a trickle. With a browser `User-Agent` header, a Dart one, or no header, it returns the normal JSON in 2 s. The app's client (Dio on `dart:io`, default header not recorded) never received this decoy. So the type and shape of the response must be validated, and the `User-Agent` header must not be changed lightly.
+6. **The activation flag goes through the environment**, inherited by the app on desktop Linux. On a phone it is not: the test also accepts `--dart-define=RUN_LIVE_ROBOSATS_TEST=true`, a form that was **not tried**.
+7. **A coordinator that is down must not turn the test red.** During the 9 runs, each unreachable coordinator failed its case, and all runs ended with "Some tests failed" because of lake testnet. After review, the test was changed: an unreachable coordinator is measured and reported without failing, a coordinator that answers with a wrong identity or a wrong shape fails, and a final case requires at least 3 mainnet coordinators and 1 testnet coordinator to have answered. Without the flag, all cases are skipped cleanly ("All tests skipped", checked by a run).
 
-## Ce qui a été vérifié dans le dossier de préparation
+## What was checked in the preparation file
 
-- La chaîne `locator<Tor>().embedded.sessions.open()` → `TorSession.endpoint` → `locator<TorHttpClientFactory>().create(endpoint)` → Dio existe telle que décrite et fonctionne.
-- `http://<onion>/api/info/` sans authentification : confirmé pour les 6 coordinateurs en ligne.
-- Les adresses et les clés de nœud de `frontend/static/federation.json` (RoboSats `ff1998c`) sont exactes pour les 6 coordinateurs en ligne.
-- « Jusqu'à une minute à froid » : ici 14 à 28 s. La retenue de 5 s est confirmée par les journaux.
-- Non vérifié ici : la politique « onion uniquement » du proxy (aucune requête clearnet tentée).
+- The chain `locator<Tor>().embedded.sessions.open()` → `TorSession.endpoint` → `locator<TorHttpClientFactory>().create(endpoint)` → Dio exists as described and works.
+- `http://<onion>/api/info/` without authentication: confirmed for the 6 online coordinators.
+- The addresses and node keys of `frontend/static/federation.json` (RoboSats `ff1998c`) are correct for the 6 online coordinators.
+- "Up to a minute cold": here 14 to 28 s. The 5 s hold is confirmed by the logs.
+- Not checked here: the proxy's "onion only" policy (no clearnet request attempted).
 
-## Modèle de code à reprendre en phase 1
+## Code model to reuse in phase 1
 
-**Où le placer.** Décision du 09/11/2026 : le client des coordinateurs vit dans `packages/robosats` (pur Dart), les écrans dans `features/p2p`. Or `packages/bull_tor` est un paquet Flutter : `packages/robosats` ne peut pas l'importer. Le découpage est donc :
+**Where to put it.** Decision of 2026-11-09: the coordinator client lives in `packages/robosats` (pure Dart), the screens in `features/p2p`. But `packages/bull_tor` is a Flutter package: `packages/robosats` cannot import it. The split is therefore:
 
-- `packages/robosats` définit un port de transport (une fonction ou une interface qui exécute une requête HTTP vers un coordinateur) et tout ce qui est protocole ;
-- `features/p2p` fournit l'implémentation Tor de ce port : elle ouvre et ferme les `TorSession`, construit le client, et reçoit `Tor` par injection, sur le modèle de `MempoolTorSessionAdapter` (`lib/core/mempool/interface_adapters/mempool_tor_session_adapter.dart`), sans appeler `locator` au milieu du code.
+- `packages/robosats` defines a transport port (a function or an interface that runs an HTTP request to a coordinator) and everything that is protocol;
+- `features/p2p` provides the Tor implementation of that port: it opens and closes the `TorSession`s, builds the client, and receives `Tor` by injection, following the model of `MempoolTorSessionAdapter` (`lib/core/mempool/interface_adapters/mempool_tor_session_adapter.dart`), without calling `locator` in the middle of the code.
 
-**La séquence exécutée par le test**, avec des noms réels uniquement. Ici la session est fermée après une requête ; dans l'app, l'adaptateur la garde ouverte tant que l'écran en a besoin.
+**The sequence run by the test**, with real names only. Here the session is closed after one request; in the app, the adapter keeps it open as long as the screen needs it.
 
 ```dart
 import 'dart:io';
@@ -115,7 +115,7 @@ try {
   (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () => client;
   try {
     final response = await dio.get<Object?>('/api/info/');
-    // Valider le type et les champs avant usage : voir le piège 5.
+    // Validate the type and the fields before use: see pitfall 5.
   } on DioException catch (e) {
     final Object? cause = e.error;
     final TorConnectFailure? reason = cause == null ? null : TorHttpClientFactory.classify(cause);
@@ -127,43 +127,43 @@ try {
 }
 ```
 
-`sessions.open()` démarre Tor si besoin. Pour afficher la progression, écouter `tor.embedded.states`. `classify` est une méthode statique publique (`static TorConnectFailure classify(Object error)`, `packages/bull_tor/lib/src/data/tor_http_client_factory.dart`) ; le test, lui, passe par le rappel `onConnectFailure`, donc cet appel direct n'a pas été exécuté.
+`sessions.open()` starts Tor if needed. To show progress, listen to `tor.embedded.states`. `classify` is a public static method (`static TorConnectFailure classify(Object error)`, `packages/bull_tor/lib/src/data/tor_http_client_factory.dart`); the test itself goes through the `onConnectFailure` callback, so this direct call was not run.
 
-**À ne pas recopier du test** : l'interrogation des coordinateurs l'un après l'autre, l'absence de nouvel essai, le classement d'erreur par une variable partagée.
+**Not to copy from the test**: querying the coordinators one after the other, the lack of retry, classifying errors through a shared variable.
 
-**À ajouter en phase 1** (relevé par la relecture indépendante) :
+**To add in phase 1** (raised by the independent review):
 
-- interroger les coordinateurs en parallèle, comme le client officiel, qui charge chacun avec 15 s maximum avant d'afficher ;
-- retenter un premier contact raté avec une **nouvelle session**, donc un nouveau circuit ;
-- fixer une échéance totale par requête : `receiveTimeout` ne protège pas d'une réponse envoyée au compte-gouttes ;
-- désactiver les redirections, plafonner la taille des réponses, vérifier que la réponse est du JSON avant de la décoder ;
-- comparer le `node_id` à la liste de la fédération chargée à l'exécution ;
-- ne jamais journaliser tels quels les textes venant d'un coordinateur.
+- query the coordinators in parallel, like the official client, which gives each one 15 s at most before displaying;
+- retry a failed first contact with a **new session**, hence a new circuit;
+- set a total deadline per request: `receiveTimeout` does not protect against a response sent at a trickle;
+- disable redirects, cap the size of responses, check that the response is JSON before decoding it;
+- compare the `node_id` with the federation list loaded at runtime;
+- never log text coming from a coordinator as is.
 
-**Vie privée, à trancher en phase 1** :
+**Privacy, to be decided in phase 1**:
 
-- Une session Tor par couple (coordinateur, robot) pour les appels authentifiés, afin qu'un coordinateur ne puisse pas relier entre eux plusieurs robots d'un même utilisateur ; une session par coordinateur suffit pour les lectures publiques.
-- L'en-tête `User-Agent` : le client HTTP de Dart s'annonce comme tel, le client Android officiel comme `okhttp`, le site comme un navigateur. Tel quel, un coordinateur reconnaît un utilisateur de Troc. Décider s'il faut imiter le client officiel, après avoir vérifié que les coordinateurs l'acceptent (voir le piège 5).
+- One Tor session per (coordinator, robot) pair for authenticated calls, so that a coordinator cannot link together several robots of the same user; one session per coordinator is enough for public reads.
+- The `User-Agent` header: Dart's HTTP client announces itself as such, the official Android client as `okhttp`, the website as a browser. As it stands, a coordinator recognizes a Troc user. Decide whether to imitate the official client, after checking that the coordinators accept it (see pitfall 5).
 
-## Ce qui reste inconnu
+## What remains unknown
 
-- **Android** : temps de démarrage et de premier contact sur un téléphone, en Wi-Fi et en réseau mobile, en version release.
-- **Arrière-plan** : mise en sommeil de Tor quand l'app n'est plus au premier plan, puis réveil (le test ne lance pas le contrôleur de cycle de vie).
-- **Sessions en parallèle** : le test interroge les coordinateurs l'un après l'autre.
-- **Sans VPN, ou sur un réseau qui bloque Tor** : repli Snowflake jamais déclenché ici.
-- **Proxy Tor externe (Orbot)** : non essayé.
-- **Durée** : 29 minutes d'observation ; aucune donnée sur une connexion gardée ouverte des heures.
-- **Routes authentifiées, POST, WebSocket** (`/relay/`, chat) : hors de ce spike.
-- **Cause du `timeout` de 60 s et des deux échecs `other`.**
+- **Android**: startup and first-contact times on a phone, on Wi-Fi and on a mobile network, in a release build.
+- **Background**: Tor going to sleep when the app is no longer in the foreground, then waking up (the test does not start the lifecycle controller).
+- **Parallel sessions**: the test queries the coordinators one after the other.
+- **Without a VPN, or on a network that blocks Tor**: Snowflake fallback never triggered here.
+- **External Tor proxy (Orbot)**: not tried.
+- **Duration**: 29 minutes of observation; no data on a connection kept open for hours.
+- **Authenticated routes, POST, WebSocket** (`/relay/`, chat): outside this spike.
+- **Cause of the 60 s `timeout` and of the two `other` failures.**
 
-## Relancer la mesure
+## Rerunning the measurement
 
-Depuis la racine du dépôt, après `make deps`, `make build-runner` et `make translations` :
+From the repository root, after `make deps`, `make build-runner` and `make translations`:
 
 ```sh
 xvfb-run -a dbus-run-session -- bash -c 'echo "" | gnome-keyring-daemon --unlock --daemonize --components=secrets; RUN_LIVE_ROBOSATS_TEST=true fvm flutter test integration_test/robosats_tor_test.dart -d linux --reporter=expanded'
 ```
 
-La variable est passée sur la ligne de commande, pas avec `export` : exportée, elle resterait active dans le terminal et rendrait réel un `make integration-test` lancé ensuite.
+The variable is passed on the command line, not with `export`: exported, it would stay active in the terminal and would make a `make integration-test` run afterwards a live one.
 
-Les mesures sortent sur des lignes `ROBOSATS_TOR_MEASURE {json}`. Premier lancement : environ 13 minutes de compilation sur ce PC (crates Rust comprises), puis environ 1 minute avant le début des tests aux lancements suivants. Un fichier de test seul se lance directement, sans passer par l'agrégateur `all_test.dart`.
+The measurements come out on `ROBOSATS_TOR_MEASURE {json}` lines. First run: about 13 minutes of compilation on this PC (Rust crates included), then about 1 minute before the tests start on later runs. A single test file runs directly, without going through the `all_test.dart` aggregator.

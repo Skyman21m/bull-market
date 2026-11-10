@@ -1,11 +1,11 @@
 name: Analyze and Test
 
-# CI de Troc, dérivée de celle de Bull Bitcoin (SatoshiPortal/bullbitcoin-mobile).
-# Retiré par rapport à Bull : le job « PR readiness » (politique de tickets propre
-# à Bull), le job d'intégration (il dépense depuis des portefeuilles testnet
-# partagés dont nous n'avons pas les secrets) et les tests Node de la politique
-# de gouvernance des PR. Conservé : classification docs-only, épinglage des
-# actions par SHA, analyse statique, garde-fous custody, tests unitaires.
+# Troc's CI, derived from Bull Bitcoin's (SatoshiPortal/bullbitcoin-mobile).
+# Removed compared with Bull: the "PR readiness" job (Bull's own issue
+# policy), the integration job (it spends from shared testnet wallets whose
+# secrets we do not have) and the Node tests of the PR governance policy.
+# Kept: docs-only classification, pinning of actions by SHA, static analysis,
+# custody guardrails, unit tests.
 on:
   pull_request:
     branches:
