@@ -121,7 +121,7 @@ La mémoire indiquée est celle du processus entier, dont 12 Mio avant l'appel. 
 
 **Clés hostiles** : chaque variante du relecteur (champ KDF vide, tronqué, à condensat ou chiffrement inconnu, MD5 et 3DES, 200 octets, point nul) est maintenant refusée à la lecture par `PgpKeyUnsupported`, avec les sept points X25519 d'ordre faible connus. SHA-512 avec AES-256 et SHA-384 avec AES-192 sont acceptés et testés en aller-retour. Une modification d'un octet, à chaque position, d'une clé publique, d'une clé privée, d'un texte signé et d'un message de chat ne lève jamais d'exception (4 tests).
 
-**Mutants.** 75 altérations du code de `lib/src/pgp/` et de `robot_pgp_key.dart` (celles du relecteur portant sur la sécurité, adaptées au nouveau code, plus 34 sur le code nouveau : contrôle d'intégrité, enveloppe, bornes, dates, KDF, secret partagé nul) ont été appliquées une à une, la suite de tests étant relancée à chaque fois. 73 font échouer au moins un test. Les 2 qui passent sont sans effet observable :
+**Mutants.** 75 altérations du code de `lib/src/pgp/` et de `robot_pgp_key.dart` (celles du relecteur portant sur la sécurité, adaptées au nouveau code, plus 36 sur le code nouveau : contrôle d'intégrité, enveloppe, bornes, dates, KDF, secret partagé nul) ont été appliquées une à une, la suite de tests étant relancée à chaque fois. 73 font échouer au moins un test. Les 2 qui passent sont sans effet observable :
 
 - accepter du texte après la ligne `-----END …-----` : la ligne `END` se retrouve alors dans le corps, qui n'est plus du base64 valide, et le bloc reste refusé ;
 - ne plus vérifier qu'un paquet de sous-clé est du bon genre (public dans un bloc public) : il reste alors des octets non lus, ou il en manque, et la sous-clé reste écartée.
