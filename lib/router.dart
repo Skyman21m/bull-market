@@ -50,6 +50,8 @@ import 'package:bb_mobile/locator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:p2p/p2p.dart'
+    show P2pFeature, P2pLocalizations, RobosatsNetwork;
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// The main router of the app. It is the root of the routing tree and contains
@@ -67,6 +69,13 @@ class AppRouter {
     observers: [SentryNavigatorObserver(enableAutoTransactions: false)],
     redirect: (BuildContext context, GoRouterState state) {
       final path = state.uri.path;
+      // P2P shares the superuser + dev-mode gate of SP: closed, its pages do
+      // not exist, so nothing of P2P (Tor included) starts.
+      if (P2pFeature.isP2pPath(path)) {
+        return _isP2pVisible(context.read<SettingsCubit>().state)
+            ? null
+            : WalletRoute.walletHome.path;
+      }
       // Only read the gate providers for SP routes; the decision itself lives
       // in the SP feature's pure `spRedirect` (unit-testable, no widget tree).
       if (!isSpPath(path)) return null;
@@ -87,9 +96,28 @@ class AppRouter {
         notifyRootObserver: true,
         builder: (context, state, child) {
           final location = state.uri.toString();
-          final tabIndex = location.startsWith(ExchangeRoute.exchangeHome.path)
-              ? 1
-              : 0;
+          final showP2p = context.select(
+            (SettingsCubit cubit) => _isP2pVisible(cubit.state),
+          );
+          final isP2p = P2pFeature.isP2pPath(state.uri.path);
+          if (isP2p && !showP2p) {
+            // The gate closed while the tab was open: leave it.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) context.goNamed(WalletRoute.walletHome.name);
+            });
+          }
+          final tabs = [
+            _ShellTab.wallet,
+            if (showP2p) _ShellTab.p2p,
+            _ShellTab.exchange,
+          ];
+          final currentTab =
+              location.startsWith(ExchangeRoute.exchangeHome.path)
+              ? _ShellTab.exchange
+              : isP2p && showP2p
+              ? _ShellTab.p2p
+              : _ShellTab.wallet;
+          final tabIndex = tabs.indexOf(currentTab);
           final isSupportChat =
               location.contains('/support-chat') ||
               location.contains('/login-support');
@@ -110,7 +138,9 @@ class AppRouter {
                 child: Scaffold(
                   // The app bar of the exchange tab is rendered by the
                   // ExchangeHomeScreen itself, as an overlay.
-                  appBar: tabIndex == 0 ? const WalletHomeAppBar() : null,
+                  appBar: currentTab == _ShellTab.wallet
+                      ? const WalletHomeAppBar()
+                      : null,
                   extendBodyBehindAppBar: true,
                   body: child,
                   bottomNavigationBar: isSupportChat
@@ -121,8 +151,10 @@ class AppRouter {
                             BottomNavigationBar(
                               currentIndex: tabIndex,
                               onTap: (index) {
-                                if (index == 0) {
+                                if (tabs[index] == _ShellTab.wallet) {
                                   context.goNamed(WalletRoute.walletHome.name);
+                                } else if (tabs[index] == _ShellTab.p2p) {
+                                  context.go(P2pFeature.path);
                                 } else {
                                   // Exchange tab
                                   if (Platform.isIOS) {
@@ -154,6 +186,15 @@ class AppRouter {
                                   label: context.loc.navigationTabWallet,
                                   backgroundColor: context.appColors.background,
                                 ),
+                                if (showP2p)
+                                  BottomNavigationBarItem(
+                                    icon: const Icon(Icons.swap_horiz),
+                                    label: P2pLocalizations.of(
+                                      context,
+                                    ).p2pTabLabel,
+                                    backgroundColor:
+                                        context.appColors.background,
+                                  ),
                                 BottomNavigationBarItem(
                                   icon: const Icon(Icons.attach_money),
                                   label: context.loc.navigationTabExchange,
@@ -170,6 +211,18 @@ class AppRouter {
         },
         routes: [
           WalletRouter.walletHomeRoute,
+          const P2pFeature().route(
+            locator,
+            // The book follows the network of the wallet: testnet reads the
+            // testnet instances of the coordinators.
+            network: (context) =>
+                context.select(
+                  (SettingsCubit cubit) =>
+                      cubit.state.environment?.isTestnet ?? false,
+                )
+                ? RobosatsNetwork.testnet
+                : RobosatsNetwork.mainnet,
+          ),
           ...ExchangeRouter.routes(
             ExchangeRouterConfig(
               isSuperuser: (context) =>
@@ -234,3 +287,10 @@ class AppRouter {
     errorBuilder: (context, state) => const RouteErrorScreen(),
   );
 }
+
+/// The destinations of the bottom bar.
+enum _ShellTab { wallet, p2p, exchange }
+
+/// P2P is shown to superusers in dev mode only, like Silent Payments.
+bool _isP2pVisible(SettingsState settings) =>
+    (settings.isSuperuser ?? false) && (settings.isDevModeEnabled ?? false);

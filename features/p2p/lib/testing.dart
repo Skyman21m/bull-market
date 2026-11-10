@@ -3,8 +3,6 @@
 /// For widget tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
-import 'dart:async';
-
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:robosats/robosats.dart';
