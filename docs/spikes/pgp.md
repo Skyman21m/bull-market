@@ -5,7 +5,7 @@ Rédigé le 10/11/2026, mis à jour le même jour après la revue de sécurité.
 ## Résumé
 
 1. Le paquet sait fabriquer la clé PGP d'un robot, la relire, signer une facture ou une adresse, et chiffrer, signer, déchiffrer et vérifier un message de chat.
-2. **GnuPG 2.4.4, le moteur des coordinateurs, et OpenPGP.js 5.11.3, la bibliothèque de l'app officielle, acceptent tout ce que le code produit, et le code lit tout ce qu'ils produisent.** C'est vérifié dans les deux sens par un script relançable, et par le relecteur de sécurité sur 1 500 messages dans chaque sens.
+2. **GnuPG 2.4.4, le moteur des coordinateurs, et OpenPGP.js 5.11.3, la bibliothèque de l'app officielle, acceptent tout ce que le code produit, et le code lit tout ce qu'ils produisent.** C'est vérifié dans les deux sens par un script relançable, et par deux revues de sécurité indépendantes sur 1 000 à 1 500 messages dans chaque sens.
 3. La clé produite et les messages de chat ont exactement la même structure que ceux de l'app officielle : un coordinateur ne peut pas distinguer Troc de l'app officielle par leur forme.
 4. Après la revue de sécurité du 10/11/2026, **`dart_pg` est entièrement retiré** : tout l'OpenPGP utile à RoboSats est écrit dans le paquet, au-dessus de primitives existantes (`pinenacl`, `pointycastle`, `crypto`). Décision du propriétaire : cette couche Dart est provisoire, une bibliothèque Rust la remplacera avant toute diffusion.
 5. Tout ce que le paquet lit est borné en taille et en coût : aucun message, aucune clé, aucune signature venant d'un coordinateur ou d'un pair ne peut faire planter l'app ni lever une exception.
@@ -62,10 +62,10 @@ Contenu du message de chat produit, vu par GnuPG : deux paquets de clé de sessi
 
 | Sens | État | Comment |
 |---|---|---|
-| Dart → GnuPG 2.4.4 | **prouvé** | `tool/pgp_interop.sh` : import de la clé publique (`imported: 1`), date et identifiant lus, ré-export, import de la clé privée sans phrase de passe (`secret keys imported: 1`), `--list-packets` identique à `tests/robots/3/enc_priv_key` hors valeurs propres à la clé, facture signée vérifiée (`VALIDSIG`, EdDSA, SHA-512, empreinte primaire), texte extrait par le code Python du coordinateur, signature par GnuPG avec notre clé et le token, chat déchiffré par le pair et par notre clé (`DECRYPTION_OKAY`, `GOODMDC`, signature datée de la veille) |
-| GnuPG 2.4.4 → Dart | **prouvé** | même script : clé ré-exportée par GnuPG, clé ed25519/cv25519 générée par GnuPG, texte signé en clair par GnuPG, message compressé, chiffré et signé par GnuPG ; plus `tests/robots/1/signed_message` du dépôt |
-| Dart → OpenPGP.js 5.11.3 | **prouvé** | même script, avec les appels de `frontend/src/pgp/index.ts` : clé déverrouillée par le token et validée, blocs identiques à l'octet après un aller-retour, facture signée vérifiée, chat déchiffré comme pair et comme expéditeur avec signature valide, texte signé par notre code avec une clé d'OpenPGP.js vérifié. Revue de sécurité : 1 500 messages, 0 échec |
-| OpenPGP.js 5.11.3 → Dart | **prouvé** | même script : clé générée par OpenPGP.js lue et déverrouillée, deux textes signés (dont un à tirets, blancs de fin de ligne et plusieurs lignes) rendus exactement comme OpenPGP.js les rend, chat signé et non signé déchiffrés. Revue de sécurité : 1 500 messages, 0 échec. Plus les clés `tests/robots/{1,2,3}` du dépôt |
+| Dart → GnuPG 2.4.4 | **prouvé** | `tool/pgp_interop.sh` : import de la clé publique (`imported: 1`), date et identifiant lus, ré-export, import de la clé privée sans phrase de passe (`secret keys imported: 1`), `--list-packets` identique à `tests/robots/3/enc_priv_key` hors valeurs propres à la clé, facture signée vérifiée (`VALIDSIG`, EdDSA, SHA-512, empreinte primaire), texte extrait par le code Python du coordinateur, signature par GnuPG avec notre clé et le token, chat déchiffré par le pair et par notre clé (`DECRYPTION_OKAY`, `GOODMDC`, signature datée de la veille). Seconde revue : 1 000 messages sur 1 000 |
+| GnuPG 2.4.4 → Dart | **prouvé** | même script : clé ré-exportée par GnuPG, clé ed25519/cv25519 générée par GnuPG, texte signé en clair par GnuPG, message compressé, chiffré et signé par GnuPG, message long à longueurs partielles, clé privée protégée par GnuPG (compteur S2K 255, SHA-1, AES-128) ; plus `tests/robots/1/signed_message` du dépôt. **Mesuré après correction : 400 messages réels sur 400** (texte identique et signature valide), de 0 à 9 500 caractères, 100 par mode (fichier, entrée standard, sans compression, mode texte), dont 344 à longueurs partielles. Avant correction, la seconde revue en comptait 541 sur 1 000 |
+| Dart → OpenPGP.js 5.11.3 | **prouvé** | même script, avec les appels de `frontend/src/pgp/index.ts` : clé déverrouillée par le token et validée, blocs identiques à l'octet après un aller-retour, facture signée vérifiée, chat déchiffré comme pair et comme expéditeur avec signature valide, texte signé par notre code avec une clé d'OpenPGP.js vérifié. Revues de sécurité : 1 500 puis 1 000 messages, lus comme destinataire et comme expéditeur, 0 échec |
+| OpenPGP.js 5.11.3 → Dart | **prouvé** | même script : clé générée par OpenPGP.js lue et déverrouillée, deux textes signés (dont un à tirets, blancs de fin de ligne et plusieurs lignes) rendus exactement comme OpenPGP.js les rend, chat signé et non signé déchiffrés. Revues de sécurité : 1 500 puis 1 000 messages, dans les deux rôles, 0 échec. Plus les clés `tests/robots/{1,2,3}` du dépôt |
 | Structure | **identique** | `gpg --list-packets` : notre clé contre `tests/robots/3` et contre une clé d'OpenPGP.js ; notre message de chat contre un message d'OpenPGP.js (deux clés de session v3, bloc chiffré v1, signature « une passe », littéral `u`, signature à sous-paquets 2, 16, 33, sans compression) |
 | GnuPG 2.2 (image officielle des coordinateurs) | **non exécuté** | pas d'image Debian bookworm en local |
 | python-gnupg réel | **non exécuté** | non installé ; ses lignes de commande sont reproduites de mémoire dans le script |
@@ -85,9 +85,9 @@ Tout est dans `lib/src/pgp/limits.dart`. Au-delà, l'échec est `PgpInputTooLarg
 | Clés de session par message | 8 | l'app officielle : 2 |
 | Signatures par message | 8 | l'app officielle : 1 |
 | Décompression | 262 144 octets, une seule couche | l'app officielle ne compresse pas |
-| Hachage S2K d'une clé privée | 32 Mio | OpenPGP.js : 16 Mio. Une clé privée protégée par GnuPG avec un compteur plus élevé est refusée |
+| Hachage S2K d'une clé privée | 65 Mio, le maximum que le format sait coder | OpenPGP.js : 16 Mio ; GnuPG 2.4.4 sur ce poste : 65 Mio |
 
-Un message de chat n'est lu que s'il est fait de clés de session suivies d'un seul bloc chiffré v1, rien d'autre. Rien n'est décompressé ni interprété avant le contrôle d'intégrité (SHA-1 du bloc). À l'intérieur : signatures « une passe », un seul texte, des signatures, directement ou dans un seul paquet compressé. C'est plus strict qu'OpenPGP.js, qui tolère des paquets autour du bloc chiffré.
+Un message de chat n'est lu que s'il est fait de clés de session suivies d'un seul bloc chiffré v1, rien d'autre. Le bloc peut être découpé en « longueurs partielles » : GnuPG le fait dès 500 octets environ, et la première version corrigée refusait ces messages à tort (459 messages réels sur 1 000). Le remplissage de la clé de session est accepté jusqu'à 40 octets en tout, comme le permet la RFC 6637, chaque octet étant vérifié. Rien n'est décompressé ni interprété avant le contrôle d'intégrité (SHA-1 du bloc). À l'intérieur : signatures « une passe », un seul texte, des signatures, directement ou dans un seul paquet compressé. C'est plus strict qu'OpenPGP.js, qui tolère des paquets autour du bloc chiffré.
 
 Une clé de pair est refusée (`PgpKeyUnsupported`) si ses paramètres KDF ne sont pas SHA-256/384/512 avec AES, ou si son point X25519 est d'ordre faible (secret partagé nul).
 
@@ -123,10 +123,16 @@ La mémoire indiquée est celle du processus entier, dont 12 Mio avant l'appel. 
 
 **Mutants.** 75 altérations du code de `lib/src/pgp/` et de `robot_pgp_key.dart` (celles du relecteur portant sur la sécurité, adaptées au nouveau code, plus 36 sur le code nouveau : contrôle d'intégrité, enveloppe, bornes, dates, KDF, secret partagé nul) ont été appliquées une à une, la suite de tests étant relancée à chaque fois. 73 font échouer au moins un test. Les 2 qui passent sont sans effet observable :
 
-- accepter du texte après la ligne `-----END …-----` : la ligne `END` se retrouve alors dans le corps, qui n'est plus du base64 valide, et le bloc reste refusé ;
-- ne plus vérifier qu'un paquet de sous-clé est du bon genre (public dans un bloc public) : il reste alors des octets non lus, ou il en manque, et la sous-clé reste écartée.
+- accepter du texte après la ligne `-----END …-----` : sans effet observable, la ligne `END` se retrouve alors dans le corps, qui n'est plus du base64 valide, et le bloc reste refusé (confirmé par la seconde revue sur 8 entrées) ;
+- ne plus vérifier qu'un paquet de sous-clé est du bon genre : effet observable mais sans danger. Un bloc privé contenant en plus un paquet de sous-clé publique est lu par le code réel, qui ignore ce paquet, et refusé par le mutant.
+
+La seconde revue a relancé 42 mutants sur le code nouveau et en a trouvé 9 sans test : en-tête `D3 14` du contrôle d'intégrité, octets de remplissage, somme de contrôle de la clé de session, accord entre chiffrement et longueur de clé, plafond de décompression à un octet près (262 144 accepté, 262 145 refusé), octets en trop dans le paquet de clé de session, longueurs minimales du bloc chiffré et de la clé enveloppée, paramètres KDF. Chacun a maintenant son test (`test/pgp/hostile_message_test.dart`, groupe « a message written by hand »), bâti sur un ECDH réécrit dans les tests à partir du texte de la RFC, donc indépendant du code vérifié.
 
 Les 18 survivants signalés par la revue ont chacun leur test, avec des paquets réellement re-signés (`test/support/craft.dart`).
+
+**Seconde revue, sans nouveau défaut de sécurité** : environ 190 cas hostiles et 722 inversions de bit sans aucune exception échappée ; entrées de déni de service rejetées en moins de 2 ms ; bombe de 45 Mio dans un message valide refusée en 20 ms.
+
+**Horloge hors limites.** Avec une horloge, ou un `now`, hors de 1970–2106, toutes les opérations renvoient l'échec `PgpClockOutOfRange` au lieu de lever une exception ; `RobotPgpKey.generate` renvoie donc un `Result`.
 
 **Vérification plus stricte** : signature expirée, datée du futur, antérieure à la clé, sans en-tête `Hash:` : refusées ; blancs ajoutés en fin de ligne : le texte rendu est le texte signé, sans eux.
 
@@ -145,8 +151,8 @@ Avec la demande initiale :
 
 Changements d'interface dus aux corrections :
 
-- `RobotPgpKey.generate(identity)` n'accepte plus d'horloge ni d'aléa ; la variante de test est `generateWith`, marquée `@visibleForTesting`. Même chose pour `encryptChatMessageWith` et `GarageKey.generateWith`. Un aléa faible ne peut plus être passé en production sans avertissement de l'analyseur.
-- `signCleartext` et `encryptChatMessage` renvoient maintenant n'importe quel `PgpFailure` ; `verifyCleartext` et `decryptChatMessage` acceptent `now` ; deux échecs nouveaux : `PgpInputTooLarge`, `PgpKeyOutOfDate`.
+- `RobotPgpKey.generate(identity)` renvoie un `Result` (échec `PgpClockOutOfRange`) et n'accepte plus d'horloge ni d'aléa ; la variante de test est `generateWith`, marquée `@visibleForTesting`. Même chose pour `encryptChatMessageWith` et `GarageKey.generateWith`. Un aléa faible ne peut plus être passé en production sans avertissement de l'analyseur.
+- `signCleartext` et `encryptChatMessage` renvoient maintenant n'importe quel `PgpFailure` ; `verifyCleartext` et `decryptChatMessage` acceptent `now` ; trois échecs nouveaux : `PgpInputTooLarge`, `PgpKeyOutOfDate`, `PgpClockOutOfRange`.
 - `verifyCleartext` renvoie le texte réellement signé (sans les blancs de fin de ligne) et exige l'en-tête `Hash:`.
 
 ## Risques
@@ -156,8 +162,8 @@ Changements d'interface dus aux corrections :
 | Code de sécurité écrit à la main (1 891 lignes) | provisoire, à remplacer par une bibliothèque Rust avant diffusion ; recoupé par GnuPG et OpenPGP.js dans les deux sens ; revue de sécurité indépendante ; tests de mutation ; le contrôle de garde des clés ne le voit pas : même vigilance que pour `packages/secrets` |
 | `pinenacl` 0.6.0 : portage de TweetNaCl, pas d'audit connu | vecteurs RFC 8032 et RFC 7748 dans les tests |
 | Aucun code Dart n'est à temps constant | inhérent au Dart pur ; la clé privée chiffrée est de toute façon chez le coordinateur |
-| Secrets en mémoire | les tampons transitoires que le paquet possède sont remis à zéro (clés dérivées, copies du token, clé de session) ; la graine et le scalaire restent dans `UnlockedRobotPgpKey` le temps d'une tâche ; les copies faites par le ramasse-miettes et par les bibliothèques sont hors de portée ; rien n'est écrit ni journalisé ; `toString()` et échecs sans secret |
-| Durée du déverrouillage (32 Mio de SHA-256) | 0,3 s mesuré sur ce poste ; téléphone non mesuré ; à appeler hors du fil d'interface, une fois par lot de messages |
+| Secrets en mémoire | effacement **partiel**, à ne pas surestimer. Remis à zéro : les tampons que le paquet alloue lui-même (clé dérivée du token, copies du token en octets, secrets déchiffrés, clé de session, secret partagé ECDH, texte clair avant chiffrement). Non effacés : le token lui-même (une chaîne Dart, immuable), la graine et le scalaire tant que `UnlockedRobotPgpKey` existe, les copies internes de `pinenacl`, `pointycastle` et `crypto` (clés étendues, condensats), les copies du ramasse-miettes, le texte déchiffré rendu à l'appelant. Rien n'est écrit ni journalisé ; `toString()` et échecs sans secret |
+| Durée du déverrouillage (32 Mio de SHA-256 pour une clé de l'app officielle, jusqu'à 130 Mio pour une clé protégée par GnuPG) | 0,3 s mesuré sur ce poste pour 32 Mio ; téléphone non mesuré ; à appeler hors du fil d'interface, une fois par lot de messages |
 | Clé de pair malveillante fournie par le coordinateur | inhérent à RoboSats : le coordinateur distribue les clés |
 | Horloge du téléphone fausse de plus de 24 h | les signatures de l'app officielle paraissent « du futur » et sont marquées invalides ; l'app officielle a le même comportement |
 
