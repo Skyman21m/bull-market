@@ -3,11 +3,15 @@
 /// The shell calls [P2pFeature.setup]; everything else goes through [P2pFacade], whose signatures use the types of `package:robosats` exported here.
 library;
 
-export 'package:primitives/primitives.dart' show Err, Ok, Result;
+export 'package:primitives/primitives.dart' show Err, Ok, Result, Sats;
+// The types of the facade's signatures, and of their fields, so that a screen shows a coordinator, its info and its orders without importing `robosats`.
 export 'package:robosats/robosats.dart'
     show
+        BondSize,
         Coordinator,
+        CoordinatorBadges,
         CoordinatorBookOutcome,
+        CoordinatorContact,
         CoordinatorFailure,
         CoordinatorIdentityFailure,
         CoordinatorInfo,
@@ -15,6 +19,7 @@ export 'package:robosats/robosats.dart'
         CoordinatorNodeIdMismatch,
         CoordinatorNotJson,
         CoordinatorNotOnNetwork,
+        CoordinatorOrigins,
         CoordinatorResponseMalformed,
         CoordinatorResponseTooLarge,
         CoordinatorTimedOut,
@@ -22,10 +27,24 @@ export 'package:robosats/robosats.dart'
         CoordinatorTransportFailure,
         CoordinatorUnexpectedStatus,
         CoordinatorUnreachable,
+        CoordinatorVersion,
         DroppedOrderReason,
+        FiatAmount,
+        FixedOrderAmount,
+        MakerActivity,
+        NoticeSeverity,
+        OrderAmount,
         OrderBook,
+        OrderLocation,
+        OrderType,
+        PaymentMethodInfo,
+        PaymentMethods,
+        Premium,
         PublicOrder,
-        RobosatsNetwork;
+        RangeOrderAmount,
+        RobosatsCurrency,
+        RobosatsNetwork,
+        RobotHashId;
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;

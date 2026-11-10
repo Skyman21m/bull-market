@@ -20,7 +20,9 @@ typedef CreateTorHttpClient = HttpClient Function(TorProxyEndpoint endpoint);
 
 /// Time one request to a coordinator may take in total: Tor session, connection, retries and body.
 ///
-/// Twice [torConnectDeadline], so a first connection that fails only when the Tor connect budget expires still leaves a full budget for a retry on a new circuit.
+/// Twice [torConnectDeadline]: once Tor is ready, a first connection that fails only when the Tor connect budget expires still leaves a full budget for a retry on a new circuit.
+/// On a cold start, the start of Tor counts against it too: on 10/11/2026 Tor took 62 s, which left about 10 s to the retry.
+/// Screens should therefore wait for Tor to be ready before they ask for the books.
 final coordinatorRequestDeadline = torConnectDeadline * 2;
 
 /// Retries of an idempotent request after a connection failure, each on a new Tor session.
@@ -32,14 +34,21 @@ const coordinatorConnectRetries = 2;
 /// [closeSessions] closes them all; the next request opens new ones.
 ///
 /// Guarantees of the port contract:
-/// - [send] always completes, with an [Ok] or an [Err], within [coordinatorRequestDeadline]: a timer cancels the request when it passes, whatever it is waiting for (Tor, the session, the connection, a body sent a byte at a time);
+/// - [send] always completes, with an [Ok] or an [Err], within [coordinatorRequestDeadline]: a timer answers [CoordinatorTimedOut] when it passes, whatever the request is waiting for (Tor, the session, the connection, a body sent a byte at a time), and cancels the attempt in progress;
 /// - the body is read as a stream and the request is cancelled as soon as it exceeds [CoordinatorRequest.maxResponseBytes], or at once when the announced `Content-Length` does;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
-/// - every exception becomes a [CoordinatorTransportFailure]; only an [Error], a programming bug, propagates, as rule 11 of `AGENTS.md` requires.
+/// - only `http` URLs to a `.onion` host are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened.
 ///
-/// A failure before any response header that is neither a timeout of the exchange nor a programming error, such as a SOCKS refusal, an unreachable onion service or a connection closed before the headers, is a connection failure: the session is replaced, and a `GET` is retried at most [coordinatorConnectRetries] times within the same deadline.
+/// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
+/// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
+/// An [Error] raised inside Dio reaches the adapter wrapped in a [DioException], and becomes [CoordinatorTransportFailed].
+/// A session or a client that fails to close with an exception is dropped silently.
+///
+/// A connection failure is a SOCKS or socket error before any response header, or a connection closed before the headers, which is also what a dead pooled connection gives: the session is replaced, and a `GET` is retried at most [coordinatorConnectRetries] times within the same deadline.
 /// Other methods are never retried, since the coordinator may have processed them.
+/// An answer that is not valid HTTP (garbage, an invalid or duplicated `Content-Length`, a forbidden character or an endless header section) means the coordinator answered: it fails with [CoordinatorTransportFailed], without retry.
+/// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress.
 ///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
@@ -50,6 +59,7 @@ final class TorCoordinatorTransport
   final CreateTorHttpClient _createHttpClient;
   final Duration _deadline;
   final Duration _attemptTimeout;
+  final bool Function(String host) _acceptsHost;
 
   /// The session of each origin, opening or open.
   final Map<String, Future<_Route>> _routes = {};
@@ -76,14 +86,20 @@ final class TorCoordinatorTransport
   /// The transport with its Tor-specific parts replaced, for tests.
   ///
   /// [deadline] bounds a whole request, [attemptTimeout] the connection, the upload and every wait for data of one attempt.
+  /// [acceptsHost] decides which hosts may be reached, `.onion` hosts only by default, so that tests can reach a loopback server.
   @visibleForTesting
   TorCoordinatorTransport.withSeams({
     required this._openSession,
     required this._createHttpClient,
     Duration? deadline,
     Duration? attemptTimeout,
+    bool Function(String host)? acceptsHost,
   }) : _deadline = deadline ?? coordinatorRequestDeadline,
-       _attemptTimeout = attemptTimeout ?? torConnectDeadline;
+       _attemptTimeout = attemptTimeout ?? torConnectDeadline,
+       _acceptsHost = acceptsHost ?? _isOnion;
+
+  /// Whether [host] is an onion service: every coordinator of the federation is reached at one.
+  static bool _isOnion(String host) => host.toLowerCase().endsWith('.onion');
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
@@ -132,7 +148,8 @@ final class TorCoordinatorTransport
     _Deadline deadline,
   ) async {
     final url = request.url;
-    if (!(url.isScheme('http') || url.isScheme('https')) || url.host.isEmpty) {
+    // A `Coordinator` can be built with any address, so the transport checks the URL itself.
+    if (!url.isScheme('http') || url.host.isEmpty || !_acceptsHost(url.host)) {
       return const Err(CoordinatorTransportFailed());
     }
     final origin = url.origin;
@@ -164,6 +181,9 @@ final class TorCoordinatorTransport
       switch (outcome) {
         case _Answered(:final result):
           return result;
+        case _Abandoned():
+          _retire(origin, opening, route);
+          return const Err(CoordinatorTimedOut());
         case _ConnectFailed(:final reason):
           _retire(origin, opening, route);
           if (attempt >= retries || deadline.passed) {
@@ -199,24 +219,30 @@ final class TorCoordinatorTransport
       // Tor did not start, or gave no session: there is no circuit to the coordinator.
       throw const _RouteException(CoordinatorUnreachable());
     }
-    final HttpClient client;
+    var kept = false;
     try {
-      client = _createHttpClient(session.endpoint);
-    } on Exception {
-      await _closeSession(session);
-      throw const _RouteException(CoordinatorTransportFailed());
+      final HttpClient client;
+      try {
+        client = _createHttpClient(session.endpoint);
+      } on Exception {
+        throw const _RouteException(CoordinatorTransportFailed());
+      }
+      client
+        ..userAgent = null
+        ..autoUncompress = false;
+      final route = _Route(session, client, _attemptTimeout);
+      if (epoch != _epoch) {
+        // [closeSessions] ran while this session was opening.
+        await route.close();
+        throw const _RouteException(CoordinatorTransportFailed());
+      }
+      _live.add(route);
+      kept = true;
+      return route;
+    } finally {
+      // Whatever went wrong, a bug included, the session does not stay open.
+      if (!kept) await _closeSession(session);
     }
-    client
-      ..userAgent = null
-      ..autoUncompress = false;
-    final route = _Route(session, client, _attemptTimeout);
-    if (epoch != _epoch) {
-      // [closeSessions] ran while this session was opening.
-      await route.close();
-      throw const _RouteException(CoordinatorTransportFailed());
-    }
-    _live.add(route);
-    return route;
   }
 
   /// Stops reusing [route] for [origin]: it closes once its last request ends.
@@ -326,10 +352,13 @@ final class TorCoordinatorTransport
   }
 
   /// What a failure before any response header means.
+  ///
+  /// Dio reports a connection closed before the headers as [DioExceptionType.connectionError], and rethrows every other [HttpException], which dart:io raises when what arrives is not a valid HTTP response.
   static _Attempt _failureBeforeHeaders(
     DioException exception,
   ) => switch (exception.type) {
-    DioExceptionType.cancel ||
+    // Only the deadline cancels a request.
+    DioExceptionType.cancel => const _Abandoned(),
     DioExceptionType.sendTimeout ||
     DioExceptionType.receiveTimeout ||
     DioExceptionType.transformTimeout => const _Answered(
@@ -342,6 +371,9 @@ final class TorCoordinatorTransport
     DioExceptionType.unknown => switch (exception.error) {
       // Dio wraps whatever the stack threw: an Error there is a bug, not a connection problem.
       Error() => const _Answered(Err(CoordinatorTransportFailed())),
+      // The coordinator answered, but not in HTTP: a new circuit would get the same answer.
+      HttpException() when exception.type == DioExceptionType.unknown =>
+        const _Answered(Err(CoordinatorTransportFailed())),
       final Object cause => _ConnectFailed(
         TorHttpClientFactory.classify(cause),
       ),
@@ -403,20 +435,25 @@ final class _Route {
 
   void release() {
     _users--;
-    if (_retired && _users == 0) close().ignore();
+    if (_retired && _users == 0) unawaited(close());
   }
 
   void retire() {
     _retired = true;
-    if (_users == 0) close().ignore();
+    if (_users == 0) unawaited(close());
   }
 
   Future<void> close() => _closing ??= _close();
 
+  /// Closes the client, which also cancels a connection still being made, then the session.
   Future<void> _close() async {
     try {
-      // Dio only closes the client it already used, so the client is closed too.
       dio.close(force: true);
+    } on Exception {
+      // Closing is best effort: the client and the session below are closed either way.
+    }
+    try {
+      // Dio only closes the client it already used, so the client is closed too.
       _client.close(force: true);
     } on Exception {
       // Closing is best effort: the session below is closed either way.
@@ -435,6 +472,11 @@ final class _Answered extends _Attempt {
   final Result<CoordinatorResponse, CoordinatorTransportFailure> result;
 
   const _Answered(this.result);
+}
+
+/// The deadline passed before any header: the request is given up, and its session with it.
+final class _Abandoned extends _Attempt {
+  const _Abandoned();
 }
 
 /// No connection to the coordinator: a new session, with new circuits, may succeed.
