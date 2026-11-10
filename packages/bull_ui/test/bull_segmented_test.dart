@@ -96,5 +96,36 @@ void main() {
       expect(colorOf('Frozen'), testBullTheme.primary);
       expect(colorOf('All'), isNot(testBullTheme.primary));
     });
+
+    testWidgets('shrinks a label too long for its segment onto one line', (
+      tester,
+    ) async {
+      const long = 'A label far too long for a quarter of a phone';
+      await tester.pumpWidget(
+        wrapWithTheme(
+          Center(
+            child: SizedBox(
+              width: 320,
+              child: BullSegmented(
+                items: const {'List', 'Chart', 'Map', long},
+                onSelected: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final label = find.text(long);
+      expect(tester.widget<Text>(label).maxLines, 1);
+      expect(
+        find.ancestor(of: label, matching: find.byType(FittedBox)),
+        findsOneWidget,
+      );
+      // One line of a 12-point label, not several: the text is scaled, not wrapped.
+      expect(tester.getSize(label).height, lessThan(24));
+      expect(tester.getSize(label).width, greaterThan(320 / 4));
+    });
   });
 }

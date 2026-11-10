@@ -242,6 +242,40 @@ void main() {
       expect(take.disabled, isTrue);
     });
 
+    testWidgets('a reversible payment method shows the warning of RoboSats', (
+      tester,
+    ) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      // Order 48213 is paid with Revolut, which the community reports as reversible.
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+
+      expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.warning_amber_rounded));
+      await settle(tester);
+      expect(find.text('Reversible payments'), findsOneWidget);
+
+      await tester.tap(find.text('Acknowledged'));
+      await settle(tester);
+      expect(find.text('Reversible payments'), findsNothing);
+    });
+
+    testWidgets('a method that cannot be reversed shows no warning', (
+      tester,
+    ) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      // Order 2 is paid with Instant SEPA only.
+      await tester.tap(find.text('50-300 EUR', findRichText: true));
+      await settle(tester);
+
+      expect(find.text('Instant SEPA'), findsOneWidget);
+      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    });
+
     testWidgets('the order page in French, with the fees of the host', (
       tester,
     ) async {
@@ -278,6 +312,8 @@ void main() {
       );
       expect(find.text("Prendre l'ordre"), findsOneWidget);
       expect(find.textContaining('C 0,025'), findsOneWidget);
+      // The on-chain payout fee with one decimal, as the official client writes it.
+      expect(find.textContaining('3,4\u00a0%'), findsOneWidget);
     });
 
     testWidgets('testnet shows its banner', (tester) async {

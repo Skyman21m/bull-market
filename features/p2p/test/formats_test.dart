@@ -37,6 +37,16 @@ void main() {
       '+2,0 %',
     );
     expect(en.bond(BondSize.tryCreate(3) ?? (throw StateError(''))), '3%');
+    expect(
+      en.premiumOverMarket(Premium.tryCreate(2) ?? (throw StateError(''))),
+      '2%',
+    );
+    expect(
+      en.premiumOverMarket(Premium.tryCreate(1.257) ?? (throw StateError(''))),
+      '1.26%',
+    );
+    expect(en.swapFee(3.443594014752762), '3.4%');
+    expect(en.swapFee(1.2), '1.2%');
     expect(en.fee(0.00025), '0.025%');
     expect(en.fee(0.00175), '0.175%');
   });
