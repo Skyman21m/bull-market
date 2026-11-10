@@ -15,12 +15,12 @@ Note de travail, à supprimer avant fusion. Branche `spike/pgp`.
 
 ## En cours
 
-- Relance des mutants : générateur `scratchpad/mkmut2.py` (75 mutants), résultats attendus dans `scratchpad/mut2/result.log`.
+- Relance des mutants : générateur `scratchpad/mkmut2.py` (75 mutants), résultats dans `scratchpad/mut2/result.log` (une ligne par mutant ; « All tests passed » = survivant). Le lanceur remplace un fichier de `packages/robosats/lib` le temps de chaque mutant : s'il est interrompu, `git status` montre un fichier modifié sous `lib/`, à rétablir par `git checkout -- packages/robosats/lib`.
 
 ## Reste
 
 - Mesures temps et mémoire sur les entrées de déni de service du relecteur.
-- Constat 7 : `docs/spikes/pgp.md`, puces « Troc (fork) » d'`AGENTS.md`, `NOTICE.md`.
+- Constat 7 : fait (commit ab339fba3), reste à y reporter les résultats des mutants et les mesures.
 - Supprimer cette note.
 
 ## Résultats à ne pas perdre
