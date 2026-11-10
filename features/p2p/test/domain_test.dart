@@ -2,23 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/p2p_tor_state.dart';
 import 'package:p2p/src/domain/taker_estimate.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
 
-/// Reads [elements] as the book of temple, through the real parser of the package.
-Future<List<PublicOrder>> parse(List<Map<String, Object?>> elements) async {
-  final transport = FakeTransport(books: {'temple': elements});
-  final result = await CoordinatorClient(
-    transport,
-    clock: () => testNow,
-  ).fetchBook(coordinator('temple'), RobosatsNetwork.mainnet);
-  return switch (result) {
-    Ok(:final value) => value.orders,
-    Err(:final failure) => throw StateError('$failure'),
-  };
-}
+Future<List<PublicOrder>> parse(List<Map<String, Object?>> elements) =>
+    parseOrders(elements);
 
 void main() {
   group('TorWait', () {

@@ -71,5 +71,11 @@
   "p2pDurationMinutes": "{minutes} min",
   "p2pDurationHoursMinutes": "{hours} h {minutes} min",
   "p2pCountdownHms": "{hours} h {minutes} min {seconds} s",
-  "p2pBookOthers": "Autres"
+  "p2pBookOthers": "Autres",
+  "p2pReversibleTitle": "Paiements réversibles",
+  "p2pReversibleIntro": "Cet ordre propose un ou plusieurs modes de paiement que la communauté a régulièrement signalés comme annulant leurs transactions.",
+  "p2pReversible80Days": "Si vous recevez une transaction fiduciaire, elle peut être unilatéralement annulée jusqu'à 80 jours après la conclusion de l'échange.",
+  "p2pReversibleNoControl": "RoboSats et ses coordinateurs n'ont aucun contrôle sur le système fiduciaire.",
+  "p2pReversibleScammers": "Des escrocs peuvent exploiter cette faille du système fiduciaire pour vous prendre à la fois vos bitcoins et votre monnaie fiduciaire.",
+  "p2pCommonAcknowledged": "Compris"
 }

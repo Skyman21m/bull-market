@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/bond_warning.dart';
 import '../../presentation/p2p_formats.dart';
 import 'expiry_ring.dart';
 import 'robot_avatar.dart';
@@ -66,27 +67,7 @@ class OfferRow extends StatelessWidget {
                     ],
                   ),
                   const Gap(BullSpacing.xxs),
-                  Text.rich(
-                    TextSpan(
-                      style: muted,
-                      children: [
-                        TextSpan(text: '${l10n.p2pBookColumnPremium} '),
-                        TextSpan(
-                          text: formats.premium(order.premium),
-                          style: TextStyle(
-                            color: colors.text,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text:
-                              ' · ${l10n.p2pBookColumnBond} ${formats.bond(order.bondSize)}',
-                        ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  _PremiumAndBond(order: order, style: muted),
                 ],
               ),
             ),
@@ -140,6 +121,59 @@ class OfferRow extends StatelessWidget {
     if (methods.hasOtherText)
       methods.recognized.isEmpty ? methods.text : l10n.p2pBookOthers,
   ].join(' · ');
+}
+
+/// « Premium +2.0% · Bond 3% »: a bond below the default is orange, bolder the lower it is, and explained by a tooltip, as in the official client.
+class _PremiumAndBond extends StatelessWidget {
+  final PublicOrder order;
+  final TextStyle? style;
+
+  const _PremiumAndBond({required this.order, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final bond = order.bondSize;
+    final line = Text.rich(
+      TextSpan(
+        style: style,
+        children: [
+          TextSpan(text: '${l10n.p2pBookColumnPremium} '),
+          TextSpan(
+            text: formats.premium(order.premium),
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: ' · ${l10n.p2pBookColumnBond} '),
+          TextSpan(
+            text: formats.bond(bond),
+            style: bond.isLow
+                ? TextStyle(
+                    color: colors.warning,
+                    fontWeight: lowBondWeight(bond.warningIntensity),
+                  )
+                : null,
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (!bond.isLow) return line;
+    return Tooltip(
+      message: l10n.p2pBookLowBond(
+        formats.number(BondWarning.defaultPercent),
+      ),
+      child: line,
+    );
+  }
+
+  /// The weight the official client gives a low bond: 600, plus up to 300 as the bond falls.
+  static FontWeight lowBondWeight(double intensity) {
+    final weight = 600 + (intensity * 300).round();
+    return FontWeight.values[(weight / 100).round().clamp(1, 9) - 1];
+  }
 }
 
 /// The role of the maker of an order: « Seller » on the primary colour, « Buyer » inverted.

@@ -139,6 +139,61 @@ void main() {
     });
   });
 
+  group('lifecycle', () {
+    test('closing while a book is pending drops its answer', () async {
+      transport = FakeTransport(
+        books: {
+          'temple': [bookOrder(id: 1)],
+        },
+        held: {'temple'},
+      );
+      final book = cubit()..start();
+      tor.embedded.ready();
+      await settle();
+      expect(book.state.loadingCoordinators, contains(coordinator('temple')));
+
+      await book.close();
+      transport.release('temple');
+      await settle();
+      await settle();
+
+      // An answer handled after `close` would throw from `emit` and fail the test zone.
+      expect(book.isClosed, isTrue);
+    });
+
+    test('closing stops following Tor', () async {
+      final book = cubit()..start();
+      await settle();
+      await book.close();
+
+      tor.embedded.ready();
+      await settle();
+      await settle();
+
+      expect(transport.requested, isEmpty);
+    });
+
+    test('retryTor does nothing unless Tor failed', () async {
+      final book = cubit()..start();
+      book.retryTor();
+      tor.embedded.connecting();
+      await settle();
+      book.retryTor();
+      await settle();
+
+      expect(tor.embedded.retries, 0);
+      expect(book.state.tor, TorWait.connecting);
+
+      tor.embedded.ready();
+      await settle();
+      book.retryTor();
+      await settle();
+      expect(tor.embedded.retries, 0);
+      expect(book.state.tor, TorWait.ready);
+      await book.close();
+    });
+  });
+
   group('books', () {
     test(
       'each book shows as it arrives, without waiting for the others',

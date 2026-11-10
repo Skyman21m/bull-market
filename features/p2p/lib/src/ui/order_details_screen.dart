@@ -10,6 +10,7 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../presentation/order_details_cubit.dart';
 import '../presentation/p2p_formats.dart';
 import 'widgets/offer_row.dart';
+import 'widgets/reversible_payments_dialog.dart';
 import 'widgets/robot_avatar.dart';
 import 'widgets/testnet_banner.dart';
 
@@ -183,7 +184,7 @@ class _FeeRow extends StatelessWidget {
               : l10n.p2pOrderOnchainDisabled,
           child: info.swapEnabled && swapRate != null
               ? BullBadge(
-                  label: formats.rate(swapRate),
+                  label: formats.swapFee(swapRate),
                   icon: Icons.link,
                   background: colors.surfaceContainer,
                   foreground: colors.success,
@@ -253,7 +254,10 @@ class _DetailsCard extends StatelessWidget {
           )
         : explicit != null
         ? (l10n.p2pOrderAmountOfSatoshis, formats.sats(explicit.value.toInt()))
-        : (l10n.p2pOrderPremiumOverMarket, formats.premium(order.premium));
+        : (
+            l10n.p2pOrderPremiumOverMarket,
+            formats.premiumOverMarket(order.premium),
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -279,6 +283,12 @@ class _DetailsCard extends StatelessWidget {
                   ? l10n.p2pOrderSwapDestination
                   : l10n.p2pOrderAcceptedMethods,
               OfferRow.paymentMethodsLine(order.paymentMethods, l10n),
+              warning: order.paymentMethods.hasReversible
+                  ? () => ReversiblePaymentsDialog.show(
+                      context,
+                      order.paymentMethods,
+                    )
+                  : null,
             ),
             _row(context, priceLabel, priceValue),
             _row(
@@ -292,42 +302,51 @@ class _DetailsCard extends StatelessWidget {
                   : null,
               bold: share < 0.25,
             ),
-            _row(
-              context,
-              l10n.p2pOrderDeposit,
-              formats.depositTime(order.escrowDuration),
+            // The time left closes the card, under its last row, as in the official client.
+            Column(
+              children: [
+                _row(
+                  context,
+                  l10n.p2pOrderDeposit,
+                  formats.depositTime(order.escrowDuration),
+                ),
+                const Gap(BullSpacing.sm),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(BullRadius.xxs),
+                  child: LinearProgressIndicator(
+                    value: share,
+                    minHeight: 4,
+                    color: colors.primary,
+                    backgroundColor: colors.surfaceContainer,
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(BullRadius.xxs),
-          child: LinearProgressIndicator(
-            value: share,
-            minHeight: 4,
-            color: colors.primary,
-            backgroundColor: colors.surfaceContainer,
-          ),
         ),
       ],
     );
   }
 
+  /// One row of the card: label and value share the width equally, so that a long label wraps on two lines at most.
+  ///
+  /// With [warning], the row shows the orange warning of the official client and opens it when tapped.
   Widget _row(
     BuildContext context,
     String label,
     String value, {
     Color? color,
     bool bold = false,
+    VoidCallback? warning,
   }) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            flex: 2,
             child: Text(
               label,
               style: text.bodyMedium?.copyWith(color: colors.textMuted),
@@ -335,7 +354,6 @@ class _DetailsCard extends StatelessWidget {
           ),
           const Gap(BullSpacing.sm),
           Expanded(
-            flex: 3,
             child: Text(
               value,
               textAlign: TextAlign.end,
@@ -346,9 +364,22 @@ class _DetailsCard extends StatelessWidget {
               ),
             ),
           ),
+          if (warning != null) ...[
+            const Gap(BullSpacing.xs),
+            Tooltip(
+              message: P2pLocalizations.of(context).p2pReversibleTitle,
+              child: Icon(
+                Icons.warning_amber_rounded,
+                size: 20,
+                color: colors.warning,
+              ),
+            ),
+          ],
         ],
       ),
     );
+    if (warning == null) return row;
+    return InkWell(onTap: warning, child: row);
   }
 }
 

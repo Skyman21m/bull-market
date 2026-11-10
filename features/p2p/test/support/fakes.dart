@@ -60,6 +60,21 @@ Map<String, Object?> bookOrder({
   };
 }
 
+/// Reads [elements] as the book of temple on mainnet, through the real parser of the package.
+Future<List<PublicOrder>> parseOrders(
+  List<Map<String, Object?>> elements,
+) async {
+  final transport = FakeTransport(books: {'temple': elements});
+  final result = await CoordinatorClient(
+    transport,
+    clock: () => testNow,
+  ).fetchBook(coordinator('temple'), RobosatsNetwork.mainnet);
+  return switch (result) {
+    Ok(:final value) => value.orders,
+    Err(:final failure) => throw StateError('$failure'),
+  };
+}
+
 /// The onion host of [alias] on [network].
 String hostOf(String alias, RobosatsNetwork network) =>
     Uri.parse(coordinator(alias).origins(network).onion ?? '').host;

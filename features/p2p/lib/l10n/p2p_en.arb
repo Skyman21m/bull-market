@@ -373,5 +373,29 @@
   "p2pBookOthers": "Others",
   "@p2pBookOthers": {
     "description": "Stands for payment methods written by the maker that are not in the official list."
+  },
+  "p2pReversibleTitle": "Reversible payments",
+  "@p2pReversibleTitle": {
+    "description": "Title of the dialog opened by the orange warning next to the payment methods of an order whose methods the community reports as reversible (PIX, Revolut…)."
+  },
+  "p2pReversibleIntro": "This order offers one or multiple payment methods that the community has consistently reported as reverting their transactions.",
+  "@p2pReversibleIntro": {
+    "description": "First paragraph of the reversible payments dialog, followed by the names of the reversible methods of the order."
+  },
+  "p2pReversible80Days": "If you receive a fiat transaction, it can be unilatery reverted up to 80 days after the trade has been completed.",
+  "@p2pReversible80Days": {
+    "description": "First point of the reversible payments dialog, in bold. The English typo « unilatery » is RoboSats' own and kept."
+  },
+  "p2pReversibleNoControl": "Robosats and their coordinators have no control over the fiat system.",
+  "@p2pReversibleNoControl": {
+    "description": "Second point of the reversible payments dialog."
+  },
+  "p2pReversibleScammers": "Scammers can exploit this vulnerability in the fiat system to take away both your bitcoin and your fiat.",
+  "@p2pReversibleScammers": {
+    "description": "Third point of the reversible payments dialog."
+  },
+  "p2pCommonAcknowledged": "Acknowledged",
+  "@p2pCommonAcknowledged": {
+    "description": "Button that closes a warning the user has read."
   }
 }

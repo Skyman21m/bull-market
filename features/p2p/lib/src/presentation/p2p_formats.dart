@@ -57,6 +57,16 @@ final class P2pFormats {
             ..maximumFractionDigits = 4)
           .format(premium.percent);
 
+  /// A plain number in the conventions of the locale, such as the default bond in a sentence that writes the percent sign itself.
+  String number(double value) =>
+      (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 2).format(
+        value,
+      );
+
+  /// The premium of an order when its price is unknown, as the official client writes it: no sign, at most 2 decimals, such as `2%`.
+  String premiumOverMarket(Premium premium) =>
+      _percent(premium.percent, minDecimals: 0, maxDecimals: 2);
+
   /// The bond of an order, such as `3%`.
   String bond(BondSize bond) =>
       _percent(bond.percent, minDecimals: 0, maxDecimals: 2);
@@ -65,9 +75,9 @@ final class P2pFormats {
   String fee(double fraction) =>
       _percent(fraction * 100, minDecimals: 3, maxDecimals: 3);
 
-  /// A rate already in percent, such as the on-chain payout fee.
-  String rate(double percent) =>
-      _percent(percent, minDecimals: 0, maxDecimals: 2);
+  /// The on-chain payout fee of a coordinator, with one decimal as the official client's fee row writes it (`toFixed(1)`).
+  String swapFee(double percent) =>
+      _percent(percent, minDecimals: 1, maxDecimals: 1);
 
   String _percent(
     double percent, {
