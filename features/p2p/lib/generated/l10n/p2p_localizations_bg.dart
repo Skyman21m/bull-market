@@ -260,4 +260,26 @@ class P2pLocalizationsBg extends P2pLocalizations {
 
   @override
   String get p2pBookOthers => 'Others';
+
+  @override
+  String get p2pReversibleTitle => 'Reversible payments';
+
+  @override
+  String get p2pReversibleIntro =>
+      'This order offers one or multiple payment methods that the community has consistently reported as reverting their transactions.';
+
+  @override
+  String get p2pReversible80Days =>
+      'If you receive a fiat transaction, it can be unilatery reverted up to 80 days after the trade has been completed.';
+
+  @override
+  String get p2pReversibleNoControl =>
+      'Robosats and their coordinators have no control over the fiat system.';
+
+  @override
+  String get p2pReversibleScammers =>
+      'Scammers can exploit this vulnerability in the fiat system to take away both your bitcoin and your fiat.';
+
+  @override
+  String get p2pCommonAcknowledged => 'Acknowledged';
 }

@@ -58,10 +58,9 @@ final class P2pFormats {
           .format(premium.percent);
 
   /// A plain number in the conventions of the locale, such as the default bond in a sentence that writes the percent sign itself.
-  String number(double value) =>
-      (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 2).format(
-        value,
-      );
+  String number(double value) => (NumberFormat.decimalPattern(
+    _locale,
+  )..maximumFractionDigits = 2).format(value);
 
   /// The premium of an order when its price is unknown, as the official client writes it: no sign, at most 2 decimals, such as `2%`.
   String premiumOverMarket(Premium premium) =>

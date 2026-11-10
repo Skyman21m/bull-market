@@ -27,7 +27,10 @@ void main() {
     testWidgets('red, orange and green around 15 % and 30 % of a day', (
       tester,
     ) async {
-      expect(await ringColor(tester, const Duration(hours: 1)), testBullTheme.error);
+      expect(
+        await ringColor(tester, const Duration(hours: 1)),
+        testBullTheme.error,
+      );
       expect(
         await ringColor(tester, const Duration(hours: 3, minutes: 30)),
         testBullTheme.error,
@@ -44,7 +47,10 @@ void main() {
         await ringColor(tester, const Duration(hours: 7, minutes: 20)),
         testBullTheme.success,
       );
-      expect(await ringColor(tester, const Duration(hours: 20)), testBullTheme.success);
+      expect(
+        await ringColor(tester, const Duration(hours: 20)),
+        testBullTheme.success,
+      );
     });
 
     testWidgets('an expired order shows an empty red ring', (tester) async {

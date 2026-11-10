@@ -581,6 +581,42 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Others'**
   String get p2pBookOthers;
+
+  /// Title of the dialog opened by the orange warning next to the payment methods of an order whose methods the community reports as reversible (PIX, Revolut…).
+  ///
+  /// In en, this message translates to:
+  /// **'Reversible payments'**
+  String get p2pReversibleTitle;
+
+  /// First paragraph of the reversible payments dialog, followed by the names of the reversible methods of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'This order offers one or multiple payment methods that the community has consistently reported as reverting their transactions.'**
+  String get p2pReversibleIntro;
+
+  /// First point of the reversible payments dialog, in bold. The English typo « unilatery » is RoboSats' own and kept.
+  ///
+  /// In en, this message translates to:
+  /// **'If you receive a fiat transaction, it can be unilatery reverted up to 80 days after the trade has been completed.'**
+  String get p2pReversible80Days;
+
+  /// Second point of the reversible payments dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Robosats and their coordinators have no control over the fiat system.'**
+  String get p2pReversibleNoControl;
+
+  /// Third point of the reversible payments dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Scammers can exploit this vulnerability in the fiat system to take away both your bitcoin and your fiat.'**
+  String get p2pReversibleScammers;
+
+  /// Button that closes a warning the user has read.
+  ///
+  /// In en, this message translates to:
+  /// **'Acknowledged'**
+  String get p2pCommonAcknowledged;
 }
 
 class _P2pLocalizationsDelegate

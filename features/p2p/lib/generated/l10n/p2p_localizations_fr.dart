@@ -261,4 +261,26 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pBookOthers => 'Autres';
+
+  @override
+  String get p2pReversibleTitle => 'Paiements réversibles';
+
+  @override
+  String get p2pReversibleIntro =>
+      'Cet ordre propose un ou plusieurs modes de paiement que la communauté a régulièrement signalés comme annulant leurs transactions.';
+
+  @override
+  String get p2pReversible80Days =>
+      'Si vous recevez une transaction fiduciaire, elle peut être unilatéralement annulée jusqu\'à 80 jours après la conclusion de l\'échange.';
+
+  @override
+  String get p2pReversibleNoControl =>
+      'RoboSats et ses coordinateurs n\'ont aucun contrôle sur le système fiduciaire.';
+
+  @override
+  String get p2pReversibleScammers =>
+      'Des escrocs peuvent exploiter cette faille du système fiduciaire pour vous prendre à la fois vos bitcoins et votre monnaie fiduciaire.';
+
+  @override
+  String get p2pCommonAcknowledged => 'Compris';
 }

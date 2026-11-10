@@ -42,18 +42,21 @@ void main() {
     await details.close();
   });
 
-  test('a host that does not answer leaves the order shown without fees', () async {
-    final details = cubit(
-      FakeTransport(failures: {'temple': const CoordinatorUnreachable()}),
-    );
+  test(
+    'a host that does not answer leaves the order shown without fees',
+    () async {
+      final details = cubit(
+        FakeTransport(failures: {'temple': const CoordinatorUnreachable()}),
+      );
 
-    await details.load();
+      await details.load();
 
-    expect(details.state.info, isNull);
-    expect(details.state.infoFailed, isTrue);
-    expect(details.state.order, order);
-    await details.close();
-  });
+      expect(details.state.info, isNull);
+      expect(details.state.infoFailed, isTrue);
+      expect(details.state.order, order);
+      await details.close();
+    },
+  );
 
   test('closing before the host answers drops the answer', () async {
     final transport = FakeTransport(

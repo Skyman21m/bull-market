@@ -46,12 +46,13 @@ void main() {
         ),
       );
 
+      expect(tester.takeException(), isNull);
       final text = tester.widget<Text>(find.text('Theme'));
       expect(text.textAlign, TextAlign.center);
-      expect(
-        tester.getSize(find.text('Theme')).height,
-        lessThanOrEqualTo(tester.getSize(find.text('Light')).height * 1.5),
-      );
+      // Centred in the width left between the leading gap and the close button.
+      final title = tester.getCenter(find.text('Theme'));
+      final sheet = tester.getRect(find.byType(BullPickerSheet<String>));
+      expect((title.dx - sheet.center.dx).abs(), lessThan(40));
     });
   });
 }

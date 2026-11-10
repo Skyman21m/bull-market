@@ -9,7 +9,8 @@ void main() {
       expect(
         P2pLocalizations.delegate.isSupported(locale),
         isTrue,
-        reason: 'add features/p2p/lib/l10n/p2p_${locale.toLanguageTag().replaceAll('-', '_')}.arb',
+        reason:
+            'add features/p2p/lib/l10n/p2p_${locale.toLanguageTag().replaceAll('-', '_')}.arb',
       );
       expect(lookupP2pLocalizations(locale).p2pTabLabel, isNotEmpty);
     }

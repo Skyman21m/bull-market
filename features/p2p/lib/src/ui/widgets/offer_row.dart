@@ -162,9 +162,7 @@ class _PremiumAndBond extends StatelessWidget {
     );
     if (!bond.isLow) return line;
     return Tooltip(
-      message: l10n.p2pBookLowBond(
-        formats.number(BondWarning.defaultPercent),
-      ),
+      message: l10n.p2pBookLowBond(formats.number(BondWarning.defaultPercent)),
       child: line,
     );
   }
