@@ -98,8 +98,9 @@ What already exists in the code, with no screen yet:
 - **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js, not yet tried against a coordinator ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
 - **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC for now, not yet on a phone ([measurements](docs/spikes/tor-robosats.md)).
+- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC, not yet on a phone ([report](docs/spikes/tor-transport.md)).
 
-In progress: wiring this reading to the wallet's Tor ([#27](https://github.com/Skyman21m/troc/issues/27)), then the first screens ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
+In progress: the first screens ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
 Not done yet: any P2P screen, creating a robot with a coordinator, and any operation that involves money.
 
@@ -107,12 +108,12 @@ Android first. Nothing is released yet. At this stage, the app still shows Bull'
 
 ## How it is built
 
-Troc adds one module to Bull's code, and a second one is being prepared; Troc touches the rest as little as possible, so that it can keep up with updates of the original wallet.
+Troc adds two modules to Bull's code; Troc touches the rest as little as possible, so that it can keep up with updates of the original wallet.
 
 | Module | Role |
 |---|---|
 | [`packages/robosats`](packages/robosats/README.md) | Part of the RoboSats protocol in pure Dart, with no screen and no network access of its own: robot identity, OpenPGP, reading the coordinators. It talks to the network through an entry point that the app provides. |
-| `features/p2p` | The app side: the transport over the wallet's Tor, then the screens of the P2P tab. Being prepared ([#27](https://github.com/Skyman21m/troc/issues/27)), not yet on `main`. |
+| `features/p2p` | The app side: the transport over the wallet's Tor and the facade that the screens will use are in place ([#27](https://github.com/Skyman21m/troc/issues/27)); the screens of the P2P tab are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
 
 Principles:
 
