@@ -252,6 +252,13 @@ void main() {
         hasLength(20),
       );
       expect(orders.where((o) => o.location != null), hasLength(1));
+      final located = orders.singleWhere((o) => o.location != null);
+      expect((located.coordinator.shortAlias, located.id), ('temple', 99620));
+      expect(located.location?.latitude, 0);
+      final texts = orders.map((o) => o.paymentMethods.text).join('|');
+      for (final word in ['Depósito', 'lotérica', 'Itaú']) {
+        expect(texts, contains(word));
+      }
       expect(
         orders.map((o) => o.makerActivity).toSet(),
         MakerActivity.values.toSet(),

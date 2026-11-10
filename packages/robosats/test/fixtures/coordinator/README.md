@@ -29,6 +29,9 @@ Every recorded answer had `Content-Type: application/json`.
 | `temple-testnet-book.json` | temple | testnet | `/api/book/` | 404, `not_found`: no public order | 57 |
 | `temple-testnet-limits.json` | temple | testnet | `/api/limits/` | 200 | 7445 |
 
+What they cover: 104 orders (temple 33, lake 49, bazaar 16, ammanaya 6), none priced in sats; payment methods with non-ASCII text in the lake book (`Depósito`, `lotérica`, `Itaú`); one order with a location in the temple book (order 99620, at 0.000000, 0.000000); dates in UTC and, in the ammanaya book, with a `+01:00` offset; a notice with HTML and line breaks (lake) and a severity spelled `Info` (temple mainnet); an older testnet coordinator (0.8.6) without `devfund`, `blossom_enabled` and `federation_hash`.
+Everything else hostile or rare is built by the tests.
+
 The `/api/book/` requests had no query parameter, as the official client sends them: every currency and both order types.
 lake on testnet did not answer: 3 attempts per endpoint, each a SOCKS failure (`curl` exit code 97), between 13:54:22 and 13:55:51 UTC.
 
