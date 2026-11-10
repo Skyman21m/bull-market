@@ -19,9 +19,10 @@ class TorWaitView extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final failed = tor == TorWait.failed;
+    // Tor fails while it connects: the failure shows on that step.
     final reached = switch (tor) {
-      TorWait.initializing || TorWait.failed => 0,
-      TorWait.connecting => 1,
+      TorWait.initializing => 0,
+      TorWait.connecting || TorWait.failed => 1,
       TorWait.ready => 3,
     };
     final steps = [

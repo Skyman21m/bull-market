@@ -28,7 +28,7 @@ class OfferRow extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    final muted = text.bodyMedium?.copyWith(color: colors.textMuted);
+    final muted = text.labelLarge?.copyWith(color: colors.textMuted);
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -96,7 +96,7 @@ class OfferRow extends StatelessWidget {
               children: [
                 // A wide range or a large text size shrinks the amount rather than the robot's line.
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 128),
+                  constraints: const BoxConstraints(maxWidth: 120),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,

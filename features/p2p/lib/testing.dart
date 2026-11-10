@@ -11,6 +11,14 @@ import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/p2p_locator.dart';
 
+// What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
+export 'package:robosats/robosats.dart'
+    show
+        CoordinatorRequest,
+        CoordinatorResponse,
+        CoordinatorTransport,
+        Federation;
+
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].

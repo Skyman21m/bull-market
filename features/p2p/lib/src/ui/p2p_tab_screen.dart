@@ -30,6 +30,7 @@ class P2pTabScreen extends StatelessWidget {
         child: Column(
           children: [
             if (network == RobosatsNetwork.testnet) const TestnetBanner(),
+            const Gap(BullSpacing.xs),
             BullTopBar(title: l10n.p2pTabLabel),
             Expanded(
               child: BlocBuilder<BookCubit, BookState>(

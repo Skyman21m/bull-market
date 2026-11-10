@@ -60,6 +60,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         child: Column(
           children: [
             if (state.network == RobosatsNetwork.testnet) const TestnetBanner(),
+            const Gap(BullSpacing.xs),
             BullTopBar(
               title: l10n.p2pNavOrder,
               onBack: () {
@@ -326,13 +327,15 @@ class _DetailsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: text.bodyMedium?.copyWith(color: colors.textMuted),
             ),
           ),
           const Gap(BullSpacing.sm),
-          Flexible(
+          Expanded(
+            flex: 3,
             child: Text(
               value,
               textAlign: TextAlign.end,

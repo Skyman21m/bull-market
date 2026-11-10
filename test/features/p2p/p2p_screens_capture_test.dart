@@ -18,7 +18,6 @@ import 'package:go_router/go_router.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/testing.dart';
-import 'package:robosats/robosats.dart';
 
 /// The books were recorded on 2026-11-10 between 13:51 and 13:55 UTC: the screens are rendered a few minutes later.
 final _now = DateTime.utc(2026, 11, 10, 14);
@@ -38,7 +37,9 @@ final class _RecordedTransport implements CoordinatorTransport {
     final alias = Federation.robosats
         .on(network)
         .firstWhere(
-          (c) => Uri.parse(c.origins(network).onion ?? '').host == request.url.host,
+          (c) =>
+              Uri.parse(c.origins(network).onion ?? '').host ==
+              request.url.host,
         )
         .shortAlias;
     final endpoint = request.url.path.contains('info') ? 'info' : 'book';
@@ -66,10 +67,14 @@ Future<void> _loadFonts() async {
   }
 
   await load('Golos Text', [rootBundle.load('assets/fonts/GolosText.ttf')]);
-  await load('Bebas Neue', [rootBundle.load('assets/fonts/BebasNeue-Regular.ttf')]);
+  await load('Bebas Neue', [
+    rootBundle.load('assets/fonts/BebasNeue-Regular.ttf'),
+  ]);
   final flutterRoot =
       Platform.environment['FLUTTER_ROOT'] ??
-      File(Platform.resolvedExecutable).parent.parent.parent.parent.parent.path;
+      File(
+        Platform.resolvedExecutable,
+      ).parent.parent.parent.parent.parent.parent.path;
   final icons = File(
     '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
   );
@@ -102,7 +107,8 @@ void main() {
           await tester.pump(const Duration(milliseconds: 50));
           await tester.runAsync(() async {
             final boundary =
-                tester.renderObject(find.byKey(_frame)) as RenderRepaintBoundary;
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
             final image = await boundary.toImage(pixelRatio: 2);
             final png = await image.toByteData(format: ui.ImageByteFormat.png);
             if (png == null) throw StateError('no PNG for $name');
@@ -112,7 +118,9 @@ void main() {
           });
         }
 
-        Future<StreamController<P2pTorState>> show(RobosatsNetwork network) async {
+        Future<StreamController<P2pTorState>> show(
+          RobosatsNetwork network,
+        ) async {
           final locator = GetIt.asNewInstance();
           final tor = StreamController<P2pTorState>.broadcast();
           addTearDown(tor.close);
@@ -123,14 +131,18 @@ void main() {
             torStates: () => tor.stream,
             clock: () => _now,
           );
-          await tester.pumpWidget(_App(locale: locale, locator: locator, network: network));
+          await tester.pumpWidget(
+            _App(locale: locale, locator: locator, network: network),
+          );
           await tester.pump();
           return tor;
         }
 
         Future<void> settle() async {
           for (var i = 0; i < 10; i++) {
-            await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
             await tester.pump(const Duration(milliseconds: 20));
           }
         }
@@ -168,9 +180,10 @@ void main() {
         await settle();
         await capture('offres');
 
-        await tester.tap(
-          find.textContaining(' EUR', findRichText: true).first,
-        );
+        await tester.tap(find.textContaining(' EUR', findRichText: true).first);
+        // Lets the page transition end.
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
         await settle();
         await capture('offre');
       },
@@ -186,7 +199,11 @@ class _App extends StatelessWidget {
   final GetIt locator;
   final RobosatsNetwork network;
 
-  const _App({required this.locale, required this.locator, required this.network});
+  const _App({
+    required this.locale,
+    required this.locator,
+    required this.network,
+  });
 
   @override
   Widget build(BuildContext context) {
