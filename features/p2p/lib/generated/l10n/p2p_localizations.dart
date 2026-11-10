@@ -551,6 +551,36 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 coordinator is still loading} other{{count} coordinators are still loading}}'**
   String p2pBookCoordinatorsLoading(int count);
+
+  /// Hours of a duration: the expiry ring of the book and the deposit time of an order. RoboSats writes `5h` in code, without translation.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h'**
+  String p2pDurationHours(String hours);
+
+  /// Minutes of a duration under one hour: the expiry ring of the book and the deposit time. RoboSats writes `12m` in code.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes}m'**
+  String p2pDurationMinutes(String minutes);
+
+  /// A deposit time of hours and minutes. RoboSats writes `1h 30m` in code; {minutes} has two digits.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h {minutes}m'**
+  String p2pDurationHoursMinutes(String hours, String minutes);
+
+  /// The live countdown of an order: RoboSats writes `{h}h {mm}m {ss}s` in code; {minutes} and {seconds} have two digits.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h {minutes}m {seconds}s'**
+  String p2pCountdownHms(String hours, String minutes, String seconds);
+
+  /// Remplace les modes de paiement personnalisés ou au-delà des icônes affichées.
+  ///
+  /// In en, this message translates to:
+  /// **'Others'**
+  String get p2pBookOthers;
 }
 
 class _P2pLocalizationsDelegate

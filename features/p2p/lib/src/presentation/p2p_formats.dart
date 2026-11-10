@@ -20,8 +20,9 @@ final class P2pFormats {
   /// An amount in the currency of an order, rounded to 4 significant digits.
   String amount(FiatAmount amount) {
     final rounded = double.parse(amount.value.toStringAsPrecision(4));
-    return (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 8)
-        .format(rounded);
+    return (NumberFormat.decimalPattern(
+      _locale,
+    )..maximumFractionDigits = 8).format(rounded);
   }
 
   /// The amount of an order: `100` for a fixed amount, `50-300` for a range.

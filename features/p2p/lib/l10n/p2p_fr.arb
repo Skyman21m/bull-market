@@ -70,5 +70,6 @@
   "p2pDurationHours": "{hours} h",
   "p2pDurationMinutes": "{minutes} min",
   "p2pDurationHoursMinutes": "{hours} h {minutes} min",
-  "p2pCountdownHms": "{hours} h {minutes} min {seconds} s"
+  "p2pCountdownHms": "{hours} h {minutes} min {seconds} s",
+  "p2pBookOthers": "Autres"
 }

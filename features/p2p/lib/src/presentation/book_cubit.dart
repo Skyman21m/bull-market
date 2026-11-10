@@ -79,12 +79,13 @@ class BookCubit extends Cubit<BookState> {
     final statuses = {
       ...state.coordinators,
       for (final coordinator in pending.keys)
-        coordinator: CoordinatorBookLoading(switch (state
-            .coordinators[coordinator]) {
-          CoordinatorBookLoaded(:final book) => book,
-          CoordinatorBookLoading(:final previous) => previous,
-          _ => null,
-        }),
+        coordinator: CoordinatorBookLoading(
+          switch (state.coordinators[coordinator]) {
+            CoordinatorBookLoaded(:final book) => book,
+            CoordinatorBookLoading(:final previous) => previous,
+            _ => null,
+          },
+        ),
     };
     emit(state.copyWith(coordinators: statuses));
     await Future.wait([

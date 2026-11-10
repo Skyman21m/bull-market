@@ -1,7 +1,9 @@
 /// Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor.
 ///
-/// The shell calls [P2pFeature.setup]; everything else goes through [P2pFacade], whose signatures use the types of `package:robosats` exported here.
+/// The shell calls [P2pFeature.setup], mounts [P2pFeature.route] in its bottom bar and registers [P2pLocalizations.delegate]; everything else goes through [P2pFacade], whose signatures use the types of `package:robosats` exported here.
 library;
+
+export 'generated/l10n/p2p_localizations.dart' show P2pLocalizations;
 
 export 'package:primitives/primitives.dart' show Err, Ok, Result, Sats;
 // The types of the facade's signatures, and of their fields, so that a screen shows a coordinator, its info and its orders without importing `robosats`.

@@ -236,4 +236,27 @@ class P2pLocalizationsIt extends P2pLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String p2pDurationHours(String hours) {
+    return '${hours}h';
+  }
+
+  @override
+  String p2pDurationMinutes(String minutes) {
+    return '${minutes}m';
+  }
+
+  @override
+  String p2pDurationHoursMinutes(String hours, String minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String p2pCountdownHms(String hours, String minutes, String seconds) {
+    return '${hours}h ${minutes}m ${seconds}s';
+  }
+
+  @override
+  String get p2pBookOthers => 'Others';
 }

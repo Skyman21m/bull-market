@@ -10,6 +10,7 @@ import '../domain/usecases/fetch_coordinator_info_usecase.dart';
 @immutable
 final class OrderDetailsState {
   final PublicOrder order;
+  final RobosatsNetwork network;
 
   /// What the coordinator says about itself, `null` until it answers or when it does not.
   final CoordinatorInfo? info;
@@ -17,7 +18,12 @@ final class OrderDetailsState {
   /// Whether the coordinator could not be asked for its fees: the order is still shown, without them.
   final bool infoFailed;
 
-  const OrderDetailsState(this.order, {this.info, this.infoFailed = false});
+  const OrderDetailsState(
+    this.order,
+    this.network, {
+    this.info,
+    this.infoFailed = false,
+  });
 
   /// The sats a taker would trade, with the taker fee once it is known.
   TakerEstimate? get estimate =>
@@ -26,18 +32,24 @@ final class OrderDetailsState {
 
 /// Shows one order of the book and asks its coordinator for its fees.
 class OrderDetailsCubit extends Cubit<OrderDetailsState> {
-  final RobosatsNetwork _network;
   final FetchCoordinatorInfoUsecase _fetchInfo;
 
-  OrderDetailsCubit(PublicOrder order, this._network, this._fetchInfo)
-    : super(OrderDetailsState(order));
+  OrderDetailsCubit(PublicOrder order, RobosatsNetwork network, this._fetchInfo)
+    : super(OrderDetailsState(order, network));
 
   Future<void> load() async {
-    final result = await _fetchInfo.execute(state.order.coordinator, _network);
+    final result = await _fetchInfo.execute(
+      state.order.coordinator,
+      state.network,
+    );
     if (isClosed) return;
     emit(switch (result) {
-      Ok(:final value) => OrderDetailsState(state.order, info: value),
-      Err() => OrderDetailsState(state.order, infoFailed: true),
+      Ok(:final value) => OrderDetailsState(
+        state.order,
+        state.network,
+        info: value,
+      ),
+      Err() => OrderDetailsState(state.order, state.network, infoFailed: true),
     });
   }
 }

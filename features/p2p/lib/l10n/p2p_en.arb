@@ -369,5 +369,9 @@
         "type": "String"
       }
     }
+  },
+  "p2pBookOthers": "Others",
+  "@p2pBookOthers": {
+    "description": "Remplace les modes de paiement personnalisés ou au-delà des icônes affichées."
   }
 }
