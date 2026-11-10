@@ -15,7 +15,7 @@ import 'support/vectors.dart';
 final List<Map<String, dynamic>> _floatBoundaries =
     ((jsonDecode(
                   File(
-                    'test/fixtures/pseudos-frontieres-flottantes.json',
+                    'test/fixtures/nickname-float-boundaries.json',
                   ).readAsStringSync(),
                 )
                 as Map<String, dynamic>)['vecteurs']

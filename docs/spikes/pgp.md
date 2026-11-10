@@ -1,196 +1,196 @@
-# Spike 3 : PGP du robot RoboSats en Dart
+# Spike 3: RoboSats robot PGP in Dart
 
-Rédigé le 10/11/2026, mis à jour le même jour après la revue de sécurité. Code : paquet `packages/robosats` (Dart pur, sans Flutter, sans réseau). Référence : RoboSats au commit `ff1998c`. Note de préparation : `preparation-identite-et-pgp.md`, partie B (dossier du projet).
+Written on 2026-11-10, updated the same day after the security review. Code: package `packages/robosats` (pure Dart, no Flutter, no network). Reference: RoboSats at commit `ff1998c`. Preparation note: `preparation-identite-et-pgp.md`, part B (project folder).
 
-## Résumé
+## Summary
 
-1. Le paquet sait fabriquer la clé PGP d'un robot, la relire, signer une facture ou une adresse, et chiffrer, signer, déchiffrer et vérifier un message de chat.
-2. **GnuPG 2.4.4, le moteur des coordinateurs, et OpenPGP.js 5.11.3, la bibliothèque de l'app officielle, acceptent tout ce que le code produit, et le code lit tout ce qu'ils produisent.** C'est vérifié dans les deux sens par un script relançable, et par deux revues de sécurité indépendantes sur 1 000 à 1 500 messages dans chaque sens.
-3. La clé produite et les messages de chat ont exactement la même structure que ceux de l'app officielle : un coordinateur ne peut pas distinguer Troc de l'app officielle par leur forme.
-4. Après la revue de sécurité du 10/11/2026, **`dart_pg` est entièrement retiré** : tout l'OpenPGP utile à RoboSats est écrit dans le paquet, au-dessus de primitives existantes (`pinenacl`, `pointycastle`, `crypto`). Décision du propriétaire : cette couche Dart est provisoire, une bibliothèque Rust la remplacera avant toute diffusion.
-5. Tout ce que le paquet lit est borné en taille et en coût : aucun message, aucune clé, aucune signature venant d'un coordinateur ou d'un pair ne peut faire planter l'app ni lever une exception.
-6. Rien n'a été envoyé à un coordinateur.
+1. The package can create a robot's PGP key, read it back, sign an invoice or an address, and encrypt, sign, decrypt and verify a chat message.
+2. **GnuPG 2.4.4, the coordinators' engine, and OpenPGP.js 5.11.3, the official app's library, accept everything the code produces, and the code reads everything they produce.** This is checked both ways by a rerunnable script, and by two independent security reviews on 1,000 to 1,500 messages each way.
+3. The key produced and the chat messages have exactly the same structure as those of the official app: a coordinator cannot tell Troc from the official app by their form.
+4. After the security review of 2026-11-10, **`dart_pg` is entirely removed**: all the OpenPGP that RoboSats needs is written in the package, on top of existing primitives (`pinenacl`, `pointycastle`, `crypto`). Owner's decision: this Dart layer is provisional, a Rust library will replace it before any release.
+5. Everything the package reads is bounded in size and cost: no message, no key, no signature coming from a coordinator or a peer can crash the app or throw an exception.
+6. Nothing was sent to a coordinator.
 
-## Bibliothèque
+## Library
 
-**Pourquoi `dart_pg` 2.0.0 a été retiré.** Constats faits en l'exécutant, puis par la revue de sécurité :
+**Why `dart_pg` 2.0.0 was removed.** Findings made by running it, then by the security review:
 
-1. **Déni de service sans aucune clé.** Son lecteur de paquets décompresse récursivement pendant la lecture, avant toute authentification : un message de 415 caractères (4 Gio une fois décompressé) tuait le processus.
-2. **Marque dans chaque signature** : une notation `salt@notations.dart-pg.org` aléatoire, non désactivable (`lib/src/packet/signature.dart:188-192`), qui désignerait Troc au coordinateur.
-3. **Aléa non injectable** (`lib/src/common/helpers.dart:24`) : pas de test déterministe possible.
-4. **Deux erreurs sur les zéros de tête** : une clé Ed25519 sur 256 illisible, une signature valide sur 100 environ rejetée.
-5. **Exceptions non typées sur une clé de pair hostile** (paramètres KDF altérés) ; auto-signature différente de celle d'OpenPGP.js ; en-têtes d'armure ; lecture des clés dépendante de l'horloge.
+1. **Denial of service without any key.** Its packet reader decompresses recursively while reading, before any authentication: a 415-character message (4 GiB once decompressed) killed the process.
+2. **A mark in every signature**: a random `salt@notations.dart-pg.org` notation, which cannot be disabled (`lib/src/packet/signature.dart:188-192`), and which would single out Troc to the coordinator.
+3. **Randomness not injectable** (`lib/src/common/helpers.dart:24`): no deterministic test possible.
+4. **Two errors with leading zeros**: one Ed25519 key in 256 unreadable, about one valid signature in 100 rejected.
+5. **Untyped exceptions on a hostile peer key** (altered KDF parameters); self-signature different from that of OpenPGP.js; armor headers; key reading dependent on the clock.
 
-**Ce qui le remplace.** `lib/src/pgp/` (1 891 lignes, commentaires compris) contient l'armure, les paquets, les clés, les signatures, l'échange de clé ECDH (RFC 6637) avec l'enveloppe de clé AES (RFC 3394), le bloc chiffré avec contrôle d'intégrité et la lecture bornée des messages. `lib/src/robot_pgp_key.dart` (520 lignes) est l'interface publique. Les primitives viennent de `pinenacl` (Ed25519, X25519), `pointycastle` (AES) et `crypto` (SHA) ; la décompression, de `dart:io`. Aucun type de ces bibliothèques ne sort du paquet.
+**What replaces it.** `lib/src/pgp/` (1,891 lines, comments included) contains the armor, the packets, the keys, the signatures, the ECDH key exchange (RFC 6637) with the AES key wrap (RFC 3394), the encrypted block with integrity protection and the bounded reading of messages. `lib/src/robot_pgp_key.dart` (520 lines) is the public interface. The primitives come from `pinenacl` (Ed25519, X25519), `pointycastle` (AES) and `crypto` (SHA); decompression comes from `dart:io`. No type from these libraries leaves the package.
 
-**Autres voies de la note.** `openpgp` (binaires Go) et `pgp_dart` (Sequoia, 0.0.1) n'ont pas de date de création réglable : écartées. La bibliothèque Rust (rPGP ou Sequoia) est la cible avant diffusion.
+**Other options in the note.** `openpgp` (Go binaries) and `pgp_dart` (Sequoia, 0.0.1) have no settable creation date: ruled out. The Rust library (rPGP or Sequoia) is the target before release.
 
-## Paramètres reproduits
+## Parameters reproduced
 
-| Élément | Valeur | Source RoboSats | Dans le paquet |
+| Item | Value | RoboSats source | In the package |
 |---|---|---|---|
-| Type de clé | v4, primaire EdDSA « historique » ed25519 (algo 22), sous-clé ECDH cv25519 (algo 18, paramètres `03 01 08 07`) | `frontend/src/pgp/index.ts:23-25` ; `tests/robots/3/enc_priv_key` | `RobotPgpKey.generate` |
-| Identifiant | `RoboSats ID <hash_id>` | `pgp/index.ts:26` | `RobotIdentity.pgpUserId` |
-| Phrase de passe | le token | `pgp/index.ts:27` | `generate`, `unlock` |
-| Date de création | maintenant moins un jour | `pgp/index.ts:29` | 24 h exactement (voir « Écarts ») |
-| Protection de la clé privée | usage 254, AES-256 CFB, S2K itéré et salé SHA-256, compteur 224 (16 Mio), contrôle SHA-1 | `tests/robots/3/enc_priv_key` | `ProtectedSecret.lock` |
-| Auto-signature | type 0x10, SHA-512, sous-paquets 2\*, 11 (9 7 8), 16\*, 21 (8 10), 22 (0 2 1), 25, 27\* (03), 30 (01), 33 ; \* = critique | idem | `selfCertification` |
-| Liaison de sous-clé | type 0x18, **SHA-512**, sous-paquets 2\*, 16\*, 27\* (0C), 33 | idem | `subkeyBinding` |
-| Armure | sans en-tête, lignes de 60 caractères, ligne CRC, `\n` | `tests/robots/*/enc_priv_key` | `armorEncode` |
-| Contrôle de forme de la clé publique | ligne vide obligatoire, lignes base64 | `api/utils.py:496-518` | test « passes the shape check of the coordinator » |
-| Âge minimal de la clé | 12 heures | `api/utils.py:582-594` | clé datée de 24 h |
-| Signature en clair | type 0x01, SHA-512, clé primaire, datée de maintenant | `pgp/index.ts:102-119` | `signCleartext` |
-| En-tête exigé | `-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n` | `api/utils.py:642-644` | `cleartextEncode` |
-| Signataire exigé | empreinte de la clé primaire | `api/utils.py:641` | signature par la clé primaire |
-| Message de chat | chiffré pour soi puis pour le pair, signé, signature datée de la veille | `pgp/index.ts:39-62` | `encryptChatMessage` |
-| Lecture du chat | texte rendu même si la signature est invalide | `pgp/index.ts:70-99` | `decryptChatMessage` |
-| Refus d'envoyer son token | message bloqué | `EncryptedApiChat/index.tsx:210-214` | échec `PgpPlaintextContainsToken` |
-| En-tête du premier contact | sauts de ligne remplacés par `\` | `frontend/src/models/Robot.model.ts:82-83` ; `robosats/middleware.py:53-59`, `122-125` ; `api/utils.py:525-526` | `firstContactAuthorizationHeader`, `pgpArmorToWire` |
+| Key type | v4, "legacy" EdDSA ed25519 primary (algo 22), ECDH cv25519 subkey (algo 18, parameters `03 01 08 07`) | `frontend/src/pgp/index.ts:23-25`; `tests/robots/3/enc_priv_key` | `RobotPgpKey.generate` |
+| User ID | `RoboSats ID <hash_id>` | `pgp/index.ts:26` | `RobotIdentity.pgpUserId` |
+| Passphrase | the token | `pgp/index.ts:27` | `generate`, `unlock` |
+| Creation date | now minus one day | `pgp/index.ts:29` | exactly 24 h (see "Deviations") |
+| Private key protection | usage 254, AES-256 CFB, iterated and salted S2K SHA-256, count 224 (16 MiB), SHA-1 check | `tests/robots/3/enc_priv_key` | `ProtectedSecret.lock` |
+| Self-signature | type 0x10, SHA-512, subpackets 2\*, 11 (9 7 8), 16\*, 21 (8 10), 22 (0 2 1), 25, 27\* (03), 30 (01), 33; \* = critical | same | `selfCertification` |
+| Subkey binding | type 0x18, **SHA-512**, subpackets 2\*, 16\*, 27\* (0C), 33 | same | `subkeyBinding` |
+| Armor | no header, 60-character lines, CRC line, `\n` | `tests/robots/*/enc_priv_key` | `armorEncode` |
+| Shape check of the public key | mandatory blank line, base64 lines | `api/utils.py:496-518` | test "passes the shape check of the coordinator" |
+| Minimum key age | 12 hours | `api/utils.py:582-594` | key dated 24 h back |
+| Cleartext signature | type 0x01, SHA-512, primary key, dated now | `pgp/index.ts:102-119` | `signCleartext` |
+| Required header | `-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n` | `api/utils.py:642-644` | `cleartextEncode` |
+| Required signer | fingerprint of the primary key | `api/utils.py:641` | signature by the primary key |
+| Chat message | encrypted to self then to the peer, signed, signature dated the day before | `pgp/index.ts:39-62` | `encryptChatMessage` |
+| Reading the chat | text returned even if the signature is invalid | `pgp/index.ts:70-99` | `decryptChatMessage` |
+| Refusal to send one's own token | message blocked | `EncryptedApiChat/index.tsx:210-214` | `PgpPlaintextContainsToken` failure |
+| First-contact header | line breaks replaced by `\` | `frontend/src/models/Robot.model.ts:82-83`; `robosats/middleware.py:53-59`, `122-125`; `api/utils.py:525-526` | `firstContactAuthorizationHeader`, `pgpArmorToWire` |
 
-Contenu du message de chat produit, vu par GnuPG : deux paquets de clé de session v3 (ECDH), un bloc chiffré v1 avec contrôle d'intégrité, AES-256, sans compression ; à l'intérieur, signature « une passe », données littérales au format `u` et signature.
+Content of the chat message produced, as seen by GnuPG: two v3 session key packets (ECDH), one v1 encrypted block with integrity protection, AES-256, no compression; inside, a "one-pass" signature, literal data in `u` format and the signature.
 
-### Chat par REST (`/api/chat/`)
+### Chat over REST (`/api/chat/`)
 
-- `GET /api/chat/?order_id=<id>&offset=<n>` (`chat/views.py:40-113`) : réponse `{"peer_connected", "peer_pubkey", "messages": [{"index", "time", "message", "nick"}]}`. `message` est le bloc `PGP MESSAGE`. Statuts d'ordre 9, 10, 11 et 16.
-- `POST /api/chat/` (`chat/views.py:116-218`, `chat/serializers.py:61-84`) : corps `{"PGP_message", "order_id", "offset"}`. Statuts 9 et 10. Avec `offset`, même réponse que le `GET` ; sinon `{}`.
-- Dans `PGP_message`, chaque saut de ligne devient un `\` (`EncryptedChat/index.tsx:263`) ; l'app les rétablit à la lecture (`EncryptedApiChat/index.tsx:141` et `166`). Fonctions `pgpArmorToWire` et `pgpArmorFromWire` ; les lectures du paquet acceptent les deux formes.
-- Le texte en clair ne quitte jamais l'appareil. Le coordinateur ne stocke que le bloc chiffré (`chat/models.py:87`). Le robot relit ses propres messages en les déchiffrant, puisque chaque message est aussi chiffré pour lui.
-- L'auteur d'un message se déduit du pseudo renvoyé : le sien, donc sa propre clé publique, sinon celle du pair (`EncryptedApiChat/index.tsx:156`). C'est le paramètre `sender` de `decryptChatMessage`.
-- L'app officielle interroge toutes les 5 secondes (`EncryptedApiChat/index.tsx:53`).
+- `GET /api/chat/?order_id=<id>&offset=<n>` (`chat/views.py:40-113`): response `{"peer_connected", "peer_pubkey", "messages": [{"index", "time", "message", "nick"}]}`. `message` is the `PGP MESSAGE` block. Order statuses 9, 10, 11 and 16.
+- `POST /api/chat/` (`chat/views.py:116-218`, `chat/serializers.py:61-84`): body `{"PGP_message", "order_id", "offset"}`. Statuses 9 and 10. With `offset`, same response as the `GET`; otherwise `{}`.
+- In `PGP_message`, each line break becomes a `\` (`EncryptedChat/index.tsx:263`); the app restores them when reading (`EncryptedApiChat/index.tsx:141` and `166`). Functions `pgpArmorToWire` and `pgpArmorFromWire`; the package's readers accept both forms.
+- The plaintext never leaves the device. The coordinator only stores the encrypted block (`chat/models.py:87`). The robot reads its own messages back by decrypting them, since each message is also encrypted to it.
+- The author of a message is deduced from the returned nickname: its own, hence its own public key, otherwise the peer's (`EncryptedApiChat/index.tsx:156`). This is the `sender` parameter of `decryptChatMessage`.
+- The official app polls every 5 seconds (`EncryptedApiChat/index.tsx:53`).
 
-## Matrice d'interopérabilité
+## Interoperability matrix
 
-| Sens | État | Comment |
+| Direction | Status | How |
 |---|---|---|
-| Dart → GnuPG 2.4.4 | **prouvé** | `tool/pgp_interop.sh` : import de la clé publique (`imported: 1`), date et identifiant lus, ré-export, import de la clé privée sans phrase de passe (`secret keys imported: 1`), `--list-packets` identique à `tests/robots/3/enc_priv_key` hors valeurs propres à la clé, facture signée vérifiée (`VALIDSIG`, EdDSA, SHA-512, empreinte primaire), texte extrait par le code Python du coordinateur, signature par GnuPG avec notre clé et le token, chat déchiffré par le pair et par notre clé (`DECRYPTION_OKAY`, `GOODMDC`, signature datée de la veille). Seconde revue : 1 000 messages sur 1 000 |
-| GnuPG 2.4.4 → Dart | **prouvé** | même script : clé ré-exportée par GnuPG, clé ed25519/cv25519 générée par GnuPG, texte signé en clair par GnuPG, message compressé, chiffré et signé par GnuPG, message long à longueurs partielles, clé privée protégée par GnuPG (compteur S2K 255, SHA-1, AES-128) ; plus `tests/robots/1/signed_message` du dépôt. **Mesuré après correction : 400 messages réels sur 400** (texte identique et signature valide), de 0 à 9 500 caractères, 100 par mode (fichier, entrée standard, sans compression, mode texte), dont 344 à longueurs partielles. Avant correction, la seconde revue en comptait 541 sur 1 000 |
-| Dart → OpenPGP.js 5.11.3 | **prouvé** | même script, avec les appels de `frontend/src/pgp/index.ts` : clé déverrouillée par le token et validée, blocs identiques à l'octet après un aller-retour, facture signée vérifiée, chat déchiffré comme pair et comme expéditeur avec signature valide, texte signé par notre code avec une clé d'OpenPGP.js vérifié. Revues de sécurité : 1 500 puis 1 000 messages, lus comme destinataire et comme expéditeur, 0 échec |
-| OpenPGP.js 5.11.3 → Dart | **prouvé** | même script : clé générée par OpenPGP.js lue et déverrouillée, deux textes signés (dont un à tirets, blancs de fin de ligne et plusieurs lignes) rendus exactement comme OpenPGP.js les rend, chat signé et non signé déchiffrés. Revues de sécurité : 1 500 puis 1 000 messages, dans les deux rôles, 0 échec. Plus les clés `tests/robots/{1,2,3}` du dépôt |
-| Structure | **identique** | `gpg --list-packets` : notre clé contre `tests/robots/3` et contre une clé d'OpenPGP.js ; notre message de chat contre un message d'OpenPGP.js (deux clés de session v3, bloc chiffré v1, signature « une passe », littéral `u`, signature à sous-paquets 2, 16, 33, sans compression) |
-| GnuPG 2.2 (image officielle des coordinateurs) | **non exécuté** | pas d'image Debian bookworm en local |
-| python-gnupg réel | **non exécuté** | non installé ; ses lignes de commande sont reproduites de mémoire dans le script |
-| Coordinateur réel | **non exécuté** | étape suivante |
+| Dart → GnuPG 2.4.4 | **proven** | `tool/pgp_interop.sh`: import of the public key (`imported: 1`), date and user ID read, re-export, import of the private key without the passphrase (`secret keys imported: 1`), `--list-packets` identical to `tests/robots/3/enc_priv_key` apart from key-specific values, signed invoice verified (`VALIDSIG`, EdDSA, SHA-512, primary fingerprint), text extracted by the coordinator's Python code, signature by GnuPG with our key and the token, chat decrypted by the peer and by our key (`DECRYPTION_OKAY`, `GOODMDC`, signature dated the day before). Second review: 1,000 messages out of 1,000 |
+| GnuPG 2.4.4 → Dart | **proven** | same script: key re-exported by GnuPG, ed25519/cv25519 key generated by GnuPG, text clear-signed by GnuPG, message compressed, encrypted and signed by GnuPG, long message with partial lengths, private key protected by GnuPG (S2K count 255, SHA-1, AES-128); plus `tests/robots/1/signed_message` of the repository. **Measured after the fix: 400 real messages out of 400** (identical text and valid signature), from 0 to 9,500 characters, 100 per mode (file, standard input, no compression, text mode), 344 of them with partial lengths. Before the fix, the second review counted 541 out of 1,000 |
+| Dart → OpenPGP.js 5.11.3 | **proven** | same script, with the calls of `frontend/src/pgp/index.ts`: key unlocked by the token and validated, blocks identical to the byte after a round trip, signed invoice verified, chat decrypted as peer and as sender with a valid signature, text signed by our code with an OpenPGP.js key verified. Security reviews: 1,500 then 1,000 messages, read as recipient and as sender, 0 failures |
+| OpenPGP.js 5.11.3 → Dart | **proven** | same script: key generated by OpenPGP.js read and unlocked, two clear-signed texts (one of them with dashes, trailing whitespace and several lines) rendered exactly as OpenPGP.js renders them, signed and unsigned chat decrypted. Security reviews: 1,500 then 1,000 messages, in both roles, 0 failures. Plus the `tests/robots/{1,2,3}` keys of the repository |
+| Structure | **identical** | `gpg --list-packets`: our key against `tests/robots/3` and against an OpenPGP.js key; our chat message against an OpenPGP.js message (two v3 session keys, v1 encrypted block, "one-pass" signature, literal `u`, signature with subpackets 2, 16, 33, no compression) |
+| GnuPG 2.2 (official coordinator image) | **not run** | no Debian bookworm image locally |
+| Real python-gnupg | **not run** | not installed; its command lines are reproduced from memory in the script |
+| Real coordinator | **not run** | next step |
 
-Les artefacts du dernier passage du script sont dans `packages/robosats/test/fixtures/pgp_interop/`, avec ce que GnuPG et OpenPGP.js ont affiché (`transcript.txt`). La génération, la signature et, à aléa fixé, le chiffrement sont déterministes : les tests vérifient à chaque exécution que le code écrit encore, à l'octet près, la clé, la facture et le message que GnuPG et OpenPGP.js ont acceptés, et qu'il lit toujours ce qu'ils ont écrit.
+The artifacts of the script's last run are in `packages/robosats/test/fixtures/pgp_interop/`, with what GnuPG and OpenPGP.js printed (`transcript.txt`). Generation, signing and, with fixed randomness, encryption are deterministic: on every run, the tests check that the code still writes, byte for byte, the key, the invoice and the message that GnuPG and OpenPGP.js accepted, and that it still reads what they wrote.
 
-## Bornes et refus
+## Bounds and rejections
 
-Tout est dans `lib/src/pgp/limits.dart`. Au-delà, l'échec est `PgpInputTooLarge` ou un refus typé, jamais une exception.
+Everything is in `lib/src/pgp/limits.dart`. Beyond them, the failure is `PgpInputTooLarge` or a typed rejection, never an exception.
 
-| Borne | Valeur | Repère |
+| Bound | Value | For comparison |
 |---|---|---|
-| Bloc de clé armuré | 20 000 caractères, 32 paquets | une clé de robot : 1 000 caractères, 5 paquets |
-| Texte signé en clair | 20 000 caractères, 8 signatures | le coordinateur accepte 15 000 caractères |
-| Message de chat armuré | 65 536 caractères ; texte de 30 000 octets à l'envoi | |
-| Clés de session par message | 8 | l'app officielle : 2 |
-| Signatures par message | 8 | l'app officielle : 1 |
-| Décompression | 262 144 octets, une seule couche | l'app officielle ne compresse pas |
-| Hachage S2K d'une clé privée | 65 Mio, le maximum que le format sait coder | OpenPGP.js : 16 Mio ; GnuPG 2.4.4 sur ce poste : 65 Mio |
+| Armored key block | 20,000 characters, 32 packets | a robot key: 1,000 characters, 5 packets |
+| Clear-signed text | 20,000 characters, 8 signatures | the coordinator accepts 15,000 characters |
+| Armored chat message | 65,536 characters; 30,000-byte text when sending | |
+| Session keys per message | 8 | the official app: 2 |
+| Signatures per message | 8 | the official app: 1 |
+| Decompression | 262,144 bytes, a single layer | the official app does not compress |
+| S2K hashing of a private key | 65 MiB, the maximum the format can encode | OpenPGP.js: 16 MiB; GnuPG 2.4.4 on this machine: 65 MiB |
 
-Un message de chat n'est lu que s'il est fait de clés de session suivies d'un seul bloc chiffré v1, rien d'autre. Le bloc peut être découpé en « longueurs partielles » : GnuPG le fait dès 500 octets environ, et la première version corrigée refusait ces messages à tort (459 messages réels sur 1 000). Le remplissage de la clé de session est accepté jusqu'à 40 octets en tout, comme le permet la RFC 6637, chaque octet étant vérifié. Rien n'est décompressé ni interprété avant le contrôle d'intégrité (SHA-1 du bloc). À l'intérieur : signatures « une passe », un seul texte, des signatures, directement ou dans un seul paquet compressé. C'est plus strict qu'OpenPGP.js, qui tolère des paquets autour du bloc chiffré.
+A chat message is only read if it is made of session keys followed by a single v1 encrypted block, nothing else. The block may be split into "partial lengths": GnuPG does so from about 500 bytes, and the first fixed version wrongly rejected these messages (459 real messages out of 1,000). Session key padding is accepted up to 40 bytes in total, as RFC 6637 allows, each byte being checked. Nothing is decompressed or interpreted before the integrity check (SHA-1 of the block). Inside: "one-pass" signatures, a single text, signatures, directly or in a single compressed packet. This is stricter than OpenPGP.js, which tolerates packets around the encrypted block.
 
-Une clé de pair est refusée (`PgpKeyUnsupported`) si ses paramètres KDF ne sont pas SHA-256/384/512 avec AES, ou si son point X25519 est d'ordre faible (secret partagé nul).
+A peer key is rejected (`PgpKeyUnsupported`) if its KDF parameters are not SHA-256/384/512 with AES, or if its X25519 point has low order (zero shared secret).
 
-## Règles de dates
+## Date rules
 
-Elles suivent OpenPGP.js 5, sans tolérance, contre une horloge injectable (`now`) :
+They follow OpenPGP.js 5, with no tolerance, against an injectable clock (`now`):
 
-- une signature datée après l'horloge est refusée (« Signature creation time is in the future ») ;
-- une signature expirée est refusée ;
-- une signature antérieure à la clé est refusée (« Key is newer than the signature »), de même qu'une signature faite quand la clé était expirée ou avant son auto-signature ;
-- on ne chiffre pas pour une clé datée du futur, expirée, ou dont une auto-signature a expiré (`PgpKeyOutOfDate`).
+- a signature dated after the clock is rejected ("Signature creation time is in the future");
+- an expired signature is rejected;
+- a signature older than the key is rejected ("Key is newer than the signature"), as is a signature made while the key was expired or before its self-signature;
+- we do not encrypt to a key dated in the future, expired, or with an expired self-signature (`PgpKeyOutOfDate`).
 
-**Contrainte d'ordre des dates.** L'app officielle date ses signatures de chat de la veille et refuse une signature plus ancienne que la clé de son auteur. Notre clé est datée de 24 h avant sa création et nos signatures de 24 h avant l'envoi : l'ordre est toujours respecté, et si l'horloge recule, la signature est datée comme la clé, jamais avant. L'app officielle, elle, retire un jour de calendrier : 23 h ou 25 h les deux jours de changement d'heure. Ce jour-là, elle peut refuser pendant une heure au plus de chiffrer pour une clé toute neuve, y compris une des siennes ; rien à corriger de notre côté.
+**Date ordering constraint.** The official app dates its chat signatures one day back and rejects a signature older than its author's key. Our key is dated 24 h before its creation and our signatures 24 h before sending: the order is always respected, and if the clock goes back, the signature is dated like the key, never before it. The official app, for its part, subtracts one calendar day: 23 h or 25 h on the two days when the clocks change. On such a day, it may refuse, for an hour at most, to encrypt to a brand-new key, including one of its own; nothing to fix on our side.
 
-**Propriété inhérente à RoboSats.** Une signature de chat et une signature « en clair » sont le même objet (signature de texte par la clé primaire). Une signature faite pour un message de chat vaut donc signature en clair du même texte, et inversement. Ne jamais faire signer en chat un texte qui serait une facture ou une adresse à soi.
+**Property inherent to RoboSats.** A chat signature and a "cleartext" signature are the same object (text signature by the primary key). A signature made for a chat message is therefore valid as a cleartext signature of the same text, and vice versa. Never have a text signed in the chat if it would be an invoice or an address of one's own.
 
-## Ce que la revue de sécurité a demandé, et ce qui a été rejoué
+## What the security review asked for, and what was replayed
 
-**Entrées de déni de service du relecteur**, relues par `decryptChatMessage` (exécutable compilé, sur ce poste) : toutes rejetées par un échec typé.
+**The reviewer's denial-of-service inputs**, read by `decryptChatMessage` (compiled executable, on this machine): all rejected with a typed failure.
 
-| Entrée | Taille armurée | Avant | Maintenant |
+| Input | Armored size | Before | Now |
 |---|---|---|---|
-| 3 couches de compression, 4 Gio | 415 caractères | processus tué (plus de 1,5 Gio) | `PgpMessageUndecryptable`, 0,09 ms, 12 Mio |
-| 3 couches de compression, 256 Mio | 366 caractères | pic de 1 038 Mio | `PgpMessageUndecryptable`, 0,08 ms, 12 Mio |
-| 2 000 paquets compressés imbriqués | 5 495 caractères | | `PgpMessageUndecryptable`, 0,4 ms, 11 Mio |
-| 10 000 paquets compressés imbriqués | 27 186 caractères | | `PgpMessageUndecryptable`, 1,6 ms, 11 Mio |
-| 50 000 paquets compressés imbriqués | 135 628 caractères | 690 Mio | `PgpInputTooLarge`, 0,02 ms, 11 Mio |
-| paquets vides, 50 à 400 ko | 69 467 à 555 300 caractères | jusqu'à 26 s | `PgpInputTooLarge`, 0,02 ms, 13 Mio au plus |
+| 3 layers of compression, 4 GiB | 415 characters | process killed (more than 1.5 GiB) | `PgpMessageUndecryptable`, 0.09 ms, 12 MiB |
+| 3 layers of compression, 256 MiB | 366 characters | peak of 1,038 MiB | `PgpMessageUndecryptable`, 0.08 ms, 12 MiB |
+| 2,000 nested compressed packets | 5,495 characters | | `PgpMessageUndecryptable`, 0.4 ms, 11 MiB |
+| 10,000 nested compressed packets | 27,186 characters | | `PgpMessageUndecryptable`, 1.6 ms, 11 MiB |
+| 50,000 nested compressed packets | 135,628 characters | 690 MiB | `PgpInputTooLarge`, 0.02 ms, 11 MiB |
+| empty packets, 50 to 400 kB | 69,467 to 555,300 characters | up to 26 s | `PgpInputTooLarge`, 0.02 ms, 13 MiB at most |
 
-La mémoire indiquée est celle du processus entier, dont 12 Mio avant l'appel. Les deux bombes de compression sont des jeux d'essai du paquet (`test/fixtures/pgp_hostile/`) ; les autres entrées sont reconstruites par les tests. Une bombe placée à l'intérieur d'un message correctement chiffré par un pair (16 Mio de zéros) est refusée de même : la décompression s'arrête à 256 Kio.
+The memory shown is that of the whole process, including 12 MiB before the call. The two compression bombs are test fixtures of the package (`test/fixtures/pgp_hostile/`); the other inputs are rebuilt by the tests. A bomb placed inside a message correctly encrypted by a peer (16 MiB of zeros) is rejected in the same way: decompression stops at 256 KiB.
 
-**Clés hostiles** : chaque variante du relecteur (champ KDF vide, tronqué, à condensat ou chiffrement inconnu, MD5 et 3DES, 200 octets, point nul) est maintenant refusée à la lecture par `PgpKeyUnsupported`, avec les sept points X25519 d'ordre faible connus. SHA-512 avec AES-256 et SHA-384 avec AES-192 sont acceptés et testés en aller-retour. Une modification d'un octet, à chaque position, d'une clé publique, d'une clé privée, d'un texte signé et d'un message de chat ne lève jamais d'exception (4 tests).
+**Hostile keys**: each of the reviewer's variants (empty KDF field, truncated, with an unknown hash or cipher, MD5 and 3DES, 200 bytes, zero point) is now rejected on reading with `PgpKeyUnsupported`, along with the seven known low-order X25519 points. SHA-512 with AES-256 and SHA-384 with AES-192 are accepted and tested in a round trip. Changing one byte, at each position, of a public key, a private key, a clear-signed text and a chat message never throws an exception (4 tests).
 
-**Mutants.** 75 altérations du code de `lib/src/pgp/` et de `robot_pgp_key.dart` (celles du relecteur portant sur la sécurité, adaptées au nouveau code, plus 36 sur le code nouveau : contrôle d'intégrité, enveloppe, bornes, dates, KDF, secret partagé nul) ont été appliquées une à une, la suite de tests étant relancée à chaque fois. 73 font échouer au moins un test. Les 2 qui passent sont sans effet observable :
+**Mutants.** 75 alterations of the code of `lib/src/pgp/` and of `robot_pgp_key.dart` (the reviewer's security-related ones, adapted to the new code, plus 36 on the new code: integrity check, key wrap, bounds, dates, KDF, zero shared secret) were applied one by one, with the test suite rerun each time. 73 make at least one test fail. The 2 that pass have no observable effect:
 
-- accepter du texte après la ligne `-----END …-----` : sans effet observable, la ligne `END` se retrouve alors dans le corps, qui n'est plus du base64 valide, et le bloc reste refusé (confirmé par la seconde revue sur 8 entrées) ;
-- ne plus vérifier qu'un paquet de sous-clé est du bon genre : effet observable mais sans danger. Un bloc privé contenant en plus un paquet de sous-clé publique est lu par le code réel, qui ignore ce paquet, et refusé par le mutant.
+- accepting text after the `-----END …-----` line: no observable effect, since the `END` line then ends up in the body, which is no longer valid base64, and the block is still rejected (confirmed by the second review on 8 inputs);
+- no longer checking that a subkey packet is of the right kind: observable effect but harmless. A private block that also contains a public subkey packet is read by the real code, which ignores that packet, and rejected by the mutant.
 
-La seconde revue a relancé 42 mutants sur le code nouveau et en a trouvé 9 sans test : en-tête `D3 14` du contrôle d'intégrité, octets de remplissage, somme de contrôle de la clé de session, accord entre chiffrement et longueur de clé, plafond de décompression à un octet près (262 144 accepté, 262 145 refusé), octets en trop dans le paquet de clé de session, longueurs minimales du bloc chiffré et de la clé enveloppée, paramètres KDF. Chacun a maintenant son test (`test/pgp/hostile_message_test.dart`, groupe « a message written by hand »), bâti sur un ECDH réécrit dans les tests à partir du texte de la RFC, donc indépendant du code vérifié.
+The second review reran 42 mutants on the new code and found 9 without a test: `D3 14` header of the integrity check, padding bytes, session key checksum, agreement between cipher and key length, decompression cap to the byte (262,144 accepted, 262,145 rejected), extra bytes in the session key packet, minimum lengths of the encrypted block and of the wrapped key, KDF parameters. Each one now has its test (`test/pgp/hostile_message_test.dart`, group "a message written by hand"), built on an ECDH rewritten in the tests from the text of the RFC, hence independent of the code under test.
 
-Les 18 survivants signalés par la revue ont chacun leur test, avec des paquets réellement re-signés (`test/support/craft.dart`).
+The 18 survivors reported by the review each have their test, with packets actually re-signed (`test/support/craft.dart`).
 
-**Seconde revue, sans nouveau défaut de sécurité** : environ 190 cas hostiles et 722 inversions de bit sans aucune exception échappée ; entrées de déni de service rejetées en moins de 2 ms ; bombe de 45 Mio dans un message valide refusée en 20 ms.
+**Second review, no new security defect**: about 190 hostile cases and 722 bit flips without any escaped exception; denial-of-service inputs rejected in less than 2 ms; 45 MiB bomb in a valid message rejected in 20 ms.
 
-**Horloge hors limites.** Avec une horloge, ou un `now`, hors de 1970–2106, toutes les opérations renvoient l'échec `PgpClockOutOfRange` au lieu de lever une exception ; `RobotPgpKey.generate` renvoie donc un `Result`.
+**Clock out of range.** With a clock, or a `now`, outside 1970–2106, all operations return the `PgpClockOutOfRange` failure instead of throwing an exception; `RobotPgpKey.generate` therefore returns a `Result`.
 
-**Vérification plus stricte** : signature expirée, datée du futur, antérieure à la clé, sans en-tête `Hash:` : refusées ; blancs ajoutés en fin de ligne : le texte rendu est le texte signé, sans eux.
+**Stricter verification**: signature expired, dated in the future, older than the key, without a `Hash:` header: rejected; whitespace added at the end of lines: the returned text is the signed text, without it.
 
-## Écarts
+## Deviations
 
-Avec la note de préparation :
+From the preparation note:
 
-- **Liaison de sous-clé en SHA-512, pas SHA-256.** La note (B1.3) décrit le robot de test n° 1, de 2023. Le n° 3, de février 2025, et une clé faite par OpenPGP.js 5.11.3 ont une liaison en SHA-512. Le paquet fait de même.
-- `dart_pg`, recommandé par la note, est retiré (voir « Bibliothèque »).
+- **Subkey binding in SHA-512, not SHA-256.** The note (B1.3) describes test robot 1, from 2023. Robot 3, from February 2025, and a key made by OpenPGP.js 5.11.3 have a SHA-512 binding. The package does the same.
+- `dart_pg`, recommended by the note, is removed (see "Library").
 
-Avec la demande initiale :
+From the initial request:
 
-- **Antidatage de 24 h exactement**, et non d'un jour de calendrier (voir « Règles de dates »).
-- **Garde-fous ajoutés** : `signCleartext` refuse un texte que le découpage du coordinateur ne rendrait pas intact ; `encryptChatMessage` refuse un texte contenant le token.
-- **Limites assumées** : seules les clés v4 ed25519 + cv25519 sont acceptées (un pair qui aurait fourni une clé RSA par l'API serait illisible) ; la révocation n'est pas évaluée (un coordinateur garde la première clé d'un robot).
+- **Backdating by exactly 24 h**, and not by one calendar day (see "Date rules").
+- **Guardrails added**: `signCleartext` refuses a text that the coordinator's splitting would not return intact; `encryptChatMessage` refuses a text containing the token.
+- **Accepted limits**: only v4 ed25519 + cv25519 keys are accepted (a peer that provided an RSA key through the API would be unreadable); revocation is not evaluated (a coordinator keeps a robot's first key).
 
-Changements d'interface dus aux corrections :
+Interface changes due to the fixes:
 
-- `RobotPgpKey.generate(identity)` renvoie un `Result` (échec `PgpClockOutOfRange`) et n'accepte plus d'horloge ni d'aléa ; la variante de test est `generateWith`, marquée `@visibleForTesting`. Même chose pour `encryptChatMessageWith` et `GarageKey.generateWith`. Un aléa faible ne peut plus être passé en production sans avertissement de l'analyseur.
-- `signCleartext` et `encryptChatMessage` renvoient maintenant n'importe quel `PgpFailure` ; `verifyCleartext` et `decryptChatMessage` acceptent `now` ; trois échecs nouveaux : `PgpInputTooLarge`, `PgpKeyOutOfDate`, `PgpClockOutOfRange`.
-- `verifyCleartext` renvoie le texte réellement signé (sans les blancs de fin de ligne) et exige l'en-tête `Hash:`.
+- `RobotPgpKey.generate(identity)` returns a `Result` (`PgpClockOutOfRange` failure) and no longer accepts a clock or a source of randomness; the test variant is `generateWith`, marked `@visibleForTesting`. Same for `encryptChatMessageWith` and `GarageKey.generateWith`. Weak randomness can no longer be passed in production without an analyzer warning.
+- `signCleartext` and `encryptChatMessage` now return any `PgpFailure`; `verifyCleartext` and `decryptChatMessage` accept `now`; three new failures: `PgpInputTooLarge`, `PgpKeyOutOfDate`, `PgpClockOutOfRange`.
+- `verifyCleartext` returns the text actually signed (without trailing whitespace) and requires the `Hash:` header.
 
-## Risques
+## Risks
 
-| Risque | Parade |
+| Risk | Mitigation |
 |---|---|
-| Code de sécurité écrit à la main (1 891 lignes) | provisoire, à remplacer par une bibliothèque Rust avant diffusion ; recoupé par GnuPG et OpenPGP.js dans les deux sens ; revue de sécurité indépendante ; tests de mutation ; le contrôle de garde des clés ne le voit pas : même vigilance que pour `packages/secrets` |
-| `pinenacl` 0.6.0 : portage de TweetNaCl, pas d'audit connu | vecteurs RFC 8032 et RFC 7748 dans les tests |
-| Aucun code Dart n'est à temps constant | inhérent au Dart pur ; la clé privée chiffrée est de toute façon chez le coordinateur |
-| Secrets en mémoire | effacement **partiel**, à ne pas surestimer. Remis à zéro : les tampons que le paquet alloue lui-même (clé dérivée du token, copies du token en octets, secrets déchiffrés, clé de session, secret partagé ECDH, texte clair avant chiffrement). Non effacés : le token lui-même (une chaîne Dart, immuable), la graine et le scalaire tant que `UnlockedRobotPgpKey` existe, les copies internes de `pinenacl`, `pointycastle` et `crypto` (clés étendues, condensats), les copies du ramasse-miettes, le texte déchiffré rendu à l'appelant. Rien n'est écrit ni journalisé ; `toString()` et échecs sans secret |
-| Durée du déverrouillage (32 Mio de SHA-256 pour une clé de l'app officielle, jusqu'à 130 Mio pour une clé protégée par GnuPG) | 0,3 s mesuré sur ce poste pour 32 Mio ; téléphone non mesuré ; à appeler hors du fil d'interface, une fois par lot de messages |
-| Clé de pair malveillante fournie par le coordinateur | inhérent à RoboSats : le coordinateur distribue les clés |
-| Horloge du téléphone fausse de plus de 24 h | les signatures de l'app officielle paraissent « du futur » et sont marquées invalides ; l'app officielle a le même comportement |
+| Hand-written security code (1,891 lines) | provisional, to be replaced by a Rust library before release; cross-checked against GnuPG and OpenPGP.js both ways; independent security review; mutation tests; the custody check does not see it: same scrutiny as for `packages/secrets` |
+| `pinenacl` 0.6.0: TweetNaCl port, no known audit | RFC 8032 and RFC 7748 vectors in the tests |
+| No Dart code is constant-time | inherent to pure Dart; the encrypted private key is with the coordinator anyway |
+| Secrets in memory | **partial** wiping, not to be overestimated. Zeroed: the buffers the package allocates itself (key derived from the token, byte copies of the token, decrypted secrets, session key, ECDH shared secret, plaintext before encryption). Not wiped: the token itself (a Dart string, immutable), the seed and the scalar as long as `UnlockedRobotPgpKey` exists, the internal copies of `pinenacl`, `pointycastle` and `crypto` (expanded keys, digests), the garbage collector's copies, the decrypted text returned to the caller. Nothing is written or logged; `toString()` and failures carry no secret |
+| Unlock duration (32 MiB of SHA-256 for a key from the official app, up to 130 MiB for a key protected by GnuPG) | 0.3 s measured on this machine for 32 MiB; phone not measured; to be called off the UI thread, once per batch of messages |
+| Malicious peer key supplied by the coordinator | inherent to RoboSats: the coordinator distributes the keys |
+| Phone clock off by more than 24 h | the official app's signatures look like they come "from the future" and are marked invalid; the official app behaves the same way |
 
-## Dépendances
+## Dependencies
 
-`pubspec.lock` : par rapport à `main`, un seul paquet ajouté, `pinenacl` 0.6.0 (MIT, Dart pur, portage de TweetNaCl). `dart_pg` 2.0.0, `sign_dart` 1.0.0 et `sha3` 0.2.1, ajoutés au début du spike, ont été retirés par `fvm flutter pub get`. `make deps` (verrouillage strict) passe.
+`pubspec.lock`: compared with `main`, a single package added, `pinenacl` 0.6.0 (MIT, pure Dart, TweetNaCl port). `dart_pg` 2.0.0, `sign_dart` 1.0.0 and `sha3` 0.2.1, added at the start of the spike, were removed by `fvm flutter pub get`. `make deps` (strict lockfile) passes.
 
-## Reste à tester
+## Still to test
 
-1. **Face à un coordinateur de test** : création du robot avec une clé de Troc, `update_invoice` avec une facture signée, envoi et relecture d'un message de chat, restauration du robot avec le seul token.
-2. GnuPG 2.2.x et le vrai python-gnupg : relancer `tool/pgp_interop.sh` sur une Debian bookworm.
-3. Temps de génération et de déverrouillage sur un téléphone Android milieu de gamme.
-4. Limite de taille de `PGP_message` : le modèle annonce 5 000 caractères (`chat/models.py:87`), sans contrôle visible dans le sérialiseur.
-5. Les contrôles de tout le projet (`make analyze`, `make unit-test`, `make custody-check`) demandent le code généré, absent en local : seuls leurs équivalents sur le paquet ont été lancés.
+1. **Against a test coordinator**: creating the robot with a Troc key, `update_invoice` with a signed invoice, sending and reading back a chat message, restoring the robot with the token alone.
+2. GnuPG 2.2.x and the real python-gnupg: rerun `tool/pgp_interop.sh` on Debian bookworm.
+3. Key generation and unlock times on a mid-range Android phone.
+4. Size limit of `PGP_message`: the model announces 5,000 characters (`chat/models.py:87`), with no check visible in the serializer.
+5. The checks of the whole project (`make analyze`, `make unit-test`, `make custody-check`) need the generated code, absent locally: only their equivalents on the package were run.
 
-## Relancer
+## Rerunning
 
-Tests du paquet, depuis la racine du dépôt :
+Package tests, from the repository root:
 
 ```bash
 docker run --rm -v "$PWD":/work -w /work -v troc-pub-cache:/home/bull/.pub-cache bull-tools \
   bash -c 'make deps && cd packages/robosats && fvm dart test'
 ```
 
-Recoupement avec GnuPG et OpenPGP.js, sur une machine qui a GnuPG et l'image `bull-tools` (trousseaux temporaires, jamais celui de l'utilisateur ; les étapes OpenPGP.js ne tournent que si `OPENPGPJS` désigne une copie locale, rien n'est téléchargé) :
+Cross-check with GnuPG and OpenPGP.js, on a machine that has GnuPG and the `bull-tools` image (temporary keyrings, never the user's own; the OpenPGP.js steps only run if `OPENPGPJS` points to a local copy, nothing is downloaded):
 
 ```bash
-OPENPGPJS=/chemin/vers/openpgp.min.js packages/robosats/tool/pgp_interop.sh                    # vérifie
-OPENPGPJS=/chemin/vers/openpgp.min.js packages/robosats/tool/pgp_interop.sh --update-fixtures  # vérifie et remplace test/fixtures/pgp_interop/
+OPENPGPJS=/path/to/openpgp.min.js packages/robosats/tool/pgp_interop.sh                    # checks
+OPENPGPJS=/path/to/openpgp.min.js packages/robosats/tool/pgp_interop.sh --update-fixtures  # checks and replaces test/fixtures/pgp_interop/
 ```
