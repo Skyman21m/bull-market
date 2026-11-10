@@ -146,13 +146,13 @@ abstract class P2pLocalizations {
     Locale('zh'),
   ];
 
-  /// Libellé du 3e onglet de la barre du bas du portefeuille (entre Wallet et Exchange). Tient dans toutes les langues ; libellé définitif à confirmer (PLAN.md § 5 disait provisoirement « Buy NKYC P2P »).
+  /// Label of the third tab of the wallet's bottom bar, between Wallet and Exchange. Fits in every language; final label still to be confirmed.
   ///
   /// In en, this message translates to:
   /// **'P2P'**
   String get p2pTabLabel;
 
-  /// fr.json : « Utilisation Testnet Bitcoin » (article manquant, ordre des mots anglais). Le portefeuille écrit « Bitcoin Testnet ». Bandeau en italique, seulement si le réseau P2P est testnet.
+  /// Italic banner at the top of the P2P pages, only when the P2P network is testnet. The RoboSats French text drops the article; the wallet writes « Bitcoin Testnet ».
   ///
   /// In en, this message translates to:
   /// **'Using Testnet Bitcoin'**
@@ -164,319 +164,319 @@ abstract class P2pLocalizations {
   /// **'Coordinators are only ever reached through Tor.'**
   String get p2pTorWaitingLine;
 
-  /// fr.json : « Initialisation du daemon Tor » ; « daemon » est de l'anglais. Aussi affiché dans le menu P2P.
+  /// First step of the Tor wait. The RoboSats French text keeps the English word « daemon »: « service » here.
   ///
   /// In en, this message translates to:
   /// **'Initializing Tor daemon'**
   String get p2pTorInitializing;
 
-  /// État 'STARTING'. Sert aussi de titre à l'écran d'attente dans l'onglet (maquette).
+  /// Tor is starting (RoboSats state 'STARTING'). Also the title of the Tor wait inside the P2P tab.
   ///
   /// In en, this message translates to:
   /// **'Connecting to Tor network'**
   String get p2pTorConnecting;
 
-  /// État 'ON'. La fédération (coordinateurs, carnet) ne se charge qu'après cet état.
+  /// Tor is ready (RoboSats state 'ON'). The federation (coordinators, book) loads only after this state.
   ///
   /// In en, this message translates to:
   /// **'Connected to Tor network'**
   String get p2pTorConnected;
 
-  /// Valeur par défaut de l'état Tor chez RoboSats (affichée tant qu'aucun autre état n'est connu).
+  /// Tor could not start. Default value of the Tor state in RoboSats, shown until another state is known.
   ///
   /// In en, this message translates to:
   /// **'Connection error'**
   String get p2pTorConnectionError;
 
-  /// Destination interne à l'onglet P2P (carnet d'ordres). « Offres » gardé car l'anglais dit Offers (glossaire).
+  /// Destination inside the P2P tab: the order book. « Offers » because the RoboSats English says Offers.
   ///
   /// In en, this message translates to:
   /// **'Offers'**
   String get p2pNavOffers;
 
-  /// Destination centrale quand le robot n'a pas d'ordre actif ; aussi bouton de l'étape 3 de l'assistant. Ouvre le formulaire de création (phase 3) : en phase 1 le bouton peut rester grisé.
+  /// Middle destination when the robot has no active order: opens the maker form (phase 3). Disabled in phase 1.
   ///
   /// In en, this message translates to:
   /// **'Create'**
   String get p2pNavCreate;
 
-  /// fr.json = EN (non traduit), mais le mot est identique en français.
+  /// Destination of the robots; the same word in English and French.
   ///
   /// In en, this message translates to:
   /// **'Garage'**
   String get p2pNavGarage;
 
-  /// Destination centrale quand le robot a un ordre actif ; sert aussi de titre à la page d'un ordre (maquette).
+  /// Middle destination when the robot has an active order; also the title of the page of an order.
   ///
   /// In en, this message translates to:
   /// **'Order'**
   String get p2pNavOrder;
 
-  /// fr.json = EN. Bouton étroit (segment du carnet, un quart de largeur) : « Rechercher » tient. Dans le carnet il ouvre « Search order » ; à l'étape 3 de l'assistant, la recherche guidée.
+  /// Narrow button (a quarter of the width, below the book): opens « Search order ». The RoboSats French text is left in English.
   ///
   /// In en, this message translates to:
   /// **'Search'**
   String get p2pCommonSearch;
 
-  /// fr.json : « Lister » (verbe, alors que les segments voisins sont des noms) ; la maquette reprenait « Lister ». Segment étroit (un quart de largeur).
+  /// View switch below the book. The RoboSats French text uses a verb (« Lister ») next to nouns: a noun here. Narrow segment.
   ///
   /// In en, this message translates to:
   /// **'List'**
   String get p2pBookViewList;
 
-  /// Segment du carnet et en-tête du graphique de profondeur. Segment étroit : « Graphique » est le plus long des quatre, à vérifier à 320 px.
+  /// View switch below the book, and header of the depth chart. The longest of the four narrow segments.
   ///
   /// In en, this message translates to:
   /// **'Chart'**
   String get p2pBookViewChart;
 
-  /// fr.json = EN. Segment du carnet, en-tête de la carte et titre de la carte du lieu de rencontre.
+  /// View switch below the book, header of the map, and title of the meeting place map.
   ///
   /// In en, this message translates to:
   /// **'Map'**
   String get p2pBookViewMap;
 
-  /// Début de la phrase de filtres « Je veux [type] et utiliser [devise] payer avec [mode] hébergé par [hôte] ». Dans la recherche guidée, RoboSats ajoute « ... » après le texte.
+  /// Start of the filter sentence « I want to [type] and use [currency] pay with [method] hosted by [host] ».
   ///
   /// In en, this message translates to:
   /// **'I want to'**
   String get p2pBookFilterIWantTo;
 
-  /// Valeur « indifférent » des quatre sélecteurs (type, devise, mode de paiement, hôte), et valeur de {currencyCode} dans le message de carnet vide. Le masculin pluriel ne s'accorde pas avec « devise » ; on garde un seul mot comme RoboSats.
+  /// The « any » value of the four selectors (type, currency, payment method, host), and the value of {currencyCode} in the empty book message.
   ///
   /// In en, this message translates to:
   /// **'ANY'**
   String get p2pBookFilterAny;
 
-  /// Choisir « Acheter » montre les ordres de VENTE (type 1). Aussi bouton de la recherche guidée.
+  /// Choosing « Buy » shows the SELL orders (type 1).
   ///
   /// In en, this message translates to:
   /// **'Buy'**
   String get p2pBookFilterBuy;
 
-  /// Montre les ordres d'ACHAT (type 0).
+  /// Choosing « Sell » shows the BUY orders (type 0).
   ///
   /// In en, this message translates to:
   /// **'Sell'**
   String get p2pBookFilterSell;
 
-  /// fr.json : « Sélectionner Type d'Ordre » (majuscules à l'anglaise, article manquant). Étiquette du sélecteur de type.
+  /// Title of the order type selector.
   ///
   /// In en, this message translates to:
   /// **'Select Order Type'**
   String get p2pBookFilterSelectOrderType;
 
-  /// Mot de liaison, affiché seulement si la largeur le permet. Dans la recherche guidée, suivi de « ... ».
+  /// Linking words of the filter sentence, before the currency.
   ///
   /// In en, this message translates to:
   /// **'and use'**
   String get p2pBookFilterAndUse;
 
-  /// fr.json : « Sélectionner la Devise de Paiement » (majuscules).
+  /// Title of the currency selector.
   ///
   /// In en, this message translates to:
   /// **'Select Payment Currency'**
   String get p2pBookFilterSelectCurrency;
 
-  /// Mot de liaison en mode monnaie fiduciaire.
+  /// Linking words of the filter sentence, before the payment method (fiat mode).
   ///
   /// In en, this message translates to:
   /// **'pay with'**
   String get p2pBookFilterPayWith;
 
-  /// fr.json : « Sélectionner le Mode de Paiement » (majuscules). Version étroite (liste à choix unique).
+  /// Title of the payment method selector.
   ///
   /// In en, this message translates to:
   /// **'Select Payment Method'**
   String get p2pBookFilterSelectMethod;
 
-  /// Mot de liaison avant le sélecteur d'hôte.
+  /// Linking words of the filter sentence, before the host selector.
   ///
   /// In en, this message translates to:
   /// **'hosted by'**
   String get p2pBookFilterHostedBy;
 
-  /// fr.json : « Sélectionner Hôte » (article manquant, majuscule).
+  /// Title of the host (coordinator) selector.
   ///
   /// In en, this message translates to:
   /// **'Select Host'**
   String get p2pBookFilterSelectHost;
 
-  /// Absent de fr.json : valeur renvoyée par l'API (maker_status) et passée à t(). Info-bulle de la pastille verte d'activité du créateur.
+  /// The maker was seen in the last 2 minutes (`maker_status` of the API). Missing from the RoboSats French texts.
   ///
   /// In en, this message translates to:
   /// **'Active'**
   String get p2pBookMakerStatusActive;
 
-  /// Absent de fr.json. Pastille orange.
+  /// The maker was seen in the last 10 minutes. Missing from the RoboSats French texts.
   ///
   /// In en, this message translates to:
   /// **'Seen recently'**
   String get p2pBookMakerStatusSeenRecently;
 
-  /// Absent de fr.json. Pastille rouge.
+  /// The maker was not seen for 10 minutes or more. Missing from the RoboSats French texts.
   ///
   /// In en, this message translates to:
   /// **'Inactive'**
   String get p2pBookMakerStatusInactive;
 
-  /// Ordre de type 1 (le créateur vend des BTC).
+  /// Role pill of an order of type 1: its maker sells bitcoin.
   ///
   /// In en, this message translates to:
   /// **'Seller'**
   String get p2pBookRoleSeller;
 
-  /// Ordre de type 0.
+  /// Role pill of an order of type 0: its maker buys bitcoin.
   ///
   /// In en, this message translates to:
   /// **'Buyer'**
   String get p2pBookRoleBuyer;
 
-  /// En-tête de colonne ; aussi légende du montant fixe dans la fiche de l'ordre (où RoboSats l'affiche sans t(), donc toujours en anglais). Montants : 4 chiffres significatifs, fourchette « min-max » ; en échange, suffixe « M Sats ».
+  /// Amount column header, and caption of a fixed amount on the order page (where RoboSats leaves it untranslated).
   ///
   /// In en, this message translates to:
   /// **'Amount'**
   String get p2pBookColumnAmount;
 
-  /// En-tête de colonne et choix d'abscisse du graphique.
+  /// Label of the premium of an offer in the book.
   ///
   /// In en, this message translates to:
   /// **'Premium'**
   String get p2pBookColumnPremium;
 
-  /// book/table
+  /// Label of the bond of an offer in the book.
   ///
   /// In en, this message translates to:
   /// **'Bond'**
   String get p2pBookColumnBond;
 
-  /// fr.json = EN. Info-bulle de la caution en orange quand elle est sous la valeur par défaut (3 %).
+  /// Tooltip of a bond below the default (3 %). Left in English in the RoboSats French texts.
   ///
   /// In en, this message translates to:
   /// **'Low bond: This maker has set a bond below the default {defaultBond}%. Lower bonds mean reduced trade security.'**
   String p2pBookLowBond(String defaultBond);
 
-  /// Message d'erreur générique du tableau (errorOverlayDefaultLabel). Les autres textes internes du tableau MUI (tri, filtres, colonnes) ne sont pas repris : ils n'ont pas d'équivalent dans l'interface du portefeuille.
+  /// Generic error of a coordinator whose answer could not be read.
   ///
   /// In en, this message translates to:
   /// **'An error occurred.'**
   String get p2pBookError;
 
-  /// fr.json : « …vendre des BTC pour {currencyCode} » (« pour EUR » est maladroit). Affiché quand le filtre est « Vendre ». {currencyCode} vaut le code devise ou « Tous » (p2pBookFilterAny).
+  /// Empty book when the filter is « Sell ». {currencyCode} is the currency code or « ANY ».
   ///
   /// In en, this message translates to:
   /// **'No orders found to sell BTC for {currencyCode}'**
   String p2pBookEmptySell(String currencyCode);
 
-  /// Même correction. Affiché pour tout autre filtre que « Vendre » (RoboSats teste type 0, sinon ce texte).
+  /// Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency code or « ANY ».
   ///
   /// In en, this message translates to:
   /// **'No orders found to buy BTC for {currencyCode}'**
   String p2pBookEmptyBuy(String currencyCode);
 
-  /// Sous le message de carnet vide, en couleur primaire.
+  /// Below the empty book message, in the primary colour.
   ///
   /// In en, this message translates to:
   /// **'Be the first one to create an order'**
   String get p2pBookEmptyBeFirst;
 
-  /// Sous le nom long du coordinateur ; la ligne ouvre la fiche du coordinateur. (La maquette mettait aussi « Coordinateur » ailleurs : on garde « Hôte de l'ordre ».)
+  /// Caption under the long name of the coordinator that hosts the order.
   ///
   /// In en, this message translates to:
   /// **'Order host'**
   String get p2pOrderHost;
 
-  /// fr.json = EN. Légende sous le numéro de l'ordre (icône #). « Numéro » plutôt que l'abréviation anglaise.
+  /// Label of the order number (shown after a # sign). « Numéro » in French rather than the English abbreviation.
   ///
   /// In en, this message translates to:
   /// **'ID'**
   String get p2pOrderId;
 
-  /// RoboSats n'affiche que l'initiale (« C ») devant les frais du créateur dans la ligne de frais : prendre le 1er caractère de la traduction, comme RoboSats.
+  /// RoboSats shows only the initial of this word before the maker fee in the fee row: the first character of the translation is used.
   ///
   /// In en, this message translates to:
   /// **'Maker'**
   String get p2pOrderFeeMaker;
 
-  /// Info-bulle de la ligne de frais et libellé de la fiche coordinateur.
+  /// Tooltip of the maker fee in the fee row.
   ///
   /// In en, this message translates to:
   /// **'Maker fee'**
   String get p2pOrderFeeMakerTooltip;
 
-  /// Initiale « P » dans la ligne de frais (« C 0.025% · P 0.175% » dans la maquette).
+  /// RoboSats shows only the initial of this word before the taker fee in the fee row.
   ///
   /// In en, this message translates to:
   /// **'Taker'**
   String get p2pOrderFeeTaker;
 
-  /// order/details
+  /// Tooltip of the taker fee in the fee row.
   ///
   /// In en, this message translates to:
   /// **'Taker fee'**
   String get p2pOrderFeeTakerTooltip;
 
-  /// fr.json : « Paiements onchain activés » ; graphie « on-chain » du portefeuille. Info-bulle de la puce verte « 🔗 x.x% ».
+  /// Tooltip of the green on-chain fee chip of the fee row. Spelled « on-chain » as in the wallet.
   ///
   /// In en, this message translates to:
   /// **'Onchain payouts enabled'**
   String get p2pOrderOnchainEnabled;
 
-  /// fr.json : « …onchain désactivés » ; graphie « on-chain ». Info-bulle de l'icône grise ; aussi valeur rouge dans la fiche coordinateur.
+  /// Tooltip of the grey on-chain icon of the fee row. Spelled « on-chain » as in the wallet.
   ///
   /// In en, this message translates to:
   /// **'Onchain payouts disabled'**
   String get p2pOrderOnchainDisabled;
 
-  /// Puce du séparateur.
+  /// Heading of the order details.
   ///
   /// In en, this message translates to:
   /// **'Order Details'**
   String get p2pOrderDetailsDivider;
 
-  /// RoboSats l'affiche ici en dur, sans t() (toujours en anglais) ; fr.json a la clé (venant du formulaire) : « Plage de Montant ». Glossaire : fourchette. Pour un montant fixe, la légende est « Amount » (p2pBookColumnAmount).
+  /// Caption of a range amount on the order page (RoboSats leaves it untranslated). « Fourchette » in French.
   ///
   /// In en, this message translates to:
   /// **'Amount Range'**
   String get p2pOrderAmountRange;
 
-  /// Vu par l'acheteur de BTC. {method} = texte libre des modes de paiement, {amount} = montant + code devise.
+  /// Seen by the taker who buys bitcoin. {method} is the maker's payment method text, {amount} the amount with its currency code.
   ///
   /// In en, this message translates to:
   /// **'You send via {method} {amount}'**
   String p2pOrderYouSendVia(String method, String amount);
 
-  /// Sats calculés avec les frais du rôle et 0,1 % de budget de routage ; {amount} peut être une fourchette « min-max ».
+  /// Seen by the taker who buys bitcoin: sats estimated with the taker fee and a 0.1 % routing budget; {amount} can be a range « min-max ».
   ///
   /// In en, this message translates to:
   /// **'You receive {amount} Sats (Approx)'**
   String p2pOrderYouReceiveSats(String amount);
 
-  /// Vu par le vendeur de BTC.
+  /// Seen by the taker who sells bitcoin: sats estimated with the taker fee.
   ///
   /// In en, this message translates to:
   /// **'You send via Lightning {amount} Sats (Approx)'**
   String p2pOrderYouSendLightning(String amount);
 
-  /// order/details
+  /// Seen by the taker who sells bitcoin. {method} is the maker's payment method text, {amount} the amount with its currency code.
   ///
   /// In en, this message translates to:
   /// **'You receive via {method} {amount}'**
   String p2pOrderYouReceiveVia(String method, String amount);
 
-  /// Légende des modes quand la devise est BTC (ordre d'échange).
+  /// Caption of the payment methods when the currency is BTC (swap order).
   ///
   /// In en, this message translates to:
   /// **'Swap destination'**
   String get p2pOrderSwapDestination;
 
-  /// order/details
+  /// Caption of the payment methods of the order.
   ///
   /// In en, this message translates to:
   /// **'Accepted payment methods'**
   String get p2pOrderAcceptedMethods;
 
-  /// fr.json : « - Prime: {premium}% » (typographie seulement : espaces avant « : » et « % »).
+  /// Price per bitcoin and premium. French typography adds spaces before « : » and « % ».
   ///
   /// In en, this message translates to:
   /// **'{price} {currencyCode}/BTC - Premium: {premium}%'**
@@ -486,49 +486,49 @@ abstract class P2pLocalizations {
     String premium,
   );
 
-  /// Légende quand le prix courant est connu.
+  /// Caption when the current price is known.
   ///
   /// In en, this message translates to:
   /// **'Price and Premium'**
   String get p2pOrderPriceAndPremium;
 
-  /// fr.json : « Montant de Satoshis » (majuscule, préposition). Ordre à montant de sats explicite sans prix courant.
+  /// Caption of an order priced in sats when the current price is unknown.
   ///
   /// In en, this message translates to:
   /// **'Amount of Satoshis'**
   String get p2pOrderAmountOfSatoshis;
 
-  /// Légende quand le prix courant est inconnu (valeur « x% »).
+  /// Caption when the current price is unknown (value « x% »).
   ///
   /// In en, this message translates to:
   /// **'Premium over market price'**
   String get p2pOrderPremiumOverMarket;
 
-  /// Compte à rebours « {h}h {mm}m {ss}s » (orange sous 25 %, rouge sous 10 %, gras sous 25 %). Format en dur chez RoboSats ; en français « 17 h 04 min 12 s » serait plus juste : à régler dans le composant de compte à rebours.
+  /// Caption of the live countdown (orange under 25 % of the time left, red under 10 %, bold under 25 %).
   ///
   /// In en, this message translates to:
   /// **'Expires in'**
   String get p2pOrderExpiresIn;
 
-  /// Remplace le compte à rebours à zéro.
+  /// Replaces the countdown when it reaches zero.
   ///
   /// In en, this message translates to:
   /// **'The order has expired'**
   String get p2pOrderExpired;
 
-  /// Délai laissé pour le séquestre (« 3h »).
+  /// Time left to the parties to lock the escrow once the order is taken (« 3h »).
   ///
   /// In en, this message translates to:
   /// **'Deposit'**
   String get p2pOrderDeposit;
 
-  /// Bouton contour. La prise elle-même est en phase 2 ; en phase 1 le bouton s'affiche et mène au dialogue « pas de robot » ou au rappel de sauvegarde.
+  /// Button of the order page. Taking an order comes in phase 2: in phase 1 the button is shown disabled.
   ///
   /// In en, this message translates to:
   /// **'Take Order'**
   String get p2pTakeOrder;
 
-  /// Affiché à la place des sections quand le coordinateur ne répond pas (aussi une erreur que le client en lecture seule rencontre).
+  /// A coordinator that does not answer: in the book, next to its name.
   ///
   /// In en, this message translates to:
   /// **'Coordinator offline'**
@@ -576,7 +576,7 @@ abstract class P2pLocalizations {
   /// **'{hours}h {minutes}m {seconds}s'**
   String p2pCountdownHms(String hours, String minutes, String seconds);
 
-  /// Remplace les modes de paiement personnalisés ou au-delà des icônes affichées.
+  /// Stands for payment methods written by the maker that are not in the official list.
   ///
   /// In en, this message translates to:
   /// **'Others'**
