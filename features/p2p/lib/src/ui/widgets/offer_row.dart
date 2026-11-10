@@ -94,18 +94,31 @@ class OfferRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
+                // A wide range or a large text size shrinks the amount rather than the robot's line.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 128),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text.rich(
                       TextSpan(
-                        text: formats.orderAmount(order.amount),
-                        style: text.headlineLarge?.copyWith(
-                          color: colors.text,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                        children: [
+                          TextSpan(
+                            text: formats.orderAmount(order.amount),
+                            style: text.headlineLarge?.copyWith(
+                              color: colors.text,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' ${order.currency.code}',
+                            style: muted,
+                          ),
+                        ],
                       ),
-                      TextSpan(text: ' ${order.currency.code}', style: muted),
-                    ],
+                    ),
                   ),
                 ),
                 const Gap(BullSpacing.xs),
