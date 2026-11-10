@@ -73,6 +73,10 @@ const _coordinators = <_Coordinator>[
 const _infoPath = '/api/info/';
 const _sequentialRequests = 10;
 
+// A coordinator that is down is an outage on its side, not a defect of this stack: the probe only requires this many to answer.
+const _mainnetQuorum = 3;
+const _testnetQuorum = 1;
+
 /// Prints one measurement as a single greppable line: `ROBOSATS_TOR_MEASURE {json}`.
 void _measure(String step, Map<String, Object?> values) {
   debugPrint('ROBOSATS_TOR_MEASURE ${jsonEncode({'step': step, ...values})}');
@@ -89,27 +93,36 @@ final class _TorDio {
 
   static Future<_TorDio> open(String onion) async {
     final session = await locator<Tor>().embedded.sessions.open();
-    late final _TorDio torDio;
-    final client = locator<TorHttpClientFactory>().create(
-      session.endpoint,
-      onConnectFailure: (failure) => torDio.connectFailure = failure,
-    );
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: 'http://$onion',
-        connectTimeout: torConnectDeadline,
-        receiveTimeout: torConnectDeadline,
-        sendTimeout: torConnectDeadline,
-      ),
-    );
-    (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () =>
-        client;
-    return torDio = _TorDio._(dio, client, session);
+    try {
+      late final _TorDio torDio;
+      final client = locator<TorHttpClientFactory>().create(
+        session.endpoint,
+        onConnectFailure: (failure) => torDio.connectFailure = failure,
+      );
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: 'http://$onion',
+          connectTimeout: torConnectDeadline,
+          receiveTimeout: torConnectDeadline,
+          sendTimeout: torConnectDeadline,
+        ),
+      );
+      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () =>
+          client;
+      return torDio = _TorDio._(dio, client, session);
+    } on Object {
+      await session.close();
+      rethrow;
+    }
   }
 
+  /// Releases the socket and the session independently, so a failure of one never leaks the other.
   Future<void> close() async {
-    _client.close(force: true);
-    await _session.close();
+    try {
+      _client.close(force: true);
+    } finally {
+      await _session.close();
+    }
   }
 }
 
@@ -124,8 +137,8 @@ Future<void> main({bool isInitialized = false}) async {
       Platform.environment['RUN_LIVE_ROBOSATS_TEST'] == 'true' ||
       const bool.fromEnvironment('RUN_LIVE_ROBOSATS_TEST');
 
-  // The first coordinator that answered, reused for the sequential latency test.
-  _Coordinator? answered;
+  // The coordinators that answered correctly, filled by the per-coordinator tests and read by the quorum and latency tests.
+  final answered = <_Coordinator>[];
 
   group(
     'RoboSats coordinators over embedded Tor',
@@ -153,8 +166,10 @@ Future<void> main({bool isInitialized = false}) async {
 
       for (final coordinator in _coordinators) {
         final label = '${coordinator.alias} ${coordinator.network}';
+        // An unreachable coordinator is measured and reported, not failed: the quorum test below decides.
+        // A coordinator that answers with the wrong identity or shape fails here, because that is a security signal.
         test(
-          '$label answers GET $_infoPath',
+          '$label answers GET $_infoPath correctly when reachable',
           timeout: const Timeout(Duration(minutes: 3)),
           () async {
             final watch = Stopwatch()..start();
@@ -176,22 +191,11 @@ Future<void> main({bool isInitialized = false}) async {
                   'status': error.response?.statusCode,
                   'torFailure': torDio.connectFailure?.name,
                 });
-                final reason = torDio.connectFailure?.name ?? error.type.name;
-                fail('$label did not answer: $reason');
+                return;
               }
               final requestMs = watch.elapsedMilliseconds;
               final info = response.data;
               final version = info is Map ? info['version'] : null;
-              _measure('first_request', {
-                'coordinator': label,
-                'ok': true,
-                'sessionMs': sessionMs,
-                'ms': requestMs,
-                'status': response.statusCode,
-                'network': info is Map ? info['network'] : null,
-                'nodeId': info is Map ? info['node_id'] : null,
-                'version': version,
-              });
 
               expect(response.statusCode, 200);
               // Fields set unconditionally by `InfoView.get` in RoboSats `api/views.py`.
@@ -231,7 +235,23 @@ Future<void> main({bool isInitialized = false}) async {
                     .having((v) => v['minor'], 'minor', isA<int>())
                     .having((v) => v['patch'], 'patch', isA<int>()),
               );
-              answered ??= coordinator;
+
+              // Printed after the assertions, so `ok: true` always means a valid answer.
+              _measure('first_request', {
+                'coordinator': label,
+                'ok': true,
+                'sessionMs': sessionMs,
+                'ms': requestMs,
+                'status': response.statusCode,
+                'network': info is Map ? info['network'] : null,
+                'nodeId': info is Map ? info['node_id'] : null,
+                'version': version,
+                'buyOrders': info is Map ? info['num_public_buy_orders'] : null,
+                'sellOrders': info is Map
+                    ? info['num_public_sell_orders']
+                    : null,
+              });
+              answered.add(coordinator);
             } finally {
               await torDio.close();
             }
@@ -239,12 +259,25 @@ Future<void> main({bool isInitialized = false}) async {
         );
       }
 
+      // Reads the outcome of the per-coordinator tests above, so it is meaningful only when the whole group runs in order.
+      test('enough coordinators answered', () {
+        int count(String network) =>
+            answered.where((c) => c.network == network).length;
+        _measure('quorum', {
+          'mainnet': count('mainnet'),
+          'testnet': count('testnet'),
+          'answered': [for (final c in answered) '${c.alias} ${c.network}'],
+        });
+        expect(count('mainnet'), greaterThanOrEqualTo(_mainnetQuorum));
+        expect(count('testnet'), greaterThanOrEqualTo(_testnetQuorum));
+      });
+
       test(
         '$_sequentialRequests sequential requests to one coordinator',
         timeout: const Timeout(Duration(minutes: 15)),
         () async {
-          final coordinator = answered;
-          if (coordinator == null) fail('no coordinator answered');
+          // Falls back to the first listed coordinator when this test runs alone.
+          final coordinator = answered.firstOrNull ?? _coordinators.first;
 
           // One session and one keep-alive client for the whole series, as a screen polling a coordinator would do.
           final torDio = await _TorDio.open(coordinator.onion);
