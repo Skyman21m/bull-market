@@ -68,8 +68,11 @@ final class FederationBook {
 final class FederationBookReader {
   final CoordinatorClient _client;
 
-  FederationBookReader(CoordinatorTransport transport)
-    : _client = CoordinatorClient(transport);
+  /// [clock] is passed to the [CoordinatorClient] of each request.
+  FederationBookReader(
+    CoordinatorTransport transport, {
+    DateTime Function()? clock,
+  }) : _client = CoordinatorClient(transport, clock: clock);
 
   /// Starts one book request per coordinator of [federation], in its order, and returns them without waiting.
   ///

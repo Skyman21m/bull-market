@@ -35,6 +35,7 @@ final class OrderBook {
   static Result<OrderBook, CoordinatorFailure> parse(
     Object? body,
     Coordinator coordinator,
+    DateTime now,
   ) {
     if (body is! List<Object?>) {
       return const Err(CoordinatorResponseMalformed('book'));
@@ -45,7 +46,7 @@ final class OrderBook {
     final parsed = <PublicOrder>[];
     final dropped = <DroppedOrderReason>[];
     for (final element in body) {
-      switch (PublicOrder.parse(element, coordinator)) {
+      switch (PublicOrder.parse(element, coordinator, now)) {
         case (order: final PublicOrder order, dropped: _):
           parsed.add(order);
         case (order: _, dropped: final reason?):

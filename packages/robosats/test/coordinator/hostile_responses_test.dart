@@ -57,8 +57,12 @@ T _value<T, F extends Failure>(Result<T, F> result) => switch (result) {
   Err(:final failure) => fail('expected a value, got $failure'),
 };
 
-DroppedOrderReason? _dropped(Object? element) =>
-    PublicOrder.parse(element, coordinatorNamed('temple')).dropped;
+DroppedOrderReason? _dropped(Object? element, [DateTime? now]) =>
+    PublicOrder.parse(
+      element,
+      coordinatorNamed('temple'),
+      now ?? recordedAt,
+    ).dropped;
 
 void main() {
   final temple = coordinatorNamed('temple');
@@ -67,7 +71,7 @@ void main() {
 
   setUp(() {
     transport = FakeCoordinatorTransport();
-    client = CoordinatorClient(transport);
+    client = CoordinatorClient(transport, clock: () => recordedAt);
   });
 
   void serve(
@@ -519,8 +523,26 @@ void main() {
         null,
         '2026-11-09T16:07:33.375335Z',
         '2026-11-08T00:00:00Z',
+        '2026-11-11T16:07:34Z',
+        '2026-11-10T25:61:00Z',
       ])
         ({'expires_at': value}, DroppedOrderReason.expiresAt),
+      for (final value in [
+        '2026-11-09T25:61:00Z',
+        '2026-11-09T16:60:00Z',
+        '2026-11-09T16:07:60Z',
+        '2026-02-30T10:00:00Z',
+        '2026-13-01T00:00:00Z',
+        '2026-00-10T00:00:00Z',
+        '1900-01-01T00:00:00Z',
+        '2101-01-01T00:00:00Z',
+        '+275760-09-13T00:00:00Z',
+        '2026-11-09 16:07:33Z',
+        '2026-11-09T16:07:33+15:00',
+        '2026-11-09T16:07:33+01:60',
+        '2026-11-09T16:07:33.1234567Z',
+      ])
+        ({'created_at': value}, DroppedOrderReason.createdAt),
       for (final value in [null, 2, -1, '1'])
         ({'type': value}, DroppedOrderReason.type),
       for (final value in [null, 0, 79, 999, '2'])
@@ -613,12 +635,42 @@ void main() {
         {'premium': '-100'},
         {'premium': '999'},
         {'min_amount': '0.021'},
+        {'created_at': '2026-11-09T17:07:33.375335+01:00'},
+        {'expires_at': '2026-11-11T16:07:33.375335Z'},
         // 67 ASCII characters and 2 emoji: 69 code points but 71 UTF-16 units.
         {'payment_method': '${'x' * 67}⚡🔥'},
         {'payment_method': '${'é' * 69}🔥'},
       ]) {
         expect(_dropped(_order(changes)), isNull, reason: '$changes');
       }
+    });
+
+    test('for dates absurd against the clock, but not for an expired order', () {
+      // The order expires at 2026-11-10T16:07:33Z, and was created a day before.
+      expect(
+        _dropped(_order(), DateTime.utc(2026, 11, 17, 16, 8)),
+        DroppedOrderReason.expiresAt,
+      );
+      expect(
+        _dropped(_order(), DateTime.utc(2026, 11, 2, 16, 7)),
+        DroppedOrderReason.createdAt,
+      );
+      expect(_dropped(_order(), DateTime.utc(2026, 11, 17, 16, 7)), isNull);
+      expect(_dropped(_order(), DateTime.utc(2026, 11, 2, 16, 8)), isNull);
+      expect(_dropped(_order(), DateTime.utc(2026, 11, 12)), isNull);
+      final leapDay = _order({
+        'created_at': '2028-02-29T12:00:00Z',
+        'expires_at': '2028-03-01T00:00:00Z',
+      });
+      expect(_dropped(leapDay, DateTime.utc(2028, 3)), isNull);
+      final noLeapDay = _order({
+        'created_at': '2027-02-29T12:00:00Z',
+        'expires_at': '2027-03-01T00:00:00Z',
+      });
+      expect(
+        _dropped(noLeapDay, DateTime.utc(2027, 3)),
+        DroppedOrderReason.createdAt,
+      );
     });
 
     test('for a book element that is not an object', () {
@@ -659,6 +711,7 @@ void main() {
       final order = PublicOrder.parse(
         jsonDecode(withRaw(_order(), 'payment_method')),
         temple,
+        recordedAt,
       ).order;
       expect(order?.paymentMethods.text, cleaned);
       expect(order?.paymentMethods.recognized.map((m) => m.name), ['Revolut']);
@@ -696,6 +749,7 @@ void main() {
         final order = PublicOrder.parse(
           _order({'payment_method': text}),
           temple,
+          recordedAt,
         ).order;
         expect(order?.paymentMethods.text, text);
       }

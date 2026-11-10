@@ -32,7 +32,7 @@ void main() {
           statusCode: _emptyBooks.contains((alias, network)) ? 404 : 200,
         );
     }
-    client = CoordinatorClient(transport);
+    client = CoordinatorClient(transport, clock: () => recordedAt);
   });
 
   group('recorded /api/info/', () {

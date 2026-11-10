@@ -16,6 +16,9 @@ Uint8List recordedBody(
   'test/fixtures/coordinator/$alias-${network.name}-$endpoint.json',
 ).readAsBytesSync();
 
+/// When the responses were recorded: the clock the tests give the client, so that the recorded orders stay plausible.
+final recordedAt = DateTime.utc(2026, 11, 10, 13, 53);
+
 /// The coordinators and endpoints recorded, as (alias, network).
 const recordedCoordinators = [
   ('temple', RobosatsNetwork.mainnet),

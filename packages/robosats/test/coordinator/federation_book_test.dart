@@ -13,7 +13,7 @@ void main() {
 
     setUp(() {
       transport = FakeCoordinatorTransport();
-      reader = FederationBookReader(transport);
+      reader = FederationBookReader(transport, clock: () => recordedAt);
     });
 
     test('merges the recorded books of every mainnet coordinator', () async {

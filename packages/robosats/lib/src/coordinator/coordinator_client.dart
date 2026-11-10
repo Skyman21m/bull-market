@@ -18,8 +18,11 @@ import 'package:robosats/src/robosats_failure.dart';
 /// Methods are independent: call them concurrently, one future per coordinator.
 final class CoordinatorClient {
   final CoordinatorTransport _transport;
+  final DateTime Function() _clock;
 
-  const CoordinatorClient(this._transport);
+  /// [clock] gives the time that rules out absurd order dates, the system clock by default.
+  CoordinatorClient(this._transport, {DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
 
   /// `GET /api/info/`, checked against the federation entry of [coordinator]: an identity mismatch is a [CoordinatorIdentityFailure].
   Future<Result<CoordinatorInfo, CoordinatorFailure>> fetchInfo(
@@ -66,7 +69,7 @@ final class CoordinatorClient {
     }
     return switch (_decodeOk(response)) {
       Err(:final failure) => Err(failure),
-      Ok(:final value) => OrderBook.parse(value, coordinator),
+      Ok(:final value) => OrderBook.parse(value, coordinator, _clock()),
     };
   }
 
