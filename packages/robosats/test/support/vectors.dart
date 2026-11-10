@@ -1,14 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-/// The reference values of `test/fixtures/vecteurs-identite-robot.json`.
+/// The reference values of `test/fixtures/robot-identity-vectors.json`.
 ///
-/// The file is a verbatim copy of `docs/spikes/vecteurs-identite-robot.json` of the Troc project notes, generated on 2026-11-09 against RoboSats commit ff1998c.
+/// The file is a verbatim copy of `docs/spikes/vecteurs-identite-robot.json` of the Troc project notes (renamed, content unchanged), generated on 2026-11-09 against RoboSats commit ff1998c.
 /// Its `_avertissement` and `_comment_chaque_valeur_est_produite` fields state how each value was produced and which ones come straight from the RoboSats repository.
 /// Tests run with the package directory as working directory, as `make unit-test` does.
 final Map<String, dynamic> vectors =
     jsonDecode(
-          File('test/fixtures/vecteurs-identite-robot.json').readAsStringSync(),
+          File('test/fixtures/robot-identity-vectors.json').readAsStringSync(),
         )
         as Map<String, dynamic>;
 

@@ -1,10 +1,10 @@
 name: Build Android
 
-# Compile l'APK avec la chaîne reproductible de Bull (Containerfile.tools +
-# Containerfile.app via podman). Sur chaque PR vers `main` : APK debug en
-# artefact, téléchargeable depuis l'onglet Actions (l'applicationId debug porte
-# le suffixe `.debug`, donc il s'installe à côté de l'app Bull officielle). Sur
-# un tag `v*` : APK release. À la main : mode et format au choix.
+# Builds the APK with Bull's reproducible toolchain (Containerfile.tools +
+# Containerfile.app via podman). On every PR to `main`: debug APK as an
+# artifact, downloadable from the Actions tab (the debug applicationId has the
+# `.debug` suffix, so it installs alongside the official Bull app). On a `v*`
+# tag: release APK. Manually: mode and format as chosen.
 on:
   pull_request:
     branches:

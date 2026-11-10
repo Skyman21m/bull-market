@@ -1,31 +1,31 @@
-## Ticket lié
+## Linked issue
 
-Closes #<!-- numéro du ticket -->
+Closes #<!-- issue number -->
 
-## Problème
+## Problem
 
-<!-- Quel problème cette PR résout-elle ? -->
+<!-- What problem does this PR solve? -->
 
-## Changements
+## Changes
 
-<!-- Résumé de ce qui a été fait. -->
+<!-- Summary of what was done. -->
 
-## Hors périmètre
+## Out of scope
 
-<!-- Ce qui est volontairement laissé de côté. -->
+<!-- What is deliberately left aside. -->
 
-## Risques et sécurité
+## Risks and security
 
-<!-- Impact pour l'utilisateur, les fonds, la vie privée. Jamais de secrets. -->
+<!-- Impact on the user, funds, privacy. Never any secrets. -->
 
-## Base de données et fichiers générés
+## Database and generated files
 
-<!-- Migrations de schéma ? Fichiers générés modifiés ? -->
+<!-- Schema migrations? Generated files changed? -->
 
-## Vérification
+## Verification
 
-<!-- Commandes exactes et résultats. Captures d'écran pour l'interface. -->
+<!-- Exact commands and results. Screenshots for the UI. -->
 
-## Relecture indépendante
+## Independent review
 
-<!-- Résumé de la relecture par un agent sans contexte, et ce qui a été corrigé. -->
+<!-- Summary of the review by an agent with no context, and what was fixed. -->
