@@ -20,6 +20,7 @@ workspace:
   - packages/screen_privacy
   - packages/bull_logger
   - packages/bull_pricer
+  - packages/robosats
   - features/logs
 
 dependencies:
