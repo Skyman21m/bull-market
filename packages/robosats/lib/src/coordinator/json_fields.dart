@@ -63,6 +63,23 @@ final class JsonFields {
         _ => _reject(key, null),
       };
 
+  /// A string of at most [maxCodePoints] Unicode code points, as Django counts the `max_length` of a text field.
+  String requiredText(String key, {required int maxCodePoints}) =>
+      optionalText(key, maxCodePoints: maxCodePoints) ?? _reject(key, '');
+
+  String? optionalText(
+    String key, {
+    required int maxCodePoints,
+  }) => switch (_object[key]) {
+    null => null,
+    // A code point takes one or two UTF-16 units: the length bounds the count before it is computed.
+    final String value
+        when value.length <= 2 * maxCodePoints &&
+            value.runes.length <= maxCodePoints =>
+      value,
+    _ => _reject(key, null),
+  };
+
   /// A JSON object.
   Map<String, Object?>? requiredObject(String key) => switch (_object[key]) {
     final Map<String, Object?> value => value,

@@ -533,7 +533,7 @@ void main() {
         ({'max_amount': value}, DroppedOrderReason.maxAmount),
       ({'min_amount': '0.03'}, DroppedOrderReason.maxAmount),
       ({'max_amount': '0.002'}, DroppedOrderReason.maxAmount),
-      for (final value in [null, 5, 'x' * 71])
+      for (final value in [null, 5, 'x' * 71, '${'x' * 70}🔥'])
         ({'payment_method': value}, DroppedOrderReason.paymentMethod),
       for (final value in [null, 0])
         ({'is_explicit': value}, DroppedOrderReason.isExplicit),
@@ -613,6 +613,9 @@ void main() {
         {'premium': '-100'},
         {'premium': '999'},
         {'min_amount': '0.021'},
+        // 67 ASCII characters and 2 emoji: 69 code points but 71 UTF-16 units.
+        {'payment_method': '${'x' * 67}⚡🔥'},
+        {'payment_method': '${'é' * 69}🔥'},
       ]) {
         expect(_dropped(_order(changes)), isNull, reason: '$changes');
       }

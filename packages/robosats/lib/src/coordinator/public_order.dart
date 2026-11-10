@@ -95,9 +95,10 @@ final class PublicOrder {
     final fixed = fields.optionalDecimal('amount', min: 0, max: 1e10);
     final rangeMin = fields.optionalDecimal('min_amount', min: 0, max: 1e10);
     final rangeMax = fields.optionalDecimal('max_amount', min: 0, max: 1e10);
-    final paymentMethod = fields.requiredString(
+    // At most 70 code points, the `max_length` of the order model (`api/models/order.py:85`).
+    final paymentMethod = fields.requiredText(
       'payment_method',
-      maxLength: 70,
+      maxCodePoints: 70,
     );
     final isExplicit = fields.requiredBool('is_explicit');
     final premium = fields.requiredDecimal(
