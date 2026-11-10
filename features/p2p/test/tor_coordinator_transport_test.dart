@@ -790,6 +790,9 @@ void main() {
         'http://127.0.0.1/api/info/',
         'file:///etc/passwd',
         'ftp://ammannjgzybw4qm2odmci7xgolh5grzijidacjxose5tthm375dcopad.onion/',
+        'http://abc.onion.example.com/api/info/',
+        'http://a.onion@example.com/api/info/',
+        'http://user:secret@ammannjgzybw4qm2odmci7xgolh5grzijidacjxose5tthm375dcopad.onion/api/info/',
       ]) {
         expect(
           await tor.send(_get(Uri.parse(url))),
