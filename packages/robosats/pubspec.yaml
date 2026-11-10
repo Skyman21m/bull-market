@@ -1,0 +1,25 @@
+name: robosats
+description: >-
+  Pure-Dart RoboSats client primitives for the Troc monorepo: Garage Key,
+  robot token and the robot identity derived from it (coordinator token hash,
+  hash id, nickname, Nostr key, Authorization header).
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: "3.12.2"
+
+resolution: workspace
+
+dependencies:
+  bech32: ^0.2.2
+  convert: ^3.1.2
+  crypto: ^3.0.7
+  meta: ^1.17.0
+  pointycastle: ^3.9.1
+  primitives:
+
+dev_dependencies:
+  bip32_keys: ^3.1.4
+  lints: ^6.0.0
+  test: ^1.26.3
