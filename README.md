@@ -9,7 +9,7 @@ Troc est un fork du portefeuille [Bull Bitcoin Mobile](https://github.com/Satosh
 
 ## L'idée
 
-RoboSats permet d'acheter ou de vendre du bitcoin contre de la monnaie fiduciaire, directement entre deux personnes : pas de compte, pas de pièce d'identité, une identité jetable (un « robot ») par échange, et des échanges avec le coordinateur qui passent par Tor. L'autre partie voit toutefois ce que révèle le moyen de paiement choisi. Les bitcoins de l'échange et les cautions des deux parties sont bloqués par des factures Lightning « hold » le temps que le paiement se fasse.
+RoboSats permet d'acheter ou de vendre du bitcoin contre de la monnaie fiduciaire, directement entre deux personnes : pas de compte, pas de pièce d'identité, une identité jetable (un « robot ») par échange, et les communications avec le coordinateur passent par Tor. L'autre partie voit toutefois ce que révèle le moyen de paiement choisi. Les bitcoins de l'échange et les cautions des deux parties sont bloqués par des factures Lightning « hold » le temps que le paiement se fasse.
 
 Aujourd'hui, il faut le plus souvent deux outils : RoboSats d'un côté (son site dans le navigateur Tor, ou son application), un portefeuille Lightning de l'autre, et des factures à faire passer de l'un à l'autre.
 
@@ -43,7 +43,7 @@ Ce sont des objectifs : la section « Où en est le projet » dit ce qui existe 
 
 Quelques précisions sur ce que montre la maquette :
 
-- Le bouton « Payer avec le portefeuille » de l'écran de caution est un objectif, pas un acquis. Le portefeuille n'a pas de nœud Lightning et paie par un service de swap : il reste à vérifier qu'il peut régler une facture « hold », qui reste bloquée des heures ([#8](https://github.com/Skyman21m/troc/issues/8)). Payée ainsi, la caution ne resterait pas dans le portefeuille pendant le blocage, contrairement à ce que dit le texte de l'écran, repris de RoboSats : elle serait chez le service de swap. Le QR code, à payer avec un autre portefeuille comme dans RoboSats, reste la solution de base.
+- Le bouton « Payer avec le portefeuille » de l'écran de caution est un objectif, pas un acquis. Le portefeuille n'a pas de nœud Lightning et paie par un service de swap : il reste à vérifier qu'il peut régler une facture « hold », qui reste bloquée des heures ([#8](https://github.com/Skyman21m/troc/issues/8)). Payée ainsi, la caution ne resterait pas dans le portefeuille pendant le blocage, contrairement au texte de RoboSats affiché sous le QR code (« les sats restent gelés dans votre portefeuille ») : elle serait chez le service de swap. Le QR code, à payer avec un autre portefeuille comme dans RoboSats, reste la solution de base.
 - L'avatar des robots est provisoire ([#22](https://github.com/Skyman21m/troc/issues/22)). Dans le code, le pseudo est déjà calculé comme dans RoboSats ; ceux de la maquette sont inventés.
 - Les libellés reprennent ceux de RoboSats ; la traduction française est complétée là où elle manque, et quelques textes propres à Troc s'y ajoutent.
 
@@ -111,7 +111,7 @@ Android d'abord. Rien n'est encore publié. À ce stade, l'application affiche e
 
 ## Comment c'est construit
 
-Troc ajoute un module au code de Bull, et un second est en préparation ; il touche le moins possible au reste, pour pouvoir suivre les mises à jour du portefeuille d'origine.
+Troc ajoute un module au code de Bull, et un second est en préparation ; Troc touche le moins possible au reste, pour pouvoir suivre les mises à jour du portefeuille d'origine.
 
 | Module | Rôle |
 |---|---|
