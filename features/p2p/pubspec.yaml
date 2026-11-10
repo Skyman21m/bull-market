@@ -1,0 +1,27 @@
+name: p2p
+description: Troc peer-to-peer trading on the RoboSats federation, read over the embedded Tor.
+publish_to: "none"
+version: 0.0.1
+resolution: workspace
+
+environment:
+  sdk: "3.12.2"
+  flutter: "3.44.9"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bull_logger:
+  bull_tor:
+  dio: ^5.9.0
+  get_it: ^9.1.1
+  meta: ^1.17.0
+  primitives:
+  robosats:
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.1.0
+  socks5_proxy: ^2.1.1
+  test: ^1.31.0

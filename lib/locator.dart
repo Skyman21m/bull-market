@@ -58,6 +58,7 @@ import 'package:bb_mobile/features/withdraw/withdraw_locator.dart';
 import 'package:bb_mobile/features/wizard/wizard_locator.dart';
 import 'package:get_it/get_it.dart';
 import 'package:bull_logs/bull_logs.dart';
+import 'package:p2p/p2p.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:secrets/secrets.dart';
 
@@ -158,6 +159,7 @@ class AppLocator {
     SpLocator.setup(locator);
     SettingsLocator.setup(locator);
     const LogsFeature().setup(locator);
+    const P2pFeature().setup(locator);
     BitcoinPriceLocator.setup(locator);
     WalletLocator.setup(locator);
     TransactionsLocator.registerAdapters(locator);
