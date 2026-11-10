@@ -186,6 +186,15 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         await settle();
         await capture('offre');
+
+        // The reversible payments warning of RoboSats, when the order offers such a method.
+        final warning = find.byIcon(Icons.warning_amber_rounded);
+        if (warning.evaluate().isNotEmpty) {
+          await tester.tap(warning.first);
+          await settle();
+          await tester.pump(const Duration(seconds: 1));
+          await capture('paiements-reversibles');
+        }
       },
     );
   }
