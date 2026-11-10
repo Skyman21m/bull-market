@@ -26,13 +26,19 @@ void main() {
         'book',
         statusCode: 404,
       );
-      final book = await reader.read(Federation.robosats, RobosatsNetwork.mainnet);
+      final book = await reader.read(
+        Federation.robosats,
+        RobosatsNetwork.mainnet,
+      );
       expect(book.failures, isEmpty);
       expect(book.orders, hasLength(33 + 49 + 16 + 6));
-      expect(
-        book.outcomes.map((outcome) => outcome.coordinator.shortAlias),
-        ['temple', 'lake', 'bazaar', 'freeport', 'ammanaya'],
-      );
+      expect(book.outcomes.map((outcome) => outcome.coordinator.shortAlias), [
+        'temple',
+        'lake',
+        'bazaar',
+        'freeport',
+        'ammanaya',
+      ]);
       // By coordinator in federation order, then by id.
       final keys = [
         for (final order in book.orders)
@@ -42,7 +48,9 @@ void main() {
           ),
       ];
       final sorted = List.of(keys)
-        ..sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+        ..sort(
+          (a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2),
+        );
       expect(keys, sorted);
     });
 
@@ -68,48 +76,85 @@ void main() {
           (_) => Future.error(Exception('adapter bug')),
         );
       // ammanaya has no route: the fake answers unreachable.
-      final book = await reader.read(Federation.robosats, RobosatsNetwork.mainnet);
-      expect(book.orders, hasLength(33));
-      expect(book.orders.every((o) => o.coordinator.shortAlias == 'temple'), isTrue);
-      expect(book.failures.map((c, f) => MapEntry(c.shortAlias, f.runtimeType)), {
-        'lake': CoordinatorTimedOut,
-        'bazaar': CoordinatorNotJson,
-        'freeport': CoordinatorTransportFailed,
-        'ammanaya': CoordinatorUnreachable,
-      });
-    });
-
-    test('tags orders with their coordinator, so equal ids stay apart', () async {
-      transport
-        ..answerRecorded('temple', RobosatsNetwork.mainnet, 'book')
-        ..answer(
-          coordinatorNamed('lake'),
-          RobosatsNetwork.mainnet,
-          '/api/book/',
-          Ok(rawResponse(recordedBody('temple', RobosatsNetwork.mainnet, 'book'))),
-        );
       final book = await reader.read(
-        const Federation([]).copyWithAliases(['temple', 'lake']),
+        Federation.robosats,
         RobosatsNetwork.mainnet,
       );
-      expect(book.orders, hasLength(66));
-      expect(book.orders.toSet(), hasLength(66));
+      expect(book.orders, hasLength(33));
+      expect(
+        book.orders.every((o) => o.coordinator.shortAlias == 'temple'),
+        isTrue,
+      );
+      expect(
+        book.failures.map((c, f) => MapEntry(c.shortAlias, f.runtimeType)),
+        {
+          'lake': CoordinatorTimedOut,
+          'bazaar': CoordinatorNotJson,
+          'freeport': CoordinatorTransportFailed,
+          'ammanaya': CoordinatorUnreachable,
+        },
+      );
     });
 
+    test(
+      'tags orders with their coordinator, so equal ids stay apart',
+      () async {
+        transport
+          ..answerRecorded('temple', RobosatsNetwork.mainnet, 'book')
+          ..answer(
+            coordinatorNamed('lake'),
+            RobosatsNetwork.mainnet,
+            '/api/book/',
+            Ok(
+              rawResponse(
+                recordedBody('temple', RobosatsNetwork.mainnet, 'book'),
+              ),
+            ),
+          );
+        final book = await reader.read(
+          Federation([coordinatorNamed('temple'), coordinatorNamed('lake')]),
+          RobosatsNetwork.mainnet,
+        );
+        expect(book.orders, hasLength(66));
+        expect(book.orders.toSet(), hasLength(66));
+      },
+    );
+
     test('starts every request before any answer arrives', () async {
-      final pending = <String, Completer<Result<CoordinatorResponse, CoordinatorTransportFailure>>>{};
-      for (final coordinator in Federation.robosats.on(RobosatsNetwork.mainnet)) {
-        final completer = Completer<Result<CoordinatorResponse, CoordinatorTransportFailure>>();
+      final pending =
+          <
+            String,
+            Completer<Result<CoordinatorResponse, CoordinatorTransportFailure>>
+          >{};
+      for (final coordinator in Federation.robosats.on(
+        RobosatsNetwork.mainnet,
+      )) {
+        final completer =
+            Completer<
+              Result<CoordinatorResponse, CoordinatorTransportFailure>
+            >();
         pending[coordinator.shortAlias] = completer;
-        transport.route(coordinator, RobosatsNetwork.mainnet, '/api/book/', (_) => completer.future);
+        transport.route(
+          coordinator,
+          RobosatsNetwork.mainnet,
+          '/api/book/',
+          (_) => completer.future,
+        );
       }
-      final futures = reader.requestAll(Federation.robosats, RobosatsNetwork.mainnet);
+      final futures = reader.requestAll(
+        Federation.robosats,
+        RobosatsNetwork.mainnet,
+      );
       expect(futures, hasLength(5));
       expect(transport.requests, hasLength(5));
 
       // The last coordinator answers first, and its book is usable at once.
       pending['ammanaya']?.complete(
-        Ok(rawResponse(recordedBody('ammanaya', RobosatsNetwork.mainnet, 'book'))),
+        Ok(
+          rawResponse(
+            recordedBody('ammanaya', RobosatsNetwork.mainnet, 'book'),
+          ),
+        ),
       );
       final first = await futures.last;
       expect(first.coordinator.shortAlias, 'ammanaya');
@@ -122,23 +167,32 @@ void main() {
       expect(book.failures, hasLength(4));
     });
 
-    test('reports coordinators absent from testnet without a request', () async {
-      transport.answerRecorded(
-        'temple',
-        RobosatsNetwork.testnet,
-        'book',
-        statusCode: 404,
-      );
-      final book = await reader.read(Federation.robosats, RobosatsNetwork.testnet);
-      expect(transport.requests.map((r) => r.url.host), hasLength(2));
-      expect(book.failures.map((c, f) => MapEntry(c.shortAlias, f.runtimeType)), {
-        'lake': CoordinatorUnreachable,
-        'bazaar': CoordinatorNotOnNetwork,
-        'freeport': CoordinatorNotOnNetwork,
-        'ammanaya': CoordinatorNotOnNetwork,
-      });
-      expect(book.orders, isEmpty);
-    });
+    test(
+      'reports coordinators absent from testnet without a request',
+      () async {
+        transport.answerRecorded(
+          'temple',
+          RobosatsNetwork.testnet,
+          'book',
+          statusCode: 404,
+        );
+        final book = await reader.read(
+          Federation.robosats,
+          RobosatsNetwork.testnet,
+        );
+        expect(transport.requests.map((r) => r.url.host), hasLength(2));
+        expect(
+          book.failures.map((c, f) => MapEntry(c.shortAlias, f.runtimeType)),
+          {
+            'lake': CoordinatorUnreachable,
+            'bazaar': CoordinatorNotOnNetwork,
+            'freeport': CoordinatorNotOnNetwork,
+            'ammanaya': CoordinatorNotOnNetwork,
+          },
+        );
+        expect(book.orders, isEmpty);
+      },
+    );
 
     test('passes the filters to every coordinator', () async {
       await reader.read(
@@ -147,15 +201,9 @@ void main() {
         currency: RobosatsCurrency.fromCode('USD'),
         type: OrderType.buy,
       );
-      expect(
-        transport.requests.map((r) => r.url.query).toSet(),
-        {'currency=1&type=0'},
-      );
+      expect(transport.requests.map((r) => r.url.query).toSet(), {
+        'currency=1&type=0',
+      });
     });
   });
-}
-
-extension on Federation {
-  Federation copyWithAliases(List<String> aliases) =>
-      Federation([for (final alias in aliases) coordinatorNamed(alias)]);
 }

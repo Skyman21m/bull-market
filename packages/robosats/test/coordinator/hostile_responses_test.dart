@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:robosats/src/coordinator/public_order.dart';
 import 'package:test/test.dart';
 
 import '../support/coordinator.dart';
@@ -40,9 +39,7 @@ Map<String, Object?> _order([Map<String, Object?> changes = const {}]) => {
 
 /// A valid info answer of temple on mainnet.
 Map<String, Object?> _info([Map<String, Object?> changes = const {}]) => {
-  ...jsonDecode(
-        utf8.decode(recordedBody('temple', _mainnet, 'info')),
-      )
+  ...jsonDecode(utf8.decode(recordedBody('temple', _mainnet, 'info')))
       as Map<String, Object?>,
   ...changes,
 };
@@ -82,11 +79,12 @@ void main() {
   ) => transport.answer(temple, _mainnet, path, response);
 
   group('every endpoint', () {
-    final endpoints = <String, Future<Result<Object?, CoordinatorFailure>> Function()>{
-      '/api/info/': () => client.fetchInfo(temple, _mainnet),
-      '/api/book/': () => client.fetchBook(temple, _mainnet),
-      '/api/limits/': () => client.fetchLimits(temple, _mainnet),
-    };
+    final endpoints =
+        <String, Future<Result<Object?, CoordinatorFailure>> Function()>{
+          '/api/info/': () => client.fetchInfo(temple, _mainnet),
+          '/api/book/': () => client.fetchBook(temple, _mainnet),
+          '/api/limits/': () => client.fetchLimits(temple, _mainnet),
+        };
 
     for (final MapEntry(key: path, value: fetch) in endpoints.entries) {
       test('$path passes transport failures through', () async {
@@ -128,7 +126,10 @@ void main() {
       test('$path rejects anything but JSON', () async {
         final notJson = [
           rawResponse(utf8.encode('{}'), contentType: 'text/plain'),
-          rawResponse(utf8.encode('{}'), contentType: 'text/html; charset=utf-8'),
+          rawResponse(
+            utf8.encode('{}'),
+            contentType: 'text/html; charset=utf-8',
+          ),
           rawResponse(utf8.encode('{}'), contentType: null),
           rawResponse(utf8.encode('<html></html>')),
           rawResponse(utf8.encode('{"a": NaN}')),
@@ -159,16 +160,25 @@ void main() {
         }
       });
 
-      test('$path sends nothing for a coordinator absent from the network', () async {
-        final bazaar = coordinatorNamed('bazaar');
-        final result = switch (path) {
-          '/api/info/' => await client.fetchInfo(bazaar, RobosatsNetwork.testnet),
-          '/api/book/' => await client.fetchBook(bazaar, RobosatsNetwork.testnet),
-          _ => await client.fetchLimits(bazaar, RobosatsNetwork.testnet),
-        };
-        expect(_failure(result), isA<CoordinatorNotOnNetwork>());
-        expect(transport.requests, isEmpty);
-      });
+      test(
+        '$path sends nothing for a coordinator absent from the network',
+        () async {
+          final bazaar = coordinatorNamed('bazaar');
+          final result = switch (path) {
+            '/api/info/' => await client.fetchInfo(
+              bazaar,
+              RobosatsNetwork.testnet,
+            ),
+            '/api/book/' => await client.fetchBook(
+              bazaar,
+              RobosatsNetwork.testnet,
+            ),
+            _ => await client.fetchLimits(bazaar, RobosatsNetwork.testnet),
+          };
+          expect(_failure(result), isA<CoordinatorNotOnNetwork>());
+          expect(transport.requests, isEmpty);
+        },
+      );
     }
 
     test('a failure never prints coordinator text', () async {
@@ -207,7 +217,13 @@ void main() {
       ],
       'network': [null, 1],
       'node_alias': [null, 7, 'x' * 1025],
-      'version': [null, '0.8.8', {'major': 0, 'minor': 8}, {'major': -1, 'minor': 8, 'patch': 8}, {'major': 0, 'minor': '8', 'patch': 8}],
+      'version': [
+        null,
+        '0.8.8',
+        {'major': 0, 'minor': 8},
+        {'major': -1, 'minor': 8, 'patch': 8},
+        {'major': 0, 'minor': '8', 'patch': 8},
+      ],
       'notice_message': [42, 'x' * 16385],
       'blossom_enabled': ['yes'],
       'federation_hash': [64],
@@ -218,7 +234,11 @@ void main() {
       test('for an invalid $field', () async {
         for (final value in values) {
           final failure = await fetchWith(_info({field: value}));
-          expect(failure, isA<CoordinatorResponseMalformed>(), reason: '$value');
+          expect(
+            failure,
+            isA<CoordinatorResponseMalformed>(),
+            reason: '$value',
+          );
           expect(
             (failure as CoordinatorResponseMalformed).field,
             field == 'max_order_size' || field == 'min_order_size'
@@ -238,7 +258,14 @@ void main() {
     });
 
     test('for a missing required field', () async {
-      for (final field in ['num_public_sell_orders', 'node_id', 'network', 'version', 'maker_fee', 'min_order_size']) {
+      for (final field in [
+        'num_public_sell_orders',
+        'node_id',
+        'network',
+        'version',
+        'maker_fee',
+        'min_order_size',
+      ]) {
         final failure = await fetchWith(_without(_info(), field));
         expect(failure, isA<CoordinatorResponseMalformed>(), reason: field);
       }
@@ -261,7 +288,18 @@ void main() {
         'federation_hash': 'not a hash',
         'features': {'anything': true},
       });
-      for (final field in ['devfund', 'blossom_enabled', 'current_swap_fee_rate', 'lnd_version', 'cln_version', 'robosats_running_commit_hash', 'alternative_site', 'alternative_name', 'market_price_apis', 'notice_message']) {
+      for (final field in [
+        'devfund',
+        'blossom_enabled',
+        'current_swap_fee_rate',
+        'lnd_version',
+        'cln_version',
+        'robosats_running_commit_hash',
+        'alternative_site',
+        'alternative_name',
+        'market_price_apis',
+        'notice_message',
+      ]) {
         body = _without(body, field);
       }
       serve('/api/info/', Ok(jsonResponse(body)));
@@ -280,9 +318,14 @@ void main() {
     test('a JSON content type with parameters', () async {
       serve(
         '/api/info/',
-        Ok(jsonResponse(_info(), contentType: 'Application/JSON; charset=utf-8')),
+        Ok(
+          jsonResponse(_info(), contentType: 'Application/JSON; charset=utf-8'),
+        ),
       );
-      expect(await client.fetchInfo(temple, _mainnet), isA<Ok<CoordinatorInfo, CoordinatorFailure>>());
+      expect(
+        await client.fetchInfo(temple, _mainnet),
+        isA<Ok<CoordinatorInfo, CoordinatorFailure>>(),
+      );
     });
   });
 
@@ -306,25 +349,40 @@ void main() {
       for (final response in [
         jsonResponse({'detail': 'Not found.'}, statusCode: 404),
         jsonResponse([], statusCode: 404),
-        rawResponse(utf8.encode('<h1>Not Found</h1>'), statusCode: 404, contentType: 'text/html'),
+        rawResponse(
+          utf8.encode('<h1>Not Found</h1>'),
+          statusCode: 404,
+          contentType: 'text/html',
+        ),
       ]) {
         serve('/api/book/', Ok(response));
         expect(
           _failure(await client.fetchBook(temple, _mainnet)),
-          isA<CoordinatorUnexpectedStatus>().having((f) => f.statusCode, 'statusCode', 404),
+          isA<CoordinatorUnexpectedStatus>().having(
+            (f) => f.statusCode,
+            'statusCode',
+            404,
+          ),
         );
       }
     });
 
-    test('rejects a book with too many orders, and accepts the bound', () async {
-      final many = [
-        for (var i = 1; i <= CoordinatorReadBounds.maxOrders + 1; i++) _order({'id': i}),
-      ];
-      serve('/api/book/', Ok(jsonResponse(many)));
-      expect(_failure(await client.fetchBook(temple, _mainnet)), isA<CoordinatorTooManyOrders>());
-      final book = await bookOf(many.sublist(1));
-      expect(book.orders, hasLength(CoordinatorReadBounds.maxOrders));
-    });
+    test(
+      'rejects a book with too many orders, and accepts the bound',
+      () async {
+        final many = [
+          for (var i = 1; i <= CoordinatorReadBounds.maxOrders + 1; i++)
+            _order({'id': i}),
+        ];
+        serve('/api/book/', Ok(jsonResponse(many)));
+        expect(
+          _failure(await client.fetchBook(temple, _mainnet)),
+          isA<CoordinatorTooManyOrders>(),
+        );
+        final book = await bookOf(many.sublist(1));
+        expect(book.orders, hasLength(CoordinatorReadBounds.maxOrders));
+      },
+    );
 
     test('drops a bad order and keeps the others', () async {
       final book = await bookOf([
@@ -398,7 +456,11 @@ void main() {
     final invalid = <String, List<Object?>>{
       'id': [null, 0, -1, '1', 1.5],
       'created_at': [null, 'yesterday', '2026-11-09T16:07:33', 7],
-      'expires_at': [null, '2026-11-09T16:07:33.375335Z', '2026-11-08T00:00:00Z'],
+      'expires_at': [
+        null,
+        '2026-11-09T16:07:33.375335Z',
+        '2026-11-08T00:00:00Z',
+      ],
       'type': [null, 2, -1, '1'],
       'currency': [null, 0, 79, 999, '2'],
       'has_range': [null, 'true'],
@@ -406,7 +468,17 @@ void main() {
       'max_amount': [null, '0.002', 'Infinity', '1e400'],
       'payment_method': [null, 5, 'x' * 71],
       'is_explicit': [null, 0],
-      'premium': [null, -5, '1000', '-100.01', 'NaN', 'Infinity', '1e2', ' 5', '+5'],
+      'premium': [
+        null,
+        -5,
+        '1000',
+        '-100.01',
+        'NaN',
+        'Infinity',
+        '1e2',
+        ' 5',
+        '+5',
+      ],
       'satoshis': ['250000', -1],
       'satoshis_now': [-1, 2100000000000001, '5'],
       'price': ['0.9995', -1],
@@ -414,7 +486,12 @@ void main() {
       'bond_size': [null, '1.99', '15.01', 3, '-3'],
       'latitude': ['91', '45'],
       'longitude': ['181', '2.3'],
-      'maker_hash_id': [null, 'E302B62121555C64060E8CB3B32E6040D544342203486FA7E17689CF735D0CAE', 'e302', 'f' * 64],
+      'maker_hash_id': [
+        null,
+        'E302B62121555C64060E8CB3B32E6040D544342203486FA7E17689CF735D0CAE',
+        'e302',
+        'f' * 64,
+      ],
       'maker_nick': ['SomebodyElse1', 7],
       'maker_status': [5],
     };
@@ -423,19 +500,39 @@ void main() {
       test('for an invalid $field', () {
         for (final value in values) {
           final changes = <String, Object?>{field: value};
-          // A location needs both coordinates: give the valid one with the invalid one.
-          if (field == 'latitude' && value == '45') changes['longitude'] = '200';
-          if (field == 'longitude' && value == '2.3') changes['latitude'] = null;
-          expect(_droppedField(_order(changes)), isNotNull, reason: '$field = $value');
+          // A location needs both coordinates: '45' is paired with an invalid longitude, '2.3' with a missing latitude.
+          if (field == 'latitude' && value == '45') {
+            changes['longitude'] = '200';
+          }
+          if (field == 'longitude' && value == '2.3') {
+            changes['latitude'] = null;
+          }
+          expect(
+            _droppedField(_order(changes)),
+            isNotNull,
+            reason: '$field = $value',
+          );
         }
       });
     }
 
-    test('for a fixed order without an amount, or an explicit one without sats', () {
-      expect(_droppedField(_order({'has_range': false, 'amount': null})), 'amount');
-      expect(_droppedField(_order({'has_range': false, 'amount': '0'})), 'amount');
-      expect(_droppedField(_order({'is_explicit': true, 'satoshis': null})), 'satoshis');
-    });
+    test(
+      'for a fixed order without an amount, or an explicit one without sats',
+      () {
+        expect(
+          _droppedField(_order({'has_range': false, 'amount': null})),
+          'amount',
+        );
+        expect(
+          _droppedField(_order({'has_range': false, 'amount': '0'})),
+          'amount',
+        );
+        expect(
+          _droppedField(_order({'is_explicit': true, 'satoshis': null})),
+          'satoshis',
+        );
+      },
+    );
 
     test('for a range whose minimum is above its maximum', () {
       expect(
@@ -454,7 +551,17 @@ void main() {
     });
 
     test('but not for a missing optional field', () {
-      for (final field in ['amount', 'satoshis', 'satoshis_now', 'price', 'latitude', 'longitude', 'maker_nick', 'maker_status', 'maker']) {
+      for (final field in [
+        'amount',
+        'satoshis',
+        'satoshis_now',
+        'price',
+        'latitude',
+        'longitude',
+        'maker_nick',
+        'maker_status',
+        'maker',
+      ]) {
         expect(_droppedField(_without(_order(), field)), isNull, reason: field);
       }
     });
@@ -466,7 +573,10 @@ void main() {
       return _value(await client.fetchLimits(temple, _mainnet));
     }
 
-    Map<String, Object?> entry(String code, [Map<String, Object?> changes = const {}]) => {
+    Map<String, Object?> entry(
+      String code, [
+      Map<String, Object?> changes = const {},
+    ]) => {
       'code': code,
       'price': 66227.95,
       'min_amount': 9.93,
@@ -496,16 +606,25 @@ void main() {
     test('rejects too many entries', () async {
       serve(
         '/api/limits/',
-        Ok(jsonResponse({
-          for (var i = 0; i <= CoordinatorReadBounds.maxLimitEntries; i++) 'k$i': 0,
-        })),
+        Ok(
+          jsonResponse({
+            for (var i = 0; i <= CoordinatorReadBounds.maxLimitEntries; i++)
+              'k$i': 0,
+          }),
+        ),
       );
-      expect(_failure(await client.fetchLimits(temple, _mainnet)), isA<CoordinatorResponseMalformed>());
+      expect(
+        _failure(await client.fetchLimits(temple, _mainnet)),
+        isA<CoordinatorResponseMalformed>(),
+      );
     });
 
     test('rejects a list', () async {
       serve('/api/limits/', Ok(jsonResponse([entry('EUR')])));
-      expect(_failure(await client.fetchLimits(temple, _mainnet)), isA<CoordinatorResponseMalformed>());
+      expect(
+        _failure(await client.fetchLimits(temple, _mainnet)),
+        isA<CoordinatorResponseMalformed>(),
+      );
     });
   });
 }

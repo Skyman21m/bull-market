@@ -12,7 +12,11 @@ void main() {
         'Revolut',
         'Wise',
       ]);
-      expect(_names('On-Chain BTC LBTC WBTC'), ['On-Chain BTC', 'LBTC', 'WBTC']);
+      expect(_names('On-Chain BTC LBTC WBTC'), [
+        'On-Chain BTC',
+        'LBTC',
+        'WBTC',
+      ]);
       expect(_names('HalCash Amazon ES GiftCard Revolut Instant SEPA'), [
         'Amazon ES GiftCard',
         'HalCash',

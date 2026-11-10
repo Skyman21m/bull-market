@@ -10,7 +10,10 @@ T _ok<T>(Result<T, CoordinatorFailure> result) => switch (result) {
 };
 
 /// The book answers recorded with `404 {"not_found": …}`: these coordinators had no public order.
-const _emptyBooks = {('freeport', RobosatsNetwork.mainnet), ('temple', RobosatsNetwork.testnet)};
+const _emptyBooks = {
+  ('freeport', RobosatsNetwork.mainnet),
+  ('temple', RobosatsNetwork.testnet),
+};
 
 void main() {
   late FakeCoordinatorTransport transport;
@@ -34,23 +37,29 @@ void main() {
 
   group('recorded /api/info/', () {
     for (final (alias, network) in recordedCoordinators) {
-      test('of $alias on ${network.name} is read and matches the federation', () async {
-        final coordinator = coordinatorNamed(alias);
-        final info = _ok(await client.fetchInfo(coordinator, network));
-        expect(info.network, network);
-        expect(coordinator.nodesPubkeys(network), contains(info.nodeId));
-        expect(info.makerFee, lessThan(0.01));
-        expect(info.takerFee, lessThan(0.01));
-        expect(
-          info.minOrderSize.compareTo(info.maxOrderSize),
-          lessThanOrEqualTo(0),
-        );
-      });
+      test(
+        'of $alias on ${network.name} is read and matches the federation',
+        () async {
+          final coordinator = coordinatorNamed(alias);
+          final info = _ok(await client.fetchInfo(coordinator, network));
+          expect(info.network, network);
+          expect(coordinator.nodesPubkeys(network), contains(info.nodeId));
+          expect(info.makerFee, lessThan(0.01));
+          expect(info.takerFee, lessThan(0.01));
+          expect(
+            info.minOrderSize.compareTo(info.maxOrderSize),
+            lessThanOrEqualTo(0),
+          );
+        },
+      );
     }
 
     test('keeps the values temple sent on mainnet', () async {
       final info = _ok(
-        await client.fetchInfo(coordinatorNamed('temple'), RobosatsNetwork.mainnet),
+        await client.fetchInfo(
+          coordinatorNamed('temple'),
+          RobosatsNetwork.mainnet,
+        ),
       );
       expect(info.version, const CoordinatorVersion(0, 8, 8));
       expect(info.numPublicBuyOrders, 19);
@@ -73,20 +82,29 @@ void main() {
       );
     });
 
-    test('reads the older testnet coordinator, which lacks recent fields', () async {
-      final info = _ok(
-        await client.fetchInfo(coordinatorNamed('temple'), RobosatsNetwork.testnet),
-      );
-      expect(info.version, const CoordinatorVersion(0, 8, 6));
-      expect(info.devfund, isNull);
-      expect(info.blossomEnabled, isNull);
-      expect(info.federationHash, isNull);
-      expect(info.lastDayVolume, 0);
-    });
+    test(
+      'reads the older testnet coordinator, which lacks recent fields',
+      () async {
+        final info = _ok(
+          await client.fetchInfo(
+            coordinatorNamed('temple'),
+            RobosatsNetwork.testnet,
+          ),
+        );
+        expect(info.version, const CoordinatorVersion(0, 8, 6));
+        expect(info.devfund, isNull);
+        expect(info.blossomEnabled, isNull);
+        expect(info.federationHash, isNull);
+        expect(info.lastDayVolume, 0);
+      },
+    );
 
     test('keeps the notice of lake, without printing it', () async {
       final info = _ok(
-        await client.fetchInfo(coordinatorNamed('lake'), RobosatsNetwork.mainnet),
+        await client.fetchInfo(
+          coordinatorNamed('lake'),
+          RobosatsNetwork.mainnet,
+        ),
       );
       expect(info.noticeMessage, contains('PIX'));
       expect('$info', isNot(contains('PIX')));
@@ -102,9 +120,7 @@ void main() {
         RobosatsNetwork.mainnet,
         '/api/info/',
         Ok(
-          rawResponse(
-            recordedBody('temple', RobosatsNetwork.testnet, 'info'),
-          ),
+          rawResponse(recordedBody('temple', RobosatsNetwork.testnet, 'info')),
         ),
       );
       expect(
@@ -117,22 +133,32 @@ void main() {
       );
     });
 
-    test('fails the identity check with the node of another coordinator', () async {
-      transport.answer(
-        coordinatorNamed('lake'),
-        RobosatsNetwork.mainnet,
-        '/api/info/',
-        Ok(rawResponse(recordedBody('temple', RobosatsNetwork.mainnet, 'info'))),
-      );
-      expect(
-        (await client.fetchInfo(coordinatorNamed('lake'), RobosatsNetwork.mainnet)),
-        isA<Err<CoordinatorInfo, CoordinatorFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<CoordinatorNodeIdMismatch>(),
-        ),
-      );
-    });
+    test(
+      'fails the identity check with the node of another coordinator',
+      () async {
+        transport.answer(
+          coordinatorNamed('lake'),
+          RobosatsNetwork.mainnet,
+          '/api/info/',
+          Ok(
+            rawResponse(
+              recordedBody('temple', RobosatsNetwork.mainnet, 'info'),
+            ),
+          ),
+        );
+        expect(
+          (await client.fetchInfo(
+            coordinatorNamed('lake'),
+            RobosatsNetwork.mainnet,
+          )),
+          isA<Err<CoordinatorInfo, CoordinatorFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<CoordinatorNodeIdMismatch>(),
+          ),
+        );
+      },
+    );
   });
 
   group('recorded /api/book/', () {
@@ -173,7 +199,10 @@ void main() {
 
     test('reads the first order of temple field by field', () async {
       final book = _ok(
-        await client.fetchBook(coordinatorNamed('temple'), RobosatsNetwork.mainnet),
+        await client.fetchBook(
+          coordinatorNamed('temple'),
+          RobosatsNetwork.mainnet,
+        ),
       );
       final order = book.orders.first;
       expect(order.id, 99598);
@@ -185,7 +214,9 @@ void main() {
       expect(order.amount.min.value, 0.0021);
       expect(order.amount.max.value, 0.021);
       expect(order.paymentMethods.text, 'On-Chain BTC');
-      expect(order.paymentMethods.recognized.map((m) => m.name), ['On-Chain BTC']);
+      expect(order.paymentMethods.recognized.map((m) => m.name), [
+        'On-Chain BTC',
+      ]);
       expect(order.paymentMethods.hasOtherText, isFalse);
       expect(order.premium.percent, -0.05);
       expect(order.explicitSatoshis, isNull);
@@ -200,38 +231,61 @@ void main() {
       );
       expect(order.maker.nickname, 'AbundantX516');
       expect(order.makerActivity, MakerActivity.active);
-      expect('$order', 'PublicOrder(temple#99598, sell, BTC, RangeOrderAmount(0.0021-0.021), Premium(-0.05%))');
+      expect(
+        '$order',
+        'PublicOrder(temple#99598, sell, BTC, RangeOrderAmount(0.0021-0.021), Premium(-0.05%))',
+      );
     });
 
     test('reads a fixed amount, a location and every activity label', () async {
       final orders = [
         for (final (alias, network) in recordedCoordinators)
-          ..._ok(await client.fetchBook(coordinatorNamed(alias), network)).orders,
+          ..._ok(
+            await client.fetchBook(coordinatorNamed(alias), network),
+          ).orders,
       ];
-      expect(orders.whereType<PublicOrder>().map((o) => o.amount).whereType<FixedOrderAmount>(), hasLength(20));
+      expect(
+        orders
+            .whereType<PublicOrder>()
+            .map((o) => o.amount)
+            .whereType<FixedOrderAmount>(),
+        hasLength(20),
+      );
       expect(orders.where((o) => o.location != null), hasLength(1));
-      expect(orders.map((o) => o.makerActivity).toSet(), MakerActivity.values.toSet());
+      expect(
+        orders.map((o) => o.makerActivity).toSet(),
+        MakerActivity.values.toSet(),
+      );
       expect(orders.map((o) => o.type).toSet(), OrderType.values.toSet());
     });
 
-    test('sends the filters as query parameters, and none by default', () async {
-      final temple = coordinatorNamed('temple');
-      await client.fetchBook(temple, RobosatsNetwork.mainnet);
-      await client.fetchBook(
-        temple,
-        RobosatsNetwork.mainnet,
-        currency: RobosatsCurrency.fromCode('EUR'),
-        type: OrderType.sell,
-      );
-      expect(transport.requests[0].url.toString(), '${temple.mainnet.onion}/api/book/');
-      expect(
-        transport.requests[1].url.toString(),
-        '${temple.mainnet.onion}/api/book/?currency=2&type=1',
-      );
-      expect(transport.requests[1].method, CoordinatorHttpMethod.get);
-      expect(transport.requests[1].maxResponseBytes, CoordinatorReadBounds.bookBytes);
-      expect(transport.requests[1].headers, {'Accept': 'application/json'});
-    });
+    test(
+      'sends the filters as query parameters, and none by default',
+      () async {
+        final temple = coordinatorNamed('temple');
+        await client.fetchBook(temple, RobosatsNetwork.mainnet);
+        await client.fetchBook(
+          temple,
+          RobosatsNetwork.mainnet,
+          currency: RobosatsCurrency.fromCode('EUR'),
+          type: OrderType.sell,
+        );
+        expect(
+          transport.requests[0].url.toString(),
+          '${temple.mainnet.onion}/api/book/',
+        );
+        expect(
+          transport.requests[1].url.toString(),
+          '${temple.mainnet.onion}/api/book/?currency=2&type=1',
+        );
+        expect(transport.requests[1].method, CoordinatorHttpMethod.get);
+        expect(
+          transport.requests[1].maxResponseBytes,
+          CoordinatorReadBounds.bookBytes,
+        );
+        expect(transport.requests[1].headers, {'Accept': 'application/json'});
+      },
+    );
   });
 
   group('recorded /api/limits/', () {
@@ -247,7 +301,10 @@ void main() {
 
     test('keeps the values temple sent on mainnet', () async {
       final limits = _ok(
-        await client.fetchLimits(coordinatorNamed('temple'), RobosatsNetwork.mainnet),
+        await client.fetchLimits(
+          coordinatorNamed('temple'),
+          RobosatsNetwork.mainnet,
+        ),
       );
       final usd = limits[RobosatsCurrency.fromCode('USD') ?? fail('USD')];
       expect(usd?.price, 73956.8);

@@ -114,15 +114,14 @@ void main() {
         expect(coordinator.nostrHexPubkey, matches(RegExp(r'^[0-9a-f]{64}$')));
         expect(coordinator.establishedOn.isUtc, isTrue);
       }
-      expect(
-        coordinatorEstablished('temple'),
-        DateTime.utc(2023, 12, 2),
-      );
+      expect(coordinatorEstablished('temple'), DateTime.utc(2023, 12, 2));
     });
 
     test('lists the testnet coordinators', () {
       expect(
-        Federation.robosats.on(RobosatsNetwork.testnet).map((c) => c.shortAlias),
+        Federation.robosats
+            .on(RobosatsNetwork.testnet)
+            .map((c) => c.shortAlias),
         ['temple', 'lake'],
       );
       expect(Federation.robosats.on(RobosatsNetwork.mainnet), hasLength(5));
@@ -182,10 +181,7 @@ void main() {
         describe(robosatsFiatMethods),
         parse(source.substring(0, swapStart)),
       );
-      expect(
-        describe(robosatsSwapMethods),
-        parse(source.substring(swapStart)),
-      );
+      expect(describe(robosatsSwapMethods), parse(source.substring(swapStart)));
       expect(robosatsFiatMethods.length + robosatsSwapMethods.length, 101);
       expect(
         robosatsFiatMethods.where((m) => m.reversible).map((m) => m.name),
