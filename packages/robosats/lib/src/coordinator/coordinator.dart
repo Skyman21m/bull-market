@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/src/coordinator/coordinator_info.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/robosats_failure.dart';
 
@@ -196,22 +197,21 @@ final class Coordinator {
   /// Whether the coordinator has an onion address on [network], the only kind of address this package sends requests to.
   bool isOn(RobosatsNetwork network) => origins(network).onion != null;
 
-  /// Checks the `network` and `node_id` a coordinator announced against this federation entry.
+  /// Checks the `network` and `node_id` a coordinator announced on `/api/info/` against this federation entry, and returns [info] when they match.
   ///
   /// The onion address already authenticates the server: this check catches a coordinator that runs another Lightning node, or the instance of the other network, than the federation list says.
-  /// Fails with [CoordinatorNetworkMismatch] when [announcedNetwork] is not [expected], or is `null` for a value this package does not know, and with [CoordinatorNodeIdMismatch] when [announcedNodeId] is not one of [nodesPubkeys] on [expected].
-  Result<void, CoordinatorIdentityFailure> verifyIdentity({
-    required RobosatsNetwork expected,
-    required RobosatsNetwork? announcedNetwork,
-    required String announcedNodeId,
-  }) {
-    if (announcedNetwork != expected) {
+  /// Fails with [CoordinatorNetworkMismatch] when the announced network is not [network], or one this package does not know, and with [CoordinatorNodeIdMismatch] when the node is not one of [nodesPubkeys] on [network].
+  Result<CoordinatorInfo, CoordinatorIdentityFailure> verifyIdentity(
+    CoordinatorInfo info,
+    RobosatsNetwork network,
+  ) {
+    if (info.network != network) {
       return const Err(CoordinatorNetworkMismatch());
     }
-    if (!nodesPubkeys(expected).contains(announcedNodeId)) {
+    if (!nodesPubkeys(network).contains(info.nodeId)) {
       return const Err(CoordinatorNodeIdMismatch());
     }
-    return const Ok(null);
+    return Ok(info);
   }
 
   /// Coordinators are identified by their short alias.
