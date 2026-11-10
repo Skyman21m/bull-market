@@ -272,6 +272,30 @@ void main() {
       }
     });
 
+    test(
+      'forbid a message before the subkey exists, whatever its binding says',
+      () {
+        final peer = CraftedKey(subkeyCreatedAt: _keyDate + 1000);
+        expectOk(encryptTo(peer, _keyDate + 1000));
+        expect(
+          expectErr(encryptTo(peer, _keyDate + 999)),
+          isA<PgpKeyOutOfDate>(),
+        );
+      },
+    );
+
+    test('forbid a message when a self-signature states no date', () {
+      for (final peer in [
+        CraftedKey(certificationHashed: subpacket(27, [0x03], critical: true)),
+        CraftedKey(bindingHashed: subpacket(27, [0x0c], critical: true)),
+      ]) {
+        expect(
+          expectErr(encryptTo(peer, _keyDate + 1000)),
+          isA<PgpKeyOutOfDate>(),
+        );
+      }
+    });
+
     test('forbid a message when the clock is behind the key of the robot', () {
       expect(
         expectErr(encryptTo(CraftedKey(createdAt: 1000), _keyDate - 1)),

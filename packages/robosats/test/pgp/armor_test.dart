@@ -122,6 +122,25 @@ void main() {
       expect(parts?.signature, [1, 2, 3]);
     });
 
+    test('refuses any header but Hash, even next to one', () {
+      final signed = cleartextEncode(
+        text: 'text',
+        hashName: 'SHA512',
+        signature: [1],
+      );
+      for (final headers in [
+        'Hash: SHA512\nComment: pay ATTACKER',
+        'NotDashEscaped: x\nHash: SHA512',
+        'Charset: UTF-8',
+      ]) {
+        expect(
+          cleartextDecode(signed.replaceFirst('Hash: SHA512', headers)),
+          isNull,
+          reason: headers,
+        );
+      }
+    });
+
     test('reads several hash names and none', () {
       final signed = cleartextEncode(
         text: 'text',

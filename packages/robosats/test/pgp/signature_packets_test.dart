@@ -241,6 +241,55 @@ void main() {
       );
     });
 
+    test(
+      'must not be before the key even when its self-certification is older',
+      () {
+        // A certification dated before the key it certifies: the date of the key is what counts.
+        final certifiedEarlier = CraftedKey(
+          certificationHashed: creationTime(_keyDate - 1000),
+        );
+        String signedAt(int seconds) => craftCleartext(
+          'text',
+          craftSignature(
+            seed: certifiedEarlier.seed,
+            type: SignatureType.text,
+            data: canonicalText('text'),
+            hashed: creationTime(seconds),
+          ),
+        );
+        final key = certifiedEarlier.publicKey;
+        expectOk(key.verifyCleartext(signedAt(_keyDate), now: _now));
+        expect(
+          expectErr(key.verifyCleartext(signedAt(_keyDate - 500), now: _now)),
+          isA<PgpSignatureInvalid>(),
+        );
+      },
+    );
+
+    test(
+      'are never accepted from a key whose self-certification states no date',
+      () {
+        final undated = CraftedKey(certificationHashed: const []);
+        expect(
+          expectErr(
+            undated.publicKey.verifyCleartext(
+              craftCleartext(
+                'text',
+                craftSignature(
+                  seed: undated.seed,
+                  type: SignatureType.text,
+                  data: canonicalText('text'),
+                  hashed: creationTime(_keyDate),
+                ),
+              ),
+              now: _now,
+            ),
+          ),
+          isA<PgpSignatureInvalid>(),
+        );
+      },
+    );
+
     test('must not be before the self-certification of the key', () {
       final certifiedLater = CraftedKey(
         certificationHashed: creationTime(_keyDate + 500),

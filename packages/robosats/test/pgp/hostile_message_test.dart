@@ -274,6 +274,13 @@ void main() {
     });
 
     test('is refused without integrity protection', () {
+      // The data packet itself under another tag: only tag 18 promises a modification detection code.
+      for (final tag in [9, 20, 11]) {
+        _expectRefused(
+          frame([packets[0], packets[1], (tag: tag, body: packets[2].body)]),
+          reason: 'tag $tag',
+        );
+      }
       // The same bytes relabelled as the old encrypted data packet, tag 9, which carries no modification detection code.
       _expectRefused(
         frame([

@@ -117,10 +117,11 @@ final class CraftedKey {
     this.binding,
   );
 
-  /// [kdf] is the KDF field with its length byte, [subkeyPoint] replaces the point of [label]'s scalar, and [boundSubkeyBody] makes the binding cover another subkey than the one in the key.
+  /// [subkeyCreatedAt] dates the subkey apart from the primary key and from both signatures, [kdf] is the KDF field with its length byte, [subkeyPoint] replaces the point of [label]'s scalar, and [boundSubkeyBody] makes the binding cover another subkey than the one in the key.
   factory CraftedKey({
     String label = 'crafted',
     int createdAt = defaultCreatedAt,
+    int? subkeyCreatedAt,
     String userId = 'RoboSats ID crafted',
     List<int> primaryOid = ed25519Oid,
     List<int> subkeyOid = curve25519Oid,
@@ -146,7 +147,7 @@ final class CraftedKey {
     ]);
     final subkeyBody = Uint8List.fromList([
       4,
-      ...u32Bytes(createdAt),
+      ...u32Bytes(subkeyCreatedAt ?? createdAt),
       18,
       subkeyOid.length,
       ...subkeyOid,
