@@ -42,7 +42,7 @@ const coordinatorConnectRetries = 2;
 /// Other methods are never retried, since the coordinator may have processed them.
 ///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
-/// The header is the same for every Troc user, so it does not single one out among them, and Troc does not pretend to be the official client.
+/// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
 /// `Accept-Encoding` is `identity` for every request, where `dart:io` would ask for `gzip`, and a body is never decompressed: the size cap counts the bytes that arrive, so a small compressed body cannot inflate in memory.
 final class TorCoordinatorTransport
     implements CoordinatorTransport, CoordinatorSessionsPort {
