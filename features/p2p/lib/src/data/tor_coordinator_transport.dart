@@ -38,7 +38,7 @@ const coordinatorConnectRetries = 2;
 /// - the body is read as a stream and the request is cancelled as soon as it exceeds [CoordinatorRequest.maxResponseBytes], or at once when the announced `Content-Length` does;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
-/// - only `http` URLs to a `.onion` host are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened.
+/// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened.
 ///
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
 /// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
@@ -48,7 +48,7 @@ const coordinatorConnectRetries = 2;
 /// A connection failure is a SOCKS or socket error before any response header, or a connection closed before the headers, which is also what a dead pooled connection gives: the session is replaced, and a `GET` is retried at most [coordinatorConnectRetries] times within the same deadline.
 /// Other methods are never retried, since the coordinator may have processed them.
 /// An answer that is not valid HTTP (garbage, an invalid or duplicated `Content-Length`, a forbidden character or an endless header section) means the coordinator answered: it fails with [CoordinatorTransportFailed], without retry.
-/// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress.
+/// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress, once the other requests of that session end.
 ///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
@@ -149,7 +149,11 @@ final class TorCoordinatorTransport
   ) async {
     final url = request.url;
     // A `Coordinator` can be built with any address, so the transport checks the URL itself.
-    if (!url.isScheme('http') || url.host.isEmpty || !_acceptsHost(url.host)) {
+    // User information in the URL would be sent as an `Authorization` header.
+    if (!url.isScheme('http') ||
+        url.host.isEmpty ||
+        url.userInfo.isNotEmpty ||
+        !_acceptsHost(url.host)) {
       return const Err(CoordinatorTransportFailed());
     }
     final origin = url.origin;
