@@ -133,22 +133,24 @@ final class RangeOrderAmount extends OrderAmount {
 }
 
 /// The premium of an order over the market price of its coordinator, in percent: negative for a discount.
+///
+/// A maker who prices against the market chooses it between [minPercent] and [maxMarketPercent]; for an order priced in sats the coordinator computes it from the price the maker set, with no upper bound (`api/logics.py:277-295`), so it can be far larger.
 @immutable
 final class Premium implements Comparable<Premium> {
-  /// The bounds a coordinator accepts for an order priced relative to the market (`api/models/order.py`, `premium`).
+  /// The lowest premium: a price of zero.
   static const double minPercent = -100;
-  static const double maxPercent = 999;
 
-  /// Finite, between [minPercent] and [maxPercent].
+  /// The highest premium a maker can choose for an order priced against the market (`api/models/order.py`, `premium`).
+  static const double maxMarketPercent = 999;
+
+  /// Finite, at least [minPercent].
   final double percent;
 
   const Premium._(this.percent);
 
-  /// The premium, or `null` outside [minPercent] to [maxPercent].
+  /// The premium, or `null` when it is not finite or below [minPercent].
   static Premium? tryCreate(double percent) =>
-      percent.isFinite && percent >= minPercent && percent <= maxPercent
-      ? Premium._(percent)
-      : null;
+      percent.isFinite && percent >= minPercent ? Premium._(percent) : null;
 
   @override
   int compareTo(Premium other) => percent.compareTo(other.percent);

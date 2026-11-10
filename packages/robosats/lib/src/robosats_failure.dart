@@ -192,11 +192,6 @@ final class CoordinatorResponseMalformed extends CoordinatorFailure {
   const CoordinatorResponseMalformed(this.field);
 }
 
-/// The order book lists more orders than any coordinator publishes: see `CoordinatorReadBounds.maxOrders`.
-final class CoordinatorTooManyOrders extends CoordinatorFailure {
-  const CoordinatorTooManyOrders();
-}
-
 /// The coordinator answered, but not as the coordinator of the federation list: a security warning for the user.
 sealed class CoordinatorIdentityFailure extends CoordinatorFailure {
   const CoordinatorIdentityFailure();

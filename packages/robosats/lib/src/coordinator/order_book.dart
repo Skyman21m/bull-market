@@ -17,19 +17,27 @@ final class OrderBook {
   /// Why each left-out element was dropped, in the order of the book.
   final List<DroppedOrderReason> dropped;
 
-  const OrderBook._(this.coordinator, this.orders, this.dropped);
+  /// Whether the book listed more than `CoordinatorReadBounds.maxOrders` elements, of which only the first were read.
+  final bool truncated;
+
+  const OrderBook._(
+    this.coordinator,
+    this.orders,
+    this.dropped,
+    this.truncated,
+  );
 
   /// The book of a coordinator with no public order: it answers `404` with `{"not_found": …}` (`api/views.py:797-801`).
   @internal
   factory OrderBook.empty(Coordinator coordinator) =>
-      OrderBook._(coordinator, const [], const []);
+      OrderBook._(coordinator, const [], const [], false);
 
   /// How many listed orders were left out.
   int get droppedOrders => dropped.length;
 
   /// Reads the decoded body of a `200` answer: a JSON array of orders.
   ///
-  /// A body that is not an array rejects the response, and so does one with more than `CoordinatorReadBounds.maxOrders` elements.
+  /// A body that is not an array rejects the response; of a longer array, only the first `CoordinatorReadBounds.maxOrders` elements are read and [truncated] is set, so a coordinator with a larger `MAX_PUBLIC_ORDERS` keeps a book.
   /// An invalid order is dropped alone, so a coordinator cannot blank its book, let alone the others, with one bad order; orders that share an id are all dropped, since none of them can be told apart.
   @internal
   static Result<OrderBook, CoordinatorFailure> parse(
@@ -40,12 +48,10 @@ final class OrderBook {
     if (body is! List<Object?>) {
       return const Err(CoordinatorResponseMalformed('book'));
     }
-    if (body.length > CoordinatorReadBounds.maxOrders) {
-      return const Err(CoordinatorTooManyOrders());
-    }
+    final truncated = body.length > CoordinatorReadBounds.maxOrders;
     final parsed = <PublicOrder>[];
     final dropped = <DroppedOrderReason>[];
-    for (final element in body) {
+    for (final element in body.take(CoordinatorReadBounds.maxOrders)) {
       switch (PublicOrder.parse(element, coordinator, now)) {
         case (order: final PublicOrder order, dropped: _):
           parsed.add(order);
@@ -74,11 +80,12 @@ final class OrderBook {
         coordinator,
         List.unmodifiable(orders),
         List.unmodifiable(dropped),
+        truncated,
       ),
     );
   }
 
   @override
   String toString() =>
-      'OrderBook(${coordinator.shortAlias}, ${orders.length} orders, $droppedOrders dropped)';
+      'OrderBook(${coordinator.shortAlias}, ${orders.length} orders, $droppedOrders dropped${truncated ? ', truncated' : ''})';
 }

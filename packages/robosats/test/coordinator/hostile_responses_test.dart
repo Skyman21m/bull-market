@@ -420,22 +420,20 @@ void main() {
       }
     });
 
-    test(
-      'rejects a book with too many orders, and accepts the bound',
-      () async {
-        final many = [
-          for (var i = 1; i <= CoordinatorReadBounds.maxOrders + 1; i++)
-            _order({'id': i}),
-        ];
-        serve('/api/book/', Ok(jsonResponse(many)));
-        expect(
-          _failure(await client.fetchBook(temple, _mainnet)),
-          isA<CoordinatorTooManyOrders>(),
-        );
-        final book = await bookOf(many.sublist(1));
-        expect(book.orders, hasLength(CoordinatorReadBounds.maxOrders));
-      },
-    );
+    test('reads the first orders of a longer book and says so', () async {
+      final many = [
+        for (var i = 1; i <= CoordinatorReadBounds.maxOrders + 1; i++)
+          _order({'id': i}),
+      ];
+      final truncated = await bookOf(many);
+      expect(truncated.orders, hasLength(CoordinatorReadBounds.maxOrders));
+      expect(truncated.orders.last.id, CoordinatorReadBounds.maxOrders);
+      expect(truncated.truncated, isTrue);
+      expect(truncated.dropped, isEmpty);
+      final full = await bookOf(many.sublist(1));
+      expect(full.orders, hasLength(CoordinatorReadBounds.maxOrders));
+      expect(full.truncated, isFalse);
+    });
 
     test('drops a bad order and keeps the others', () async {
       final book = await bookOf([
@@ -484,7 +482,10 @@ void main() {
           'maker_nick': null,
         }),
       ]);
-      expect(book.droppedOrders, 1, reason: 'a premium above 999 % is dropped');
+      // The coordinator computes the premium of an order priced in sats, with no upper bound.
+      expect(book.dropped, isEmpty);
+      expect(book.orders.single.premium.percent, 1500.5);
+      expect(book.orders.single.makerActivity, isNull);
       final kept = await bookOf([
         _order({
           'type': 0,
@@ -597,6 +598,11 @@ void main() {
       for (final value in ['SomebodyElse1', 'abundantx516', 'ABUNDANTX516', 7])
         ({'maker_nick': value}, DroppedOrderReason.makerNick),
       ({'maker_status': 5}, DroppedOrderReason.makerStatus),
+      ({'premium': '1000'}, DroppedOrderReason.premium),
+      (
+        {'is_explicit': true, 'satoshis': 250000, 'premium': '-100.5'},
+        DroppedOrderReason.premium,
+      ),
       ({'has_range': false, 'amount': null}, DroppedOrderReason.amount),
       ({'has_range': false, 'amount': '0'}, DroppedOrderReason.amount),
       ({'is_explicit': true, 'satoshis': null}, DroppedOrderReason.satoshis),
@@ -635,6 +641,8 @@ void main() {
         {'premium': '-100'},
         {'premium': '999'},
         {'min_amount': '0.021'},
+        {'is_explicit': true, 'satoshis': 250000, 'premium': '123456.78'},
+        {'maker_status': 'x' * 65},
         {'created_at': '2026-11-09T17:07:33.375335+01:00'},
         {'expires_at': '2026-11-11T16:07:33.375335Z'},
         // 67 ASCII characters and 2 emoji: 69 code points but 71 UTF-16 units.

@@ -106,7 +106,7 @@ final class PublicOrder {
     final premium = fields.requiredDecimal(
       'premium',
       min: Premium.minPercent,
-      max: Premium.maxPercent,
+      max: double.maxFinite,
     );
     final satoshis = fields.optionalInt(
       'satoshis',
@@ -133,7 +133,11 @@ final class PublicOrder {
     final longitude = fields.optionalDecimal('longitude', min: -180, max: 180);
     final makerHashId = fields.requiredString('maker_hash_id', maxLength: 64);
     final makerNick = fields.optionalString('maker_nick', maxLength: 64);
-    final makerStatus = fields.optionalString('maker_status', maxLength: 64);
+    // Any label is read, so that an unknown one, however long, becomes `null` rather than dropping the order.
+    final makerStatus = fields.optionalString(
+      'maker_status',
+      maxLength: CoordinatorReadBounds.bookBytes,
+    );
     if (fields.rejected case final field?) {
       return (order: null, dropped: DroppedOrderReason.forField(field));
     }
@@ -198,7 +202,10 @@ final class PublicOrder {
 
     final premiumValue = Premium.tryCreate(premium);
     final bondValue = BondSize.tryCreate(bond);
-    if (premiumValue == null) return reject(DroppedOrderReason.premium);
+    if (premiumValue == null ||
+        (!isExplicit && premium > Premium.maxMarketPercent)) {
+      return reject(DroppedOrderReason.premium);
+    }
     if (bondValue == null) return reject(DroppedOrderReason.bondSize);
 
     return (
