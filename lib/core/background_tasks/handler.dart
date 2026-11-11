@@ -77,6 +77,8 @@ Future<bool> tasksHandler(String task) async {
       // No order-swap polling either: the watcher is lifecycle-gated to the
       // foreground app, and this isolate runs on a ~30s iOS background budget.
       startOrderSwapWatcher: false,
+      // No Garage Key handle: the vault's write lock is per isolate, so Garage Keys are created and imported in the foreground only.
+      withGarageKeys: false,
     );
 
     final syncWalletUsecase = locator<SyncWalletUsecase>();

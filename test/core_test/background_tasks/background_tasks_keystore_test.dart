@@ -46,4 +46,92 @@ void main() {
       }
     });
   });
+
+  // `AppLocator.setup` cannot run in a unit test, so these read the calls in the source; `test/locator_test.dart` runs what each value of the flag registers.
+  // They do not prove that the handler reaches its call at run time, nor see a Garage Key handle obtained by any other path: the custody gate refuses `Secrets.garageKeys` outside `AppLocator`.
+  group('only the foreground composition hands P2P the Garage Key handle', () {
+    test('the app is composed in two places', () {
+      final callers = [
+        for (final file in Directory('lib').listSync(recursive: true))
+          if (file is File &&
+              file.path.endsWith('.dart') &&
+              _calls(file.readAsStringSync(), 'AppLocator.setup').isNotEmpty)
+            file.path,
+      ];
+
+      expect(
+        callers,
+        unorderedEquals([
+          'lib/init.dart',
+          'lib/core/background_tasks/handler.dart',
+        ]),
+      );
+    });
+
+    for (final (path, flag) in [
+      ('lib/core/background_tasks/handler.dart', 'false'),
+      ('lib/init.dart', 'true'),
+    ]) {
+      test('$path passes withGarageKeys: $flag, as a literal', () {
+        final calls = _calls(File(path).readAsStringSync(), 'AppLocator.setup');
+
+        expect(calls, hasLength(1));
+        expect(
+          calls.single.where((argument) => argument.contains('GarageKeys')),
+          ['withGarageKeys: $flag'],
+        );
+      });
+    }
+
+    test('AppLocator.setup passes its own flag to the P2P setup', () {
+      final source = File('lib/locator.dart').readAsStringSync();
+
+      // Its declaration and its one call.
+      expect(
+        _calls(source, 'setupP2p'),
+        unorderedEquals([
+          ['GetIt locator', '{required bool withGarageKeys}'],
+          ['locator', 'withGarageKeys: withGarageKeys'],
+        ]),
+      );
+      expect('.garageKeys('.allMatches(source), hasLength(1));
+    });
+  });
+}
+
+/// The arguments of every call of [callee] in [source], each with its whitespace collapsed, after the comments that fill a line are removed.
+///
+/// A declaration of [callee] reads as a call whose arguments are its parameters.
+List<List<String>> _calls(String source, String callee) {
+  final code = source
+      .split('\n')
+      .where((line) => !line.trimLeft().startsWith('//'))
+      .join('\n');
+  final calls = <List<String>>[];
+  for (final match in RegExp('${RegExp.escape(callee)}\\(').allMatches(code)) {
+    final arguments = <String>[];
+    var depth = 0;
+    var start = match.end;
+    for (var i = match.end; i < code.length; i++) {
+      final char = code[i];
+      if ('([{'.contains(char)) depth++;
+      if (')]}'.contains(char)) {
+        if (depth == 0) {
+          arguments.add(code.substring(start, i));
+          break;
+        }
+        depth--;
+      }
+      if (char == ',' && depth == 0) {
+        arguments.add(code.substring(start, i));
+        start = i + 1;
+      }
+    }
+    calls.add([
+      for (final argument in arguments)
+        if (argument.trim().isNotEmpty)
+          argument.trim().replaceAll(RegExp(r'\s+'), ' '),
+    ]);
+  }
+  return calls;
 }

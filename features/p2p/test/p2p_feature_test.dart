@@ -75,7 +75,8 @@ void main() {
     locator
       ..registerSingleton<Tor>(_FakeTor(tor))
       ..registerSingleton<TorHttpClientFactory>(const TorHttpClientFactory());
-    const P2pFeature().setup(locator);
+    // Without the Garage Key handle, as the WorkManager isolate composes it: `garage_key_setup_test.dart` covers both compositions.
+    const P2pFeature().setup(locator, garageKeys: null);
   });
 
   tearDown(() => locator.reset());

@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_tor_state.dart';
+import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
@@ -51,6 +52,11 @@ void setUpP2pForTesting(
     clock: clock,
   );
 }
+
+/// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
+@visibleForTesting
+bool hasGarageKeysForTesting(GetIt locator) =>
+    locator.isRegistered<GarageKeyRepository>();
 
 /// The transport of the app, over the embedded Tor, once the feature is registered with `P2pFeature.setup`.
 ///
