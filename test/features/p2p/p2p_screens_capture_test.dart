@@ -194,6 +194,28 @@ void main() {
           await settle();
           await tester.pump(const Duration(seconds: 1));
           await capture('paiements-reversibles');
+          await tester.tap(find.text(l10n.p2pCommonAcknowledged));
+          await settle();
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // The dialog of the coordinator that hosts the order, then its summary and its statistics.
+        await tester.tap(find.text(l10n.p2pOrderHost));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('coordinateur');
+        for (final (section, name) in [
+          (l10n.p2pCoordinatorPolicies, 'coordinateur-politiques'),
+          (l10n.p2pCoordinatorSummary, 'coordinateur-resume'),
+          (l10n.p2pCoordinatorStatsForNerds, 'coordinateur-stats'),
+        ]) {
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await tester.tap(find.text(section));
+          await settle();
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await capture(name);
         }
       },
     );
