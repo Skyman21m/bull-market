@@ -14,14 +14,8 @@ enum DepthAxis {
   price,
 }
 
-/// Which of the two middle votes the coordinators' vote keeps when they are even in number.
-enum MiddleVote {
-  /// The one nearer zero, the lower when both are as near: for the centre of the chart, since a premium near zero is the market's own, and the official client's centre before any coordinator answers is zero; for prices, which are positive, it is the lower.
-  nearestZero,
-
-  /// The lower: for the market price.
-  lower,
-}
+/// The middle of the coordinators' vote: the middle vote, as both `lower` and `higher`, when they are odd in number, else the two middle votes.
+typedef MiddleVotes = ({double lower, double higher});
 
 /// A point of a depth line: [btc] is what the orders up to [x] add up to.
 ///
@@ -146,7 +140,7 @@ final class DepthLines {
 ///
 /// It draws every order received of the chosen currency and host, swaps included when every currency is shown; neither the side nor the payment method of the filter applies.
 /// Each line adds up, order after order along the axis, the bitcoin each order trades at its largest amount.
-/// The window it opens on is centred on the orders it draws, one vote per coordinator: the middle one of the coordinators' median premiums or prices (of the two middle ones, the one nearer zero), cut to a whole number toward zero.
+/// The window it opens on is centred on the orders it draws, one vote per coordinator: the middle one of the coordinators' median premiums or prices, cut to a whole number toward zero; of two middle premiums, their mean when they are within the width of the window, else the one nearer zero, and of two middle prices, the lower.
 /// The official client centres its premium axis on the 24-hour non-KYC premium of the coordinators (`/api/info/`), which the book does not read, and its fallback is the median of every order received; one vote per coordinator, after the filter, keeps a coordinator that floods the book from moving the window away from the others, and choosing a host brings the chart back to that host's orders.
 @immutable
 final class DepthChart {
@@ -201,12 +195,14 @@ final class DepthChart {
           if (place(order) case final x?)
             _PlacedOrder(order, x, btcOf(order), index),
     ]..sort();
-    final center = wholeTowardZero(
-      medianOfCoordinators([
-            for (final order in placed) (order.order.coordinator, order.x),
-          ], middle: MiddleVote.nearestZero) ??
-          0,
-    );
+    final votes = middleVotes([
+      for (final order in placed) (order.order.coordinator, order.x),
+    ]);
+    final center = switch (axis) {
+      DepthAxis.premium => premiumCenter(votes),
+      // The window of the price axis runs from its centre to the highest price drawn, so the lower vote keeps both in it; prices being positive, it is also the one nearer zero.
+      DepthAxis.price => wholeTowardZero(votes?.lower ?? 0),
+    };
     final window = switch (axis) {
       DepthAxis.premium => DepthWindow(
         center: center,
@@ -324,14 +320,10 @@ final class DepthChart {
     ];
   }
 
-  /// The vote of the coordinators: the median of the values of each coordinator, then the middle one of those, one vote per coordinator however many orders it sends; `null` when there is no value.
+  /// The vote of the coordinators: each votes with the median of its values, one vote however many orders it sends, and the middle of the votes is kept; `null` when there is no value.
   ///
-  /// With an even number of votes, it keeps one of the two middle votes as [middle] says, never their mean, which could fall between two coordinators where neither has an order.
-  /// It is a prior, not a proof: one coordinator against one cannot be decided by counting, and a majority of coordinators that flood the book wins; choosing a host is the recourse.
-  static double? medianOfCoordinators(
-    Iterable<(Coordinator, double)> values, {
-    required MiddleVote middle,
-  }) {
+  /// It is a prior, not a proof: a majority of coordinators that flood the book wins, and one coordinator against one cannot be decided by counting; choosing a host is the recourse.
+  static MiddleVotes? middleVotes(Iterable<(Coordinator, double)> values) {
     final byCoordinator = <Coordinator, List<double>>{};
     for (final (coordinator, value) in values) {
       (byCoordinator[coordinator] ??= []).add(value);
@@ -340,12 +332,22 @@ final class DepthChart {
       ..sort();
     if (votes.isEmpty) return null;
     final half = votes.length ~/ 2;
-    if (votes.length.isOdd) return votes[half];
-    final (low, high) = (votes[half - 1], votes[half]);
-    return switch (middle) {
-      MiddleVote.lower => low,
-      MiddleVote.nearestZero => high.abs() < low.abs() ? high : low,
-    };
+    if (votes.length.isOdd) return (lower: votes[half], higher: votes[half]);
+    return (lower: votes[half - 1], higher: votes[half]);
+  }
+
+  /// The centre of the premium axis, from the middle of the coordinators' vote, cut to a whole number toward zero; 0 when there is no vote, the official client's centre before any coordinator answers.
+  ///
+  /// Two middle votes within 16 points of each other, the width of the window, give their mean: two honest books a few points apart are then both drawn.
+  /// The cut moves that centre toward zero by less than a point, so at 15 to 16 points apart the vote farther from zero can sit up to a point beyond the edge, with the orders of its coordinator on this side of its median still drawn.
+  /// Farther apart, the vote nearer zero is kept, the lower when both are as near, never the mean, which would fall between two coordinators where neither has an order: a premium near zero is the market's own.
+  static double premiumCenter(MiddleVotes? votes) {
+    if (votes == null) return 0;
+    final (:lower, :higher) = votes;
+    if (higher - lower <= 2 * premiumHalfRange) {
+      return wholeTowardZero(lower / 2 + higher / 2);
+    }
+    return wholeTowardZero(higher.abs() < lower.abs() ? higher : lower);
   }
 
   /// The median of [values] as `matchMedian` computes it, or `null` when there is none.
@@ -363,17 +365,18 @@ final class DepthChart {
   ///
   /// The official client prices the axis with the market price of a coordinator (`/api/limits/`), which the book does not read: each order's own price, which its coordinator computed from its market price and the premium, gives it back.
   /// One vote per coordinator keeps a coordinator that floods the book from setting the price of the others.
+  /// Prices being positive, the lower vote is also the one nearer zero, the rule of the premium axis; their mean is not taken: two honest market prices differ by a fraction of a percent, and a coordinator with an absurd price would pull it halfway.
   static double? impliedMarketPrice(
     Iterable<PublicOrder> book,
     RobosatsCurrency currency,
-  ) => medianOfCoordinators([
+  ) => middleVotes([
     for (final order in book)
       if (order.currency == currency)
         if (order.price case final price?)
           if (price / (1 + order.premium.percent / 100) case final market
               when market.isFinite && market > 0)
             (order.coordinator, market),
-  ], middle: MiddleVote.lower);
+  ])?.lower;
 
   /// Where [order] lies on the price axis: [market] with the order's premium, as `base_price` in the official client, or `null` when that is not a finite number.
   static double? priceAt(double market, PublicOrder order) {
