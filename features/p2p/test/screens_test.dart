@@ -3,13 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_ui/bull_ui.dart';
+import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/search_order_dialog.dart';
+import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
 import 'package:p2p/testing.dart';
 
@@ -282,6 +286,277 @@ void main() {
       final take = tester.widget<BullButton>(find.byType(BullButton));
       expect(take.label, 'Take Order');
       expect(take.disabled, isTrue);
+    });
+
+    testWidgets('the host opens the dialog of its coordinator', (tester) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+
+      await tester.tap(find.text('Order host'));
+      await settle(tester);
+
+      expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(CoordinatorDetailsDialog),
+          matching: find.text('Temple of Sats'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Coordinator hosted web app'), findsOneWidget);
+      // The page had read the fees: the dialog shows them without asking again.
+      expect(transport.requested.where((request) => request.contains('info')), [
+        'temple/api/info/',
+      ]);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('the dialog of a host that did not answer asks it again', (
+      tester,
+    ) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      // Temple gave its book, then does not answer the order page.
+      transport.failures['temple'] = const CoordinatorUnreachable();
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+      transport.failures.remove('temple');
+
+      await tester.tap(find.text('Order host'));
+      await settle(tester);
+
+      expect(transport.requested.where((request) => request.contains('info')), [
+        'temple/api/info/',
+        'temple/api/info/',
+      ]);
+      expect(find.text('Coordinator offline'), findsNothing);
+    });
+
+    group('« Search »', () {
+      final dialog = find.byType(SearchOrderDialog);
+      Finder inDialog(Finder finder) =>
+          find.descendant(of: dialog, matching: finder);
+      final temple = hostOf('temple', RobosatsNetwork.mainnet);
+
+      Future<void> searchFor(WidgetTester tester, String url) async {
+        await tester.enterText(inDialog(find.byType(TextField)), url);
+        await tester.tap(inDialog(find.text('Search')));
+        await settle(tester);
+      }
+
+      Future<void> openSearch(
+        WidgetTester tester, {
+        String label = 'Search',
+      }) async {
+        await tester.tap(find.text(label));
+        await settle(tester);
+      }
+
+      testWidgets(
+        'opens « Search order », and an order of the book opens its page',
+        (tester) async {
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          final requests = transport.requested.length;
+
+          await openSearch(tester);
+          expect(find.text('Search order'), findsOneWidget);
+          expect(
+            find.text(
+              "Enter here an order URL to search for it, even if it's password protected",
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Order URL'), findsOneWidget);
+          expect(inDialog(find.text('Cancel')), findsOneWidget);
+
+          await searchFor(tester, 'http://$temple/order/temple/48213');
+
+          expect(dialog, findsNothing);
+          expect(find.byType(OrderDetailsScreen), findsOneWidget);
+          expect(find.text('# 48213'), findsOneWidget);
+          // Searching asks no coordinator: the order page reads the fees of its host, as from the book.
+          expect(transport.requested.skip(requests), ['temple/api/info/']);
+        },
+      );
+
+      testWidgets('a text that is not an order URL turns the field red', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester);
+
+        await searchFor(tester, 'temple 48213');
+
+        expect(dialog, findsOneWidget);
+        final field = tester.widget<TextField>(
+          inDialog(find.byType(TextField)),
+        );
+        final border = field.decoration?.enabledBorder;
+        expect(
+          border is OutlineInputBorder ? border.borderSide.color : null,
+          testBullTheme.error,
+        );
+
+        await tester.tap(inDialog(find.text('Cancel')));
+        await settle(tester);
+        expect(dialog, findsNothing);
+        expect(find.byType(OrderDetailsScreen), findsNothing);
+        // The bar is back on the list: « List » is in the colour of the chosen segment, « Search » is not.
+        Color? colour(String label) => tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byType(BullSegmented).last,
+                matching: find.text(label),
+              ),
+            )
+            .style
+            ?.color;
+        expect(colour('List'), testBullTheme.primary);
+        expect(colour('Search'), testBullTheme.secondary);
+        // « Search » opens the dialog again.
+        await openSearch(tester);
+        expect(dialog, findsOneWidget);
+      });
+
+      testWidgets('the keyboard neither learns nor rewrites an order URL', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester);
+
+        final field = tester.widget<TextField>(
+          inDialog(find.byType(TextField)),
+        );
+        expect(field.enableIMEPersonalizedLearning, isFalse);
+        expect(field.enableSuggestions, isFalse);
+        expect(field.autocorrect, isFalse);
+        expect(field.smartDashesType, SmartDashesType.disabled);
+        expect(field.smartQuotesType, SmartQuotesType.disabled);
+        expect(field.keyboardType, TextInputType.url);
+        // A paste far longer than an order URL is cut at the bound of the field.
+        await tester.enterText(inDialog(find.byType(TextField)), 'x' * 5000);
+        await settle(tester);
+        expect(
+          tester
+              .widget<TextField>(inDialog(find.byType(TextField)))
+              .controller
+              ?.text
+              .length,
+          SearchOrderDialog.maxLength,
+        );
+      });
+
+      testWidgets('a swap order opens with its amount in sats', (tester) async {
+        // A swap order is never listed by the book, but its URL finds it, as the official client opens it.
+        transport.books['temple'] = [
+          ...?transport.books['temple'],
+          bookOrder(
+            id: 77,
+            currency: 1000,
+            amount: 0.0512,
+            paymentMethod: 'On-Chain BTC',
+            premium: 1.5,
+            price: null,
+            makerSeed: 5,
+          ),
+        ];
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        expect(find.text('# 77'), findsNothing);
+        await openSearch(tester);
+
+        await searchFor(tester, 'http://$temple/order/temple/77');
+
+        expect(find.text('# 77'), findsOneWidget);
+        // As `btcToSatsString` of the official client: the amount row and the sentence of the taker.
+        expect(
+          find.descendant(
+            of: find.byType(OrderDetailsScreen),
+            matching: find.text('5,120,000 Sats'),
+          ),
+          findsNWidgets(2),
+        );
+        expect(find.text('You send via On-Chain BTC'), findsOneWidget);
+        expect(find.textContaining('0.0512'), findsNothing);
+        expect(find.text('Swap destination'), findsOneWidget);
+      });
+
+      testWidgets('an order the public book does not hold needs a robot', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        final requests = transport.requested.length;
+        await openSearch(tester);
+
+        await searchFor(tester, 'http://$temple/order/temple/1/');
+
+        expect(dialog, findsNothing);
+        expect(find.byType(NoRobotDialog), findsOneWidget);
+        expect(find.text('You do not have a Garage Key'), findsOneWidget);
+        expect(
+          find.text(
+            'Generate a Garage Key to get your first robot identity and start trading.',
+          ),
+          findsOneWidget,
+        );
+        final buttons = tester.widgetList<BullButton>(
+          find.descendant(
+            of: find.byType(NoRobotDialog),
+            matching: find.byType(BullButton),
+          ),
+        );
+        expect(
+          [for (final button in buttons) (button.label, button.disabled)],
+          [('I have a Garage Key', true), ('Generate Garage Key', true)],
+        );
+        expect(transport.requested.length, requests);
+
+        await tester.tapAt(const Offset(4, 4));
+        await settle(tester);
+        expect(find.byType(NoRobotDialog), findsNothing);
+        expect(find.byType(OrderDetailsScreen), findsNothing);
+      });
+
+      testWidgets('in French', (tester) async {
+        await open(tester, locale: const Locale('fr'));
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester, label: 'Rechercher');
+
+        expect(find.text('Rechercher un ordre'), findsOneWidget);
+        expect(
+          find.text(
+            "Saisissez ici l'URL d'un ordre pour le retrouver, même s'il est protégé par un mot de passe",
+          ),
+          findsOneWidget,
+        );
+        expect(find.text("URL de l'ordre"), findsOneWidget);
+        expect(inDialog(find.text('Annuler')), findsOneWidget);
+
+        await tester.enterText(
+          inDialog(find.byType(TextField)),
+          'http://$temple/order/temple/1',
+        );
+        await tester.tap(inDialog(find.text('Rechercher')));
+        await settle(tester);
+
+        expect(find.text("Vous n'avez pas de clé de garage"), findsOneWidget);
+        expect(find.text("J'ai une clé de garage"), findsOneWidget);
+        expect(find.text('Générer une clé de garage'), findsOneWidget);
+      });
     });
 
     testWidgets('a reversible payment method shows the warning of RoboSats', (

@@ -35,6 +35,17 @@ final class P2pFormats {
   /// A number of sats, with the thousands separator of the locale.
   String sats(int sats) => NumberFormat.decimalPattern(_locale).format(sats);
 
+  /// The amount of a swap order, given in BTC, as the sats the official client writes for it (`btcToSatsString`): `5,120,000`, or `min-max` for a range.
+  String btcAmountInSats(OrderAmount amount) {
+    // The package reads at most 1e10 BTC, so the sats fit in an int.
+    String inSats(FiatAmount btc) => sats((btc.value * 100000000).round());
+    return switch (amount) {
+      FixedOrderAmount(:final amount) => inSats(amount),
+      RangeOrderAmount(:final min, :final max) =>
+        '${inSats(min)}-${inSats(max)}',
+    };
+  }
+
   /// The sats of an estimate: one number, or `min-max` for a range.
   String estimate(TakerEstimate estimate) => estimate.isRange
       ? '${sats(estimate.minSats)}-${sats(estimate.maxSats)}'
@@ -77,6 +88,39 @@ final class P2pFormats {
   /// The on-chain payout fee of a coordinator, with one decimal as the official client's fee row writes it (`toFixed(1)`).
   String swapFee(double percent) =>
       _percent(percent, minDecimals: 1, maxDecimals: 1);
+
+  /// The on-chain payout fee of the coordinator dialog, with 3 significant digits as the official client writes it there (`toPrecision(3)`): `3.44%`, `0.500%`.
+  String swapFeeRate(double percent) {
+    final precise = percent.toStringAsPrecision(3);
+    final dot = precise.indexOf('.');
+    final decimals = dot < 0 || precise.contains('e')
+        ? 0
+        : precise.length - dot - 1;
+    return _percent(
+      double.parse(precise),
+      minDecimals: decimals,
+      maxDecimals: decimals,
+    );
+  }
+
+  /// A number of sats that need not be whole, such as the size limit of a young coordinator, which the official client prints with its decimals.
+  String satsAmount(double sats) => (NumberFormat.decimalPattern(
+    _locale,
+  )..maximumFractionDigits = 8).format(sats);
+
+  /// A count, such as the number of public orders of a coordinator.
+  String count(int count) => NumberFormat.decimalPattern(_locale).format(count);
+
+  /// A volume in BTC with 8 decimals, as the official client writes the volumes of a coordinator (`toFixed(8)`).
+  String btc(double btc) =>
+      (NumberFormat.decimalPattern(_locale)
+            ..minimumFractionDigits = 8
+            ..maximumFractionDigits = 8)
+          .format(btc);
+
+  /// The non-KYC premium of the last 24 hours, which the coordinator rounds to 2 decimals: `0.95%`.
+  String nonKycPremium(double percent) =>
+      _percent(percent, minDecimals: 0, maxDecimals: 2);
 
   String _percent(
     double percent, {

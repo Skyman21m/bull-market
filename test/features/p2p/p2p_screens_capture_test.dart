@@ -194,7 +194,54 @@ void main() {
           await settle();
           await tester.pump(const Duration(seconds: 1));
           await capture('paiements-reversibles');
+          await tester.tap(find.text(l10n.p2pCommonAcknowledged));
+          await settle();
+          await tester.pump(const Duration(seconds: 1));
         }
+
+        // The dialog of the coordinator that hosts the order, then its summary and its statistics.
+        await tester.tap(find.text(l10n.p2pOrderHost));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('coordinateur');
+        for (final (section, name) in [
+          (l10n.p2pCoordinatorPolicies, 'coordinateur-politiques'),
+          (l10n.p2pCoordinatorSummary, 'coordinateur-resume'),
+          (l10n.p2pCoordinatorStatsForNerds, 'coordinateur-stats'),
+        ]) {
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await tester.tap(find.text(section));
+          await settle();
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await capture(name);
+        }
+        // A tap outside closes the dialog, then the back arrow returns to the book.
+        await tester.tapAt(const Offset(4, 4));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await settle();
+
+        // « Search », the order URL dialog of RoboSats: empty, refused, then an order the public book does not hold.
+        await tester.tap(find.text(l10n.p2pCommonSearch));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('rechercher');
+        final field = find.byType(TextField);
+        await tester.enterText(field, 'temple 48213');
+        await tester.tap(find.text(l10n.p2pCommonSearch).last);
+        await settle();
+        await capture('rechercher-erreur');
+        final temple = Federation.robosats.byAlias('temple')?.mainnet.onion;
+        await tester.enterText(field, '$temple/order/temple/1');
+        await tester.tap(find.text(l10n.p2pCommonSearch).last);
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('sans-robot');
       },
     );
   }

@@ -7,10 +7,20 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/book_filter.dart';
+import '../domain/order_search.dart';
 import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
+import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_failure_l10n.dart';
+import 'search_order_dialog.dart';
+import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
+
+/// The name of a coordinator, cleaned and bounded as every P2P screen shows it.
+String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
+  coordinator.longAlias,
+  maxCodePoints: CoordinatorText.name,
+);
 
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
@@ -30,6 +40,9 @@ class _BookViewState extends State<BookView> {
 
   /// Moves the expiry rings on: they show hours or minutes, so once a minute is enough.
   Timer? _ticker;
+
+  /// How many times « Search » was chosen, the key that puts the view bar back on the list.
+  int _searches = 0;
 
   @override
   void initState() {
@@ -80,6 +93,8 @@ class _BookViewState extends State<BookView> {
         Padding(
           padding: const EdgeInsets.all(BullSpacing.md),
           child: BullSegmented(
+            // « Search » is not a view: once it is chosen the bar is built again on the list.
+            key: ValueKey(_searches),
             items: {
               l10n.p2pBookViewList,
               l10n.p2pBookViewChart,
@@ -87,16 +102,32 @@ class _BookViewState extends State<BookView> {
               l10n.p2pCommonSearch,
             },
             initialValue: l10n.p2pBookViewList,
-            disabledItems: {
-              l10n.p2pBookViewChart,
-              l10n.p2pBookViewMap,
-              l10n.p2pCommonSearch,
+            disabledItems: {l10n.p2pBookViewChart, l10n.p2pBookViewMap},
+            onSelected: (item) {
+              if (item == l10n.p2pCommonSearch) unawaited(_searchOrder());
             },
-            onSelected: (_) {},
           ),
         ),
       ],
     );
+  }
+
+  /// « Search order »: opens the order the URL names when the book received it, and otherwise says that a robot is needed.
+  Future<void> _searchOrder() async {
+    setState(() => _searches++);
+    final outcome = await SearchOrderDialog.show(
+      context,
+      context.read<BookCubit>().searchOrder,
+    );
+    if (!mounted) return;
+    switch (outcome) {
+      case OrderSearchFound(:final order):
+        widget.onOpenOrder(order);
+      case OrderSearchNeedsRobot():
+        await NoRobotDialog.show(context);
+      case OrderSearchInvalidUrl() || null:
+        break;
+    }
   }
 
   List<Widget> _content(BuildContext context, BookState state) {
@@ -217,14 +248,17 @@ class BookFilterSentence extends StatelessWidget {
           ),
           word(l10n.p2pBookFilterHostedBy),
           FilterChoice(
-            label: filter.host?.longAlias ?? l10n.p2pBookFilterAny,
+            label: switch (filter.host) {
+              final host? => _coordinatorName(host),
+              null => l10n.p2pBookFilterAny,
+            },
             onTap: () async {
               final host = await _pick<Coordinator>(
                 context,
                 title: l10n.p2pBookFilterSelectHost,
                 options: state.coordinators.keys.toList(),
                 selected: filter.host,
-                label: (host) => host.longAlias,
+                label: _coordinatorName,
                 any: l10n.p2pBookFilterAny,
               );
               if (host != null) cubit.selectHost(host.value);
@@ -370,7 +404,7 @@ class CoordinatorsStatus extends StatelessWidget {
                       children: [
                         for (final coordinator in failed)
                           Text(
-                            '${coordinator.longAlias} · ${switch (state.coordinators[coordinator]) {
+                            '${_coordinatorName(coordinator)} · ${switch (state.coordinators[coordinator]) {
                               CoordinatorBookFailed(:final failure) => failure.toTranslated(context),
                               _ => '',
                             }}',

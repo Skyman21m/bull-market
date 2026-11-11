@@ -26,6 +26,7 @@ export 'src/coordinator/currency_limits.dart'
 export 'src/coordinator/federation.dart' show Federation;
 export 'src/coordinator/federation_book.dart'
     show CoordinatorBookOutcome, FederationBook, FederationBookReader;
+export 'src/coordinator/json_fields.dart' show displayText;
 export 'src/coordinator/order_book.dart' show OrderBook;
 export 'src/coordinator/order_values.dart'
     show

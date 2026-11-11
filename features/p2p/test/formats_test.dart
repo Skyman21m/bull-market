@@ -73,4 +73,47 @@ void main() {
     expect(en.price(93330.4), '93,330');
     expect(fr.sats(106900), '106 900');
   });
+
+  test('the numbers of the coordinator dialog', () {
+    // `toPrecision(3)`, as the official client writes the on-chain fee there.
+    expect(en.swapFeeRate(3.443594014752762), '3.44%');
+    expect(en.swapFeeRate(0.5), '0.500%');
+    expect(en.swapFeeRate(12.345), '12.3%');
+    expect(en.swapFeeRate(100), '100%');
+    expect(en.swapFeeRate(0), '0.00%');
+    expect(fr.swapFeeRate(3.443594014752762), '3,44\u00a0%');
+    // A size limit need not be whole.
+    expect(en.satsAmount(928232.5), '928,232.5');
+    expect(en.satsAmount(6000000), '6,000,000');
+    expect(fr.satsAmount(6000000), fr.sats(6000000));
+    expect(en.count(2348), '2,348');
+    expect(en.btc(0.23644465), '0.23644465');
+    expect(en.btc(196.68313773), '196.68313773');
+    expect(en.btc(0), '0.00000000');
+    expect(fr.btc(0.5), '0,50000000');
+    expect(en.nonKycPremium(0.95), '0.95%');
+    expect(en.nonKycPremium(1), '1%');
+    expect(en.nonKycPremium(-0.5), '-0.5%');
+  });
+
+  test(
+    'a swap amount, in BTC, is written in sats as the official client does',
+    () {
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0512))), '5,120,000');
+      expect(
+        en.btcAmountInSats(
+          RangeOrderAmount.tryCreate(fiat(0.01), fiat(0.05)) ??
+              (throw StateError('range')),
+        ),
+        '1,000,000-5,000,000',
+      );
+      // Rounded to the sat, as `Math.round`.
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0000012345))), '123');
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0000012355))), '124');
+      expect(
+        fr.btcAmountInSats(FixedOrderAmount(fiat(0.0512))),
+        fr.sats(5120000),
+      );
+    },
+  );
 }

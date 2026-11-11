@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
+import 'package:p2p/src/domain/order_search.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
@@ -482,5 +483,37 @@ void main() {
         await book.close();
       },
     );
+
+    test('search finds any order received, whatever the filter', () async {
+      final book = await loaded();
+      book.selectSide(BookSide.sell);
+      final temple = hostOf('temple', RobosatsNetwork.mainnet);
+      final lake = hostOf('lake', RobosatsNetwork.mainnet);
+
+      // Order 1 sells bitcoin, hidden while the user sells; order 5 is a swap, never in the list.
+      expect(book.state.orders.map((o) => o.id), isNot(contains(1)));
+      expect(
+        book.searchOrder('http://$temple/order/temple/1'),
+        isA<OrderSearchFound>().having((found) => found.order.id, 'id', 1),
+      );
+      expect(
+        book.searchOrder('http://$temple/order/temple/5'),
+        isA<OrderSearchFound>().having((found) => found.order.id, 'id', 5),
+      );
+      expect(
+        book.searchOrder('http://$lake/order/lake/7'),
+        isA<OrderSearchFound>().having(
+          (found) => found.order.coordinator.shortAlias,
+          'coordinator',
+          'lake',
+        ),
+      );
+      expect(
+        book.searchOrder('http://$lake/order/lake/1'),
+        isA<OrderSearchNeedsRobot>(),
+      );
+      expect(book.searchOrder('order 1'), isA<OrderSearchInvalidUrl>());
+      await book.close();
+    });
   });
 }

@@ -397,5 +397,284 @@
   "p2pCommonAcknowledged": "Acknowledged",
   "@p2pCommonAcknowledged": {
     "description": "Button that closes a warning the user has read."
+  },
+  "p2pCoordinatorNotice": "Coordinator Notice",
+  "@p2pCoordinatorNotice": {
+    "description": "Title of the box that holds the notice of a coordinator, free text it writes (usually in English), shown in the coordinator dialog when its severity is not « none »."
+  },
+  "p2pCoordinatorBadgeFounder": "Founder: coordinating trades since the testnet federation.",
+  "@p2pCoordinatorBadgeFounder": {
+    "description": "Tooltip of the founder badge of the coordinator dialog, when lit."
+  },
+  "p2pCoordinatorBadgeNotFounder": "Not a federation founder",
+  "@p2pCoordinatorBadgeNotFounder": {
+    "description": "Tooltip of the founder badge, greyed out."
+  },
+  "p2pCoordinatorBadgeDevFund": "Development fund supporter: donates {percent}% to make RoboSats better.",
+  "@p2pCoordinatorBadgeDevFund": {
+    "description": "Tooltip of the development fund badge, lit from 20 %. {percent} is the share the coordinator gives, a number written in the conventions of the language.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorBadgeGoodOpsec": "Good OpSec: the coordinator follows best practices to protect his and your privacy.",
+  "@p2pCoordinatorBadgeGoodOpsec": {
+    "description": "Tooltip of the privacy badge, when lit."
+  },
+  "p2pCoordinatorBadgeOpsecCouldImprove": "The privacy practices of this coordinator could improve",
+  "@p2pCoordinatorBadgeOpsecCouldImprove": {
+    "description": "Tooltip of the privacy badge, greyed out."
+  },
+  "p2pCoordinatorBadgeLargeLimits": "Large limits: the coordinator has large trade limits.",
+  "@p2pCoordinatorBadgeLargeLimits": {
+    "description": "Tooltip of the limits badge, lit when the size limit of the coordinator is above 3 million sats."
+  },
+  "p2pCoordinatorBadgeNoLargeLimits": "Does not have large trade limits.",
+  "@p2pCoordinatorBadgeNoLargeLimits": {
+    "description": "Tooltip of the limits badge, greyed out."
+  },
+  "p2pCoordinatorDescription": "Coordinator description",
+  "@p2pCoordinatorDescription": {
+    "description": "Caption under the description of the coordinator, free text of the federation list."
+  },
+  "p2pCoordinatorEstablished": "Established",
+  "@p2pCoordinatorEstablished": {
+    "description": "Caption under the date the coordinator joined the federation."
+  },
+  "p2pCoordinatorHostedWebApp": "Coordinator hosted web app",
+  "@p2pCoordinatorHostedWebApp": {
+    "description": "Caption under the onion address of the web client of the coordinator."
+  },
+  "p2pCoordinatorPolicies": "Policies",
+  "@p2pCoordinatorPolicies": {
+    "description": "Section of the coordinator dialog that opens on its policies, free text of the federation list."
+  },
+  "p2pCoordinatorSummary": "Summary",
+  "@p2pCoordinatorSummary": {
+    "description": "Section of the coordinator dialog that opens on its limits, fees and book."
+  },
+  "p2pCoordinatorMaxOrderSize": "Maximum order size",
+  "@p2pCoordinatorMaxOrderSize": {
+    "description": "Caption under « {amount} Sats » in the summary of a coordinator."
+  },
+  "p2pCoordinatorOnchainStatus": "Current onchain payout status",
+  "@p2pCoordinatorOnchainStatus": {
+    "description": "Caption under « Onchain payouts disabled » in the summary of a coordinator."
+  },
+  "p2pCoordinatorCurrentOnchainFee": "Current onchain payout fee",
+  "@p2pCoordinatorCurrentOnchainFee": {
+    "description": "Caption under the on-chain payout fee, a percentage, in the summary of a coordinator."
+  },
+  "p2pCoordinatorMaxSwapSize": "Maximum onchain swap size",
+  "@p2pCoordinatorMaxSwapSize": {
+    "description": "Caption under « {amount} Sats » when on-chain payouts are enabled."
+  },
+  "p2pCoordinatorDevFundZaps": "Zaps voluntarily for development",
+  "@p2pCoordinatorDevFundZaps": {
+    "description": "Caption under the share of its profits a coordinator gives to the development fund."
+  },
+  "p2pCoordinatorDevFundPercent": "{percent}% of profits",
+  "@p2pCoordinatorDevFundPercent": {
+    "description": "Share of its profits a coordinator gives to the development fund; RoboSats writes it without translation. {percent} is a number written in the conventions of the language.",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorPublicBuyOrders": "Public buy orders",
+  "@p2pCoordinatorPublicBuyOrders": {
+    "description": "Caption under the number of public buy orders of a coordinator."
+  },
+  "p2pCoordinatorPublicSellOrders": "Public sell orders",
+  "@p2pCoordinatorPublicSellOrders": {
+    "description": "Caption under the number of public sell orders of a coordinator."
+  },
+  "p2pCoordinatorBookLiquidity": "Book liquidity",
+  "@p2pCoordinatorBookLiquidity": {
+    "description": "Caption under the sats of all the public orders of a coordinator."
+  },
+  "p2pCoordinatorActiveRobotsToday": "Today active robots",
+  "@p2pCoordinatorActiveRobotsToday": {
+    "description": "Caption under the number of robots active today on a coordinator."
+  },
+  "p2pCoordinatorNonKycPremium": "24h non-KYC bitcoin premium",
+  "@p2pCoordinatorNonKycPremium": {
+    "description": "Caption under the average premium of the last 24 hours on a coordinator."
+  },
+  "p2pCoordinatorPriceSources": "Market price sources (for multiple the median is calculated)",
+  "@p2pCoordinatorPriceSources": {
+    "description": "Caption under the price sources of a coordinator, a list of URLs it writes."
+  },
+  "p2pCoordinatorStatsForNerds": "Stats for Nerds",
+  "@p2pCoordinatorStatsForNerds": {
+    "description": "Section of the coordinator dialog that opens on its versions, node, commit and volumes."
+  },
+  "p2pCoordinatorVersionCoordinator": "Coordinator",
+  "@p2pCoordinatorVersionCoordinator": {
+    "description": "Word before the version of the coordinator, « Coordinator v0.8.8 »; RoboSats adds the version of its own client, which Troc leaves out."
+  },
+  "p2pCoordinatorRoboSatsVersion": "RoboSats version",
+  "@p2pCoordinatorRoboSatsVersion": {
+    "description": "Caption under « Coordinator v0.8.8 »."
+  },
+  "p2pCoordinatorLndVersion": "LND version",
+  "@p2pCoordinatorLndVersion": {
+    "description": "Caption under the LND version of a coordinator, text it writes."
+  },
+  "p2pCoordinatorClnVersion": "CLN version",
+  "@p2pCoordinatorClnVersion": {
+    "description": "Caption under the Core Lightning version of a coordinator, text it writes (often « Not installed »)."
+  },
+  "p2pCoordinatorLnNodeAlias": "LN Node: {alias}",
+  "@p2pCoordinatorLnNodeAlias": {
+    "description": "Caption under the Lightning node of a testnet coordinator; on mainnet the alias is shown alone, as in RoboSats. {alias} is the node alias, text the coordinator writes. Composed by RoboSats from « LN Node » and the alias.",
+    "placeholders": {
+      "alias": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorCommitHash": "Coordinator commit hash",
+  "@p2pCoordinatorCommitHash": {
+    "description": "Caption under the Git commit the coordinator runs."
+  },
+  "p2pCoordinatorVolume24h": "24h contracted volume",
+  "@p2pCoordinatorVolume24h": {
+    "description": "Caption under the BTC traded on a coordinator in the last 24 hours."
+  },
+  "p2pCoordinatorVolumeLifetime": "Lifetime contracted volume",
+  "@p2pCoordinatorVolumeLifetime": {
+    "description": "Caption under the BTC traded on a coordinator since it started."
+  },
+  "p2pAmountSats": "{amount} Sats",
+  "@p2pAmountSats": {
+    "description": "An amount of sats: in the summary of a coordinator, such as its maximum order size, and the amount of a swap order, given in BTC, which the official client writes in sats (`btcToSatsString`). RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language, or a range « min-max ».",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorSendEmail": "Send Email",
+  "@p2pCoordinatorSendEmail": {
+    "description": "Contact button of a coordinator: Troc shows the address, to copy, and never opens a mail app."
+  },
+  "p2pCoordinatorWebsite": "Website",
+  "@p2pCoordinatorWebsite": {
+    "description": "Contact button of a coordinator: Troc shows the address, to copy, and never opens a browser."
+  },
+  "p2pCoordinatorPgpFingerprint": "PGP Pubkey fingerprint",
+  "@p2pCoordinatorPgpFingerprint": {
+    "description": "Contact button of a coordinator: Troc shows the fingerprint of its OpenPGP key in groups of four. RoboSats offers to download the key, which Troc does not ship."
+  },
+  "p2pCoordinatorNostr": "Nostr",
+  "@p2pCoordinatorNostr": {
+    "description": "Contact button of a coordinator, a brand name: Troc shows its public key, to copy, and never opens a Nostr gateway."
+  },
+  "p2pCoordinatorTelegram": "Telegram",
+  "@p2pCoordinatorTelegram": {
+    "description": "Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy."
+  },
+  "p2pCoordinatorX": "X",
+  "@p2pCoordinatorX": {
+    "description": "Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy."
+  },
+  "p2pCoordinatorReddit": "Reddit",
+  "@p2pCoordinatorReddit": {
+    "description": "Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy."
+  },
+  "p2pCoordinatorMatrix": "Matrix",
+  "@p2pCoordinatorMatrix": {
+    "description": "Contact button of a coordinator, a brand name: Troc shows the channel, to copy."
+  },
+  "p2pCoordinatorSimplex": "Simplex",
+  "@p2pCoordinatorSimplex": {
+    "description": "Contact button of a coordinator, a brand name spelt as RoboSats does: Troc shows the link RoboSats opens, to copy."
+  },
+  "p2pCommonCopied": "Copied!",
+  "@p2pCommonCopied": {
+    "description": "Shown once a value is on the clipboard."
+  },
+  "p2pSearchOrderTitle": "Search order",
+  "@p2pSearchOrderTitle": {
+    "description": "Title of the dialog opened by « Search » below the book."
+  },
+  "p2pSearchOrderText": "Enter here an order URL to search for it, even if it's password protected",
+  "@p2pSearchOrderText": {
+    "description": "Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots."
+  },
+  "p2pSearchOrderUrlLabel": "Order URL",
+  "@p2pSearchOrderUrlLabel": {
+    "description": "Label of the field of « Search order », which turns red, without a text, when the URL is not …/order/<coordinator>/<id>."
+  },
+  "p2pCommonCancel": "Cancel",
+  "@p2pCommonCancel": {
+    "description": "Button that closes a dialog without doing anything."
+  },
+  "p2pNoRobotTitle": "You do not have a Garage Key",
+  "@p2pNoRobotTitle": {
+    "description": "Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book."
+  },
+  "p2pNoRobotText": "Generate a Garage Key to get your first robot identity and start trading.",
+  "@p2pNoRobotText": {
+    "description": "Text of the dialog shown when a page needs a robot."
+  },
+  "p2pNoRobotHaveKey": "I have a Garage Key",
+  "@p2pNoRobotHaveKey": {
+    "description": "Button of the no-robot dialog that leads to the Garage; disabled until the Garage exists."
+  },
+  "p2pGarageOnboardingGenerateKey": "Generate Garage Key",
+  "@p2pGarageOnboardingGenerateKey": {
+    "description": "Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists."
+  },
+  "p2pCoordinatorLnNode": "LN Node",
+  "@p2pCoordinatorLnNode": {
+    "description": "Title of the sheet that shows the link of the Lightning node of a coordinator (1ML on testnet, Amboss on mainnet), to copy."
+  },
+  "p2pCoordinatorVersionValue": "{name} v{version}",
+  "@p2pCoordinatorVersionValue": {
+    "description": "The version of the coordinator, « Coordinator v0.8.8 », as RoboSats composes it; RoboSats adds the version of its own client, which Troc leaves out. {name} is the word « Coordinator », {version} the version it announces.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorNodeAmboss": "{node}... (AMBOSS)",
+  "@p2pCoordinatorNodeAmboss": {
+    "description": "The first 12 characters of the Lightning node key of a mainnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.",
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorNode1ml": "{node}... (1ML)",
+  "@p2pCoordinatorNode1ml": {
+    "description": "The first 12 characters of the Lightning node key of a testnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.",
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorCommitShort": "{commit}...",
+  "@p2pCoordinatorCommitShort": {
+    "description": "The first 12 characters of the commit a coordinator runs, as RoboSats writes it. {commit} is text the coordinator writes.",
+    "placeholders": {
+      "commit": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCommonCopy": "Copy",
+  "@p2pCommonCopy": {
+    "description": "Label of a copy button: its tooltip, and what a screen reader announces."
   }
 }

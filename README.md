@@ -134,11 +134,11 @@ What already exists in the code:
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
 - **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC ([measurements](docs/spikes/tor-robosats.md)).
 - **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). Its own live test ran once, on a desktop PC behind a VPN, before the review fixes ([report](docs/spikes/tor-transport.md)); the robot test and the phone trial below have since gone through the corrected transport live, without targeting the fixed paths.
-- **The first screens of the P2P tab**: Tor wait, order book and order details, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
+- **The first screens of the P2P tab**: Tor wait, order book, order details, the details of a coordinator and the search of an order by its URL, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
 - **A robot on a coordinator**: the code creates a robot on a coordinator and reads it back, over a Tor session of its own, and refuses any answer that is not the robot and the key pair of this device. A test did it six times on one testnet coordinator, from a desktop build ([report](docs/spikes/robot-coordinator.md)). No screen uses it yet, and the Garage Key is not stored yet ([#28](https://github.com/Skyman21m/troc/issues/28)).
 - **A first trial on a phone** (November 11, 2026, one Android phone, debug build): the P2P tab appeared, Tor connected in about 30 seconds, the six coordinators of the mainnet list all ended up answering, some later than others, and the order book, its filters (which ones were tried was not recorded), pull to refresh, the order details and the reversible-payment warning worked. This is what the tester saw; nothing was measured. Not checked on the phone: the low-bond warning, the testnet banner, the Tor error and its retry, an offline coordinator, the English texts.
 
-In progress: the rest of the read-only screens (Garage, chart, map and search views, coordinator details) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
+In progress: the rest of the read-only screens (Garage, chart and map views) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
 Not done yet: storing the Garage Key and creating a robot from the app ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
 
@@ -151,7 +151,7 @@ Troc adds two modules to Bull's code; Troc touches the rest as little as possibl
 | Module | Role |
 |---|---|
 | [`packages/robosats`](packages/robosats/README.md) | Part of the RoboSats protocol in pure Dart, with no screen and no network access of its own: robot identity, OpenPGP, reading the coordinators. It talks to the network through an entry point that the app provides. |
-| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the first read-only screens of the P2P tab, shown only in superuser and developer mode; the Garage and the chart, map and search views are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
+| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the first read-only screens of the P2P tab, shown only in superuser and developer mode; the Garage and the chart and map views are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
 
 Principles:
 

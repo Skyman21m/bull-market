@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `BullCopyField` takes an optional `copyTooltip`, the translated label of its copy button (tooltip and screen-reader label); without it the button is unchanged.
 - **Foundation tokens now follow the design system / official theme.** `BullTheme`
   is the full 1:1 `AppColors` mirror (all ~40 fields, official names); `BullRadius`
   adopts the design scale (`0/4/8/12/16/28/32/999`) and `BullSpacing` the design
