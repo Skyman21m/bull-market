@@ -2722,7 +2722,7 @@ void main() {
     );
 
     test(
-      'is no longer waited for after a close, which frees its place at once',
+      'is no longer waited for after a close, and its place is free once its request has failed',
       () async {
         final tor = transport(
           deadline: const Duration(seconds: 20),
