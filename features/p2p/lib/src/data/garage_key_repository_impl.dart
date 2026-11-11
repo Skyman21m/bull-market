@@ -17,7 +17,7 @@ import '../domain/repositories/garage_key_repository.dart';
 /// The Garage Keys of P2P in the vault of `package:secrets`, one per network, through the handle the shell passes to the feature.
 ///
 /// The only class of the feature that reads the bytes of a stored key: the custody gate allows `GarageKeyMaterial.bytes` and `GarageKey.revealBytes` here and nowhere else.
-/// It turns the stored bytes into a [GarageKey] to derive a robot, and a [GarageKey] into bytes to store it, and lets neither out.
+/// It turns the stored bytes into a [GarageKey] to derive a robot, and a [GarageKey] into bytes to store it, and today lets neither out: its public members are the methods of [GarageKeyRepository], which `test/garage_key_surface_test.dart` pins.
 /// The copy it makes for an import is zeroed when the vault returns; the copies inside the vault's material and inside a [GarageKey] cannot be, and are dropped with the call.
 /// It logs nothing, and the failures it returns carry no text of the vault.
 final class GarageKeyRepositoryImpl implements GarageKeyRepository {
@@ -68,13 +68,17 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
       case Err(:final failure):
         return Err(_readFailureOf(failure));
       case Ok(value: final material):
-        return switch (GarageKey.fromBytes(material.bytes)) {
-          Ok(value: final key) => switch (key.firstUsableRobot(0)) {
-            Ok(value: final robot) => Ok(robot),
-            Err() => const Err(GarageRobotUnavailableFailure()),
-          },
-          // The vault keeps 32 bytes or reports the entry as corrupt, so this does not happen.
-          Err() => const Err(GarageKeyUnusableFailure()),
+        final key = switch (GarageKey.fromBytes(material.bytes)) {
+          Ok(:final value) => value,
+          // The vault hands out exactly 32 bytes, which `fromBytes` accepts, so a refusal is a bug between the two packages (AGENTS.md, rule 11).
+          // It is never reported as a failure of the stored key, which would advise the user to delete a key that may be good.
+          Err() => throw StateError(
+            'GarageKey.fromBytes refused the bytes the vault handed out',
+          ),
+        };
+        return switch (key.firstUsableRobot(0)) {
+          Ok(value: final robot) => Ok(robot),
+          Err() => const Err(GarageRobotUnavailableFailure()),
         };
     }
   }

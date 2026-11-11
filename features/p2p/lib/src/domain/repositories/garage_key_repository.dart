@@ -7,8 +7,9 @@ import '../p2p_failure.dart';
 
 /// The RoboSats Garage Key of each network, kept by the vault of the wallet, and the robots derived from it.
 ///
-/// What leaves it is deliberately narrow: whether a key is stored, and robots derived from it.
-/// The key itself, its bytes and its text form never do: the master key of every robot lives for the time of one call.
+/// What leaves it today is deliberately narrow: whether a key is stored, and robots derived from it.
+/// The key itself, its bytes and its text form do not: the master key of every robot lives for the time of one call.
+/// The screen that shows the key for backup will need one more read, which hands a `GarageKey` to `GarageKeyView` alone, the only class the custody gate allows to reveal its text.
 ///
 /// The rules of the vault hold for every caller: create or import a key only on an explicit action of the user, never at startup or in the background; only after [exists] said that no key is stored, never after a failure; a stored key is never replaced; after a key that cannot be read, the only way out is [delete].
 abstract interface class GarageKeyRepository {

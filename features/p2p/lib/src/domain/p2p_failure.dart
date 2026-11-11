@@ -37,9 +37,9 @@ final class GarageKeyUnreadableFailure extends P2pFailure {
   const GarageKeyUnreadableFailure();
 }
 
-/// The entry stored for this network is present but is not a usable Garage Key, and it was kept as it is.
+/// The entry stored for this network is present but does not read as a Garage Key, and it was kept as it is: a value that does not parse, or one the keystore keeps returning empty.
 ///
-/// No retry helps: the only way out is to delete it, then import the user's copy of the key if there is one.
+/// A keystore that misbehaved may give the key back on a later read; if it does not, the only way out is to delete the entry, with the warning that the key and its robots are lost unless the user kept a copy, then to import that copy.
 final class GarageKeyUnusableFailure extends P2pFailure {
   const GarageKeyUnusableFailure();
 }
