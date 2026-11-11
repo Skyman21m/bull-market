@@ -84,26 +84,42 @@ void main() {
     }
   }
 
-  testWidgets(
-    'at text size 1.0 the labels are not shrunk: the look is unchanged',
-    (tester) async {
-      // « Transférer » is left out: on a 390-point phone it is wider than its button, and used to wrap onto a second line that overflowed the card.
-      for (final (locale, labels) in [
-        (const Locale('en'), ['Buy', 'Sell', 'Pay', 'Transfer']),
-        (const Locale('fr'), ['Acheter', 'Vendre', 'Payer']),
-      ]) {
-        await pumpRow(tester, locale: locale, textScale: 1);
-        for (final label in labels) {
-          // The painted size equals the laid-out size: no scaling.
-          expect(
-            tester.getRect(find.text(label)).size,
-            tester.getSize(find.text(label)),
-            reason: label,
-          );
-        }
+  testWidgets('at text size 1.0 the labels are not shrunk: the look is unchanged', (
+    tester,
+  ) async {
+    // « Transférer » is left out: on a 390-point phone it is wider than its button, and used to wrap onto a second line that overflowed the card.
+    for (final (locale, labels) in [
+      (const Locale('en'), ['Buy', 'Sell', 'Pay', 'Transfer']),
+      (const Locale('fr'), ['Acheter', 'Vendre', 'Payer']),
+    ]) {
+      await pumpRow(tester, locale: locale, textScale: 1);
+      final buttons = find.descendant(
+        of: find.byType(ActionCard),
+        matching: find.byType(InkWell),
+      );
+      final icons = find.descendant(
+        of: find.byType(ActionCard),
+        matching: find.byType(Image),
+      );
+      for (final (index, label) in labels.indexed) {
+        // The painted size equals the laid-out size: no scaling.
+        expect(
+          tester.getRect(find.text(label)).size,
+          tester.getSize(find.text(label)),
+          reason: label,
+        );
+        // The icon and the label stay centred in the card together, as before: as much room above the icon as below the label.
+        final button = tester.getRect(buttons.at(index));
+        final icon = tester.getRect(icons.at(index));
+        final shown = tester.getRect(find.text(label));
+        expect(
+          icon.top - button.top,
+          closeTo(button.bottom - shown.bottom, 0.5),
+          reason: label,
+        );
       }
-    },
-  );
+    }
+  });
 
   testWidgets('at text size 2.0 a label is shrunk, not cut', (tester) async {
     await pumpRow(tester, locale: const Locale('fr'), textScale: 2);
