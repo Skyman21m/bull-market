@@ -1471,6 +1471,56 @@ void main() {
       },
     );
 
+    test(
+      'go through up to $maxHeaderLength characters, name or value',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        final name = 'X-${'n' * (maxHeaderLength - 2)}';
+        final value = 'v' * maxHeaderLength;
+
+        final result = await transport().send(
+          _get(
+            server.url('/api/robot/'),
+            headers: {name: value},
+            robot: _robot(1),
+          ),
+        );
+
+        expect(result, isA<Ok<Object?, Failure>>());
+        expect(name.length, maxHeaderLength);
+        expect(server.received.single.value(name), value);
+      },
+    );
+
+    test('longer than that fail before any session', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+
+      for (final headers in [
+        {'Authorization': 'v' * (maxHeaderLength + 1)},
+        {'X-${'n' * (maxHeaderLength - 1)}': 'value'},
+        {'Accept': 'application/json', 'X-Long': 'v' * 200000},
+      ]) {
+        final result = await tor.send(
+          _get(server.url('/api/robot/'), headers: headers, robot: _robot(1)),
+        );
+
+        expect(result, _failsWith<CoordinatorTransportFailed>());
+      }
+      // The same check applies to an anonymous request.
+      expect(
+        await tor.send(
+          _get(
+            server.url('/api/robot/'),
+            headers: {'X-Long': 'v' * (maxHeaderLength + 1)},
+          ),
+        ),
+        _failsWith<CoordinatorTransportFailed>(),
+      );
+      expect(sessions.opened, isEmpty);
+      expect(server.received, isEmpty);
+    });
+
     test('that dart:io refuses fail at once, without a retry', () async {
       final tor = transport(
         createHttpClient: (_) => HttpClient()

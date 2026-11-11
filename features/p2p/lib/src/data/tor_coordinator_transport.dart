@@ -34,6 +34,11 @@ const coordinatorConnectRetries = 2;
 /// A session nobody uses is closed to make room for a new one, the least recently used first.
 const maxRobotSessions = 32;
 
+/// The longest header name and the longest header value a request may carry, in characters, which are bytes since only ASCII is sent.
+///
+/// The longest header of the RoboSats API is the `Authorization` of a first contact, with two armored OpenPGP keys: about 2 000 characters.
+const maxHeaderLength = 16 * 1024;
+
 /// The [CoordinatorTransport] of the app: every request goes through the embedded Tor.
 ///
 /// Sessions: one Tor session per coordinator origin for the anonymous requests, and one more per robot for the requests made for it ([CoordinatorRequest.robot]).
@@ -48,6 +53,7 @@ const maxRobotSessions = 32;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
 /// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened;
+/// - a header is sent only when its name is an HTTP token, its value printable ASCII, and neither is longer than [maxHeaderLength]: anything else fails the same way;
 /// - a request with an `Authorization` header and no [CoordinatorRequest.robot] fails the same way: a credential never travels on an anonymous session.
 ///
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
@@ -193,7 +199,7 @@ final class TorCoordinatorTransport
         )) {
       return const Err(CoordinatorTransportFailed());
     }
-    // Checked before any session opens: `dart:io` would refuse such a header with an exception that quotes its value.
+    // Checked before any session opens: `dart:io` would refuse a header it finds invalid with an exception that quotes its value, and a header of megabytes would cost three sessions before it failed.
     if (!_areSendable(request.headers)) {
       return const Err(CoordinatorTransportFailed());
     }
@@ -214,12 +220,14 @@ final class TorCoordinatorTransport
   static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
   static final RegExp _headerValue = RegExp(r'^[\x20-\x7E]*$');
 
-  /// Whether every header can be written on the wire as it is: a name that is an HTTP token, and a value made of printable ASCII characters and spaces only.
+  /// Whether every header can be written on the wire as it is: a name that is an HTTP token, a value made of printable ASCII characters and spaces only, and neither longer than [maxHeaderLength].
   ///
   /// A token hash in base91, an armored key and a Nostr key need nothing else, so anything else is a mistake of the caller, and never something to send.
   static bool _areSendable(Map<String, String> headers) =>
       headers.entries.every(
         (header) =>
+            header.key.length <= maxHeaderLength &&
+            header.value.length <= maxHeaderLength &&
             _headerName.hasMatch(header.key) &&
             _headerValue.hasMatch(header.value),
       );
