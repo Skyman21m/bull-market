@@ -549,9 +549,9 @@
   "@p2pCoordinatorVolumeLifetime": {
     "description": "Caption under the BTC traded on a coordinator since it started."
   },
-  "p2pCoordinatorSatsValue": "{amount} Sats",
-  "@p2pCoordinatorSatsValue": {
-    "description": "An amount of the summary of a coordinator, such as its maximum order size; RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language.",
+  "p2pAmountSats": "{amount} Sats",
+  "@p2pAmountSats": {
+    "description": "An amount of sats: in the summary of a coordinator, such as its maximum order size, and the amount of a swap order, given in BTC, which the official client writes in sats (`btcToSatsString`). RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language, or a range « min-max ».",
     "placeholders": {
       "amount": {
         "type": "String"
@@ -594,10 +594,6 @@
   "@p2pCoordinatorSimplex": {
     "description": "Contact button of a coordinator, a brand name spelt as RoboSats does: Troc shows the link RoboSats opens, to copy."
   },
-  "p2pCommonCopy": "Copy",
-  "@p2pCommonCopy": {
-    "description": "Button that puts a value on the clipboard."
-  },
   "p2pCommonCopied": "Copied!",
   "@p2pCommonCopied": {
     "description": "Shown once a value is on the clipboard."
@@ -633,5 +629,48 @@
   "p2pGarageOnboardingGenerateKey": "Generate Garage Key",
   "@p2pGarageOnboardingGenerateKey": {
     "description": "Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists."
+  },
+  "p2pCoordinatorLnNode": "LN Node",
+  "@p2pCoordinatorLnNode": {
+    "description": "Title of the sheet that shows the link of the Lightning node of a coordinator (1ML on testnet, Amboss on mainnet), to copy."
+  },
+  "p2pCoordinatorVersionValue": "{name} v{version}",
+  "@p2pCoordinatorVersionValue": {
+    "description": "The version of the coordinator, « Coordinator v0.8.8 », as RoboSats composes it; RoboSats adds the version of its own client, which Troc leaves out. {name} is the word « Coordinator », {version} the version it announces.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorNodeAmboss": "{node}... (AMBOSS)",
+  "@p2pCoordinatorNodeAmboss": {
+    "description": "The first 12 characters of the Lightning node key of a mainnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.",
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorNode1ml": "{node}... (1ML)",
+  "@p2pCoordinatorNode1ml": {
+    "description": "The first 12 characters of the Lightning node key of a testnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.",
+    "placeholders": {
+      "node": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pCoordinatorCommitShort": "{commit}...",
+  "@p2pCoordinatorCommitShort": {
+    "description": "The first 12 characters of the commit a coordinator runs, as RoboSats writes it. {commit} is text the coordinator writes.",
+    "placeholders": {
+      "commit": {
+        "type": "String"
+      }
+    }
   }
 }

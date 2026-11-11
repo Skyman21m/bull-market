@@ -1,13 +1,12 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 
-/// A link or a contact of a coordinator, shown in full with a button that copies it.
+/// A link or a contact of a coordinator, shown in full under a title of the app, in the kit's copy field.
 ///
 /// Where the official client opens a link, a mail app or a Nostr gateway, Troc shows what it would open and lets the user copy it: nothing leaves Tor, and nothing is opened.
-/// The value is coordinator text, shown as plain text.
+/// The value is coordinator text, already cleaned by `CoordinatorText.value`, shown as plain text.
 class CoordinatorLinkSheet extends StatelessWidget {
   final String title;
   final String value;
@@ -18,7 +17,7 @@ class CoordinatorLinkSheet extends StatelessWidget {
     required this.value,
   });
 
-  /// Opens the sheet of [value], under [title].
+  /// Opens the sheet of [value], under [title], a text of the app.
   static Future<void> show(
     BuildContext context, {
     required String title,
@@ -41,22 +40,7 @@ class CoordinatorLinkSheet extends StatelessWidget {
         children: [
           Text(title, style: text.headlineLarge?.copyWith(color: colors.text)),
           const Gap(BullSpacing.sm),
-          SelectableText(
-            value,
-            style: text.bodyLarge?.copyWith(color: colors.text),
-          ),
-          const Gap(BullSpacing.lg),
-          BullButton.big(
-            label: l10n.p2pCommonCopy,
-            iconData: Icons.copy,
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: value));
-              BullSnackBar.show(context, message: l10n.p2pCommonCopied);
-              Navigator.of(context).pop();
-            },
-            bgColor: colors.primary,
-            textColor: colors.onPrimary,
-          ),
+          BullCopyField(text: value, copiedMessage: l10n.p2pCommonCopied),
         ],
       ),
     );

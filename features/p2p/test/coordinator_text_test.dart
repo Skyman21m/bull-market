@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/presentation/coordinator_text.dart';
+import 'package:robosats/robosats.dart' show displayText;
 
 void main() {
   String clean(String text, [int max = 100]) =>
@@ -37,5 +38,78 @@ void main() {
       clean('x' * 100000, CoordinatorText.paragraph).runes.length,
       CoordinatorText.paragraph + 1,
     );
+  });
+
+  test('invisible format characters are removed', () {
+    String invisible(List<int> codes) => String.fromCharCodes(codes);
+    // Soft hyphen, zero width space, word joiner, byte order mark, interlinear annotations, a tag character.
+    for (final code in [
+      0x00AD,
+      0x200B,
+      0x2060,
+      0xFEFF,
+      0xFFF9,
+      0xFFFA,
+      0xFFFB,
+      0xE0001,
+      0xE0041,
+      0xE007F,
+    ]) {
+      expect(
+        clean('a${invisible([code])}b'),
+        'ab',
+        reason: code.toRadixString(16),
+      );
+      expect(
+        CoordinatorText.value('a${invisible([code])}b'),
+        'ab',
+        reason: code.toRadixString(16),
+      );
+    }
+  });
+
+  test(
+    'prose keeps the joiners that scripts and emoji need, a copied value does not',
+    () {
+      // A family emoji is three emoji joined by U+200D; Persian writes U+200C inside words.
+      final family = String.fromCharCodes([
+        0x1F468,
+        0x200D,
+        0x1F469,
+        0x200D,
+        0x1F467,
+      ]);
+      final persian = String.fromCharCodes([
+        0x0645,
+        0x06CC,
+        0x200C,
+        0x0634,
+        0x0648,
+        0x062F,
+      ]);
+      expect(clean(family), family);
+      expect(clean(persian), persian);
+      expect(
+        CoordinatorText.value('temple${String.fromCharCode(0x200D)}ofsats'),
+        'templeofsats',
+      );
+      expect(
+        CoordinatorText.value('temple${String.fromCharCode(0x200C)}ofsats'),
+        'templeofsats',
+      );
+    },
+  );
+
+  test('a copied value is bounded to one line by default', () {
+    expect(
+      CoordinatorText.value('x' * 1000).runes.length,
+      CoordinatorText.line + 1,
+    );
+  });
+
+  test('the cleaning is the one of the package', () {
+    // `CoordinatorText` adds the format characters and the bound to `displayText`, it does not repeat it.
+    final text = 'a\nb\u0000c\u202Ed';
+    expect(clean(text), displayText(text));
   });
 }

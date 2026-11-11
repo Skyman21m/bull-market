@@ -112,7 +112,7 @@
   "p2pCoordinatorCommitHash": "Empreinte de la révision du coordinateur",
   "p2pCoordinatorVolume24h": "Volume des échanges sur 24h",
   "p2pCoordinatorVolumeLifetime": "Volume total des échanges",
-  "p2pCoordinatorSatsValue": "{amount} Sats",
+  "p2pAmountSats": "{amount} Sats",
   "p2pCoordinatorSendEmail": "Envoyer un e-mail",
   "p2pCoordinatorWebsite": "Site web",
   "p2pCoordinatorPgpFingerprint": "Empreinte de la clé publique PGP",
@@ -122,7 +122,6 @@
   "p2pCoordinatorReddit": "Reddit",
   "p2pCoordinatorMatrix": "Matrix",
   "p2pCoordinatorSimplex": "Simplex",
-  "p2pCommonCopy": "Copier",
   "p2pCommonCopied": "Copié !",
   "p2pSearchOrderTitle": "Rechercher un ordre",
   "p2pSearchOrderText": "Saisissez ici l'URL d'un ordre pour le retrouver, même s'il est protégé par un mot de passe",
@@ -131,5 +130,10 @@
   "p2pNoRobotTitle": "Vous n'avez pas de clé de garage",
   "p2pNoRobotText": "Générez une clé de garage pour obtenir votre première identité de robot et commencer à échanger.",
   "p2pNoRobotHaveKey": "J'ai une clé de garage",
-  "p2pGarageOnboardingGenerateKey": "Générer une clé de garage"
+  "p2pGarageOnboardingGenerateKey": "Générer une clé de garage",
+  "p2pCoordinatorLnNode": "Nœud LN",
+  "p2pCoordinatorVersionValue": "{name} v{version}",
+  "p2pCoordinatorNodeAmboss": "{node}... (AMBOSS)",
+  "p2pCoordinatorNode1ml": "{node}... (1ML)",
+  "p2pCoordinatorCommitShort": "{commit}..."
 }

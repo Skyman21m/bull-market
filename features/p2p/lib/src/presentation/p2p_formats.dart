@@ -35,6 +35,17 @@ final class P2pFormats {
   /// A number of sats, with the thousands separator of the locale.
   String sats(int sats) => NumberFormat.decimalPattern(_locale).format(sats);
 
+  /// The amount of a swap order, given in BTC, as the sats the official client writes for it (`btcToSatsString`): `5,120,000`, or `min-max` for a range.
+  String btcAmountInSats(OrderAmount amount) {
+    // The package reads at most 1e10 BTC, so the sats fit in an int.
+    String inSats(FiatAmount btc) => sats((btc.value * 100000000).round());
+    return switch (amount) {
+      FixedOrderAmount(:final amount) => inSats(amount),
+      RangeOrderAmount(:final min, :final max) =>
+        '${inSats(min)}-${inSats(max)}',
+    };
+  }
+
   /// The sats of an estimate: one number, or `min-max` for a range.
   String estimate(TakerEstimate estimate) => estimate.isRange
       ? '${sats(estimate.minSats)}-${sats(estimate.maxSats)}'

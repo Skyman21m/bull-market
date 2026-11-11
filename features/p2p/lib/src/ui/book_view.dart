@@ -10,10 +10,17 @@ import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
+import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_failure_l10n.dart';
 import 'search_order_dialog.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
+
+/// The name of a coordinator, cleaned and bounded as every P2P screen shows it.
+String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
+  coordinator.longAlias,
+  maxCodePoints: CoordinatorText.name,
+);
 
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
@@ -241,14 +248,17 @@ class BookFilterSentence extends StatelessWidget {
           ),
           word(l10n.p2pBookFilterHostedBy),
           FilterChoice(
-            label: filter.host?.longAlias ?? l10n.p2pBookFilterAny,
+            label: switch (filter.host) {
+              final host? => _coordinatorName(host),
+              null => l10n.p2pBookFilterAny,
+            },
             onTap: () async {
               final host = await _pick<Coordinator>(
                 context,
                 title: l10n.p2pBookFilterSelectHost,
                 options: state.coordinators.keys.toList(),
                 selected: filter.host,
-                label: (host) => host.longAlias,
+                label: _coordinatorName,
                 any: l10n.p2pBookFilterAny,
               );
               if (host != null) cubit.selectHost(host.value);
@@ -394,7 +404,7 @@ class CoordinatorsStatus extends StatelessWidget {
                       children: [
                         for (final coordinator in failed)
                           Text(
-                            '${coordinator.longAlias} · ${switch (state.coordinators[coordinator]) {
+                            '${_coordinatorName(coordinator)} · ${switch (state.coordinators[coordinator]) {
                               CoordinatorBookFailed(:final failure) => failure.toTranslated(context),
                               _ => '',
                             }}',

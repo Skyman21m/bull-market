@@ -398,7 +398,7 @@ class P2pLocalizationsEn extends P2pLocalizations {
   String get p2pCoordinatorVolumeLifetime => 'Lifetime contracted volume';
 
   @override
-  String p2pCoordinatorSatsValue(String amount) {
+  String p2pAmountSats(String amount) {
     return '$amount Sats';
   }
 
@@ -430,9 +430,6 @@ class P2pLocalizationsEn extends P2pLocalizations {
   String get p2pCoordinatorSimplex => 'Simplex';
 
   @override
-  String get p2pCommonCopy => 'Copy';
-
-  @override
   String get p2pCommonCopied => 'Copied!';
 
   @override
@@ -460,4 +457,27 @@ class P2pLocalizationsEn extends P2pLocalizations {
 
   @override
   String get p2pGarageOnboardingGenerateKey => 'Generate Garage Key';
+
+  @override
+  String get p2pCoordinatorLnNode => 'LN Node';
+
+  @override
+  String p2pCoordinatorVersionValue(String name, String version) {
+    return '$name v$version';
+  }
+
+  @override
+  String p2pCoordinatorNodeAmboss(String node) {
+    return '$node... (AMBOSS)';
+  }
+
+  @override
+  String p2pCoordinatorNode1ml(String node) {
+    return '$node... (1ML)';
+  }
+
+  @override
+  String p2pCoordinatorCommitShort(String commit) {
+    return '$commit...';
+  }
 }

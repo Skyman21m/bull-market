@@ -76,8 +76,12 @@ class _SearchOrderDialogState extends State<SearchOrderDialog> {
           TextField(
             controller: _url,
             keyboardType: TextInputType.url,
+            // Not the kit's text field, which has no label nor error state; like it, no personalised learning, and no suggestion, correction or smart punctuation: an order URL is not for the keyboard to learn or to retype.
             autocorrect: false,
             enableSuggestions: false,
+            enableIMEPersonalizedLearning: false,
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
             textAlign: TextAlign.center,
             inputFormatters: [
               LengthLimitingTextInputFormatter(SearchOrderDialog.maxLength),

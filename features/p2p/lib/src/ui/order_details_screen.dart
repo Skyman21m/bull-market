@@ -8,6 +8,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../presentation/coordinator_details_cubit.dart';
+import '../presentation/coordinator_text.dart';
 import '../presentation/order_details_cubit.dart';
 import '../presentation/p2p_formats.dart';
 import 'coordinator_details_dialog.dart';
@@ -142,7 +143,10 @@ class _HostRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                order.coordinator.longAlias,
+                CoordinatorText.of(
+                  order.coordinator.longAlias,
+                  maxCodePoints: CoordinatorText.name,
+                ),
                 style: text.headlineLarge?.copyWith(color: colors.text),
               ),
               Text(
@@ -241,7 +245,10 @@ class _DetailsCard extends StatelessWidget {
     final formats = P2pFormats.of(context);
     final order = state.order;
     final code = order.currency.code;
-    final amount = '${formats.orderAmount(order.amount)} $code';
+    // A swap order is given in BTC, which the official client writes in sats.
+    final amount = order.currency.isBitcoin
+        ? l10n.p2pAmountSats(formats.btcAmountInSats(order.amount))
+        : '${formats.orderAmount(order.amount)} $code';
     final estimate = state.estimate;
     final sats = estimate == null ? '-' : formats.estimate(estimate);
     final methods = order.paymentMethods.text;

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bull_ui/bull_ui.dart' show BullCopyField;
 import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/presentation/coordinator_details_cubit.dart';
 import 'package:p2p/src/presentation/coordinator_text.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
+import 'package:p2p/src/ui/widgets/coordinator_link_sheet.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
@@ -341,64 +343,242 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a link is shown in full and copied, never opened', (
+  group('every link and contact is shown in full and copied, never opened', () {
+    const templeOnion =
+        'http://ngdk7ocdzmz5kzsysa3om6du7ycj2evxp2f2olfkyq37htx3gllwp2yd.onion';
+    final temple = coordinator('temple');
+    // Temple gives no X nor Reddit: they are added, as another coordinator could.
+    final linked = rewrite(
+      temple,
+      contact: CoordinatorContact(
+        email: temple.contact.email,
+        telegram: temple.contact.telegram,
+        simplex: temple.contact.simplex,
+        matrix: temple.contact.matrix,
+        website: temple.contact.website,
+        nostr: temple.contact.nostr,
+        pgp: temple.contact.pgp,
+        fingerprint: temple.contact.fingerprint,
+        reddit: 'r/templeofsats',
+        twitter: 'templeofsats',
+      ),
+    );
+
+    /// What the user taps, in which section if any, and the sheet it opens: its title and the value copied.
+    final links =
+        <
+          ({
+            String name,
+            Finder tap,
+            String? section,
+            String title,
+            String value,
+          })
+        >[
+          (
+            name: 'Nostr',
+            tap: find.byTooltip('Nostr'),
+            section: null,
+            title: 'Nostr',
+            value:
+                'npub1wsqpvgpfwq6a4fs5whqxn7gtd9gqsll2p5qnfdu4ltr43s6wwxgsgk4xtl',
+          ),
+          (
+            name: 'PGP',
+            tap: find.byTooltip('PGP Pubkey fingerprint'),
+            section: null,
+            title: 'PGP Pubkey fingerprint',
+            value: '2579 1752 E966 1C1D E118 A8C6 F78C D3D6 471B 6789',
+          ),
+          (
+            name: 'email',
+            tap: find.byTooltip('Send Email'),
+            section: null,
+            title: 'Send Email',
+            value: 'coordinator@templeofsats.org',
+          ),
+          (
+            name: 'Telegram',
+            tap: find.byTooltip('Telegram'),
+            section: null,
+            title: 'Telegram',
+            value: 'https://t.me/templeofsats',
+          ),
+          (
+            name: 'X',
+            tap: find.byTooltip('X'),
+            section: null,
+            title: 'X',
+            value: 'https://x.com/templeofsats',
+          ),
+          (
+            name: 'Reddit',
+            tap: find.byTooltip('Reddit'),
+            section: null,
+            title: 'Reddit',
+            value: 'https://reddit.com/r/templeofsats',
+          ),
+          (
+            name: 'website',
+            tap: find.byTooltip('Website'),
+            section: null,
+            title: 'Website',
+            value: 'https://templeofsats.org',
+          ),
+          (
+            name: 'Matrix',
+            tap: find.byTooltip('Matrix'),
+            section: null,
+            title: 'Matrix',
+            value: '@venividivici13:matrix.org',
+          ),
+          (
+            name: 'Simplex',
+            tap: find.byTooltip('Simplex'),
+            section: null,
+            title: 'Simplex',
+            value: temple.contact.simplex ?? '',
+          ),
+          (
+            name: 'hosted web app',
+            tap: find.text(templeOnion),
+            section: null,
+            title: 'Coordinator hosted web app',
+            value: templeOnion,
+          ),
+          (
+            name: 'Lightning node',
+            tap: find.text('0226f31c5f3a... (AMBOSS)'),
+            section: 'Stats for Nerds',
+            // A title of the app, never the alias the coordinator chose.
+            title: 'LN Node',
+            value:
+                'https://amboss.space/node/0226f31c5f3a8b48bbbb7aaa97a10effcfb445b5972a676955d5c095383d35a428',
+          ),
+          (
+            name: 'commit',
+            tap: find.text('9526aad5...'),
+            section: 'Stats for Nerds',
+            title: 'Coordinator commit hash',
+            value: 'https://github.com/Robosats/robosats/tree/9526aad5',
+          ),
+        ];
+
+    for (final link in links) {
+      testWidgets(link.name, (tester) async {
+        await open(
+          tester,
+          FakeTransport(
+            infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
+          ),
+          of: linked,
+        );
+        if (link.section case final section?) {
+          await openSection(tester, section);
+        }
+        await scrollTo(tester, link.tap);
+        await tester.tap(link.tap);
+        await settle(tester);
+
+        final sheet = find.byType(CoordinatorLinkSheet);
+        expect(
+          find
+              .descendant(of: sheet, matching: find.byType(Text))
+              .evaluate()
+              .map((element) => (element.widget as Text).data),
+          [link.title, link.value],
+        );
+        await tester.tap(
+          find.descendant(of: sheet, matching: find.byIcon(Icons.copy_sharp)),
+        );
+        await settle(tester);
+        expect(copied, [link.value]);
+        expect(find.text('Copied!'), findsOneWidget);
+        // The toast goes away on its own.
+        await tester.pump(const Duration(seconds: 4));
+        await settle(tester);
+      });
+    }
+  });
+
+  testWidgets('a commit that is not a commit id is shown without a link', (
     tester,
   ) async {
+    for (final commit in ['../../evil/repo', 'ABCDEF1', 'abc123', 'a' * 41]) {
+      final info = recordedInfo('temple', RobosatsNetwork.mainnet)
+        ..['robosats_running_commit_hash'] = commit;
+      await open(tester, FakeTransport(infos: {'temple': info}));
+      await openSection(tester, 'Stats for Nerds');
+      final shown = find.text(
+        '${String.fromCharCodes(commit.runes.take(12))}...',
+      );
+      await scrollTo(tester, shown);
+      await tester.tap(shown);
+      await settle(tester);
+      expect(find.byType(CoordinatorLinkSheet), findsNothing, reason: commit);
+      // The text of a row without a link is not in the colour of a link.
+      expect(tester.widget<Text>(shown).style?.color, testBullTheme.text);
+      await tester.tapAt(const Offset(4, 4));
+      await settle(tester);
+    }
+  });
+
+  testWidgets('invisible characters are neither shown nor copied', (
+    tester,
+  ) async {
+    String hidden(String text) => text.replaceAll(
+      '|',
+      String.fromCharCodes([
+        0x200B,
+        0x2060,
+        0xFEFF,
+        0x00AD,
+        0xFFF9,
+        0xE0041,
+        0x200D,
+      ]),
+    );
+    final hostile = rewrite(
+      coordinator('temple'),
+      contact: CoordinatorContact(
+        telegram: hidden('temple|ofsats'),
+        website: hidden('https://templeofsats|.org'),
+      ),
+    );
     await open(
       tester,
       FakeTransport(
         infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
       ),
+      of: hostile,
     );
 
-    await tester.tap(find.byTooltip('Telegram'));
-    await settle(tester);
-    expect(find.text('https://t.me/templeofsats'), findsOneWidget);
-    await tester.tap(find.text('Copy'));
-    await settle(tester);
-    expect(copied, ['https://t.me/templeofsats']);
-    expect(find.text('Copied!'), findsOneWidget);
-    // The toast goes away on its own.
-    await tester.pump(const Duration(seconds: 4));
-    await settle(tester);
+    for (final (tooltip, value) in [
+      ('Telegram', 'https://t.me/templeofsats'),
+      ('Website', 'https://templeofsats.org'),
+    ]) {
+      await tester.tap(find.byTooltip(tooltip));
+      await settle(tester);
+      expect(
+        find.descendant(
+          of: find.byType(BullCopyField),
+          matching: find.text(value),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byIcon(Icons.copy_sharp));
+      await tester.pump(const Duration(seconds: 4));
+      await settle(tester);
+      await tester.tapAt(const Offset(4, 4));
+      await settle(tester);
+    }
+    expect(copied, ['https://t.me/templeofsats', 'https://templeofsats.org']);
+  });
 
-    await tester.tap(find.byTooltip('PGP Pubkey fingerprint'));
-    await settle(tester);
-    expect(
-      find.text('2579 1752 E966 1C1D E118 A8C6 F78C D3D6 471B 6789'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Copy'));
-    await tester.pump(const Duration(seconds: 4));
-    await settle(tester);
-
-    await tester.tap(find.byTooltip('Send Email'));
-    await settle(tester);
-    expect(find.text('coordinator@templeofsats.org'), findsNWidgets(1));
-    await tester.tap(find.text('Copy'));
-    await tester.pump(const Duration(seconds: 4));
-    await settle(tester);
-
-    await openSection(tester, 'Stats for Nerds');
-    await scrollTo(tester, find.text('0226f31c5f3a... (AMBOSS)'));
-    await tester.tap(find.text('0226f31c5f3a... (AMBOSS)'));
-    await settle(tester);
-    expect(
-      find.text(
-        'https://amboss.space/node/0226f31c5f3a8b48bbbb7aaa97a10effcfb445b5972a676955d5c095383d35a428',
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Copy'));
-    await tester.pump(const Duration(seconds: 4));
-    await settle(tester);
-
-    expect(copied, [
-      'https://t.me/templeofsats',
-      '2579 1752 E966 1C1D E118 A8C6 F78C D3D6 471B 6789',
-      'coordinator@templeofsats.org',
-      'https://amboss.space/node/0226f31c5f3a8b48bbbb7aaa97a10effcfb445b5972a676955d5c095383d35a428',
-    ]);
+  test('a fingerprint is grouped by characters, never inside one', () {
+    expect(CoordinatorContacts.groupFingerprint('ABCDEFGHIJ'), 'ABCD EFGH IJ');
+    expect(CoordinatorContacts.groupFingerprint('🔥🔥🔥🔥🔥'), '🔥🔥🔥🔥 🔥');
+    expect(CoordinatorContacts.groupFingerprint(''), '');
   });
 
   testWidgets('on testnet: the testnet web app and the 1ML link', (
@@ -469,6 +649,53 @@ void main() {
       testBullTheme.primary,
       testBullTheme.outline,
     ]);
+  });
+
+  testWidgets('large limits come from the size limit, not from the list', (
+    tester,
+  ) async {
+    // A coordinator four days old that the list says has large limits: the official client reads `size_limit` only.
+    final young = rewrite(
+      coordinator('gumpellite'),
+      badges: const CoordinatorBadges(
+        isFounder: false,
+        donatesToDevFund: 20,
+        hasGoodOpSec: true,
+        hasLargeLimits: true,
+      ),
+    );
+    await open(tester, FakeTransport(), of: young);
+    expect(
+      tester
+          .widgetList<CoordinatorBadge>(find.byType(CoordinatorBadge))
+          .last
+          .lit,
+      isFalse,
+    );
+    await tester.tapAt(const Offset(4, 4));
+    await settle(tester);
+
+    // A founder that the list says has no large limits: 21 BTC.
+    final founder = rewrite(
+      coordinator('temple'),
+      badges: const CoordinatorBadges(
+        isFounder: true,
+        donatesToDevFund: 30,
+        hasGoodOpSec: true,
+        hasLargeLimits: false,
+      ),
+    );
+    await open(tester, FakeTransport(), of: founder);
+    expect(
+      tester.widgetList<CoordinatorBadge>(find.byType(CoordinatorBadge)).last,
+      isA<CoordinatorBadge>()
+          .having((badge) => badge.lit, 'lit', isTrue)
+          .having(
+            (badge) => badge.explanation,
+            'explanation',
+            'Large limits: the coordinator has large trade limits.',
+          ),
+    );
   });
 
   testWidgets('a young coordinator: its size limit caps the order size', (
@@ -543,7 +770,12 @@ void main() {
     expect(find.byTooltip('PGP Pubkey fingerprint'), findsNothing);
     await tester.tap(find.byTooltip('Send Email'));
     await settle(tester);
-    final email = tester.widget<SelectableText>(find.byType(SelectableText));
+    final email = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(BullCopyField),
+        matching: find.byType(Text),
+      ),
+    );
     expect(email.data?.runes.length, CoordinatorText.line + 1);
     await tester.tapAt(const Offset(4, 4));
     await settle(tester);

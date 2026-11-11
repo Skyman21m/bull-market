@@ -822,11 +822,11 @@ abstract class P2pLocalizations {
   /// **'Lifetime contracted volume'**
   String get p2pCoordinatorVolumeLifetime;
 
-  /// An amount of the summary of a coordinator, such as its maximum order size; RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language.
+  /// An amount of sats: in the summary of a coordinator, such as its maximum order size, and the amount of a swap order, given in BTC, which the official client writes in sats (`btcToSatsString`). RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language, or a range « min-max ».
   ///
   /// In en, this message translates to:
   /// **'{amount} Sats'**
-  String p2pCoordinatorSatsValue(String amount);
+  String p2pAmountSats(String amount);
 
   /// Contact button of a coordinator: Troc shows the address, to copy, and never opens a mail app.
   ///
@@ -882,12 +882,6 @@ abstract class P2pLocalizations {
   /// **'Simplex'**
   String get p2pCoordinatorSimplex;
 
-  /// Button that puts a value on the clipboard.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy'**
-  String get p2pCommonCopy;
-
   /// Shown once a value is on the clipboard.
   ///
   /// In en, this message translates to:
@@ -941,6 +935,36 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Generate Garage Key'**
   String get p2pGarageOnboardingGenerateKey;
+
+  /// Title of the sheet that shows the link of the Lightning node of a coordinator (1ML on testnet, Amboss on mainnet), to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'LN Node'**
+  String get p2pCoordinatorLnNode;
+
+  /// The version of the coordinator, « Coordinator v0.8.8 », as RoboSats composes it; RoboSats adds the version of its own client, which Troc leaves out. {name} is the word « Coordinator », {version} the version it announces.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} v{version}'**
+  String p2pCoordinatorVersionValue(String name, String version);
+
+  /// The first 12 characters of the Lightning node key of a mainnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.
+  ///
+  /// In en, this message translates to:
+  /// **'{node}... (AMBOSS)'**
+  String p2pCoordinatorNodeAmboss(String node);
+
+  /// The first 12 characters of the Lightning node key of a testnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.
+  ///
+  /// In en, this message translates to:
+  /// **'{node}... (1ML)'**
+  String p2pCoordinatorNode1ml(String node);
+
+  /// The first 12 characters of the commit a coordinator runs, as RoboSats writes it. {commit} is text the coordinator writes.
+  ///
+  /// In en, this message translates to:
+  /// **'{commit}...'**
+  String p2pCoordinatorCommitShort(String commit);
 }
 
 class _P2pLocalizationsDelegate

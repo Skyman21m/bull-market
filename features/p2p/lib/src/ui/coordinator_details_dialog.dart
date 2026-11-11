@@ -55,7 +55,8 @@ class _CoordinatorDetailsDialogState extends State<CoordinatorDetailsDialog> {
       CoordinatorInfoLoaded(:final info) => info,
       _ => null,
     };
-    final onion = coordinator.origins(state.network).onion;
+    final origin = coordinator.origins(state.network).onion;
+    final onion = origin == null ? null : CoordinatorText.value(origin);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
@@ -336,12 +337,13 @@ class CoordinatorContacts extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
+    // What is shown is what is copied: a contact without any visible character is left out.
     String? clean(String? value) => switch (value) {
-      final value? when value.trim().isNotEmpty => CoordinatorText.of(
-        value,
-        maxCodePoints: CoordinatorText.line,
-      ),
-      _ => null,
+      final value? => switch (CoordinatorText.value(value)) {
+        final clean when clean.trim().isNotEmpty => clean,
+        _ => null,
+      },
+      null => null,
     };
     final nostr = clean(contact.nostr);
     final fingerprint = clean(contact.fingerprint);
@@ -387,14 +389,14 @@ class CoordinatorContacts extends StatelessWidget {
     );
   }
 
-  /// An OpenPGP fingerprint in groups of four characters, as the official client writes it.
-  static String groupFingerprint(String fingerprint) => [
-    for (var i = 0; i < fingerprint.length; i += 4)
-      fingerprint.substring(
-        i,
-        i + 4 < fingerprint.length ? i + 4 : fingerprint.length,
-      ),
-  ].join(' ');
+  /// An OpenPGP fingerprint in groups of four characters, as the official client writes it; characters are code points, so a group never splits one.
+  static String groupFingerprint(String fingerprint) {
+    final runes = fingerprint.runes.toList();
+    return [
+      for (var i = 0; i < runes.length; i += 4)
+        String.fromCharCodes(runes.skip(i).take(4)),
+    ].join(' ');
+  }
 }
 
 /// The notice of the coordinator, coloured by its severity: its text may contain HTML, which is shown as it is written.
@@ -430,7 +432,10 @@ class CoordinatorNotice extends StatelessWidget {
           if (info.noticeMessage.isNotEmpty) ...[
             const Gap(BullSpacing.xxs),
             Text(
-              info.noticeMessage,
+              CoordinatorText.of(
+                info.noticeMessage,
+                maxCodePoints: CoordinatorText.notice,
+              ),
               style: text.bodyMedium?.copyWith(color: colors.text),
             ),
           ],
@@ -600,8 +605,7 @@ class CoordinatorSummary extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    String sats(double sats) =>
-        l10n.p2pCoordinatorSatsValue(formats.satsAmount(sats));
+    String sats(double sats) => l10n.p2pAmountSats(formats.satsAmount(sats));
     Widget fee(String value, String caption) => Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -696,7 +700,10 @@ class CoordinatorSummary extends StatelessWidget {
         divider,
         CoordinatorDetailRow(
           icon: Icons.api,
-          value: info.marketPriceApis ?? '',
+          value: CoordinatorText.of(
+            info.marketPriceApis ?? '',
+            maxCodePoints: CoordinatorText.paragraph,
+          ),
           caption: l10n.p2pCoordinatorPriceSources,
         ),
       ],
@@ -707,6 +714,7 @@ class CoordinatorSummary extends StatelessWidget {
 /// « Stats for Nerds »: the versions, Lightning node, commit and volumes of the coordinator.
 ///
 /// The node and the commit are links in the official client (1ML or Amboss, GitHub): here they show the link in full, to copy.
+/// The commit is a link only when it is a commit id, so that the text of a coordinator cannot make it point elsewhere on GitHub.
 class CoordinatorStats extends StatelessWidget {
   final CoordinatorInfo info;
 
@@ -715,6 +723,9 @@ class CoordinatorStats extends StatelessWidget {
   /// How many characters of the node key and of the commit the official client shows before its ellipsis.
   static const shownPrefix = 12;
 
+  /// A Git commit id, abbreviated or full, in lowercase hexadecimal.
+  static final RegExp commitId = RegExp(r'^[0-9a-f]{7,40}$');
+
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
@@ -722,16 +733,24 @@ class CoordinatorStats extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     final divider = Divider(height: 1, color: colors.outlineVariant);
-    final lnd = info.lndVersion;
-    final cln = info.clnVersion;
-    final commit = info.robosatsRunningCommitHash?.trim();
+    String? line(String? text) => text == null
+        ? null
+        : CoordinatorText.of(text, maxCodePoints: CoordinatorText.line);
+    final lnd = line(info.lndVersion);
+    final cln = line(info.clnVersion);
+    final commit = switch (info.robosatsRunningCommitHash) {
+      final hash? => CoordinatorText.value(hash).trim(),
+      null => null,
+    };
     final testnet = info.network == RobosatsNetwork.testnet;
+    // The node id is 66 hexadecimal characters, checked when the info is read.
     final nodeLink = testnet
         ? 'https://1ml.com/testnet/node/${info.nodeId}'
         : 'https://amboss.space/node/${info.nodeId}';
+    final nodeAlias = line(info.nodeAlias) ?? '';
     final nodeCaption = testnet
-        ? l10n.p2pCoordinatorLnNodeAlias(info.nodeAlias)
-        : info.nodeAlias;
+        ? l10n.p2pCoordinatorLnNodeAlias(nodeAlias)
+        : nodeAlias;
     Widget volume(double btc) => Row(
       children: [
         Flexible(
@@ -748,7 +767,10 @@ class CoordinatorStats extends StatelessWidget {
       children: [
         CoordinatorDetailRow(
           icon: Icons.smart_toy_outlined,
-          value: '${l10n.p2pCoordinatorVersionCoordinator} v${info.version}',
+          value: l10n.p2pCoordinatorVersionValue(
+            l10n.p2pCoordinatorVersionCoordinator,
+            '${info.version}',
+          ),
           caption: l10n.p2pCoordinatorRoboSatsVersion,
         ),
         divider,
@@ -767,11 +789,13 @@ class CoordinatorStats extends StatelessWidget {
         divider,
         CoordinatorDetailRow(
           icon: Icons.dns,
-          value: '${_prefix(info.nodeId)}... (${testnet ? '1ML' : 'AMBOSS'})',
+          value: testnet
+              ? l10n.p2pCoordinatorNode1ml(_prefix(info.nodeId))
+              : l10n.p2pCoordinatorNodeAmboss(_prefix(info.nodeId)),
           caption: nodeCaption,
           onTap: () => CoordinatorLinkSheet.show(
             context,
-            title: nodeCaption,
+            title: l10n.p2pCoordinatorLnNode,
             value: nodeLink,
           ),
         ),
@@ -779,13 +803,15 @@ class CoordinatorStats extends StatelessWidget {
           divider,
           CoordinatorDetailRow(
             icon: Icons.code,
-            value: '${_prefix(commit)}...',
+            value: l10n.p2pCoordinatorCommitShort(_prefix(commit)),
             caption: l10n.p2pCoordinatorCommitHash,
-            onTap: () => CoordinatorLinkSheet.show(
-              context,
-              title: l10n.p2pCoordinatorCommitHash,
-              value: 'https://github.com/Robosats/robosats/tree/$commit',
-            ),
+            onTap: commitId.hasMatch(commit)
+                ? () => CoordinatorLinkSheet.show(
+                    context,
+                    title: l10n.p2pCoordinatorCommitHash,
+                    value: 'https://github.com/Robosats/robosats/tree/$commit',
+                  )
+                : null,
           ),
         ],
         divider,

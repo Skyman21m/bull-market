@@ -95,4 +95,25 @@ void main() {
     expect(en.nonKycPremium(1), '1%');
     expect(en.nonKycPremium(-0.5), '-0.5%');
   });
+
+  test(
+    'a swap amount, in BTC, is written in sats as the official client does',
+    () {
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0512))), '5,120,000');
+      expect(
+        en.btcAmountInSats(
+          RangeOrderAmount.tryCreate(fiat(0.01), fiat(0.05)) ??
+              (throw StateError('range')),
+        ),
+        '1,000,000-5,000,000',
+      );
+      // Rounded to the sat, as `Math.round`.
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0000012345))), '123');
+      expect(en.btcAmountInSats(FixedOrderAmount(fiat(0.0000012355))), '124');
+      expect(
+        fr.btcAmountInSats(FixedOrderAmount(fiat(0.0512))),
+        fr.sats(5120000),
+      );
+    },
+  );
 }

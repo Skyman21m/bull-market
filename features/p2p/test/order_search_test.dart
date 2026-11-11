@@ -73,7 +73,12 @@ void main() {
       '$onion/order/nowhere/48213',
       // Not a number: the official client asks the coordinator anyway.
       '$onion/order/temple/abc',
+      // Numbers that `Number` of the official client reads (16, 1000, 48213) and Troc, which reads decimal integers only, does not: such a URL needs a robot instead of opening the order.
       '$onion/order/temple/0x10',
+      '$onion/order/temple/1e3',
+      '$onion/order/temple/48213.0',
+      // Blanks only: `Number` reads 0, an order that does not exist.
+      '$onion/order/temple/   ',
       // The alias is matched as written.
       '$onion/order/Temple/48213',
     ]) {

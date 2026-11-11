@@ -409,9 +409,87 @@ void main() {
         await settle(tester);
         expect(dialog, findsNothing);
         expect(find.byType(OrderDetailsScreen), findsNothing);
-        // The bar is back on the list, and « Search » opens the dialog again.
+        // The bar is back on the list: « List » is in the colour of the chosen segment, « Search » is not.
+        Color? colour(String label) => tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byType(BullSegmented).last,
+                matching: find.text(label),
+              ),
+            )
+            .style
+            ?.color;
+        expect(colour('List'), testBullTheme.primary);
+        expect(colour('Search'), testBullTheme.secondary);
+        // « Search » opens the dialog again.
         await openSearch(tester);
         expect(dialog, findsOneWidget);
+      });
+
+      testWidgets('the keyboard neither learns nor rewrites an order URL', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester);
+
+        final field = tester.widget<TextField>(
+          inDialog(find.byType(TextField)),
+        );
+        expect(field.enableIMEPersonalizedLearning, isFalse);
+        expect(field.enableSuggestions, isFalse);
+        expect(field.autocorrect, isFalse);
+        expect(field.smartDashesType, SmartDashesType.disabled);
+        expect(field.smartQuotesType, SmartQuotesType.disabled);
+        expect(field.keyboardType, TextInputType.url);
+        // A paste far longer than an order URL is cut at the bound of the field.
+        await tester.enterText(inDialog(find.byType(TextField)), 'x' * 5000);
+        await settle(tester);
+        expect(
+          tester
+              .widget<TextField>(inDialog(find.byType(TextField)))
+              .controller
+              ?.text
+              .length,
+          SearchOrderDialog.maxLength,
+        );
+      });
+
+      testWidgets('a swap order opens with its amount in sats', (tester) async {
+        // A swap order is never listed by the book, but its URL finds it, as the official client opens it.
+        transport.books['temple'] = [
+          ...?transport.books['temple'],
+          bookOrder(
+            id: 77,
+            currency: 1000,
+            amount: 0.0512,
+            paymentMethod: 'On-Chain BTC',
+            premium: 1.5,
+            price: null,
+            makerSeed: 5,
+          ),
+        ];
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        expect(find.text('# 77'), findsNothing);
+        await openSearch(tester);
+
+        await searchFor(tester, 'http://$temple/order/temple/77');
+
+        expect(find.text('# 77'), findsOneWidget);
+        // As `btcToSatsString` of the official client: the amount row and the sentence of the taker.
+        expect(
+          find.descendant(
+            of: find.byType(OrderDetailsScreen),
+            matching: find.text('5,120,000 Sats'),
+          ),
+          findsNWidgets(2),
+        );
+        expect(find.text('You send via On-Chain BTC'), findsOneWidget);
+        expect(find.textContaining('0.0512'), findsNothing);
+        expect(find.text('Swap destination'), findsOneWidget);
       });
 
       testWidgets('an order the public book does not hold needs a robot', (
