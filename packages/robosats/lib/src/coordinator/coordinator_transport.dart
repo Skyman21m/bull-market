@@ -81,7 +81,7 @@ final class CoordinatorResponse {
 /// - it must not follow redirects;
 /// - it must keep the requests of each [CoordinatorRequest.robot] on connections and Tor circuits of their own, per coordinator, apart from those of every other robot and from the anonymous requests, and refuse a request that carries an `Authorization` header without naming its robot;
 /// - it must never log or keep the headers of a request, which may hold a credential;
-/// - when its own limits leave no connection for a request for now, it fails with [CoordinatorTransportBusy] and with nothing else, so that a caller can tell a request to send again later from a coordinator that does not work;
+/// - when its own limits leave no connection for a request for now, it fails with [CoordinatorTransportBusy], which it gives for nothing else and never after it sent a request that is not a `GET`, so that a caller can tell a request to send again later from a coordinator that does not work;
 /// - it maps everything else that goes wrong into a [CoordinatorTransportFailure].
 ///
 /// Calls may run concurrently, one per coordinator and per robot.
