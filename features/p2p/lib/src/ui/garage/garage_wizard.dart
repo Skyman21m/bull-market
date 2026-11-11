@@ -1,4 +1,5 @@
 import 'package:bull_ui/bull_ui.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -55,9 +56,18 @@ class _GarageWizardState extends State<GarageWizard> {
   /// The key the user pastes in step 1, dropped with the wizard.
   final _pasted = TextEditingController();
 
+  /// The link to the support group, inside the help sentence of step 3.
+  late final _simplexLink = TapGestureRecognizer()
+    ..onTap = () => CoordinatorLinkSheet.show(
+      context,
+      title: P2pLocalizations.of(context).p2pGarageOnboardingHelpLink,
+      value: simplexGroupUrl,
+    );
+
   @override
   void dispose() {
     _pasted.dispose();
+    _simplexLink.dispose();
     super.dispose();
   }
 
@@ -295,26 +305,22 @@ class _GarageWizardState extends State<GarageWizard> {
           ],
         ),
         const Gap(BullSpacing.md),
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(l10n.p2pGarageOnboardingHelpIntro, style: words),
-            TextButton(
-              onPressed: () => CoordinatorLinkSheet.show(
-                context,
-                title: l10n.p2pGarageOnboardingHelpLink,
-                value: simplexGroupUrl,
-              ),
-              child: Text(
-                l10n.p2pGarageOnboardingHelpLink,
-                style: text.bodyMedium?.copyWith(
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: '${l10n.p2pGarageOnboardingHelpIntro} '),
+              TextSpan(
+                text: l10n.p2pGarageOnboardingHelpLink,
+                recognizer: _simplexLink,
+                style: TextStyle(
                   color: colors.primary,
                   decoration: TextDecoration.underline,
                 ),
               ),
-            ),
-            Text(', ${l10n.p2pGarageOnboardingHelpOutro}', style: words),
-          ],
+              TextSpan(text: ', ${l10n.p2pGarageOnboardingHelpOutro}'),
+            ],
+          ),
+          style: words,
         ),
         const Gap(BullSpacing.sm),
         BullButton.big(

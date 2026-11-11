@@ -550,7 +550,8 @@ void main() {
           ),
           findsOneWidget,
         );
-        await tester.tap(find.text('SimpleX group'));
+        // The link is a span of the help sentence.
+        await tester.tapOnText(find.textRange.ofSubstring('SimpleX group'));
         await settle(tester);
         expect(find.textContaining('simplex.chat'), findsOneWidget);
         await tester.tap(find.byTooltip('Copy'));
