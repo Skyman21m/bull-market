@@ -14,6 +14,9 @@ const _network = RobosatsNetwork.testnet;
 // A request is bounded by 132 seconds in the transport; a step that fails for a transport reason is tried this many times in all.
 const _attempts = 3;
 
+// A coordinator answers `found` once a robot is more than five minutes old (`api/views.py:738-741`): the last read waits for that, with a margin for its clock.
+const _foundAfter = Duration(minutes: 5, seconds: 20);
+
 /// Prints one measurement as a single greppable line: `P2P_ROBOT_MEASURE {json}`.
 ///
 /// Only labels of this app, numbers and booleans: never a token, a key, a header, a nickname or text sent by a coordinator.
@@ -148,6 +151,8 @@ Future<void> main({bool isInitialized = false}) async {
           });
 
           final completed = <String>[];
+          // When the first robot was created on each coordinator, in milliseconds on [watch].
+          final createdAt = <Coordinator, int>{};
           try {
             final coordinators = facade.requestBooks(_network).keys.toList();
             for (final coordinator in coordinators) {
@@ -219,6 +224,7 @@ Future<void> main({bool isInitialized = false}) async {
                   'first contact refused: ${_failure(failure)}',
                 ),
               };
+              createdAt[coordinator] = watch.elapsedMilliseconds;
               // The cross-checks passed: hash id, nickname and both PGP keys are the ones of this device.
               expect(createdRobot.hashId, first.identity.hashId);
               expect(
@@ -390,6 +396,44 @@ Future<void> main({bool isInitialized = false}) async {
               }
 
               completed.add(alias);
+            }
+
+            // 9. Five minutes later the coordinator says it knew the robot: the only thing that tells a known robot from a new one.
+            for (final MapEntry(key: coordinator, value: created)
+                in createdAt.entries) {
+              final alias = coordinator.shortAlias;
+              if (!completed.contains(alias)) continue;
+              final wait =
+                  _foundAfter.inMilliseconds -
+                  (watch.elapsedMilliseconds - created);
+              if (wait > 0) {
+                await Future<void>.delayed(Duration(milliseconds: wait));
+              }
+              final later = await _try(
+                alias,
+                'a_short_header_after_five_minutes',
+                watch,
+                () => facade.fetchRobot(
+                  coordinator,
+                  _network,
+                  identity: first.identity,
+                  pgpKey: firstKey,
+                  createIfUnknown: false,
+                ),
+                fields: _robotFields,
+              );
+              if (_gaveUp(later)) {
+                completed.remove(alias);
+                continue;
+              }
+              expect(
+                later,
+                isA<Ok<CoordinatorRobot, CoordinatorFailure>>().having(
+                  (ok) => ok.value.found,
+                  'found',
+                  isTrue,
+                ),
+              );
             }
           } finally {
             await facade.closeRobotSessions(first.identity);
