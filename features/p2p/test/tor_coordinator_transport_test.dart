@@ -24,6 +24,9 @@ final class _Sessions {
   /// What the close of a session waits for before it completes, by session index: a future that never completes makes a session that never finishes closing.
   final Map<int, Future<void>> closeGates = {};
 
+  /// What the close of a session throws once it completes, by session index.
+  final Map<int, Object> closeThrows = {};
+
   /// The most sessions that were open at the same time, a session being open until its close completes.
   int maxOpen = 0;
 
@@ -36,6 +39,8 @@ final class _Sessions {
         closing.add(index);
         await closeGates[index];
         closed.add(index);
+        final thrown = closeThrows[index];
+        if (thrown != null) throw thrown;
       },
     );
     opened.add(session);
@@ -966,6 +971,54 @@ void main() {
         );
         expect(sessions.opened, hasLength(1));
         expect(sessions.closed, {0});
+      },
+    );
+
+    test(
+      'an Error from the close of a Tor session reaches closeSessions once, and the session no longer counts',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        sessions.closeThrows[0] = StateError('bug');
+        final tor = transport();
+        expect(
+          await tor.send(_get(server.url('/api/robot/'), robot: _robot(1))),
+          isA<Ok<Object?, Failure>>(),
+        );
+        expect(tor.countsForTesting.places, 1);
+
+        await expectLater(tor.closeSessions(), throwsA(isA<StateError>()));
+
+        expect(tor.countsForTesting.live, 0);
+        expect(tor.countsForTesting.places, 0);
+        // The next close does not meet it again, and the robot gets a new session.
+        await tor.closeSessions();
+        expect(
+          await tor.send(_get(server.url('/api/robot/'), robot: _robot(1))),
+          isA<Ok<Object?, Failure>>(),
+        );
+        expect(sessions.opened, hasLength(2));
+      },
+    );
+
+    test(
+      'an Error from the close of a session left without a client reaches the caller, and the place is given back',
+      () async {
+        sessions.closeThrows[0] = StateError('bug');
+        final tor = transport(
+          createHttpClient: (endpoint) => _Sessions.indexOf(endpoint) == 0
+              ? throw const SocketException('no client')
+              : HttpClient(),
+        );
+
+        await expectLater(
+          tor.send(
+            _get(Uri.parse('http://127.0.0.1:1/api/robot/'), robot: _robot(1)),
+          ),
+          throwsA(isA<StateError>()),
+        );
+        expect(sessions.closed, {0});
+        expect(tor.countsForTesting.places, 0);
+        expect(tor.countsForTesting.placesOf, isEmpty);
       },
     );
   });

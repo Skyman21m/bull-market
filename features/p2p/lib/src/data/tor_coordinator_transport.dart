@@ -81,6 +81,7 @@ const maxHeaderLength = 16 * 1024;
 /// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
 /// An [Error] raised inside Dio reaches the adapter wrapped in a [DioException], and becomes [CoordinatorTransportFailed].
 /// A session or a client that fails to close with an exception is dropped silently, and so is a session that does not close within [torSessionCloseTimeout].
+/// An [Error] thrown by the close of a Tor session reaches whoever waits for that close, [closeSessions] or [closeRobotSessions] included, once the session has left the count: the next close does not meet it again.
 ///
 /// A connection failure is a SOCKS or socket error before any response header, or a connection closed before the headers, which is also what a dead pooled connection gives: the session is replaced, and a `GET` is retried at most [coordinatorConnectRetries] times within the same deadline.
 /// Other methods are never retried, since the coordinator may have processed them.
@@ -483,13 +484,16 @@ final class TorCoordinatorTransport
       slot.route = route;
       return route;
     } finally {
-      // Whatever went wrong, a bug included, the session does not stay open, and its place is given back once it is closed.
+      // Whatever went wrong, a bug included, the session does not stay open, and its place is given back once it is closed, or once its close threw.
       if (slot.route == null) {
         if (route != null) {
           await route.close();
         } else {
-          if (session != null) await _closeSession(session, _closeTimeout);
-          if (key.robot != null) _givePlaceBack(key);
+          try {
+            if (session != null) await _closeSession(session, _closeTimeout);
+          } finally {
+            if (key.robot != null) _givePlaceBack(key);
+          }
         }
       }
     }
@@ -833,24 +837,28 @@ final class _Route {
   Future<bool> close() => _closing ??= _close();
 
   /// Closes the client, which also cancels a connection still being made, then the session, and only then tells the transport.
+  ///
+  /// The transport is told even when one of them throws an [Error]: the session leaves the count, and the [Error] goes on to whoever waits for this close.
   Future<bool> _close() async {
     try {
-      dio.close(force: true);
-    } on Exception {
-      // Closing is best effort: the client and the session below are closed either way.
+      try {
+        dio.close(force: true);
+      } on Exception {
+        // Closing is best effort: the client and the session below are closed either way.
+      }
+      try {
+        // Dio only closes the client it already used, so the client is closed too.
+        _client.close(force: true);
+      } on Exception {
+        // Closing is best effort: the session below is closed either way.
+      }
+      return await TorCoordinatorTransport._closeSession(
+        _session,
+        _closeTimeout,
+      );
+    } finally {
+      _onClosed(this);
     }
-    try {
-      // Dio only closes the client it already used, so the client is closed too.
-      _client.close(force: true);
-    } on Exception {
-      // Closing is best effort: the session below is closed either way.
-    }
-    final closed = await TorCoordinatorTransport._closeSession(
-      _session,
-      _closeTimeout,
-    );
-    _onClosed(this);
-    return closed;
   }
 }
 
