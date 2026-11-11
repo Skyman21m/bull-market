@@ -1,3 +1,4 @@
+import 'package:bull_ui/bull_ui.dart' show BullPickerSheet;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -104,6 +105,19 @@ void main() {
 
     expect(find.text(shown), findsOneWidget);
     expect(find.text('$shown · Coordinator offline'), findsOneWidget);
+
+    // The list of hosts the filter opens.
+    await tester.tap(find.text(shown));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(
+      find.descendant(
+        of: find.byWidgetPredicate((widget) => widget is BullPickerSheet),
+        matching: find.text(shown),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('on the page of an order: its host', (tester) async {

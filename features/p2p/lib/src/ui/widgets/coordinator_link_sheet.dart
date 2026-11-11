@@ -2,11 +2,12 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../presentation/coordinator_text.dart';
 
 /// A link or a contact of a coordinator, shown in full under a title of the app, in the kit's copy field.
 ///
-/// Where the official client opens a link, a mail app or a Nostr gateway, Troc shows what it would open and lets the user copy it: nothing leaves Tor, and nothing is opened.
-/// The value is coordinator text, already cleaned by `CoordinatorText.value`, shown as plain text.
+/// Where the official client opens a link, a mail app or a Nostr gateway, Troc shows what it would open: nothing leaves Tor, and nothing is opened.
+/// The value is offered for copy only when `CoordinatorText.copyable` accepts it, and it is then shown exactly as it is copied; anything else is shown without a copy button.
 class CoordinatorLinkSheet extends StatelessWidget {
   final String title;
   final String value;
@@ -17,7 +18,7 @@ class CoordinatorLinkSheet extends StatelessWidget {
     required this.value,
   });
 
-  /// Opens the sheet of [value], under [title], a text of the app.
+  /// Opens the sheet of [value], coordinator text, under [title], a text of the app.
   static Future<void> show(
     BuildContext context, {
     required String title,
@@ -32,6 +33,7 @@ class CoordinatorLinkSheet extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
+    final copy = CoordinatorText.copyable(value);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
@@ -40,7 +42,15 @@ class CoordinatorLinkSheet extends StatelessWidget {
         children: [
           Text(title, style: text.headlineLarge?.copyWith(color: colors.text)),
           const Gap(BullSpacing.sm),
-          BullCopyField(text: value, copiedMessage: l10n.p2pCommonCopied),
+          BullCopyField(
+            text:
+                copy ??
+                CoordinatorText.of(value, maxCodePoints: CoordinatorText.line),
+            // Nothing to copy hides the button.
+            clipboardText: copy ?? '',
+            copiedMessage: l10n.p2pCommonCopied,
+            copyTooltip: l10n.p2pCommonCopy,
+          ),
         ],
       ),
     );

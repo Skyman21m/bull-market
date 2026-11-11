@@ -40,34 +40,44 @@ void main() {
     );
   });
 
-  test('invisible format characters are removed', () {
-    String invisible(List<int> codes) => String.fromCharCodes(codes);
-    // Soft hyphen, zero width space, word joiner, byte order mark, interlinear annotations, a tag character.
+  test('the code points drawn as nothing are removed', () {
+    // Soft hyphen, combining grapheme joiner, Hangul fillers, Khmer inherent vowel, Mongolian variation selector, zero width space, word joiner, byte order mark, variation selectors, tag characters (one unassigned).
     for (final code in [
       0x00AD,
+      0x034F,
+      0x115F,
+      0x17B4,
+      0x180B,
       0x200B,
       0x2060,
+      0x3164,
+      0xFE0F,
       0xFEFF,
+      0xFFA0,
+      // The interlinear annotation characters, which Unicode does not count as default ignorable.
       0xFFF9,
       0xFFFA,
       0xFFFB,
       0xE0001,
-      // A tag code point that is not assigned, outside the category `Cf`.
       0xE0002,
       0xE0041,
       0xE007F,
+      0xE0100,
     ]) {
+      final text = 'a${String.fromCharCode(code)}b';
+      expect(clean(text), 'ab', reason: code.toRadixString(16));
       expect(
-        clean('a${invisible([code])}b'),
-        'ab',
-        reason: code.toRadixString(16),
-      );
-      expect(
-        CoordinatorText.value('a${invisible([code])}b'),
+        CoordinatorText.copyable(text),
         'ab',
         reason: code.toRadixString(16),
       );
     }
+  });
+
+  test('a visible character of the category Cf is kept', () {
+    // The Arabic number sign is drawn: it is not default ignorable.
+    final text = String.fromCharCodes([0x0600, 0x0661, 0x0662]);
+    expect(clean(text), text);
   });
 
   test(
@@ -91,22 +101,48 @@ void main() {
       ]);
       expect(clean(family), family);
       expect(clean(persian), persian);
-      expect(
-        CoordinatorText.value('temple${String.fromCharCode(0x200D)}ofsats'),
-        'templeofsats',
-      );
-      expect(
-        CoordinatorText.value('temple${String.fromCharCode(0x200C)}ofsats'),
-        'templeofsats',
-      );
+      for (final joiner in [0x200C, 0x200D]) {
+        expect(
+          CoordinatorText.copyable(
+            'temple${String.fromCharCode(joiner)}ofsats',
+          ),
+          'templeofsats',
+        );
+      }
     },
   );
 
-  test('a copied value is bounded to one line by default', () {
+  test('a value is offered for copy only as printable ASCII, never cut', () {
     expect(
-      CoordinatorText.value('x' * 1000).runes.length,
-      CoordinatorText.line + 1,
+      CoordinatorText.copyable('https://templeofsats.org'),
+      'https://templeofsats.org',
     );
+    // The example of the review: a Hangul filler between « site » and « .org » is drawn as nothing, so it is removed before anything is shown or copied.
+    expect(
+      CoordinatorText.copyable('site${String.fromCharCode(0x3164)}.org'),
+      'site.org',
+    );
+    // What stays visible but is not ASCII is shown and not copied: a Cyrillic letter that looks Latin, a no-break or ideographic space, a braille blank, an emoji.
+    for (final code in [0x0456, 0x00A0, 0x3000, 0x2800, 0x1F525]) {
+      expect(
+        CoordinatorText.copyable('s${String.fromCharCode(code)}te.org'),
+        isNull,
+        reason: code.toRadixString(16),
+      );
+    }
+    expect(CoordinatorText.copyable(''), isNull);
+    expect(CoordinatorText.copyable(String.fromCharCode(0x200B)), isNull);
+    // At most the bound of the embedded list, and never cut.
+    expect(
+      CoordinatorText.copyable('x' * CoordinatorText.copyBound),
+      'x' * CoordinatorText.copyBound,
+    );
+    expect(
+      CoordinatorText.copyable('x' * (CoordinatorText.copyBound + 1)),
+      isNull,
+    );
+    // A line break, cleaned into a space, is printable.
+    expect(CoordinatorText.copyable('a\nb'), 'a b');
   });
 
   test('the cleaning is the one of the package', () {

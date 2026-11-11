@@ -480,6 +480,9 @@ class P2pLocalizationsPt extends P2pLocalizations {
   String p2pCoordinatorCommitShort(String commit) {
     return '$commit...';
   }
+
+  @override
+  String get p2pCommonCopy => 'Copy';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).

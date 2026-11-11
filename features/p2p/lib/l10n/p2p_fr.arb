@@ -135,5 +135,6 @@
   "p2pCoordinatorVersionValue": "{name} v{version}",
   "p2pCoordinatorNodeAmboss": "{node}... (AMBOSS)",
   "p2pCoordinatorNode1ml": "{node}... (1ML)",
-  "p2pCoordinatorCommitShort": "{commit}..."
+  "p2pCoordinatorCommitShort": "{commit}...",
+  "p2pCommonCopy": "Copier"
 }

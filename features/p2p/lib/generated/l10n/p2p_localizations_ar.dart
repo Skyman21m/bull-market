@@ -480,4 +480,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
   String p2pCoordinatorCommitShort(String commit) {
     return '$commit...';
   }
+
+  @override
+  String get p2pCommonCopy => 'Copy';
 }

@@ -262,7 +262,7 @@ void main() {
     expect(find.text("Taille maximale de l'ordre"), findsOneWidget);
     expect(find.text('Frais du créateur'), findsOneWidget);
     expect(find.text('Frais du preneur'), findsOneWidget);
-    expect(find.text('3,44 %'), findsOneWidget);
+    expect(find.text('3,44\u00a0%'), findsOneWidget);
     expect(find.text('Frais actuels de paiement on-chain'), findsOneWidget);
     expect(find.text("Taille maximale d'un échange on-chain"), findsOneWidget);
     await scrollTo(tester, find.text('Liquidité du carnet'));
@@ -620,6 +620,150 @@ void main() {
     await settle(tester);
     expect(copied, [onion]);
   });
+
+  for (final (locale, label) in [
+    (const Locale('en'), 'Copy'),
+    (const Locale('fr'), 'Copier'),
+  ]) {
+    testWidgets('the copy button is labelled (${locale.languageCode})', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await open(
+        tester,
+        FakeTransport(
+          infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
+        ),
+        locale: locale,
+      );
+      await tester.tap(find.byTooltip('Telegram'));
+      await settle(tester);
+
+      final copy = find.descendant(
+        of: find.byType(CoordinatorLinkSheet),
+        matching: find.byType(IconButton),
+      );
+      expect(find.byTooltip(label), findsOneWidget);
+      // A screen reader announces the button with its label.
+      expect(
+        tester.getSemantics(copy),
+        containsSemantics(tooltip: label, isButton: true),
+      );
+      semantics.dispose();
+    });
+  }
+
+  testWidgets(
+    'a value that is not printable ASCII, or too long, is not offered for copy',
+    (tester) async {
+      // A Cyrillic letter that looks Latin, and a link longer than the bound of the embedded list.
+      final lookalike =
+          'https://templeofsats${String.fromCharCode(0x0456)}.org';
+      final long =
+          'https://templeofsats.org/${'a' * CoordinatorText.copyBound}';
+      final hostile = rewrite(
+        coordinator('temple'),
+        contact: CoordinatorContact(website: lookalike, simplex: long),
+      );
+      await open(
+        tester,
+        FakeTransport(
+          infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
+        ),
+        of: hostile,
+      );
+
+      await tester.tap(find.byTooltip('Website'));
+      await settle(tester);
+      expect(
+        find.descendant(
+          of: find.byType(BullCopyField),
+          matching: find.text(lookalike),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.copy_sharp), findsNothing);
+      await tester.tapAt(const Offset(4, 4));
+      await settle(tester);
+
+      await tester.tap(find.byTooltip('Simplex'));
+      await settle(tester);
+      final shown = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(BullCopyField),
+          matching: find.byType(Text),
+        ),
+      );
+      // Shown cut, and a cut value is never copied.
+      expect(shown.data?.endsWith('…'), isTrue);
+      expect(find.byIcon(Icons.copy_sharp), findsNothing);
+      expect(copied, isEmpty);
+    },
+  );
+
+  testWidgets('a hosted web app that cannot be copied is shown without a link', (
+    tester,
+  ) async {
+    final temple = coordinator('temple');
+    final onion = temple.mainnet.onion ?? '';
+    final known = await tester.runAsync(
+      () => CoordinatorClient(
+        FakeTransport(
+          infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
+        ),
+      ).fetchInfo(temple, RobosatsNetwork.mainnet),
+    );
+    // A Cyrillic letter in the address: the info is already known, so nothing is asked of it.
+    final lookalike =
+        '${onion.substring(0, 20)}${String.fromCharCode(0x0430)}${onion.substring(21)}';
+    await open(
+      tester,
+      FakeTransport(),
+      of: rewrite(temple, mainnet: CoordinatorOrigins(onion: lookalike)),
+      known: switch (known) {
+        Ok(:final value) => value,
+        _ => throw StateError('no info'),
+      },
+    );
+
+    await scrollTo(tester, find.text(lookalike));
+    expect(
+      tester.widget<Text>(find.text(lookalike)).style?.color,
+      testBullTheme.text,
+    );
+    await tester.tap(find.text(lookalike));
+    await settle(tester);
+    expect(find.byType(CoordinatorLinkSheet), findsNothing);
+  });
+
+  testWidgets(
+    'the text of the coordinator answer is shown cleaned, the notice whole',
+    (tester) async {
+      String hidden(String text) =>
+          text.replaceAll('|', String.fromCharCodes([0x200B, 0x3164, 0xFE0F]));
+      // Longer than a line, shorter than the bound of a notice.
+      final notice = 'Maintenance|${'n' * 2000}';
+      final info = recordedInfo('temple', RobosatsNetwork.mainnet)
+        ..['notice_severity'] = 'warning'
+        ..['notice_message'] = hidden(notice)
+        ..['market_price_apis'] = hidden('https://price|.example')
+        ..['lnd_version'] = hidden('v0.21|.5-beta')
+        ..['cln_version'] = hidden('v25|.09')
+        ..['node_alias'] = hidden('Temple|Node');
+      await open(tester, FakeTransport(infos: {'temple': info}));
+
+      final shownNotice = tester.widget<Text>(
+        find.textContaining('Maintenance'),
+      );
+      expect(shownNotice.data, 'Maintenance${'n' * 2000}');
+      await openSection(tester, 'Summary');
+      expect(find.text('https://price.example'), findsOneWidget);
+      await openSection(tester, 'Stats for Nerds');
+      expect(find.text('v0.21.5-beta'), findsOneWidget);
+      expect(find.text('v25.09'), findsOneWidget);
+      expect(find.text('TempleNode'), findsOneWidget);
+    },
+  );
 
   test('a fingerprint is grouped by characters, never inside one', () {
     expect(CoordinatorContacts.groupFingerprint('ABCDEFGHIJ'), 'ABCD EFGH IJ');

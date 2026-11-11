@@ -480,6 +480,9 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String p2pCoordinatorCommitShort(String commit) {
     return '$commit...';
   }
+
+  @override
+  String get p2pCommonCopy => 'Copy';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

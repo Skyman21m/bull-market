@@ -965,6 +965,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{commit}...'**
   String p2pCoordinatorCommitShort(String commit);
+
+  /// Label of a copy button: its tooltip, and what a screen reader announces.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get p2pCommonCopy;
 }
 
 class _P2pLocalizationsDelegate

@@ -672,5 +672,9 @@
         "type": "String"
       }
     }
+  },
+  "p2pCommonCopy": "Copy",
+  "@p2pCommonCopy": {
+    "description": "Label of a copy button: its tooltip, and what a screen reader announces."
   }
 }

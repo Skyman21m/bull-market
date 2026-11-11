@@ -56,7 +56,8 @@ class _CoordinatorDetailsDialogState extends State<CoordinatorDetailsDialog> {
       _ => null,
     };
     final origin = coordinator.origins(state.network).onion;
-    final onion = origin == null ? null : CoordinatorText.value(origin);
+    // The address is a link only when it can be copied as it reads.
+    final onion = origin == null ? null : CoordinatorText.copyable(origin);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
@@ -112,16 +113,23 @@ class _CoordinatorDetailsDialogState extends State<CoordinatorDetailsDialog> {
             ).formatCompactDate(coordinator.establishedOn),
             caption: l10n.p2pCoordinatorEstablished,
           ),
-          if (onion != null)
+          if (origin != null)
             CoordinatorDetailRow(
               icon: Icons.web,
-              value: onion,
+              value:
+                  onion ??
+                  CoordinatorText.of(
+                    origin,
+                    maxCodePoints: CoordinatorText.line,
+                  ),
               caption: l10n.p2pCoordinatorHostedWebApp,
-              onTap: () => CoordinatorLinkSheet.show(
-                context,
-                title: l10n.p2pCoordinatorHostedWebApp,
-                value: onion,
-              ),
+              onTap: onion == null
+                  ? null
+                  : () => CoordinatorLinkSheet.show(
+                      context,
+                      title: l10n.p2pCoordinatorHostedWebApp,
+                      value: onion,
+                    ),
             ),
           const Gap(BullSpacing.sm),
           ...switch (state.info) {
@@ -337,9 +345,12 @@ class CoordinatorContacts extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
-    // What is shown is what is copied: a contact without any visible character is left out.
+    // A contact without any visible character is left out; the sheet decides whether the rest can be copied.
     String? clean(String? value) => switch (value) {
-      final value? => switch (CoordinatorText.value(value)) {
+      final value? => switch (CoordinatorText.of(
+        value,
+        maxCodePoints: CoordinatorText.copyBound,
+      )) {
         final clean when clean.trim().isNotEmpty => clean,
         _ => null,
       },
@@ -739,7 +750,10 @@ class CoordinatorStats extends StatelessWidget {
     final lnd = line(info.lndVersion);
     final cln = line(info.clnVersion);
     final commit = switch (info.robosatsRunningCommitHash) {
-      final hash? => CoordinatorText.value(hash).trim(),
+      final hash? => CoordinatorText.of(
+        hash,
+        maxCodePoints: CoordinatorText.line,
+      ).trim(),
       null => null,
     };
     final testnet = info.network == RobosatsNetwork.testnet;
