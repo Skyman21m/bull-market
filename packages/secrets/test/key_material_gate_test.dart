@@ -696,4 +696,115 @@ class GarageKeyRepositoryImpl {
       },
     );
   });
+
+  group('only the composition root asks for the Garage Key handle', () {
+    const locatorPath = 'lib/locator.dart';
+    const shell = '''
+import 'package:secrets/secrets.dart';
+class AppLocator {
+  static Object setup(Secrets secrets) => secrets.garageKeys();
+}
+''';
+
+    test('it is accepted in AppLocator of lib/locator.dart', () async {
+      expect(
+        await inspect('garage_handle_shell', shell, policyPath: locatorPath),
+        isEmpty,
+      );
+    });
+
+    test('it is refused anywhere else', () async {
+      for (final (name, source, path) in [
+        ('garage_handle_elsewhere', shell, null),
+        (
+          'garage_handle_background',
+          shell,
+          'lib/core/background_tasks/handler.dart',
+        ),
+        (
+          'garage_handle_reader',
+          shell.replaceAll('AppLocator', 'GarageKeyRepositoryImpl'),
+          'features/p2p/lib/src/data/garage_key_repository_impl.dart',
+        ),
+        (
+          'garage_handle_other_class',
+          shell.replaceAll('AppLocator', 'P2pLocator'),
+          locatorPath,
+        ),
+        (
+          'garage_handle_top_level',
+          '''
+import 'package:secrets/secrets.dart';
+class AppLocator {}
+Object handle(Secrets secrets) => secrets.garageKeys();
+''',
+          locatorPath,
+        ),
+      ]) {
+        expect(
+          (await inspect(name, source, policyPath: path)).single,
+          allOf(contains('package:secrets/'), endsWith('#Secrets.garageKeys')),
+          reason: name,
+        );
+      }
+    });
+
+    test('a tear-off, an alias and a pattern keep the identity', () async {
+      for (final (name, source) in [
+        (
+          'garage_handle_tear_off',
+          '''
+import 'package:secrets/secrets.dart';
+Object Function() handle(Secrets secrets) => secrets.garageKeys;
+''',
+        ),
+        (
+          'garage_handle_alias',
+          '''
+import 'package:secrets/secrets.dart' as custody;
+typedef Store = custody.Secrets;
+Object handle(Store secrets) => secrets.garageKeys();
+''',
+        ),
+        (
+          'garage_handle_pattern',
+          '''
+import 'package:secrets/secrets.dart';
+Object handle(Object value) => switch (value) {
+  Secrets(garageKeys: final ask) => ask,
+  _ => 0,
+};
+''',
+        ),
+      ]) {
+        expect(
+          (await inspect(name, source)).single,
+          endsWith('#Secrets.garageKeys'),
+          reason: name,
+        );
+      }
+    });
+
+    test('dynamic access fails closed', () async {
+      final violations = await inspect('garage_handle_dynamic', '''
+Object call(dynamic secrets) => secrets.garageKeys();
+Object tearOff(dynamic secrets) => secrets.garageKeys;
+''');
+      expect(violations, [
+        'lib/garage_handle_dynamic.dart: unresolved sensitive member garageKeys',
+      ]);
+    });
+
+    test('the other operations of Secrets remain available', () async {
+      expect(
+        await inspect('garage_handle_neighbours', '''
+import 'package:secrets/secrets.dart';
+Object keys(Secrets secrets) => secrets.databaseKeys(module: 'swaps');
+Object listing(Secrets secrets) => secrets.list();
+Object slot() => GarageKeySlot.mainnet;
+'''),
+        isEmpty,
+      );
+    });
+  });
 }

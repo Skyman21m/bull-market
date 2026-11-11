@@ -211,6 +211,7 @@ const _unresolvedSensitiveMembers = {
   'signedPsetWithExtraDetails',
   'revealBytes',
   'revealBech32',
+  'garageKeys',
 };
 
 const _bridgeLibrary = 'package:bull_sdk/src/rust/frb_generated.dart';
@@ -278,8 +279,9 @@ String? materialSymbol(Element element) {
       symbol == 'RecoverBull.restoreBackup' ||
           symbol == 'EncryptionService.decrypt',
     // The bytes of a stored RoboSats Garage Key, and its two clear forms: whoever holds one controls every robot derived from it.
+    // The handle that reads and writes Garage Keys is asked for by the composition root alone (see [_isException]).
     _ when uri.startsWith('package:secrets/') =>
-      symbol == 'GarageKeyMaterial.bytes',
+      symbol == 'GarageKeyMaterial.bytes' || symbol == 'Secrets.garageKeys',
     _ when uri.startsWith('package:robosats/') =>
       owner == 'GarageKey' && {'revealBytes', 'revealBech32'}.contains(member),
     _ => false,
@@ -342,6 +344,12 @@ bool _isException(String path, AstNode node, String symbol) {
               'SwapMasterKey.mnemonic',
             }.contains(member)) ||
         (function == 'toBoltz' && member == 'SwapMasterKey.new');
+  }
+  // The Garage Key handle is asked for in the composition root, which passes it to the P2P feature alone.
+  // That file is also the composition of the WorkManager isolate (`AppLocator.setup` runs there too), so where the call sits inside it still decides which isolates hold the handle.
+  if (path == 'lib/locator.dart' && owner == 'AppLocator') {
+    return member == 'Secrets.garageKeys' &&
+        symbol.startsWith('package:secrets/');
   }
   // A Garage Key is read in one class of one file per use, and nowhere else.
   final garageKeyReader = _garageKeyReaders[path];
