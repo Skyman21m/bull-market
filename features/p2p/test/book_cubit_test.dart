@@ -30,6 +30,11 @@ void main() {
   /// Lets the stream events and the request futures run.
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
+  /// One book request per mainnet coordinator of the embedded list, whose count `packages/robosats/test/coordinator/embedded_data_test.dart` pins.
+  final mainnetCoordinators = Federation.robosats
+      .on(RobosatsNetwork.mainnet)
+      .length;
+
   setUp(() {
     tor = FakeTor();
     transport = FakeTransport();
@@ -81,7 +86,7 @@ void main() {
       await settle();
 
       expect(book.state.tor, TorWait.ready);
-      expect(transport.requested, hasLength(5));
+      expect(transport.requested, hasLength(mainnetCoordinators));
       await book.close();
     });
 
@@ -113,7 +118,7 @@ void main() {
       await settle();
 
       expect(book.state.tor, TorWait.ready);
-      expect(transport.requested, hasLength(5));
+      expect(transport.requested, hasLength(mainnetCoordinators));
       await book.close();
     });
 
@@ -321,7 +326,7 @@ void main() {
 
         final refreshed = book.refresh();
         await settle();
-        expect(transport.requested, hasLength(5));
+        expect(transport.requested, hasLength(mainnetCoordinators));
         expect(book.state.loadingCoordinators, contains(coordinator('temple')));
         expect(book.state.orders.map((o) => o.id), [1]);
 

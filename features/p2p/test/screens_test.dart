@@ -213,6 +213,35 @@ void main() {
       expect(find.text('Seller'), findsNothing);
     });
 
+    testWidgets('the host filter lists every coordinator of the network', (
+      tester,
+    ) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+
+      await tester.tap(find.text('ANY').last);
+      await settle(tester);
+
+      expect(find.text('Select Host'), findsOneWidget);
+      final hosts = [
+        for (final coordinator in Federation.robosats.on(
+          RobosatsNetwork.mainnet,
+        ))
+          coordinator.longAlias,
+      ];
+      for (final host in hosts) {
+        expect(find.text(host), findsOneWidget, reason: host);
+      }
+
+      // Gumpellite answered an empty book: choosing it leaves no offer.
+      await tester.tap(find.text('Gumpellite'));
+      await settle(tester);
+      expect(find.text('Gumpellite'), findsOneWidget);
+      expect(find.text('Seller'), findsNothing);
+      expect(find.text('Buyer'), findsNothing);
+    });
+
     testWidgets('an offer opens its details, read-only', (tester) async {
       await open(tester);
       tor.add(P2pTorState.ready);

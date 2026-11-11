@@ -85,7 +85,7 @@ void main() {
         others,
       ).timeout(const Duration(seconds: 1));
 
-      expect(outcomes, hasLength(4));
+      expect(outcomes, hasLength(books.length - 1));
       for (final outcome in outcomes) {
         expect(
           outcome.result,
