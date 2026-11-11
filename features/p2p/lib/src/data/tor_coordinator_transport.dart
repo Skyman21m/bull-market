@@ -35,6 +35,13 @@ const coordinatorConnectRetries = 2;
 /// A session nobody uses is closed to make room for a new one, the least recently used first.
 const maxRobotSessions = 32;
 
+/// Places among [maxRobotSessions] that the robot sessions of one coordinator may hold together, so that the robots of the other coordinators always keep the other eight.
+///
+/// Without it, a coordinator that holds the connections of its robots, two places per robot, takes every place once sixteen robots are sent to it, and has the idle sessions of the other coordinators closed to make room.
+/// Beyond it, a new session of that coordinator only takes the place of one of its own sessions, one that is closing or else the least recently used one that no request uses, and fails with [CoordinatorTransportBusy] when there is none: no session of another coordinator is closed for it.
+/// Twenty-four is twelve robots with both of their sessions on one coordinator, far more than a person trades with at once; a user who has more robots there gets their idle sessions recycled, the least recently used first, as at [maxRobotSessions].
+const maxRobotSessionsPerCoordinator = 24;
+
 /// Tor sessions one robot may have on one coordinator at any moment, among [maxRobotSessions]: the one its requests use, and one more that a connection failure replaced while a request still uses it, or that is closing.
 ///
 /// Without it, a coordinator that drops some connections and holds the others makes every request of one robot keep a session of its own, and takes every place from the robots of the other coordinators.
@@ -64,8 +71,8 @@ const maxTotalHeaderLength = 32 * 1024;
 /// A session, with its own HTTP client, so its own connections and circuits, is opened at the first request that needs it, shared by the requests of the same origin and robot while it works, and replaced by a new session after a connection failure.
 /// So a coordinator, or anyone watching one, sees nothing that ties a robot to another robot, to the same robot on another coordinator, or to the anonymous reads of this device.
 /// Robot sessions are bounded by [maxRobotSessions], whatever their coordinator, and the bound counts every session that is opening, open or closing: beyond it the least recently used session that no request is using is closed first, and the new session opens only once that one is closed.
-/// One robot has at most [maxSessionsPerRobotAndCoordinator] of them on one coordinator, so a coordinator takes no more places than twice the robots this device sent to it, whatever it does with their connections.
-/// When no place can be had, because every session is in use, because the robot already has its two on that coordinator and neither is closing, or because the session whose place was taken did not close within [torSessionCloseTimeout], the request fails with [CoordinatorTransportBusy], a retry after a connection failure included.
+/// One robot has at most [maxSessionsPerRobotAndCoordinator] of them on one coordinator, and the robots of one coordinator at most [maxRobotSessionsPerCoordinator] together, so a coordinator takes no more places than twice the robots this device sent to it, and never the places left to the robots of the other coordinators, whatever it does with their connections.
+/// When no place can be had, because every session is in use, because the robot already has its two on that coordinator and neither is closing, because the robots of that coordinator have their [maxRobotSessionsPerCoordinator] and none of those sessions is closing or unused, or because the session whose place was taken did not close within [torSessionCloseTimeout], the request fails with [CoordinatorTransportBusy], a retry after a connection failure included.
 /// [CoordinatorTransportBusy] is given for nothing else: a caller that gets it sends the request again later, and does not report a coordinator that does not work.
 /// The opening of a session is given [coordinatorRequestDeadline]: an opening that has not completed by then is given up and gives its place back, the requests waiting for it fail with [CoordinatorUnreachable], and a session that opens after all is closed unused.
 /// [closeRobotSessions] closes the sessions of one robot, [closeSessions] closes them all, the sessions a connection failure replaced while a request still used them included: the requests still running fail, and the next request opens new sessions.
@@ -105,6 +112,7 @@ final class TorCoordinatorTransport
   final Duration _attemptTimeout;
   final Duration _closeTimeout;
   final bool Function(String host) _acceptsHost;
+  final int _placesPerCoordinator;
 
   /// The session new requests use for each origin and robot, opening or open, the least recently used first.
   final Map<_RouteKey, _Slot> _slots = {};
@@ -146,6 +154,7 @@ final class TorCoordinatorTransport
   ///
   /// [deadline] bounds a whole request, [attemptTimeout] the connection, the upload and every wait for data of one attempt, [closeTimeout] the close of one Tor session.
   /// [acceptsHost] decides which hosts may be reached, `.onion` hosts only by default, so that tests can reach a loopback server.
+  /// [placesPerCoordinator] replaces [maxRobotSessionsPerCoordinator], so that the tests of [maxRobotSessions] can put every place on one loopback server.
   @visibleForTesting
   TorCoordinatorTransport.withSeams({
     required this._openSession,
@@ -154,10 +163,13 @@ final class TorCoordinatorTransport
     Duration? attemptTimeout,
     Duration? closeTimeout,
     bool Function(String host)? acceptsHost,
+    int? placesPerCoordinator,
   }) : _deadline = deadline ?? coordinatorRequestDeadline,
        _attemptTimeout = attemptTimeout ?? torConnectDeadline,
        _closeTimeout = closeTimeout ?? torSessionCloseTimeout,
-       _acceptsHost = acceptsHost ?? _isOnion;
+       _acceptsHost = acceptsHost ?? _isOnion,
+       _placesPerCoordinator =
+           placesPerCoordinator ?? maxRobotSessionsPerCoordinator;
 
   /// Whether [host] is an onion service: every coordinator of the federation is reached at one.
   static bool _isOnion(String host) => host.toLowerCase().endsWith('.onion');
@@ -386,27 +398,53 @@ final class TorCoordinatorTransport
   /// A place for one more session of the robot of [key] on its coordinator, or `null` when none can be had.
   ///
   /// A robot that already has [maxSessionsPerRobotAndCoordinator] places on this coordinator gets no other: its new session can only take the place of one of its own that is closing.
-  /// Below that, a place is free while fewer than [maxRobotSessions] are taken.
-  /// When all are taken, the place of a session that is already closing is handed over, or else the place of the least recently used session that no request uses, which [_open] closes.
+  /// A coordinator whose robots already have [maxRobotSessionsPerCoordinator] places gets no other either: its new session can only take the place of one of the robot sessions of that coordinator.
+  /// Below that, a place is free while fewer than [maxRobotSessions] are taken, and once all are taken the place of any robot session can be taken.
+  /// The place taken is the one of a session that is already closing, or else the one of the least recently used session that no request uses, which [_open] closes.
   /// The new session then opens only once that one is closed, [_Place.vacated], so there are never more than [maxRobotSessions] at a time.
   _Place? _placeForRobot(_RouteKey key) {
     if ((_placesOf[key] ?? 0) >= maxSessionsPerRobotAndCoordinator) {
       final own = _closingRoute((route) => route.key == key);
       return own == null ? null : _handOver(own, key);
     }
+    if (_placesAt(key.origin) >= _placesPerCoordinator) {
+      // No session of another coordinator is closed for this one: the robots of the others keep their places.
+      return _vacate(key, (other) => other.origin == key.origin);
+    }
     if (_robotPlaces < maxRobotSessions) {
       _takePlace(key);
       return (vacated: null);
     }
-    final closing = _closingRoute((route) => route.key.robot != null);
+    return _vacate(key, (_) => true);
+  }
+
+  /// The place of a robot session whose key [accepts] lets through, for a new session of [key]: the place of a session that is closing, or else of the least recently used one that no request uses.
+  _Place? _vacate(_RouteKey key, bool Function(_RouteKey other) accepts) {
+    final closing = _closingRoute(
+      (route) => route.key.robot != null && accepts(route.key),
+    );
     if (closing != null) return _handOver(closing, key);
     for (final MapEntry(key: other, value: slot) in _slots.entries) {
       final route = slot.route;
-      if (other.robot == null || route == null || !slot.isIdle) continue;
+      if (other.robot == null ||
+          !accepts(other) ||
+          route == null ||
+          !slot.isIdle) {
+        continue;
+      }
       _slots.remove(other);
       return _handOver(route, key);
     }
     return null;
+  }
+
+  /// The places the robot sessions of [origin] hold.
+  int _placesAt(String origin) {
+    var places = 0;
+    for (final MapEntry(:key, :value) in _placesOf.entries) {
+      if (key.origin == origin) places += value;
+    }
+    return places;
   }
 
   /// A session that is closing, whose place no new session waits for yet, and that [accepts] lets through.
@@ -802,6 +840,15 @@ final class TorTransportCounts {
     required this.robotsWithRequests,
     required this.sessionsGivenUp,
   });
+
+  /// The places of the robot sessions of each coordinator, from [placesOf].
+  Map<String, int> get placesAt {
+    final places = <String, int>{};
+    for (final MapEntry(:key, :value) in placesOf.entries) {
+      places[key.origin] = (places[key.origin] ?? 0) + value;
+    }
+    return places;
+  }
 }
 
 /// One Tor session with its HTTP client, shared by the requests of one [_RouteKey].
