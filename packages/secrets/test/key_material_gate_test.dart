@@ -735,6 +735,23 @@ class AppLocator {
       );
     });
 
+    test(
+      'the composition root may ask for the handle, not read a key',
+      () async {
+        final violations = await inspect('garage_handle_shell_reads', '''
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+class AppLocator {
+  static Object bytes(GarageKeyMaterial material) => material.bytes;
+  static Object text(GarageKey key) => key.revealBech32();
+}
+''', policyPath: locatorPath);
+        expect(violations, hasLength(2));
+        expect(violations, contains(endsWith('#GarageKeyMaterial.bytes')));
+        expect(violations, contains(endsWith('#GarageKey.revealBech32')));
+      },
+    );
+
     test('it is refused anywhere else', () async {
       for (final (name, source, path) in [
         ('garage_handle_elsewhere', shell, null),
@@ -752,6 +769,11 @@ class AppLocator {
           'garage_handle_other_class',
           shell.replaceAll('AppLocator', 'P2pLocator'),
           locatorPath,
+        ),
+        (
+          'garage_handle_feature_locator',
+          shell,
+          'features/p2p/lib/src/p2p_locator.dart',
         ),
         (
           'garage_handle_top_level',
