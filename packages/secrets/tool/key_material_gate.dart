@@ -212,6 +212,8 @@ const _unresolvedSensitiveMembers = {
   'revealBytes',
   'revealBech32',
   'garageKeys',
+  // `GarageKeyMaterial.bytes`, reached without a static type. No production file reads a member named `bytes` dynamically today.
+  'bytes',
 };
 
 const _bridgeLibrary = 'package:bull_sdk/src/rust/frb_generated.dart';

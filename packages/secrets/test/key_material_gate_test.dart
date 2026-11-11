@@ -625,6 +625,28 @@ Object bytesOf(Object value) => switch (value) {
       expect(violations, contains(endsWith('#GarageKey.revealBech32')));
     });
 
+    test('dynamic access to the bytes fails closed', () async {
+      final violations = await inspect('garage_dynamic_bytes', '''
+import 'package:secrets/secrets.dart';
+Object cast(GarageKeyMaterial material) => (material as dynamic).bytes;
+Object matched(Object value) => switch (value) {
+  dynamic untyped => untyped.bytes,
+};
+Object cascade(dynamic value) => value..bytes;
+''');
+      expect(violations, [
+        'lib/garage_dynamic_bytes.dart: unresolved sensitive member bytes',
+      ]);
+      expect(
+        await inspect('garage_typed_bytes', '''
+import 'package:secrets/secrets.dart';
+List<int> databaseKey(DatabaseKey key) => key.bytes;
+'''),
+        isEmpty,
+        reason: 'a resolved member named bytes elsewhere is not a Garage Key',
+      );
+    });
+
     test('dynamic access to a reveal method fails closed', () async {
       final violations = await inspect('garage_dynamic', '''
 Object textOf(dynamic key) => key.revealBech32();
