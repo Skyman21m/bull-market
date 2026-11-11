@@ -7,6 +7,7 @@ import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 /// A resolved-symbol boundary, not a whole-program secret-flow analysis.
 ///
@@ -228,6 +229,27 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     super.visitExportDirective(node);
   }
 
+  /// A class of [_garageKeyReaders] reads a key for its own use: no public member's signature can hand the bytes or the text out (issue #47).
+  ///
+  /// Its constructors, methods, getters, setters and fields, static ones included, return no type that [_canCarry] key material, and take no parameter that [_canReceive] it.
+  /// This sees what the class's signatures let out, not where a value goes inside them, nor what other declarations of its file do with its private members.
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    final reader = _garageKeyReaders[path];
+    final name = node.namePart.typeName.lexeme;
+    if (reader != null && name == reader.owner) {
+      final element = node.declaredFragment?.element;
+      if (element == null) {
+        violations.add('$path: $name#unresolved class');
+      } else {
+        for (final member in _waysOut(element)) {
+          violations.add('$path: $name.$member#can hand out key material');
+        }
+      }
+    }
+    super.visitClassDeclaration(node);
+  }
+
   // The bridge's default handler is the only one that sees call arguments: a
   // host handler or API would receive the words handed to lwk, boltz and bwk.
   @override
@@ -440,6 +462,66 @@ const _garageKeyReaders = {
     owner: 'GarageKeyView',
     members: {'GarageKey.revealBech32'},
   ),
+};
+
+/// The public members of [owner] whose signature can hand out key material.
+List<String> _waysOut(InterfaceElement owner) => [
+  for (final member in <ExecutableElement>[
+    ...owner.constructors,
+    ...owner.methods,
+    ...owner.getters,
+    ...owner.setters,
+  ])
+    if (member.isPublic &&
+        ((member is! ConstructorElement &&
+                member is! SetterElement &&
+                _canCarry(member.returnType)) ||
+            member.formalParameters.any(
+              (parameter) => _canReceive(parameter.type),
+            )))
+      member.name ?? '',
+];
+
+/// Whether a value of [type] can hold the bytes or the text of a key.
+///
+/// Text, bytes (any `Iterable<int>`, any type of `dart:typed_data`), a `BigInt`, a value of any type (`Object`, `dynamic`, a type parameter, `Function`), and a function, record or generic type with one of those anywhere in it.
+bool _canCarry(DartType type) => switch (type) {
+  DynamicType() || InvalidType() || TypeParameterType() => true,
+  FunctionType(:final returnType, :final formalParameters) =>
+    _canCarry(returnType) ||
+        formalParameters.any((parameter) => _canCarry(parameter.type)),
+  RecordType(:final positionalFields, :final namedFields) => [
+    for (final field in positionalFields) field.type,
+    for (final field in namedFields) field.type,
+  ].any(_canCarry),
+  InterfaceType(:final element, :final typeArguments) =>
+    type.isDartCoreObject ||
+        type.isDartCoreString ||
+        type.isDartCoreFunction ||
+        (element.library.isDartCore && element.name == 'BigInt') ||
+        element.library.uri.toString() == 'dart:typed_data' ||
+        [type, ...type.allSupertypes].any(
+          (supertype) =>
+              supertype.isDartCoreIterable &&
+              supertype.typeArguments.single.isDartCoreInt,
+        ) ||
+        typeArguments.any(_canCarry),
+  _ => false,
+};
+
+/// Whether an argument of [type] can be handed key material by the member that takes it: a callback that takes a value [_canCarry] covers, a value of any type, which may be such a callback, or a container of either.
+bool _canReceive(DartType type) => switch (type) {
+  DynamicType() || InvalidType() || TypeParameterType() => true,
+  FunctionType() => _canCarry(type),
+  RecordType(:final positionalFields, :final namedFields) => [
+    for (final field in positionalFields) field.type,
+    for (final field in namedFields) field.type,
+  ].any(_canReceive),
+  InterfaceType(:final typeArguments) =>
+    type.isDartCoreObject ||
+        type.isDartCoreFunction ||
+        typeArguments.any(_canReceive),
+  _ => false,
 };
 
 /// A declaration of `package:secrets`.

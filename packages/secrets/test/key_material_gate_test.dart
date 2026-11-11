@@ -652,9 +652,9 @@ import 'dart:typed_data';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {
-  Object toGarageKey(GarageKeyMaterial material) =>
+  Object _toGarageKey(GarageKeyMaterial material) =>
       GarageKey.fromBytes(material.bytes);
-  Uint8List toBytes(GarageKey key) => key.revealBytes();
+  Uint8List _toBytes(GarageKey key) => key.revealBytes();
 }
 ''';
     const view = '''
@@ -662,7 +662,7 @@ import 'package:robosats/robosats.dart';
 class GarageKeyView {
   final GarageKey garageKey;
   const GarageKeyView(this.garageKey);
-  String text() => garageKey.revealBech32();
+  String _text() => garageKey.revealBech32();
 }
 ''';
 
@@ -861,7 +861,7 @@ int length() => GarageKeyMaterial.lengthInBytes;
         const reader = '''
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {
-  Object bytesOf(GarageKeyMaterial material) => material.bytes;
+  Object _bytesOf(GarageKeyMaterial material) => material.bytes;
 }
 ''';
         const refused = [
@@ -899,7 +899,7 @@ class GarageKeyRepositoryImpl {
     const shell = '''
 import 'package:secrets/secrets.dart';
 class AppLocator {
-  static Object setup(Secrets secrets) => secrets.garageKeys();
+  static GarageKeys setup(Secrets secrets) => secrets.garageKeys();
 }
 ''';
 
@@ -1407,5 +1407,214 @@ export 'dart:core' if (dart.library.io) 'dart:async';
         ['lib/vault_conditional_export.dart: dart:core#conditional export'],
       );
     });
+  });
+
+  group('a class that may read a Garage Key hands none out (#47)', () {
+    const repositoryPath =
+        'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+    const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
+    // The surface of the repository today: whether a key is stored, and a robot derived from it.
+    const today = '''
+import 'dart:typed_data';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+final class NoKey extends Failure {
+  const NoKey();
+}
+final class GarageKeyRepositoryImpl {
+  final GarageKeys _garageKeys;
+
+  const GarageKeyRepositoryImpl(this._garageKeys);
+
+  Future<Result<void, NoKey>> create(RobosatsNetwork network) async =>
+      const Ok(null);
+
+  Future<Result<void, NoKey>> import(
+    RobosatsNetwork network,
+    GarageKey key,
+  ) async {
+    final bytes = key.revealBytes();
+    bytes.fillRange(0, bytes.length, 0);
+    return const Ok(null);
+  }
+
+  Future<Result<bool, NoKey>> exists(RobosatsNetwork network) async =>
+      const Ok(false);
+
+  Future<Result<GarageRobot, NoKey>> firstUsableRobot(
+    RobosatsNetwork network,
+  ) async => const Err(NoKey());
+
+  Future<Result<void, NoKey>> delete(RobosatsNetwork network) async =>
+      const Ok(null);
+
+  Uint8List _copyOf(GarageKeyMaterial material) => material.bytes;
+
+  GarageKeys get _handle => _garageKeys;
+}
+''';
+    String withMember(String member) => today.replaceAll(
+      '  const GarageKeyRepositoryImpl(this._garageKeys);',
+      '  const GarageKeyRepositoryImpl(this._garageKeys);\n\n  $member',
+    );
+
+    test('the repository of today passes', () async {
+      expect(
+        await inspect('reader_today', today, policyPath: repositoryPath),
+        isEmpty,
+      );
+    });
+
+    test(
+      'a public member that can hand out the bytes or the text is refused',
+      () async {
+        for (final (name, member) in [
+          // The two ways out a review of #50 found: a public method returning the bytes, and a static closure.
+          ('bytesOf', 'Uint8List bytesOf(GarageKeyMaterial m) => m.bytes;'),
+          (
+            'reveal',
+            'static final Object Function(GarageKeyMaterial) reveal = (m) => m.bytes;',
+          ),
+          ('raw', 'List<int> get raw => const [];'),
+          ('ints', 'Iterable<int> ints() => const [];'),
+          ('text', "String text(GarageKey key) => '';"),
+          ('relay', 'static Uint8List relay(GarageKeyMaterial m) => m.bytes;'),
+          (
+            'read',
+            'Future<Result<Uint8List, NoKey>> read() async => Ok(Uint8List(0));',
+          ),
+          ('words', 'Stream<String> words() => Stream.empty();'),
+          ('pair', "(int, String) pair() => (0, '');"),
+          ('cast', 'T cast<T>(T value) => value;'),
+          ('any', 'Object any() => 0;'),
+          ('loose', 'dynamic loose() => 0;'),
+          ('number', 'BigInt number() => BigInt.zero;'),
+          ('buffer', 'ByteBuffer buffer() => Uint8List(0).buffer;'),
+          ('later', 'Uint8List Function() later() => () => Uint8List(0);'),
+          ('onText', 'void onText(void Function(String) callback) {}'),
+          (
+            'onBytes',
+            'void onBytes({required void Function(Uint8List) callback}) {}',
+          ),
+          ('each', 'void each(Function callback) {}'),
+          ('sinks', 'void sinks(List<void Function(List<int>)> callbacks) {}'),
+          ('take', 'void take(Object anything) {}'),
+          ('toString', "@override\n  String toString() => '';"),
+          ('lastBytes', 'final Uint8List? lastBytes = null;'),
+        ]) {
+          expect(
+            await inspect(
+              'reader_$name',
+              withMember(member),
+              policyPath: repositoryPath,
+            ),
+            [
+              '$repositoryPath: GarageKeyRepositoryImpl.$name#can hand out key material',
+            ],
+            reason: member,
+          );
+        }
+      },
+    );
+
+    test('a constructor that takes a callback for the bytes is refused', () async {
+      // The way out a review of #50 found: a constructor callback that the class hands what it reads.
+      expect(
+        await inspect(
+          'reader_constructor',
+          today.replaceAll(
+            '  const GarageKeyRepositoryImpl(this._garageKeys);',
+            '  final void Function(List<int>)? _tap;\n\n'
+                '  const GarageKeyRepositoryImpl(this._garageKeys, [this._tap]);',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeyRepositoryImpl.new#can hand out key material',
+        ],
+      );
+    });
+
+    test('a type alias of a carrier is the carrier', () async {
+      expect(
+        await inspect(
+          'reader_alias',
+          '${withMember('Bytes copy() => Uint8List(0);\n  void listen(Tap tap) {}')}'
+              'typedef Bytes = Uint8List;\n'
+              'typedef Tap = void Function(List<int> bytes);\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeyRepositoryImpl.copy#can hand out key material',
+          '$repositoryPath: GarageKeyRepositoryImpl.listen#can hand out key material',
+        ],
+      );
+    });
+
+    test('what cannot carry a key out is left alone', () async {
+      expect(
+        await inspect(
+          'reader_harmless',
+          withMember(
+            'GarageKey? key() => null;\n'
+            '  int count() => 0;\n'
+            '  bool get ready => true;\n'
+            '  void onDone(void Function() done) {}\n'
+            '  bool check(bool Function() test) => test();\n'
+            "  void importText(String text) {}\n"
+            '  static const int length = 32;',
+          ),
+          policyPath: repositoryPath,
+        ),
+        isEmpty,
+      );
+    });
+
+    test(
+      'the rule follows the table: the view, not another class or file',
+      () async {
+        const view = '''
+import 'package:robosats/robosats.dart';
+class GarageKeyView {
+  final GarageKey garageKey;
+  const GarageKeyView(this.garageKey);
+  String text() => garageKey.revealBech32();
+}
+''';
+        expect(await inspect('reader_view', view, policyPath: viewPath), [
+          '$viewPath: GarageKeyView.text#can hand out key material',
+        ]);
+        expect(
+          await inspect(
+            'reader_view_private',
+            view.replaceAll('String text()', 'String _text()'),
+            policyPath: viewPath,
+          ),
+          isEmpty,
+        );
+        // Another class of the file, and the class in another file, read no key and are not this rule's.
+        expect(
+          await inspect(
+            'reader_other_class',
+            '${withMember('')}class Helper {\n  String text() => \'\';\n}\n',
+            policyPath: repositoryPath,
+          ),
+          isEmpty,
+        );
+        expect(
+          await inspect(
+            'reader_other_file',
+            '''
+final class GarageKeyRepositoryImpl {
+  String text() => '';
+}
+''',
+            policyPath: 'features/p2p/lib/src/data/robot_repository_impl.dart',
+          ),
+          isEmpty,
+        );
+      },
+    );
   });
 }
