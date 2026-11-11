@@ -85,6 +85,9 @@ class P2pTabScreen extends StatelessWidget {
                         TorWait.ready => BookView(
                           now: now,
                           onOpenOrder: onOpenOrder,
+                          onOpenGarage: garage == null
+                              ? null
+                              : () => onDestination(P2pDestination.garage),
                         ),
                         final tor => TorWaitView(
                           tor: tor,

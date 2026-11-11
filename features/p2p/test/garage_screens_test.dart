@@ -173,7 +173,7 @@ void main() {
     storage.install();
     setUpP2pForTesting(
       locator,
-      transport: FakeTransport(),
+      transport: FakeTransport(network: network.state),
       torStates: () => tor.stream,
       clock: () => testNow,
       garageKeys: withGarage
@@ -359,6 +359,32 @@ void main() {
       expect(find.byType(GarageView), findsNothing);
       expect(privacyCalls.last, 'screenshotOn');
     });
+  });
+
+  testWidgets('« I have a Garage Key » opens the Garage from the book', (
+    tester,
+  ) async {
+    network.switchTo(RobosatsNetwork.mainnet);
+    keystoreHolding({_mainnetEntry: null});
+    await openTab(tester);
+    tor.add(P2pTorState.ready);
+    await settle(tester);
+    await tester.tap(find.text('Search'));
+    await settle(tester);
+    final temple = hostOf('temple', RobosatsNetwork.mainnet);
+    await tester.enterText(
+      find.byType(TextField),
+      'http://$temple/order/temple/1/',
+    );
+    await tester.tap(find.text('Search').last);
+    await settle(tester);
+
+    await tester.tap(find.text('I have a Garage Key'));
+    await settle(tester);
+    await letTheVaultSettle(tester);
+
+    expect(find.byType(GarageView), findsOneWidget);
+    expect(find.text(fixedNickname), findsOneWidget);
   });
 
   group('the welcome screen', () {
