@@ -9,6 +9,7 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
 import 'package:p2p/testing.dart';
@@ -282,6 +283,54 @@ void main() {
       final take = tester.widget<BullButton>(find.byType(BullButton));
       expect(take.label, 'Take Order');
       expect(take.disabled, isTrue);
+    });
+
+    testWidgets('the host opens the dialog of its coordinator', (tester) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+
+      await tester.tap(find.text('Order host'));
+      await settle(tester);
+
+      expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(CoordinatorDetailsDialog),
+          matching: find.text('Temple of Sats'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Coordinator hosted web app'), findsOneWidget);
+      // The page had read the fees: the dialog shows them without asking again.
+      expect(transport.requested.where((request) => request.contains('info')), [
+        'temple/api/info/',
+      ]);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('the dialog of a host that did not answer asks it again', (
+      tester,
+    ) async {
+      await open(tester);
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      // Temple gave its book, then does not answer the order page.
+      transport.failures['temple'] = const CoordinatorUnreachable();
+      await tester.tap(find.text('100 EUR', findRichText: true).first);
+      await settle(tester);
+      transport.failures.remove('temple');
+
+      await tester.tap(find.text('Order host'));
+      await settle(tester);
+
+      expect(transport.requested.where((request) => request.contains('info')), [
+        'temple/api/info/',
+        'temple/api/info/',
+      ]);
+      expect(find.text('Coordinator offline'), findsNothing);
     });
 
     testWidgets('a reversible payment method shows the warning of RoboSats', (

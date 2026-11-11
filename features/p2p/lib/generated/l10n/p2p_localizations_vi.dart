@@ -282,4 +282,156 @@ class P2pLocalizationsVi extends P2pLocalizations {
 
   @override
   String get p2pCommonAcknowledged => 'Acknowledged';
+
+  @override
+  String get p2pCoordinatorNotice => 'Coordinator Notice';
+
+  @override
+  String get p2pCoordinatorBadgeFounder =>
+      'Founder: coordinating trades since the testnet federation.';
+
+  @override
+  String get p2pCoordinatorBadgeNotFounder => 'Not a federation founder';
+
+  @override
+  String p2pCoordinatorBadgeDevFund(String percent) {
+    return 'Development fund supporter: donates $percent% to make RoboSats better.';
+  }
+
+  @override
+  String get p2pCoordinatorBadgeGoodOpsec =>
+      'Good OpSec: the coordinator follows best practices to protect his and your privacy.';
+
+  @override
+  String get p2pCoordinatorBadgeOpsecCouldImprove =>
+      'The privacy practices of this coordinator could improve';
+
+  @override
+  String get p2pCoordinatorBadgeLargeLimits =>
+      'Large limits: the coordinator has large trade limits.';
+
+  @override
+  String get p2pCoordinatorBadgeNoLargeLimits =>
+      'Does not have large trade limits.';
+
+  @override
+  String get p2pCoordinatorDescription => 'Coordinator description';
+
+  @override
+  String get p2pCoordinatorEstablished => 'Established';
+
+  @override
+  String get p2pCoordinatorHostedWebApp => 'Coordinator hosted web app';
+
+  @override
+  String get p2pCoordinatorPolicies => 'Policies';
+
+  @override
+  String get p2pCoordinatorSummary => 'Summary';
+
+  @override
+  String get p2pCoordinatorMaxOrderSize => 'Maximum order size';
+
+  @override
+  String get p2pCoordinatorOnchainStatus => 'Current onchain payout status';
+
+  @override
+  String get p2pCoordinatorCurrentOnchainFee => 'Current onchain payout fee';
+
+  @override
+  String get p2pCoordinatorMaxSwapSize => 'Maximum onchain swap size';
+
+  @override
+  String get p2pCoordinatorDevFundZaps => 'Zaps voluntarily for development';
+
+  @override
+  String p2pCoordinatorDevFundPercent(String percent) {
+    return '$percent% of profits';
+  }
+
+  @override
+  String get p2pCoordinatorPublicBuyOrders => 'Public buy orders';
+
+  @override
+  String get p2pCoordinatorPublicSellOrders => 'Public sell orders';
+
+  @override
+  String get p2pCoordinatorBookLiquidity => 'Book liquidity';
+
+  @override
+  String get p2pCoordinatorActiveRobotsToday => 'Today active robots';
+
+  @override
+  String get p2pCoordinatorNonKycPremium => '24h non-KYC bitcoin premium';
+
+  @override
+  String get p2pCoordinatorPriceSources =>
+      'Market price sources (for multiple the median is calculated)';
+
+  @override
+  String get p2pCoordinatorStatsForNerds => 'Stats for Nerds';
+
+  @override
+  String get p2pCoordinatorVersionCoordinator => 'Coordinator';
+
+  @override
+  String get p2pCoordinatorRoboSatsVersion => 'RoboSats version';
+
+  @override
+  String get p2pCoordinatorLndVersion => 'LND version';
+
+  @override
+  String get p2pCoordinatorClnVersion => 'CLN version';
+
+  @override
+  String p2pCoordinatorLnNodeAlias(String alias) {
+    return 'LN Node: $alias';
+  }
+
+  @override
+  String get p2pCoordinatorCommitHash => 'Coordinator commit hash';
+
+  @override
+  String get p2pCoordinatorVolume24h => '24h contracted volume';
+
+  @override
+  String get p2pCoordinatorVolumeLifetime => 'Lifetime contracted volume';
+
+  @override
+  String p2pCoordinatorSatsValue(String amount) {
+    return '$amount Sats';
+  }
+
+  @override
+  String get p2pCoordinatorSendEmail => 'Send Email';
+
+  @override
+  String get p2pCoordinatorWebsite => 'Website';
+
+  @override
+  String get p2pCoordinatorPgpFingerprint => 'PGP Pubkey fingerprint';
+
+  @override
+  String get p2pCoordinatorNostr => 'Nostr';
+
+  @override
+  String get p2pCoordinatorTelegram => 'Telegram';
+
+  @override
+  String get p2pCoordinatorX => 'X';
+
+  @override
+  String get p2pCoordinatorReddit => 'Reddit';
+
+  @override
+  String get p2pCoordinatorMatrix => 'Matrix';
+
+  @override
+  String get p2pCoordinatorSimplex => 'Simplex';
+
+  @override
+  String get p2pCommonCopy => 'Copy';
+
+  @override
+  String get p2pCommonCopied => 'Copied!';
 }

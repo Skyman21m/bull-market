@@ -14,6 +14,7 @@ import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/book_cubit.dart';
+import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -79,5 +80,12 @@ final class P2pLocator {
         .registerFactoryParam<OrderDetailsCubit, PublicOrder, RobosatsNetwork>(
           (order, network) => OrderDetailsCubit(order, network, locator()),
         );
+    locator.registerFactoryParam<
+      CoordinatorDetailsCubit,
+      CoordinatorDetailsRequest,
+      void
+    >(
+      (request, _) => CoordinatorDetailsCubit(request, locator(), now: clock()),
+    );
   }
 }
