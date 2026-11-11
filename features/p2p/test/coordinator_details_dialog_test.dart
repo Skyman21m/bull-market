@@ -570,21 +570,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a coordinator without policies nor contacts', (tester) async {
+  testWidgets('a coordinator without policies, contacts nor notice', (
+    tester,
+  ) async {
     final bare = rewrite(
       coordinator('temple'),
       contact: const CoordinatorContact(),
       policies: const {},
     );
-    await open(
-      tester,
-      FakeTransport(
-        infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
-      ),
-      of: bare,
-    );
+    // LibreBazaar announces the severity « none »: no notice box.
+    final info = recordedInfo('bazaar', RobosatsNetwork.mainnet)
+      ..['node_id'] = coordinator('temple').mainnetNodesPubkeys.first;
+    await open(tester, FakeTransport(infos: {'temple': info}), of: bare);
 
     expect(find.byType(IconButton), findsNothing);
+    expect(find.text('Coordinator Notice'), findsNothing);
     // The official client always shows the section, empty or not.
     await openSection(tester, 'Policies');
     expect(find.text('1'), findsNothing);
