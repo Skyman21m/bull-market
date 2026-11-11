@@ -527,4 +527,8 @@ class P2pLocalizationsTh extends P2pLocalizations {
   String p2pChartSummary(String center, String buyOrders, String sellOrders) {
     return 'Depth chart centered on $center: $buyOrders and $sellOrders.';
   }
+
+  @override
+  String get p2pChartSummaryNoAxis =>
+      'Depth chart: nothing to draw on this axis.';
 }

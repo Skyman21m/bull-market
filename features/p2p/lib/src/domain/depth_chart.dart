@@ -137,8 +137,8 @@ final class DepthLines {
 ///
 /// It draws every order received of the chosen currency and host, swaps included when every currency is shown; neither the side nor the payment method of the filter applies.
 /// Each line adds up, order after order along the axis, the bitcoin each order trades at its largest amount.
-/// The window it opens on is centred on the median premium or price of every order received, whatever the filter, cut to a whole number.
-/// On the premium axis that is the official client's fallback: it centres on the 24-hour non-KYC premium of the coordinators (`/api/info/`), which the book does not read.
+/// The window it opens on is centred on the orders it draws, one vote per coordinator: the median of each coordinator's median premium or price, cut to a whole number toward zero.
+/// The official client centres its premium axis on the 24-hour non-KYC premium of the coordinators (`/api/info/`), which the book does not read, and its fallback is the median of every order received; one vote per coordinator, after the filter, keeps a coordinator that floods the book from moving the window away from the others, and choosing a host brings the chart back to that host's orders.
 @immutable
 final class DepthChart {
   final DepthAxis axis;
@@ -180,27 +180,10 @@ final class DepthChart {
     };
     final market = priceCurrency == null
         ? null
-        : impliedMarketPrice(all, priceCurrency);
+        : _marketPrice(all, filter.host, priceCurrency);
     double? place(PublicOrder order) => switch (axis) {
       DepthAxis.premium => order.premium.percent,
       DepthAxis.price => market == null ? null : priceAt(market, order),
-    };
-
-    final places = [for (final order in all) ?place(order)];
-    final center = (median(places) ?? 0).truncateToDouble();
-    final window = switch (axis) {
-      DepthAxis.premium => DepthWindow(
-        center: center,
-        halfRange: premiumHalfRange,
-        step: premiumStep,
-      ),
-      // Without a market price there is no price axis: a window of no width, which the chart does not draw.
-      DepthAxis.price when places.isEmpty => const DepthWindow(
-        center: 0,
-        halfRange: 0,
-        step: 0,
-      ),
-      DepthAxis.price => _priceWindow(center, places),
     };
 
     final placed = [
@@ -209,13 +192,59 @@ final class DepthChart {
           if (place(order) case final x?)
             _PlacedOrder(order, x, btcOf(order), index),
     ]..sort();
+    final center = wholeTowardZero(
+      medianOfCoordinators([
+            for (final order in placed) (order.order.coordinator, order.x),
+          ]) ??
+          0,
+    );
+    final window = switch (axis) {
+      DepthAxis.premium => DepthWindow(
+        center: center,
+        halfRange: premiumHalfRange,
+        step: premiumStep,
+      ),
+      // Without a market price, or without an order to draw, there is no price axis: a window of no width, which the chart does not draw.
+      DepthAxis.price when placed.isEmpty => const DepthWindow(
+        center: 0,
+        halfRange: 0,
+        step: 0,
+      ),
+      DepthAxis.price => _priceWindow(center, [
+        for (final order in placed) order.x,
+      ]),
+    };
     return DepthChart._(axis, priceCurrency, window, placed);
+  }
+
+  /// [value] cut to a whole number toward zero, as `~~` does, never a negative zero, which a locale writes « -0 ».
+  ///
+  /// Unlike `~~`, it does not wrap around beyond 32 bits.
+  static double wholeTowardZero(double value) {
+    final whole = value.truncateToDouble();
+    return whole == 0 ? 0 : whole;
+  }
+
+  /// The market price of [currency]: the one the orders of [host] imply, when a host is chosen and its orders give one, else the one the orders of every coordinator imply.
+  static double? _marketPrice(
+    List<PublicOrder> all,
+    Coordinator? host,
+    RobosatsCurrency currency,
+  ) {
+    if (host != null) {
+      final own = impliedMarketPrice(
+        all.where((order) => order.coordinator == host),
+        currency,
+      );
+      if (own != null) return own;
+    }
+    return impliedMarketPrice(all, currency);
   }
 
   /// The id of US dollars, the currency of the price axis when every currency is shown.
   static const _usdId = 1;
 
-  /// The window of the price axis: from the median to the highest price either side, moved by a tenth of that at each zoom.
+  /// The window of the price axis: from its centre to the highest price drawn either side, moved by a tenth of that at each zoom.
   static DepthWindow _priceWindow(double center, List<double> places) {
     var highest = center;
     for (final x in places) {
@@ -286,6 +315,15 @@ final class DepthChart {
     ];
   }
 
+  /// The median of the values of each coordinator, then the median of those: one vote per coordinator, however many orders it sends; `null` when there is no value.
+  static double? medianOfCoordinators(Iterable<(Coordinator, double)> values) {
+    final byCoordinator = <Coordinator, List<double>>{};
+    for (final (coordinator, value) in values) {
+      (byCoordinator[coordinator] ??= []).add(value);
+    }
+    return median([for (final own in byCoordinator.values) ?median(own)]);
+  }
+
   /// The median of [values] as `matchMedian` computes it, or `null` when there is none.
   ///
   /// Two middle values are halved before they are added, so that two huge values cannot overflow.
@@ -297,19 +335,20 @@ final class DepthChart {
     return sorted[middle - 1] / 2 + sorted[middle] / 2;
   }
 
-  /// The market price of [currency] the book implies: the median, over its orders that give a price, of that price without the premium, or `null` when none does.
+  /// The market price of [currency] the orders of [book] imply: each order's price without its premium, the median for each coordinator, then the median of those; `null` when no order gives one.
   ///
-  /// The official client prices the axis with the market price of a coordinator (`/api/limits/`), which the book does not read: each order's own price, which its coordinator computed from that market price and the premium, gives it back.
+  /// The official client prices the axis with the market price of a coordinator (`/api/limits/`), which the book does not read: each order's own price, which its coordinator computed from its market price and the premium, gives it back.
+  /// One vote per coordinator keeps a coordinator that floods the book from setting the price of the others.
   static double? impliedMarketPrice(
     Iterable<PublicOrder> book,
     RobosatsCurrency currency,
-  ) => median([
+  ) => medianOfCoordinators([
     for (final order in book)
       if (order.currency == currency)
         if (order.price case final price?)
           if (price / (1 + order.premium.percent / 100) case final market
               when market.isFinite && market > 0)
-            market,
+            (order.coordinator, market),
   ]);
 
   /// Where [order] lies on the price axis: [market] with the order's premium, as `base_price` in the official client, or `null` when that is not a finite number.

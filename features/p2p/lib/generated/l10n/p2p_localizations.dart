@@ -1019,6 +1019,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Depth chart centered on {center}: {buyOrders} and {sellOrders}.'**
   String p2pChartSummary(String center, String buyOrders, String sellOrders);
+
+  /// Not in the RoboSats texts: what a screen reader says of the depth chart when its axis cannot be drawn, such as the price axis when no order gives a market price in its currency.
+  ///
+  /// In en, this message translates to:
+  /// **'Depth chart: nothing to draw on this axis.'**
+  String get p2pChartSummaryNoAxis;
 }
 
 class _P2pLocalizationsDelegate

@@ -144,5 +144,6 @@
   "p2pChartCenterPrice": "{price} {currencyCode}",
   "p2pChartBuyOrders": "{count, plural, one{{count} ordre d'achat} other{{count} ordres d'achat}}",
   "p2pChartSellOrders": "{count, plural, one{{count} ordre de vente} other{{count} ordres de vente}}",
-  "p2pChartSummary": "Graphique de profondeur centré sur {center} : {buyOrders} et {sellOrders}."
+  "p2pChartSummary": "Graphique de profondeur centré sur {center} : {buyOrders} et {sellOrders}.",
+  "p2pChartSummaryNoAxis": "Graphique de profondeur : rien à tracer sur cet axe."
 }

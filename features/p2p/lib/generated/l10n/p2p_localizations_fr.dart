@@ -534,4 +534,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pChartSummary(String center, String buyOrders, String sellOrders) {
     return 'Graphique de profondeur centré sur $center : $buyOrders et $sellOrders.';
   }
+
+  @override
+  String get p2pChartSummaryNoAxis =>
+      'Graphique de profondeur : rien à tracer sur cet axe.';
 }

@@ -28,7 +28,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
-/// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows.
+/// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
@@ -152,7 +152,9 @@ class _BookViewState extends State<BookView> {
   /// The least height of the depth chart: on a short screen it scrolls rather than shrinks.
   static const _chartMinHeight = 320.0;
 
-  /// The depth chart once an order has arrived, the wait before, and the empty book when every coordinator answered none.
+  /// The state of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still loading.
+  ///
+  /// A coordinator that failed is shown above with « Retry », whether the others gave orders or not: a failure is not an empty book.
   Widget _chart(BuildContext context, BookState state) {
     final colors = context.bull;
     return LayoutBuilder(
@@ -160,12 +162,24 @@ class _BookViewState extends State<BookView> {
         physics: const AlwaysScrollableScrollPhysics(),
         child: SizedBox(
           height: math.max(constraints.maxHeight, _chartMinHeight),
-          child: state.receivedOrders.isNotEmpty
-              ? DepthChartView(state: state, onOpenOrder: widget.onOpenOrder)
-              : state.isWaitingForFirstBook ||
-                    state.loadingCoordinators.isNotEmpty
-              ? Center(child: CircularProgressIndicator(color: colors.primary))
-              : EmptyBook(state: state),
+          child: Column(
+            children: [
+              CoordinatorsStatus(state: state),
+              Expanded(
+                child: state.receivedOrders.isNotEmpty
+                    ? DepthChartView(
+                        state: state,
+                        onOpenOrder: widget.onOpenOrder,
+                      )
+                    : state.isWaitingForFirstBook ||
+                          state.loadingCoordinators.isNotEmpty
+                    ? Center(
+                        child: CircularProgressIndicator(color: colors.primary),
+                      )
+                    : EmptyBook(state: state),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -387,9 +401,12 @@ class CoordinatorsStatus extends StatelessWidget {
                   ),
                 ),
                 const Gap(BullSpacing.xs),
-                Text(
-                  l10n.p2pBookCoordinatorsLoading(loading.length),
-                  style: text.labelMedium?.copyWith(color: colors.textMuted),
+                // A long line, or a large text size, wraps rather than overflows.
+                Flexible(
+                  child: Text(
+                    l10n.p2pBookCoordinatorsLoading(loading.length),
+                    style: text.labelMedium?.copyWith(color: colors.textMuted),
+                  ),
                 ),
               ],
             ),

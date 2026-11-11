@@ -92,8 +92,9 @@ final class P2pFormats {
   /// The on-chain payout fee of the coordinator dialog, with 3 significant digits as the official client writes it there (`toPrecision(3)`): `3.44%`, `0.500%`.
   String swapFeeRate(double percent) => _threeDigitsPercent(percent);
 
-  /// The premium at the centre of the depth chart, with 3 significant digits as the official client writes it (`toPrecision(3)`): `2.00%`, `-1.00%`.
-  String chartCenterPremium(double percent) => _threeDigitsPercent(percent);
+  /// The premium at the centre of the depth chart, a whole number such as `2%` or `-1%`: it is a median cut to a whole number, so decimals would claim a precision it does not have.
+  String chartCenterPremium(double percent) =>
+      _percent(percent, minDecimals: 0, maxDecimals: 0);
 
   /// A tick of the premium axis of the depth chart, such as `-2.5%`.
   String chartPremium(double percent) =>

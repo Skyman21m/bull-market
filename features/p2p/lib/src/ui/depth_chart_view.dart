@@ -8,6 +8,7 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/depth_chart.dart';
 import '../presentation/book_state.dart';
 import '../presentation/chart_ticks.dart';
+import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/offer_row.dart';
@@ -17,7 +18,8 @@ import 'widgets/robot_avatar.dart';
 ///
 /// Its header holds the choice of axis, « Premium » or « Price », and the zoom buttons around the value at the centre.
 /// A tap opens the order nearest to it; a long press, or a pointer that hovers, shows that order and a crosshair.
-/// A screen reader reads a summary of the chart; every order it draws is in the list too, under the side and payment method that show it.
+/// A screen reader reads a summary of the chart.
+/// Every order it draws is in the list too, under the side and payment method that show it, except the swap orders drawn when every currency is shown: the list never shows them, so a screen reader reaches those through « Search » and their URL only.
 class DepthChartView extends StatefulWidget {
   final BookState state;
   final ValueChanged<PublicOrder> onOpenOrder;
@@ -110,21 +112,21 @@ class _DepthChartViewState extends State<DepthChartView> {
         DepthAxis.price => l10n.p2pBookColumnPrice,
       };
 
-  /// The value between the zoom buttons: the premium with 3 significant digits, or the price and its currency; « - » when there is no axis to draw.
-  static String centerLabel(
+  /// The value between the zoom buttons: the premium as a whole number, or the price and its currency; `null` when there is no axis to draw.
+  static String? centerLabel(
     DepthChart chart,
     DepthWindow window,
     P2pLocalizations l10n,
     P2pFormats formats,
   ) {
-    if (!window.isDrawable) return '-';
+    if (!window.isDrawable) return null;
     return switch ((chart.axis, chart.priceCurrency)) {
       (DepthAxis.premium, _) => formats.chartCenterPremium(window.center),
       (DepthAxis.price, final currency?) => l10n.p2pChartCenterPrice(
         formats.price(window.center),
         currency.code,
       ),
-      (DepthAxis.price, null) => '-',
+      (DepthAxis.price, null) => null,
     };
   }
 
@@ -182,7 +184,7 @@ class _DepthChartViewState extends State<DepthChartView> {
               ),
               Flexible(
                 child: Text(
-                  center,
+                  center ?? '',
                   textAlign: TextAlign.center,
                   style: text.bodyLarge?.copyWith(
                     color: colors.text,
@@ -204,11 +206,14 @@ class _DepthChartViewState extends State<DepthChartView> {
           Expanded(
             child: Semantics(
               container: true,
-              label: l10n.p2pChartSummary(
-                center,
-                l10n.p2pChartBuyOrders(lines.buyOrders),
-                l10n.p2pChartSellOrders(lines.sellOrders),
-              ),
+              label: switch (center) {
+                final center? => l10n.p2pChartSummary(
+                  center,
+                  l10n.p2pChartBuyOrders(lines.buyOrders),
+                  l10n.p2pChartSellOrders(lines.sellOrders),
+                ),
+                null => l10n.p2pChartSummaryNoAxis,
+              },
               excludeSemantics: true,
               child: _plot(context, chart, window, lines, formats, l10n),
             ),
@@ -341,12 +346,16 @@ final class DepthChartLayout {
   /// The ticks of the vertical axis, with their labels.
   final List<(double, String)> yTicks;
 
+  /// The widest a label of the vertical axis is drawn, between the legend and its tick: a longer one is cut with an ellipsis.
+  final double yLabelWidth;
+
   const DepthChartLayout._({
     required this.plot,
     required this.window,
     required this.top,
     required this.xTicks,
     required this.yTicks,
+    required this.yLabelWidth,
   });
 
   /// The length of a tick, as in the official client.
@@ -390,7 +399,7 @@ final class DepthChartLayout {
     for (final (_, label) in yTicks) {
       widest = math.max(widest, measure(label).width);
     }
-    // Labels never take more than half of the width, however long a hostile value writes.
+    // The labels of the vertical axis never take more than half of the width, however long a hostile value writes.
     final left = math.min(
       lineHeight + gap + widest + gap + tickSize,
       size.width / 2,
@@ -417,6 +426,7 @@ final class DepthChartLayout {
       top: top,
       xTicks: xTicks,
       yTicks: yTicks,
+      yLabelWidth: math.max(0, left - tickSize - gap - gap - lineHeight),
     );
   }
 
@@ -434,10 +444,11 @@ final class DepthChartLayout {
 
   Offset offsetOf(DepthPoint point) => Offset(dx(point.x), dy(point.btc));
 
-  /// The point that carries an order nearest to [position], on either line, or `null` when no line has one.
+  /// The point that carries an order nearest to [position], on either line, or `null` when no line has one or [position] is outside the plot.
   ///
-  /// Like the mesh of the official client, it does not need to be close: the whole plot leads to an order.
+  /// Like the mesh of the official client, which covers the plot and not its axes, it does not need to be close: the whole plot leads to an order.
   DepthPoint? nearestOrder(DepthLines lines, Offset position) {
+    if (!plot.contains(position)) return null;
     DepthPoint? nearest;
     var best = double.infinity;
     for (final point in [...lines.buy, ...lines.sell]) {
@@ -511,6 +522,7 @@ final class _DepthChartPainter extends CustomPainter {
         horizontal: 0.5,
         vertical: 0,
         maxWidth: plot.width,
+        boxWidth: size.width,
       );
     }
     for (final (value, label) in layout.yTicks) {
@@ -526,7 +538,7 @@ final class _DepthChartPainter extends CustomPainter {
         Offset(plot.left - DepthChartLayout.tickSize - DepthChartLayout.gap, y),
         horizontal: 1,
         vertical: 0.5,
-        maxWidth: plot.left,
+        maxWidth: layout.yLabelWidth,
       );
     }
     canvas
@@ -624,7 +636,7 @@ final class _DepthChartPainter extends CustomPainter {
     }
   }
 
-  /// Writes [label] so that the point at the fractions [horizontal] and [vertical] of its box lies on [anchor].
+  /// Writes [label], cut at [maxWidth], so that the point at the fractions [horizontal] and [vertical] of its box lies on [anchor], moved sideways if needed to stay within [boxWidth].
   void _text(
     Canvas canvas,
     String label,
@@ -632,6 +644,7 @@ final class _DepthChartPainter extends CustomPainter {
     required double horizontal,
     required double vertical,
     required double maxWidth,
+    double? boxWidth,
   }) {
     final painter = TextPainter(
       text: TextSpan(text: label, style: style),
@@ -640,10 +653,11 @@ final class _DepthChartPainter extends CustomPainter {
       maxLines: 1,
       ellipsis: '…',
     )..layout(maxWidth: math.max(0, maxWidth));
-    painter.paint(
-      canvas,
-      anchor - Offset(painter.width * horizontal, painter.height * vertical),
-    );
+    var left = anchor.dx - painter.width * horizontal;
+    if (boxWidth != null) {
+      left = left.clamp(0, math.max(0, boxWidth - painter.width));
+    }
+    painter.paint(canvas, Offset(left, anchor.dy - painter.height * vertical));
     painter.dispose();
   }
 
@@ -659,8 +673,9 @@ final class _DepthChartPainter extends CustomPainter {
       old.colors != colors;
 }
 
-/// What the official client shows of an order on the chart (`Charts/helpers/OrderTooltip`): the maker's robot, the amount and its currency, and the payment methods.
+/// What the official client shows of an order on the chart (`Charts/helpers/OrderTooltip`): the maker's robot, the amount and its currency, the payment methods, and the coordinator.
 ///
+/// The official client marks the coordinator with a badge on the robot; here its name is written below, cleaned and bounded as every P2P screen shows it.
 /// The payment methods are maker text, shown as plain text.
 class OrderTooltip extends StatelessWidget {
   final PublicOrder order;
@@ -707,6 +722,15 @@ class OrderTooltip extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: text.labelMedium?.copyWith(color: colors.textMuted),
+                ),
+                Text(
+                  CoordinatorText.of(
+                    order.coordinator.longAlias,
+                    maxCodePoints: CoordinatorText.name,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.labelSmall?.copyWith(color: colors.textMuted),
                 ),
               ],
             ),
