@@ -26,6 +26,7 @@ export 'package:robosats/robosats.dart'
         CoordinatorResponseMalformed,
         CoordinatorResponseTooLarge,
         CoordinatorTimedOut,
+        CoordinatorTransportBusy,
         CoordinatorTransportFailed,
         CoordinatorTransportFailure,
         CoordinatorUnexpectedStatus,
