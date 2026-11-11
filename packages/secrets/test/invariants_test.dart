@@ -273,7 +273,7 @@ void main() {
     final source = code(read('lib/src/data/garage_key_repository.dart'));
     final imports = RegExp(
       r"import '([^']+)'",
-    ).allMatches(source).map((m) => m.group(1)!).toList();
+    ).allMatches(source).map((m) => m.group(1) ?? '').toList();
 
     expect(imports, isNotEmpty);
     expect(

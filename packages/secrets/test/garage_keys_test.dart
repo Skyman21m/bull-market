@@ -51,7 +51,8 @@ void main() {
   }
 
   Map<String, dynamic> stored(FakeSecureStoragePlatform storage, String key) =>
-      jsonDecode(storage.entries[key]!) as Map<String, dynamic>;
+      jsonDecode(storage.entries[key] ?? fail('nothing stored under $key'))
+          as Map<String, dynamic>;
 
   const slow = Timeout(Duration(seconds: 60));
 

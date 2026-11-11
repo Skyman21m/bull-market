@@ -45,9 +45,9 @@ void main() {
   /// The stored value with its creation time pinned, so the rest compares byte for byte.
   String pinCreatedAt(String stored) =>
       stored.replaceFirstMapped(RegExp(r'"createdAt":"([^"]*)"'), (match) {
-        final createdAt = DateTime.parse(match.group(1)!);
-        expect(createdAt.isUtc, isTrue, reason: 'written in UTC');
-        expect(match.group(1), endsWith('Z'));
+        final written = match.group(1) ?? fail('no createdAt');
+        expect(DateTime.parse(written).isUtc, isTrue, reason: 'written in UTC');
+        expect(written, endsWith('Z'));
         return '"createdAt":"2026-11-11T00:00:00.000Z"';
       });
 
@@ -67,7 +67,10 @@ void main() {
           ok(await keysWith(storage).import(slot: slot, bytes: testBytes));
 
           expect(storage.entries.keys, [key]);
-          expect(pinCreatedAt(storage.entries[key]!), golden);
+          expect(
+            pinCreatedAt(storage.entries[key] ?? fail('nothing stored')),
+            golden,
+          );
         },
         timeout: const Timeout(Duration(seconds: 30)),
       );
