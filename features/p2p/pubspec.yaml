@@ -24,8 +24,12 @@ dependencies:
   meta: ^1.17.0
   primitives:
   robosats:
+  # Only for the Garage Key handle that the shell passes to the feature: see `GarageKeyRepositoryImpl`.
+  secrets:
 
 dev_dependencies:
+  # Parses the feature's own sources in its architecture tests: see `secrets_imports_test.dart`.
+  analyzer: ^10.2.0
   flutter_test:
     sdk: flutter
   lints: ^6.1.0

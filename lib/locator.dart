@@ -58,6 +58,7 @@ import 'package:bb_mobile/features/withdraw/withdraw_locator.dart';
 import 'package:bb_mobile/features/wizard/wizard_locator.dart';
 import 'package:get_it/get_it.dart';
 import 'package:bull_logs/bull_logs.dart';
+import 'package:meta/meta.dart' show visibleForTesting;
 import 'package:p2p/p2p.dart' show P2pFeature;
 import 'package:path_provider/path_provider.dart';
 import 'package:secrets/secrets.dart';
@@ -73,6 +74,7 @@ class AppLocator {
     bool startPayjoinRecovery = true,
     bool startOrderSwapWatcher = true,
     bool startAutoswapWatcher = true,
+    required bool withGarageKeys,
   }) async {
     locator.enableRegisteringMultipleInstancesOfOneType();
 
@@ -159,7 +161,7 @@ class AppLocator {
     SpLocator.setup(locator);
     SettingsLocator.setup(locator);
     const LogsFeature().setup(locator);
-    const P2pFeature().setup(locator);
+    setupP2p(locator, withGarageKeys: withGarageKeys);
     BitcoinPriceLocator.setup(locator);
     WalletLocator.setup(locator);
     TransactionsLocator.registerAdapters(locator);
@@ -210,6 +212,17 @@ class AppLocator {
     RecipientsLocator.setup(locator);
     BitBoxLocator.setup(locator);
   }
+
+  /// Registers the P2P feature, with the vault's Garage Key handle when [withGarageKeys] is true.
+  ///
+  /// The handle creates and imports Garage Keys under the vault's write lock, which is per isolate: only the foreground composition may ask for it, and the WorkManager isolate, which runs [setup] too, passes false.
+  /// Asking for the handle reads and writes nothing.
+  @visibleForTesting
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );
 }
 
 final class _SwapSyncException implements Exception {

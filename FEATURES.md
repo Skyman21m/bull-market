@@ -82,6 +82,7 @@ graph TB
     P2P --> PRIMITIVES
     P2P --> BULL_LOGGER
     P2P --> BULL_UI
+    P2P --> SECRETS
     CORE --> BULL_PAYJOIN
     BULL_PAYJOIN --> PRIMITIVES
     CORE --> BULL_PRICER
@@ -278,7 +279,7 @@ graph TB
 - **Core**: Foundation for all features
 - **Tor**: `packages/bull_tor` — embedded Onion lifecycle with isolated RecoverBull and Bitcoin Electrum `.onion` sessions, plus provider-agnostic local SOCKS5 verification. Depends on Flutter for app-directory storage and an iOS plugin that excludes Tor state from backups, which are infrastructure-package exceptions in AGENTS.md
 - **Wallets**: Used by Send, UTXO Management, Transaction History, Backups, App Startup
-- **Secrets** (workspace package): Used by Wallets, BIP85, App Startup, All Seed View, RecoverBull, Swaps, Silent Payments
+- **Secrets** (workspace package): Used by Wallets, BIP85, App Startup, All Seed View, RecoverBull, Swaps, Silent Payments, and P2P for its Garage Keys only
 - **Settings**: Used by Wallets, BIP85, Bitcoin Price
 - **Recipients**: Used by Pay, Withdrawal
 - **UTXO Management**: Used by Send, Swaps, Payjoin
@@ -288,7 +289,7 @@ graph TB
 - **Send**: Depends on Fees, Network, Payjoin, Swaps, UTXO Management, Wallets
 - **Receive**: Depends on Payjoin, Swaps
 - **Backups**: Depends on BIP85, Tor, Wallets
-- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book and its depth chart, order details and the dialog of its coordinator, search of an order by its URL, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, which no screen uses yet and which the app-facing facade does not offer; the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
+- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book and its depth chart, order details and the dialog of its coordinator, search of an order by its URL, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, which no screen uses yet and which the app-facing facade does not offer; depends on the Secrets package for the RoboSats Garage Key of each network, whose handle the shell passes to `P2pFeature.setup` in the foreground composition only, and which internal use cases generate, import, find, derive robots from and delete, with no screen yet; the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
 
 ### Exchange-Related Features
 

@@ -1,14 +1,22 @@
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart' show GarageKeys;
 
+import 'data/garage_key_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
+import 'domain/repositories/garage_key_repository.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
+import 'domain/usecases/delete_garage_key_usecase.dart';
+import 'domain/usecases/derive_first_robot_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'domain/usecases/fetch_robot_usecase.dart';
+import 'domain/usecases/generate_garage_key_usecase.dart';
+import 'domain/usecases/has_garage_key_usecase.dart';
+import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
@@ -19,7 +27,8 @@ import 'presentation/order_details_cubit.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
-  static void setup(GetIt locator) {
+  /// [garageKeys] is the vault's handle on the Garage Keys: without it, nothing that reads or writes a Garage Key is registered.
+  static void setup(GetIt locator, {required GarageKeys? garageKeys}) {
     // `Tor` and its HTTP client factory are read lazily, so this runs whether or not the Tor package is registered yet.
     locator.registerLazySingleton<TorCoordinatorTransport>(
       () => TorCoordinatorTransport(
@@ -34,6 +43,31 @@ final class P2pLocator {
       sessions: () => locator<TorCoordinatorTransport>(),
       tor: () => locator<Tor>(),
       clock: DateTime.now,
+    );
+    if (garageKeys != null) _registerGarageKeys(locator, garageKeys);
+  }
+
+  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], and the use-cases that create, import, read and delete it.
+  ///
+  /// Registering touches no key: the keystore is read or written only when a use-case runs.
+  static void _registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
+    locator.registerLazySingleton<GarageKeyRepository>(
+      () => GarageKeyRepositoryImpl(garageKeys),
+    );
+    locator.registerFactory<HasGarageKeyUsecase>(
+      () => HasGarageKeyUsecase(locator()),
+    );
+    locator.registerFactory<GenerateGarageKeyUsecase>(
+      () => GenerateGarageKeyUsecase(locator()),
+    );
+    locator.registerFactory<ImportGarageKeyUsecase>(
+      () => ImportGarageKeyUsecase(locator()),
+    );
+    locator.registerFactory<DeriveFirstRobotUsecase>(
+      () => DeriveFirstRobotUsecase(locator()),
+    );
+    locator.registerFactory<DeleteGarageKeyUsecase>(
+      () => DeleteGarageKeyUsecase(locator()),
     );
   }
 
