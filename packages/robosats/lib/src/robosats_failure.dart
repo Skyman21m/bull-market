@@ -166,6 +166,14 @@ final class CoordinatorResponseTooLarge extends CoordinatorTransportFailure {
   const CoordinatorResponseTooLarge();
 }
 
+/// The adapter had no connection to give to this request for now, because of its own limits and not because of the coordinator.
+///
+/// Nothing is wrong with the request or with the coordinator: sending the request again a little later may succeed, and is safe, since a request that is not a `GET` was not sent at all.
+/// A caller should wait and try again instead of reporting a coordinator that does not work.
+final class CoordinatorTransportBusy extends CoordinatorTransportFailure {
+  const CoordinatorTransportBusy();
+}
+
 /// Any other transport failure, including an exception the adapter let through.
 final class CoordinatorTransportFailed extends CoordinatorTransportFailure {
   const CoordinatorTransportFailed();

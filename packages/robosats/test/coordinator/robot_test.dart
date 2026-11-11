@@ -1094,6 +1094,7 @@ void main() {
           CoordinatorUnreachable(),
           CoordinatorTimedOut(),
           CoordinatorResponseTooLarge(),
+          CoordinatorTransportBusy(),
           CoordinatorTransportFailed(),
         ]) {
           serve(Err(failure));
