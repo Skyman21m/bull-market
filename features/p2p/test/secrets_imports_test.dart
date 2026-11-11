@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/utilities.dart' show parseString;
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:test/test.dart';
 
 /// The files of the feature that may import `package:secrets`, and the names each one may take from it.
@@ -19,18 +21,46 @@ const _allowed = {
   },
 };
 
-/// The only form an import of the vault may take: its public library, with a `show` list, no prefix and no other clause.
-final _narrowImport = RegExp(
-  r"^import 'package:secrets/secrets\.dart' show ([A-Za-z]+(?:, [A-Za-z]+)*);$",
-);
+/// What [source] takes from the vault: one entry per directive whose library could be the vault, with the names it shows, or `null` when it is anything but an import of `package:secrets/secrets.dart` with a `show` list and nothing else.
+///
+/// The directives are read from the parsed syntax tree, so the library is the value Dart gives the string, with its escapes decoded, whatever the spacing, quotes or comments around it; the libraries of conditional imports are read too.
+/// A library whose name is not a plain string, or that mentions `secrets` anywhere, counts as the vault.
+List<Set<String>?> _vaultImports(String source) => [
+  for (final directive in parseString(content: source).unit.directives)
+    if (_libraries(
+      directive,
+    ).any((uri) => uri == null || uri.contains('secrets')))
+      _narrowImport(directive),
+];
 
-/// The `import`, `export` and `part` directives of [source], each on one line with its whitespace collapsed.
-Iterable<String> _directives(String source) =>
-    RegExp(r'^\s*(?:import|export|part)\s[^;]*;', multiLine: true)
-        .allMatches(source)
-        .map(
-          (match) => (match[0] ?? '').trim().replaceAll(RegExp(r'\s+'), ' '),
-        );
+/// Every library [directive] names.
+List<String?> _libraries(Directive directive) => switch (directive) {
+  NamespaceDirective(:final uri, :final configurations) => [
+    uri.stringValue,
+    for (final configuration in configurations) configuration.uri.stringValue,
+  ],
+  PartDirective(:final uri) => [uri.stringValue],
+  PartOfDirective(uri: final uri?) => [uri.stringValue],
+  _ => const [],
+};
+
+/// The names [directive] shows, when it is `import 'package:secrets/secrets.dart' show …;` with no prefix, no deferral, no condition and no other combinator.
+Set<String>? _narrowImport(Directive directive) {
+  if (directive is! ImportDirective ||
+      directive.uri.stringValue != 'package:secrets/secrets.dart' ||
+      directive.prefix != null ||
+      directive.deferredKeyword != null ||
+      directive.configurations.isNotEmpty ||
+      directive.combinators.length != 1) {
+    return null;
+  }
+  return switch (directive.combinators.single) {
+    ShowCombinator(:final shownNames) => {
+      for (final name in shownNames) name.name,
+    },
+    _ => null,
+  };
+}
 
 void main() {
   // Tests run with the package directory as working directory.
@@ -49,14 +79,12 @@ void main() {
     final imports = <String, Set<String>>{};
     final offenders = <String>[];
     for (final file in libraries) {
-      for (final directive in _directives(file.readAsStringSync())) {
-        if (!directive.contains('secrets')) continue;
-        final narrow = _narrowImport.firstMatch(directive);
-        if (narrow == null) {
-          offenders.add('${file.path}: $directive');
-          continue;
+      for (final names in _vaultImports(file.readAsStringSync())) {
+        if (names == null) {
+          offenders.add(file.path);
+        } else {
+          (imports[file.path] ??= {}).addAll(names);
         }
-        imports[file.path] = (narrow[1] ?? '').split(', ').toSet();
       }
     }
 
@@ -65,20 +93,28 @@ void main() {
   });
 
   test('the check sees an import of the vault however it is written', () {
-    const probe = '''
+    // Each directive below but the first names the vault without the one form allowed; the second is the escaped spelling a review found the earlier, textual check blind to.
+    const probe = r'''
 import 'package:secrets/secrets.dart'
     show
         GarageKeys,
         Secrets;
-import "package:secrets/secrets.dart";
-import 'package:secrets/secrets.dart' as vault show GarageKeys;
+import 'package:\x73ecrets/\x73ecrets.dart';
+/* a comment */ import "package:secrets/secrets.dart";
+import'package:secrets/secrets.dart'as vault;
+import 'package:secrets/secrets.dart' deferred as later show GarageKeys;
+import 'dart:core' if (dart.library.io) 'package:secrets/secrets.dart';
+import '../../packages/secrets/lib/secrets.dart' show GarageKeys;
+import 'package:robosats/robosats.dart';
 export 'package:secrets/secrets.dart' show GarageKeys;
 ''';
-    final directives = _directives(probe).toList();
 
-    expect(directives, hasLength(4));
-    expect(directives.map(_narrowImport.firstMatch).map((match) => match?[1]), [
-      'GarageKeys, Secrets',
+    expect(_vaultImports(probe), [
+      {'GarageKeys', 'Secrets'},
+      null,
+      null,
+      null,
+      null,
       null,
       null,
       null,
