@@ -6,9 +6,7 @@ import 'package:robosats/robosats.dart';
 
 import '../src/domain/p2p_tor_state.dart';
 import '../src/domain/usecases/close_coordinator_sessions_usecase.dart';
-import '../src/domain/usecases/close_robot_sessions_usecase.dart';
 import '../src/domain/usecases/fetch_coordinator_info_usecase.dart';
-import '../src/domain/usecases/fetch_robot_usecase.dart';
 import '../src/domain/usecases/request_federation_books_usecase.dart';
 import '../src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import '../src/p2p_locator.dart';
@@ -25,14 +23,7 @@ final class P2pFeature {
   void setup(GetIt locator) {
     P2pLocator.setup(locator);
     locator.registerLazySingleton<P2pFacade>(
-      () => P2pFacade._(
-        locator(),
-        locator(),
-        locator(),
-        locator(),
-        locator(),
-        locator(),
-      ),
+      () => P2pFacade._(locator(), locator(), locator(), locator()),
     );
   }
 
@@ -86,16 +77,12 @@ final class P2pFacade {
   final FetchCoordinatorInfoUsecase _fetchInfo;
   final WatchP2pTorStateUsecase _watchTorState;
   final CloseCoordinatorSessionsUsecase _closeSessions;
-  final FetchRobotUsecase _fetchRobot;
-  final CloseRobotSessionsUsecase _closeRobotSessions;
 
   const P2pFacade._(
     this._requestBooks,
     this._fetchInfo,
     this._watchTorState,
     this._closeSessions,
-    this._fetchRobot,
-    this._closeRobotSessions,
   );
 
   /// Asks every coordinator on [network] for its book at once: one pending outcome per coordinator, in the order of the federation.
@@ -116,30 +103,4 @@ final class P2pFacade {
 
   /// Closes every Tor session to the coordinators, those of the robots included; the next request opens new ones.
   Future<void> closeSessions() => _closeSessions.execute();
-
-  /// `/api/robot/` of [coordinator] for the robot [identity], whose OpenPGP key pair on this device is [pgpKey]: what the coordinator holds about it, once checked against this device.
-  ///
-  /// With [createIfUnknown], which is what the official client always does, a coordinator that does not know the robot creates it; without it, such a coordinator answers with a [RobotUnknown] failure and nothing is created.
-  /// A robot is an account on a third-party server, kept there for good with the keys of its first contact: create one only when the user asks for it.
-  /// A coordinator that returns another hash id, nickname or key pair than the ones of this device gives a [RobotMismatchFailure], never the robot.
-  ///
-  /// The request goes through a Tor session of its own, kept for this robot on this coordinator and shared with no other robot and with no anonymous read.
-  /// Nothing is stored: [identity] and [pgpKey] stay with the caller.
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> fetchRobot(
-    Coordinator coordinator,
-    RobosatsNetwork network, {
-    required RobotIdentity identity,
-    required RobotPgpKey pgpKey,
-    bool createIfUnknown = true,
-  }) => _fetchRobot.execute(
-    coordinator,
-    network,
-    identity: identity,
-    pgpKey: pgpKey,
-    createIfUnknown: createIfUnknown,
-  );
-
-  /// Closes the Tor sessions of the robot [identity] to every coordinator, when the robot is no longer used.
-  Future<void> closeRobotSessions(RobotIdentity identity) =>
-      _closeRobotSessions.execute(identity);
 }

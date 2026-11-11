@@ -56,6 +56,7 @@ final class P2pLocator {
         CoordinatorClient(transport(), clock: clock),
       ),
     );
+    // The robot use-cases have no caller yet: the Garage cubits of this feature will be the first, and nothing outside the feature reaches them.
     locator.registerFactory<FetchRobotUsecase>(
       () => FetchRobotUsecase(CoordinatorClient(transport(), clock: clock)),
     );

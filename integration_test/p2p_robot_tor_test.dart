@@ -19,7 +19,7 @@ const _foundAfter = Duration(minutes: 5, seconds: 20);
 
 /// Prints one measurement as a single greppable line: `P2P_ROBOT_MEASURE {json}`.
 ///
-/// Only labels of this app, numbers and booleans: never a token, a key, a header, a nickname or text sent by a coordinator.
+/// Only labels of this app, numbers and booleans: never a token, a key, a header, a nickname or text sent by a coordinator, not even a field name or a content type it chose.
 void _measure(Map<String, Object?> values) {
   debugPrint('P2P_ROBOT_MEASURE ${jsonEncode(values)}');
 }
@@ -43,6 +43,40 @@ Map<String, Object?> _robotFields(CoordinatorRobot robot) => {
   'hasLastLogin': robot.lastLogin != null,
   'nostrKeyHeld': robot.nostrPublicKeyHex != null,
   'nostrKeyDerivation': robot.nostrKeyDerivation?.name,
+};
+
+/// The fields a coordinator of the reference source answers on `/api/robot/` (`api/views.py:703-741`): only these names are ever printed.
+const _knownFields = {
+  'nickname',
+  'hash_id',
+  'public_key',
+  'encrypted_private_key',
+  'earned_rewards',
+  'wants_stealth',
+  'nostr_pubkey',
+  'webhook_url',
+  'webhook_enabled',
+  'webhook_api_key',
+  'last_login',
+  'tg_enabled',
+  'tg_token',
+  'tg_bot_name',
+  'active_order_id',
+  'last_order_id',
+  'found',
+};
+
+final RegExp _isoUtcMicroseconds = RegExp(
+  r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$',
+);
+
+/// The form of the `last_login` of an answer, as one of four fixed labels: never the text itself.
+String _lastLoginForm(Object? value) => switch (value) {
+  null => 'absent',
+  final String text when _isoUtcMicroseconds.hasMatch(text) =>
+    'iso-utc-microseconds',
+  String() => 'other-text',
+  _ => 'not-text',
 };
 
 /// The shape of a JSON value, never the value: its type, and the length of a text.
@@ -186,15 +220,15 @@ Future<void> main({bool isInitialized = false}) async {
                 call,
               ) => _try(alias, label, watch, call, fields: _robotFields);
 
+              // The app-facing facade has no robot call: the client of the package is driven here over the real transport of the app.
               // 1. The short header before any first contact: the coordinator does not know the robot.
               final unknown = await step(
                 'a_short_header_before_first_contact',
-                () => facade.fetchRobot(
+                () => client.fetchKnownRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
                   pgpKey: firstKey,
-                  createIfUnknown: false,
                 ),
               );
               if (_gaveUp(unknown)) continue;
@@ -207,10 +241,10 @@ Future<void> main({bool isInitialized = false}) async {
                 ),
               );
 
-              // 2. First contact, through the facade: token hash, both PGP keys, Nostr key of the current frontend.
+              // 2. First contact: token hash, both PGP keys, Nostr key of the current frontend.
               final created = await step(
                 'a_first_contact',
-                () => facade.fetchRobot(
+                () => client.fetchRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
@@ -239,12 +273,11 @@ Future<void> main({bool isInitialized = false}) async {
               // 3. The short header now reads the same robot back.
               final readBack = await step(
                 'a_short_header_after_first_contact',
-                () => facade.fetchRobot(
+                () => client.fetchKnownRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
                   pgpKey: firstKey,
-                  createIfUnknown: false,
                 ),
               );
               if (_gaveUp(readBack)) continue;
@@ -260,7 +293,7 @@ Future<void> main({bool isInitialized = false}) async {
               // 4. A first contact again, as the official client sends at every start: same robot.
               final again = await step(
                 'a_first_contact_again',
-                () => facade.fetchRobot(
+                () => client.fetchRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
@@ -273,7 +306,7 @@ Future<void> main({bool isInitialized = false}) async {
               // 5. A first contact with another key pair for the same token, as a second device would send: the coordinator keeps the first key, which this package reports as a mismatch.
               final otherKey = await step(
                 'a_first_contact_with_another_key_pair',
-                () => facade.fetchRobot(
+                () => client.fetchRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
@@ -363,17 +396,21 @@ Future<void> main({bool isInitialized = false}) async {
                 final fields = body is Map<String, Object?>
                     ? body
                     : const <String, Object?>{};
-                final lastLogin = fields['last_login'];
                 _measure({
                   'step': 'a_raw_answer_shape',
                   'alias': alias,
                   'status': response.statusCode,
                   'bytes': response.body.length,
-                  'contentType': response.contentType,
+                  'contentTypeIsJson':
+                      response.contentType == 'application/json',
+                  // In the order of the answer; a name this test does not know is counted, never printed.
                   'fields': {
                     for (final MapEntry(:key, :value) in fields.entries)
-                      key: _shape(value),
+                      if (_knownFields.contains(key)) key: _shape(value),
                   },
+                  'unknownFields': fields.keys
+                      .where((name) => !_knownFields.contains(name))
+                      .length,
                   'publicKeyAsSent':
                       fields['public_key'] == firstKey.publicKey.armored,
                   'publicKeyAsSentButForOuterWhitespace':
@@ -388,10 +425,7 @@ Future<void> main({bool isInitialized = false}) async {
                   'publicKeySentChars': firstKey.publicKey.armored.length,
                   'privateKeySentChars':
                       firstKey.encryptedPrivateKeyArmored.length,
-                  // The form of the date, every digit masked.
-                  'lastLoginForm': lastLogin is String
-                      ? lastLogin.replaceAll(RegExp(r'\d'), 'd')
-                      : null,
+                  'lastLoginForm': _lastLoginForm(fields['last_login']),
                 });
               }
 
@@ -413,12 +447,11 @@ Future<void> main({bool isInitialized = false}) async {
                 alias,
                 'a_short_header_after_five_minutes',
                 watch,
-                () => facade.fetchRobot(
+                () => client.fetchKnownRobot(
                   coordinator,
                   _network,
                   identity: first.identity,
                   pgpKey: firstKey,
-                  createIfUnknown: false,
                 ),
                 fields: _robotFields,
               );
@@ -436,8 +469,7 @@ Future<void> main({bool isInitialized = false}) async {
               );
             }
           } finally {
-            await facade.closeRobotSessions(first.identity);
-            await facade.closeRobotSessions(second.identity);
+            // Every session, the ones of the two robots included.
             await facade.closeSessions();
           }
 

@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
+import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
+import 'package:robosats/robosats.dart'
+    show CoordinatorRobot, GarageKey, RobotPgpKey;
 import 'package:test/test.dart';
 
 /// A Tor that never gives a session, with the states the test chooses.
@@ -138,7 +143,7 @@ void main() {
     await locator<P2pFacade>().closeSessions();
   });
 
-  group('a robot', () {
+  group('a robot, through the use-cases the feature keeps to itself,', () {
     final garageKey = GarageKey.generate();
     final identity = switch (garageKey.firstUsableRobot(0)) {
       Ok(:final value) => value.identity,
@@ -150,11 +155,13 @@ void main() {
     };
 
     test('request fails as a value when Tor gives no session', () async {
-      final facade = locator<P2pFacade>();
-      final temple = facade.requestBooks(RobosatsNetwork.testnet).keys.first;
+      final temple = locator<P2pFacade>()
+          .requestBooks(RobosatsNetwork.testnet)
+          .keys
+          .first;
 
       for (final createIfUnknown in [true, false]) {
-        final result = await facade.fetchRobot(
+        final result = await locator<FetchRobotUsecase>().execute(
           temple,
           RobosatsNetwork.testnet,
           identity: identity,
@@ -179,11 +186,12 @@ void main() {
       await facade.fetchInfo(temple, RobosatsNetwork.testnet);
       final afterAnonymous = tor.openedSessions;
 
-      await facade.fetchRobot(
+      await locator<FetchRobotUsecase>().execute(
         temple,
         RobosatsNetwork.testnet,
         identity: identity,
         pgpKey: pgpKey,
+        createIfUnknown: false,
       );
 
       // The anonymous reads of temple already asked for a session: the robot does not wait for it or reuse it.
@@ -191,18 +199,18 @@ void main() {
     });
 
     test('is not sent to a coordinator that is not on the network', () async {
-      final facade = locator<P2pFacade>();
-      final bazaar = facade
+      final bazaar = locator<P2pFacade>()
           .requestBooks(RobosatsNetwork.mainnet)
           .keys
           .firstWhere((coordinator) => coordinator.shortAlias == 'bazaar');
       final before = tor.openedSessions;
 
-      final result = await facade.fetchRobot(
+      final result = await locator<FetchRobotUsecase>().execute(
         bazaar,
         RobosatsNetwork.testnet,
         identity: identity,
         pgpKey: pgpKey,
+        createIfUnknown: true,
       );
 
       expect(
@@ -217,7 +225,50 @@ void main() {
     });
 
     test('sessions close with none open', () async {
-      await locator<P2pFacade>().closeRobotSessions(identity);
+      await locator<CloseRobotSessionsUsecase>().execute(identity);
+    });
+  });
+
+  group('the app-facing library', () {
+    // Tests run with the package directory as working directory.
+    final library = File('lib/p2p.dart').readAsStringSync();
+    final facade = File('lib/public/p2p_facade.dart').readAsStringSync();
+
+    /// Every identifier a source names, comments included.
+    Set<String> identifiers(String source) =>
+        RegExp(r'\w+').allMatches(source).map((m) => m[0] ?? '').toSet();
+
+    test('exports nothing that makes, holds or reveals a robot', () {
+      // The shell could otherwise generate and reveal Garage Keys outside the reach of the custody gate.
+      for (final name in [
+        'GarageKey',
+        'GarageRobot',
+        'RobotIdentity',
+        'RobotToken',
+        'RobotPgpKey',
+        'UnlockedRobotPgpKey',
+        'NostrKeyPair',
+        'NostrKeyDerivation',
+        'CoordinatorClient',
+        'CoordinatorRobot',
+        'CoordinatorTransport',
+        'CoordinatorRequest',
+        'RobotSessionKey',
+      ]) {
+        expect(identifiers(library), isNot(contains(name)), reason: name);
+        expect(identifiers(facade), isNot(contains(name)), reason: name);
+      }
+      expect(library, isNot(contains('testing.dart')));
+      // Only the named types of `robosats` are exported, never the whole library.
+      expect(
+        RegExp(r"export 'package:robosats/[^']+'(?!\s+show)").hasMatch(library),
+        isFalse,
+      );
+    });
+
+    test('has no robot method on its facade', () {
+      expect(facade, isNot(contains('Robot(')));
+      expect(facade, isNot(contains('RobotUsecase')));
     });
   });
 }
