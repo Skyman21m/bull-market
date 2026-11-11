@@ -893,6 +893,54 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Copied!'**
   String get p2pCommonCopied;
+
+  /// Title of the dialog opened by « Search » below the book.
+  ///
+  /// In en, this message translates to:
+  /// **'Search order'**
+  String get p2pSearchOrderTitle;
+
+  /// Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter here an order URL to search for it, even if it\'s password protected'**
+  String get p2pSearchOrderText;
+
+  /// Label of the field of « Search order », which turns red, without a text, when the URL is not …/order/<coordinator>/<id>.
+  ///
+  /// In en, this message translates to:
+  /// **'Order URL'**
+  String get p2pSearchOrderUrlLabel;
+
+  /// Button that closes a dialog without doing anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get p2pCommonCancel;
+
+  /// Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have a Garage Key'**
+  String get p2pNoRobotTitle;
+
+  /// Text of the dialog shown when a page needs a robot.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate a Garage Key to get your first robot identity and start trading.'**
+  String get p2pNoRobotText;
+
+  /// Button of the no-robot dialog that leads to the Garage; disabled until the Garage exists.
+  ///
+  /// In en, this message translates to:
+  /// **'I have a Garage Key'**
+  String get p2pNoRobotHaveKey;
+
+  /// Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Garage Key'**
+  String get p2pGarageOnboardingGenerateKey;
 }
 
 class _P2pLocalizationsDelegate

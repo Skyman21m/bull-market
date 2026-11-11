@@ -441,4 +441,30 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pCommonCopied => 'Copié !';
+
+  @override
+  String get p2pSearchOrderTitle => 'Rechercher un ordre';
+
+  @override
+  String get p2pSearchOrderText =>
+      'Saisissez ici l\'URL d\'un ordre pour le retrouver, même s\'il est protégé par un mot de passe';
+
+  @override
+  String get p2pSearchOrderUrlLabel => 'URL de l\'ordre';
+
+  @override
+  String get p2pCommonCancel => 'Annuler';
+
+  @override
+  String get p2pNoRobotTitle => 'Vous n\'avez pas de clé de garage';
+
+  @override
+  String get p2pNoRobotText =>
+      'Générez une clé de garage pour obtenir votre première identité de robot et commencer à échanger.';
+
+  @override
+  String get p2pNoRobotHaveKey => 'J\'ai une clé de garage';
+
+  @override
+  String get p2pGarageOnboardingGenerateKey => 'Générer une clé de garage';
 }

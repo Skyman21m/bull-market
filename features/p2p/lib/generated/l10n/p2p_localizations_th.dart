@@ -434,4 +434,30 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pCommonCopied => 'Copied!';
+
+  @override
+  String get p2pSearchOrderTitle => 'Search order';
+
+  @override
+  String get p2pSearchOrderText =>
+      'Enter here an order URL to search for it, even if it\'s password protected';
+
+  @override
+  String get p2pSearchOrderUrlLabel => 'Order URL';
+
+  @override
+  String get p2pCommonCancel => 'Cancel';
+
+  @override
+  String get p2pNoRobotTitle => 'You do not have a Garage Key';
+
+  @override
+  String get p2pNoRobotText =>
+      'Generate a Garage Key to get your first robot identity and start trading.';
+
+  @override
+  String get p2pNoRobotHaveKey => 'I have a Garage Key';
+
+  @override
+  String get p2pGarageOnboardingGenerateKey => 'Generate Garage Key';
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_ui/bull_ui.dart';
+import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -11,6 +12,8 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/search_order_dialog.dart';
+import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
 import 'package:p2p/testing.dart';
 
@@ -331,6 +334,151 @@ void main() {
         'temple/api/info/',
       ]);
       expect(find.text('Coordinator offline'), findsNothing);
+    });
+
+    group('« Search »', () {
+      final dialog = find.byType(SearchOrderDialog);
+      Finder inDialog(Finder finder) =>
+          find.descendant(of: dialog, matching: finder);
+      final temple = hostOf('temple', RobosatsNetwork.mainnet);
+
+      Future<void> searchFor(WidgetTester tester, String url) async {
+        await tester.enterText(inDialog(find.byType(TextField)), url);
+        await tester.tap(inDialog(find.text('Search')));
+        await settle(tester);
+      }
+
+      Future<void> openSearch(
+        WidgetTester tester, {
+        String label = 'Search',
+      }) async {
+        await tester.tap(find.text(label));
+        await settle(tester);
+      }
+
+      testWidgets(
+        'opens « Search order », and an order of the book opens its page',
+        (tester) async {
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          final requests = transport.requested.length;
+
+          await openSearch(tester);
+          expect(find.text('Search order'), findsOneWidget);
+          expect(
+            find.text(
+              "Enter here an order URL to search for it, even if it's password protected",
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Order URL'), findsOneWidget);
+          expect(inDialog(find.text('Cancel')), findsOneWidget);
+
+          await searchFor(tester, 'http://$temple/order/temple/48213');
+
+          expect(dialog, findsNothing);
+          expect(find.byType(OrderDetailsScreen), findsOneWidget);
+          expect(find.text('# 48213'), findsOneWidget);
+          // Searching asks no coordinator: the order page reads the fees of its host, as from the book.
+          expect(transport.requested.skip(requests), ['temple/api/info/']);
+        },
+      );
+
+      testWidgets('a text that is not an order URL turns the field red', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester);
+
+        await searchFor(tester, 'temple 48213');
+
+        expect(dialog, findsOneWidget);
+        final field = tester.widget<TextField>(
+          inDialog(find.byType(TextField)),
+        );
+        final border = field.decoration?.enabledBorder;
+        expect(
+          border is OutlineInputBorder ? border.borderSide.color : null,
+          testBullTheme.error,
+        );
+
+        await tester.tap(inDialog(find.text('Cancel')));
+        await settle(tester);
+        expect(dialog, findsNothing);
+        expect(find.byType(OrderDetailsScreen), findsNothing);
+        // The bar is back on the list, and « Search » opens the dialog again.
+        await openSearch(tester);
+        expect(dialog, findsOneWidget);
+      });
+
+      testWidgets('an order the public book does not hold needs a robot', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        final requests = transport.requested.length;
+        await openSearch(tester);
+
+        await searchFor(tester, 'http://$temple/order/temple/1/');
+
+        expect(dialog, findsNothing);
+        expect(find.byType(NoRobotDialog), findsOneWidget);
+        expect(find.text('You do not have a Garage Key'), findsOneWidget);
+        expect(
+          find.text(
+            'Generate a Garage Key to get your first robot identity and start trading.',
+          ),
+          findsOneWidget,
+        );
+        final buttons = tester.widgetList<BullButton>(
+          find.descendant(
+            of: find.byType(NoRobotDialog),
+            matching: find.byType(BullButton),
+          ),
+        );
+        expect(
+          [for (final button in buttons) (button.label, button.disabled)],
+          [('I have a Garage Key', true), ('Generate Garage Key', true)],
+        );
+        expect(transport.requested.length, requests);
+
+        await tester.tapAt(const Offset(4, 4));
+        await settle(tester);
+        expect(find.byType(NoRobotDialog), findsNothing);
+        expect(find.byType(OrderDetailsScreen), findsNothing);
+      });
+
+      testWidgets('in French', (tester) async {
+        await open(tester, locale: const Locale('fr'));
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        await openSearch(tester, label: 'Rechercher');
+
+        expect(find.text('Rechercher un ordre'), findsOneWidget);
+        expect(
+          find.text(
+            "Saisissez ici l'URL d'un ordre pour le retrouver, même s'il est protégé par un mot de passe",
+          ),
+          findsOneWidget,
+        );
+        expect(find.text("URL de l'ordre"), findsOneWidget);
+        expect(inDialog(find.text('Annuler')), findsOneWidget);
+
+        await tester.enterText(
+          inDialog(find.byType(TextField)),
+          'http://$temple/order/temple/1',
+        );
+        await tester.tap(inDialog(find.text('Rechercher')));
+        await settle(tester);
+
+        expect(find.text("Vous n'avez pas de clé de garage"), findsOneWidget);
+        expect(find.text("J'ai une clé de garage"), findsOneWidget);
+        expect(find.text('Générer une clé de garage'), findsOneWidget);
+      });
     });
 
     testWidgets('a reversible payment method shows the warning of RoboSats', (

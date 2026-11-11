@@ -601,5 +601,37 @@
   "p2pCommonCopied": "Copied!",
   "@p2pCommonCopied": {
     "description": "Shown once a value is on the clipboard."
+  },
+  "p2pSearchOrderTitle": "Search order",
+  "@p2pSearchOrderTitle": {
+    "description": "Title of the dialog opened by « Search » below the book."
+  },
+  "p2pSearchOrderText": "Enter here an order URL to search for it, even if it's password protected",
+  "@p2pSearchOrderText": {
+    "description": "Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots."
+  },
+  "p2pSearchOrderUrlLabel": "Order URL",
+  "@p2pSearchOrderUrlLabel": {
+    "description": "Label of the field of « Search order », which turns red, without a text, when the URL is not …/order/<coordinator>/<id>."
+  },
+  "p2pCommonCancel": "Cancel",
+  "@p2pCommonCancel": {
+    "description": "Button that closes a dialog without doing anything."
+  },
+  "p2pNoRobotTitle": "You do not have a Garage Key",
+  "@p2pNoRobotTitle": {
+    "description": "Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book."
+  },
+  "p2pNoRobotText": "Generate a Garage Key to get your first robot identity and start trading.",
+  "@p2pNoRobotText": {
+    "description": "Text of the dialog shown when a page needs a robot."
+  },
+  "p2pNoRobotHaveKey": "I have a Garage Key",
+  "@p2pNoRobotHaveKey": {
+    "description": "Button of the no-robot dialog that leads to the Garage; disabled until the Garage exists."
+  },
+  "p2pGarageOnboardingGenerateKey": "Generate Garage Key",
+  "@p2pGarageOnboardingGenerateKey": {
+    "description": "Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists."
   }
 }

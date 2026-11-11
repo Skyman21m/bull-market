@@ -123,5 +123,13 @@
   "p2pCoordinatorMatrix": "Matrix",
   "p2pCoordinatorSimplex": "Simplex",
   "p2pCommonCopy": "Copier",
-  "p2pCommonCopied": "Copié !"
+  "p2pCommonCopied": "Copié !",
+  "p2pSearchOrderTitle": "Rechercher un ordre",
+  "p2pSearchOrderText": "Saisissez ici l'URL d'un ordre pour le retrouver, même s'il est protégé par un mot de passe",
+  "p2pSearchOrderUrlLabel": "URL de l'ordre",
+  "p2pCommonCancel": "Annuler",
+  "p2pNoRobotTitle": "Vous n'avez pas de clé de garage",
+  "p2pNoRobotText": "Générez une clé de garage pour obtenir votre première identité de robot et commencer à échanger.",
+  "p2pNoRobotHaveKey": "J'ai une clé de garage",
+  "p2pGarageOnboardingGenerateKey": "Générer une clé de garage"
 }
