@@ -74,6 +74,8 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
     final step = _step;
     return switch (state) {
       GarageUnknown() => _GarageUnavailable(state: state),
+      // A key drawn and not shown yet, in this visit or in one the user left before the vault answered: shown once, for backup, in the wizard.
+      GarageWithKey(showForBackup: true) => _wizard(state, step ?? 1),
       // A key read from the vault rather than made in this visit goes to the profile, whatever the wizard showed.
       GarageWithKey(isNew: true) when step != null => _wizard(state, step),
       GarageWithKey() => GarageProfile(

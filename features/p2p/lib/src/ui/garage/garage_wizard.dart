@@ -75,8 +75,12 @@ class _GarageWizardState extends State<GarageWizard> {
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final state = widget.state;
-    // Steps 2 and 3 need a key; without one the wizard is on its first step.
-    final step = state is GarageWithKey ? widget.step : 1;
+    // Steps 2 and 3 need a key; without one the wizard is on its first step, and the first step shows a key only when it waits to be shown for backup.
+    final step = switch (state) {
+      GarageWithKey(showForBackup: true) => widget.step,
+      GarageWithKey() => widget.step < 2 ? 2 : widget.step,
+      _ => 1,
+    };
     final titles = [
       l10n.p2pGarageOnboardingStep1Title,
       l10n.p2pGarageOnboardingStep2Title,
@@ -153,7 +157,10 @@ class _GarageWizardState extends State<GarageWizard> {
             label: l10n.p2pCommonContinue,
             iconData: Icons.check,
             iconFirst: true,
-            onPressed: () => widget.onStep(2),
+            onPressed: () {
+              cubit.acknowledgeBackup();
+              widget.onStep(2);
+            },
             bgColor: colors.primary,
             textColor: colors.onPrimary,
           ),
