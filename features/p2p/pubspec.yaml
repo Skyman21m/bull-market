@@ -24,6 +24,8 @@ dependencies:
   meta: ^1.17.0
   primitives:
   robosats:
+  # Only for the Garage Key handle that the shell passes to the feature: see `GarageKeyRepositoryImpl`.
+  secrets:
 
 dev_dependencies:
   flutter_test:
