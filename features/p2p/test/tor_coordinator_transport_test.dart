@@ -2386,7 +2386,14 @@ void main() {
 
       final requests = <Future<Object?>>[];
       final firstOrigin = servers[0].url('/').origin;
-      var peak = 0;
+      // The run starts at the ceiling of the first coordinator, whatever the speed of the machine: thirty robots ask it at once, and their places are taken before any of them is answered.
+      for (var robot = 1; robot <= 30; robot++) {
+        requests.add(
+          tor.send(_get(servers[0].url('/held'), robot: _robot(robot))),
+        );
+      }
+      check(-1);
+      final atCeiling = tor.countsForTesting.placesAt[firstOrigin];
       for (var step = 0; step < 1500; step++) {
         final robot = _robot(1 + random.nextInt(50));
         // Most requests go to the first coordinator, so that its ceiling is reached.
@@ -2420,8 +2427,6 @@ void main() {
               : Duration.zero,
         );
         check(step);
-        final atFirst = tor.countsForTesting.placesAt[firstOrigin] ?? 0;
-        if (atFirst > peak) peak = atFirst;
       }
       for (final release in releases) {
         release.complete();
@@ -2433,8 +2438,7 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 2));
 
       expect(violations, isEmpty, reason: violations.take(5).join('\n'));
-      // The run went to the ceiling of the first coordinator.
-      expect(peak, maxRobotSessionsPerCoordinator);
+      expect(atCeiling, maxRobotSessionsPerCoordinator);
       final counts = tor.countsForTesting;
       expect(counts.places, 0);
       expect(counts.placesOf, isEmpty);
