@@ -122,287 +122,338 @@ void main() {
   });
 
   for (final locale in const [Locale('fr'), Locale('en')]) {
-    testWidgets('captures of the P2P tab in ${locale.languageCode}', skip: directory == null, (
-      tester,
-    ) async {
-      final out = Directory(directory ?? '.')..createSync(recursive: true);
-      tester.view
-        ..physicalSize = const Size(780, 1688)
-        ..devicePixelRatio = 2;
-      addTearDown(tester.view.reset);
+    testWidgets(
+      'captures of the P2P tab in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
 
-      Future<void> capture(String name) async {
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.runAsync(() async {
-          final boundary =
-              tester.renderObject(find.byKey(_frame)) as RenderRepaintBoundary;
-          final image = await boundary.toImage(pixelRatio: 2);
-          final png = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (png == null) throw StateError('no PNG for $name');
-          File(
-            '${out.path}/${locale.languageCode}-$name.png',
-          ).writeAsBytesSync(png.buffer.asUint8List());
-        });
-      }
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
 
-      Future<StreamController<P2pTorState>> show(
-        RobosatsNetwork network, {
-        Set<String> offline = const {},
-        bool garage = false,
-      }) async {
+        Future<StreamController<P2pTorState>> show(
+          RobosatsNetwork network, {
+          Set<String> offline = const {},
+        }) async {
+          final locator = GetIt.asNewInstance();
+          final tor = StreamController<P2pTorState>.broadcast();
+          addTearDown(tor.close);
+          addTearDown(locator.reset);
+          setUpP2pForTesting(
+            locator,
+            transport: _RecordedTransport(network, offline: offline),
+            torStates: () => tor.stream,
+            clock: () => _now,
+          );
+          await tester.pumpWidget(
+            _App(locale: locale, locator: locator, network: network),
+          );
+          await tester.pump();
+          return tor;
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+        }
+
+        // The wait for Tor, on testnet so that its banner shows as in the mock-up.
+        var tor = await show(RobosatsNetwork.testnet);
+        tor.add(P2pTorState.notStarted);
+        await settle();
+        await capture('tor-initialisation');
+        tor.add(P2pTorState.connecting);
+        await settle();
+        await capture('tor');
+        tor.add(P2pTorState.failed);
+        await settle();
+        await capture('tor-erreur');
+        tor.add(P2pTorState.ready);
+        await settle();
+        await capture('offres-testnet-vide');
+
+        // The recorded mainnet books.
+        tor = await show(RobosatsNetwork.mainnet);
+        tor.add(P2pTorState.ready);
+        await settle();
+        await capture('offres-tous');
+
+        final l10n = lookupP2pLocalizations(locale);
+        // The depth chart of every order received, then back to the list.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        // Lets the view bar slide to its new segment.
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-tous');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
+
+        // « I want to Buy and use EUR », the choices of the mock-up.
+        await tester.tap(find.text(l10n.p2pBookFilterAny).first);
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookFilterAny).first);
+        await settle();
+        await tester.tap(find.text('EUR').last);
+        await settle();
+        await capture('offres');
+
+        // The depth chart under the currency of the filter: on the premium axis, with an order under the finger, then on the price axis.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique');
+        final plot = find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.painter.runtimeType.toString() == '_DepthChartPainter',
+        );
+        final finger = await tester.startGesture(
+          tester.getCenter(plot) + const Offset(40, -60),
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle();
+        await capture('graphique-ordre');
+        await finger.up();
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookColumnPremium));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.text(l10n.p2pBookColumnPrice));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-prix');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
+
+        await tester.tap(find.textContaining(' EUR', findRichText: true).first);
+        // Lets the page transition end.
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await settle();
+        await capture('offre');
+
+        // The reversible payments warning of RoboSats, when the order offers such a method.
+        final warning = find.byIcon(Icons.warning_amber_rounded);
+        if (warning.evaluate().isNotEmpty) {
+          await tester.tap(warning.first);
+          await settle();
+          await tester.pump(const Duration(seconds: 1));
+          await capture('paiements-reversibles');
+          await tester.tap(find.text(l10n.p2pCommonAcknowledged));
+          await settle();
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // The dialog of the coordinator that hosts the order, then its summary and its statistics.
+        await tester.tap(find.text(l10n.p2pOrderHost));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('coordinateur');
+        for (final (section, name) in [
+          (l10n.p2pCoordinatorPolicies, 'coordinateur-politiques'),
+          (l10n.p2pCoordinatorSummary, 'coordinateur-resume'),
+          (l10n.p2pCoordinatorStatsForNerds, 'coordinateur-stats'),
+        ]) {
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await tester.tap(find.text(section));
+          await settle();
+          await tester.ensureVisible(find.text(section));
+          await settle();
+          await capture(name);
+        }
+        // A tap outside closes the dialog, then the back arrow returns to the book.
+        await tester.tapAt(const Offset(4, 4));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await settle();
+
+        // « Search », the order URL dialog of RoboSats: empty, refused, then an order the public book does not hold.
+        await tester.tap(find.text(l10n.p2pCommonSearch));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('rechercher');
+        final field = find.byType(TextField);
+        await tester.enterText(field, 'temple 48213');
+        await tester.tap(find.text(l10n.p2pCommonSearch).last);
+        await settle();
+        await capture('rechercher-erreur');
+        final temple = Federation.robosats.byAlias('temple')?.mainnet.onion;
+        await tester.enterText(field, '$temple/order/temple/1');
+        await tester.tap(find.text(l10n.p2pCommonSearch).last);
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('sans-robot');
+
+        // The chart on a small phone, 320 by 568 points, with four coordinators offline above it (Gumpellite answers nothing recorded): their state scrolls with the chart.
+        tester.view.physicalSize = const Size(640, 1136);
+        tor = await show(
+          RobosatsNetwork.mainnet,
+          offline: {'lake', 'bazaar', 'freeport', 'ammanaya'},
+        );
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-hors-ligne-petit');
+        await tester.drag(
+          find.textContaining('TheBigLake').first,
+          const Offset(0, -600),
+        );
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-hors-ligne-petit-bas');
+      },
+    );
+  }
+
+  // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery ».
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the Garage in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          // A page or a dialog opened or closed.
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // An empty slot is believed after the vault's full read budget, about 4.5 s.
+        Future<void> vault() async {
+          await settle();
+          await tester.pump(const Duration(seconds: 6));
+          await settle();
+        }
+
+        FakeSecureStoragePlatform().install();
         final locator = GetIt.asNewInstance();
         final tor = StreamController<P2pTorState>.broadcast();
         addTearDown(tor.close);
         addTearDown(locator.reset);
-        if (garage) FakeSecureStoragePlatform().install();
         setUpP2pForTesting(
           locator,
-          transport: _RecordedTransport(network, offline: offline),
+          transport: const _RecordedTransport(RobosatsNetwork.testnet),
           torStates: () => tor.stream,
           clock: () => _now,
-          garageKeys: garage
-              ? Secrets(scratchDirectory: () async => '.').garageKeys()
-              : null,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
         );
         await tester.pumpWidget(
-          _App(locale: locale, locator: locator, network: network),
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.testnet,
+          ),
         );
-        await tester.pump();
-        return tor;
-      }
-
-      Future<void> settle() async {
-        for (var i = 0; i < 10; i++) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
-          );
-          await tester.pump(const Duration(milliseconds: 20));
-        }
-      }
-
-      // The wait for Tor, on testnet so that its banner shows as in the mock-up.
-      var tor = await show(RobosatsNetwork.testnet);
-      tor.add(P2pTorState.notStarted);
-      await settle();
-      await capture('tor-initialisation');
-      tor.add(P2pTorState.connecting);
-      await settle();
-      await capture('tor');
-      tor.add(P2pTorState.failed);
-      await settle();
-      await capture('tor-erreur');
-      tor.add(P2pTorState.ready);
-      await settle();
-      await capture('offres-testnet-vide');
-
-      // The recorded mainnet books.
-      tor = await show(RobosatsNetwork.mainnet);
-      tor.add(P2pTorState.ready);
-      await settle();
-      await capture('offres-tous');
-
-      final l10n = lookupP2pLocalizations(locale);
-      // The depth chart of every order received, then back to the list.
-      await tester.tap(find.text(l10n.p2pBookViewChart));
-      await settle();
-      // Lets the view bar slide to its new segment.
-      await tester.pump(const Duration(seconds: 1));
-      await capture('graphique-tous');
-      await tester.tap(find.text(l10n.p2pBookViewList));
-      await settle();
-
-      // « I want to Buy and use EUR », the choices of the mock-up.
-      await tester.tap(find.text(l10n.p2pBookFilterAny).first);
-      await settle();
-      await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
-      await settle();
-      await tester.tap(find.text(l10n.p2pBookFilterAny).first);
-      await settle();
-      await tester.tap(find.text('EUR').last);
-      await settle();
-      await capture('offres');
-
-      // The depth chart under the currency of the filter: on the premium axis, with an order under the finger, then on the price axis.
-      await tester.tap(find.text(l10n.p2pBookViewChart));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('graphique');
-      final plot = find.byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint &&
-            widget.painter.runtimeType.toString() == '_DepthChartPainter',
-      );
-      final finger = await tester.startGesture(
-        tester.getCenter(plot) + const Offset(40, -60),
-      );
-      await tester.pump(const Duration(milliseconds: 700));
-      await settle();
-      await capture('graphique-ordre');
-      await finger.up();
-      await settle();
-      await tester.tap(find.text(l10n.p2pBookColumnPremium));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.text(l10n.p2pBookColumnPrice));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('graphique-prix');
-      await tester.tap(find.text(l10n.p2pBookViewList));
-      await settle();
-
-      await tester.tap(find.textContaining(' EUR', findRichText: true).first);
-      // Lets the page transition end.
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await settle();
-      await capture('offre');
-
-      // The reversible payments warning of RoboSats, when the order offers such a method.
-      final warning = find.byIcon(Icons.warning_amber_rounded);
-      if (warning.evaluate().isNotEmpty) {
-        await tester.tap(warning.first);
+        tor.add(P2pTorState.ready);
         await settle();
-        await tester.pump(const Duration(seconds: 1));
-        await capture('paiements-reversibles');
-        await tester.tap(find.text(l10n.p2pCommonAcknowledged));
-        await settle();
-        await tester.pump(const Duration(seconds: 1));
-      }
+        final l10n = lookupP2pLocalizations(locale);
+        final example = _exampleGarageKey();
 
-      // The dialog of the coordinator that hosts the order, then its summary and its statistics.
-      await tester.tap(find.text(l10n.p2pOrderHost));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('coordinateur');
-      for (final (section, name) in [
-        (l10n.p2pCoordinatorPolicies, 'coordinateur-politiques'),
-        (l10n.p2pCoordinatorSummary, 'coordinateur-resume'),
-        (l10n.p2pCoordinatorStatsForNerds, 'coordinateur-stats'),
-      ]) {
-        await tester.ensureVisible(find.text(section));
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await vault();
+        await capture('garage-accueil');
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
         await settle();
-        await tester.tap(find.text(section));
+        await capture('garage-etape1');
+        await tester.enterText(find.byType(EditableText), example);
         await settle();
-        await tester.ensureVisible(find.text(section));
+        await capture('garage-etape1-cle-collee');
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await vault();
+        await capture('garage-etape2');
+        await tester.tap(find.text(l10n.p2pCommonContinue));
         await settle();
-        await capture(name);
-      }
-      // A tap outside closes the dialog, then the back arrow returns to the book.
-      await tester.tapAt(const Offset(4, 4));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await settle();
-
-      // « Search », the order URL dialog of RoboSats: empty, refused, then an order the public book does not hold.
-      await tester.tap(find.text(l10n.p2pCommonSearch));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('rechercher');
-      final field = find.byType(TextField);
-      await tester.enterText(field, 'temple 48213');
-      await tester.tap(find.text(l10n.p2pCommonSearch).last);
-      await settle();
-      await capture('rechercher-erreur');
-      final temple = Federation.robosats.byAlias('temple')?.mainnet.onion;
-      await tester.enterText(field, '$temple/order/temple/1');
-      await tester.tap(find.text(l10n.p2pCommonSearch).last);
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('sans-robot');
-
-      // The chart on a small phone, 320 by 568 points, with four coordinators offline above it (Gumpellite answers nothing recorded): their state scrolls with the chart.
-      tester.view.physicalSize = const Size(640, 1136);
-      tor = await show(
-        RobosatsNetwork.mainnet,
-        offline: {'lake', 'bazaar', 'freeport', 'ammanaya'},
-      );
-      tor.add(P2pTorState.ready);
-      await settle();
-      await tester.tap(find.text(l10n.p2pBookViewChart));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('graphique-hors-ligne-petit');
-      await tester.drag(
-        find.textContaining('TheBigLake').first,
-        const Offset(0, -600),
-      );
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('graphique-hors-ligne-petit-bas');
-
-      // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery ».
-      tester.view.physicalSize = const Size(780, 1688);
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      messenger.setMockMethodCallHandler(_privacyChannel, (call) async => true);
-      addTearDown(
-        () => messenger.setMockMethodCallHandler(_privacyChannel, null),
-      );
-      final example = _exampleGarageKey();
-      Future<void> vault() async {
-        // An empty slot is believed after the vault's full read budget, about 4.5 s.
+        await capture('garage-etape3');
+        await tester.tapOnText(
+          find.textRange.ofSubstring(l10n.p2pGarageOnboardingHelpLink),
+        );
         await settle();
-        await tester.pump(const Duration(seconds: 6));
+        await capture('garage-lien-simplex');
+        await tester.tapAt(const Offset(4, 4));
         await settle();
-      }
-
-      tor = await show(RobosatsNetwork.testnet, garage: true);
-      tor.add(P2pTorState.ready);
-      await settle();
-      await tester.tap(find.text(l10n.p2pNavGarage));
-      await vault();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('garage-accueil');
-      await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
-      await settle();
-      await capture('garage-etape1');
-      await tester.enterText(find.byType(EditableText), example);
-      await settle();
-      await capture('garage-etape1-cle-collee');
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await vault();
-      await capture('garage-etape2');
-      await tester.tap(find.text(l10n.p2pCommonContinue));
-      await settle();
-      await capture('garage-etape3');
-      await tester.tapOnText(
-        find.textRange.ofSubstring(l10n.p2pGarageOnboardingHelpLink),
-      );
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('garage-lien-simplex');
-      await tester.tapAt(const Offset(4, 4));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.text(l10n.p2pGarageSeeProfile));
-      await settle();
-      await capture('garage-profil');
-      await tester.tap(find.text(l10n.p2pGarageKeyReveal));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('garage-pin-factice');
-      await tester.tap(find.text('PIN'));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await settle();
-      await capture('garage-profil-cle');
-      await tester.tap(find.text(l10n.p2pGarageProfileDeleteAll));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await capture('garage-supprimer');
-      await tester.tap(find.text(l10n.p2pDeleteKeyConfirm));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
-      await settle();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.enterText(find.byType(EditableText), example);
-      await settle();
-      await capture('garage-recuperation');
-    });
+        await tester.tap(find.text(l10n.p2pGarageSeeProfile));
+        await settle();
+        await capture('garage-profil');
+        await tester.tap(find.text(l10n.p2pGarageKeyReveal));
+        await settle();
+        await capture('garage-pin-factice');
+        await tester.tap(find.text('PIN'));
+        await settle();
+        await capture('garage-profil-cle');
+        await tester.tap(find.text(l10n.p2pGarageProfileDeleteAll));
+        await settle();
+        await capture('garage-supprimer');
+        await tester.tap(find.text(l10n.p2pDeleteKeyConfirm));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
+        await settle();
+        await tester.enterText(find.byType(EditableText), example);
+        await settle();
+        await capture('garage-recuperation');
+      },
+    );
   }
 }
 
