@@ -338,10 +338,7 @@ final class TorCoordinatorTransport
       try {
         route = await slot.opening;
       } on _RouteException catch (exception) {
-        // A request that a close stopped while it waited fails, whatever became of the session.
-        return closed()
-            ? const Err(CoordinatorTransportFailed())
-            : Err(exception.failure);
+        return Err(exception.failure);
       } finally {
         slot.waiting--;
       }
