@@ -4,7 +4,7 @@
 // `<robosats files>` is a folder that holds RoboSats files at their paths in the RoboSats repository, as they are at `<commit>`, a full 40-character commit id: a checkout of that commit, or only the files needed, downloaded at that commit (procedure in `AGENTS.md`, section "Troc (fork)").
 // Without a name every list is regenerated; with names, only those, so that each list can come from its own commit.
 // Each generated file records its source in a constant: the path of the file in RoboSats, the commit, and the Git blob id of the file, which `git rev-parse <commit>:<path>` prints in a RoboSats clone.
-// The generator prints the blob ids: check them against RoboSats before committing.
+// It does not check its input against RoboSats, not even in a git checkout: check by hand each blob id it prints (step 4 of the refresh procedure), then pin the new (commit, blob) pairs in `test/coordinator/embedded_data_test.dart`.
 // It also copies the source files byte for byte into `test/fixtures/coordinator/sources/`, which the tests compare with the generated constants and with the recorded blob ids.
 // Review the diff of the federation list by hand: onion addresses and node keys are what the client trusts.
 import 'dart:convert';
