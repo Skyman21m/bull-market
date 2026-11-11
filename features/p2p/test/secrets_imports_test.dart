@@ -6,10 +6,12 @@ import 'package:test/test.dart';
 
 /// The files of the feature that may import `package:secrets`, and the names each one may take from it.
 ///
-/// The vault also guards the wallet seeds: the feature takes the Garage Key handle the shell gives it, in the file that receives it, the file that registers it and the repository that uses it, and nothing else.
+/// The vault also guards the wallet seeds: the feature takes the Garage Key handle the shell gives it, in the file that receives it, the file that registers it and the repository that uses it, and nothing else but the test seam.
 const _allowed = {
   'lib/public/p2p_facade.dart': {'GarageKeys'},
   'lib/src/p2p_locator.dart': {'GarageKeys'},
+  // The test seam, which registers the Garage over a handle a test made: no library of the app imports it (`test/features/p2p/p2p_testing_seam_test.dart`).
+  'lib/testing.dart': {'GarageKeys'},
   'lib/src/data/garage_key_repository_impl.dart': {
     'GarageKeyAlreadyExistsFailure',
     'GarageKeyCorruptFailure',

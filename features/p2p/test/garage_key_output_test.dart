@@ -80,6 +80,7 @@ void main() {
           'package:primitives/primitives.dart',
           'package:robosats/robosats.dart',
           'package:secrets/secrets.dart',
+          '../domain/network_garage_key.dart',
           '../domain/p2p_failure.dart',
           '../domain/repositories/garage_key_repository.dart',
         ]),

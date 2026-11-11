@@ -47,13 +47,13 @@ final class P2pLocator {
       tor: () => locator<Tor>(),
       clock: DateTime.now,
     );
-    if (garageKeys != null) _registerGarageKeys(locator, garageKeys);
+    if (garageKeys != null) registerGarageKeys(locator, garageKeys);
   }
 
   /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, and the Garage that shows it.
   ///
   /// Registering touches no key: the keystore is read or written only when a use-case runs, and the Garage runs them only once the user opens it.
-  static void _registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
+  static void registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
     locator.registerLazySingleton<GarageKeyRepository>(
       () => GarageKeyRepositoryImpl(garageKeys),
     );
