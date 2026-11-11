@@ -24,6 +24,14 @@ void main() {
       9,
       10,
     ]);
+    // The nearest multiples outside the bounds are left out.
+    expect(ChartTicks.between(24000, 76000, 5), [
+      30000,
+      40000,
+      50000,
+      60000,
+      70000,
+    ]);
     expect(ChartTicks.between(25000, 75000, 5), [
       30000,
       40000,
@@ -38,9 +46,11 @@ void main() {
     expect(ChartTicks.between(0.1, 0.3, 2), [0.1, 0.2, 0.3]);
     expect(ChartTicks.between(0, 0.0003, 3), [0, 0.0001, 0.0002, 0.0003]);
     // Never a negative zero, which a locale writes « -0 ».
-    final ticks = ChartTicks.between(-1, 1, 2);
-    expect(ticks, [-1, 0, 1]);
-    expect(ticks[1].isNegative, isFalse);
+    expect(ChartTicks.between(-1, 1, 2), [-1, 0, 1]);
+    // -0.4 rounds to a negative zero, the first multiple of the step, which is still written as a positive zero.
+    final ticks = ChartTicks.between(-0.4, 2, 2);
+    expect(ticks, [0, 1, 2]);
+    expect(ticks.first.isNegative, isFalse);
   });
 
   test(

@@ -33,6 +33,7 @@ abstract final class ChartTicks {
     final unit = power < 0 ? factor.toDouble() : factor * magnitude;
     if (!denominator.isFinite || !unit.isFinite) return const [];
     final step = unit / denominator;
+    // A multiple is never a negative zero, which a locale would write « -0 »: the index below starts from the first multiple plus a whole number, and -0.0 + 0 is 0.
     double at(double k) => k * unit / denominator;
     // The nearest multiples, not the ones inside, since 0.3 / 0.1 is just below 3: a value outside the bounds is left out below.
     final first = (min / step).roundToDouble();
@@ -43,8 +44,7 @@ abstract final class ChartTicks {
     for (var i = 0; i < maxTicks && first + i <= last; i++) {
       final value = at(first + i);
       if (value < min || value > max) continue;
-      // Never a negative zero, which a locale would write « -0 ».
-      ticks.add(value == 0 ? 0 : value);
+      ticks.add(value);
     }
     return ticks;
   }

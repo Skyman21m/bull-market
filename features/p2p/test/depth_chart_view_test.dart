@@ -392,6 +392,12 @@ void main() {
     expect(chart, findsNothing);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
+    // A coordinator with an empty book answers: the others are still awaited, so the book is not said empty.
+    transport.release('bazaar');
+    await settle(tester);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
+
     transport.release('temple');
     await settle(tester);
     expect(chart, findsOneWidget);
