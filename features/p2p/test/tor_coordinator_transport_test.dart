@@ -2536,6 +2536,58 @@ void main() {
       expect(server.received, isEmpty);
     });
 
+    test('go through up to $maxTotalHeaderLength characters in all', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      // Two headers, each within the limit of one header, that bring the names and values to the total limit exactly.
+      final headers = {
+        'X-A': 'a' * (maxTotalHeaderLength ~/ 2 - 3),
+        'X-B': 'b' * (maxTotalHeaderLength ~/ 2 - 3),
+      };
+
+      final result = await transport().send(
+        _get(server.url('/api/robot/'), headers: headers, robot: _robot(1)),
+      );
+
+      expect(result, isA<Ok<Object?, Failure>>());
+      expect(
+        headers.entries.fold(
+          0,
+          (sum, header) => sum + header.key.length + header.value.length,
+        ),
+        maxTotalHeaderLength,
+      );
+      expect(server.received.single.value('x-a'), headers['X-A']);
+      expect(server.received.single.value('x-b'), headers['X-B']);
+    });
+
+    test('more than that in all fail before any session', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+      final oneOver = {
+        'X-A': 'a' * (maxTotalHeaderLength ~/ 2 - 3),
+        'X-B': 'b' * (maxTotalHeaderLength ~/ 2 - 2),
+      };
+
+      for (final headers in [
+        oneOver,
+        // A hundred headers that are each within the limit of one header.
+        {for (var i = 0; i < 100; i++) 'X-H$i': 'v' * 16000},
+      ]) {
+        final result = await tor.send(
+          _get(server.url('/api/robot/'), headers: headers, robot: _robot(1)),
+        );
+
+        expect(result, _failsWith<CoordinatorTransportFailed>());
+      }
+      // The same check applies to an anonymous request.
+      expect(
+        await tor.send(_get(server.url('/api/robot/'), headers: oneOver)),
+        _failsWith<CoordinatorTransportFailed>(),
+      );
+      expect(sessions.opened, isEmpty);
+      expect(server.received, isEmpty);
+    });
+
     test('that dart:io refuses fail at once, without a retry', () async {
       final tor = transport(
         createHttpClient: (_) => HttpClient()

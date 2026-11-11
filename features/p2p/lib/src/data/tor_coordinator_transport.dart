@@ -53,6 +53,11 @@ const torSessionCloseTimeout = Duration(seconds: 10);
 /// The longest header of the RoboSats API is the `Authorization` of a first contact, with two armored OpenPGP keys: about 2 000 characters.
 const maxHeaderLength = 16 * 1024;
 
+/// The most characters the header names and values of one request may have all together.
+///
+/// Twice [maxHeaderLength], so that the longest header allowed still goes through on its own, while a request with many long headers, which the RoboSats API never sends, fails before any session instead of after three.
+const maxTotalHeaderLength = 32 * 1024;
+
 /// The [CoordinatorTransport] of the app: every request goes through the embedded Tor.
 ///
 /// Sessions: one Tor session per coordinator origin for the anonymous requests, and one more per robot for the requests made for it ([CoordinatorRequest.robot]).
@@ -75,7 +80,7 @@ const maxHeaderLength = 16 * 1024;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
 /// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened;
-/// - a header is sent only when its name is an HTTP token, its value printable ASCII, and neither is longer than [maxHeaderLength]: anything else fails the same way;
+/// - a header is sent only when its name is an HTTP token, its value printable ASCII, and neither is longer than [maxHeaderLength], and the headers of a request have at most [maxTotalHeaderLength] characters together: anything else fails the same way;
 /// - a request with an `Authorization` header and no [CoordinatorRequest.robot] fails the same way: a credential never travels on an anonymous session.
 ///
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
@@ -269,17 +274,25 @@ final class TorCoordinatorTransport
   static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
   static final RegExp _headerValue = RegExp(r'^[\x20-\x7E]*$');
 
-  /// Whether every header can be written on the wire as it is: a name that is an HTTP token, a value made of printable ASCII characters and spaces only, and neither longer than [maxHeaderLength].
+  /// Whether every header can be written on the wire as it is: a name that is an HTTP token, a value made of printable ASCII characters and spaces only, neither longer than [maxHeaderLength], and no more than [maxTotalHeaderLength] characters for all the names and values together.
   ///
   /// A token hash in base91, an armored key and a Nostr key need nothing else, so anything else is a mistake of the caller, and never something to send.
-  static bool _areSendable(Map<String, String> headers) =>
-      headers.entries.every(
-        (header) =>
-            header.key.length <= maxHeaderLength &&
-            header.value.length <= maxHeaderLength &&
-            _headerName.hasMatch(header.key) &&
-            _headerValue.hasMatch(header.value),
-      );
+  static bool _areSendable(Map<String, String> headers) {
+    var total = 0;
+    for (final MapEntry(key: name, :value) in headers.entries) {
+      total += name.length + value.length;
+      if (name.length > maxHeaderLength ||
+          value.length > maxHeaderLength ||
+          total > maxTotalHeaderLength) {
+        return false;
+      }
+    }
+    return headers.entries.every(
+      (header) =>
+          _headerName.hasMatch(header.key) &&
+          _headerValue.hasMatch(header.value),
+    );
+  }
 
   /// Sends [request] on the session of its origin and robot, opening or replacing that session as needed.
   ///
