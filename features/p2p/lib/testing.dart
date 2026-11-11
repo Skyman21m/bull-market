@@ -43,6 +43,9 @@ final class _NoSessions implements CoordinatorSessionsPort {
 
   @override
   Future<void> closeSessions() async {}
+
+  @override
+  Future<void> closeRobotSessions(RobotSessionKey robot) async {}
 }
 
 /// A Tor that only reports states: starting it or retrying it does nothing.

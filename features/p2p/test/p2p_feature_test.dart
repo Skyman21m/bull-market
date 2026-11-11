@@ -137,4 +137,87 @@ void main() {
   test('closing the sessions with none open completes', () async {
     await locator<P2pFacade>().closeSessions();
   });
+
+  group('a robot', () {
+    final garageKey = GarageKey.generate();
+    final identity = switch (garageKey.firstUsableRobot(0)) {
+      Ok(:final value) => value.identity,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    final pgpKey = switch (RobotPgpKey.generate(identity)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+
+    test('request fails as a value when Tor gives no session', () async {
+      final facade = locator<P2pFacade>();
+      final temple = facade.requestBooks(RobosatsNetwork.testnet).keys.first;
+
+      for (final createIfUnknown in [true, false]) {
+        final result = await facade.fetchRobot(
+          temple,
+          RobosatsNetwork.testnet,
+          identity: identity,
+          pgpKey: pgpKey,
+          createIfUnknown: createIfUnknown,
+        );
+
+        expect(
+          result,
+          isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<CoordinatorUnreachable>(),
+          ),
+        );
+      }
+    });
+
+    test('asks Tor for a session of its own', () async {
+      final facade = locator<P2pFacade>();
+      final temple = facade.requestBooks(RobosatsNetwork.testnet).keys.first;
+      await facade.fetchInfo(temple, RobosatsNetwork.testnet);
+      final afterAnonymous = tor.openedSessions;
+
+      await facade.fetchRobot(
+        temple,
+        RobosatsNetwork.testnet,
+        identity: identity,
+        pgpKey: pgpKey,
+      );
+
+      // The anonymous reads of temple already asked for a session: the robot does not wait for it or reuse it.
+      expect(tor.openedSessions, greaterThan(afterAnonymous));
+    });
+
+    test('is not sent to a coordinator that is not on the network', () async {
+      final facade = locator<P2pFacade>();
+      final bazaar = facade
+          .requestBooks(RobosatsNetwork.mainnet)
+          .keys
+          .firstWhere((coordinator) => coordinator.shortAlias == 'bazaar');
+      final before = tor.openedSessions;
+
+      final result = await facade.fetchRobot(
+        bazaar,
+        RobosatsNetwork.testnet,
+        identity: identity,
+        pgpKey: pgpKey,
+      );
+
+      expect(
+        result,
+        isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<CoordinatorNotOnNetwork>(),
+        ),
+      );
+      expect(tor.openedSessions, before);
+    });
+
+    test('sessions close with none open', () async {
+      await locator<P2pFacade>().closeRobotSessions(identity);
+    });
+  });
 }

@@ -6,7 +6,8 @@ library;
 export 'generated/l10n/p2p_localizations.dart' show P2pLocalizations;
 
 export 'package:primitives/primitives.dart' show Err, Ok, Result, Sats;
-// The types of the facade's signatures, and of their fields, so that a screen shows a coordinator, its info and its orders without importing `robosats`.
+// The types of the facade's signatures, and of their fields, so that a screen shows a coordinator, its info, its orders and a robot without importing `robosats`.
+// `GarageKey` and `GarageRobot` are how a caller gets the `RobotIdentity` the robot methods take.
 export 'package:robosats/robosats.dart'
     show
         BondSize,
@@ -24,6 +25,8 @@ export 'package:robosats/robosats.dart'
         CoordinatorOrigins,
         CoordinatorResponseMalformed,
         CoordinatorResponseTooLarge,
+        CoordinatorRobot,
+        CoordinatorRobotFailure,
         CoordinatorTimedOut,
         CoordinatorTransportFailed,
         CoordinatorTransportFailure,
@@ -33,7 +36,10 @@ export 'package:robosats/robosats.dart'
         DroppedOrderReason,
         FiatAmount,
         FixedOrderAmount,
+        GarageKey,
+        GarageRobot,
         MakerActivity,
+        NostrKeyDerivation,
         NoticeSeverity,
         OrderAmount,
         OrderBook,
@@ -46,7 +52,18 @@ export 'package:robosats/robosats.dart'
         RangeOrderAmount,
         RobosatsCurrency,
         RobosatsNetwork,
-        RobotHashId;
+        RobotCredentialsRejected,
+        RobotHashId,
+        RobotHashIdMismatch,
+        RobotIdentity,
+        RobotKeysRefusal,
+        RobotKeysRefused,
+        RobotMismatchFailure,
+        RobotNicknameMismatch,
+        RobotNicknameTaken,
+        RobotPgpKey,
+        RobotPgpKeyMismatch,
+        RobotUnknown;
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;

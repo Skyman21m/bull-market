@@ -117,12 +117,50 @@ CoordinatorRequest _get(
   Uri url, {
   int maxResponseBytes = 4096,
   Map<String, String> headers = const {'Accept': 'application/json'},
+  RobotSessionKey? robot,
 }) => CoordinatorRequest(
   method: CoordinatorHttpMethod.get,
   url: url,
   headers: headers,
   maxResponseBytes: maxResponseBytes,
+  robot: robot,
 );
+
+/// A Garage Key made for these tests only, whose robots give as many distinct session keys as a test needs.
+final GarageKey _testGarageKey = switch (GarageKey.fromBytes(
+  Uint8List.fromList(List.generate(32, (index) => index + 1)),
+)) {
+  Ok(:final value) => value,
+  Err(:final failure) => throw StateError('$failure'),
+};
+
+final Map<int, RobotSessionKey> _robots = {};
+
+/// The session key of the test robot number [number].
+RobotSessionKey _robot(int number) =>
+    _robots[number] ??= switch (_testGarageKey.deriveIdentity(number)) {
+      Ok(:final value) => value.sessionKey,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+
+/// Answers `{}` and records, under the `X-Label` header of each request, the client port of the connection that carried it.
+Future<void> Function(HttpRequest) _recordingConnection(
+  Map<String, int> ports,
+) => (request) async {
+  ports[request.headers.value('x-label') ?? ''] =
+      request.connectionInfo?.remotePort ?? -1;
+  await _json('{}')(request);
+};
+
+/// Answers `[]` once [release] completes, after telling [arrived] that the request is there.
+Future<void> Function(HttpRequest) _held(
+  Future<void> release, {
+  void Function()? arrived,
+}) => (request) async {
+  arrived?.call();
+  await release;
+  await _json('[]')(request);
+};
 
 /// An HTTP client whose SOCKS proxy refuses every connection with [code], as Tor does when it cannot reach an onion service.
 HttpClient _socksRefusal(CommandReplyCode code) =>
@@ -147,6 +185,7 @@ final class _ToServer implements CoordinatorTransport {
       headers: request.headers,
       maxResponseBytes: request.maxResponseBytes,
       body: request.body,
+      robot: request.robot,
     ),
   );
 }
@@ -909,7 +948,348 @@ void main() {
     });
   });
 
+  group('robot sessions', () {
+    test(
+      'keep a robot apart from the anonymous requests and from another robot',
+      () async {
+        final ports = <String, int>{};
+        final server = await serve({
+          '/api/robot/': _recordingConnection(ports),
+        });
+        final tor = transport();
+        Future<void> send(String label, RobotSessionKey? robot) async {
+          final result = await tor.send(
+            _get(
+              server.url('/api/robot/'),
+              headers: {'X-Label': label},
+              robot: robot,
+            ),
+          );
+          expect(result, isA<Ok<Object?, Failure>>(), reason: label);
+        }
+
+        await send('anonymous 1', null);
+        await send('robot 1, first', _robot(1));
+        await send('robot 2, first', _robot(2));
+        await send('robot 1, second', _robot(1));
+        await send('anonymous 2', null);
+        await send('robot 2, second', _robot(2));
+
+        expect(sessions.opened, hasLength(3));
+        expect(sessions.closed, isEmpty);
+        // Each session has its own HTTP client: its requests reuse its connection, and no other does.
+        expect(ports['anonymous 2'], ports['anonymous 1']);
+        expect(ports['robot 1, second'], ports['robot 1, first']);
+        expect(ports['robot 2, second'], ports['robot 2, first']);
+        expect({
+          ports['anonymous 1'],
+          ports['robot 1, first'],
+          ports['robot 2, first'],
+        }, hasLength(3));
+      },
+    );
+
+    test('give a robot one session per coordinator', () async {
+      final first = await serve({'/api/robot/': _json('{}')});
+      final second = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+
+      for (final server in [first, second, first, second]) {
+        await tor.send(_get(server.url('/api/robot/'), robot: _robot(1)));
+      }
+
+      expect(sessions.opened, hasLength(2));
+      expect(sessions.closed, isEmpty);
+    });
+
+    test(
+      'share the session of a robot between its concurrent requests',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        final tor = transport();
+
+        final results = await Future.wait([
+          for (var i = 0; i < 4; i++)
+            tor.send(_get(server.url('/api/robot/'), robot: _robot(1))),
+        ]);
+
+        expect(results, everyElement(isA<Ok<Object?, Failure>>()));
+        expect(sessions.opened, hasLength(1));
+      },
+    );
+
+    test('carry a first-contact header as it is given', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      // The characters of a real header: base91 with quotes and pipes, armored keys with backslashes.
+      final authorization =
+          'Token ab"c|d~{e}<f>?[g]^`h | Public -----BEGIN\\${'A/b+9=' * 150}\\-----END'
+          ' | Private ${'Zz09+/' * 200}\\=abcd | Nostr ${'0f' * 32}';
+
+      final result = await transport().send(
+        _get(
+          server.url('/api/robot/'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': authorization,
+          },
+          robot: _robot(1),
+        ),
+      );
+
+      expect(result, isA<Ok<Object?, Failure>>());
+      final headers = server.received.single;
+      expect(headers.value(HttpHeaders.authorizationHeader), authorization);
+      expect(authorization.length, greaterThan(2000));
+      expect(headers.value(HttpHeaders.userAgentHeader), isNull);
+    });
+
+    test(
+      'retry on a new session of the same robot, and leave the others alone',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        final tor = transport(
+          // Session 0 is the anonymous one, session 1 the first of the robot.
+          createHttpClient: (endpoint) => _Sessions.indexOf(endpoint) == 1
+              ? _socksRefusal(CommandReplyCode.hostUnreachable)
+              : HttpClient(),
+        );
+        await tor.send(_get(server.url('/api/robot/')));
+
+        final result = await tor.send(
+          _get(server.url('/api/robot/'), robot: _robot(1)),
+        );
+
+        expect(
+          result,
+          isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        expect(sessions.opened, hasLength(3));
+        expect(sessions.closed, {1});
+        // The new session serves the robot, the anonymous one still serves the rest.
+        await tor.send(_get(server.url('/api/robot/'), robot: _robot(1)));
+        await tor.send(_get(server.url('/api/robot/')));
+        expect(sessions.opened, hasLength(3));
+      },
+    );
+
+    test('are bounded: the least recently used idle one makes room', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+      Future<void> send(RobotSessionKey? robot) async {
+        final result = await tor.send(
+          _get(server.url('/api/robot/'), robot: robot),
+        );
+        expect(result, isA<Ok<Object?, Failure>>());
+      }
+
+      // Session 0 is anonymous; robot n gets session n.
+      await send(null);
+      for (var robot = 1; robot <= maxRobotSessions; robot++) {
+        await send(_robot(robot));
+      }
+      expect(sessions.opened, hasLength(1 + maxRobotSessions));
+      expect(sessions.closed, isEmpty);
+
+      // Robot 1 is used again, so robot 2 is now the least recently used.
+      await send(_robot(1));
+      await send(_robot(maxRobotSessions + 1));
+      expect(sessions.opened, hasLength(2 + maxRobotSessions));
+      expect(sessions.closed, {2});
+
+      // Robot 2 comes back on a new session, and takes the place of robot 3.
+      await send(_robot(2));
+      expect(sessions.opened, hasLength(3 + maxRobotSessions));
+      expect(sessions.closed, {2, 3});
+
+      // The anonymous session is neither counted nor closed, and the robots kept still have theirs.
+      await send(null);
+      await send(_robot(1));
+      await send(_robot(maxRobotSessions));
+      expect(sessions.opened, hasLength(3 + maxRobotSessions));
+      expect(sessions.closed, {2, 3});
+    });
+
+    test('are bounded: a request fails when every session is in use', () async {
+      final release = Completer<void>();
+      var arrived = 0;
+      final allArrived = Completer<void>();
+      final server = await serve({
+        '/held': _held(
+          release.future,
+          arrived: () {
+            if (++arrived == maxRobotSessions) allArrived.complete();
+          },
+        ),
+        '/api/robot/': _json('{}'),
+      });
+      final tor = transport(deadline: const Duration(seconds: 20));
+
+      final held = [
+        for (var robot = 1; robot <= maxRobotSessions; robot++)
+          tor.send(_get(server.url('/held'), robot: _robot(robot))),
+      ];
+      await allArrived.future;
+      final refused = await tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(maxRobotSessions + 1)),
+      );
+      // A robot that has its session, and the anonymous requests, are not affected.
+      final sameRobot = await tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(1)),
+      );
+      final anonymous = await tor.send(_get(server.url('/api/robot/')));
+
+      expect(refused, _failsWith<CoordinatorTransportFailed>());
+      expect(sameRobot, isA<Ok<Object?, Failure>>());
+      expect(anonymous, isA<Ok<Object?, Failure>>());
+      expect(sessions.opened, hasLength(maxRobotSessions + 1));
+      expect(sessions.closed, isEmpty);
+
+      release.complete();
+      expect(
+        await Future.wait(held),
+        everyElement(isA<Ok<Object?, Failure>>()),
+      );
+      // Once a session is idle again, the robot that was refused gets its place.
+      final accepted = await tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(maxRobotSessions + 1)),
+      );
+      expect(accepted, isA<Ok<Object?, Failure>>());
+      expect(sessions.closed, hasLength(1));
+    });
+
+    test('are not closed to make room once a request has picked them', () async {
+      final release = Completer<void>();
+      var arrived = 0;
+      final allArrived = Completer<void>();
+      final server = await serve({
+        '/held': _held(
+          release.future,
+          arrived: () {
+            if (++arrived == maxRobotSessions - 1) allArrived.complete();
+          },
+        ),
+        '/api/robot/': _json('{}'),
+      });
+      final tor = transport(deadline: const Duration(seconds: 20));
+      // Robot 1 has an idle session, every other session is busy.
+      await tor.send(_get(server.url('/api/robot/'), robot: _robot(1)));
+      final held = [
+        for (var robot = 2; robot <= maxRobotSessions; robot++)
+          tor.send(_get(server.url('/held'), robot: _robot(robot))),
+      ];
+      await allArrived.future;
+
+      // In the same turn: robot 1 picks its session, then a new robot looks for one to close.
+      final picked = tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(1)),
+      );
+      final newcomer = tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(maxRobotSessions + 1)),
+      );
+
+      expect(await picked, isA<Ok<Object?, Failure>>());
+      expect(await newcomer, _failsWith<CoordinatorTransportFailed>());
+      expect(sessions.opened, hasLength(maxRobotSessions));
+      expect(sessions.closed, isEmpty);
+      release.complete();
+      await Future.wait(held);
+    });
+  });
+
+  group('closeRobotSessions', () {
+    test('closes the sessions of that robot only', () async {
+      final first = await serve({'/api/robot/': _json('{}')});
+      final second = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+      // Sessions 0 and 1: robot 1 on both coordinators; 2: robot 2; 3: anonymous.
+      await tor.send(_get(first.url('/api/robot/'), robot: _robot(1)));
+      await tor.send(_get(second.url('/api/robot/'), robot: _robot(1)));
+      await tor.send(_get(first.url('/api/robot/'), robot: _robot(2)));
+      await tor.send(_get(first.url('/api/robot/')));
+
+      await tor.closeRobotSessions(_robot(1));
+
+      expect(sessions.closed, {0, 1});
+      await tor.send(_get(first.url('/api/robot/'), robot: _robot(2)));
+      await tor.send(_get(first.url('/api/robot/')));
+      expect(sessions.opened, hasLength(4));
+      // The robot can still be used: its next request opens a new session.
+      final result = await tor.send(
+        _get(first.url('/api/robot/'), robot: _robot(1)),
+      );
+      expect(result, isA<Ok<Object?, Failure>>());
+      expect(sessions.opened, hasLength(5));
+      expect(sessions.closed, {0, 1});
+    });
+
+    test('completes for a robot that has no session', () async {
+      final tor = transport();
+
+      await tor.closeRobotSessions(_robot(1));
+
+      expect(sessions.opened, isEmpty);
+    });
+
+    test('fails a request in progress without opening a new session', () async {
+      final arrived = Completer<void>();
+      final server = await serve({
+        '/api/robot/': (request) {
+          arrived.complete();
+          return Completer<void>().future;
+        },
+      });
+      final tor = transport();
+      final watch = Stopwatch()..start();
+
+      final pending = tor.send(
+        _get(server.url('/api/robot/'), robot: _robot(1)),
+      );
+      await arrived.future;
+      await tor.closeRobotSessions(_robot(1));
+      final result = await pending;
+
+      expect(result, _failsWith<CoordinatorTransportFailed>());
+      expect(watch.elapsed, lessThan(const Duration(seconds: 4)));
+      expect(sessions.opened, hasLength(1));
+      expect(sessions.closed, {0});
+    });
+
+    test('closes a session that finishes opening afterwards, unused', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(_jsonHead(2));
+        socket.add(utf8.encode('{}'));
+        await socket.flush();
+      });
+      final opening = Completer<TorSession>();
+      final tor = transport(openSession: () => opening.future);
+
+      final pending = tor.send(_get(raw.url('/api/robot/'), robot: _robot(1)));
+      await Future<void>.delayed(Duration.zero);
+      await tor.closeRobotSessions(_robot(1));
+      opening.complete(await sessions.open());
+
+      expect(await pending, _failsWith<CoordinatorTransportFailed>());
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(sessions.closed, {0});
+      expect(raw.connections, 0);
+    });
+  });
+
   group('closeSessions', () {
+    test('closes the sessions of the robots too', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+      await tor.send(_get(server.url('/api/robot/')));
+      await tor.send(_get(server.url('/api/robot/'), robot: _robot(1)));
+      await tor.send(_get(server.url('/api/robot/'), robot: _robot(2)));
+
+      await tor.closeSessions();
+
+      expect(sessions.closed, {0, 1, 2});
+      await tor.send(_get(server.url('/api/robot/'), robot: _robot(1)));
+      expect(sessions.opened, hasLength(4));
+    });
+
     test(
       'closes every session, and the next request opens a new one',
       () async {
