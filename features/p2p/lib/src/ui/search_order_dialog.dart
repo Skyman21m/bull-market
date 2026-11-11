@@ -100,8 +100,10 @@ class _SearchOrderDialogState extends State<SearchOrderDialog> {
             ),
           ),
           const Gap(BullSpacing.md),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          // Side by side when they fit, else one above the other, as the actions of a Material dialog: on a narrow screen or with a large text size the two labels are wider than the dialog.
+          OverflowBar(
+            alignment: MainAxisAlignment.end,
+            overflowAlignment: OverflowBarAlignment.end,
             children: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
