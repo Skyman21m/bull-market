@@ -304,7 +304,10 @@ final class TorCoordinatorTransport
       try {
         route = await slot.opening;
       } on _RouteException catch (exception) {
-        return Err(exception.failure);
+        // A request that a close stopped while it waited fails, whatever became of the session.
+        return closed()
+            ? const Err(CoordinatorTransportFailed())
+            : Err(exception.failure);
       } finally {
         slot.waiting--;
       }
@@ -437,11 +440,11 @@ final class TorCoordinatorTransport
     bool closed() => epoch != _epoch || slot.dropped;
     try {
       // The session whose place this one takes is closed first, here if it was not closing yet.
-      // When it does not close in time, opening now would go over the bound: the request fails, and the place, which that session no longer holds, is given back below.
-      if (vacated != null && !await vacated.close()) {
-        throw const _RouteException(CoordinatorTransportBusy());
-      }
+      final vacatedClosed = vacated == null || await vacated.close();
+      // A close that ran meanwhile wins: the request was stopped, and is not told to come back later.
       if (closed()) throw const _RouteException(CoordinatorTransportFailed());
+      // When that session did not close in time, opening now would go over the bound: the request fails, and the place, which that session no longer holds, is given back below.
+      if (!vacatedClosed) throw const _RouteException(CoordinatorTransportBusy());
       final TorSession? opened;
       try {
         opened = await _openFor(slot);

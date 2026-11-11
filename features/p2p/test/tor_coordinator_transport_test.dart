@@ -1979,6 +1979,59 @@ void main() {
       },
     );
 
+    for (final closeRobot in [false, true]) {
+      final label = closeRobot ? 'closeRobotSessions of its robot' : 'closeSessions';
+      test(
+        'fails, rather than busy, the request that waits for its place when $label runs',
+        () async {
+          final first = await serve({'/api/robot/': _json('{}')});
+          final second = await serve({'/api/robot/': _json('{}')});
+          // The session of robot 1 never finishes closing.
+          sessions.closeGates[0] = Completer<void>().future;
+          final tor = transport(
+            deadline: const Duration(seconds: 20),
+            closeTimeout: const Duration(milliseconds: 300),
+          );
+          // The robots are spread over two coordinators, so that only the bound of all the robot sessions applies.
+          Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> ask(
+            int robot,
+          ) => tor.send(
+            _get(
+              (robot.isEven ? first : second).url('/api/robot/'),
+              robot: _robot(robot),
+            ),
+          );
+          for (var robot = 1; robot <= maxRobotSessions; robot++) {
+            expect(await ask(robot), isA<Ok<Object?, Failure>>());
+          }
+          const newcomer = maxRobotSessions + 1;
+
+          // The newcomer takes the place of robot 1, and waits for its session to close.
+          final waiting = ask(newcomer);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(sessions.closing, [0]);
+          final closing = closeRobot
+              ? tor.closeRobotSessions(_robot(newcomer))
+              : tor.closeSessions();
+
+          // The session of robot 1 is given up after the close timeout, but the request was stopped by the close.
+          expect(await waiting, _failsWith<CoordinatorTransportFailed>());
+          await closing.timeout(const Duration(seconds: 5));
+          final counts = tor.countsForTesting;
+          expect(counts.places, closeRobot ? maxRobotSessions - 1 : 0);
+          expect(
+            counts.placesOf.values.fold(0, (sum, places) => sum + places),
+            counts.places,
+          );
+          expect(
+            counts.placesOf.keys.map((key) => key.robot),
+            isNot(contains(_robot(newcomer))),
+          );
+          expect(sessions.opened, hasLength(maxRobotSessions));
+        },
+      );
+    }
+
     test('does not keep closeRobotSessions or closeSessions waiting', () async {
       final server = await serve({'/api/robot/': _json('{}')});
       sessions.closeGates[0] = Completer<void>().future;
