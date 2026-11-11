@@ -2,6 +2,8 @@ include: package:lints/recommended.yaml
 
 linter:
   rules:
+    # Nothing of the feature prints: a printed line can carry key material past every other check.
+    - avoid_print
     - implementation_imports
     - prefer_final_locals
     - require_trailing_commas

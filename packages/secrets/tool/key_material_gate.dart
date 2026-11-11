@@ -293,7 +293,7 @@ String? materialSymbol(Element element) {
 
 /// Where the P2P feature may read a Garage Key, and what each place may read (issue #28).
 ///
-/// Neither file exists yet: a later step of #28 adds the repository, which converts the stored bytes into a `GarageKey` and back for an import, and another the widget that shows the `robo1…` text on a protected screen. Until then no production file may read a Garage Key. A step that needs another name changes this table in the same pull request, where review sees both.
+/// The repository converts the stored bytes into a `GarageKey` and back for an import (#28). The widget that shows the `robo1…` text on a protected screen does not exist yet, so no production file may reveal that text. A step that needs another name changes this table in the same pull request, where review sees both.
 const _garageKeyReaders = {
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': (
     owner: 'GarageKeyRepositoryImpl',

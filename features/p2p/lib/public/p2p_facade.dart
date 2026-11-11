@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart' show GarageKeys;
 
 import '../src/domain/p2p_tor_state.dart';
 import '../src/domain/usecases/close_coordinator_sessions_usecase.dart';
@@ -20,8 +21,12 @@ final class P2pFeature {
   static const String path = P2pRouter.path;
 
   /// Registers the services of the feature; nothing starts until the first request, which starts Tor if needed.
-  void setup(GetIt locator) {
-    P2pLocator.setup(locator);
+  ///
+  /// [garageKeys] is the vault's handle on the RoboSats Garage Keys, which only the foreground composition of the shell asks `Secrets` for and passes here.
+  /// With `null`, as in the WorkManager isolate, whose keystore lock does not reach the foreground's, the feature has no Garage Key ability at all: nothing that reads or writes one is registered.
+  /// Registering reads and writes no key either way.
+  void setup(GetIt locator, {required GarageKeys? garageKeys}) {
+    P2pLocator.setup(locator, garageKeys: garageKeys);
     locator.registerLazySingleton<P2pFacade>(
       () => P2pFacade._(locator(), locator(), locator(), locator()),
     );

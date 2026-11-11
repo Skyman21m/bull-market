@@ -55,6 +55,8 @@ class Bull {
       locator,
       SqliteDatabase(),
       payjoinDatabasePath: payjoinDatabasePath,
+      // The foreground composition is the only one that hands P2P the Garage Key handle.
+      withGarageKeys: true,
     );
     Bloc.observer = AppBlocObserver();
 
