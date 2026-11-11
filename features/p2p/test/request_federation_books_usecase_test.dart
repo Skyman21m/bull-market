@@ -85,7 +85,11 @@ void main() {
         others,
       ).timeout(const Duration(seconds: 1));
 
-      expect(outcomes, hasLength(books.length - 1));
+      // Each of the other books is labelled with its own coordinator, in the federation order.
+      expect(outcomes.map((outcome) => outcome.coordinator), [
+        for (final coordinator in Federation.robosats.on(network))
+          if (coordinator != temple) coordinator,
+      ]);
       for (final outcome in outcomes) {
         expect(
           outcome.result,

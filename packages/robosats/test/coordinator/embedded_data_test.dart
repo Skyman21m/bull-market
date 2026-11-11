@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:pointycastle/digests/sha3.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/coordinator/currency_data.dart';
 import 'package:robosats/src/coordinator/federation_data.dart';
@@ -19,6 +21,41 @@ String _gitBlobId(List<int> bytes) => sha1.convert([
   ...ascii.encode('blob ${bytes.length}\x00'),
   ...bytes,
 ]).toString();
+
+/// Whether [url] is `http://<56 characters>.onion` naming a Tor v3 service: base32 of the 32-byte key, a 2-byte checksum and the version byte 3, the checksum being the start of SHA3-256 of `.onion checksum`, the key and the version (Tor `rend-spec-v3.txt`, section 6).
+bool _isV3Onion(String url) {
+  final host = RegExp(r'^http://([a-z2-7]{56})\.onion$').firstMatch(url)?[1];
+  if (host == null) return false;
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+  var bits = BigInt.zero;
+  for (final char in host.split('')) {
+    bits = (bits << 5) | BigInt.from(alphabet.indexOf(char));
+  }
+  final bytes = [
+    for (var shift = 34 * 8; shift >= 0; shift -= 8)
+      ((bits >> shift) & BigInt.from(0xff)).toInt(),
+  ];
+  final key = bytes.sublist(0, 32);
+  final checksum = SHA3Digest(256).process(
+    Uint8List.fromList([...ascii.encode('.onion checksum'), ...key, 3]),
+  );
+  return bytes[34] == 3 && bytes[32] == checksum[0] && bytes[33] == checksum[1];
+}
+
+/// Whether [hex] is a SEC1 compressed secp256k1 public key whose X has a point on the curve: `y² = x³ + 7` has a root modulo p.
+bool _isCompressedPoint(String hex) {
+  final match = RegExp(r'^0[23]([0-9a-f]{64})$').firstMatch(hex);
+  if (match == null) return false;
+  final p = BigInt.parse(
+    'fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f',
+    radix: 16,
+  );
+  final x = BigInt.parse(match[1] ?? '', radix: 16);
+  if (x >= p) return false;
+  final ySquared = (x.modPow(BigInt.from(3), p) + BigInt.from(7)) % p;
+  final y = ySquared.modPow((p + BigInt.one) >> 2, p);
+  return y * y % p == ySquared;
+}
 
 /// An empty or missing string of the federation list is `null` in the constants, so both sides drop them before comparing.
 Map<String, Object?> _withoutEmpty(Object? section) => {
@@ -105,13 +142,23 @@ void main() {
     test('are the protocol reference, with a later federation list', () {
       // See the RoboSats refresh procedure in AGENTS.md, section "Troc (fork)".
       // The protocol reference is ff1998c (2026-11-06); only the federation list was taken from e56f9cf7c (2026-11-08), which adds gumpellite.
+      // Each blob was checked against RoboSats when it was generated (`gh api 'repos/RoboSats/robosats/contents/<path>?ref=<commit>' --jq .sha`): pinning the pair makes a list regenerated from files of another commit, under the old commit id, fail here.
       const reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
-      expect(
-        robosatsFederationSource.commit,
-        'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6',
-      );
-      expect(robosatsCurrenciesSource.commit, reference);
-      expect(robosatsMethodsSource.commit, reference);
+      expect(robosatsFederationSource, (
+        path: 'frontend/static/federation.json',
+        commit: 'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6',
+        blob: '85c118156dda4b9914175d6a87c5daab68151e19',
+      ));
+      expect(robosatsCurrenciesSource, (
+        path: 'frontend/static/assets/currencies.json',
+        commit: reference,
+        blob: '6cce82c269a1e301b7a3b700dc15868fbc81bc62',
+      ));
+      expect(robosatsMethodsSource, (
+        path: 'frontend/src/components/PaymentMethods/MethodList.ts',
+        commit: reference,
+        blob: '85df6c6c3aba192af16926694ed47a49e1bd32b3',
+      ));
     });
   });
 
@@ -169,6 +216,41 @@ void main() {
         expect(coordinator.establishedOn.isUtc, isTrue);
       }
       expect(coordinatorEstablished('temple'), DateTime.utc(2023, 12, 2));
+    });
+
+    test('has real v3 onion addresses and secp256k1 keys', () {
+      // The shape checks of `Federation.problems` cannot see a mistyped address or key: these can.
+      for (final coordinator in Federation.robosats.coordinators) {
+        final alias = coordinator.shortAlias;
+        for (final network in RobosatsNetwork.values) {
+          final onion = coordinator.origins(network).onion;
+          if (onion != null) {
+            expect(_isV3Onion(onion), isTrue, reason: '$alias $network onion');
+          }
+          for (final key in coordinator.nodesPubkeys(network)) {
+            expect(
+              _isCompressedPoint(key),
+              isTrue,
+              reason: '$alias $network node key',
+            );
+          }
+        }
+        expect(
+          _isCompressedPoint('02${coordinator.nostrHexPubkey}'),
+          isTrue,
+          reason: '$alias Nostr key',
+        );
+      }
+      // The checks themselves reject a corrupted address and an X with no point.
+      final temple = Federation.robosats.coordinators.first;
+      final onion = temple.mainnet.onion ?? '';
+      expect(_isV3Onion('http://a${onion.substring(8)}'), isFalse);
+      expect(
+        _isV3Onion(onion.replaceFirst(RegExp(r'd\.onion$'), 'a.onion')),
+        isFalse,
+      );
+      expect(_isCompressedPoint('02${'0' * 63}5'), isFalse);
+      expect(_isCompressedPoint('02${'f' * 64}'), isFalse);
     });
 
     test('has free text that needs no cleaning and stays short', () {
