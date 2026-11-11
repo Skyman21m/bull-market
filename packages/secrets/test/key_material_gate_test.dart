@@ -40,6 +40,10 @@ export 'package:bull_sdk/bdk.dart' show DescriptorSecretKey;
 export 'package:recoverbull/recoverbull.dart';
 export 'package:secrets/testing.dart';
 ''');
+    File('${fixture.path}/garage_bridge.dart').writeAsStringSync('''
+export 'package:robosats/robosats.dart' show GarageKey;
+export 'package:secrets/secrets.dart' show GarageKeyMaterial;
+''');
     collection = AnalysisContextCollection(
       includedPaths: [fixture.resolveSymbolicLinksSync()],
       sdkPath: dartSdkPath(repository),
@@ -462,5 +466,234 @@ Future<void> plain() => BullSdk.init();
 import 'dart:core' if (dart.library.html) '../../secrets/lib/testing.dart';
 ''');
     expect(violations, isNotEmpty);
+  });
+
+  group('a Garage Key is read only where the P2P feature may read it', () {
+    const repositoryPath =
+        'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+    const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
+    const repository = '''
+import 'dart:typed_data';
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+class GarageKeyRepositoryImpl {
+  Object toGarageKey(GarageKeyMaterial material) =>
+      GarageKey.fromBytes(material.bytes);
+  Uint8List toBytes(GarageKey key) => key.revealBytes();
+}
+''';
+    const view = '''
+import 'package:robosats/robosats.dart';
+class GarageKeyView {
+  final GarageKey garageKey;
+  const GarageKeyView(this.garageKey);
+  String text() => garageKey.revealBech32();
+}
+''';
+
+    test('reading one is refused anywhere else', () async {
+      final fromRepository = await inspect('garage_elsewhere', repository);
+      expect(fromRepository, hasLength(2));
+      expect(fromRepository, contains(endsWith('#GarageKeyMaterial.bytes')));
+      expect(fromRepository, contains(endsWith('#GarageKey.revealBytes')));
+      expect(
+        (await inspect('garage_view_elsewhere', view)).single,
+        endsWith('#GarageKey.revealBech32'),
+      );
+      expect(
+        (await inspect('garage_bytes_elsewhere', '''
+import 'package:secrets/secrets.dart';
+List<int> copy(GarageKeyMaterial material) => [...material.bytes];
+''')).single,
+        allOf(
+          startsWith('lib/garage_bytes_elsewhere.dart: package:secrets/'),
+          endsWith('#GarageKeyMaterial.bytes'),
+        ),
+      );
+    });
+
+    test(
+      'it is accepted in the named file and class, for its own use',
+      () async {
+        expect(
+          await inspect(
+            'garage_repository',
+            repository,
+            policyPath: repositoryPath,
+          ),
+          isEmpty,
+        );
+        expect(
+          await inspect('garage_view', view, policyPath: viewPath),
+          isEmpty,
+        );
+
+        // Another class of the named file.
+        expect(
+          await inspect(
+            'garage_repository_other_class',
+            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyCache'),
+            policyPath: repositoryPath,
+          ),
+          hasLength(2),
+        );
+        // Code outside any class of the named file.
+        expect(
+          (await inspect('garage_repository_top_level', '''
+import 'package:secrets/secrets.dart';
+class GarageKeyRepositoryImpl {}
+Object leak(GarageKeyMaterial material) => material.bytes;
+''', policyPath: repositoryPath)).single,
+          endsWith('#GarageKeyMaterial.bytes'),
+        );
+        // The repository's reads are not the widget's, and the other way round.
+        expect(
+          await inspect(
+            'garage_repository_in_view_file',
+            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyView'),
+            policyPath: viewPath,
+          ),
+          hasLength(2),
+        );
+        expect(
+          (await inspect(
+            'garage_view_in_repository_file',
+            view.replaceAll('GarageKeyView', 'GarageKeyRepositoryImpl'),
+            policyPath: repositoryPath,
+          )).single,
+          endsWith('#GarageKey.revealBech32'),
+        );
+        // The same class name in another file of the feature.
+        expect(
+          await inspect(
+            'garage_repository_other_file',
+            repository,
+            policyPath: 'features/p2p/lib/src/data/robot_repository_impl.dart',
+          ),
+          hasLength(2),
+        );
+      },
+    );
+
+    test('an import prefix and a type alias keep the identity', () async {
+      final violations = await inspect('garage_alias', '''
+import 'package:robosats/robosats.dart' as robosats;
+import 'package:secrets/secrets.dart' as secrets;
+typedef Material = secrets.GarageKeyMaterial;
+Object bytesOf(Material material) => material.bytes;
+String textOf(robosats.GarageKey key) => key.revealBech32();
+''');
+      expect(violations, hasLength(2));
+      expect(violations, contains(endsWith('#GarageKeyMaterial.bytes')));
+      expect(violations, contains(endsWith('#GarageKey.revealBech32')));
+    });
+
+    test('a re-export keeps the identity', () async {
+      final violations = await inspect('garage_reexport', '''
+import 'garage_bridge.dart' as bridge;
+Object bytesOf(bridge.GarageKeyMaterial material) => material.bytes;
+Object copyOf(bridge.GarageKey key) => key.revealBytes();
+''');
+      expect(violations, hasLength(2));
+      expect(violations, contains(endsWith('#GarageKeyMaterial.bytes')));
+      expect(violations, contains(endsWith('#GarageKey.revealBytes')));
+    });
+
+    test('a method extraction keeps the identity', () async {
+      final violations = await inspect('garage_tear_off', '''
+import 'package:robosats/robosats.dart';
+String Function() textOf(GarageKey key) => key.revealBech32;
+Object copier(GarageKey key) => key.revealBytes;
+''');
+      expect(violations, hasLength(2));
+      expect(violations, contains(endsWith('#GarageKey.revealBech32')));
+      expect(violations, contains(endsWith('#GarageKey.revealBytes')));
+    });
+
+    test('an object pattern keeps the identity', () async {
+      final violations = await inspect('garage_pattern', '''
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+Object bytesOf(Object value) => switch (value) {
+  GarageKeyMaterial(:final bytes) => bytes,
+  GarageKey(revealBech32: final reveal) => reveal,
+  _ => 0,
+};
+''');
+      expect(violations, hasLength(2));
+      expect(violations, contains(endsWith('#GarageKeyMaterial.bytes')));
+      expect(violations, contains(endsWith('#GarageKey.revealBech32')));
+    });
+
+    test('dynamic access to a reveal method fails closed', () async {
+      final violations = await inspect('garage_dynamic', '''
+Object textOf(dynamic key) => key.revealBech32();
+Object bytesOf(dynamic key) => key.revealBytes();
+''');
+      expect(violations, hasLength(2));
+      expect(
+        violations,
+        contains(endsWith('unresolved sensitive member revealBech32')),
+      );
+      expect(
+        violations,
+        contains(endsWith('unresolved sensitive member revealBytes')),
+      );
+    });
+
+    test('constructing a key and deriving from it remain available', () async {
+      expect(
+        await inspect('garage_public', '''
+import 'dart:typed_data';
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+Object parse(String text) => GarageKey.parse(text);
+Object wrap(Uint8List bytes) => GarageKey.fromBytes(bytes);
+Object robot(GarageKey key) => key.deriveIdentity(0);
+String label(GarageKeyMaterial material) => '\$material';
+int length() => GarageKeyMaterial.lengthInBytes;
+'''),
+        isEmpty,
+      );
+    });
+
+    test(
+      'only the named files pass, across production workspace roots',
+      () async {
+        final root = Directory('${fixture.path}/garage_boundary')..createSync();
+        const reader = '''
+import 'package:secrets/secrets.dart';
+class GarageKeyRepositoryImpl {
+  Object bytesOf(GarageKeyMaterial material) => material.bytes;
+}
+''';
+        const refused = [
+          'lib/locator.dart',
+          'packages/robosats/lib/src/garage_store.dart',
+          'features/p2p/lib/src/data/robot_repository_impl.dart',
+          'features/other/lib/src/data/garage_key_repository_impl.dart',
+        ];
+        for (final path in [
+          ...refused,
+          repositoryPath,
+          'features/p2p/test/garage_key_repository_impl_test.dart',
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(reader);
+        }
+        final report = await checkKeyMaterial(root.path);
+        expect(report.fileCount, refused.length + 1);
+        for (final path in refused) {
+          expect(
+            report.violations,
+            contains(
+              '$path: package:secrets/src/domain/garage_key_material.dart#GarageKeyMaterial.bytes',
+            ),
+          );
+        }
+        expect(report.violations, hasLength(refused.length));
+      },
+    );
   });
 }

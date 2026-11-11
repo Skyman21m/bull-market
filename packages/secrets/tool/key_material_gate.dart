@@ -181,6 +181,13 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     super.visitConstructorName(node);
   }
 
+  // An object pattern reads a getter, or tears off a method, without an identifier that names it: `case GarageKeyMaterial(:final bytes)`.
+  @override
+  void visitPatternField(PatternField node) {
+    check(node.element, node);
+    super.visitPatternField(node);
+  }
+
   @override
   void visitDotShorthandConstructorInvocation(
     DotShorthandConstructorInvocation node,
@@ -202,6 +209,8 @@ const _unresolvedSensitiveMembers = {
   'newConfidential',
   'restoreBackup',
   'signedPsetWithExtraDetails',
+  'revealBytes',
+  'revealBech32',
 };
 
 const _bridgeLibrary = 'package:bull_sdk/src/rust/frb_generated.dart';
@@ -268,10 +277,29 @@ String? materialSymbol(Element element) {
     _ when uri.startsWith('package:recoverbull/') =>
       symbol == 'RecoverBull.restoreBackup' ||
           symbol == 'EncryptionService.decrypt',
+    // The bytes of a stored RoboSats Garage Key, and its two clear forms: whoever holds one controls every robot derived from it.
+    _ when uri.startsWith('package:secrets/') =>
+      symbol == 'GarageKeyMaterial.bytes',
+    _ when uri.startsWith('package:robosats/') =>
+      owner == 'GarageKey' && {'revealBytes', 'revealBech32'}.contains(member),
     _ => false,
   };
   return forbidden ? '$uri#$symbol' : null;
 }
+
+/// Where the P2P feature may read a Garage Key, and what each place may read (issue #28).
+///
+/// Neither file exists yet: a later step of #28 adds the repository, which converts the stored bytes into a `GarageKey` and back for an import, and another the widget that shows the `robo1…` text on a protected screen. Until then no production file may read a Garage Key. A step that needs another name changes this table in the same pull request, where review sees both.
+const _garageKeyReaders = {
+  'features/p2p/lib/src/data/garage_key_repository_impl.dart': (
+    owner: 'GarageKeyRepositoryImpl',
+    members: {'GarageKeyMaterial.bytes', 'GarageKey.revealBytes'},
+  ),
+  'features/p2p/lib/src/ui/widgets/garage_key_view.dart': (
+    owner: 'GarageKeyView',
+    members: {'GarageKey.revealBech32'},
+  ),
+};
 
 bool _isException(String path, AstNode node, String symbol) {
   String? function;
@@ -314,6 +342,14 @@ bool _isException(String path, AstNode node, String symbol) {
               'SwapMasterKey.mnemonic',
             }.contains(member)) ||
         (function == 'toBoltz' && member == 'SwapMasterKey.new');
+  }
+  // A Garage Key is read in one class of one file per use, and nowhere else.
+  final garageKeyReader = _garageKeyReaders[path];
+  if (garageKeyReader != null && owner == garageKeyReader.owner) {
+    final library = symbol.split('#').first;
+    return garageKeyReader.members.contains(member) &&
+        (library.startsWith('package:secrets/') ||
+            library.startsWith('package:robosats/'));
   }
   return false;
 }
