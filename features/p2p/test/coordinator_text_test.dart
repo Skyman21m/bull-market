@@ -52,6 +52,8 @@ void main() {
       0xFFFA,
       0xFFFB,
       0xE0001,
+      // A tag code point that is not assigned, outside the category `Cf`.
+      0xE0002,
       0xE0041,
       0xE007F,
     ]) {

@@ -11,6 +11,7 @@ import 'package:p2p/src/presentation/coordinator_details_cubit.dart';
 import 'package:p2p/src/presentation/coordinator_text.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/widgets/coordinator_link_sheet.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
@@ -34,6 +35,7 @@ Coordinator rewrite(
   CoordinatorContact? contact,
   CoordinatorBadges? badges,
   Map<String, String>? policies,
+  CoordinatorOrigins? mainnet,
 }) => Coordinator(
   shortAlias: base.shortAlias,
   longAlias: longAlias ?? base.longAlias,
@@ -46,7 +48,7 @@ Coordinator rewrite(
   contact: contact ?? base.contact,
   badges: badges ?? base.badges,
   policies: policies ?? base.policies,
-  mainnet: base.mainnet,
+  mainnet: mainnet ?? base.mainnet,
   testnet: base.testnet,
   mainnetNodesPubkeys: base.mainnetNodesPubkeys,
   testnetNodesPubkeys: base.testnetNodesPubkeys,
@@ -65,6 +67,7 @@ void main() {
     Coordinator? of,
     RobosatsNetwork network = RobosatsNetwork.mainnet,
     Locale locale = const Locale('en'),
+    CoordinatorInfo? known,
   }) async {
     usePhoneScreen(tester);
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -89,7 +92,11 @@ void main() {
             onPressed: () => CoordinatorDetailsDialog.show(
               context,
               () => CoordinatorDetailsCubit(
-                CoordinatorDetailsRequest(of ?? coordinator('temple'), network),
+                CoordinatorDetailsRequest(
+                  of ?? coordinator('temple'),
+                  network,
+                  known: known,
+                ),
                 FetchCoordinatorInfoUsecase(CoordinatorClient(transport)),
                 now: testNow,
               ),
@@ -573,6 +580,45 @@ void main() {
       await settle(tester);
     }
     expect(copied, ['https://t.me/templeofsats', 'https://templeofsats.org']);
+  });
+
+  testWidgets('the hosted web app is shown and copied as it reads', (
+    tester,
+  ) async {
+    final temple = coordinator('temple');
+    final onion = temple.mainnet.onion ?? '';
+    final known = await tester.runAsync(
+      () => CoordinatorClient(
+        FakeTransport(
+          infos: {'temple': recordedInfo('temple', RobosatsNetwork.mainnet)},
+        ),
+      ).fetchInfo(temple, RobosatsNetwork.mainnet),
+    );
+    // An address with a zero width space: the info is already known, so nothing is asked of it.
+    final hidden = rewrite(
+      temple,
+      mainnet: CoordinatorOrigins(
+        onion:
+            '${onion.substring(0, 20)}${String.fromCharCode(0x200B)}${onion.substring(20)}',
+      ),
+    );
+    await open(
+      tester,
+      FakeTransport(),
+      of: hidden,
+      known: switch (known) {
+        Ok(:final value) => value,
+        _ => throw StateError('no info'),
+      },
+    );
+
+    await scrollTo(tester, find.text(onion));
+    await tester.tap(find.text(onion));
+    await settle(tester);
+    await tester.tap(find.byIcon(Icons.copy_sharp));
+    await tester.pump(const Duration(seconds: 4));
+    await settle(tester);
+    expect(copied, [onion]);
   });
 
   test('a fingerprint is grouped by characters, never inside one', () {
