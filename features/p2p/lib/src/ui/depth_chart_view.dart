@@ -430,6 +430,10 @@ final class DepthChartLayout {
     );
   }
 
+  /// Where a label of [width] that would start at [left] starts, moved sideways so as to stay within a box of [boxWidth], from its left edge when it is wider.
+  static double keepInside(double left, double width, double boxWidth) =>
+      left.clamp(0, math.max(0, boxWidth - width));
+
   /// The horizontal position of [x], kept inside the plot.
   double dx(double x) {
     final ratio = (x - window.min) / (window.max - window.min);
@@ -655,7 +659,7 @@ final class _DepthChartPainter extends CustomPainter {
     )..layout(maxWidth: math.max(0, maxWidth));
     var left = anchor.dx - painter.width * horizontal;
     if (boxWidth != null) {
-      left = left.clamp(0, math.max(0, boxWidth - painter.width));
+      left = DepthChartLayout.keepInside(left, painter.width, boxWidth);
     }
     painter.paint(canvas, Offset(left, anchor.dy - painter.height * vertical));
     painter.dispose();

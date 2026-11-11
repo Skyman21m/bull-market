@@ -707,6 +707,14 @@ void main() {
     expect(find.textContaining('-0'), findsNothing);
   });
 
+  test('a label of the horizontal axis is moved inside the box', () {
+    expect(DepthChartLayout.keepInside(20, 30, 100), 20);
+    expect(DepthChartLayout.keepInside(-10, 30, 100), 0);
+    expect(DepthChartLayout.keepInside(90, 30, 100), 70);
+    // Wider than the box: from its left edge, and cut by its own bound.
+    expect(DepthChartLayout.keepInside(5, 200, 100), 0);
+  });
+
   test(
     'the labels of the vertical axis never take more than half of the width',
     () {
