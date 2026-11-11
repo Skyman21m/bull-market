@@ -2,6 +2,8 @@
 
 Branch `feat/p2p-transport-tor`, 2026-11-10. Follow-up to the spike [tor-robosats.md](tor-robosats.md), whose recommendations this issue applies.
 
+Since 2026-11-11 (issue #28) the transport also keeps one Tor session per coordinator and robot for the requests made for a robot, which this report still lists as to be done: see [robot-coordinator.md](robot-coordinator.md), section "Tor sessions".
+
 ## What was built
 
 - **The `features/p2p` package** (Dart name `p2p`), a workspace member, added to the `workspace:` list and to the app's dependencies. No screen, no route, no tab: the feature is not visible yet (issue #29).
