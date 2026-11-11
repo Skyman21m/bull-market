@@ -2005,6 +2005,182 @@ void main() {
     });
   });
 
+  group('a Tor session that never finishes opening', () {
+    test(
+      'answers in time, releases the requests that joined it, and gives the place back',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        var hanging = true;
+        final tor = transport(
+          deadline: const Duration(milliseconds: 500),
+          openSession: () =>
+              hanging ? Completer<TorSession>().future : sessions.open(),
+        );
+        final watch = Stopwatch()..start();
+
+        final first = tor.send(
+          _get(server.url('/api/robot/'), robot: _robot(1)),
+        );
+        // A second request of the same robot joins the same opening a little later.
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        final joined = tor.send(
+          _get(server.url('/api/robot/'), robot: _robot(1)),
+        );
+
+        expect(await first, _failsWith<CoordinatorTimedOut>());
+        expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+        // The opening is given up at the deadline of the request that started it, before the deadline of the one that joined it, which would have answered that it timed out.
+        expect(await joined, _failsWith<CoordinatorUnreachable>());
+        final counts = tor.countsForTesting;
+        expect(counts.places, 0);
+        expect(counts.placesOf, isEmpty);
+        expect(counts.waiting, 0);
+        expect(counts.robotsWithRequests, 0);
+
+        hanging = false;
+        expect(
+          await tor.send(_get(server.url('/api/robot/'), robot: _robot(1))),
+          isA<Ok<Object?, Failure>>(),
+        );
+        expect(tor.countsForTesting.places, 1);
+      },
+    );
+
+    test(
+      'is no longer waited for after a close, which frees its place at once',
+      () async {
+        final tor = transport(
+          deadline: const Duration(seconds: 20),
+          openSession: () => Completer<TorSession>().future,
+        );
+        final url = Uri.parse('http://127.0.0.1:1/api/robot/');
+        final watch = Stopwatch()..start();
+        final first = tor.send(_get(url, robot: _robot(1)));
+        final second = tor.send(_get(url, robot: _robot(2)));
+        final anonymous = tor.send(_get(url));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(tor.countsForTesting.places, 2);
+
+        await tor.closeRobotSessions(_robot(1));
+
+        expect(await first, _failsWith<CoordinatorTransportFailed>());
+        expect(tor.countsForTesting.places, 1);
+        await tor.closeSessions();
+        expect(await second, _failsWith<CoordinatorTransportFailed>());
+        expect(await anonymous, _failsWith<CoordinatorTransportFailed>());
+        expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+        final counts = tor.countsForTesting;
+        expect(counts.places, 0);
+        expect(counts.waiting, 0);
+        expect(counts.robotsWithRequests, 0);
+      },
+    );
+
+    test(
+      'does not keep the places: thirty-two of them, then Tor works again',
+      () async {
+        final held = _Held();
+        final first = await serve({
+          '/held': held.handle,
+          '/api/robot/': _json('{}'),
+        });
+        final second = await serve({'/held': held.handle});
+        var hanging = true;
+        final tor = transport(
+          deadline: const Duration(seconds: 2),
+          openSession: () =>
+              hanging ? Completer<TorSession>().future : sessions.open(),
+        );
+        // The robots are spread over two coordinators, so that only the bound of all the robot sessions applies.
+        Uri url(int robot, String path) =>
+            (robot.isEven ? first : second).url(path);
+
+        final hung = await Future.wait([
+          for (var robot = 1; robot <= maxRobotSessions; robot++)
+            tor.send(_get(url(robot, '/held'), robot: _robot(robot))),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(hung, everyElement(_failsWith<CoordinatorTimedOut>()));
+        expect(tor.countsForTesting.places, 0);
+        // Every place is free again: as many new robots as there are places hold a request at the same time, and one more finds none.
+        hanging = false;
+        final requests = [
+          for (var robot = 100; robot < 100 + maxRobotSessions; robot++)
+            tor.send(_get(url(robot, '/held'), robot: _robot(robot))),
+        ];
+        await held.waiting(maxRobotSessions);
+        expect(
+          await tor.send(_get(first.url('/api/robot/'), robot: _robot(200))),
+          _failsWith<CoordinatorTransportBusy>(),
+        );
+        held.release();
+        expect(
+          await Future.wait(requests),
+          everyElement(isA<Ok<Object?, Failure>>()),
+        );
+      },
+    );
+
+    test('leaves no request waiting for it once it is given up', () async {
+      final tor = transport(
+        deadline: const Duration(milliseconds: 300),
+        openSession: () => Completer<TorSession>().future,
+      );
+      final url = Uri.parse('http://127.0.0.1:1/api/robot/');
+
+      final requests = [
+        for (var i = 0; i < 200; i++) tor.send(_get(url, robot: _robot(1))),
+      ];
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(tor.countsForTesting.waiting, 200);
+      final results = await Future.wait(requests);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Each request is answered by its own deadline or by the opening given up at the same moment, whichever comes first.
+      expect(
+        results,
+        everyElement(
+          anyOf(
+            _failsWith<CoordinatorTimedOut>(),
+            _failsWith<CoordinatorUnreachable>(),
+          ),
+        ),
+      );
+      final counts = tor.countsForTesting;
+      expect(counts.waiting, 0);
+      expect(counts.robotsWithRequests, 0);
+      expect(counts.places, 0);
+    });
+
+    test('closes a session that opens after it was given up, unused', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(_jsonHead(2));
+        socket.add(utf8.encode('{}'));
+        await socket.flush();
+      });
+      final opening = Completer<TorSession>();
+      final tor = transport(
+        deadline: const Duration(milliseconds: 300),
+        openSession: () => opening.future,
+      );
+
+      final result = await tor.send(
+        _get(raw.url('/api/robot/'), robot: _robot(1)),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(tor.countsForTesting.places, 0);
+      opening.complete(await sessions.open());
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(result, _failsWith<CoordinatorTimedOut>());
+      expect(sessions.closed, {0});
+      expect(raw.connections, 0);
+      expect(tor.countsForTesting.live, 0);
+      expect(tor.countsForTesting.places, 0);
+    });
+  });
+
   group('the retry log', () {
     test('names neither the coordinator, nor the robot, nor a header', () async {
       final server = await serve({'/api/robot/': _json('{}')});
@@ -2494,8 +2670,9 @@ void main() {
       opening.complete(await sessions.open());
 
       expect(await pending, _failsWith<CoordinatorTransportFailed>());
-      expect(sessions.closed, {0});
+      // The request is answered at the close, before the late session opens: that session is closed once it arrives.
       await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(sessions.closed, {0});
       expect(raw.connections, 0);
     });
   });
