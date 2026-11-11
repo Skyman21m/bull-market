@@ -136,9 +136,9 @@ What already exists in the code:
 - **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC behind a VPN, before the review fixes (not rerun since), and not yet on a phone ([report](docs/spikes/tor-transport.md)).
 - **The first screens of the P2P tab**: Tor wait, order book and order details, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books, not yet tried on a phone.
 
-In progress: the rest of the read-only screens (Garage, chart, map and search views, coordinator details) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)) and creating a robot with a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)).
+In progress: the rest of the read-only screens (Garage, chart, map and search views, coordinator details) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
-Not done yet: taking or creating an order, the chat, and any operation that involves money.
+Not done yet: creating a robot with a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
 
 Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issues [#4](https://github.com/Skyman21m/troc/issues/4) and [#17](https://github.com/Skyman21m/troc/issues/17).
 
