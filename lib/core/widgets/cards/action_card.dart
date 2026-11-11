@@ -180,10 +180,16 @@ class _ActionButton extends StatelessWidget {
                 width: 24,
                 color: context.appColors.secondary,
               ),
-              BullText(
-                label,
-                style: context.font.bodyLarge,
-                color: context.appColors.secondary,
+              // On one line, shrunk to the height and width left by the icon rather than overflowing the fixed card at a large text size.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: BullText(
+                    label,
+                    style: context.font.bodyLarge,
+                    color: context.appColors.secondary,
+                  ),
+                ),
               ),
             ],
           ),
