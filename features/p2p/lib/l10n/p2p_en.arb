@@ -741,5 +741,241 @@
   "p2pChartSummaryNoAxis": "Depth chart: nothing to draw on this axis.",
   "@p2pChartSummaryNoAxis": {
     "description": "Not in the RoboSats texts: what a screen reader says of the depth chart when its axis cannot be drawn, such as the price axis when no order gives a market price in its currency."
+  },
+  "p2pCommonContinue": "Continue",
+  "@p2pCommonContinue": {
+    "description": "Button that moves on to the next step of the Garage wizard."
+  },
+  "p2pGarageWelcomeTagline": "A Simple and Private LN P2P Exchange",
+  "@p2pGarageWelcomeTagline": {
+    "description": "Subtitle of the Garage welcome screen, where RoboSats shows its logo."
+  },
+  "p2pGarageWelcomeCreateRobot": "Create a new robot and learn to use RoboSats",
+  "@p2pGarageWelcomeCreateRobot": {
+    "description": "Text of the box above « Start » on the Garage welcome screen."
+  },
+  "p2pGarageWelcomeStart": "Start",
+  "@p2pGarageWelcomeStart": {
+    "description": "Button of the Garage welcome screen: opens the three-step Garage Key wizard."
+  },
+  "p2pGarageWelcomeRecoverHint": "Recover an existing robot using your token",
+  "@p2pGarageWelcomeRecoverHint": {
+    "description": "Text above « Recovery » on the Garage welcome screen. RoboSats keeps « token » in Garage Key mode; the French text says « clé de garage » (decision of 2026-11-10)."
+  },
+  "p2pGarageWelcomeRecovery": "Recovery",
+  "@p2pGarageWelcomeRecovery": {
+    "description": "Text button of the Garage welcome screen: opens « Robot recovery », where the user pastes a Garage Key."
+  },
+  "p2pGarageWelcomeSearchForOrders": "Search for Orders",
+  "@p2pGarageWelcomeSearchForOrders": {
+    "description": "Text button of the Garage welcome screen: shows the offers (RoboSats opens its guided search, which Troc does not have)."
+  },
+  "p2pGarageWelcomeFastGenerateOrder": "Fast Generate Order",
+  "@p2pGarageWelcomeFastGenerateOrder": {
+    "description": "Text button of the Garage welcome screen, disabled: creating an order comes in a later phase."
+  },
+  "p2pGarageOnboardingStep1Title": "1. Generate your Garage Key",
+  "@p2pGarageOnboardingStep1Title": {
+    "description": "Title of the first step of the Garage Key wizard."
+  },
+  "p2pGarageOnboardingStep1Text": "Your Garage Key is a master key that derives unlimited robot identities. Generate it once and use it forever.",
+  "@p2pGarageOnboardingStep1Text": {
+    "description": "Text of the first step of the Garage Key wizard."
+  },
+  "p2pGarageOnboardingStoreItTitle": "Store it somewhere safe!",
+  "@p2pGarageOnboardingStoreItTitle": {
+    "description": "Bold start of the alert shown with a new Garage Key: the key is never part of the wallet backup."
+  },
+  "p2pGarageOnboardingStoreItText": "This key is the master key to all your robots. Keep it secret and backed up securely.",
+  "@p2pGarageOnboardingStoreItText": {
+    "description": "Rest of the alert shown with a new Garage Key."
+  },
+  "p2pGarageKeyHelper": "Store your Garage Key safely",
+  "@p2pGarageKeyHelper": {
+    "description": "Helper text under the Garage Key, in the wizard and on the profile."
+  },
+  "p2pGarageKeyInvalid": "Invalid garage key",
+  "@p2pGarageKeyInvalid": {
+    "description": "Error under the Garage Key field when what was typed is not a Garage Key and no more precise reason applies."
+  },
+  "p2pGarageOnboardingPasteExisting": "Or paste an existing Garage Key to recover your robots.",
+  "@p2pGarageOnboardingPasteExisting": {
+    "description": "Text of the first step of the wizard, about pasting a Garage Key the user already has."
+  },
+  "p2pGarageOnboardingGenerateNew": "Generate new",
+  "@p2pGarageOnboardingGenerateNew": {
+    "description": "Small button with a die: replaces the Garage Key, after the delete confirmation when one is stored."
+  },
+  "p2pGarageOnboardingStep2Title": "2. Meet your robot identity",
+  "@p2pGarageOnboardingStep2Title": {
+    "description": "Title of the second step of the Garage Key wizard."
+  },
+  "p2pGarageTradingAvatar": "This is your trading avatar",
+  "@p2pGarageTradingAvatar": {
+    "description": "Text of the second step of the wizard, above the robot's avatar, and its label on the profile."
+  },
+  "p2pGarageHiMyNameIs": "Hi! My name is",
+  "@p2pGarageHiMyNameIs": {
+    "description": "Followed by the robot's nickname, in bold between two bolts."
+  },
+  "p2pGaragePreviousAccount": "Previous account",
+  "@p2pGaragePreviousAccount": {
+    "description": "Tooltip and screen-reader label of the left arrow of the « Robot #N » navigator."
+  },
+  "p2pGarageNextAccount": "Next account",
+  "@p2pGarageNextAccount": {
+    "description": "Tooltip and screen-reader label of the right arrow of the « Robot #N » navigator."
+  },
+  "p2pGarageRobotLabel": "Robot",
+  "@p2pGarageRobotLabel": {
+    "description": "Word before « #N » in the robot navigator (« Robot #3 »)."
+  },
+  "p2pGarageOnboardingStep3Title": "3. Browse or create an order",
+  "@p2pGarageOnboardingStep3Title": {
+    "description": "Title of the third step of the Garage Key wizard."
+  },
+  "p2pGarageOnboardingStep3Text": "RoboSats is a peer-to-peer marketplace. You can browse the public offers or create a new one.",
+  "@p2pGarageOnboardingStep3Text": {
+    "description": "Text of the third step of the Garage Key wizard."
+  },
+  "p2pGarageOnboardingHelpIntro": "If you need help on your RoboSats journey join our public support",
+  "@p2pGarageOnboardingHelpIntro": {
+    "description": "Start of the help sentence of the third step, followed by the link p2pGarageOnboardingHelpLink."
+  },
+  "p2pGarageOnboardingHelpLink": "SimpleX group",
+  "@p2pGarageOnboardingHelpLink": {
+    "description": "Name of the public RoboSats support group: shown with its link for copy, never opened."
+  },
+  "p2pGarageOnboardingHelpOutro": "or visit the robot school for documentation.",
+  "@p2pGarageOnboardingHelpOutro": {
+    "description": "End of the help sentence of the third step, after « , »."
+  },
+  "p2pGarageLearnRoboSats": "Learn RoboSats",
+  "@p2pGarageLearnRoboSats": {
+    "description": "Button of the third step: shows the address of the RoboSats documentation for copy, never opened."
+  },
+  "p2pGarageSeeProfile": "See profile",
+  "@p2pGarageSeeProfile": {
+    "description": "Text button of the third step: opens the Garage profile."
+  },
+  "p2pGarageKeyLabel": "Garage Key",
+  "@p2pGarageKeyLabel": {
+    "description": "Caption of the box that holds the Garage Key on the profile."
+  },
+  "p2pGarageProfileDeleteAllTooltip": "Delete Garage Key and all robots",
+  "@p2pGarageProfileDeleteAllTooltip": {
+    "description": "Tooltip of the red « Delete All » button of the profile."
+  },
+  "p2pGarageProfileDeleteAll": "Delete All",
+  "@p2pGarageProfileDeleteAll": {
+    "description": "Red button of the profile: opens « Delete Garage Key? »."
+  },
+  "p2pRecoveryTitle": "Robot recovery",
+  "@p2pRecoveryTitle": {
+    "description": "Title of the dialog where the user pastes a Garage Key to recover their robots."
+  },
+  "p2pRecoveryModeGarageKey": "Garage Key Mode",
+  "@p2pRecoveryModeGarageKey": {
+    "description": "Chip next to the title of « Robot recovery »."
+  },
+  "p2pRecoveryGarageKeyText": "Enter your garage key (robo1...) to recover all your robot accounts.",
+  "@p2pRecoveryGarageKeyText": {
+    "description": "Text of « Robot recovery »; « robo1... » is the literal start of a key, never translated."
+  },
+  "p2pRecoveryPasteHere": "Paste token here",
+  "@p2pRecoveryPasteHere": {
+    "description": "Label of the field where the Garage Key is pasted, as RoboSats words it in both of its modes."
+  },
+  "p2pRecoveryInProgress": "Recovering your robot. This may take a moment.",
+  "@p2pRecoveryInProgress": {
+    "description": "Shown with a progress bar while the pasted key is stored."
+  },
+  "p2pRecoveryRecover": "Recover",
+  "@p2pRecoveryRecover": {
+    "description": "Button of « Robot recovery », disabled until the field holds a Garage Key."
+  },
+  "p2pDeleteKeyTitle": "Delete Garage Key?",
+  "@p2pDeleteKeyTitle": {
+    "description": "Title of the confirmation before deleting the Garage Key of this network."
+  },
+  "p2pDeleteKeyQuestion": "Are you sure you want to permanently delete this Garage Key and ALL associated robots?",
+  "@p2pDeleteKeyQuestion": {
+    "description": "Question of the delete confirmation; the capitals are RoboSats's own."
+  },
+  "p2pDeleteCannotBeUndone": "⚠️ This action cannot be undone!",
+  "@p2pDeleteCannotBeUndone": {
+    "description": "Warning of the delete confirmation, with RoboSats's own emoji."
+  },
+  "p2pDeleteBeforeDeleting": "Before deleting, make sure you have:",
+  "@p2pDeleteBeforeDeleting": {
+    "description": "Followed by three bullet points."
+  },
+  "p2pDeleteKeyStoredKey": "Stored your Garage Key safely",
+  "@p2pDeleteKeyStoredKey": {
+    "description": "First bullet point: the key is not part of the wallet backup."
+  },
+  "p2pDeleteKeyNoActiveOrders": "No active or pending orders in ANY robot",
+  "@p2pDeleteKeyNoActiveOrders": {
+    "description": "Second bullet point."
+  },
+  "p2pDeleteExportedData": "Exported any important data",
+  "@p2pDeleteExportedData": {
+    "description": "Third bullet point."
+  },
+  "p2pDeleteKeyConfirm": "Delete Garage Key",
+  "@p2pDeleteKeyConfirm": {
+    "description": "Red confirmation button of the delete confirmation."
+  },
+  "p2pGarageKeyMustStartWith": "Must start with \"robo1\"",
+  "@p2pGarageKeyMustStartWith": {
+    "description": "Error under the Garage Key field: the text of RoboSats's validator, which it never translates. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyInvalidLength": "Invalid length",
+  "@p2pGarageKeyInvalidLength": {
+    "description": "Error under the Garage Key field when the text is not 55 to 65 characters long: the text of RoboSats's validator. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyInvalidData": "Invalid key data",
+  "@p2pGarageKeyInvalidData": {
+    "description": "Error under the Garage Key field when the text does not hold 32 bytes: the text of RoboSats's validator. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyReveal": "Show Garage Key",
+  "@p2pGarageKeyReveal": {
+    "description": "Button of the profile: asks for the wallet's PIN, then shows the Garage Key. RoboSats shows the key at once; Troc hides it until the user authenticates again (owner's decision). Not in the phase-1 catalogue."
+  },
+  "p2pGarageScreenPrivacyUnavailable": "Screen protection could not be turned on, so the Garage Key stays hidden.",
+  "@p2pGarageScreenPrivacyUnavailable": {
+    "description": "Shown instead of the Garage Key when screenshot protection could not be turned on, as the wallet does for its seeds (screenPrivacyUnavailable). Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyLocked": "The keystore is locked. Unlock your device, then try again.",
+  "@p2pGarageKeyLocked": {
+    "description": "The device's keystore is locked: a stored key, if any, is intact. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyUnreadable": "The Garage Key stored on this device cannot be read.",
+  "@p2pGarageKeyUnreadable": {
+    "description": "The vault could not read the entry of this network. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyUnusable": "The Garage Key stored on this device is damaged.",
+  "@p2pGarageKeyUnusable": {
+    "description": "The entry of this network is there but is not a Garage Key. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyUnreadableHelp": "Try again. If it keeps failing, delete it: the key and its robots are lost unless you kept a copy.",
+  "@p2pGarageKeyUnreadableHelp": {
+    "description": "Under an unreadable or damaged key, above « Retry » and « Delete Garage Key ». Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyNotSaved": "The Garage Key could not be saved. Try again.",
+  "@p2pGarageKeyNotSaved": {
+    "description": "The keystore did not store the new or pasted key. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyNotDeleted": "The Garage Key could not be deleted. Try again.",
+  "@p2pGarageKeyNotDeleted": {
+    "description": "The keystore did not delete the key: it may still be stored. Not in the phase-1 catalogue."
+  },
+  "p2pGarageKeyAlreadyStored": "A Garage Key is already stored for this network.",
+  "@p2pGarageKeyAlreadyStored": {
+    "description": "A key is already stored: it is never replaced without the delete confirmation. Not in the phase-1 catalogue."
+  },
+  "p2pGarageRobotUnavailable": "No robot can be made from this Garage Key.",
+  "@p2pGarageRobotUnavailable": {
+    "description": "No usable robot index was found from this key, which does not happen with a key drawn at random. Not in the phase-1 catalogue."
   }
 }

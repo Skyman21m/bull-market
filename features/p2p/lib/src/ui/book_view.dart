@@ -74,16 +74,6 @@ class _BookViewState extends State<BookView> {
     final state = context.watch<BookCubit>().state;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: BullSpacing.md),
-          child: BullSegmented(
-            items: {l10n.p2pNavOffers, l10n.p2pNavCreate, l10n.p2pNavGarage},
-            initialValue: l10n.p2pNavOffers,
-            disabledItems: {l10n.p2pNavCreate, l10n.p2pNavGarage},
-            onSelected: (_) {},
-          ),
-        ),
-        const Gap(BullSpacing.sm),
         Expanded(
           child: BullRefreshIndicator(
             onRefresh: cubit.refresh,

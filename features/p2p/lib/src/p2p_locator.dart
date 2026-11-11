@@ -24,7 +24,9 @@ import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
+import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
@@ -48,9 +50,9 @@ final class P2pLocator {
     if (garageKeys != null) _registerGarageKeys(locator, garageKeys);
   }
 
-  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], and the use-cases that create, import, read and delete it.
+  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, and the Garage that shows it.
   ///
-  /// Registering touches no key: the keystore is read or written only when a use-case runs.
+  /// Registering touches no key: the keystore is read or written only when a use-case runs, and the Garage runs them only once the user opens it.
   static void _registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
     locator.registerLazySingleton<GarageKeyRepository>(
       () => GarageKeyRepositoryImpl(garageKeys),
@@ -72,6 +74,16 @@ final class P2pLocator {
     );
     locator.registerFactory<DeleteGarageKeyUsecase>(
       () => DeleteGarageKeyUsecase(locator()),
+    );
+    // The Garage of a network, created when the user opens it.
+    locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
+      (network, _) =>
+          GarageCubit(network, locator(), locator(), locator(), locator()),
+    );
+    // One for the feature, so that a copied key is cleared even after the screen that copied it is gone.
+    locator.registerLazySingleton<GarageKeyClipboard>(
+      GarageKeyClipboard.new,
+      dispose: (clipboard) => clipboard.dispose(),
     );
   }
 
