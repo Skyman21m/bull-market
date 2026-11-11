@@ -1520,6 +1520,121 @@ void main() {
       },
     );
 
+    test(
+      'holds at the bound: the robot has two idle sessions closed, and no more',
+      () async {
+        // The hostile coordinator drops every second connection before any header, and never answers the others.
+        var connections = 0;
+        var holding = 0;
+        final hostile = await rawServer((socket) async {
+          if ((++connections).isEven) {
+            socket.destroy();
+          } else {
+            holding++;
+          }
+        });
+        final honest = await serve({'/api/robot/': _json('{}')});
+        final tor = transport(deadline: const Duration(seconds: 20));
+        // Every place holds the idle session of another robot.
+        for (var robot = 100; robot < 100 + maxRobotSessions; robot++) {
+          await tor.send(_get(honest.url('/api/robot/'), robot: _robot(robot)));
+        }
+
+        var over = 0;
+        final results =
+            <
+              Future<Result<CoordinatorResponse, CoordinatorTransportFailure>>
+            >[];
+        for (var i = 0; i < 8; i++) {
+          final settled = holding + over;
+          results.add(
+            tor.send(_get(hostile.url('/api/order/'), robot: _robot(1)))
+              ..whenComplete(() => over++).ignore(),
+          );
+          while (holding + over == settled) {
+            await Future<void>.delayed(const Duration(milliseconds: 1));
+          }
+        }
+
+        // Its two sessions took the places of the two least recently used ones, and its other requests closed nothing.
+        expect(holding, 2);
+        expect(over, 6);
+        expect(sessions.closed, {0, 1});
+        expect(sessions.opened, hasLength(maxRobotSessions + 2));
+        expect(sessions.maxOpen, maxRobotSessions);
+        await tor.closeSessions();
+        final busy = _failsWith<CoordinatorTransportBusy>();
+        expect(
+          (await Future.wait(
+            results,
+          )).where((outcome) => busy.matches(outcome, {})),
+          hasLength(6),
+        );
+      },
+    );
+
+    test(
+      'gives a robot that has its two sessions no place from the closing session of another',
+      () async {
+        final held = _Held();
+        final server = await serve({
+          '/held': held.handle,
+          '/api/robot/': _json('{}'),
+        });
+        final gate = Completer<void>();
+        sessions.closeGates[0] = gate.future;
+        final tor = transport(
+          deadline: const Duration(seconds: 20),
+          // Session 0 is the one of robot 2; the sessions of robot 1 serve one request each.
+          createHttpClient: (endpoint) => _Sessions.indexOf(endpoint) == 0
+              ? HttpClient()
+              : _oneConnectionThenRefused(),
+        );
+        // The session of robot 2 is closing, slowly.
+        await tor.send(_get(server.url('/api/robot/'), robot: _robot(2)));
+        final closing = tor.closeRobotSessions(_robot(2));
+        // Robot 1 has two sessions, each held by a request.
+        final requests = [
+          for (var i = 0; i < 2; i++)
+            tor.send(_get(server.url('/held'), robot: _robot(1))),
+        ];
+        await held.waiting(2).timeout(const Duration(seconds: 5));
+        expect(sessions.closing, [0]);
+        expect(sessions.opened, hasLength(3));
+
+        final third = tor.send(
+          _get(server.url('/api/robot/'), robot: _robot(1)),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        gate.complete();
+
+        expect(await third, _failsWith<CoordinatorTransportBusy>());
+        await closing;
+        expect(sessions.opened, hasLength(3));
+        held.release();
+        expect(
+          await Future.wait(requests),
+          everyElement(isA<Ok<Object?, Failure>>()),
+        );
+      },
+    );
+
+    test('gives a robot its places back when its sessions close', () async {
+      final server = await serve({'/api/robot/': _json('{}')});
+      final tor = transport();
+
+      for (var round = 0; round < 4; round++) {
+        expect(
+          await tor.send(_get(server.url('/api/robot/'), robot: _robot(1))),
+          isA<Ok<Object?, Failure>>(),
+        );
+        await tor.closeRobotSessions(_robot(1));
+      }
+
+      expect(sessions.opened, hasLength(4));
+      expect(sessions.closed, {0, 1, 2, 3});
+    });
+
     test('counts the places of a robot per coordinator', () async {
       final held = _Held();
       final first = await serve({'/held': held.handle});
