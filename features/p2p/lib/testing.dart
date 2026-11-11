@@ -1,19 +1,23 @@
-/// Test seam of the P2P feature: its real screens and cubits over a fake coordinator transport, fake Tor states and a fixed clock, without network.
+/// Test seam of the P2P feature: its real screens and cubits over a fake coordinator transport, fake Tor states and a fixed clock, without network, and its real transport for the live integration tests.
 ///
-/// For widget tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
+/// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:robosats/robosats.dart';
 
+import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
+// And what a live integration test needs to drive the coordinator client itself over [liveCoordinatorTransportForTesting].
 export 'package:robosats/robosats.dart'
     show
+        CoordinatorClient,
+        CoordinatorHttpMethod,
         CoordinatorRequest,
         CoordinatorResponse,
         CoordinatorTransport,
@@ -37,6 +41,12 @@ void setUpP2pForTesting(
     clock: clock,
   );
 }
+
+/// The transport of the app, over the embedded Tor, once the feature is registered with `P2pFeature.setup`.
+///
+/// For live integration tests only, which use it for what the facade leaves out on purpose: the raw answer of a coordinator, and a first contact that sends the Nostr key of the formula Troc does not use.
+CoordinatorTransport liveCoordinatorTransportForTesting(GetIt locator) =>
+    locator<TorCoordinatorTransport>();
 
 final class _NoSessions implements CoordinatorSessionsPort {
   const _NoSessions();
