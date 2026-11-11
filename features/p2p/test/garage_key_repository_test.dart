@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,7 +9,7 @@ import 'package:p2p/src/data/garage_key_repository_impl.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
 /// The Garage Keys of P2P, through the real vault of `package:secrets` over its in-memory keystore.
@@ -319,6 +320,64 @@ void main() {
     );
     expect(storage.entries.keys, [mainnetEntry]);
   }, timeout: slow);
+
+  test(
+    'nothing printed while keys are created, imported, read, used and deleted holds a key',
+    () async {
+      final repository = repositoryOver(FakeSecureStoragePlatform());
+      final printed = <String>[];
+      Future<void> capturing(Future<void> Function() body) => runZoned(
+        body,
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) => printed.add(line),
+        ),
+      );
+
+      await capturing(() async {
+        // Shows that the zone captures what is printed in it.
+        Zone.current.print('capture works');
+        ok(await repository.create(RobosatsNetwork.testnet));
+        ok(await repository.import(RobosatsNetwork.mainnet, fixedKey));
+        for (final network in RobosatsNetwork.values) {
+          ok(await repository.exists(network));
+          ok(await repository.firstUsableRobot(network));
+        }
+      });
+      // The created key, read through the vault itself: the test looks for it, never shows it.
+      final created = switch (await Secrets(
+        scratchDirectory: () async => '.',
+      ).garageKeys().read(slot: GarageKeySlot.testnet)) {
+        Ok(:final value) => Uint8List.fromList(value.bytes),
+        Err() => fail('the created key cannot be read back'),
+      };
+      await capturing(() async {
+        for (final network in RobosatsNetwork.values) {
+          ok(await repository.delete(network));
+        }
+      });
+
+      expect(printed, contains('capture works'));
+      final output = printed.join('\n');
+      for (final bytes in [created, fixedKey.revealBytes()]) {
+        final key = switch (GarageKey.fromBytes(bytes)) {
+          Ok(:final value) => value,
+          Err() => fail('not a key'),
+        };
+        final forms = [
+          bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(),
+          '$bytes',
+          bytes.join(','),
+          base64Encode(bytes),
+          key.revealBech32(),
+        ];
+        for (final (index, form) in forms.indexed) {
+          // A boolean, so that a failure does not print the key it found.
+          expect(output.contains(form), isFalse, reason: 'form $index');
+        }
+      }
+    },
+    timeout: slow,
+  );
 
   test('the failures carry nothing but their type', () {
     for (final failure in <P2pFailure>[

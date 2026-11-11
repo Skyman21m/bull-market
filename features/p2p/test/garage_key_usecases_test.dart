@@ -128,6 +128,34 @@ void main() {
       expect(repository.calls, isEmpty);
     });
 
+    test('a failure for a rejected text carries none of it', () async {
+      // Not keys: text that passes the prefix and length checks, and text that does not.
+      for (final text in [
+        'robo1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzz',
+        'robo1notakeyatallbutlongenoughtopassthelengthcheckxxxxxxxxxxxxx',
+        '${exampleText.substring(0, exampleText.length - 1)}q',
+        'somethingelse',
+      ]) {
+        final failure = switch (await ImportGarageKeyUsecase(
+          repository,
+        ).execute(RobosatsNetwork.mainnet, text: text)) {
+          Err(:final failure) => failure,
+          Ok() => fail('a text that is not a key was accepted'),
+        };
+
+        expect(failure, isA<GarageKeyInvalidFailure>());
+        expect(failure.logMessage, isNull);
+        for (final shown in [
+          '$failure',
+          '${(failure as GarageKeyInvalidFailure).reason}',
+        ]) {
+          // A boolean, so that a failure does not print the text.
+          expect(shown.contains(text.substring(5, 12)), isFalse);
+        }
+      }
+      expect(repository.calls, isEmpty);
+    });
+
     test('reports a refused import as the repository says it', () async {
       repository.failure = const GarageKeyAlreadyStoredFailure();
 
