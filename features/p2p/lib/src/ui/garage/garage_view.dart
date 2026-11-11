@@ -60,7 +60,9 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
       protection: _protection,
       unavailableMessage: l10n.p2pGarageScreenPrivacyUnavailable,
       retryLabel: l10n.p2pCommonRetry,
-      onRetry: () => setState(() => _protection = enableScreenPrivacy()),
+      onRetry: () => setState(() {
+        _protection = enableScreenPrivacy();
+      }),
       builder: (context) => BlocBuilder<GarageCubit, GarageState>(
         builder: (context, state) => _content(context, state),
       ),

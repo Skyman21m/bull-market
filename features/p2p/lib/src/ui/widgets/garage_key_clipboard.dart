@@ -26,7 +26,7 @@ final class GarageKeyClipboard {
     _clear?.cancel();
     try {
       await Clipboard.setData(ClipboardData(text: text));
-    } on PlatformException {
+    } on Exception {
       return false;
     }
     _copied = key;
@@ -46,7 +46,7 @@ final class GarageKeyClipboard {
     String? held;
     try {
       held = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    } on PlatformException {
+    } on Exception {
       held = null;
     }
     final stillHolds =
@@ -58,7 +58,7 @@ final class GarageKeyClipboard {
     if (!stillHolds) return;
     try {
       await Clipboard.setData(const ClipboardData(text: ''));
-    } on PlatformException {
+    } on Exception {
       // Nothing more can be done from the app: the platform keeps the clip.
     }
   }
