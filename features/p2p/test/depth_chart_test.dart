@@ -310,69 +310,91 @@ void main() {
       expect(narrow.linesIn(narrow.window).buy, isEmpty);
     });
 
-    test('the median of each coordinator, then the middle votes', () {
+    test('the median of each coordinator, then the middle vote', () {
       final temple = coordinator('temple');
       final lake = coordinator('lake');
       final bazaar = coordinator('bazaar');
       final freeport = coordinator('freeport');
-      // An odd number of votes: the middle one, however many orders a coordinator sends.
+      for (final middle in MiddleVote.values) {
+        expect(
+          DepthChart.medianOfCoordinators([
+            for (var i = 0; i < 100; i++) (temple, 1e12),
+            (lake, 1),
+            (lake, 3),
+            (bazaar, 5),
+          ], middle: middle),
+          5,
+        );
+        expect(
+          DepthChart.medianOfCoordinators([(temple, 2)], middle: middle),
+          2,
+        );
+        expect(
+          DepthChart.medianOfCoordinators(const [], middle: middle),
+          isNull,
+        );
+      }
+      // An even number of votes keeps one of the two middle votes, never their mean.
+      final even = [(temple, 999.0), (lake, 0.125)];
       expect(
-        DepthChart.middleVotes([
-          for (var i = 0; i < 100; i++) (temple, 1e12),
-          (lake, 1),
-          (lake, 3),
-          (bazaar, 5),
-        ]),
-        (lower: 5.0, higher: 5.0),
+        DepthChart.medianOfCoordinators(even, middle: MiddleVote.nearestZero),
+        0.125,
       );
-      expect(DepthChart.middleVotes([(temple, 2)]), (lower: 2.0, higher: 2.0));
-      expect(DepthChart.middleVotes(const []), isNull);
-      // An even number: the two middle ones, never their mean.
-      expect(DepthChart.middleVotes([(temple, 999.0), (lake, 0.125)]), (
-        lower: 0.125,
-        higher: 999.0,
-      ));
       expect(
-        DepthChart.middleVotes([
-          (temple, -50.0),
-          (lake, 3.0),
-          (bazaar, -1.0),
-          (freeport, 40.0),
-        ]),
-        (lower: -1.0, higher: 3.0),
+        DepthChart.medianOfCoordinators(even, middle: MiddleVote.lower),
+        0.125,
+      );
+      // Below zero, the one nearer zero is the higher; the lower is still the lower.
+      final below = [(temple, -99.0), (lake, -0.5)];
+      expect(
+        DepthChart.medianOfCoordinators(below, middle: MiddleVote.nearestZero),
+        -0.5,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(below, middle: MiddleVote.lower),
+        -99,
+      );
+      // As near zero on both sides: the lower.
+      expect(
+        DepthChart.medianOfCoordinators([
+          (temple, 2),
+          (lake, -2),
+        ], middle: MiddleVote.nearestZero),
+        -2,
+      );
+      // Four votes: only the two middle ones are compared.
+      final four = [
+        (temple, -50.0),
+        (lake, 3.0),
+        (bazaar, -1.0),
+        (freeport, 40.0),
+      ];
+      expect(
+        DepthChart.medianOfCoordinators(four, middle: MiddleVote.nearestZero),
+        -1,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(four, middle: MiddleVote.lower),
+        -1,
+      );
+      final fourAbove = [
+        (temple, 50.0),
+        (lake, 3.0),
+        (bazaar, -4.0),
+        (freeport, -40.0),
+      ];
+      expect(
+        DepthChart.medianOfCoordinators(
+          fourAbove,
+          middle: MiddleVote.nearestZero,
+        ),
+        3,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(fourAbove, middle: MiddleVote.lower),
+        -4,
       );
     });
-
-    test(
-      'the premium centre: the mean of two votes within 16 points, else the vote nearer zero',
-      () {
-        double center(double lower, double higher) =>
-            DepthChart.premiumCenter((lower: lower, higher: higher));
-        // One vote, or none.
-        expect(center(2.7, 2.7), 2);
-        expect(DepthChart.premiumCenter(null), 0);
-        // Close enough: their mean, cut toward zero.
-        expect(center(-6, 5), 0);
-        expect(center(-5, 5), 0);
-        expect(center(0, 15), 7);
-        expect(center(-0.78125, 1.5625), 0);
-        // Exactly 16 points apart: the window around the mean reaches both, on its edges.
-        expect(center(-6, 10), 2);
-        expect(center(-8, 8), 0);
-        // Just above 16: the vote nearer zero.
-        expect(center(-6, 10.5), -6);
-        expect(center(-8, 8.25), -8);
-        // 16 points apart with a mean of 2.5, cut to 2: still their mean, 10.5 lying half a point beyond the edge.
-        expect(center(-5.5, 10.5), 2);
-        // Far apart: the vote nearer zero, the lower when both are as near.
-        expect(center(0.125, 999), 0);
-        expect(center(-99, 0.125), 0);
-        expect(center(-20, 20), -20);
-        expect(center(-99, -0.5), 0);
-        // Never a negative zero.
-        expect(center(-0.75, -0.25).isNegative, isFalse);
-      },
-    );
 
     // The scenario of the review: 40 sell and 40 buy orders priced in sats at the largest premium the package reads, on two coordinators, and 30 honest orders.
     List<Map<String, Object?>> flood(int type) => [
@@ -392,83 +414,6 @@ void main() {
       for (var id = 1; id <= 30; id++)
         caseOrder(id, id.isEven ? 1 : 0, (id - 15) / 4, 1000000),
     ];
-
-    // The cases of the third review: two honest coordinators, each with its own book.
-    List<Map<String, Object?>> around(double premium, int count) => [
-      for (var id = 1; id <= count; id++)
-        caseOrder(
-          id,
-          id.isEven ? 1 : 0,
-          premium + (id - count ~/ 2) / 8,
-          1000000,
-        ),
-    ];
-
-    Future<DepthChart> twoBooks(
-      List<Map<String, Object?>> lake,
-      List<Map<String, Object?>> temple,
-    ) async => DepthChart.of(
-      book: [
-        ...await parseOrders(lake, alias: 'lake'),
-        ...await parseOrders(temple),
-      ],
-      filter: const BookFilter(),
-      axis: DepthAxis.premium,
-    );
-
-    int drawn(DepthChart chart) {
-      final lines = chart.linesIn(chart.window);
-      return lines.buyOrders + lines.sellOrders;
-    }
-
-    test('two honest books either side of zero are both drawn', () async {
-      // Lake around -6%, temple around +5%: the vote nearer zero alone centred on temple's 5% and drew its 20 orders only.
-      final chart = await twoBooks(around(-6, 20), around(5, 20));
-      expect(chart.window.center, 0);
-      expect(drawn(chart), 40);
-    });
-
-    test(
-      'an exact tie at -5% and +5% centres on 0, every order drawn',
-      () async {
-        final chart = await twoBooks(
-          [for (var id = 1; id <= 21; id++) caseOrder(id, 0, -5, 1000000)],
-          [for (var id = 1; id <= 21; id++) caseOrder(id, 1, 5, 1000000)],
-        );
-        // The lower vote centred on -5 and drew 21 of the 42.
-        expect(chart.window.center, 0);
-        expect(drawn(chart), 42);
-      },
-    );
-
-    test(
-      'a book around +15% against one order at 0%: the mean, not the single order',
-      () async {
-        // Lake's median is 15.0625 and temple's 0: 15.0625 points apart, a mean of 7.53, cut to 7.
-        final chart = await twoBooks(around(15, 30), [
-          caseOrder(1, 1, 0, 1000000),
-        ]);
-        expect(chart.window.center, 7);
-        // The window (-1, 15) holds temple's order and lake's 14 orders below 15; the vote nearer zero drew 1 of the 31.
-        expect(drawn(chart), 15);
-      },
-    );
-
-    test(
-      'the boundary: 16 points apart takes the mean, just above takes the vote nearer zero',
-      () async {
-        final atSixteen = await twoBooks(
-          [caseOrder(1, 0, -6, 1000000)],
-          [caseOrder(1, 1, 10, 1000000)],
-        );
-        expect(atSixteen.window.center, 2);
-        final above = await twoBooks(
-          [caseOrder(1, 0, -6, 1000000)],
-          [caseOrder(1, 1, 10.125, 1000000)],
-        );
-        expect(above.window.center, -6);
-      },
-    );
 
     test(
       'one coordinator against one: one order at 999% does not empty the chart',
