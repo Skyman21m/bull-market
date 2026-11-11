@@ -43,8 +43,8 @@ abstract final class OrderSearch {
     if (coordinator == null || orderId == null) {
       return const OrderSearchInvalidUrl();
     }
-    // The official client reads the number with `Number`, which ignores the spaces around it.
-    final id = int.tryParse(orderId.trim(), radix: 10);
+    // Like `Number` in the official client, `int.tryParse` ignores the spaces around the number.
+    final id = int.tryParse(orderId, radix: 10);
     for (final order in book) {
       if (order.id == id && order.coordinator.shortAlias == coordinator) {
         return OrderSearchFound(order);
