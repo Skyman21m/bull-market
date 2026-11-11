@@ -371,7 +371,8 @@ const _unresolvedSensitiveMembers = {
   'garageKeys',
   // `GarageKeyMaterial.bytes`, reached without a static type. No production file reads a member named `bytes` dynamically today.
   'bytes',
-  // `AppLocator.setupP2p`, called dynamically. Dart reaches a static method dynamically only through a tear-off, which the gate refuses, so `setup`, a generic name, is left out.
+  // `AppLocator.setupP2p`, called dynamically.
+  // Dart reaches a static method dynamically only through a tear-off, which the gate refuses, so `setup`, a generic name, is left out.
   'setupP2p',
 };
 
