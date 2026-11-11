@@ -7,7 +7,6 @@ import 'package:pointycastle/digests/sha3.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/coordinator/currency_data.dart';
 import 'package:robosats/src/coordinator/federation_data.dart';
-import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/payment_method_data.dart';
 import 'package:test/test.dart';
 
