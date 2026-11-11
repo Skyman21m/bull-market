@@ -20,12 +20,24 @@ void main() {
       for (final alias in ['temple', 'lake', 'bazaar', 'ammanaya']) {
         transport.answerRecorded(alias, RobosatsNetwork.mainnet, 'book');
       }
-      transport.answerRecorded(
-        'freeport',
-        RobosatsNetwork.mainnet,
-        'book',
-        statusCode: 404,
-      );
+      transport
+        ..answerRecorded(
+          'freeport',
+          RobosatsNetwork.mainnet,
+          'book',
+          statusCode: 404,
+        )
+        // gumpellite joined the federation after the recordings: it answers the empty book of the recorded ones.
+        ..answer(
+          coordinatorNamed('gumpellite'),
+          RobosatsNetwork.mainnet,
+          '/api/book/',
+          Ok(
+            jsonResponse({
+              'not_found': 'No orders found, be the first to make one',
+            }, statusCode: 404),
+          ),
+        );
       final book = await reader.read(
         Federation.robosats,
         RobosatsNetwork.mainnet,
@@ -38,6 +50,7 @@ void main() {
         'bazaar',
         'freeport',
         'ammanaya',
+        'gumpellite',
       ]);
       // By coordinator in federation order, then by id.
       final keys = [
@@ -75,7 +88,7 @@ void main() {
           '/api/book/',
           (_) => Future.error(Exception('adapter bug')),
         );
-      // ammanaya has no route: the fake answers unreachable.
+      // ammanaya and gumpellite have no route: the fake answers unreachable.
       final book = await reader.read(
         Federation.robosats,
         RobosatsNetwork.mainnet,
@@ -92,6 +105,7 @@ void main() {
           'bazaar': CoordinatorNotJson,
           'freeport': CoordinatorTransportFailed,
           'ammanaya': CoordinatorUnreachable,
+          'gumpellite': CoordinatorUnreachable,
         },
       );
     });
@@ -145,11 +159,12 @@ void main() {
         Federation.robosats,
         RobosatsNetwork.mainnet,
       );
-      expect(futures, hasLength(5));
-      expect(transport.requests, hasLength(5));
+      expect(futures, hasLength(6));
+      expect(transport.requests, hasLength(6));
 
       // The last coordinator answers first, and its book is usable at once.
-      pending['ammanaya']?.complete(
+      // gumpellite has no recorded book: it answers with the one of ammanaya.
+      pending['gumpellite']?.complete(
         Ok(
           rawResponse(
             recordedBody('ammanaya', RobosatsNetwork.mainnet, 'book'),
@@ -157,14 +172,14 @@ void main() {
         ),
       );
       final first = await futures.last;
-      expect(first.coordinator.shortAlias, 'ammanaya');
+      expect(first.coordinator.shortAlias, 'gumpellite');
       expect(first.result, isA<Ok<OrderBook, CoordinatorFailure>>());
       for (final completer in pending.values.where((c) => !c.isCompleted)) {
         completer.complete(const Err(CoordinatorUnreachable()));
       }
       final book = FederationBook.merge(await Future.wait(futures));
       expect(book.orders, hasLength(6));
-      expect(book.failures, hasLength(4));
+      expect(book.failures, hasLength(5));
     });
 
     test(
@@ -188,6 +203,7 @@ void main() {
             'bazaar': CoordinatorNotOnNetwork,
             'freeport': CoordinatorNotOnNetwork,
             'ammanaya': CoordinatorNotOnNetwork,
+            'gumpellite': CoordinatorNotOnNetwork,
           },
         );
         expect(book.orders, isEmpty);

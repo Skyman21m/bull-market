@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/coordinator/currency_data.dart';
 import 'package:robosats/src/coordinator/federation_data.dart';
+import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/payment_method_data.dart';
 import 'package:test/test.dart';
 
@@ -101,10 +102,14 @@ void main() {
       });
     }
 
-    test('are the RoboSats commits of the reference', () {
-      // The protocol reference: see the RoboSats refresh procedure in AGENTS.md, section "Troc (fork)".
+    test('are the protocol reference, with a later federation list', () {
+      // See the RoboSats refresh procedure in AGENTS.md, section "Troc (fork)".
+      // The protocol reference is ff1998c (2026-11-06); only the federation list was taken from e56f9cf7c (2026-11-08), which adds gumpellite.
       const reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
-      expect(robosatsFederationSource.commit, reference);
+      expect(
+        robosatsFederationSource.commit,
+        'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6',
+      );
       expect(robosatsCurrenciesSource.commit, reference);
       expect(robosatsMethodsSource.commit, reference);
     });
@@ -118,7 +123,14 @@ void main() {
         Federation.robosats.coordinators.map((c) => c.shortAlias),
         source.keys,
       );
-      expect(source.keys, ['temple', 'lake', 'bazaar', 'freeport', 'ammanaya']);
+      expect(source.keys, [
+        'temple',
+        'lake',
+        'bazaar',
+        'freeport',
+        'ammanaya',
+        'gumpellite',
+      ]);
     });
 
     test('equals federation.json, empty and missing strings aside', () {
@@ -157,6 +169,44 @@ void main() {
         expect(coordinator.establishedOn.isUtc, isTrue);
       }
       expect(coordinatorEstablished('temple'), DateTime.utc(2023, 12, 2));
+    });
+
+    test('has free text that needs no cleaning and stays short', () {
+      // The list is reviewed when it is generated, but its text comes from RoboSats contributors: it must already be what the cleaning of coordinator text would leave.
+      for (final coordinator in Federation.robosats.coordinators) {
+        final contact = coordinator.contact;
+        final texts = [
+          coordinator.longAlias,
+          coordinator.identifier,
+          coordinator.description,
+          coordinator.motto,
+          coordinator.color,
+          for (final text in [
+            contact.email,
+            contact.telegram,
+            contact.simplex,
+            contact.matrix,
+            contact.website,
+            contact.nostr,
+            contact.pgp,
+            contact.fingerprint,
+            contact.reddit,
+            contact.twitter,
+            coordinator.mainnet.clearnet,
+            coordinator.mainnet.i2p,
+            coordinator.testnet.clearnet,
+            coordinator.testnet.i2p,
+          ])
+            ?text,
+          for (final MapEntry(:key, :value)
+              in coordinator.policies.entries) ...[key, value],
+        ];
+        for (final text in texts) {
+          expect(displayText(text), text, reason: coordinator.shortAlias);
+          expect(text.runes.length, lessThanOrEqualTo(1000));
+        }
+        expect(coordinator.policies.length, lessThanOrEqualTo(20));
+      }
     });
 
     test('has no problem, and problems are found in a broken list', () {
@@ -225,7 +275,24 @@ void main() {
             .map((c) => c.shortAlias),
         ['temple', 'lake'],
       );
-      expect(Federation.robosats.on(RobosatsNetwork.mainnet), hasLength(5));
+      expect(Federation.robosats.on(RobosatsNetwork.mainnet), hasLength(6));
+    });
+
+    test('has gumpellite on mainnet only, as reviewed on 2026-11-11', () {
+      final gumpellite = Federation.robosats.byAlias('gumpellite');
+      expect(gumpellite?.longAlias, 'Gumpellite');
+      expect(
+        gumpellite?.mainnet,
+        const CoordinatorOrigins(
+          onion:
+              'http://jvnfeiy3aizcpva6zekd3v6o5kpzduqeeqqihhtudhuqqa7e5jzm7kyd.onion',
+        ),
+      );
+      expect(gumpellite?.mainnetNodesPubkeys, [
+        '0337a597a971a8dadd4e7bcec2638e4b5156a36157ec91c26d782aa4a0a8a7cef2',
+      ]);
+      expect(gumpellite?.testnet, const CoordinatorOrigins());
+      expect(gumpellite?.testnetNodesPubkeys, isEmpty);
     });
 
     test('finds a coordinator by alias and identifies it by alias', () {
