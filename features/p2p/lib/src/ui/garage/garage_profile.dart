@@ -17,6 +17,7 @@ import 'garage_wizard.dart' show RobotNickname;
 /// The profile of the Garage when a Garage Key is stored, as the official client draws it (`basic/GaragePage/GarageKeyProfile.tsx` at commit ff1998c): the nickname, the avatar, the robot navigator, then the Garage Key and « Delete All ».
 ///
 /// The Garage Key is hidden until the user asks for it and passes the app's own re-authentication, the PIN the wallet asks before it shows its seeds, which [reauthenticate] brings from the shell; the official client shows it at once.
+/// It is hidden again when the profile is left and when the app goes to the background.
 /// Without [reauthenticate] the key cannot be shown here at all.
 /// What needs a coordinator is not shown: the settings of the robot, its orders and rewards, and whether it was used in a trade.
 class GarageProfile extends StatefulWidget {
@@ -36,8 +37,27 @@ class GarageProfile extends StatefulWidget {
 }
 
 class _GarageProfileState extends State<GarageProfile> {
-  /// Whether the key is shown: only once the re-authentication said so, and until the profile is left.
+  /// Whether the key is shown: only once the re-authentication said so, and until the profile is left or the app goes to the background.
   bool _revealed = false;
+
+  /// Hides the key again when the app is hidden or paused, so that coming back asks for the PIN again; the wallet's seed view does not do this.
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onHide: _hide, onPause: _hide);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  void _hide() {
+    if (_revealed && mounted) setState(() => _revealed = false);
+  }
 
   Future<void> _reveal(P2pReauthentication reauthenticate) async {
     if (await askReauthentication(context, reauthenticate) && mounted) {
