@@ -221,12 +221,17 @@ void main() {
       final storage = holding([testnetEntry]);
       final cubit = cubitOver(storage);
       await cubit.load();
+      final reads = storage.reads;
 
       await cubit.generate();
       await cubit.import(exampleText);
 
       expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
-      expect((cubit.state as GarageWithKey).key.key, fixedKey);
+      final state = cubit.state as GarageWithKey;
+      expect(state.key.key, fixedKey);
+      // Neither reached the vault, whose refusal would have been reported.
+      expect(storage.reads, reads);
+      expect(state.failure, isNull);
       await cubit.close();
     });
 
