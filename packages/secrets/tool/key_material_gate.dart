@@ -188,6 +188,25 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
+  /// No production library outside the custody package re-exports a declaration of `package:secrets` (issue #47).
+  ///
+  /// Only the vault's own libraries then make its declarations importable, so a check that reads the URIs of a feature's imports, as `features/p2p/test/secrets_imports_test.dart` does, sees every way in by import.
+  /// The names an export brings are read from the library the analyzer resolved, after its `show` and `hide` lists; a conditional export fails closed, since the gate does not resolve the library of an inactive alternative.
+  void checkVaultExport(ExportDirective node) {
+    if (node.configurations.isNotEmpty) {
+      violations.add('$path: ${node.uri.stringValue}#conditional export');
+      return;
+    }
+    final library = node.libraryExport?.exportedLibrary;
+    if (library == null) return;
+    if (_namesThrough(
+      library,
+      node.combinators,
+    ).values.any(_isVaultDeclaration)) {
+      violations.add('$path: ${library.uri}#re-exports the vault');
+    }
+  }
+
   @override
   void visitImportDirective(ImportDirective node) {
     checkTestingLibrary(node.libraryImport?.importedLibrary?.uri.toString());
@@ -205,6 +224,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     for (final configuration in node.configurations) {
       checkTestingLibrary(configuration.uri.stringValue);
     }
+    checkVaultExport(node);
     super.visitExportDirective(node);
   }
 
@@ -421,6 +441,31 @@ const _garageKeyReaders = {
     members: {'GarageKey.revealBech32'},
   ),
 };
+
+/// A declaration of `package:secrets`.
+bool _isVaultDeclaration(Element element) =>
+    element.library?.uri.toString().startsWith('package:secrets/') ?? false;
+
+/// The names that a directive with [combinators] brings from [library], each with the declaration it stands for.
+Map<String, Element> _namesThrough(
+  LibraryElement library,
+  List<Combinator> combinators,
+) {
+  final names = {...library.exportNamespace.definedNames2};
+  String withoutSetter(String name) =>
+      name.endsWith('=') ? name.substring(0, name.length - 1) : name;
+  for (final combinator in combinators) {
+    switch (combinator) {
+      case ShowCombinator(:final shownNames):
+        final shown = {for (final name in shownNames) name.name};
+        names.removeWhere((name, _) => !shown.contains(withoutSetter(name)));
+      case HideCombinator(:final hiddenNames):
+        final hidden = {for (final name in hiddenNames) name.name};
+        names.removeWhere((name, _) => hidden.contains(withoutSetter(name)));
+    }
+  }
+  return names;
+}
 
 /// The outermost class and function that hold [node], as the exceptions name them.
 ({String? owner, String? function}) _enclosingDeclaration(AstNode node) {

@@ -586,7 +586,7 @@ import 'file://$real/test/helper.dart' as absolute;
 import 'dart:core' if (dart.library.io) '../integration_test/alternative.dart';
 import '../packages/secrets/test/fake.dart' as fake;
 import '../packages/secrets/lib/custody.dart';
-export 'plain.dart' if (dart.library.html) '../bin/alternative.dart';
+export '../bin/alternative.dart';
 part 'part.inc';
 Object use() => [escaped.leak, text.leak, absolute.leak, fake.leak, custody];
 ''');
@@ -1332,6 +1332,79 @@ class Bull {
 Object call(dynamic shell) => shell.setupP2p(0, withGarageKeys: true);
 '''),
         ['lib/composition_dynamic.dart: unresolved sensitive member setupP2p'],
+      );
+    });
+  });
+
+  group('no production library re-exports the vault (#47)', () {
+    test('a re-export of a declaration of the vault is refused', () async {
+      for (final (name, directive, path) in [
+        // The bypass a review of #50 found: `package:robosats` re-exporting `Secrets`, which a file of the P2P feature then imported without naming the vault.
+        (
+          'vault_reexport_shown',
+          "export 'package:secrets/secrets.dart' show Secrets;",
+          'packages/robosats/lib/robosats.dart',
+        ),
+        (
+          'vault_reexport_whole',
+          "export 'package:secrets/secrets.dart';",
+          'lib/core/core.dart',
+        ),
+        (
+          'vault_reexport_hide',
+          "export 'package:secrets/secrets.dart' hide Secrets;",
+          'features/p2p/lib/p2p.dart',
+        ),
+      ]) {
+        expect(await inspect(name, '$directive\n', policyPath: path), [
+          '$path: package:secrets/secrets.dart#re-exports the vault',
+        ], reason: name);
+      }
+      // A library that re-exports another one that re-exports the vault.
+      expect(
+        await inspect(
+          'vault_reexport_chain',
+          "export 'garage_bridge.dart' show GarageKeyMaterial;\n",
+        ),
+        [
+          allOf(
+            startsWith('lib/vault_reexport_chain.dart: '),
+            endsWith('/garage_bridge.dart#re-exports the vault'),
+          ),
+        ],
+      );
+    });
+
+    test(
+      'what an export does not bring from the vault is not refused',
+      () async {
+        for (final (name, directive) in [
+          (
+            'vault_export_shown_away',
+            "export 'garage_bridge.dart' show GarageKey;",
+          ),
+          (
+            'vault_export_hidden',
+            "export 'garage_bridge.dart' hide GarageKeyMaterial;",
+          ),
+          ('vault_export_other', "export 'package:robosats/robosats.dart';"),
+          (
+            'vault_import',
+            "import 'package:secrets/secrets.dart' show GarageKeys;\n"
+                'Object? take(GarageKeys? keys) => keys;',
+          ),
+        ]) {
+          expect(await inspect(name, '$directive\n'), isEmpty, reason: name);
+        }
+      },
+    );
+
+    test('a conditional export fails closed', () async {
+      expect(
+        await inspect('vault_conditional_export', '''
+export 'dart:core' if (dart.library.io) 'dart:async';
+'''),
+        ['lib/vault_conditional_export.dart: dart:core#conditional export'],
       );
     });
   });
