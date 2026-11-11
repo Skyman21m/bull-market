@@ -89,8 +89,8 @@ final class PublicOrder {
     }
     final fields = JsonFields(element);
     final id = fields.requiredInt('id', min: 1, max: 1 << 53);
-    final createdAt = _date(fields, 'created_at');
-    final expiresAt = _date(fields, 'expires_at');
+    final createdAt = fields.requiredDate('created_at');
+    final expiresAt = fields.requiredDate('expires_at');
     final typeWire = fields.requiredInt('type', min: 0, max: 1);
     final currencyId = fields.requiredInt('currency', min: 1, max: 65535);
     final hasRange = fields.requiredBool('has_range');
@@ -245,44 +245,6 @@ final class PublicOrder {
 
   /// How far the dates of an order may be from the local clock: Tor itself does not work with a clock this wrong, so only absurd dates fall outside.
   static const _clockTolerance = Duration(days: 7);
-
-  static final RegExp _isoDate = RegExp(
-    r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-](\d{2}):(\d{2}))$',
-  );
-
-  /// An ISO 8601 date and time with a time zone, as the coordinator serializes it, between 2020 and 2100.
-  ///
-  /// Every part must be in range, so the text means the date it is read as: `DateTime.tryParse` alone would turn `25:61` into the next day.
-  /// A date without a zone would be read in local time, so it is rejected.
-  static DateTime? _date(JsonFields fields, String key) {
-    final text = fields.requiredString(key, maxLength: 40);
-    if (fields.rejected != null) return null;
-    final match = _isoDate.firstMatch(text);
-    final date = match == null ? null : DateTime.tryParse(text);
-    if (match == null || date == null || !_inRange(match)) {
-      fields.rejected ??= key;
-      return null;
-    }
-    return date;
-  }
-
-  static bool _inRange(RegExpMatch match) {
-    int part(int group) => int.parse(match[group] ?? '0');
-    final year = part(1);
-    final month = part(2);
-    final day = part(3);
-    return year >= 2020 &&
-        year <= 2100 &&
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= DateTime.utc(year, month + 1, 0).day &&
-        part(4) <= 23 &&
-        part(5) <= 59 &&
-        part(6) <= 59 &&
-        part(7) <= 14 &&
-        part(8) <= 59;
-  }
 
   /// Orders are identified by their coordinator and their number.
   @override

@@ -86,6 +86,24 @@ final class JsonFields {
     _ => _reject(key, null),
   };
 
+  /// An ISO 8601 date and time with a time zone, as the coordinator serializes it, between 2020 and 2100.
+  ///
+  /// Every part must be in range, so the text means the date it is read as: `DateTime.tryParse` alone would turn `25:61` into the next day.
+  /// A date without a zone would be read in local time, so it is rejected.
+  DateTime? optionalDate(String key) {
+    final text = optionalString(key, maxLength: 40);
+    if (text == null) return null;
+    final match = _isoDate.firstMatch(text);
+    final date = match == null ? null : DateTime.tryParse(text);
+    if (match == null || date == null || !_dateInRange(match)) {
+      return _reject(key, null);
+    }
+    return date;
+  }
+
+  /// [optionalDate], required: `null` only when the field is rejected.
+  DateTime? requiredDate(String key) => optionalDate(key) ?? _reject(key, null);
+
   /// A decimal number sent as a string, as the coordinator serializes its `DecimalField`s: see [parseDecimal].
   double? optionalDecimal(
     String key, {
@@ -105,6 +123,28 @@ final class JsonFields {
     required double min,
     required double max,
   }) => optionalDecimal(key, min: min, max: max) ?? _reject(key, 0);
+}
+
+final RegExp _isoDate = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-](\d{2}):(\d{2}))$',
+);
+
+bool _dateInRange(RegExpMatch match) {
+  int part(int group) => int.parse(match[group] ?? '0');
+  final year = part(1);
+  final month = part(2);
+  final day = part(3);
+  return year >= 2020 &&
+      year <= 2100 &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= DateTime.utc(year, month + 1, 0).day &&
+      part(4) <= 23 &&
+      part(5) <= 59 &&
+      part(6) <= 59 &&
+      part(7) <= 14 &&
+      part(8) <= 59;
 }
 
 final RegExp _decimal = RegExp(r'^-?\d{1,12}(\.\d{1,12})?$');
