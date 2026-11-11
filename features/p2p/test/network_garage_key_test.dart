@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:analyzer/dart/analysis/utilities.dart' show parseString;
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
@@ -146,59 +149,108 @@ void main() {
     );
   });
 
-  test('only the repository makes a key of a network', () {
-    // Tests run with the package directory as working directory.
-    final makers = <String>[];
-    for (final file
-        in Directory('lib')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.dart'))) {
-      final visitor = _MakerVisitor();
-      parseString(content: file.readAsStringSync()).unit.accept(visitor);
-      if (visitor.found > 0) makers.add(file.path);
+  group('the constructor of a key of a network', () {
+    // Resolved by the analyzer, so that an alias, a dot shorthand or a prefixed tear-off is the constructor it names; tests run with the package directory as working directory.
+    late AnalysisContextCollection collection;
+
+    setUpAll(() {
+      collection = AnalysisContextCollection(
+        includedPaths: [Directory.current.path],
+        sdkPath: _dartSdkPath(),
+      );
+    });
+
+    Future<List<String>> makersIn(String path) async {
+      final absolute = File(path).absolute.path;
+      final result = await collection
+          .contextFor(absolute)
+          .currentSession
+          .getResolvedUnit(absolute);
+      if (result is! ResolvedUnitResult) return ['$path: unresolved'];
+      final makers = <String>[];
+      result.unit.accept(_MakerVisitor(path, makers));
+      return makers;
     }
 
-    expect(makers, ['lib/src/data/garage_key_repository_impl.dart']);
-  });
+    test(
+      'is called by the repository only',
+      () async {
+        final makers = <String>[];
+        for (final file
+            in Directory('lib')
+                .listSync(recursive: true)
+                .whereType<File>()
+                .where((file) => file.path.endsWith('.dart'))) {
+          makers.addAll(await makersIn(file.path));
+        }
 
-  test('the check sees each way to make one', () {
-    for (final source in [
-      'f(k) => NetworkGarageKey(RobosatsNetwork.mainnet, k);',
-      'f(k) => const NetworkGarageKey(RobosatsNetwork.mainnet, k);',
-      'f(k) => new NetworkGarageKey(RobosatsNetwork.mainnet, k);',
-      'final make = NetworkGarageKey.new;',
-      'f(k) => p2p.NetworkGarageKey(RobosatsNetwork.mainnet, k);',
-    ]) {
-      final visitor = _MakerVisitor();
-      parseString(content: source).unit.accept(visitor);
+        expect(makers, ['lib/src/data/garage_key_repository_impl.dart']);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
 
-      expect(visitor.found, 1, reason: source);
-    }
+    test(
+      'is found behind an alias, a dot shorthand or a prefix',
+      () async {
+        expect(await makersIn('test/fixtures/network_garage_key_makers.dart'), [
+          for (var i = 0; i < 4; i++)
+            'test/fixtures/network_garage_key_makers.dart',
+        ]);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
   });
 }
 
-/// Counts the calls and tear-offs of the constructor of `NetworkGarageKey`, read from the syntax tree.
+/// The Dart SDK of the Flutter that runs the tests, found from the workspace's package configuration, as the custody gate finds it.
+String _dartSdkPath() {
+  var directory = Directory('.').absolute;
+  while (true) {
+    final config = File('${directory.path}/.dart_tool/package_config.json');
+    if (config.existsSync()) {
+      final packages =
+          (jsonDecode(config.readAsStringSync()) as Map)['packages'] as List;
+      final flutter = packages.cast<Map>().firstWhere(
+        (p) => p['name'] == 'flutter',
+      );
+      final root = config.uri
+          .resolve(flutter['rootUri'] as String)
+          .toFilePath();
+      return '${Directory(root).parent.parent.path}/bin/cache/dart-sdk';
+    }
+    if (directory.parent.path == directory.path) {
+      throw StateError('No package_config.json');
+    }
+    directory = directory.parent;
+  }
+}
+
+/// Each place that calls or tears off a constructor of `NetworkGarageKey`, resolved: through its name, a `typedef`, a prefix or a dot shorthand.
 final class _MakerVisitor extends RecursiveAstVisitor<void> {
-  int found = 0;
+  final String path;
+  final List<String> makers;
 
-  static const _name = 'NetworkGarageKey';
+  _MakerVisitor(this.path, this.makers);
 
-  @override
-  void visitMethodInvocation(MethodInvocation node) {
-    if (node.methodName.name == _name) found++;
-    super.visitMethodInvocation(node);
+  void _check(Element? element) {
+    if (element case ConstructorElement(
+      enclosingElement: InterfaceElement(name: 'NetworkGarageKey'),
+    )) {
+      makers.add(path);
+    }
   }
 
   @override
-  void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    if (node.constructorName.type.name.lexeme == _name) found++;
-    super.visitInstanceCreationExpression(node);
+  void visitConstructorName(ConstructorName node) {
+    _check(node.element);
+    super.visitConstructorName(node);
   }
 
   @override
-  void visitPrefixedIdentifier(PrefixedIdentifier node) {
-    if (node.prefix.name == _name && node.identifier.name == 'new') found++;
-    super.visitPrefixedIdentifier(node);
+  void visitDotShorthandConstructorInvocation(
+    DotShorthandConstructorInvocation node,
+  ) {
+    _check(node.element);
+    super.visitDotShorthandConstructorInvocation(node);
   }
 }
