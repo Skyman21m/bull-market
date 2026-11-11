@@ -166,10 +166,11 @@ final class CoordinatorResponseTooLarge extends CoordinatorTransportFailure {
   const CoordinatorResponseTooLarge();
 }
 
-/// The adapter had no connection to give to this request for now, because of its own limits and not because of the coordinator.
+/// The adapter had no connection to give to this request for now: the places it keeps for Tor sessions, which bound how many it opens, were all in use.
 ///
-/// Nothing is wrong with the request or with the coordinator: sending the request again a little later may succeed, and is safe, since a request that is not a `GET` was not sent at all.
-/// A caller should wait and try again instead of reporting a coordinator that does not work.
+/// It is not proof that the coordinator works: those places go to the requests in flight, so a coordinator that holds the connections of its robots open, or drops them so that they are made again on new sessions, uses up the places of the robots it serves, up to the limits of the adapter.
+/// Nothing was sent on the attempt that got this failure, and a request that is not a `GET` was not sent at all, so sending the request again is safe.
+/// A caller sends it again later with an exponential backoff, caps the attempts of each request and the attempts made to each coordinator, and takes busy answers that repeat on one coordinator as a sign about that coordinator, not as a passing shortage.
 final class CoordinatorTransportBusy extends CoordinatorTransportFailure {
   const CoordinatorTransportBusy();
 }
