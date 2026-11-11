@@ -4,11 +4,12 @@ import 'package:primitives/primitives.dart';
 import 'package:secrets/src/crypto/crypto.dart'
     show InvalidVault, PassphraseUnsupported, UnsupportedLiquidNetwork;
 import 'package:secrets/src/data/exceptions.dart';
+import 'package:secrets/src/data/models/key_model.dart' show KeyKind;
 import 'package:secrets/src/domain/domain.dart';
 
 /// The package's one `try/catch`: an exception becomes a [SecretFailure] here and nowhere else.
 ///
-/// Called by the two repositories only, so `public/` never catches. Two rules live in the table: a sealed keystore is never an absence, and no foreign message travels — anything this package did not raise is reported by type ([describeSafely]).
+/// Called by the repositories only, so `public/` never catches. Two rules live in the table: a sealed keystore is never an absence, and no foreign message travels — anything this package did not raise is reported by type ([describeSafely]).
 ///
 /// [orElse] names the failure an unrecognised `Exception` becomes; it is the repository method's category — a read, a write, a delete, a derivation — not a message.
 Future<Result<T, SecretFailure>> boundary<T>(
@@ -30,7 +31,16 @@ Future<Result<T, SecretFailure>> boundary<T>(
       error: describeSafely(e),
       trace: st,
     );
-    return Err(DatabaseKeyCorruptFailure(e.message));
+    return Err(switch (e.kind) {
+      KeyKind.dek => DatabaseKeyCorruptFailure(e.message),
+      KeyKind.garage => GarageKeyCorruptFailure(e.message),
+    });
+  } on ModuleKeyOccupiedException catch (e) {
+    // Nothing was written. No caller stores a database key this way; it would be a refused write.
+    return Err(switch (e.kind) {
+      KeyKind.dek => StoreSecretFailure(e.message),
+      KeyKind.garage => GarageKeyAlreadyExistsFailure(e.message),
+    });
   } on FingerprintMismatchException catch (e) {
     return Err(FingerprintMismatchFailure(e.message));
   } on FingerprintConflictException catch (e) {

@@ -265,6 +265,7 @@ class FlutterSecureStorageDatasource {
         // value did not come back.
         _Empty() => throw ModuleKeyCorruptException(
           'module key at $key is empty',
+          kind: kind,
         ),
         _Absent() => null,
       };
@@ -280,7 +281,10 @@ class FlutterSecureStorageDatasource {
           // `e.message` is one of `KeyModel`'s or `decodeJson`'s fixed
           // strings — none quotes stored content, and a test holds them
           // to it. `key` is composed by this class, not read from disk.
-          throw ModuleKeyCorruptException('module key at $key: ${e.message}');
+          throw ModuleKeyCorruptException(
+            'module key at $key: ${e.message}',
+            kind: kind,
+          );
         }
       }
 
@@ -315,6 +319,7 @@ class FlutterSecureStorageDatasource {
       _Found(:final value) => value,
       _Empty() => throw ModuleKeyCorruptException(
         'module key at $key is empty',
+        kind: kind,
       ),
       _Absent() => null,
     };
@@ -327,7 +332,10 @@ class FlutterSecureStorageDatasource {
       );
     } on FormatException catch (e) {
       // `e.message` is one of `KeyModel`'s or `decodeJson`'s fixed strings.
-      throw ModuleKeyCorruptException('module key at $key: ${e.message}');
+      throw ModuleKeyCorruptException(
+        'module key at $key: ${e.message}',
+        kind: kind,
+      );
     }
   }
 
@@ -339,6 +347,48 @@ class FlutterSecureStorageDatasource {
   }) {
     final key = keyForModule(kind: kind, package: package, name: name);
     return _lock.synchronized(() => _deleteRaw(key));
+  }
+
+  /// Writes a new module key under [kind]/[package]/[name] only if the entry is absent, and returns what it wrote.
+  ///
+  /// For a key that must never be replaced, such as a Garage Key: writing over one loses every robot derived from it. So **any present entry wins**, whatever it holds — a value, an empty one, one that does not parse, one of another kind: [ModuleKeyOccupiedException], and nothing is written. Unlike [fetchOrCreateModuleKey], the present entry is not parsed: a caller that wants it reads it, and a corrupt one is then refused by the read.
+  ///
+  /// Absence is believed only after the [_ReadBudget.settled] budget, under the lock: up to ~4.5 s with the lock held, paid once per key on a genuine miss. A read that keeps throwing propagates and nothing is written; a locked keystore passes through at once.
+  ///
+  /// [bytesHex] is called under the lock, only after the absence is settled, so that a generated key is drawn for a write that will happen. Generation is the caller's, as for [fetchOrCreateModuleKey].
+  Future<KeyModel> storeModuleKeyIfAbsent({
+    required KeyKind kind,
+    required String package,
+    required String name,
+    required String Function() bytesHex,
+  }) {
+    final key = keyForModule(kind: kind, package: package, name: name);
+    // Taken once, around the whole read-then-write. See the class doc:
+    // nothing inside may take it again.
+    return _lock.synchronized(() async {
+      switch (await _settle(
+        key,
+        budget: _ReadBudget.settled,
+        label: 'module key $key',
+      )) {
+        case _Found() || _Empty():
+          throw ModuleKeyOccupiedException(
+            'module key at $key is already present',
+            kind: kind,
+          );
+        case _Absent():
+          break;
+      }
+      final model = KeyModel(
+        version: KeyModel.currentVersion,
+        kind: kind,
+        name: key,
+        bytesHex: bytesHex(),
+        createdAt: DateTime.now().toUtc(),
+      );
+      await _writeRaw(key, jsonEncode(model.toJson()));
+      return model;
+    });
   }
 
   // ------------------------------------------------------------- shared core
@@ -428,7 +478,7 @@ class FlutterSecureStorageDatasource {
 
   // -------------------------------------------------------------------- lock
 
-  /// Guards composed operations — [storeSecret], [trashSecret], [fetchOrCreateModuleKey], [deleteModuleKey].
+  /// Guards composed operations — [storeSecret], [trashSecret], [fetchOrCreateModuleKey], [deleteModuleKey], [storeModuleKeyIfAbsent].
   /// Process-wide, because the keystore is. See the class doc for why it
   /// is not per instance, why single calls are not guarded, and why it
   /// must never be taken twice on one path.
@@ -523,6 +573,7 @@ StoredListing _parseAll(Map<String, String> entries) {
 /// Two budgets, one mechanism. A re-read only costs when the answer is "absent", so the budget follows where absence is the normal outcome. See doc/design.md, § Absence.
 enum _ReadBudget {
   /// Plain reads, outside the lock, where absence is exceptional: five reads, 300 ms doubling, ~4.5 s at worst — paid only by a genuine miss.
+  /// Also the budget of [FlutterSecureStorageDatasource.storeModuleKeyIfAbsent], under the lock, because an overwrite there cannot be undone.
   settled(attempts: 5, doubling: true),
 
   /// Reads inside a composed write, under the lock, where absence is the normal outcome of a first store: two reads 300 ms apart. The full budget would add ~4.5 s to every new secret and hold every other composed operation behind it.

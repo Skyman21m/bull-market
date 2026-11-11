@@ -9,5 +9,6 @@ export 'boundary.dart' show boundary;
 export 'database_key_repository.dart' show DatabaseKeyRepository;
 export 'exceptions.dart';
 export 'fss_datasource.dart' show FlutterSecureStorageDatasource;
+export 'garage_key_repository.dart' show GarageKeyRepository;
 export 'models/key_model.dart' show KeyKind;
 export 'secret_repository.dart' show SecretRepository;

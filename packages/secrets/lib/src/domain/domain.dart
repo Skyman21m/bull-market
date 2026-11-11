@@ -9,6 +9,8 @@ library;
 export 'database_key.dart' show DatabaseKey;
 export 'encrypted_vault.dart' show EncryptedVault, VaultKey;
 export 'failures.dart';
+export 'garage_key_material.dart' show GarageKeyMaterial;
+export 'garage_key_slot.dart' show GarageKeySlot;
 export 'revealed_mnemonic.dart' show RevealedMnemonic, RevealReason;
 export 'secret_info.dart' show SecretInfo, SecretKind;
 export 'secret_listing.dart' show InfoListing, SecretListing;

@@ -7,6 +7,7 @@ library;
 
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart' show Fingerprint;
+import 'package:secrets/src/data/models/key_model.dart' show KeyKind;
 
 /// The same secret is already stored; an import must create a new entry.
 class SecretAlreadyExistsException implements Exception {
@@ -20,17 +21,35 @@ class SecretAlreadyExistsException implements Exception {
 ///
 /// Distinct from every other failure here because the remedy is the
 /// opposite one: a corrupt *seed* entry is skipped, a corrupt module key
-/// is refused and kept. Translated to `DatabaseKeyCorruptFailure` by the
-/// error boundary, so a caller can tell "your database key is damaged"
-/// from "the keystore refused a write" — and can offer the only real
-/// remedy, which is discarding the database and its key together.
+/// is refused and kept. Translated by [kind] in the error boundary — a
+/// database key to `DatabaseKeyCorruptFailure`, a Garage Key to
+/// `GarageKeyCorruptFailure` — so a caller can tell "your key is damaged"
+/// from "the keystore refused a write", and offers the remedy of that kind.
 class ModuleKeyCorruptException implements Exception {
   final String message;
+
+  /// The kind that was asked for. Required, so that no throw site can report a damaged key as one of another kind.
+  final KeyKind kind;
+
   @internal
-  const ModuleKeyCorruptException(this.message);
+  const ModuleKeyCorruptException(this.message, {required this.kind});
 
   @override
   String toString() => 'ModuleKeyCorruptException: $message';
+}
+
+/// A write-if-absent found the module key's entry present — readable, empty or corrupt — and wrote nothing.
+///
+/// Translated by [kind] in the error boundary: a Garage Key to `GarageKeyAlreadyExistsFailure`.
+class ModuleKeyOccupiedException implements Exception {
+  final String message;
+  final KeyKind kind;
+
+  @internal
+  const ModuleKeyOccupiedException(this.message, {required this.kind});
+
+  @override
+  String toString() => 'ModuleKeyOccupiedException: $message';
 }
 
 class KeystoreLockedException implements Exception {

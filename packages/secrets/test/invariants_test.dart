@@ -45,6 +45,7 @@ void main() {
       'lib/src/data/boundary.dart', // exception → failure, the one try/catch
       'lib/src/data/secret_repository.dart', // the two that are not exceptions: not-found, mnemonic required
       'lib/src/data/database_key_repository.dart', // not-found on an open-only read
+      'lib/src/data/garage_key_repository.dart', // not-found on a read that never creates
     };
 
     final offenders = <String>[];
@@ -236,6 +237,8 @@ void main() {
       'SecretSigning', 'SecretBackup', 'SecretVerification',
       'SecretSilentPayments', 'DatabaseKeys',
       'Recoverbull',
+      // the P2P feature's handle: its RoboSats Garage Keys, nothing else
+      'GarageKeys', 'GarageKeySlot', 'GarageKeyMaterial',
       // sealed display: the only way words reach a screen, built via `secret.widgets`
       'MnemonicView', 'MnemonicChallenge', 'MnemonicTile', 'SecretWidgets',
       // what generate takes: a closed set, never an int
@@ -259,9 +262,116 @@ void main() {
       'UnsupportedNetworkFailure', 'FingerprintMismatchFailure',
       'PassphraseUnsupportedFailure',
       'UseSecretFailure',
+      'GarageKeyAlreadyExistsFailure', 'GarageKeyCorruptFailure',
     };
 
     expect(surfaceOf('lib/secrets.dart'), declared);
+  });
+
+  test('the Garage Key repository never reaches a seed', () {
+    // A Garage Key is never derived from a seed nor stored with one. The repository therefore imports nothing from `crypto/`, where every derivation lives, and names no operation of the seed namespace.
+    final source = code(read('lib/src/data/garage_key_repository.dart'));
+    final imports = RegExp(
+      r"import '([^']+)'",
+    ).allMatches(source).map((m) => m.group(1)!).toList();
+
+    expect(imports, isNotEmpty);
+    expect(
+      imports.where(
+        (uri) =>
+            uri.startsWith('package:secrets/src/crypto/') ||
+            uri.contains('bip39') ||
+            uri.contains('bip32') ||
+            uri.contains('bip85') ||
+            uri.startsWith('package:bull_sdk') ||
+            uri.startsWith('package:recoverbull'),
+      ),
+      isEmpty,
+    );
+    for (final seedOperation in [
+      'SecretRepository',
+      'secretNamespace',
+      'keyForSecret',
+      'fetchSecret',
+      'fetchAllSecrets',
+      'storeSecret',
+      'trashSecret',
+      'secretExists',
+      'SecretModel',
+      'SecretMaterial',
+      'Mnemonic',
+      'Seed',
+      'Deriver',
+    ]) {
+      expect(
+        RegExp('\\b$seedOperation\\b').hasMatch(source),
+        isFalse,
+        reason: 'garage_key_repository.dart names $seedOperation',
+      );
+    }
+  });
+
+  test('the Garage Key handle and material expose exactly what is listed', () {
+    // The material leaves through `bytes` alone — no hex, no equality, no other getter — and the handle has four operations. Each addition is a diff here, with its reason in review; the custody gate restricts `bytes` outside the package.
+    Map<String, String> publicMembers(String path, String className) {
+      final unit = parseString(
+        content: File(path).readAsStringSync(),
+        path: path,
+      ).unit;
+      final type = unit.declarations.whereType<ClassDeclaration>().singleWhere(
+        (c) => c.namePart.typeName.lexeme == className,
+      );
+      final members = switch (type.body) {
+        BlockClassBody(:final members) => members,
+        EmptyClassBody() => const <ClassMember>[],
+      };
+      return {
+        for (final member in members)
+          ...switch (member) {
+            MethodDeclaration(:final name, :final returnType)
+                when !name.lexeme.startsWith('_') =>
+              {name.lexeme: returnType?.toSource() ?? 'dynamic'},
+            FieldDeclaration(:final fields) => {
+              for (final v in fields.variables)
+                if (!v.name.lexeme.startsWith('_')) v.name.lexeme: 'field',
+            },
+            ConstructorDeclaration(:final name)
+                when !(name?.lexeme.startsWith('_') ?? false) =>
+              {'constructor ${name?.lexeme ?? 'new'}': 'constructor'},
+            _ => const <String, String>{},
+          },
+      };
+    }
+
+    expect(
+      publicMembers(
+        'lib/src/domain/garage_key_material.dart',
+        'GarageKeyMaterial',
+      ),
+      {
+        'lengthInBytes': 'field',
+        'bytes': 'Uint8List',
+        'constructor new': 'constructor',
+        'toString': 'String',
+      },
+    );
+    expect(
+      read('lib/src/domain/garage_key_material.dart'),
+      contains("String toString() => 'GarageKeyMaterial(•••)';"),
+    );
+    expect(
+      RegExp(
+        r'@internal\s+factory GarageKeyMaterial\(',
+      ).hasMatch(read('lib/src/domain/garage_key_material.dart')),
+      isTrue,
+      reason: 'only the package builds a GarageKeyMaterial',
+    );
+
+    final handle = publicMembers('lib/src/public/secrets.dart', 'GarageKeys');
+    expect(handle.keys.toSet(), {'create', 'import', 'read', 'delete'});
+    for (final MapEntry(key: name, value: type) in handle.entries) {
+      expect(type, startsWith('Future<Result<'), reason: 'GarageKeys.$name');
+    }
   });
 
   test('the stored mnemonic has no exit: revealMnemonic is @internal', () {
