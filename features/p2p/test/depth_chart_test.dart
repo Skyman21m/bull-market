@@ -310,21 +310,90 @@ void main() {
       expect(narrow.linesIn(narrow.window).buy, isEmpty);
     });
 
-    test('the median of each coordinator, then the median of those', () {
+    test('the median of each coordinator, then the middle vote', () {
       final temple = coordinator('temple');
       final lake = coordinator('lake');
       final bazaar = coordinator('bazaar');
+      final freeport = coordinator('freeport');
+      for (final middle in MiddleVote.values) {
+        expect(
+          DepthChart.medianOfCoordinators([
+            for (var i = 0; i < 100; i++) (temple, 1e12),
+            (lake, 1),
+            (lake, 3),
+            (bazaar, 5),
+          ], middle: middle),
+          5,
+        );
+        expect(
+          DepthChart.medianOfCoordinators([(temple, 2)], middle: middle),
+          2,
+        );
+        expect(
+          DepthChart.medianOfCoordinators(const [], middle: middle),
+          isNull,
+        );
+      }
+      // An even number of votes keeps one of the two middle votes, never their mean.
+      final even = [(temple, 999.0), (lake, 0.125)];
+      expect(
+        DepthChart.medianOfCoordinators(even, middle: MiddleVote.nearestZero),
+        0.125,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(even, middle: MiddleVote.lower),
+        0.125,
+      );
+      // Below zero, the one nearer zero is the higher; the lower is still the lower.
+      final below = [(temple, -99.0), (lake, -0.5)];
+      expect(
+        DepthChart.medianOfCoordinators(below, middle: MiddleVote.nearestZero),
+        -0.5,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(below, middle: MiddleVote.lower),
+        -99,
+      );
+      // As near zero on both sides: the lower.
       expect(
         DepthChart.medianOfCoordinators([
-          for (var i = 0; i < 100; i++) (temple, 1e12),
-          (lake, 1),
-          (lake, 3),
-          (bazaar, 5),
-        ]),
-        5,
+          (temple, 2),
+          (lake, -2),
+        ], middle: MiddleVote.nearestZero),
+        -2,
       );
-      expect(DepthChart.medianOfCoordinators([(temple, 2)]), 2);
-      expect(DepthChart.medianOfCoordinators(const []), isNull);
+      // Four votes: only the two middle ones are compared.
+      final four = [
+        (temple, -50.0),
+        (lake, 3.0),
+        (bazaar, -1.0),
+        (freeport, 40.0),
+      ];
+      expect(
+        DepthChart.medianOfCoordinators(four, middle: MiddleVote.nearestZero),
+        -1,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(four, middle: MiddleVote.lower),
+        -1,
+      );
+      final fourAbove = [
+        (temple, 50.0),
+        (lake, 3.0),
+        (bazaar, -4.0),
+        (freeport, -40.0),
+      ];
+      expect(
+        DepthChart.medianOfCoordinators(
+          fourAbove,
+          middle: MiddleVote.nearestZero,
+        ),
+        3,
+      );
+      expect(
+        DepthChart.medianOfCoordinators(fourAbove, middle: MiddleVote.lower),
+        -4,
+      );
     });
 
     // The scenario of the review: 40 sell and 40 buy orders priced in sats at the largest premium the package reads, on two coordinators, and 30 honest orders.
@@ -345,6 +414,124 @@ void main() {
       for (var id = 1; id <= 30; id++)
         caseOrder(id, id.isEven ? 1 : 0, (id - 15) / 4, 1000000),
     ];
+
+    test(
+      'one coordinator against one: one order at 999% does not empty the chart',
+      () async {
+        // The case of the second review: lake's 30 ordinary orders, and one legitimate sell order at the highest premium a maker can choose.
+        final book = [
+          ...await parseOrders(honest(), alias: 'lake'),
+          ...await parseOrders([caseOrder(1, 1, 999, 1000000)]),
+        ];
+        final chart = DepthChart.of(
+          book: book,
+          filter: const BookFilter(),
+          axis: DepthAxis.premium,
+        );
+        // The mean of the two votes would centre on 499%, between them, where nothing is drawn; the vote nearer zero is lake's.
+        expect(chart.window.center, 0);
+        final lines = chart.linesIn(chart.window);
+        expect(lines.buyOrders + lines.sellOrders, 30);
+      },
+    );
+
+    test(
+      'two flooding coordinators out of four, above or below zero, do not move the centre',
+      () async {
+        for (final premium in [999999999999.0, -99.0]) {
+          List<Map<String, Object?>> far(int type) => [
+            for (var id = 1; id <= 40; id++)
+              bookOrder(
+                id: id,
+                type: type,
+                premium: premium,
+                satoshisNow: 1000,
+                isExplicit: true,
+                satoshis: 1000,
+                price: 1,
+                makerSeed: id,
+              ),
+          ];
+          final book = [
+            ...await parseOrders(far(1)),
+            ...await parseOrders(far(0), alias: 'bazaar'),
+            ...await parseOrders(honest(), alias: 'lake'),
+            ...await parseOrders(honest(), alias: 'freeport'),
+          ];
+          final chart = DepthChart.of(
+            book: book,
+            filter: const BookFilter(),
+            axis: DepthAxis.premium,
+          );
+          expect(chart.window.center, 0, reason: '$premium');
+          final lines = chart.linesIn(chart.window);
+          expect(lines.buyOrders + lines.sellOrders, 60, reason: '$premium');
+        }
+      },
+    );
+
+    test(
+      'three flooding coordinators out of six do not move the centre',
+      () async {
+        final book = [
+          ...await parseOrders(flood(1)),
+          ...await parseOrders(flood(0), alias: 'bazaar'),
+          ...await parseOrders(flood(1), alias: 'gumpellite'),
+          ...await parseOrders(honest(), alias: 'lake'),
+          ...await parseOrders(honest(), alias: 'freeport'),
+          ...await parseOrders(honest(), alias: 'ammanaya'),
+        ];
+        final chart = DepthChart.of(
+          book: book,
+          filter: const BookFilter(),
+          axis: DepthAxis.premium,
+        );
+        expect(chart.window.center, 0);
+        final lines = chart.linesIn(chart.window);
+        expect(lines.buyOrders + lines.sellOrders, 90);
+      },
+    );
+
+    test(
+      'the price axis with two coordinators: the lower vote, for the market and the centre',
+      () async {
+        final book = [
+          ...await parseOrders([caseOrder(1, 1, 0, 1000000, price: 80000)]),
+          ...await parseOrders([
+            caseOrder(2, 1, 0, 1000000, price: 70000),
+          ], alias: 'lake'),
+        ];
+        expect(DepthChart.impliedMarketPrice(book, eur), 70000);
+        final chart = DepthChart.of(
+          book: book,
+          filter: BookFilter(currency: eur),
+          axis: DepthAxis.price,
+        );
+        // Both orders are placed at the market price of 70000: one price, so ± 8% of it.
+        expect(chart.window.center, 70000);
+        expect(chart.window.halfRange, 5600);
+      },
+    );
+
+    test(
+      'the price axis reaches the highest price drawn, not the highest received',
+      () async {
+        final book = await parseOrders([
+          caseOrder(1, 1, 0, 1000000, price: 50000),
+          caseOrder(2, 1, 25, 1000000, price: 62500),
+          // A dollar order, left out by the euro filter, is placed far above on the euro axis.
+          caseOrder(3, 1, 400, 1000000, currency: 1, price: 1),
+        ]);
+        final chart = DepthChart.of(
+          book: book,
+          filter: BookFilter(currency: eur),
+          axis: DepthAxis.price,
+        );
+        // The two euro orders: 50000 and 62500, a centre of 56250 and a half range up to 62500.
+        expect(chart.window.center, 56250);
+        expect(chart.window.halfRange, 6250);
+      },
+    );
 
     test(
       'two flooding coordinators out of five do not move the centre',

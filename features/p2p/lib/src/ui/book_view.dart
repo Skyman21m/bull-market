@@ -152,36 +152,36 @@ class _BookViewState extends State<BookView> {
   /// The least height of the depth chart: on a short screen it scrolls rather than shrinks.
   static const _chartMinHeight = 320.0;
 
-  /// The state of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still loading.
+  /// The state of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still loading and one has answered.
   ///
+  /// The state of the coordinators scrolls with the chart, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text.
   /// A coordinator that failed is shown above with « Retry », whether the others gave orders or not: a failure is not an empty book.
   Widget _chart(BuildContext context, BookState state) {
     final colors = context.bull;
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: SizedBox(
-          height: math.max(constraints.maxHeight, _chartMinHeight),
-          child: Column(
-            children: [
-              CoordinatorsStatus(state: state),
-              Expanded(
-                child: state.receivedOrders.isNotEmpty
-                    ? DepthChartView(
-                        state: state,
-                        onOpenOrder: widget.onOpenOrder,
-                      )
-                    : state.isWaitingForFirstBook ||
-                          state.loadingCoordinators.isNotEmpty
-                    ? Center(
-                        child: CircularProgressIndicator(color: colors.primary),
-                      )
-                    : EmptyBook(state: state),
+    final Widget content = state.receivedOrders.isNotEmpty
+        ? DepthChartView(state: state, onOpenOrder: widget.onOpenOrder)
+        : state.isWaitingForFirstBook || state.loadingCoordinators.isNotEmpty
+        ? Center(child: CircularProgressIndicator(color: colors.primary))
+        : state.hasAnswer
+        ? EmptyBook(state: state)
+        : const SizedBox.shrink();
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
+        SliverLayoutBuilder(
+          builder: (context, constraints) => SliverToBoxAdapter(
+            child: SizedBox(
+              height: math.max(
+                constraints.viewportMainAxisExtent -
+                    constraints.precedingScrollExtent,
+                _chartMinHeight,
               ),
-            ],
+              child: content,
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -215,6 +215,8 @@ class _BookViewState extends State<BookView> {
         ),
       ];
     }
+    // When every coordinator failed, their lines above and « Retry » say so: the book is not empty, it is unknown.
+    if (!state.hasAnswer) return const [];
     return [
       SliverFillRemaining(hasScrollBody: false, child: EmptyBook(state: state)),
     ];

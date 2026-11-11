@@ -70,6 +70,8 @@ void main() {
     Locale locale = const Locale('en'),
     bool torReady = true,
     bool showChart = true,
+    Size? screen,
+    double textScale = 1,
   }) async {
     setUpP2pForTesting(
       locator,
@@ -77,7 +79,18 @@ void main() {
       torStates: () => tor.stream,
       clock: () => testNow,
     );
-    usePhoneScreen(tester);
+    if (screen == null) {
+      usePhoneScreen(tester);
+    } else {
+      tester.view
+        ..physicalSize = screen * 2
+        ..devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+    }
+    if (textScale != 1) {
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
     final router = GoRouter(
       initialLocation: P2pFeature.path,
       routes: [
@@ -353,12 +366,12 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('Chart'));
       await settle(tester);
-      // The view is built again on « Premium »; « Price » centres on the median of temple's median price, 81,250, and lake's, 79,375.
+      // The view is built again on « Premium »; « Price » centres on the lower of temple's median price, 81,250, and lake's, 79,375: two votes, never their mean.
       await tester.tap(find.text('Premium'));
       await settle(tester);
       await tester.tap(find.text('Price'));
       await settle(tester);
-      expect(find.text('80,312 EUR'), findsOneWidget);
+      expect(find.text('79,375 EUR'), findsOneWidget);
       expect(zoomButton(tester, 'Zoom in').onPressed, isNotNull);
       semantics.dispose();
     },
@@ -524,7 +537,7 @@ void main() {
   });
 
   testWidgets(
-    'every coordinator offline: their state and « Retry » above the empty book',
+    'every coordinator offline: their state and « Retry », and no empty book',
     (tester) async {
       transport = FakeTransport(
         failures: {
@@ -535,11 +548,12 @@ void main() {
       await openChart(tester);
 
       expect(chart, findsNothing);
-      // As above the list: a failure is not an empty book.
+      // As above the list: a failure is not an empty book, and with no answer at all the lines and « Retry » are the whole message.
       expect(find.text('Temple of Sats · Coordinator offline'), findsOneWidget);
       expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
-      expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
+      expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
+      expect(find.text('Be the first one to create an order'), findsNothing);
 
       // « Retry » from the chart asks every one of them again, and the chart shows what they now give.
       transport
@@ -555,6 +569,80 @@ void main() {
       expect(chart, findsOneWidget);
     },
   );
+
+  testWidgets('every coordinator offline, in the list: no empty book either', (
+    tester,
+  ) async {
+    transport = FakeTransport(
+      failures: {
+        for (final alias in everyCoordinator)
+          alias: const CoordinatorTimedOut(),
+      },
+    );
+    await openChart(tester, showChart: false);
+    expect(find.text('Temple of Sats · Coordinator offline'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
+    expect(find.text('Be the first one to create an order'), findsNothing);
+  });
+
+  testWidgets(
+    'one coordinator answered an empty book, the others are offline: the empty book shows, in both views',
+    (tester) async {
+      transport = FakeTransport(
+        failures: {
+          for (final alias in everyCoordinator)
+            if (alias != 'temple') alias: const CoordinatorTimedOut(),
+        },
+      );
+      await openChart(tester, showChart: false);
+      expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
+      expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
+
+      await tester.tap(find.text('Chart'));
+      await settle(tester);
+      expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
+      expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
+      expect(find.text('Be the first one to create an order'), findsOneWidget);
+    },
+  );
+
+  for (final (screen, textScale) in [
+    (const Size(320, 568), 1.0),
+    (const Size(320, 568), 1.5),
+    (const Size(390, 844), 2.0),
+  ]) {
+    testWidgets(
+      'five coordinators offline on a ${screen.width.round()}x${screen.height.round()} screen at text size $textScale: the state scrolls with the chart, which keeps its height',
+      (tester) async {
+        transport = FakeTransport(
+          books: {'temple': books()['temple'] ?? []},
+          failures: {
+            for (final alias in everyCoordinator)
+              if (alias != 'temple') alias: const CoordinatorTimedOut(),
+          },
+        );
+        await openChart(tester, screen: screen, textScale: textScale);
+
+        // An overflow would have failed the test already; the five lines are there, and the chart below them, at least 320 tall, comes into view by scrolling.
+        expect(find.textContaining('Coordinator offline'), findsNWidgets(5));
+        await tester.scrollUntilVisible(
+          plot,
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(CustomScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await settle(tester);
+        expect(chart, findsOneWidget);
+        expect(tester.getSize(chart).height, greaterThanOrEqualTo(320));
+        expect(tester.getSize(plot).height, greaterThan(100));
+      },
+    );
+  }
 
   testWidgets('one coordinator offline among several: shown above the chart', (
     tester,
@@ -706,6 +794,58 @@ void main() {
     expect(find.text('0\u00a0%'), findsOneWidget);
     expect(find.textContaining('-0'), findsNothing);
   });
+
+  /// Checks that every label the chart paints, the upright legend aside, starts inside a box of [width] and leaves room for its [narrowest] width before the right edge.
+  ///
+  /// The paragraphs are disposed once painted, so only where each one starts is read; every label of these tests is at least [narrowest] wide in the test font.
+  PaintPattern labelsWithin(double width, {required double narrowest}) {
+    var upright = false;
+    return paints..everything((method, arguments) {
+      if (method == #rotate) upright = true;
+      if (method == #restore) upright = false;
+      if (method != #drawParagraph || upright) return true;
+      final offset = arguments[1] as Offset;
+      if (offset.dx < -0.5 || offset.dx + narrowest > width + 0.5) {
+        throw 'a label starts at ${offset.dx}, outside the box of $width';
+      }
+      return true;
+    });
+  }
+
+  testWidgets(
+    'the label on the right edge of the horizontal axis is painted inside the box',
+    (tester) async {
+      // Wide enough for a tick every 2%, from -8% to 8%: the label « 8% » sits on the right edge of the plot, wider than the margin after it.
+      await openChart(tester, screen: const Size(800, 600), textScale: 1.5);
+      final box = tester.getSize(plot);
+      // Two characters of the test font at 10 × 1.5.
+      expect(tester.renderObject(plot), labelsWithin(box.width, narrowest: 30));
+    },
+  );
+
+  testWidgets(
+    'labels of the vertical axis too long for their column are cut there, not over the box',
+    (tester) async {
+      // Three orders of every bitcoin there will be: labels of tens of millions, at text size 2.
+      transport = FakeTransport(
+        books: {
+          'temple': [
+            for (var id = 1; id <= 3; id++)
+              bookOrder(
+                id: id,
+                premium: id.toDouble(),
+                satoshisNow: 2100000000000000,
+                makerSeed: id,
+              ),
+          ],
+        },
+      );
+      await openChart(tester, textScale: 2);
+      final box = tester.getSize(plot);
+      // One character of the test font at 10 × 2, the label « 0 ».
+      expect(tester.renderObject(plot), labelsWithin(box.width, narrowest: 20));
+    },
+  );
 
   test('a label of the horizontal axis is moved inside the box', () {
     expect(DepthChartLayout.keepInside(20, 30, 100), 20);
