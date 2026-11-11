@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:bull_tor/tor.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
