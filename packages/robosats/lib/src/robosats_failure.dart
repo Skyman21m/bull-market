@@ -213,3 +213,77 @@ final class CoordinatorNodeIdMismatch extends CoordinatorIdentityFailure {
 final class NoUsableAccountIndex extends RobosatsFailure {
   const NoUsableAccountIndex();
 }
+
+/// The coordinator answered an authenticated request about a robot, and did not give the robot the request was made for.
+///
+/// As every [CoordinatorFailure], none carries text or key material the coordinator sent.
+sealed class CoordinatorRobotFailure extends CoordinatorFailure {
+  const CoordinatorRobotFailure();
+}
+
+/// The coordinator has no robot for this token: only a first contact, with the keys of the robot, creates one.
+///
+/// It is what a request with the short `Authorization` header gets from a coordinator that never saw the robot (error 7001).
+final class RobotUnknown extends CoordinatorRobotFailure {
+  const RobotUnknown();
+}
+
+/// The coordinator did not accept the `Authorization` header: it found no well-formed token hash in it (error 7000), did not find the three keys of a first contact (error 7001), or answered that the request is not authenticated (error 7003, or HTTP 401 or 403).
+///
+/// With headers built by this package it means a coordinator that reads them in another way, such as an older version.
+final class RobotCredentialsRejected extends CoordinatorRobotFailure {
+  const RobotCredentialsRejected();
+}
+
+/// Why a coordinator refused the OpenPGP keys of a first contact.
+enum RobotKeysRefusal {
+  /// GnuPG, or the shape check before it, did not accept one of the two keys (error 1034).
+  invalidKey,
+
+  /// Another robot of this coordinator already uses the public key (error 1055).
+  keyAlreadyUsed,
+
+  /// The key is less than 12 hours old for the clock of the coordinator (error 1056): the clock of this device is probably more than 12 hours ahead.
+  keyTooRecent,
+
+  /// The coordinator gave no reason this package knows.
+  unspecified,
+}
+
+/// The coordinator refused the OpenPGP keys of a first contact, and created no robot (error 7002).
+final class RobotKeysRefused extends CoordinatorRobotFailure {
+  final RobotKeysRefusal reason;
+
+  const RobotKeysRefused(this.reason);
+}
+
+/// The coordinator already has a user with the nickname of this robot, and created no robot (error 7004).
+///
+/// Two tokens share a nickname about once in 60 billion: take the next robot of the Garage Key.
+final class RobotNicknameTaken extends CoordinatorRobotFailure {
+  const RobotNicknameTaken();
+}
+
+/// The robot the coordinator describes is not the one computed on this device: a security warning, and a robot not to use on this coordinator.
+sealed class RobotMismatchFailure extends CoordinatorRobotFailure {
+  const RobotMismatchFailure();
+}
+
+/// The hash id the coordinator returns is not the one derived from the token.
+final class RobotHashIdMismatch extends RobotMismatchFailure {
+  const RobotHashIdMismatch();
+}
+
+/// The nickname the coordinator returns is not the one derived from the hash id, which the official client and this package use to tell who wrote a chat message.
+final class RobotNicknameMismatch extends RobotMismatchFailure {
+  const RobotNicknameMismatch();
+}
+
+/// The OpenPGP key pair the coordinator holds for this robot is not the one of this device.
+///
+/// A coordinator keeps the first key pair it received for a token and ignores every later one.
+/// So either the robot was first created there by another device or client, with its own key pair, or the coordinator is not honest.
+/// The official client silently adopts whatever key the coordinator returns; this package does not.
+final class RobotPgpKeyMismatch extends RobotMismatchFailure {
+  const RobotPgpKeyMismatch();
+}

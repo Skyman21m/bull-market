@@ -1,8 +1,9 @@
-/// Pure-Dart RoboSats client primitives: the identity of a robot, its OpenPGP key, and the read-only client of the coordinators.
+/// Pure-Dart RoboSats client primitives: the identity of a robot, its OpenPGP key, and the client of the coordinators.
 ///
 /// A [GarageKey] derives one [RobotToken] per robot index, and a [RobotIdentity] holds everything RoboSats derives from a token: the token hash sent to coordinators, the [RobotHashId] with its nickname, the Nostr key and the `Authorization` header values.
 /// A [RobotPgpKey] is the OpenPGP key pair of a robot, locked by its token: once unlocked it clear-signs invoices and payout addresses and encrypts, signs, decrypts and verifies chat messages, in the formats of the official client and of the coordinators.
 /// A [CoordinatorClient] reads what a coordinator of the embedded [Federation] publishes (`/api/info/`, `/api/book/`, `/api/limits/`) through a [CoordinatorTransport] that the app implements over Tor, and a [FederationBookReader] merges the books of every coordinator.
+/// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`) as a [CoordinatorRobot], checked against what this device computed.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 library;
@@ -12,6 +13,7 @@ export 'src/coordinator/coordinator.dart'
 export 'src/coordinator/coordinator_client.dart' show CoordinatorClient;
 export 'src/coordinator/coordinator_info.dart'
     show CoordinatorInfo, CoordinatorVersion, NoticeSeverity;
+export 'src/coordinator/coordinator_robot.dart' show CoordinatorRobot;
 export 'src/coordinator/coordinator_transport.dart'
     show
         CoordinatorHttpMethod,
@@ -42,6 +44,7 @@ export 'src/coordinator/public_order.dart' show PublicOrder;
 export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
+export 'src/coordinator/robot_session_key.dart' show RobotSessionKey;
 
 export 'src/garage_key.dart' show GarageKey, GarageRobot;
 export 'src/nostr_key_pair.dart' show NostrKeyPair;

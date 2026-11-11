@@ -14,7 +14,9 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
       CoordinatorUnexpectedStatus() ||
       CoordinatorNotJson() ||
       CoordinatorResponseMalformed() ||
-      CoordinatorIdentityFailure() => l10n.p2pBookError,
+      CoordinatorIdentityFailure() ||
+      // No book read gives a robot failure: its own texts come with the Garage screens.
+      CoordinatorRobotFailure() => l10n.p2pBookError,
     };
   }
 }

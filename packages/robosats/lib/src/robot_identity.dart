@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/base91.dart';
+import 'package:robosats/src/coordinator/robot_session_key.dart';
 import 'package:robosats/src/nostr_key_pair.dart';
 import 'package:robosats/src/pgp_wire.dart';
 import 'package:robosats/src/robosats_failure.dart';
@@ -90,6 +91,9 @@ final class RobotIdentity {
 
   /// The nickname the coordinator assigns to this robot.
   String get nickname => hashId.nickname;
+
+  /// What a transport keys the connections and Tor circuits of this robot by: see [RobotSessionKey].
+  RobotSessionKey get sessionKey => RobotSessionKey.of(hashId);
 
   /// The user id the official client gives to the PGP key of this robot (`frontend/src/pgp/index.ts:26`).
   String get pgpUserId => 'RoboSats ID ${hashId.hex}';
