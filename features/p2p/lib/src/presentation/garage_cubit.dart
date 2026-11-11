@@ -13,7 +13,7 @@ import 'garage_state.dart';
 /// The Garage of one network: the Garage Key of that network in the vault, the robot shown, and the actions of the user on them.
 ///
 /// It touches the vault only when a method is called: [load] when the user opens the Garage, the others on an explicit action of the user.
-/// It follows the rules of the vault: a key is generated or imported only in [GarageWithoutKey], so only after a read found no key; a stored key is never replaced, and « Generate new » deletes it first, after the user confirmed; after a failed write the slot is read again before anything is offered.
+/// It follows the rules of the vault: a key is generated or imported only in [GarageWithoutKey], so only after a read found no key or a delete the vault confirmed; a stored key is never replaced, and « Generate new » deletes it first, after the user confirmed; after a failed write the slot is read again before anything is offered.
 /// An action started while another is running is ignored.
 class GarageCubit extends Cubit<GarageState> {
   final ReadGarageKeyUsecase _read;

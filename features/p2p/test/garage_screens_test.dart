@@ -269,6 +269,47 @@ void main() {
       .data
       .toString();
 
+  testWidgets('with the P2P gate closed, nothing of the Garage is built', (
+    tester,
+  ) async {
+    keystoreHolding({_testnetEntry: null});
+    storage.install();
+    setUpP2pForTesting(
+      locator,
+      transport: FakeTransport(network: network.state),
+      torStates: () => tor.stream,
+      clock: () => testNow,
+      garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+    );
+    final router = GoRouter(
+      initialLocation: P2pFeature.path,
+      // The shell's redirect, for a user who is not a superuser in developer mode.
+      redirect: (context, state) => P2pFeature.redirect(
+        state.uri.path,
+        isSuperuser: false,
+        isDevModeEnabled: true,
+        gateClosedRedirectPath: '/wallet',
+      ),
+      routes: [
+        GoRoute(path: '/wallet', builder: (_, _) => const Text('wallet')),
+        const P2pFeature().route(
+          locator,
+          network: (_) => network.state,
+          reauthenticate: reauthenticate,
+        ),
+      ],
+    );
+    await tester.pumpWidget(routerHarness(router));
+    await letTheVaultSettle(tester);
+    router.go('${P2pFeature.path}/order');
+    await letTheVaultSettle(tester);
+
+    expect(find.text('wallet'), findsOneWidget);
+    expect(find.byType(GarageView), findsNothing);
+    expect(storage.reads, 0);
+    expect(privacyCalls, isEmpty);
+  });
+
   group('the Garage entry', () {
     testWidgets('is disabled, and reads nothing, without the vault handle', (
       tester,
