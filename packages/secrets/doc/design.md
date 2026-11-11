@@ -57,9 +57,21 @@ Keys are thirty-two random bytes in the existing namespace. `getOrCreate` genera
 
 The public vocabulary does not change persisted key names. Give the key to SQLCipher in raw mode using `DatabaseKey.pragma`; using the hex as a passphrase needlessly runs PBKDF2.
 
+## Garage Keys
+
+`Secrets.garageKeys()` returns the handle of the P2P feature on its RoboSats Garage Keys: `create(slot:)`, `import(slot:, bytes:)`, `read(slot:)` and `delete(slot:)`, one key per `GarageKeySlot`. The shell asks for it and passes it to that feature alone, as it would a `DatabaseKeys` handle. A Garage Key is the master secret of the user's RoboSats robots: whoever holds it can act as any of them, which reaches the escrow and the bond of a trade in progress, though not the wallet.
+
+It is **not a wallet secret and never touches one**. Thirty-two random bytes drawn by the package (`Random.secure`), never derived from a seed, so that the robots cannot be linked to the wallet and a leaked seed does not reveal them; stored in the module-key namespace, in the versioned envelope of database keys, under `com.bullbitcoin.secrets/garage/p2p/mainnet` or `…/testnet`, with the kind `garage`; read by `GarageKeyRepository`, which imports nothing from `crypto/` and reads no `seed_` entry. It is not part of a RecoverBull vault: `backup.recoverbull` seals the words of one secret and the caller's metadata, nothing else, and a restore writes one `seed_` entry. The twelve words do not bring it back either. The user keeps a copy of the key separately, as RoboSats asks, and restores it with `import`. Deleting a wallet does not touch it, and deleting it does not touch the wallet.
+
+**A stored Garage Key is never replaced.** Replacing one loses every robot derived from it, so `create` and `import` write only into an empty slot, through the one write-if-absent operation of the datasource (`storeModuleKeyIfAbsent`): under the lock, the slot is read with the full `settled` budget, and any entry found — a key, an empty value, a value that does not parse, a key of another kind — is `GarageKeyAlreadyExistsFailure`, with nothing written. Only a settled clean miss writes, and the new key's bytes are drawn there, under the lock, so two calls give one key and the second is refused. That budget holds the lock for ~4.5 s of pauses plus the time of the five reads themselves, longer when the platform's reads are slow, on every create or import that finds the slot empty: the first for a slot, and again after each `delete` of it. The other composed writes keep `underLock` (§ Absence), and wait behind it. A read that keeps failing, or a locked keystore, writes nothing either.
+
+`read` never creates: a settled miss is `SecretNotFoundFailure`, and an entry that is present but unusable is `GarageKeyCorruptFailure`, left exactly as it is. `delete` removes the entry whatever it holds, which is the remedy for a corrupt key once the user has a copy to import. The feature offers to create or import a key only after `read` returned `SecretNotFoundFailure`: after a read failure or a locked keystore, the key may well be there.
+
+`GarageKeyMaterial` holds its own copy of the 32 bytes and hands them out only through `bytes`, an unmodifiable view: no hex, no equality, a `toString` that prints `GarageKeyMaterial(•••)`, and a constructor the package alone may call. `import` copies the caller's bytes before anything awaits and refuses another length with an `ArgumentError`. The slot names on disk belong to the repository, not to the enum, so renaming an enum value moves no stored key.
+
 ## The exits
 
-The README's operation table is the full inventory — every output, whether it can spend, and what it reveals. Three derivation operations return key material, and none returns the stored mnemonic. Backup keys and database keys are separate outputs in the same inventory:
+The README's operation table is the full inventory — every output, whether it can spend, and what it reveals. Three derivation operations return key material, and none returns the stored mnemonic. Backup keys, database keys and Garage Keys are separate outputs in the same inventory; a Garage Key is random material the package keeps, not something derived from a secret (§ Garage Keys):
 
 | | |
 |---|---|
@@ -139,7 +151,7 @@ lib/src/
     derivers/derivers.dart one deriver per library  fingerprint, bitcoin, liquid, bip85, boltz — a static namespace
     signers/signers.dart  one signer per chain   bitcoin_signer, liquid_signer, and pset_sighash (the Liquid sighash guard)
     backups/backups.dart  one backup per format  recoverbull — a static namespace
-  data/data.dart          where it is kept       the keystore, the two repositories, the one try/catch (boundary.dart)
+  data/data.dart          where it is kept       the keystore, the three repositories, the one try/catch (boundary.dart)
   domain/domain.dart      what it speaks in      value types, failures
   widgets/widgets.dart    what the user sees     MnemonicView, MnemonicChallenge, SecretWidgets (`secret.widgets`); PaintedWord, PaintedPassphrase and PaintedMnemonic stay unexported
   testing/testing.dart    the test seam          the in-memory keystore, behind lib/testing.dart — test code only
@@ -200,7 +212,8 @@ The boundary has structural checks in `test/invariants_test.dart` and `test/inte
 
 | property | what the test checks |
 |---|---|
-| every failure is built in the data layer | no `SecretFailure` is constructed outside `src/data/boundary.dart`, `src/data/secret_repository.dart` and `src/data/database_key_repository.dart`; `public/` catches nothing |
+| every failure is built in the data layer | no `SecretFailure` is constructed outside `src/data/boundary.dart`, `src/data/secret_repository.dart`, `src/data/database_key_repository.dart` and `src/data/garage_key_repository.dart`; `public/` catches nothing |
+| a Garage Key never reaches a seed | `src/data/garage_key_repository.dart` imports nothing from `crypto/` and names no seed operation; `GarageKeyMaterial` exposes `bytes` alone, `GarageKeys` its four operations |
 | the grouped API adds nothing | `src/public/extensions.dart` contains no `await`, no collaborator, no statement body |
 | material leaves at four named methods | the set of `Secret` methods returning material is exactly `{revealMnemonic, bip85Hex, bip85Mnemonic, swapKey}` — and `revealMnemonic` is `@internal` |
 | the public surface is a literal list | the export graph is walked and compared name for name |
@@ -211,14 +224,14 @@ The boundary has structural checks in `test/invariants_test.dart` and `test/inte
 | no exported signature hands out an unexported type | no exported, non-`@internal` member mentions one in its parameters or return type |
 
 The on-disk format never moving is pinned byte for byte by
-`test/secret_model_golden_test.dart`. The CI-only `make custody-ci-check` refuses any `// ignore:` of
+`test/secret_model_golden_test.dart`, and the Garage Key envelope by `test/garage_key_envelope_golden_test.dart`. The CI-only `make custody-ci-check` refuses any `// ignore:` of
 `invalid_use_of_internal_member` in the workspace — `cannot-ignore` does not
 hold that diagnostic on Dart 3.12.2 — and any import of `flutter_secure_storage`
 or `package:secrets/src/` outside the package, the app's own secure store
 excepted. The `PR custody review` workflow comments on a pull request that
 adds one, asking the contributor why.
 
-Local `make custody-check`, included in `make checks`, requires only Dart. It resolves production Dart symbols to reject known private-key derivation and vault-opening operations outside `secrets`. Its named exceptions cover pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter. Public-key operations, mnemonic validation and formatting of an exported BIP85 child remain valid. The gate also rejects imports or exports of `secrets/testing.dart` and references to its test-support declarations throughout application and workspace production code, including aliases and re-exports. Unresolved production code fails the gate. This is an operation policy, not complete data-flow analysis or proof that arbitrary strings cannot carry secrets. Pre-import scanning still belongs to a future sync extraction; RecoverBull restoration and inspection are migrated.
+Local `make custody-check`, included in `make checks`, requires only Dart. It resolves production Dart symbols to reject known private-key derivation and vault-opening operations outside `secrets`. Its named exceptions cover pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter. Public-key operations, mnemonic validation and formatting of an exported BIP85 child remain valid. The gate also rejects imports or exports of `secrets/testing.dart` and references to its test-support declarations throughout application and workspace production code, including aliases and re-exports. It refuses the reading of a Garage Key — `GarageKeyMaterial.bytes`, and `GarageKey.revealBytes` and `revealBech32` of `package:robosats` — everywhere but one class of each of two named files of the P2P feature, the repository and the display widget, which do not exist yet, and `Secrets.garageKeys` everywhere but the class `AppLocator` of `lib/locator.dart`, the composition root; object patterns are checked like any other access. Unresolved production code fails the gate. This is an operation policy, not complete data-flow analysis or proof that arbitrary strings cannot carry secrets. Pre-import scanning still belongs to a future sync extraction; RecoverBull restoration and inspection are migrated.
 
 So an audit is: run the suite, then read four files —
 `src/public/secret.dart` for what the package does, `src/data/boundary.dart`
@@ -319,7 +332,7 @@ the answer is "absent":
 
 | budget | where | reads | worst case | why |
 |---|---|---|---|---|
-| `settled` | `fetch`, `DatabaseKeys.get` | 5, 300 ms doubling | ~4.5 s | outside the lock; absence is exceptional, so only a genuine miss pays |
+| `settled` | `fetch`, `DatabaseKeys.get`, `GarageKeys.read`; under the lock, the empty-slot check of `GarageKeys.create` and `import` | 5, 300 ms doubling | ~4.5 s | outside the lock, absence is exceptional, so only a genuine miss pays; under the lock, an overwrite would lose every robot of a Garage Key, so the lock is held that long, plus the reads, by every create or import into an empty slot, again after each delete (§ Garage Keys) |
 | `underLock` | `import`/`generate`/`recoverbull.restore`, the first `DatabaseKeys.getOrCreate` | 2, 300 ms apart | 300 ms | inside a composed write, where absence is the normal outcome of a first store; the full budget would add ~4.5 s to every new secret and hold every other composed operation behind it |
 
 Two reads stay outside it on purpose. `exists` is one read: a false "no"
@@ -393,7 +406,7 @@ convention; do not harmonise them.
 
 **One lock, for the composed sequences.** A `static` lock guards the
 package's read-modify-writes — `storeSecret`, `trashSecret`,
-`fetchOrCreateModuleKey`, `deleteModuleKey` — and nothing else.
+`fetchOrCreateModuleKey`, `deleteModuleKey`, `storeModuleKeyIfAbsent` — and nothing else.
 Unserialised, two first asks for the same module key each read a miss,
 each generate, and the second write wins: the first caller holds a key
 that opens nothing, and a database nobody can read again. Only holding

@@ -31,7 +31,10 @@ import 'package:meta/meta.dart';
 /// An enum so that the set of kinds is closed and a typo is a compile error, with the wire name kept apart so that adding a kind never renames one already on disk.
 enum KeyKind {
   /// A database encryption key handed to another module.
-  dek('dek');
+  dek('dek'),
+
+  /// A RoboSats Garage Key kept for the P2P feature: 32 random bytes, never derived from a seed.
+  garage('garage');
 
   const KeyKind(this.wire);
 

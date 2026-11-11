@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:bull_logger/bull_logger.dart';
 import 'package:meta/meta.dart';
@@ -28,6 +29,7 @@ import 'package:secrets/src/public/secret.dart';
 /// they read the keystore and project metadata, deriving nothing.
 final class Secrets {
   final _repository = SecretRepository();
+  final _garageKeyRepository = GarageKeyRepository();
   final DatabaseKeyRepository _databaseKeys;
   final Future<String> Function() _scratchDirectory;
 
@@ -181,6 +183,13 @@ final class Secrets {
     return DatabaseKeys._(_databaseKeys, module);
   }
 
+  // ------------------------------------------------------------- garage keys
+
+  /// The RoboSats Garage Keys kept for the P2P feature, one per network. Pass this handle to that feature alone, never the entire [Secrets] service.
+  ///
+  /// A Garage Key is 32 random bytes, never derived from a wallet seed, never stored with one, and never part of a wallet backup: the user keeps a copy of it separately. Its bytes control every RoboSats robot derived from it.
+  GarageKeys garageKeys() => GarageKeys._(_garageKeyRepository);
+
   Secret _handle(SecretInfo info) => Secret(
     info,
     repository: _repository,
@@ -244,6 +253,45 @@ final class DatabaseKeys {
     _requireKeySegment(name, 'name');
     return _repository.reset(module: _module, name: name);
   }
+}
+
+/// The RoboSats Garage Keys of the P2P feature, one per [GarageKeySlot].
+///
+/// A stored key is never replaced: [create] and [import] need an empty slot, and a key that is present but unusable is refused and kept until [delete]. Offer to create or import a key only after [read] returned [SecretNotFoundFailure], never after a read failure or a locked keystore.
+final class GarageKeys {
+  final GarageKeyRepository _repository;
+
+  GarageKeys._(this._repository);
+
+  /// Draws 32 bytes from the platform's secure generator and stores them in an empty [slot].
+  /// A present entry, even unreadable, returns [GarageKeyAlreadyExistsFailure] and nothing is written.
+  @useResult
+  Future<Result<GarageKeyMaterial, SecretFailure>> create({
+    required GarageKeySlot slot,
+  }) => _repository.create(slot: slot);
+
+  /// Stores a key the user restores, already parsed by the caller, in an empty [slot].
+  /// The bytes are copied at once; any length other than 32 bytes is an [ArgumentError]. A present entry returns [GarageKeyAlreadyExistsFailure] and nothing is written.
+  @useResult
+  Future<Result<GarageKeyMaterial, SecretFailure>> import({
+    required GarageKeySlot slot,
+    required Uint8List bytes,
+  }) async {
+    final material = GarageKeyMaterial(bytes);
+    return _repository.import(slot: slot, material: material);
+  }
+
+  /// Reads the key in [slot] and never creates one. Absence, concluded after the full retry budget, is [SecretNotFoundFailure].
+  /// A present but unusable entry is [GarageKeyCorruptFailure] and is left as it is.
+  @useResult
+  Future<Result<GarageKeyMaterial, SecretFailure>> read({
+    required GarageKeySlot slot,
+  }) => _repository.read(slot: slot);
+
+  /// Deletes the entry in [slot], whatever it holds. Destructive: without the user's own copy of the key, its robots are lost.
+  @useResult
+  Future<Result<void, SecretFailure>> delete({required GarageKeySlot slot}) =>
+      _repository.delete(slot: slot);
 }
 
 void _requireKeySegment(String segment, String label) {

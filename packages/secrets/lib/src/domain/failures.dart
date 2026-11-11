@@ -93,6 +93,20 @@ final class UseSecretFailure extends SecretFailure {
   const UseSecretFailure([super.logMessage]);
 }
 
+/// A Garage Key is already stored in that slot, readable or not, and nothing was written.
+///
+/// Writing over it would lose every robot derived from the stored key, so creating or importing a key needs an empty slot. Read the slot to know what is there.
+final class GarageKeyAlreadyExistsFailure extends SecretFailure {
+  const GarageKeyAlreadyExistsFailure([super.logMessage]);
+}
+
+/// The Garage Key stored in that slot is present but unusable, and was deliberately **not** replaced.
+///
+/// No retry helps and no regeneration is safe: a new key would not give back the robots of the old one. The remedy is the user's backup of the key: delete the slot, then import the backup.
+final class GarageKeyCorruptFailure extends SecretFailure {
+  const GarageKeyCorruptFailure([super.logMessage]);
+}
+
 /// What an unrecognised exception is allowed to say.
 ///
 /// Libraries this package calls put their input in their error messages.

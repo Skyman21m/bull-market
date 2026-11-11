@@ -1,6 +1,6 @@
 # secrets
 
-User secret material — BIP39 mnemonics and raw seeds — behind a custody boundary. `Secrets` manages creation, storage and recovery. A `Secret` is a handle for operations on one stored secret; neither object holds mnemonic words or a seed.
+User secret material — BIP39 mnemonics and raw seeds — behind a custody boundary. `Secrets` manages creation, storage and recovery. A `Secret` is a handle for operations on one stored secret; neither object holds mnemonic words or a seed. The package also keeps the RoboSats Garage Keys of the P2P feature, random keys stored apart from the seeds and never part of a wallet backup.
 
 ## Public API
 
@@ -22,10 +22,15 @@ Secrets
 |-- recoverbull
 |   |-- restore(vault:, key:, [passphrase:]) -> RestoredVault
 |   `-- fingerprint(vault:, key:) -> Fingerprint
-`-- databaseKeys(module:)
-    |-- getOrCreate(name:) -> DatabaseKey
-    |-- get(name:) -> DatabaseKey
-    `-- reset(name:) -> void
+|-- databaseKeys(module:)
+|   |-- getOrCreate(name:) -> DatabaseKey
+|   |-- get(name:) -> DatabaseKey
+|   `-- reset(name:) -> void
+`-- garageKeys()
+    |-- create(slot:) -> GarageKeyMaterial
+    |-- import(slot:, bytes:) -> GarageKeyMaterial
+    |-- read(slot:) -> GarageKeyMaterial
+    `-- delete(slot:) -> void
 ```
 
 ```text
@@ -122,9 +127,10 @@ Keep `secret.id`, a `primitives.Fingerprint`, to fetch a new handle later. Impor
 | `backup.recoverbull` | encrypted vault and its separate key | together recover the words; store them apart |
 | `silentPayments.account` | a live bwk Silent Payments account that scans and signs | ⚠️ bwk receives the stored words and holds them while the account lives; the app gets the account only |
 | `databaseKeys(module:).getOrCreate` | module database key | opens the encrypted database |
+| `garageKeys().read`, `garageKeys().create`, `garageKeys().import` | `GarageKeyMaterial`, the 32 bytes of a RoboSats Garage Key | controls every RoboSats robot derived from it, so the escrow and bond of its trades; no authority over the wallet |
 | `widgets.mnemonicView`, `widgets.mnemonicChallenge` | sealed widgets and events | words rendered on the protected screen |
 
-The stored words, passphrase, seed and master xprv have no public getter. The grouped interface is the only public spelling. Flat implementation methods and widget constructors are internal; applications cannot call them without an analyzer diagnostic. The three derivation operations returning key material are BIP85 hex, BIP85 mnemonic and the swap master key. `silentPayments.account` returns no material to the app, but it is the one operation that hands the stored words to a library: bwk-dart opens an account from a mnemonic only. Backup keys and database keys are listed separately above.
+The stored words, passphrase, seed and master xprv have no public getter. The grouped interface is the only public spelling. Flat implementation methods and widget constructors are internal; applications cannot call them without an analyzer diagnostic. The three derivation operations returning key material are BIP85 hex, BIP85 mnemonic and the swap master key. `silentPayments.account` returns no material to the app, but it is the one operation that hands the stored words to a library: bwk-dart opens an account from a mnemonic only. Backup keys, database keys and Garage Keys are listed separately above.
 
 ## Derivation, signing and verification
 
@@ -146,6 +152,15 @@ Historical seed-only entries support xpub, Bitcoin descriptor and BIP85 derivati
 
 `secrets.databaseKeys(module:)` scopes `getOrCreate(name:)`, `get(name:)` and `reset(name:)` to one module. Inject that handle instead of all of `Secrets`. Creation is serialized within the isolate and occurs only on a clean miss; corrupt entries are never replaced automatically. `get` never creates, and `reset` deletes without regeneration. The module owner must also discard the database encrypted by a reset key.
 
+`secrets.garageKeys()` is the P2P feature's handle on its RoboSats Garage Keys, one per `GarageKeySlot` (`mainnet`, `testnet`); the shell passes it to that feature alone. A Garage Key is 32 random bytes drawn by the package, never derived from a seed, never stored with one and never part of a RecoverBull vault: the user keeps a copy of it separately. `create(slot:)` draws a key and `import(slot:, bytes:)` stores one the user restores, both only into an empty slot: any entry already there, readable or not, returns `GarageKeyAlreadyExistsFailure` and nothing is written, since a replaced key loses every robot derived from it. The empty slot is settled with the full read budget, under the lock, so two calls give one key. `read(slot:)` never creates: absence is `SecretNotFoundFailure` after the full budget, and an unusable entry is `GarageKeyCorruptFailure`, kept as it is. `delete(slot:)` removes the entry whatever it holds, the only way out of a corrupt key. Offer to create or import only after `read` returned `SecretNotFoundFailure`, never after a read failure or a locked keystore. `GarageKeyMaterial` prints as `GarageKeyMaterial(•••)` and hands its bytes out only through `bytes`, an unmodifiable view that the custody gate lets the P2P feature read in named files only.
+
+Rules for the P2P feature, which owns the screens:
+
+- Ask for the handle in the foreground composition only. `lib/locator.dart` also composes the WorkManager isolate, whose lock does not serialise with the foreground's.
+- Never call `create` or `import` on your own, at startup or in the background; only on a user action. An empty slot holds the package's lock for ~4.5 s plus the reads, and every wallet write (generate, import, restore, trash, database keys) waits behind it.
+- An entry the keystore cannot decrypt reads as `FetchSecretFailure`, and `create` or `import` over it fail with `StoreSecretFailure` without writing. If that persists, the only way out is `delete`: offer it, with the warning that the key and its robots are lost unless the user has a copy.
+- On Android the plugin writes with `SharedPreferences.Editor.apply()` (flutter_secure_storage 10.3.3), which reaches the disk asynchronously, so a key can be lost if the app dies right after `create`. Show the new key for backup in the same flow, right after `create`.
+
 ## Sealed widgets and failures
 
 The host styles the sealed word widgets with `wordBuilder` or `tileBuilder` and arranges them with `layoutBuilder`. `failureBuilder(context, failure, retry)` renders an error and can offer a new read after the keystore unlocks. The challenge reports `onSolved`, `onMistake` and `onProgress`; completing the selection is distinct from successful verification. A keystore failure is never reported as a wrong answer. The host supplies localized messages and owns authentication and capture protection around the screen.
@@ -156,9 +171,9 @@ Every asynchronous operation returns `Result<T, SecretFailure>`. Handle failure 
 
 ## Boundary checks and remaining migration
 
-`make custody-ci-check` checks keystore access and the internal seal in CI. Local `make custody-check` resolves production Dart symbols to reject private-key derivation and vault decryption outside this package. Node-based custody and PR governance checks run only in CI; local `make checks` requires Dart/Flutter only. Pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter have explicit named exceptions. BIP85 child formatting and public-key operations remain allowed. This detects forbidden library operations; it is not a complete information-flow proof.
+`make custody-ci-check` checks keystore access and the internal seal in CI. Local `make custody-check` resolves production Dart symbols to reject private-key derivation and vault decryption outside this package, the reading of a Garage Key (`GarageKeyMaterial.bytes`, `GarageKey.revealBytes`, `GarageKey.revealBech32`) outside two named files of the P2P feature, and `Secrets.garageKeys` outside the composition root, `AppLocator` in `lib/locator.dart`. Node-based custody and PR governance checks run only in CI; local `make checks` requires Dart/Flutter only. Pre-import scanning, swap-scoped credentials and the public-only xpub decoding adapter have explicit named exceptions. BIP85 child formatting and public-key operations remain allowed. This detects forbidden library operations; it is not a complete information-flow proof.
 
-RecoverBull creation, restoration and backup inspection use the package. Decrypted vaults and their mnemonic no longer reach app presentation state. Pre-import scanning remains in the wallet code until the sync extraction; it is outside the stored-secret lifecycle. The app still receives the documented BIP85 children, swap credential, recovery key and database keys.
+RecoverBull creation, restoration and backup inspection use the package. Decrypted vaults and their mnemonic no longer reach app presentation state. Pre-import scanning remains in the wallet code until the sync extraction; it is outside the stored-secret lifecycle. The app still receives the documented BIP85 children, swap credential, recovery key and database keys, and the P2P feature its Garage Keys.
 
 ## Read next
 

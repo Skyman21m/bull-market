@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:secrets/secrets.dart';
 import 'package:secrets/testing.dart';
 
-/// The app and the `secrets` package share one OS keystore. This is the fence: the app's own store refuses every key the package owns, so a preference read can never come back holding seed or database-key material.
+/// The app and the `secrets` package share one OS keystore. This is the fence: the app's own store refuses every key the package owns, so a preference read can never come back holding seed or database-key material, nor a Garage Key.
 void main() {
   late SecureStorageDatasourceImpl store;
 
@@ -16,6 +16,8 @@ void main() {
   for (final key in [
     'seed_73c5da0a',
     'com.bullbitcoin.secrets/dek/swaps/main',
+    'com.bullbitcoin.secrets/garage/p2p/mainnet',
+    'com.bullbitcoin.secrets/garage/p2p/testnet',
   ]) {
     test('$key is refused on every operation', () {
       // Synchronously, before any keystore call: the key never reaches the
@@ -32,13 +34,14 @@ void main() {
       entries: {
         'seed_73c5da0a': 'a seed',
         'com.bullbitcoin.secrets/dek/swaps/main': 'a database key',
+        'com.bullbitcoin.secrets/garage/p2p/mainnet': 'a Garage Key',
         'settings_environment': 'mainnet',
       },
     )..install();
     store = SecureStorageDatasourceImpl(const FlutterSecureStorage());
 
     expect(await store.getAll(), {'settings_environment': 'mainnet'});
-    expect(storage.entries, hasLength(3), reason: 'hidden, not deleted');
+    expect(storage.entries, hasLength(4), reason: 'hidden, not deleted');
   });
 
   test('the refusal is written against the package own prefixes', () {

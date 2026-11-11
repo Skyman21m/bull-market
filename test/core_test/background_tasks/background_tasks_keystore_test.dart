@@ -39,6 +39,8 @@ void main() {
         '.trash(',
         '.import(',
         '.generate(',
+        // The Garage Key handle creates and imports keys: its lock does not reach the foreground isolate.
+        'garageKeys',
       ]) {
         expect(source, isNot(contains(mutating)), reason: mutating);
       }

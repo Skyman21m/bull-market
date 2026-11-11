@@ -1,6 +1,6 @@
 /// Stored mnemonics and raw seeds behind a custody boundary.
 ///
-/// [Secrets] manages creation, import, lookup, listing, deletion, RecoverBull restoration and scoped database keys. It returns [Secret] handles containing only metadata; [SecretEntry] also represents unreadable entries when listing.
+/// [Secrets] manages creation, import, lookup, listing, deletion, RecoverBull restoration and scoped database keys. It returns [Secret] handles containing only metadata; [SecretEntry] also represents unreadable entries when listing. It also keeps the RoboSats Garage Keys of the P2P feature, which are random and never part of a wallet backup.
 ///
 /// Operations use the grouped API: `secret.derive`, `secret.sign`, `secret.backup`, `secret.verify`, `secret.silentPayments` and `secret.widgets`. Implementations are internal; no public operation returns the stored words or seed. BIP85 children and the swap master key are the documented derived-material outputs. ⚠️ `secret.silentPayments.account` hands the stored words to bwk, which holds them while the account lives; the app never sees them.
 ///
@@ -21,6 +21,6 @@ export 'src/public/extensions.dart'
         SecretVerification;
 export 'src/public/secret.dart' show Secret, SecretEntry, UnreadableSecret;
 export 'src/public/secrets.dart'
-    show DatabaseKeys, Recoverbull, RestoredVault, Secrets;
+    show DatabaseKeys, GarageKeys, Recoverbull, RestoredVault, Secrets;
 export 'src/public/types.dart';
 export 'src/public/widgets.dart';
