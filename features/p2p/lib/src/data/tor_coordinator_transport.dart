@@ -46,7 +46,8 @@ const maxRobotSessions = 32;
 /// - the body is read as a stream and the request is cancelled as soon as it exceeds [CoordinatorRequest.maxResponseBytes], or at once when the announced `Content-Length` does;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
-/// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened.
+/// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened;
+/// - a request with an `Authorization` header and no [CoordinatorRequest.robot] fails the same way: a credential never travels on an anonymous session.
 ///
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
 /// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
@@ -179,6 +180,13 @@ final class TorCoordinatorTransport
         url.host.isEmpty ||
         url.userInfo.isNotEmpty ||
         !_acceptsHost(url.host)) {
+      return const Err(CoordinatorTransportFailed());
+    }
+    // A credential on an anonymous session would tie that session, and the reads of the book, to a robot.
+    if (request.robot == null &&
+        request.headers.keys.any(
+          (name) => name.toLowerCase() == HttpHeaders.authorizationHeader,
+        )) {
       return const Err(CoordinatorTransportFailed());
     }
     final key = (origin: url.origin, robot: request.robot);

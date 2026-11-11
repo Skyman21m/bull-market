@@ -989,6 +989,31 @@ void main() {
       },
     );
 
+    test(
+      'are required for a credential: none travels on an anonymous session',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        final tor = transport();
+
+        for (final name in [
+          'Authorization',
+          'authorization',
+          'AUTHORIZATION',
+        ]) {
+          final result = await tor.send(
+            _get(
+              server.url('/api/robot/'),
+              headers: {'Accept': 'application/json', name: 'Token abc'},
+            ),
+          );
+
+          expect(result, _failsWith<CoordinatorTransportFailed>());
+        }
+        expect(sessions.opened, isEmpty);
+        expect(server.received, isEmpty);
+      },
+    );
+
     test('give a robot one session per coordinator', () async {
       final first = await serve({'/api/robot/': _json('{}')});
       final second = await serve({'/api/robot/': _json('{}')});
