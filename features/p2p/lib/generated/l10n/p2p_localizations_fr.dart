@@ -742,4 +742,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pGarageRobotUnavailable =>
       'Aucun robot ne peut être créé à partir de cette clé de garage.';
+
+  @override
+  String get p2pCommonPaste => 'Coller';
+
+  @override
+  String get p2pCommonClear => 'Effacer';
 }

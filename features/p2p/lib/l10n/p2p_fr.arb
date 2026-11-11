@@ -204,5 +204,7 @@
   "p2pGarageKeyNotSaved": "La clé de garage n’a pas pu être enregistrée. Réessayez.",
   "p2pGarageKeyNotDeleted": "La clé de garage n’a pas pu être supprimée. Réessayez.",
   "p2pGarageKeyAlreadyStored": "Une clé de garage est déjà enregistrée pour ce réseau.",
-  "p2pGarageRobotUnavailable": "Aucun robot ne peut être créé à partir de cette clé de garage."
+  "p2pGarageRobotUnavailable": "Aucun robot ne peut être créé à partir de cette clé de garage.",
+  "p2pCommonPaste": "Coller",
+  "p2pCommonClear": "Effacer"
 }

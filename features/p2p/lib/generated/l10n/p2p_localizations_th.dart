@@ -730,4 +730,10 @@ class P2pLocalizationsTh extends P2pLocalizations {
   @override
   String get p2pGarageRobotUnavailable =>
       'No robot can be made from this Garage Key.';
+
+  @override
+  String get p2pCommonPaste => 'Paste';
+
+  @override
+  String get p2pCommonClear => 'Clear';
 }

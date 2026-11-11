@@ -1379,6 +1379,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'No robot can be made from this Garage Key.'**
   String get p2pGarageRobotUnavailable;
+
+  /// Button next to the Garage Key field: reads the clipboard once and puts its text in the field. It replaces the field's long-press menu, which Troc removes so that a key is never copied, shared or translated from it. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get p2pCommonPaste;
+
+  /// Button next to the Garage Key field: empties it. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get p2pCommonClear;
 }
 
 class _P2pLocalizationsDelegate

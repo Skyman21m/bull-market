@@ -977,5 +977,13 @@
   "p2pGarageRobotUnavailable": "No robot can be made from this Garage Key.",
   "@p2pGarageRobotUnavailable": {
     "description": "No usable robot index was found from this key, which does not happen with a key drawn at random. Not in the phase-1 catalogue."
+  },
+  "p2pCommonPaste": "Paste",
+  "p2pCommonClear": "Clear",
+  "@p2pCommonPaste": {
+    "description": "Button next to the Garage Key field: reads the clipboard once and puts its text in the field. It replaces the field's long-press menu, which Troc removes so that a key is never copied, shared or translated from it. Not in the phase-1 catalogue."
+  },
+  "@p2pCommonClear": {
+    "description": "Button next to the Garage Key field: empties it. Not in the phase-1 catalogue."
   }
 }

@@ -8,8 +8,10 @@ import '../../presentation/p2p_failure_l10n.dart';
 
 /// The field where the user pastes or types a Garage Key, as the official client's (`GarageKeyInput.tsx` at commit ff1998c): whitespace removed and lower case as it is typed, and the validator's error under it, or [helper].
 ///
-/// The keyboard is told not to learn, suggest or correct it, as for a password.
-/// The text stays in [controller], which the screen that owns it disposes with it; it is never put in a state, a failure or a log, and it is kept out of the semantics tree, which hears [label] only, as the wallet keeps its recovery phrase out of it.
+/// The text cannot be selected and the field has no text menu, as the wallet's recovery phrase fields: no Copy or Cut, which would put the key on the clipboard without the clearing of `GarageKeyClipboard`, and no Share or text actions (Android's « Translate » and the like), which would hand it to another app.
+/// So a « Paste » button reads the clipboard once, when the user taps it, and puts its text in the field through the same cleaning and checks; « Clear » empties the field.
+/// The key can also be typed, from a copy on paper: the keyboard is told not to learn, suggest, correct or autofill it, as for a password, but it still sees what is typed, where the wallet keeps its recovery phrase off the system keyboard; pasting avoids that.
+/// The text stays in [controller], which the screen that owns it disposes with it; it is never put in a state, a failure or a log, and it is kept out of the semantics tree, which hears [label], the error and the two buttons, not the text, as the wallet keeps its recovery phrase out of it.
 class GarageKeyField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -42,54 +44,102 @@ class GarageKeyField extends StatelessWidget {
       valueListenable: controller,
       builder: (context, value, _) {
         final error = garageKeyTextError(value.text, l10n);
-        return Semantics(
-          label: label,
-          hint: error ?? helper,
-          textField: true,
-          excludeSemantics: true,
-          child: TextField(
-            controller: controller,
-            enabled: enabled,
-            keyboardType: TextInputType.visiblePassword,
-            autocorrect: false,
-            enableSuggestions: false,
-            enableIMEPersonalizedLearning: false,
-            smartDashesType: SmartDashesType.disabled,
-            smartQuotesType: SmartQuotesType.disabled,
-            textCapitalization: TextCapitalization.none,
-            autofillHints: null,
-            inputFormatters: [
-              LengthLimitingTextInputFormatter(maxLength),
-              const _GarageKeyFormatter(),
-            ],
-            onSubmitted: onSubmitted,
-            style: text.bodyMedium?.copyWith(
-              color: colors.text,
-              // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
-              fontFamily: 'monospace',
-            ),
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: text.bodyMedium?.copyWith(
-                color: error == null ? colors.textMuted : colors.error,
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Semantics(
+                label: label,
+                hint: error ?? helper,
+                textField: true,
+                excludeSemantics: true,
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  // No selection and no text menu: nothing of the key is copied, cut, shared or sent to another app from here.
+                  enableInteractiveSelection: false,
+                  contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                  keyboardType: TextInputType.visiblePassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  smartDashesType: SmartDashesType.disabled,
+                  smartQuotesType: SmartQuotesType.disabled,
+                  textCapitalization: TextCapitalization.none,
+                  // `null`, not the default empty list: the field takes no part in autofill.
+                  autofillHints: null,
+                  inputFormatters: [
+                    LengthLimitingTextInputFormatter(maxLength),
+                    const _GarageKeyFormatter(),
+                  ],
+                  onSubmitted: onSubmitted,
+                  style: text.bodyMedium?.copyWith(
+                    color: colors.text,
+                    // No monospace token in the theme yet: the family is the platform's own, as on the Silent Payments settings.
+                    fontFamily: 'monospace',
+                  ),
+                  decoration: InputDecoration(
+                    labelText: label,
+                    labelStyle: text.bodyMedium?.copyWith(
+                      color: error == null ? colors.textMuted : colors.error,
+                    ),
+                    helperText: error == null ? helper : null,
+                    helperMaxLines: 2,
+                    helperStyle: text.labelMedium?.copyWith(
+                      color: colors.textMuted,
+                    ),
+                    errorText: error,
+                    errorMaxLines: 2,
+                    errorStyle: text.labelMedium?.copyWith(color: colors.error),
+                    filled: true,
+                    fillColor: colors.surface,
+                    enabledBorder: border(colors.outline),
+                    focusedBorder: border(colors.primary),
+                    errorBorder: border(colors.error),
+                    focusedErrorBorder: border(colors.error),
+                    disabledBorder: border(colors.outlineVariant),
+                  ),
+                ),
               ),
-              helperText: error == null ? helper : null,
-              helperMaxLines: 2,
-              helperStyle: text.labelMedium?.copyWith(color: colors.textMuted),
-              errorText: error,
-              errorMaxLines: 2,
-              errorStyle: text.labelMedium?.copyWith(color: colors.error),
-              filled: true,
-              fillColor: colors.surface,
-              enabledBorder: border(colors.outline),
-              focusedBorder: border(colors.primary),
-              errorBorder: border(colors.error),
-              focusedErrorBorder: border(colors.error),
-              disabledBorder: border(colors.outlineVariant),
             ),
-          ),
+            IconButton(
+              tooltip: l10n.p2pCommonPaste,
+              onPressed: enabled ? () => _paste(context) : null,
+              icon: const Icon(Icons.content_paste),
+              color: colors.primary,
+              disabledColor: colors.textMuted,
+            ),
+            IconButton(
+              tooltip: l10n.p2pCommonClear,
+              onPressed: enabled && value.text.isNotEmpty
+                  ? controller.clear
+                  : null,
+              icon: const Icon(Icons.clear),
+              color: colors.primary,
+              disabledColor: colors.textMuted,
+            ),
+          ],
         );
       },
+    );
+  }
+
+  /// Reads the clipboard once, on the user's tap, and puts its text in the field, cleaned and bounded as if it had been typed; an empty or unreadable clipboard changes nothing.
+  Future<void> _paste(BuildContext context) async {
+    final String? held;
+    try {
+      held = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    } on Exception {
+      return;
+    }
+    final cleaned = normalizeGarageKeyText(held ?? '');
+    if (cleaned.isEmpty || !context.mounted) return;
+    final bounded = cleaned.length > maxLength
+        ? cleaned.substring(0, maxLength)
+        : cleaned;
+    controller.value = TextEditingValue(
+      text: bounded,
+      selection: TextSelection.collapsed(offset: bounded.length),
     );
   }
 }
