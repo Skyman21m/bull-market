@@ -14,17 +14,19 @@ import 'package:robosats/src/robot_token.dart';
 /// Which formula turns a robot token into its Nostr secret key.
 ///
 /// The RoboSats repository (commit ff1998c) holds two, and they give different keys.
-/// A coordinator stores the Nostr public key once, at robot creation, and checks no link with the token: a robot created with the wrong formula silently gets no Nostr notification or chat in the official client.
-/// Which one live coordinators and clients expect is still to be settled against a real coordinator.
+/// A coordinator checks neither: it stores whatever 64 hexadecimal characters the first contact carries, keeps them for good, hands them to the trade peer and sends its notifications to them (`robosats/middleware.py:29-37` and `:126-172`).
+/// A testnet coordinator confirmed it on 2026-11-11: it stored the key of either formula as it was sent, and kept the first one when the other was sent later: see `docs/spikes/robot-coordinator.md`.
+/// So the formula only has to be the one of the client that reads the messages, and Troc uses [currentFrontend].
 enum NostrKeyDerivation {
-  /// `sha256(sha512(utf8(token)))`, the code of the current frontend (`frontend/src/models/Slot.model.ts:34-38`).
+  /// `sha256(sha512(utf8(token)))`, the code of the official client since July 2025 (`frontend/src/models/Slot.model.ts:34-38`).
   ///
-  /// The default, on the reading that the frontend is authoritative; no file of the repository confirms its output for a token.
+  /// The default, and the only one to use for a robot: a robot shared with the official client reads the same Nostr messages in both.
   currentFrontend,
 
-  /// `sha256(utf8(token))`, the formula that reproduces `tests/robots/{1,2,3}/nostr_pubkey` and that `development/docs.md:80` describes.
+  /// `sha256(utf8(token))`, the first formula of the official client, from April to July 2025: it reproduces `tests/robots/{1,2,3}/nostr_pubkey` and is what `development/docs.md:80` still describes.
   ///
-  /// Probably an older formula that the fixtures and the documentation still carry.
+  /// Never create a robot with it: this secret key is the SHA-256 of the token, the very 32 bytes every request sends to the coordinator as the credential, so any coordinator the robot contacts can compute it.
+  /// It is kept to recognise a key a coordinator holds for an old robot, and for the test vectors.
   repositoryFixtures,
 }
 

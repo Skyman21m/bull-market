@@ -114,6 +114,7 @@ final class CoordinatorClient {
   /// Nothing in a `200` answer tells the two cases apart but [CoordinatorRobot.found], so the answer is always checked against this device: see [CoordinatorRobot.parse].
   /// A robot first created by another device, with another key pair, is therefore a [RobotPgpKeyMismatch], never a silent change of key.
   /// Fails with a [CoordinatorRobotFailure] when the coordinator refuses the robot or returns another one, and with any other [CoordinatorFailure] as the public reads do.
+  /// A [RobotNicknameTaken] is only reported once a second request, with the short header, has shown that the coordinator does not know this robot.
   ///
   /// [nostrKeyDerivation] chooses the Nostr public key sent: keep the default, the other formula gives a key whose secret the coordinator can compute.
   /// The coordinator keeps the key of the first contact for good.
@@ -125,18 +126,32 @@ final class CoordinatorClient {
     required RobotIdentity identity,
     required RobotPgpKey pgpKey,
     NostrKeyDerivation nostrKeyDerivation = NostrKeyDerivation.currentFrontend,
-  }) => _fetchRobot(
-    coordinator,
-    network,
-    identity,
-    pgpKey,
-    identity.firstContactAuthorizationHeader(
-      pgpPublicKey: pgpKey.publicKey.armored,
-      pgpEncryptedPrivateKey: pgpKey.encryptedPrivateKeyArmored,
-      nostrKeyDerivation: nostrKeyDerivation,
-    ),
-    firstContact: true,
-  );
+  }) async {
+    final contact = await _fetchRobot(
+      coordinator,
+      network,
+      identity,
+      pgpKey,
+      identity.firstContactAuthorizationHeader(
+        pgpPublicKey: pgpKey.publicKey.armored,
+        pgpEncryptedPrivateKey: pgpKey.encryptedPrivateKeyArmored,
+        nostrKeyDerivation: nostrKeyDerivation,
+      ),
+      firstContact: true,
+    );
+    if (contact case Err(failure: RobotNicknameTaken())) {
+      // The nickname may be taken by this very robot: a coordinator that receives the first contact twice at once, as when the transport retries a request whose connection broke after it was sent, creates the robot for one and refuses the other.
+      // The short header tells: it reads the robot if the coordinator knows this token, and creates nothing.
+      final known = await fetchKnownRobot(
+        coordinator,
+        network,
+        identity: identity,
+        pgpKey: pgpKey,
+      );
+      if (known case Ok()) return known;
+    }
+    return contact;
+  }
 
   /// `GET /api/robot/` with the short `Authorization` header, which sends no key: reads the robot [identity] on a [coordinator] that already knows it, and never creates it.
   ///

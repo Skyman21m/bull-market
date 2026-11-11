@@ -797,6 +797,87 @@ void main() {
       );
     });
 
+    test(
+      'of a nickname already taken is checked with the short header',
+      () async {
+        // The coordinator refuses every first contact, and does not know the robot.
+        transport.route(temple, _testnet, '/api/robot/', (request) async {
+          final firstContact = (request.headers['Authorization'] ?? '')
+              .contains(' | ');
+          return Ok(
+            firstContact
+                ? jsonResponse(_error(7004), statusCode: 409)
+                : jsonResponse(_error(7001), statusCode: 400),
+          );
+        });
+
+        expect(expectErr(await fetch()), isA<RobotNicknameTaken>());
+        final [contact, check] = transport.requests;
+        expect(contact.headers['Authorization'], contains(' | Public '));
+        expect(
+          check.headers['Authorization'],
+          'Token ${_identity.tokenSha256Base91}',
+        );
+        expect(check.robot, _identity.sessionKey);
+      },
+    );
+
+    test('of a nickname taken by this very robot gives the robot', () async {
+      // What a retried first contact meets: the coordinator created the robot for the first copy of the request.
+      transport.route(temple, _testnet, '/api/robot/', (request) async {
+        final firstContact = (request.headers['Authorization'] ?? '').contains(
+          ' | ',
+        );
+        return Ok(
+          firstContact
+              ? jsonResponse(_error(7004), statusCode: 409)
+              : jsonResponse(_robot()),
+        );
+      });
+
+      final robot = expectOk(await fetch());
+
+      expect(robot.hashId, _identity.hashId);
+      expect(transport.requests, hasLength(2));
+    });
+
+    test(
+      'of a nickname already taken stays one when the check fails',
+      () async {
+        for (final check in [
+          const Err<CoordinatorResponse, CoordinatorTransportFailure>(
+            CoordinatorUnreachable(),
+          ),
+          Ok<CoordinatorResponse, CoordinatorTransportFailure>(
+            jsonResponse(_robot({'hash_id': interopPeerIdentity.hashId.hex})),
+          ),
+          Ok<CoordinatorResponse, CoordinatorTransportFailure>(
+            jsonResponse(_error(7004), statusCode: 409),
+          ),
+        ]) {
+          transport.route(temple, _testnet, '/api/robot/', (request) async {
+            final firstContact = (request.headers['Authorization'] ?? '')
+                .contains(' | ');
+            return firstContact
+                ? Ok(jsonResponse(_error(7004), statusCode: 409))
+                : check;
+          });
+
+          expect(expectErr(await fetch()), isA<RobotNicknameTaken>());
+        }
+      },
+    );
+
+    test(
+      'of a nickname already taken is not checked for a known robot',
+      () async {
+        serveJson(_error(7004), statusCode: 409);
+
+        expect(expectErr(await fetchKnown()), isA<RobotNicknameTaken>());
+        expect(transport.requests, hasLength(1));
+      },
+    );
+
     test('carries no text of the coordinator', () async {
       const secretLooking = 'SECRET-LOOKING-TEXT';
       final failures = [
