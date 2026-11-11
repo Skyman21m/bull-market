@@ -12,6 +12,7 @@ import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/garage_cubit.dart';
 import 'package:p2p/src/presentation/garage_state.dart';
+import 'package:p2p/src/presentation/unshown_garage_keys.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
@@ -58,6 +59,7 @@ void main() {
   GarageCubit cubitOver(
     FakeSecureStoragePlatform storage, {
     RobosatsNetwork network = RobosatsNetwork.testnet,
+    UnshownGarageKeys? unshown,
   }) {
     storage.install();
     final repository = GarageKeyRepositoryImpl(
@@ -69,6 +71,7 @@ void main() {
       GenerateGarageKeyUsecase(repository),
       ImportGarageKeyUsecase(repository),
       DeleteGarageKeyUsecase(repository),
+      unshown ?? UnshownGarageKeys(),
     );
   }
 
@@ -312,6 +315,91 @@ void main() {
         ),
       );
       expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+      await cubit.close();
+    });
+  });
+
+  group('a key drawn while the user leaves', () {
+    test(
+      'is not read back by the closed cubit, and waits for the next visit',
+      () async {
+        final unshown = UnshownGarageKeys();
+        // How many reads a draw and its read-back take, the user staying.
+        final stayed = FakeSecureStoragePlatform();
+        final staying = cubitOver(stayed, unshown: unshown);
+        await staying.load();
+        final beforeStaying = stayed.reads;
+        await staying.generate();
+        final readsStaying = stayed.reads - beforeStaying;
+        expect(
+          staying.state,
+          isA<GarageWithKey>().having(
+            (state) => state.showForBackup,
+            'showForBackup',
+            isTrue,
+          ),
+        );
+        await staying.close();
+
+        final left = FakeSecureStoragePlatform();
+        final leaving = cubitOver(left, unshown: unshown);
+        await leaving.load();
+        final beforeLeaving = left.reads;
+        final drawing = leaving.generate();
+        await leaving.close();
+        await drawing;
+
+        expect(left.entries.keys, [testnetEntry]);
+        // The draw only: no read-back from the closed cubit.
+        expect(left.reads - beforeLeaving, readsStaying - 1);
+
+        final next = cubitOver(left, unshown: unshown);
+        await next.load();
+        expect(
+          next.state,
+          isA<GarageWithKey>()
+              .having((state) => state.showForBackup, 'showForBackup', isTrue)
+              .having((state) => state.isNew, 'isNew', isTrue),
+        );
+        next.acknowledgeBackup();
+        expect((next.state as GarageWithKey).showForBackup, isFalse);
+        await next.close();
+
+        final after = cubitOver(left, unshown: unshown);
+        await after.load();
+        expect(
+          after.state,
+          isA<GarageWithKey>()
+              .having((state) => state.showForBackup, 'showForBackup', isFalse)
+              .having((state) => state.isNew, 'isNew', isFalse),
+        );
+        await after.close();
+      },
+      timeout: slow,
+    );
+
+    test('is forgotten once deleted', () async {
+      final unshown = UnshownGarageKeys()..add(RobosatsNetwork.testnet);
+      final storage = holding([testnetEntry]);
+      final cubit = cubitOver(storage, unshown: unshown);
+      await cubit.load();
+      expect((cubit.state as GarageWithKey).showForBackup, isTrue);
+      unshown.add(RobosatsNetwork.testnet);
+
+      await cubit.delete();
+
+      expect(unshown.take(RobosatsNetwork.testnet), isFalse);
+      await cubit.close();
+    });
+
+    test('of the other network is not shown here', () async {
+      final unshown = UnshownGarageKeys()..add(RobosatsNetwork.mainnet);
+      final cubit = cubitOver(holding([testnetEntry]), unshown: unshown);
+
+      await cubit.load();
+
+      expect((cubit.state as GarageWithKey).showForBackup, isFalse);
+      expect(unshown.take(RobosatsNetwork.mainnet), isTrue);
       await cubit.close();
     });
   });
