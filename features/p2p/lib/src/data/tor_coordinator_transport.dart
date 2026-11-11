@@ -504,7 +504,9 @@ final class TorCoordinatorTransport
       // A close that ran meanwhile wins: the request was stopped, and is not told to come back later.
       if (closed()) throw const _RouteException(CoordinatorTransportFailed());
       // When that session did not close in time, opening now would go over the bound: the request fails, and the place, which that session no longer holds, is given back below.
-      if (!vacatedClosed) throw const _RouteException(CoordinatorTransportBusy());
+      if (!vacatedClosed) {
+        throw const _RouteException(CoordinatorTransportBusy());
+      }
       final TorSession? opened;
       try {
         opened = await _openFor(slot);
