@@ -17,6 +17,7 @@ import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
+import 'domain/usecases/read_garage_key_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
@@ -62,6 +63,9 @@ final class P2pLocator {
     );
     locator.registerFactory<ImportGarageKeyUsecase>(
       () => ImportGarageKeyUsecase(locator()),
+    );
+    locator.registerFactory<ReadGarageKeyUsecase>(
+      () => ReadGarageKeyUsecase(locator()),
     );
     locator.registerFactory<DeriveFirstRobotUsecase>(
       () => DeriveFirstRobotUsecase(locator()),

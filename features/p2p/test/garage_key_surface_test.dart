@@ -14,7 +14,7 @@ void main() {
   CompilationUnit unitOf(String path) =>
       parseString(content: File(path).readAsStringSync()).unit;
 
-  // The methods of the interface, each with its full signature: nothing, whether a key is stored, or a robot derived from it.
+  // The methods of the interface, each with its full signature: nothing, whether a key is stored, the key of a network for the screens of the Garage, or a robot derived from it, each with its network.
   const allowed = {
     'create':
         'Future<Result<void, P2pFailure>> create(RobosatsNetwork network)',
@@ -22,28 +22,33 @@ void main() {
         'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
     'exists':
         'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network)',
+    'read':
+        'Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network)',
     'firstUsableRobot':
-        'Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network)',
+        'Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network)',
     'delete':
         'Future<Result<void, P2pFailure>> delete(RobosatsNetwork network)',
   };
 
-  test('the interface returns nothing, whether a key is stored, or robots', () {
-    final unit = unitOf(
-      'lib/src/domain/repositories/garage_key_repository.dart',
-    );
+  test(
+    'the interface returns nothing, whether a key is stored, the key or robots, with their network',
+    () {
+      final unit = unitOf(
+        'lib/src/domain/repositories/garage_key_repository.dart',
+      );
 
-    expect(_parts(unit), isEmpty);
-    final interface = unit.declarations.single as ClassDeclaration;
-    expect(interface.namePart.typeName.lexeme, 'GarageKeyRepository');
-    expect(interface.interfaceKeyword, isNotNull);
-    final members = _membersOf(interface);
-    expect(members, everyElement(isA<MethodDeclaration>()));
-    expect({
-      for (final method in members.cast<MethodDeclaration>())
-        method.name.lexeme: _signature(method),
-    }, allowed);
-  });
+      expect(_parts(unit), isEmpty);
+      final interface = unit.declarations.single as ClassDeclaration;
+      expect(interface.namePart.typeName.lexeme, 'GarageKeyRepository');
+      expect(interface.interfaceKeyword, isNotNull);
+      final members = _membersOf(interface);
+      expect(members, everyElement(isA<MethodDeclaration>()));
+      expect({
+        for (final method in members.cast<MethodDeclaration>())
+          method.name.lexeme: _signature(method),
+      }, allowed);
+    },
+  );
 
   test(
     'the repository has no public member but the methods of its interface',

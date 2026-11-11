@@ -1,6 +1,5 @@
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart'
-    show GarageKey, GarageRobot, RobosatsNetwork;
+import 'package:robosats/robosats.dart' show GarageKey, RobosatsNetwork;
 import 'package:secrets/secrets.dart'
     show
         GarageKeyAlreadyExistsFailure,
@@ -11,13 +10,15 @@ import 'package:secrets/secrets.dart'
         SecretFailure,
         SecretNotFoundFailure;
 
+import '../domain/network_garage_key.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/repositories/garage_key_repository.dart';
 
 /// The Garage Keys of P2P in the vault of `package:secrets`, one per network, through the handle the shell passes to the feature.
 ///
 /// The only class of the feature that reads the bytes of a stored key: the custody gate allows `GarageKeyMaterial.bytes` and `GarageKey.revealBytes` here and nowhere else.
-/// It turns the stored bytes into a [GarageKey] to derive a robot, and a [GarageKey] into bytes to store it, and today lets neither out: its public members are the methods of [GarageKeyRepository], which `test/garage_key_surface_test.dart` pins.
+/// It turns the stored bytes into a [GarageKey], and a [GarageKey] into bytes to store it, and never lets the bytes out: its public members are the methods of [GarageKeyRepository], which `test/garage_key_surface_test.dart` pins.
+/// A key it read leaves it only as a [NetworkGarageKey] tagged with the network of the slot it came from, and so does every robot derived from it.
 /// The copy it makes for an import is zeroed when the vault returns; the copies inside the vault's material and inside a [GarageKey] cannot be, and are dropped with the call.
 /// It logs nothing, and the failures it returns carry no text of the vault.
 final class GarageKeyRepositoryImpl implements GarageKeyRepository {
@@ -61,27 +62,27 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
       };
 
   @override
-  Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(
+  Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
-  ) async {
-    switch (await _garageKeys.read(slot: _slotOf(network))) {
-      case Err(:final failure):
-        return Err(_readFailureOf(failure));
-      case Ok(value: final material):
-        final key = switch (GarageKey.fromBytes(material.bytes)) {
-          Ok(:final value) => value,
-          // The vault hands out exactly 32 bytes, which `fromBytes` accepts, so a refusal is a bug between the two packages (AGENTS.md, rule 11).
-          // It is never reported as a failure of the stored key, which would advise the user to delete a key that may be good.
-          Err() => throw StateError(
-            'GarageKey.fromBytes refused the bytes the vault handed out',
-          ),
-        };
-        return switch (key.firstUsableRobot(0)) {
-          Ok(value: final robot) => Ok(robot),
-          Err() => const Err(GarageRobotUnavailableFailure()),
-        };
-    }
-  }
+  ) async => switch (await _garageKeys.read(slot: _slotOf(network))) {
+    Err(:final failure) => Err(_readFailureOf(failure)),
+    Ok(value: final material) => switch (GarageKey.fromBytes(material.bytes)) {
+      Ok(:final value) => Ok(NetworkGarageKey(network, value)),
+      // The vault hands out exactly 32 bytes, which `fromBytes` accepts, so a refusal is a bug between the two packages (AGENTS.md, rule 11).
+      // It is never reported as a failure of the stored key, which would advise the user to delete a key that may be good.
+      Err() => throw StateError(
+        'GarageKey.fromBytes refused the bytes the vault handed out',
+      ),
+    },
+  };
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
+    RobosatsNetwork network,
+  ) async => switch (await read(network)) {
+    Ok(value: final key) => key.firstUsableRobot(0),
+    Err(:final failure) => Err(failure),
+  };
 
   @override
   Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) async =>

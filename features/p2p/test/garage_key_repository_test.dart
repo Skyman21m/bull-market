@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -147,8 +148,45 @@ void main() {
       expect(ok(await repository.exists(RobosatsNetwork.mainnet)), isTrue);
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.mainnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
+    });
+
+    test('is read with the network of its slot, never the other', () async {
+      final storage = storageHolding([testnetEntry]);
+      final repository = repositoryOver(storage);
+
+      expect(
+        ok(await repository.read(RobosatsNetwork.testnet)),
+        NetworkGarageKey(RobosatsNetwork.testnet, fixedKey),
+      );
+      expect(
+        err(await repository.read(RobosatsNetwork.mainnet)),
+        isA<GarageKeyMissingFailure>(),
+      );
+      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+    }, timeout: slow);
+
+    test('gives robots tagged with the network of its slot', () async {
+      final repository = repositoryOver(
+        storageHolding([mainnetEntry, testnetEntry]),
+      );
+
+      for (final network in RobosatsNetwork.values) {
+        final key = ok(await repository.read(network));
+        expect(key.network, network);
+        expect(
+          ok(key.firstUsableRobot(0)),
+          ok(await repository.firstUsableRobot(network)),
+        );
+        expect(ok(key.firstUsableRobot(0)).network, network);
+      }
     });
 
     test('is never replaced: create and import are refused', () async {
@@ -167,7 +205,13 @@ void main() {
       expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.mainnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
     });
 
@@ -177,7 +221,13 @@ void main() {
 
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.testnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.testnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
       ok(await repository.delete(RobosatsNetwork.mainnet));
 
@@ -204,6 +254,10 @@ void main() {
           isA<GarageKeyUnusableFailure>(),
         );
         expect(
+          err(await repository.read(RobosatsNetwork.mainnet)),
+          isA<GarageKeyUnusableFailure>(),
+        );
+        expect(
           err(await repository.create(RobosatsNetwork.mainnet)),
           isA<GarageKeyAlreadyStoredFailure>(),
         );
@@ -227,7 +281,7 @@ void main() {
         PlatformException failing() => PlatformException(code: 'read failed');
         final storage = storageHolding([
           mainnetEntry,
-        ], scripted: List.generate(15, (_) => failing()));
+        ], scripted: List.generate(20, (_) => failing()));
         final repository = repositoryOver(storage);
 
         expect(
@@ -236,6 +290,10 @@ void main() {
         );
         expect(
           err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
+          isA<GarageKeyUnreadableFailure>(),
+        );
+        expect(
+          err(await repository.read(RobosatsNetwork.mainnet)),
           isA<GarageKeyUnreadableFailure>(),
         );
         expect(
@@ -256,6 +314,7 @@ void main() {
       for (final failure in [
         err(await repository.exists(RobosatsNetwork.mainnet)),
         err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
+        err(await repository.read(RobosatsNetwork.mainnet)),
         err(await repository.create(RobosatsNetwork.mainnet)),
         err(await repository.import(RobosatsNetwork.mainnet, exampleKey)),
       ]) {
