@@ -219,7 +219,9 @@ void main() {
     });
 
     test('has real v3 onion addresses and secp256k1 keys', () {
-      // The shape checks of `Federation.problems` cannot see a mistyped address or key: these can.
+      // The shape checks of `Federation.problems` cannot see a mistyped address: the onion checksum can.
+      // A mistyped key is caught only when its X has no point on the curve, about half the time.
+      // Keys rest on the byte comparison with the upstream file and on the provenance trail.
       for (final coordinator in Federation.robosats.coordinators) {
         final alias = coordinator.shortAlias;
         for (final network in RobosatsNetwork.values) {
