@@ -7,7 +7,7 @@ Written on 2026-11-10. Code: package `packages/robosats` (pure Dart, no Flutter,
 1. The computation that turns a Garage Key (`robo1…`) into a robot is reproduced in Dart end to end: token, value sent to the coordinator, public ID, nickname, Nostr key, `Authorization` header.
 2. All the check values prepared before the spike are matched character for character, without exception: the 3 test robots of the RoboSats repository, the sample Garage Key, the 2 edge cases, the 200 nicknames and the sample header.
 3. The nickname depends on a floating-point division: the port reproduces it exactly, including on 38 hashes built on purpose to hit the rounding cases that the 200 nicknames do not cover.
-4. One question remains open, as expected: the formula of the robot's Nostr key. Both formulas are available and tested; the one in the current code of the official app is used by default. To be settled against a real coordinator before creating a real robot.
+4. One question remained open, as expected: the formula of the robot's Nostr key. Both formulas are available and tested; the one in the current code of the official app is used by default. **Settled on 2026-11-11** against a testnet coordinator and the history of RoboSats: see "Open question" below and [robot-coordinator.md](robot-coordinator.md).
 5. No new dependency: the `pubspec.lock` file has not changed.
 
 ## What is reproduced, and what it is checked against
@@ -33,6 +33,8 @@ Two points of method:
 - **Secret values.** Garage Key, token, hash sent to the coordinator and Nostr secret key never appear in `toString()`, nor in errors. An explicit call (`reveal…`) is needed to read them. The package writes no log.
 
 ## Open question: the robot's Nostr key
+
+**Settled on 2026-11-11 (issue #28).** A coordinator checks no link between the Nostr key and the token: a testnet coordinator stored the key of either formula as sent. `sha256(sha512(token))` is the formula of the official client since July 2025 and the one Troc uses; `sha256(token)` is its first formula, of April 2025, and must never be sent, because that secret key is the token hash the coordinator receives on every request. Evidence: [robot-coordinator.md](robot-coordinator.md). The text below is the question as it stood on 2026-11-10.
 
 The RoboSats repository contains two formulas that give different keys:
 
@@ -63,11 +65,11 @@ BasE91, base62, bech32 bit regrouping and BIP32 are written in `lib/src/`, with 
 ## What could not be checked here
 
 1. **Against the real libraries of the official app** (`base-ex`, `js-sha256`, `@scure/bip32`, `nostr-tools`, `robo-identities-wasm`): the vectors come from a re-implementation. This spike adds independent cross-checks (BIP32 against `bip32_keys` and the specification, Nostr public key computed by two different libraries), but not running the frontend.
-2. **The robot's Nostr key, current formula**: see the open question.
+2. **The robot's Nostr key, current formula**: see the open question, settled since. No file of the RoboSats repository gives its output for a token, and it was still not compared with the official client running.
 3. **The nickname computed by the official app** (`generate_roboname`) is assumed to be identical to the coordinator's; only the coordinator's code served as the reference.
 4. **RoboSats' Python code on the 38 boundary hashes**: running it was not allowed in this session. The expected values come from the same formula computed by Python, which validates the arithmetic but not the choice of words on those exact hashes.
 5. **The checks of the whole project.** `make analyze`, `make unit-test` and `make custody-check` need the generated code, absent locally: they were not run. Their equivalents were run on the package alone (analysis, format, `dart fix`, custody check, tests) and are green. `make fix-check` on the whole project was run and fails locally: it suggests fixes in 70 existing files of the app and none in this package, probably for lack of generated code. To be confirmed by CI.
-6. **No exchange with a coordinator**, and no timing measurement on a phone.
+6. **No exchange with a coordinator** in this spike (done on 2026-11-11 for the creation of a robot, see [robot-coordinator.md](robot-coordinator.md)), and no timing measurement on a phone.
 
 ## Rerunning the tests
 
