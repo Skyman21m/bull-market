@@ -6,14 +6,14 @@ This half makes a robot known to a coordinator and reads it back. It stores no k
 
 ## Summary
 
-1. **A robot made by Troc exists on a real coordinator.** On 2026-11-11, temple on testnet (RoboSats 0.8.6) created robots from a first contact sent by this code over the embedded Tor, and returned the hash id and the nickname this device had computed, the OpenPGP key pair it had generated, and the Nostr key it had sent. Three runs, six throwaway robots, every step with the expected outcome.
+1. **A robot made by Troc exists on a real coordinator.** On 2026-11-11, temple on testnet (RoboSats 0.8.6) created robots from a first contact sent by this code over the embedded Tor, and returned the hash id and the nickname this device had computed, the OpenPGP key pair it had generated, and the Nostr key it had sent. Four runs, eight throwaway robots, every step with the expected outcome.
 2. **The coordinator accepts our OpenPGP key.** It returns the public key re-exported by GnuPG, with the same fingerprints, and the encrypted private key byte for byte. This closes the "Real coordinator" line of [pgp.md](pgp.md) for the creation of a robot, not for signatures and chat.
 3. **The Nostr key question is settled.** A coordinator accepts any key and checks nothing: it stored the key of either formula as sent, and kept the first one when the other came later. Troc sends the formula of the official client since July 2025, `sha256(sha512(token))`. The other one, `sha256(token)`, must never be sent: that secret key is the token hash itself, which the coordinator receives on every request.
 4. **A coordinator keeps the first keys it received, for good**, and the official client adopts whatever comes back. This package compares instead: another hash id, nickname or key pair is a typed failure. Seen live: a first contact with a second key pair for the same token gets the first key pair back, reported as `RobotPgpKeyMismatch`.
 5. **Each robot has its own Tor session per coordinator**, apart from the anonymous sessions of the book, bounded to 32 and closed with the others or robot by robot.
 6. **A Garage Key index whose token fails the entropy rule is skipped.** The official client has no such rule: the robot stays loading and its automatic choice moves on. The effect is the same.
 7. **Not verified**: a second coordinator (lake on testnet never answered), mainnet (out of bounds), anything that needs an order (invoice, chat, reward), a phone, and the errors 7000, 7002 and 7004 on a live coordinator.
-8. **To decide before the Garage screens**: the token hash is the same credential on every coordinator, and the official client sends it to all of them at once. RoboSats fixed that on 2026-10-06 and reverted the fix on 2026-10-15. See "Found in the public RoboSats history".
+8. **To decide before the Garage screens**: the token hash is the same credential on every coordinator, and the official client sends it to all of them at once. RoboSats changed that on 2026-10-06, in a commit named after a security advisory, and reverted the change on 2026-10-15. See "Found in the public RoboSats history".
 
 ## What was built
 
@@ -47,6 +47,8 @@ What a coordinator does (`robosats/middleware.py:62-178`, `api/views.py:697-743`
 | `<A>` is unknown and everything is accepted | the robot is created with the hash id and nickname the coordinator computes from `<A>`, the public key as GnuPG re-exports it, the private key and the Nostr key as received; then HTTP 200 |
 | `<A>` is known | `<B>`, `<C>` and `<D>` are ignored, whichever header is sent; HTTP 200 with the keys of the first contact |
 
+Seen on the live coordinator: the short header on an unknown robot (error 7001), the creation, and a known robot under both headers. The errors 7000, 7002 and 7004 are read from the source and tested offline only.
+
 The `200` body is the same in every case: `nickname`, `hash_id`, `public_key`, `encrypted_private_key`, `earned_rewards`, `wants_stealth`, `nostr_pubkey`, `webhook_url`, `webhook_enabled`, `webhook_api_key`, `last_login`, `tg_enabled`, `tg_token`, `tg_bot_name`, then `active_order_id` or `last_order_id` when the robot has one, and `found: true` once the robot is more than five minutes old. Nothing else tells a robot that was just created from one the coordinator already knew.
 
 What the official client does with it (`frontend/src/models/Robot.model.ts:88-147`, `Slot.model.ts:40-101`): it sends the first-contact form every time, to every coordinator of the federation at once, with the same token hash and the same PGP key pair, and it replaces its local keys with the ones of the answer without any check.
@@ -55,6 +57,7 @@ What the official client does with it (`frontend/src/models/Robot.model.ts:88-14
 
 - **It checks the answer against this device.** The `hash_id` and the `nickname` must be the ones derived from the token (`RobotHashIdMismatch`, `RobotNicknameMismatch`). The `public_key` must have the fingerprints, primary key and encryption subkey, of the local key, and the `encrypted_private_key` must be the local one (`RobotPgpKeyMismatch`). A coordinator that returned another key pair would otherwise become the reader of the robot's chat without a sign.
 - **It never adopts a key.** The second device of a restored Garage Key generates its own key pair; the coordinator ignores it and returns the first one, which is a `RobotPgpKeyMismatch` here. Taking that robot over is a separate, explicit step that does not exist yet: see "What the next steps need to know".
+- **It checks a taken nickname before reporting it.** A coordinator that receives the same first contact twice at once creates the robot for one copy and answers the other with error 7004; the transport can cause that when it retries a request whose connection broke after it was sent. After a 7004, one request with the short header tells whether the coordinator knows this very robot. Tested offline only.
 - **It reads less.** The Telegram and webhook fields are ignored: Troc uses neither, and `tg_token` and `webhook_api_key` are credentials.
 - **It contacts one coordinator per call.** Nothing sends a robot to the whole federation.
 
@@ -62,7 +65,7 @@ What the official client does with it (`frontend/src/models/Robot.model.ts:88-14
 
 The official client has no rule that skips an index (commit `ff1998c`). `Robot.fetch` returns before any request when the token fails `validateTokenEntropy` (`Robot.model.ts:99`) and never resets `loading`, so the robot stays "loading" for ever; `Slot.isReusable()` is `false` while loading, so `Garage.ensureReusableSlot` and `findNextUnusedAccount`, which looks at 100 indexes at most, move on to the next index. `Order.make` has no entropy check of its own.
 
-`GarageKey.firstUsableRobot(fromIndex)` follows the net effect: it skips an index whose token fails the rule, over 100 indexes at most. It also skips an index whose hash id has no nickname (once in 2^54), which the official client would fail on for ever. A token that fails the rule cannot become a `RobotToken`, so no request of this package can carry one, as in the official client. No Garage Key is known that has such an index: the skip is tested through an injected derivation.
+`GarageKey.firstUsableRobot(fromIndex)` follows the net effect: it skips an index whose token fails the rule, over 100 indexes at most. It also skips an index whose hash id has no nickname (once in 2^54), a robot no coordinator can create; this second skip is Troc's own. A token that fails the rule cannot become a `RobotToken`, so no request of this package can carry one, as in the official client. No Garage Key is known that has such an index: the skip is tested through an injected derivation.
 
 ## The robot's Nostr key
 
@@ -92,7 +95,7 @@ Not verified: the current formula's output was not compared with the official cl
 
 ## Does a real coordinator accept our identity and our PGP key?
 
-**Yes, for the creation of a robot.** temple on testnet accepted every first contact this code sent: six robots over three runs, each with a key pair made by `RobotPgpKey.generate` minutes earlier and dated 24 hours back.
+**Yes, for the creation of a robot.** temple on testnet accepted every first contact this code sent: eight robots over four runs, each with a key pair made by `RobotPgpKey.generate` minutes earlier and dated 24 hours back.
 
 | What the coordinator checked or returned | Result |
 |---|---|
@@ -101,7 +104,7 @@ Not verified: the current formula's output was not compared with the official cl
 | Public key: shape check, GnuPG import, age | accepted (the 12-hour rule is in the source at `ff1998c`; whether 0.8.6 already has it is not known) |
 | Encrypted private key: GnuPG import without passphrase | accepted |
 | `hash_id` computed by the coordinator from the token hash | equal to `RobotIdentity.hashId` |
-| `nickname` computed by the coordinator's generator | equal to `RobotIdentity.nickname`, for six different robots |
+| `nickname` computed by the coordinator's generator | equal to `RobotIdentity.nickname`, for eight different robots |
 | `public_key` returned | not the text sent: 693 characters for 694 sent, the re-export by GnuPG; same fingerprint of the primary key and of the encryption subkey, and `PgpPublicKey.parse` verified its self-certification and its subkey binding |
 | `encrypted_private_key` returned | byte for byte the text sent, 923 characters |
 | `nostr_pubkey` returned | the key sent |
@@ -109,7 +112,7 @@ Not verified: the current formula's output was not compared with the official cl
 | Short header after the first contact | the same robot |
 | First contact again | the same robot |
 | First contact with a second key pair for the same token | the first key pair comes back: `RobotPgpKeyMismatch` |
-| Short header five minutes and twenty seconds after the creation | the same robot, now with `found: true` (runs 2 and 3) |
+| Short header five minutes and twenty seconds after the creation | the same robot, now with `found: true` (runs 2 to 4) |
 
 The answer has 14 fields, in this order: `nickname`, `hash_id`, `public_key`, `encrypted_private_key`, `earned_rewards` (integer), `wants_stealth` (boolean), `nostr_pubkey`, `webhook_url` (empty string), `webhook_enabled` (boolean), `webhook_api_key` (`null`), `last_login` (`YYYY-MM-DDTHH:MM:SS.ffffffZ`), `tg_enabled` (boolean), `tg_token` (15 characters), `tg_bot_name` (24 characters). It weighs about 2.1 KB and comes as `application/json`. The offline tests build their answers on this shape, with the values of the public test robot of the RoboSats repository; no live answer is stored anywhere.
 
@@ -121,41 +124,42 @@ What this does not prove: that a coordinator accepts a clear-signed invoice or a
 - The guarantees of the transport are unchanged and apply to both kinds, since they share the code path: total deadline of 132 s, size cap, `http` to `.onion` hosts only, no redirect followed, no `User-Agent`, `Accept-Encoding: identity`, a `GET` retried at most twice on a new session of the same robot after a connection failure. `GET /api/robot/` creates the robot at most once, so a retry reads it back.
 - At most 32 robot sessions are kept (`maxRobotSessions`). Beyond that, the least recently used session that no request is using or about to use is closed; when all are in use, the new request fails with `CoordinatorTransportFailed`. The anonymous sessions are neither counted nor closed by this.
 - `closeRobotSessions` closes the sessions of one robot to every coordinator, and `closeSessions` closes everything; in both cases a request still running fails instead of opening a new session, and a session that finishes opening afterwards is closed unused.
+- A request that carries an `Authorization` header without naming its robot is refused before any session opens, and the client of `packages/robosats` cannot build one.
 - The log line of a retry gives the Tor reason only. It names neither the coordinator nor the robot.
 - **Not verified**: that two Tor sessions of the embedded Tor really use distinct circuits is a property of `bull_tor` and Arti that the tests take as given; the tests prove that the transport asks for distinct sessions and never mixes their connections.
 
 ## Measurements
 
-**Three runs on 2026-11-11, one machine, one coordinator: orders of magnitude, not guarantees.** The 59 raw lines are versioned in [robot-coordinator-measurements.jsonl](robot-coordinator-measurements.jsonl), each with its run number; they hold labels, numbers and booleans only. The retry lines and the Tor start come from the console of each run, which is not versioned.
+**Four runs on 2026-11-11, one machine, one coordinator: orders of magnitude, not guarantees.** The 79 raw lines are versioned in [robot-coordinator-measurements.jsonl](robot-coordinator-measurements.jsonl), each with its run number; they hold labels, numbers and booleans only. The retry lines and the Tor start come from the console of each run, which is not versioned.
 
 **Conditions**: the app built for Linux desktop in debug mode, run headless (Xvfb) in the `troc-integration` container, on the project's PC (AMD Ryzen 7 5700U) behind a Mullvad VPN. Tor starts cold in every run. Each run draws a new random Garage Key and uses its robots 0 (robot A) and 1 (robot B).
 
-| | Run 1 | Run 2 | Run 3 |
-|---|---|---|---|
-| Time (UTC) | 00:59 to 01:04 | 01:06 to 01:13 | 01:16 to 01:22 |
-| Commit | `4e906cf46` (see below) | `58d10da32` | `865b149b4` |
-| Embedded Tor ready | 16 s | 14 s | 13 s |
-| `/api/info/` of temple, cold, Tor start included | 27.2 s | 34.5 s | 23.3 s |
-| Robot A, short header before the first contact (opens the session of robot A): `RobotUnknown` | 74.9 s | 6.0 s | 6.3 s |
-| Robot A, first contact: created | 1.4 s | 1.6 s | 1.6 s |
-| Robot A, short header | 0.7 s | 1.1 s | 0.7 s |
-| Robot A, first contact again | 0.7 s | 1.2 s | 0.8 s |
-| Robot A, first contact with a second key pair: `RobotPgpKeyMismatch` | 0.7 s | 1.1 s | 0.7 s |
-| Robot A, first contact with the other Nostr key: first key kept | 1.0 s | 1.0 s | 0.8 s |
-| Robot B, first contact with the other Nostr key (opens the session of robot B): created, key stored | 4.3 s | 6.1 s | 5.7 s |
-| Robot B, short header | 0.7 s | 1.2 s | 0.7 s |
-| Robot A, short header 5 min 20 s after its creation: `found` | not in this run | 2.4 s, `found: true` | 1.7 s, `found: true` |
-| Size of the answer | 2,116 bytes | 2,118 bytes | 2,118 bytes |
-| lake on testnet, `/api/info/`, three attempts | unreachable | unreachable | unreachable |
-| Generating a key pair (three per run) | 0.67, 0.43, 0.42 s | 0.64, 0.41, 0.39 s | 0.63, 0.41, 0.39 s |
-| Whole test | 307 s | 366 s | 354 s |
+| | Run 1 | Run 2 | Run 3 | Run 4 |
+|---|---|---|---|---|
+| Time (UTC) | 00:59 to 01:04 | 01:06 to 01:13 | 01:16 to 01:22 | 01:31 to 01:37 |
+| Commit | `4e906cf46` (see below) | `58d10da32` | `865b149b4` | `7b32ab28d`, the last code commit |
+| Embedded Tor ready | 16 s | 14 s | 13 s | 25 s |
+| `/api/info/` of temple, cold, Tor start included | 27.2 s | 34.5 s | 23.3 s | 32.4 s |
+| Robot A, short header before the first contact (opens the session of robot A): `RobotUnknown` | 74.9 s | 6.0 s | 6.3 s | 7.0 s |
+| Robot A, first contact: created | 1.4 s | 1.6 s | 1.6 s | 1.1 s |
+| Robot A, short header | 0.7 s | 1.1 s | 0.7 s | 0.7 s |
+| Robot A, first contact again | 0.7 s | 1.2 s | 0.8 s | 0.7 s |
+| Robot A, first contact with a second key pair: `RobotPgpKeyMismatch` | 0.7 s | 1.1 s | 0.7 s | 0.7 s |
+| Robot A, first contact with the other Nostr key: first key kept | 1.0 s | 1.0 s | 0.8 s | 0.9 s |
+| Robot B, first contact with the other Nostr key (opens the session of robot B): created, key stored | 4.3 s | 6.1 s | 5.7 s | 7.1 s |
+| Robot B, short header | 0.7 s | 1.2 s | 0.7 s | 1.4 s |
+| Robot A, short header 5 min 20 s after its creation | not in this run | 2.4 s, `found: true` | 1.7 s, `found: true` | 1.6 s, `found: true` |
+| Size of the answer | 2,116 bytes | 2,118 bytes | 2,118 bytes | 2,119 bytes |
+| lake on testnet, `/api/info/`, three attempts | unreachable | unreachable | unreachable | unreachable |
+| Generating a key pair (three per run) | 0.67, 0.43, 0.42 s | 0.64, 0.41, 0.39 s | 0.63, 0.41, 0.39 s | 0.66, 0.41, 0.39 s |
+| Whole test | 307 s | 366 s | 354 s | 364 s |
 
-- **Every step gave the same outcome in the three runs**, and no step needed a second attempt at the level of the test.
-- **Run 1 and its commit**: the application was building while the nickname check of commit `763630461` was being written in the same worktree, so run 1 ran `4e906cf46` with or without that change. The steps it took do not go through it. Run 1 also asked the facade for the books to list the coordinators, which started two anonymous book requests next to the measured ones; runs 2 and 3 are the reference.
-- **The first request of a robot pays for its session.** It took about 6 s in runs 2 and 3 and about 5 s for robot B, against about 1 s for the requests that follow on the same session. That matches a new Tor session with new circuits to the onion service for each robot, which is the intent; it does not prove that the circuits differ.
+- **Every step gave the same outcome in the four runs**, and no step needed a second attempt at the level of the test.
+- **Run 1 and its commit**: the application was building while the nickname check of commit `763630461` was being written in the same worktree, so run 1 ran `4e906cf46` with or without that change. The steps it took do not go through it. Run 1 also asked the facade for the books to list the coordinators, which started two anonymous book requests next to the measured ones. Run 4 is the reference: it ran the code as delivered.
+- **The first request of a robot pays for its session.** It took 6 to 7 s in runs 2 to 4, and 4 to 7 s for robot B, against about 1 s for the requests that follow on the same session. That matches a new Tor session with new circuits to the onion service for each robot, which is the intent; it does not prove that the circuits differ.
 - **The 74.9 s of run 1**: the console shows a retry line with the reason `timeout` exactly 60 s after that step began, which is Tor's connection budget, and the step ended 15 s later. The first session of robot A seems to have failed to connect, and the retry on a new session to have succeeded: a deduction, the retry lines do not name their request. The transport's retry was useful here.
-- **lake on testnet** did not answer `/api/info/` in nine attempts, each ended by `CoordinatorUnreachable` after two retries (reason `hostUnreachable`). It was already down during the spikes of 2026-11-10.
-- **No secret in the logs**: the three consoles were searched for a Garage Key, an armored block, an `Authorization` header and long hexadecimal strings before the lines were copied.
+- **lake on testnet** did not answer `/api/info/` in twelve attempts, each ended by `CoordinatorUnreachable` after two retries (reason `hostUnreachable`, once `timeout`). It was already down during the spikes of 2026-11-10.
+- **No secret in the logs**: the four consoles were searched for a Garage Key, an armored block, an `Authorization` header and long hexadecimal strings before the lines were copied.
 
 ## Found in the public RoboSats history
 
@@ -170,7 +174,8 @@ Read on 2026-11-11 through the public GitHub API, since the local clone of RoboS
 - Testnet only, and one coordinator only: temple, which runs RoboSats 0.8.6 while the source read here is 0.8.8; lake on testnet did not answer `/api/info/` in any run.
 - A new robot only: no order, no invoice, no chat, no reward, so the signature and chat paths of [pgp.md](pgp.md) are still unverified against a coordinator.
 - Errors 7000, 7002 and 7004 were not provoked on a live coordinator; their handling is tested offline from the coordinator's source.
-- `found: true` was seen in runs 2 and 3, on robots five minutes old; nothing older was read.
+- `found: true` was seen in runs 2 to 4, on robots five minutes old; nothing older was read.
+- Nothing in the code restricts an authenticated call to testnet: only the live test does. The facade would create a robot on a mainnet coordinator if asked.
 
 ## What the next steps need to know
 
@@ -180,7 +185,7 @@ Read on 2026-11-11 through the public GitHub API, since the local clone of RoboS
 - The encrypted private key is only as secret as the token, and every coordinator the robot contacted holds a copy.
 - Recovery on a new device is not written. It needs: the short header, the answer's `encrypted_private_key` proven by unlocking it with the token (the only proof that the key was made by a holder of the token), then adopting that pair for that coordinator. Until then such a robot gives `RobotPgpKeyMismatch`.
 - A key pair is dated 24 hours back and a coordinator refuses one younger than 12 hours for its own clock: a device whose clock is more than 12 hours ahead gets `RobotKeysRefused(keyTooRecent)`.
-- Generating a key pair hashes 32 MiB twice: off the UI isolate.
+- Generating a key pair hashes 32 MiB of SHA-256, 0.4 to 0.7 s on this PC in debug mode: off the UI isolate.
 
 **Garage screens (#30)**
 
