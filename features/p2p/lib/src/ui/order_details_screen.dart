@@ -7,8 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../presentation/coordinator_details_cubit.dart';
+import '../presentation/coordinator_text.dart';
 import '../presentation/order_details_cubit.dart';
 import '../presentation/p2p_formats.dart';
+import 'coordinator_details_dialog.dart';
 import 'widgets/offer_row.dart';
 import 'widgets/reversible_payments_dialog.dart';
 import 'widgets/robot_avatar.dart';
@@ -16,11 +19,20 @@ import 'widgets/testnet_banner.dart';
 
 /// The details of a public order, in the order of the official client: host and number, fees, then the order details, the maker and « Take Order ».
 ///
+/// The host opens the dialog of its coordinator, as in the official client.
 /// Phase 1 is read-only: « Take Order » is shown disabled.
 class OrderDetailsScreen extends StatefulWidget {
   final DateTime Function() now;
 
-  const OrderDetailsScreen({super.key, required this.now});
+  /// Builds the cubit of the coordinator dialog.
+  final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
+  coordinatorDetails;
+
+  const OrderDetailsScreen({
+    super.key,
+    required this.now,
+    required this.coordinatorDetails,
+  });
 
   @override
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
@@ -72,7 +84,20 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(BullSpacing.md),
                 children: [
-                  _HostRow(order: order),
+                  _HostRow(
+                    order: order,
+                    // The fees the page already read are shown at once in the dialog, which asks the coordinator only when the page has none.
+                    onTap: () => CoordinatorDetailsDialog.show(
+                      context,
+                      () => widget.coordinatorDetails(
+                        CoordinatorDetailsRequest(
+                          order.coordinator,
+                          state.network,
+                          known: context.read<OrderDetailsCubit>().state.info,
+                        ),
+                      ),
+                    ),
+                  ),
                   const Gap(BullSpacing.sm),
                   _FeeRow(info: state.info),
                   const Gap(BullSpacing.sm),
@@ -97,18 +122,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 }
 
-/// The coordinator that hosts the order, and the number of the order on it.
+/// The coordinator that hosts the order, and the number of the order on it; a tap opens the dialog of the coordinator.
 class _HostRow extends StatelessWidget {
   final PublicOrder order;
+  final VoidCallback onTap;
 
-  const _HostRow({required this.order});
+  const _HostRow({required this.order, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    return Row(
+    final row = Row(
       children: [
         RobotAvatar(seed: order.coordinator.shortAlias, size: 44),
         const Gap(BullSpacing.sm),
@@ -117,7 +143,10 @@ class _HostRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                order.coordinator.longAlias,
+                CoordinatorText.of(
+                  order.coordinator.longAlias,
+                  maxCodePoints: CoordinatorText.name,
+                ),
                 style: text.headlineLarge?.copyWith(color: colors.text),
               ),
               Text(
@@ -139,6 +168,7 @@ class _HostRow extends StatelessWidget {
         ),
       ],
     );
+    return InkWell(onTap: onTap, child: row);
   }
 }
 
@@ -215,7 +245,10 @@ class _DetailsCard extends StatelessWidget {
     final formats = P2pFormats.of(context);
     final order = state.order;
     final code = order.currency.code;
-    final amount = '${formats.orderAmount(order.amount)} $code';
+    // A swap order is given in BTC, which the official client writes in sats.
+    final amount = order.currency.isBitcoin
+        ? l10n.p2pAmountSats(formats.btcAmountInSats(order.amount))
+        : '${formats.orderAmount(order.amount)} $code';
     final estimate = state.estimate;
     final sats = estimate == null ? '-' : formats.estimate(estimate);
     final methods = order.paymentMethods.text;

@@ -1,5 +1,6 @@
 import 'package:bull_ui/bull_ui.dart';
-import 'package:flutter/material.dart' show Icons, Scaffold;
+import 'package:flutter/material.dart'
+    show IconButton, Icons, Scaffold, Tooltip;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,6 +60,38 @@ void main() {
         ),
       );
       expect(find.byIcon(Icons.copy_sharp), findsNothing);
+    });
+
+    testWidgets('labels the copy button only when asked', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        wrapWithTheme(
+          const Scaffold(
+            body: BullCopyField(
+              text: 'shown',
+              copiedMessage: 'Copied',
+              copyTooltip: 'Copy',
+            ),
+          ),
+        ),
+      );
+      expect(find.byTooltip('Copy'), findsOneWidget);
+      // A screen reader announces it with the button.
+      expect(
+        tester.getSemantics(find.byType(IconButton)),
+        isSemantics(tooltip: 'Copy', isButton: true),
+      );
+
+      await tester.pumpWidget(
+        wrapWithTheme(
+          const Scaffold(
+            body: BullCopyField(text: 'shown', copiedMessage: 'Copied'),
+          ),
+        ),
+      );
+      // Without it, the button stays as it was.
+      expect(find.byType(Tooltip), findsNothing);
+      semantics.dispose();
     });
   });
 }

@@ -7,7 +7,6 @@ import 'package:pointycastle/digests/sha3.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/coordinator/currency_data.dart';
 import 'package:robosats/src/coordinator/federation_data.dart';
-import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/payment_method_data.dart';
 import 'package:test/test.dart';
 
@@ -219,7 +218,9 @@ void main() {
     });
 
     test('has real v3 onion addresses and secp256k1 keys', () {
-      // The shape checks of `Federation.problems` cannot see a mistyped address or key: these can.
+      // The shape checks of `Federation.problems` cannot see a mistyped address: the onion checksum can.
+      // A mistyped key is caught only when its X has no point on the curve, about half the time.
+      // Keys rest on the byte comparison with the upstream file and on the provenance trail.
       for (final coordinator in Federation.robosats.coordinators) {
         final alias = coordinator.shortAlias;
         for (final network in RobosatsNetwork.values) {
@@ -251,6 +252,35 @@ void main() {
       );
       expect(_isCompressedPoint('02${'0' * 63}5'), isFalse);
       expect(_isCompressedPoint('02${'f' * 64}'), isFalse);
+    });
+
+    test('has contacts and onion addresses in printable ASCII', () {
+      // The app offers a contact or an address for copy only when it is printable ASCII: a change of the list that breaks it fails here, not silently in the app.
+      final printable = RegExp(r'^[\x20-\x7E]+$');
+      for (final coordinator in Federation.robosats.coordinators) {
+        final contact = coordinator.contact;
+        for (final text in [
+          contact.email,
+          contact.telegram,
+          contact.simplex,
+          contact.matrix,
+          contact.website,
+          contact.nostr,
+          contact.pgp,
+          contact.fingerprint,
+          contact.reddit,
+          contact.twitter,
+          coordinator.mainnet.onion,
+          coordinator.testnet.onion,
+        ]) {
+          if (text == null) continue;
+          expect(
+            printable.hasMatch(text),
+            isTrue,
+            reason: '${coordinator.shortAlias}: $text',
+          );
+        }
+      }
     });
 
     test('has free text that needs no cleaning and stays short', () {

@@ -17,6 +17,7 @@ class BullCopyField extends StatelessWidget {
     required this.text,
     required this.copiedMessage,
     this.clipboardText,
+    this.copyTooltip,
     this.maxLines,
     this.overflow,
   });
@@ -29,6 +30,10 @@ class BullCopyField extends StatelessWidget {
 
   /// What goes to the clipboard when it differs from [text].
   final String? clipboardText;
+
+  /// The label of the copy button, translated by the caller: its tooltip, and what a screen reader announces.
+  /// The button has no label when it is null.
+  final String? copyTooltip;
 
   final int? maxLines;
   final TextOverflow? overflow;
@@ -61,6 +66,7 @@ class BullCopyField extends StatelessWidget {
           ),
           if (toCopy.isNotEmpty)
             IconButton(
+              tooltip: copyTooltip,
               visualDensity: VisualDensity.compact,
               iconSize: 20,
               icon: Icon(Icons.copy_sharp, color: colors.secondary),

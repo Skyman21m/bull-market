@@ -283,4 +283,211 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pCommonAcknowledged => 'Compris';
+
+  @override
+  String get p2pCoordinatorNotice => 'Avis du coordinateur';
+
+  @override
+  String get p2pCoordinatorBadgeFounder =>
+      'Fondateur : coordonne les échanges depuis la fédération de testnet.';
+
+  @override
+  String get p2pCoordinatorBadgeNotFounder => 'Pas un fondateur de fédération';
+
+  @override
+  String p2pCoordinatorBadgeDevFund(String percent) {
+    return 'Soutien du fonds de développement : fait don de $percent % pour améliorer RoboSats.';
+  }
+
+  @override
+  String get p2pCoordinatorBadgeGoodOpsec =>
+      'Bonne sécurité opérationnelle : le coordinateur suit les meilleures pratiques pour protéger sa vie privée et la vôtre.';
+
+  @override
+  String get p2pCoordinatorBadgeOpsecCouldImprove =>
+      'Les pratiques de confidentialité de ce coordinateur pourraient s\'améliorer';
+
+  @override
+  String get p2pCoordinatorBadgeLargeLimits =>
+      'Limites élevées : le coordinateur accepte des échanges de grande taille.';
+
+  @override
+  String get p2pCoordinatorBadgeNoLargeLimits =>
+      'N\'accepte pas d\'échanges de grande taille.';
+
+  @override
+  String get p2pCoordinatorDescription => 'Description du coordinateur';
+
+  @override
+  String get p2pCoordinatorEstablished => 'Date de création';
+
+  @override
+  String get p2pCoordinatorHostedWebApp =>
+      'Application web hébergée par le coordinateur';
+
+  @override
+  String get p2pCoordinatorPolicies => 'Politiques';
+
+  @override
+  String get p2pCoordinatorSummary => 'Résumé';
+
+  @override
+  String get p2pCoordinatorMaxOrderSize => 'Taille maximale de l\'ordre';
+
+  @override
+  String get p2pCoordinatorOnchainStatus =>
+      'Statut actuel des paiements on-chain';
+
+  @override
+  String get p2pCoordinatorCurrentOnchainFee =>
+      'Frais actuels de paiement on-chain';
+
+  @override
+  String get p2pCoordinatorMaxSwapSize =>
+      'Taille maximale d\'un échange on-chain';
+
+  @override
+  String get p2pCoordinatorDevFundZaps =>
+      'Donne volontairement au développement';
+
+  @override
+  String p2pCoordinatorDevFundPercent(String percent) {
+    return '$percent % des bénéfices';
+  }
+
+  @override
+  String get p2pCoordinatorPublicBuyOrders => 'Ordres d\'achat publics';
+
+  @override
+  String get p2pCoordinatorPublicSellOrders => 'Ordres de vente publics';
+
+  @override
+  String get p2pCoordinatorBookLiquidity => 'Liquidité du carnet';
+
+  @override
+  String get p2pCoordinatorActiveRobotsToday => 'Robots actifs aujourd\'hui';
+
+  @override
+  String get p2pCoordinatorNonKycPremium => 'Prime bitcoin non-KYC en 24h';
+
+  @override
+  String get p2pCoordinatorPriceSources =>
+      'Sources des prix du marché (pour plusieurs, la médiane est calculée)';
+
+  @override
+  String get p2pCoordinatorStatsForNerds => 'Stats pour les geeks';
+
+  @override
+  String get p2pCoordinatorVersionCoordinator => 'Coordinateur';
+
+  @override
+  String get p2pCoordinatorRoboSatsVersion => 'Version RoboSats';
+
+  @override
+  String get p2pCoordinatorLndVersion => 'Version LND';
+
+  @override
+  String get p2pCoordinatorClnVersion => 'Version CLN';
+
+  @override
+  String p2pCoordinatorLnNodeAlias(String alias) {
+    return 'Nœud LN : $alias';
+  }
+
+  @override
+  String get p2pCoordinatorCommitHash =>
+      'Empreinte de la révision du coordinateur';
+
+  @override
+  String get p2pCoordinatorVolume24h => 'Volume des échanges sur 24h';
+
+  @override
+  String get p2pCoordinatorVolumeLifetime => 'Volume total des échanges';
+
+  @override
+  String p2pAmountSats(String amount) {
+    return '$amount Sats';
+  }
+
+  @override
+  String get p2pCoordinatorSendEmail => 'Envoyer un e-mail';
+
+  @override
+  String get p2pCoordinatorWebsite => 'Site web';
+
+  @override
+  String get p2pCoordinatorPgpFingerprint => 'Empreinte de la clé publique PGP';
+
+  @override
+  String get p2pCoordinatorNostr => 'Nostr';
+
+  @override
+  String get p2pCoordinatorTelegram => 'Telegram';
+
+  @override
+  String get p2pCoordinatorX => 'X';
+
+  @override
+  String get p2pCoordinatorReddit => 'Reddit';
+
+  @override
+  String get p2pCoordinatorMatrix => 'Matrix';
+
+  @override
+  String get p2pCoordinatorSimplex => 'Simplex';
+
+  @override
+  String get p2pCommonCopied => 'Copié !';
+
+  @override
+  String get p2pSearchOrderTitle => 'Rechercher un ordre';
+
+  @override
+  String get p2pSearchOrderText =>
+      'Saisissez ici l\'URL d\'un ordre pour le retrouver, même s\'il est protégé par un mot de passe';
+
+  @override
+  String get p2pSearchOrderUrlLabel => 'URL de l\'ordre';
+
+  @override
+  String get p2pCommonCancel => 'Annuler';
+
+  @override
+  String get p2pNoRobotTitle => 'Vous n\'avez pas de clé de garage';
+
+  @override
+  String get p2pNoRobotText =>
+      'Générez une clé de garage pour obtenir votre première identité de robot et commencer à échanger.';
+
+  @override
+  String get p2pNoRobotHaveKey => 'J\'ai une clé de garage';
+
+  @override
+  String get p2pGarageOnboardingGenerateKey => 'Générer une clé de garage';
+
+  @override
+  String get p2pCoordinatorLnNode => 'Nœud LN';
+
+  @override
+  String p2pCoordinatorVersionValue(String name, String version) {
+    return '$name v$version';
+  }
+
+  @override
+  String p2pCoordinatorNodeAmboss(String node) {
+    return '$node... (AMBOSS)';
+  }
+
+  @override
+  String p2pCoordinatorNode1ml(String node) {
+    return '$node... (1ML)';
+  }
+
+  @override
+  String p2pCoordinatorCommitShort(String commit) {
+    return '$commit...';
+  }
+
+  @override
+  String get p2pCommonCopy => 'Copier';
 }

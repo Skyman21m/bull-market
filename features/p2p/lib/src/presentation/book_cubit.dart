@@ -5,6 +5,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../domain/book_filter.dart';
+import '../domain/order_search.dart';
 import '../domain/p2p_tor_state.dart';
 import '../domain/tor_wait.dart';
 import '../domain/usecases/request_federation_books_usecase.dart';
@@ -62,6 +63,10 @@ class BookCubit extends Cubit<BookState> {
       _filter(state.filter.withPaymentMethod(method));
 
   void selectHost(Coordinator? host) => _filter(state.filter.withHost(host));
+
+  /// « Search order »: what an order URL finds among every order received, whatever the filter.
+  OrderSearchOutcome searchOrder(String url) =>
+      OrderSearch.run(url, state.receivedOrders);
 
   void _onTorState(P2pTorState torState) {
     final previous = state.tor;

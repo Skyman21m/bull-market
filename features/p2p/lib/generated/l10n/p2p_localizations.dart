@@ -617,6 +617,360 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Acknowledged'**
   String get p2pCommonAcknowledged;
+
+  /// Title of the box that holds the notice of a coordinator, free text it writes (usually in English), shown in the coordinator dialog when its severity is not « none ».
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator Notice'**
+  String get p2pCoordinatorNotice;
+
+  /// Tooltip of the founder badge of the coordinator dialog, when lit.
+  ///
+  /// In en, this message translates to:
+  /// **'Founder: coordinating trades since the testnet federation.'**
+  String get p2pCoordinatorBadgeFounder;
+
+  /// Tooltip of the founder badge, greyed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a federation founder'**
+  String get p2pCoordinatorBadgeNotFounder;
+
+  /// Tooltip of the development fund badge, lit from 20 %. {percent} is the share the coordinator gives, a number written in the conventions of the language.
+  ///
+  /// In en, this message translates to:
+  /// **'Development fund supporter: donates {percent}% to make RoboSats better.'**
+  String p2pCoordinatorBadgeDevFund(String percent);
+
+  /// Tooltip of the privacy badge, when lit.
+  ///
+  /// In en, this message translates to:
+  /// **'Good OpSec: the coordinator follows best practices to protect his and your privacy.'**
+  String get p2pCoordinatorBadgeGoodOpsec;
+
+  /// Tooltip of the privacy badge, greyed out.
+  ///
+  /// In en, this message translates to:
+  /// **'The privacy practices of this coordinator could improve'**
+  String get p2pCoordinatorBadgeOpsecCouldImprove;
+
+  /// Tooltip of the limits badge, lit when the size limit of the coordinator is above 3 million sats.
+  ///
+  /// In en, this message translates to:
+  /// **'Large limits: the coordinator has large trade limits.'**
+  String get p2pCoordinatorBadgeLargeLimits;
+
+  /// Tooltip of the limits badge, greyed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Does not have large trade limits.'**
+  String get p2pCoordinatorBadgeNoLargeLimits;
+
+  /// Caption under the description of the coordinator, free text of the federation list.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator description'**
+  String get p2pCoordinatorDescription;
+
+  /// Caption under the date the coordinator joined the federation.
+  ///
+  /// In en, this message translates to:
+  /// **'Established'**
+  String get p2pCoordinatorEstablished;
+
+  /// Caption under the onion address of the web client of the coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator hosted web app'**
+  String get p2pCoordinatorHostedWebApp;
+
+  /// Section of the coordinator dialog that opens on its policies, free text of the federation list.
+  ///
+  /// In en, this message translates to:
+  /// **'Policies'**
+  String get p2pCoordinatorPolicies;
+
+  /// Section of the coordinator dialog that opens on its limits, fees and book.
+  ///
+  /// In en, this message translates to:
+  /// **'Summary'**
+  String get p2pCoordinatorSummary;
+
+  /// Caption under « {amount} Sats » in the summary of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximum order size'**
+  String get p2pCoordinatorMaxOrderSize;
+
+  /// Caption under « Onchain payouts disabled » in the summary of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Current onchain payout status'**
+  String get p2pCoordinatorOnchainStatus;
+
+  /// Caption under the on-chain payout fee, a percentage, in the summary of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Current onchain payout fee'**
+  String get p2pCoordinatorCurrentOnchainFee;
+
+  /// Caption under « {amount} Sats » when on-chain payouts are enabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximum onchain swap size'**
+  String get p2pCoordinatorMaxSwapSize;
+
+  /// Caption under the share of its profits a coordinator gives to the development fund.
+  ///
+  /// In en, this message translates to:
+  /// **'Zaps voluntarily for development'**
+  String get p2pCoordinatorDevFundZaps;
+
+  /// Share of its profits a coordinator gives to the development fund; RoboSats writes it without translation. {percent} is a number written in the conventions of the language.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}% of profits'**
+  String p2pCoordinatorDevFundPercent(String percent);
+
+  /// Caption under the number of public buy orders of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Public buy orders'**
+  String get p2pCoordinatorPublicBuyOrders;
+
+  /// Caption under the number of public sell orders of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Public sell orders'**
+  String get p2pCoordinatorPublicSellOrders;
+
+  /// Caption under the sats of all the public orders of a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Book liquidity'**
+  String get p2pCoordinatorBookLiquidity;
+
+  /// Caption under the number of robots active today on a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Today active robots'**
+  String get p2pCoordinatorActiveRobotsToday;
+
+  /// Caption under the average premium of the last 24 hours on a coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'24h non-KYC bitcoin premium'**
+  String get p2pCoordinatorNonKycPremium;
+
+  /// Caption under the price sources of a coordinator, a list of URLs it writes.
+  ///
+  /// In en, this message translates to:
+  /// **'Market price sources (for multiple the median is calculated)'**
+  String get p2pCoordinatorPriceSources;
+
+  /// Section of the coordinator dialog that opens on its versions, node, commit and volumes.
+  ///
+  /// In en, this message translates to:
+  /// **'Stats for Nerds'**
+  String get p2pCoordinatorStatsForNerds;
+
+  /// Word before the version of the coordinator, « Coordinator v0.8.8 »; RoboSats adds the version of its own client, which Troc leaves out.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator'**
+  String get p2pCoordinatorVersionCoordinator;
+
+  /// Caption under « Coordinator v0.8.8 ».
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats version'**
+  String get p2pCoordinatorRoboSatsVersion;
+
+  /// Caption under the LND version of a coordinator, text it writes.
+  ///
+  /// In en, this message translates to:
+  /// **'LND version'**
+  String get p2pCoordinatorLndVersion;
+
+  /// Caption under the Core Lightning version of a coordinator, text it writes (often « Not installed »).
+  ///
+  /// In en, this message translates to:
+  /// **'CLN version'**
+  String get p2pCoordinatorClnVersion;
+
+  /// Caption under the Lightning node of a testnet coordinator; on mainnet the alias is shown alone, as in RoboSats. {alias} is the node alias, text the coordinator writes. Composed by RoboSats from « LN Node » and the alias.
+  ///
+  /// In en, this message translates to:
+  /// **'LN Node: {alias}'**
+  String p2pCoordinatorLnNodeAlias(String alias);
+
+  /// Caption under the Git commit the coordinator runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator commit hash'**
+  String get p2pCoordinatorCommitHash;
+
+  /// Caption under the BTC traded on a coordinator in the last 24 hours.
+  ///
+  /// In en, this message translates to:
+  /// **'24h contracted volume'**
+  String get p2pCoordinatorVolume24h;
+
+  /// Caption under the BTC traded on a coordinator since it started.
+  ///
+  /// In en, this message translates to:
+  /// **'Lifetime contracted volume'**
+  String get p2pCoordinatorVolumeLifetime;
+
+  /// An amount of sats: in the summary of a coordinator, such as its maximum order size, and the amount of a swap order, given in BTC, which the official client writes in sats (`btcToSatsString`). RoboSats writes it without translation. {amount} is a number of sats written in the conventions of the language, or a range « min-max ».
+  ///
+  /// In en, this message translates to:
+  /// **'{amount} Sats'**
+  String p2pAmountSats(String amount);
+
+  /// Contact button of a coordinator: Troc shows the address, to copy, and never opens a mail app.
+  ///
+  /// In en, this message translates to:
+  /// **'Send Email'**
+  String get p2pCoordinatorSendEmail;
+
+  /// Contact button of a coordinator: Troc shows the address, to copy, and never opens a browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get p2pCoordinatorWebsite;
+
+  /// Contact button of a coordinator: Troc shows the fingerprint of its OpenPGP key in groups of four. RoboSats offers to download the key, which Troc does not ship.
+  ///
+  /// In en, this message translates to:
+  /// **'PGP Pubkey fingerprint'**
+  String get p2pCoordinatorPgpFingerprint;
+
+  /// Contact button of a coordinator, a brand name: Troc shows its public key, to copy, and never opens a Nostr gateway.
+  ///
+  /// In en, this message translates to:
+  /// **'Nostr'**
+  String get p2pCoordinatorNostr;
+
+  /// Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram'**
+  String get p2pCoordinatorTelegram;
+
+  /// Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'X'**
+  String get p2pCoordinatorX;
+
+  /// Contact button of a coordinator, a brand name: Troc shows the link RoboSats opens, to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Reddit'**
+  String get p2pCoordinatorReddit;
+
+  /// Contact button of a coordinator, a brand name: Troc shows the channel, to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Matrix'**
+  String get p2pCoordinatorMatrix;
+
+  /// Contact button of a coordinator, a brand name spelt as RoboSats does: Troc shows the link RoboSats opens, to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Simplex'**
+  String get p2pCoordinatorSimplex;
+
+  /// Shown once a value is on the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied!'**
+  String get p2pCommonCopied;
+
+  /// Title of the dialog opened by « Search » below the book.
+  ///
+  /// In en, this message translates to:
+  /// **'Search order'**
+  String get p2pSearchOrderTitle;
+
+  /// Text of the « Search order » dialog; written in the RoboSats code only, absent from its translation files. Troc opens only an order of the public book until the Garage brings robots.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter here an order URL to search for it, even if it\'s password protected'**
+  String get p2pSearchOrderText;
+
+  /// Label of the field of « Search order », which turns red, without a text, when the URL is not …/order/<coordinator>/<id>.
+  ///
+  /// In en, this message translates to:
+  /// **'Order URL'**
+  String get p2pSearchOrderUrlLabel;
+
+  /// Button that closes a dialog without doing anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get p2pCommonCancel;
+
+  /// Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book.
+  ///
+  /// In en, this message translates to:
+  /// **'You do not have a Garage Key'**
+  String get p2pNoRobotTitle;
+
+  /// Text of the dialog shown when a page needs a robot.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate a Garage Key to get your first robot identity and start trading.'**
+  String get p2pNoRobotText;
+
+  /// Button of the no-robot dialog that leads to the Garage; disabled until the Garage exists.
+  ///
+  /// In en, this message translates to:
+  /// **'I have a Garage Key'**
+  String get p2pNoRobotHaveKey;
+
+  /// Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Garage Key'**
+  String get p2pGarageOnboardingGenerateKey;
+
+  /// Title of the sheet that shows the link of the Lightning node of a coordinator (1ML on testnet, Amboss on mainnet), to copy.
+  ///
+  /// In en, this message translates to:
+  /// **'LN Node'**
+  String get p2pCoordinatorLnNode;
+
+  /// The version of the coordinator, « Coordinator v0.8.8 », as RoboSats composes it; RoboSats adds the version of its own client, which Troc leaves out. {name} is the word « Coordinator », {version} the version it announces.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} v{version}'**
+  String p2pCoordinatorVersionValue(String name, String version);
+
+  /// The first 12 characters of the Lightning node key of a mainnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.
+  ///
+  /// In en, this message translates to:
+  /// **'{node}... (AMBOSS)'**
+  String p2pCoordinatorNodeAmboss(String node);
+
+  /// The first 12 characters of the Lightning node key of a testnet coordinator, followed by the name of the explorer the link leads to, as RoboSats writes it. {node} is hexadecimal.
+  ///
+  /// In en, this message translates to:
+  /// **'{node}... (1ML)'**
+  String p2pCoordinatorNode1ml(String node);
+
+  /// The first 12 characters of the commit a coordinator runs, as RoboSats writes it. {commit} is text the coordinator writes.
+  ///
+  /// In en, this message translates to:
+  /// **'{commit}...'**
+  String p2pCoordinatorCommitShort(String commit);
+
+  /// Label of a copy button: its tooltip, and what a screen reader announces.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get p2pCommonCopy;
 }
 
 class _P2pLocalizationsDelegate

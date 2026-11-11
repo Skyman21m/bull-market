@@ -6,6 +6,7 @@ import 'package:robosats/robosats.dart';
 
 import 'domain/p2p_clock.dart';
 import 'presentation/book_cubit.dart';
+import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
@@ -50,7 +51,11 @@ final class P2pRouter {
               param1: args.order,
               param2: args.network,
             )..load(),
-            child: OrderDetailsScreen(now: locator<P2pClock>().now),
+            child: OrderDetailsScreen(
+              now: locator<P2pClock>().now,
+              coordinatorDetails: (request) =>
+                  locator<CoordinatorDetailsCubit>(param1: request),
+            ),
           ),
           _ => const SizedBox.shrink(),
         },

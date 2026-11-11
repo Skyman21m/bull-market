@@ -93,6 +93,7 @@ void main() {
           CoordinatorUnreachable(),
           CoordinatorTimedOut(),
           CoordinatorResponseTooLarge(),
+          CoordinatorTransportBusy(),
           CoordinatorTransportFailed(),
         ]) {
           serve(path, Err(failure));
