@@ -17,7 +17,7 @@ import 'widgets/robot_avatar.dart';
 ///
 /// Its header holds the choice of axis, « Premium » or « Price », and the zoom buttons around the value at the centre.
 /// A tap opens the order nearest to it; a long press, or a pointer that hovers, shows that order and a crosshair.
-/// A screen reader reads a summary of the chart, and finds every order it draws in the list.
+/// A screen reader reads a summary of the chart; every order it draws is in the list too, under the side and payment method that show it.
 class DepthChartView extends StatefulWidget {
   final BookState state;
   final ValueChanged<PublicOrder> onOpenOrder;

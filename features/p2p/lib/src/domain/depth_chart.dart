@@ -137,7 +137,8 @@ final class DepthLines {
 ///
 /// It draws every order received of the chosen currency and host, swaps included when every currency is shown; neither the side nor the payment method of the filter applies.
 /// Each line adds up, order after order along the axis, the bitcoin each order trades at its largest amount.
-/// The window it opens on is centred on the median of every order received, whatever the filter: the median premium, cut to a whole number, or the median price.
+/// The window it opens on is centred on the median premium or price of every order received, whatever the filter, cut to a whole number.
+/// On the premium axis that is the official client's fallback: it centres on the 24-hour non-KYC premium of the coordinators (`/api/info/`), which the book does not read.
 @immutable
 final class DepthChart {
   final DepthAxis axis;
