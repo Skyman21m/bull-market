@@ -226,10 +226,68 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitCommentReference(CommentReference node) {}
 
+  /// Which composition of the app hands P2P the Garage Key handle (issue #47).
+  ///
+  /// `AppLocator.setup` is called with a boolean literal for `withGarageKeys`, `true` only in `Bull.init` of `lib/init.dart`, the foreground composition.
+  /// `AppLocator.setupP2p`, which asks the vault for the handle when its flag is true, is called only by `AppLocator.setup` of `lib/locator.dart`, with the flag that method received.
+  /// Any other reference to either method (a tear-off, which `Function.apply` or a dynamic call needs) fails closed: Dart cannot reach a static method dynamically without one.
+  void checkComposition(SimpleIdentifier node) {
+    final element = node.element;
+    if (!_isCompositionMethod(element)) return;
+    final member = 'AppLocator.${element?.name}';
+    final invocation = node.parent;
+    if (invocation is! MethodInvocation || invocation.methodName != node) {
+      violations.add('$path: $member#not a direct call');
+      return;
+    }
+    final (:owner, :function) = _enclosingDeclaration(node);
+    final flag = [
+      for (final argument in invocation.argumentList.arguments)
+        if (argument is NamedExpression &&
+            argument.name.label.name == 'withGarageKeys')
+          argument.expression,
+    ].firstOrNull;
+    if (element?.name == 'setupP2p') {
+      if (path != 'lib/locator.dart' ||
+          owner != 'AppLocator' ||
+          function != 'setup') {
+        violations.add('$path: $member#outside AppLocator.setup');
+      } else if (flag is! SimpleIdentifier ||
+          !_isCompositionFlag(flag.element)) {
+        violations.add('$path: $member#withGarageKeys not forwarded');
+      }
+    } else if (flag is! BooleanLiteral) {
+      violations.add('$path: $member#withGarageKeys not a literal');
+    } else if (flag.value &&
+        (path != 'lib/init.dart' || owner != 'Bull' || function != 'init')) {
+      violations.add('$path: $member#withGarageKeys: true outside Bull.init');
+    }
+  }
+
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
-    if (!node.inDeclarationContext()) check(node.element, node);
+    if (!node.inDeclarationContext()) {
+      check(node.element, node);
+      checkComposition(node);
+    }
     super.visitSimpleIdentifier(node);
+  }
+
+  // The flag that `AppLocator.setup` forwards to `setupP2p` keeps the value its caller passed.
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    if (_isCompositionFlag(node.writeElement)) {
+      violations.add('$path: AppLocator.setup#withGarageKeys reassigned');
+    }
+    super.visitAssignmentExpression(node);
+  }
+
+  @override
+  void visitAssignedVariablePattern(AssignedVariablePattern node) {
+    if (_isCompositionFlag(node.element)) {
+      violations.add('$path: AppLocator.setup#withGarageKeys reassigned');
+    }
+    super.visitAssignedVariablePattern(node);
   }
 
   @override
@@ -271,6 +329,8 @@ const _unresolvedSensitiveMembers = {
   'garageKeys',
   // `GarageKeyMaterial.bytes`, reached without a static type. No production file reads a member named `bytes` dynamically today.
   'bytes',
+  // `AppLocator.setupP2p`, called dynamically. Dart reaches a static method dynamically only through a tear-off, which the gate refuses, so `setup`, a generic name, is left out.
+  'setupP2p',
 };
 
 const _bridgeLibrary = 'package:bull_sdk/src/rust/frb_generated.dart';
@@ -362,7 +422,8 @@ const _garageKeyReaders = {
   ),
 };
 
-bool _isException(String path, AstNode node, String symbol) {
+/// The outermost class and function that hold [node], as the exceptions name them.
+({String? owner, String? function}) _enclosingDeclaration(AstNode node) {
   String? function;
   String? owner;
   for (AstNode? current = node; current != null; current = current.parent) {
@@ -373,6 +434,27 @@ bool _isException(String path, AstNode node, String symbol) {
     }
     if (current is ClassDeclaration) owner = current.namePart.typeName.lexeme;
   }
+  return (owner: owner, function: function);
+}
+
+/// `AppLocator.setup` or `AppLocator.setupP2p`, the static methods that compose the app and hand P2P the Garage Key handle (issue #47).
+///
+/// They are matched by the name of their class in any library, so that a class of that name elsewhere is held to the same rules; renaming the class of `lib/locator.dart` already fails the gate, whose exception for `Secrets.garageKeys` names it.
+bool _isCompositionMethod(Element? element) =>
+    element is MethodElement &&
+    element.isStatic &&
+    element.enclosingElement?.name == 'AppLocator' &&
+    {'setup', 'setupP2p'}.contains(element.name);
+
+/// The `withGarageKeys` parameter of `AppLocator.setup`.
+bool _isCompositionFlag(Element? element) =>
+    element is FormalParameterElement &&
+    element.name == 'withGarageKeys' &&
+    _isCompositionMethod(element.enclosingElement) &&
+    element.enclosingElement?.name == 'setup';
+
+bool _isException(String path, AstNode node, String symbol) {
+  final (:owner, :function) = _enclosingDeclaration(node);
   final member = symbol.split('#').last;
   // This adapter replaces version bytes with the public xpub version before
   // decoding. Elsewhere this mixed decoder could import private extended keys.

@@ -1026,4 +1026,313 @@ Object slot() => GarageKeySlot.mainnet;
       );
     });
   });
+
+  group('only the foreground composition hands P2P the handle (#47)', () {
+    const locatorPath = 'lib/locator.dart';
+    const initPath = 'lib/init.dart';
+    const handlerPath = 'lib/core/background_tasks/handler.dart';
+    // The shape of `lib/locator.dart`: `setup` forwards its own flag to `setupP2p`.
+    const locator = '''
+class AppLocator {
+  static Future<void> setup(
+    Object locator, {
+    required String payjoinDatabasePath,
+    required bool withGarageKeys,
+  }) async {
+    setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+
+  static void setupP2p(Object locator, {required bool withGarageKeys}) {}
+}
+''';
+    // The shape of `lib/init.dart` and of the background handler.
+    const foreground = '''
+import 'app_locator.dart';
+class Bull {
+  static Future<void> init() async {
+    await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+  }
+}
+''';
+    const background = '''
+import 'app_locator.dart';
+Future<bool> tasksHandler(String task) async {
+  await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: false);
+  return true;
+}
+''';
+
+    setUpAll(() {
+      File('${fixture.path}/app_locator.dart').writeAsStringSync(locator);
+      File('${fixture.path}/app_locator_default.dart').writeAsStringSync('''
+class AppLocator {
+  static Future<void> setup(Object locator, {bool withGarageKeys = true}) async {}
+}
+''');
+    });
+
+    test('the compositions of today pass', () async {
+      expect(
+        await inspect('composition_root', locator, policyPath: locatorPath),
+        isEmpty,
+      );
+      expect(
+        await inspect('composition_init', foreground, policyPath: initPath),
+        isEmpty,
+      );
+      expect(
+        await inspect(
+          'composition_handler',
+          background,
+          policyPath: handlerPath,
+        ),
+        isEmpty,
+      );
+      expect(
+        await inspect('composition_false_elsewhere', background),
+        isEmpty,
+        reason: 'false hands out nothing, wherever it is passed',
+      );
+    });
+
+    test('true is refused outside Bull.init of lib/init.dart', () async {
+      for (final (name, source, path) in [
+        ('composition_true_handler', foreground, handlerPath),
+        ('composition_true_locator', foreground, locatorPath),
+        (
+          'composition_true_other_class',
+          foreground.replaceAll('class Bull', 'class Other'),
+          initPath,
+        ),
+        (
+          'composition_true_other_method',
+          foreground.replaceAll('init()', 'start()'),
+          initPath,
+        ),
+        (
+          'composition_true_top_level',
+          background.replaceAll('false', 'true'),
+          initPath,
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: path), [
+          '$path: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ], reason: name);
+      }
+      // An alias of the class is the class.
+      expect(
+        await inspect('composition_true_alias', '''
+import 'app_locator.dart';
+typedef Composition = AppLocator;
+Future<void> compose() =>
+    Composition.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+'''),
+        [
+          'lib/composition_true_alias.dart: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ],
+      );
+    });
+
+    test('the flag is a boolean literal, and is passed', () async {
+      for (final (name, flag) in [
+        ('composition_constant', 'on'),
+        ('composition_parenthesized', '(true)'),
+        ('composition_negated', '!false'),
+        ('composition_environment', "const bool.fromEnvironment('garage')"),
+      ]) {
+        expect(
+          await inspect(
+            name,
+            '${foreground.replaceAll('withGarageKeys: true', 'withGarageKeys: $flag')}const on = true;\n',
+            policyPath: initPath,
+          ),
+          ['$initPath: AppLocator.setup#withGarageKeys not a literal'],
+          reason: name,
+        );
+      }
+      expect(
+        await inspect('composition_default', '''
+import 'app_locator_default.dart';
+class Bull {
+  static Future<void> init() => AppLocator.setup(0);
+}
+''', policyPath: initPath),
+        ['$initPath: AppLocator.setup#withGarageKeys not a literal'],
+      );
+    });
+
+    test(
+      'setupP2p is called by AppLocator.setup alone, with its own flag',
+      () async {
+        for (final (name, source, path, reason) in [
+          (
+            'composition_p2p_handler',
+            '''
+import 'app_locator.dart';
+Future<bool> tasksHandler(String task) async {
+  AppLocator.setupP2p(0, withGarageKeys: false);
+  return true;
+}
+''',
+            handlerPath,
+            'outside AppLocator.setup',
+          ),
+          (
+            'composition_p2p_other_method',
+            locator.replaceAll(
+              'static void setupP2p',
+              'static void other(Object locator) =>\n'
+                  '      setupP2p(locator, withGarageKeys: true);\n'
+                  '  static void setupP2p',
+            ),
+            locatorPath,
+            'outside AppLocator.setup',
+          ),
+          (
+            'composition_p2p_other_file',
+            locator,
+            'lib/core/core_locator.dart',
+            'outside AppLocator.setup',
+          ),
+          (
+            'composition_p2p_true',
+            locator.replaceAll(
+              'withGarageKeys: withGarageKeys',
+              'withGarageKeys: true',
+            ),
+            locatorPath,
+            'withGarageKeys not forwarded',
+          ),
+          (
+            'composition_p2p_shadowed',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'void register(bool withGarageKeys) =>\n'
+                  '        setupP2p(locator, withGarageKeys: withGarageKeys);\n'
+                  '    register(true);',
+            ),
+            locatorPath,
+            'withGarageKeys not forwarded',
+          ),
+        ]) {
+          expect(await inspect(name, source, policyPath: path), [
+            '$path: AppLocator.setupP2p#$reason',
+          ], reason: name);
+        }
+      },
+    );
+
+    test('the flag of AppLocator.setup is never reassigned', () async {
+      for (final (name, statement) in [
+        ('composition_assigned', 'withGarageKeys = true;'),
+        ('composition_compound', 'withGarageKeys |= true;'),
+        ('composition_pattern', '(withGarageKeys,) = (true,);'),
+      ]) {
+        expect(
+          await inspect(
+            name,
+            locator.replaceAll(
+              '    setupP2p(locator',
+              '    $statement\n    setupP2p(locator',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator.setup#withGarageKeys reassigned'],
+          reason: name,
+        );
+      }
+    });
+
+    test(
+      'a reference that is not a call fails closed, an alias and reflection included',
+      () async {
+        for (final (name, source, member) in [
+          // The bypass a review of #50 found: an alias and `Function.apply`, with the name of the flag built at run time.
+          (
+            'composition_reflection',
+            '''
+import 'app_locator.dart';
+typedef Composition = AppLocator;
+class Bull {
+  static Future<void> init() =>
+      Function.apply(Composition.setup, [0], {
+            #payjoinDatabasePath: '',
+            Symbol('withGarage' 'Keys'): true,
+          })
+          as Future<void>;
+}
+''',
+            'setup',
+          ),
+          (
+            'composition_tear_off',
+            '''
+import 'app_locator.dart';
+class Bull {
+  static Future<void> init() async {
+    final compose = AppLocator.setup;
+    await compose(0, payjoinDatabasePath: '', withGarageKeys: false);
+  }
+}
+''',
+            'setup',
+          ),
+          (
+            'composition_call',
+            foreground.replaceAll(
+              'AppLocator.setup(',
+              'AppLocator.setup.call(',
+            ),
+            'setup',
+          ),
+          (
+            'composition_parenthesized_call',
+            foreground.replaceAll('AppLocator.setup(', '(AppLocator.setup)('),
+            'setup',
+          ),
+          (
+            'composition_prefixed',
+            '''
+import 'app_locator.dart' as shell;
+class Bull {
+  static Future<void> init() async {
+    final register = shell.AppLocator.setupP2p;
+    register(0, withGarageKeys: false);
+  }
+}
+''',
+            'setupP2p',
+          ),
+        ]) {
+          expect(
+            await inspect(name, source, policyPath: initPath),
+            contains('$initPath: AppLocator.$member#not a direct call'),
+            reason: name,
+          );
+        }
+        // Even inside AppLocator.setup.
+        expect(
+          await inspect(
+            'composition_p2p_tear_off',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'final register = setupP2p;\n'
+                  '    register(locator, withGarageKeys: withGarageKeys);',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator.setupP2p#not a direct call'],
+        );
+      },
+    );
+
+    test('a dynamic call of setupP2p fails closed', () async {
+      expect(
+        await inspect('composition_dynamic', '''
+Object call(dynamic shell) => shell.setupP2p(0, withGarageKeys: true);
+'''),
+        ['lib/composition_dynamic.dart: unresolved sensitive member setupP2p'],
+      );
+    });
+  });
 }
