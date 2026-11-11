@@ -1,6 +1,6 @@
 # Spike 3: RoboSats robot PGP in Dart
 
-Written on 2026-11-10, updated the same day after the security review, and on 2026-11-11 for the first exchange with a coordinator (status line "Real coordinator" of the interoperability matrix). Code: package `packages/robosats` (pure Dart, no Flutter, no network). Reference: RoboSats at commit `ff1998c`. Preparation note: `preparation-identite-et-pgp.md`, part B (project folder).
+Written on 2026-11-10, updated the same day after the security review, and on 2026-11-11 for the first exchange with a coordinator (status line "Real coordinator" of the interoperability matrix). Since the review of that exchange, a key that is read (`PgpPublicKey.parse`, `RobotPgpKey.parse`) holds the canonical armor of its packets, as a generated key always did: armor headers are accepted and dropped. What the package writes is unchanged byte for byte, so the cross-check with GnuPG and OpenPGP.js was not rerun. Code: package `packages/robosats` (pure Dart, no Flutter, no network). Reference: RoboSats at commit `ff1998c`. Preparation note: `preparation-identite-et-pgp.md`, part B (project folder).
 
 ## Summary
 
