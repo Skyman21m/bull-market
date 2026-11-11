@@ -8,6 +8,7 @@ import 'package:secrets/testing.dart';
 
 /// Where the shell hands the P2P feature the vault's Garage Key handle, which creates and imports keys under a write lock that is per isolate.
 ///
+/// `Secrets` is registered whatever the flag, as it always is in the app, so that the flag alone decides.
 /// `AppLocator.setup` itself cannot run here; `test/core_test/background_tasks/background_tasks_keystore_test.dart` checks what each composition passes to it.
 void main() {
   late GetIt locator;
@@ -15,29 +16,23 @@ void main() {
 
   setUp(() {
     storage = FakeSecureStoragePlatform()..install();
-    locator = GetIt.asNewInstance();
+    locator = GetIt.asNewInstance()
+      ..registerSingleton<Secrets>(Secrets(scratchDirectory: () async => '.'));
   });
 
   tearDown(() => locator.reset());
 
-  test('with the Garage Keys, P2P gets the handle, and no key is touched', () {
-    locator.registerSingleton<Secrets>(
-      Secrets(scratchDirectory: () async => '.'),
+  for (final withGarageKeys in [true, false]) {
+    test(
+      'withGarageKeys: $withGarageKeys alone decides whether P2P gets the handle, and no key is touched',
+      () {
+        AppLocator.setupP2p(locator, withGarageKeys: withGarageKeys);
+
+        expect(hasGarageKeysForTesting(locator), withGarageKeys);
+        expect(locator.isRegistered<P2pFacade>(), isTrue);
+        expect(storage.reads, 0);
+        expect(storage.entries, isEmpty);
+      },
     );
-
-    AppLocator.setupP2p(locator, withGarageKeys: true);
-
-    expect(hasGarageKeysForTesting(locator), isTrue);
-    expect(storage.reads, 0);
-    expect(storage.entries, isEmpty);
-  });
-
-  test('without them, P2P is set up with no Garage Key ability', () {
-    // No `Secrets` is registered: asking it for the handle would throw.
-    AppLocator.setupP2p(locator, withGarageKeys: false);
-
-    expect(hasGarageKeysForTesting(locator), isFalse);
-    expect(locator.isRegistered<P2pFacade>(), isTrue);
-    expect(storage.reads, 0);
-  });
+  }
 }
