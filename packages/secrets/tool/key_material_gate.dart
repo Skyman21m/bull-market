@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/analysis_context.dart';
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -42,13 +43,17 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
     sdkPath: dartSdkPath(root),
   );
   final files = productionDartFiles(root);
-  final violations = <String>[];
+  final scanned = files.toSet();
+  final violations = <String>[
+    for (final link in productionLinks(root))
+      '${link.substring(root.length + 1)}: symbolic link',
+  ];
   for (final path in files) {
     final relative = path.substring(root.length + 1);
-    final result = await collection
-        .contextFor(path)
-        .currentSession
-        .getResolvedUnit(path);
+    final result = await _contextOf(
+      collection,
+      path,
+    ).currentSession.getResolvedUnit(path);
     if (result is! ResolvedUnitResult) {
       violations.add('$relative: unresolved unit');
       continue;
@@ -59,41 +64,93 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
       }
     }
     violations.addAll(checkUnit(result.unit, relative));
+    for (final target in directiveTargets(result.unit)) {
+      final real = File(target).existsSync()
+          ? File(target).resolveSymbolicLinksSync()
+          : target;
+      if (real.startsWith('$root/') &&
+          !scanned.contains(real) &&
+          !real.startsWith('$root/packages/secrets/lib/')) {
+        violations.add(
+          '$relative: ${real.substring(root.length + 1)}#unscanned file',
+        );
+      }
+    }
   }
   await collection.dispose();
   return KeyMaterialReport(files.length, violations.toSet().toList()..sort());
 }
 
-List<String> productionDartFiles(String root) {
-  final roots = <Directory>[Directory('$root/lib')];
+/// The context that resolves [path].
+///
+/// `analysis_options.yaml` may exclude a file from analysis (the app excludes `lib/**/*.g.dart` and `lib/**/*.freezed.dart`), and `contextFor` then finds no context for it; such a file is still compiled, so it is resolved in the deepest context whose folder holds it.
+AnalysisContext _contextOf(AnalysisContextCollection collection, String path) {
+  AnalysisContext? deepest;
+  for (final context in collection.contexts) {
+    final folder = context.contextRoot.root.path;
+    if (path.startsWith('$folder/') &&
+        folder.length > (deepest?.contextRoot.root.path.length ?? -1)) {
+      deepest = context;
+    }
+  }
+  return deepest ?? (throw StateError('No analysis context holds $path'));
+}
+
+/// Every Dart file the gate scans: all of `lib/`, `packages/*/lib/` and `features/*/lib/` but the custody package, generated files included.
+///
+/// No file is left out for its name or its folder: a generated file is scanned like a hand-written one (issue #47).
+List<String> productionDartFiles(String root) => [
+  for (final entity in _productionEntities(root))
+    if (entity is File && entity.path.endsWith('.dart')) entity.path,
+]..sort();
+
+/// The symbolic links under the production roots, and those that stand for a whole package or feature: the gate does not follow them, so each one fails the check.
+List<String> productionLinks(String root) => [
+  for (final entity in _productionEntities(root))
+    if (entity is Link) entity.path,
+]..sort();
+
+Iterable<FileSystemEntity> _productionEntities(String root) sync* {
+  final roots = ['$root/lib'];
   for (final group in ['packages', 'features']) {
     final parent = Directory('$root/$group');
     if (!parent.existsSync()) continue;
     for (final member in parent.listSync(followLinks: false)) {
-      if (member is Directory && member.path != '$root/packages/secrets') {
-        roots.add(Directory('${member.path}/lib'));
-      }
+      if (member.path == '$root/packages/secrets') continue;
+      if (member is Link) yield member;
+      if (member is Directory) roots.add('${member.path}/lib');
     }
   }
-  return [
-    for (final directory in roots)
-      if (directory.existsSync())
-        for (final file in directory.listSync(
-          recursive: true,
-          followLinks: false,
-        ))
-          if (file is File &&
-              file.path.endsWith('.dart') &&
-              !RegExp(
-                r'\.(g|freezed|gr|config|mocks|steps)\.dart$',
-              ).hasMatch(file.path) &&
-              !file.path
-                  .split(Platform.pathSeparator)
-                  .any(
-                    (part) => ['generated', 'vendor', 'build'].contains(part),
-                  ))
-            file.path,
-  ]..sort();
+  for (final path in roots) {
+    switch (FileSystemEntity.typeSync(path, followLinks: false)) {
+      case FileSystemEntityType.link:
+        yield Link(path);
+      case FileSystemEntityType.directory:
+        yield* Directory(path).listSync(recursive: true, followLinks: false);
+      default:
+    }
+  }
+}
+
+/// The files that the directives of [unit] name, each alternative of a conditional import or export included, as the analyzer resolved them.
+Iterable<String> directiveTargets(CompilationUnit unit) sync* {
+  for (final directive in unit.directives) {
+    final uris = switch (directive) {
+      ImportDirective(:final libraryImport, :final configurations) => [
+        libraryImport?.uri,
+        for (final configuration in configurations) configuration.resolvedUri,
+      ],
+      ExportDirective(:final libraryExport, :final configurations) => [
+        libraryExport?.uri,
+        for (final configuration in configurations) configuration.resolvedUri,
+      ],
+      PartDirective(:final partInclude) => [partInclude?.uri],
+      _ => const <DirectiveUri?>[],
+    };
+    for (final uri in uris) {
+      if (uri is DirectiveUriWithSource) yield uri.source.fullName;
+    }
+  }
 }
 
 List<String> checkUnit(CompilationUnit unit, String relativePath) {

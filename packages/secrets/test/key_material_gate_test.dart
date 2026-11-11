@@ -408,21 +408,21 @@ class SwapMasterKeyModel {
   );
 
   test(
-    'production discovery excludes custody, generated code and vendor files',
+    'production discovery excludes custody and test code, not generated code',
     () {
       final root = Directory('${fixture.path}/discovery')..createSync();
       const included = [
         'lib/app.dart',
         'packages/other/lib/value.dart',
         'features/other/lib/feature.dart',
+        'lib/example.g.dart',
+        'lib/generated/example.dart',
+        'lib/vendor/example.dart',
       ];
       for (final path in [
         ...included,
         'packages/secrets/lib/private.dart',
         'test/example.dart',
-        'lib/example.g.dart',
-        'lib/generated/example.dart',
-        'lib/vendor/example.dart',
       ]) {
         File('${root.path}/$path')
           ..createSync(recursive: true)
@@ -434,6 +434,181 @@ class SwapMasterKeyModel {
       );
     },
   );
+
+  group('no production file escapes the gate for its path (#47)', () {
+    const reads = {
+      'seed': (
+        source: '''
+import 'package:bip39_mnemonic/bip39_mnemonic.dart';
+List<int> leak(Mnemonic words) => words.seed;
+''',
+        symbol: '#Mnemonic.seed',
+      ),
+      'garage': (
+        source: '''
+import 'package:secrets/secrets.dart';
+List<int> leak(GarageKeyMaterial material) => material.bytes;
+''',
+        symbol: '#GarageKeyMaterial.bytes',
+      ),
+    };
+
+    test(
+      'a seed read and a Garage Key read are flagged where the gate skipped files',
+      () async {
+        final root = Directory('${fixture.path}/formerly_skipped')
+          ..createSync();
+        // The app's own exclusions: the analyzer finds no context for these files, and the gate must resolve them all the same.
+        File('${root.path}/analysis_options.yaml').writeAsStringSync('''
+analyzer:
+  exclude:
+    - lib/**/*.g.dart
+    - lib/**/*.freezed.dart
+''');
+        const places = [
+          'features/p2p/lib/generated/%.dart',
+          'features/p2p/lib/generated/l10n/%.dart',
+          'lib/generated/%.dart',
+          'lib/%.g.dart',
+          'lib/src/%.freezed.dart',
+          'packages/robosats/lib/src/%.g.dart',
+          'features/p2p/lib/src/%.freezed.dart',
+          'lib/%.gr.dart',
+          'lib/%.config.dart',
+          'lib/%.mocks.dart',
+          'lib/%.steps.dart',
+          'features/p2p/lib/src/build/%.dart',
+          'packages/other/lib/vendor/%.dart',
+        ];
+        final written = <String, String>{};
+        for (final place in places) {
+          for (final MapEntry(key: name, value: read) in reads.entries) {
+            final path = place.replaceAll('%', name);
+            File('${root.path}/$path')
+              ..createSync(recursive: true)
+              ..writeAsStringSync(read.source);
+            written[path] = read.symbol;
+          }
+        }
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, written.length);
+        for (final MapEntry(key: path, value: symbol) in written.entries) {
+          expect(
+            report.violations,
+            contains(allOf(startsWith('$path: '), endsWith(symbol))),
+            reason: path,
+          );
+        }
+        expect(report.violations, hasLength(written.length));
+      },
+    );
+
+    test(
+      'a repository inside a folder named build, vendor or generated is scanned',
+      () async {
+        final root = Directory(
+          '${fixture.path}/build/vendor/generated/repository',
+        )..createSync(recursive: true);
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(reads['seed']?.source ?? '');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(
+          report.violations.single,
+          allOf(startsWith('lib/app.dart: '), endsWith('#Mnemonic.seed')),
+        );
+      },
+    );
+
+    test(
+      'a symbolic link under the production roots fails the check',
+      () async {
+        final root = Directory('${fixture.path}/links')..createSync();
+        File('${root.path}/elsewhere/lib/leak.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(reads['seed']?.source ?? '');
+        Link(
+          '${root.path}/lib/leak.dart',
+        ).createSync('${root.path}/elsewhere/lib/leak.dart', recursive: true);
+        Link(
+          '${root.path}/packages/linked',
+        ).createSync('${root.path}/elsewhere', recursive: true);
+        Link(
+          '${root.path}/features/other/lib',
+        ).createSync('${root.path}/elsewhere/lib', recursive: true);
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 0);
+        expect(report.violations, [
+          'features/other/lib: symbolic link',
+          'lib/leak.dart: symbolic link',
+          'packages/linked: symbolic link',
+        ]);
+      },
+    );
+
+    test(
+      'a production file may not name a file of the repository the gate skips',
+      () async {
+        final root = Directory('${fixture.path}/reach')..createSync();
+        final real = root.resolveSymbolicLinksSync();
+        for (final path in [
+          'tool/leak.dart',
+          'test/helper.dart',
+          'integration_test/alternative.dart',
+          'bin/alternative.dart',
+          'packages/secrets/test/fake.dart',
+          'lib/leak.txt',
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(reads['seed']?.source ?? '');
+        }
+        File('${root.path}/packages/secrets/lib/custody.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const custody = 0;\n');
+        File('${root.path}/lib/plain.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const plain = 0;\n');
+        File(
+          '${root.path}/lib/part.inc',
+        ).writeAsStringSync("part of 'app.dart';\nconst inPart = 0;\n");
+        File('${root.path}/lib/app.dart').writeAsStringSync('''
+import '../tool/leak.dart' as escaped;
+import 'leak.txt' as text;
+import 'file://$real/test/helper.dart' as absolute;
+import 'dart:core' if (dart.library.io) '../integration_test/alternative.dart';
+import '../packages/secrets/test/fake.dart' as fake;
+import '../packages/secrets/lib/custody.dart';
+export 'plain.dart' if (dart.library.html) '../bin/alternative.dart';
+part 'part.inc';
+Object use() => [escaped.leak, text.leak, absolute.leak, fake.leak, custody];
+''');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 2);
+        expect(report.violations, [
+          for (final path in [
+            'bin/alternative.dart',
+            'integration_test/alternative.dart',
+            'lib/leak.txt',
+            'lib/part.inc',
+            'packages/secrets/test/fake.dart',
+            'test/helper.dart',
+            'tool/leak.dart',
+          ])
+            'lib/app.dart: $path#unscanned file',
+        ]);
+      },
+    );
+  });
 
   test('Silent Payments accounts built from words are checked', () async {
     final violations = await inspect('bwk_constructors', '''
