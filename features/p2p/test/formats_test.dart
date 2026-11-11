@@ -116,4 +116,27 @@ void main() {
       );
     },
   );
+
+  test('the depth chart writes its centre and ticks', () {
+    // The centre of the premium axis: a whole number, the median it is cut to.
+    expect(en.chartCenterPremium(2), '2%');
+    expect(en.chartCenterPremium(-1), '-1%');
+    expect(en.chartCenterPremium(12), '12%');
+    expect(en.chartCenterPremium(0), '0%');
+    expect(fr.chartCenterPremium(2), '2\u00a0%');
+    // Premium ticks: `${value}%`.
+    expect(en.chartPremium(-2.5), '-2.5%');
+    expect(en.chartPremium(10), '10%');
+    expect(fr.chartPremium(-2.5), '-2,5\u00a0%');
+    // Price ticks: thousands and millions shortened, every decimal kept.
+    expect(en.chartPrice(93500), '93.5K');
+    expect(en.chartPrice(93020), '93.02K');
+    expect(en.chartPrice(1200000), '1.2M');
+    expect(en.chartPrice(950), '950');
+    expect(fr.chartPrice(93500), contains('93,5'));
+    // Bitcoin ticks: a plain number.
+    expect(en.chartBtc(0.065), '0.065');
+    expect(en.chartBtc(2), '2');
+    expect(fr.chartBtc(0.065), '0,065');
+  });
 }

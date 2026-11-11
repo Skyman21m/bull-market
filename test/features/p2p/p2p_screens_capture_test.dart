@@ -28,7 +28,10 @@ const _fixtures = 'packages/robosats/test/fixtures/coordinator';
 final class _RecordedTransport implements CoordinatorTransport {
   final RobosatsNetwork network;
 
-  const _RecordedTransport(this.network);
+  /// Coordinators that answer as unreachable whatever was recorded.
+  final Set<String> offline;
+
+  const _RecordedTransport(this.network, {this.offline = const {}});
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
@@ -42,6 +45,7 @@ final class _RecordedTransport implements CoordinatorTransport {
               request.url.host,
         )
         .shortAlias;
+    if (offline.contains(alias)) return const Err(CoordinatorUnreachable());
     final endpoint = request.url.path.contains('info') ? 'info' : 'book';
     final file = File('$_fixtures/$alias-${network.name}-$endpoint.json');
     if (!file.existsSync()) return const Err(CoordinatorUnreachable());
@@ -119,15 +123,16 @@ void main() {
         }
 
         Future<StreamController<P2pTorState>> show(
-          RobosatsNetwork network,
-        ) async {
+          RobosatsNetwork network, {
+          Set<String> offline = const {},
+        }) async {
           final locator = GetIt.asNewInstance();
           final tor = StreamController<P2pTorState>.broadcast();
           addTearDown(tor.close);
           addTearDown(locator.reset);
           setUpP2pForTesting(
             locator,
-            transport: _RecordedTransport(network),
+            transport: _RecordedTransport(network, offline: offline),
             torStates: () => tor.stream,
             clock: () => _now,
           );
@@ -169,6 +174,15 @@ void main() {
         await capture('offres-tous');
 
         final l10n = lookupP2pLocalizations(locale);
+        // The depth chart of every order received, then back to the list.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        // Lets the view bar slide to its new segment.
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-tous');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
+
         // « I want to Buy and use EUR », the choices of the mock-up.
         await tester.tap(find.text(l10n.p2pBookFilterAny).first);
         await settle();
@@ -179,6 +193,34 @@ void main() {
         await tester.tap(find.text('EUR').last);
         await settle();
         await capture('offres');
+
+        // The depth chart under the currency of the filter: on the premium axis, with an order under the finger, then on the price axis.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique');
+        final plot = find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.painter.runtimeType.toString() == '_DepthChartPainter',
+        );
+        final finger = await tester.startGesture(
+          tester.getCenter(plot) + const Offset(40, -60),
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle();
+        await capture('graphique-ordre');
+        await finger.up();
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookColumnPremium));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.text(l10n.p2pBookColumnPrice));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-prix');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
 
         await tester.tap(find.textContaining(' EUR', findRichText: true).first);
         // Lets the page transition end.
@@ -242,6 +284,26 @@ void main() {
         await settle();
         await tester.pump(const Duration(seconds: 1));
         await capture('sans-robot');
+
+        // The chart on a small phone, 320 by 568 points, with four coordinators offline above it (Gumpellite answers nothing recorded): their state scrolls with the chart.
+        tester.view.physicalSize = const Size(640, 1136);
+        tor = await show(
+          RobosatsNetwork.mainnet,
+          offline: {'lake', 'bazaar', 'freeport', 'ammanaya'},
+        );
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-hors-ligne-petit');
+        await tester.drag(
+          find.textContaining('TheBigLake').first,
+          const Offset(0, -600),
+        );
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-hors-ligne-petit-bas');
       },
     );
   }

@@ -136,5 +136,14 @@
   "p2pCoordinatorNodeAmboss": "{node}... (AMBOSS)",
   "p2pCoordinatorNode1ml": "{node}... (1ML)",
   "p2pCoordinatorCommitShort": "{commit}...",
-  "p2pCommonCopy": "Copier"
+  "p2pCommonCopy": "Copier",
+  "p2pBookColumnPrice": "Prix",
+  "p2pChartBtc": "BTC",
+  "p2pChartZoomOut": "Zoom arrière",
+  "p2pChartZoomIn": "Zoom avant",
+  "p2pChartCenterPrice": "{price} {currencyCode}",
+  "p2pChartBuyOrders": "{count, plural, one{{count} ordre d'achat} other{{count} ordres d'achat}}",
+  "p2pChartSellOrders": "{count, plural, one{{count} ordre de vente} other{{count} ordres de vente}}",
+  "p2pChartSummary": "Graphique de profondeur centré sur {center} : {buyOrders} et {sellOrders}.",
+  "p2pChartSummaryNoAxis": "Graphique de profondeur : rien à tracer sur cet axe."
 }

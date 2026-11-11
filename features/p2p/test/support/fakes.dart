@@ -32,6 +32,8 @@ Map<String, Object?> bookOrder({
   int escrow = 10800,
   String? makerStatus = 'Active',
   int makerSeed = 1,
+  bool isExplicit = false,
+  int? satoshis,
 }) {
   final range = minAmount != null && maxAmount != null;
   return {
@@ -45,9 +47,9 @@ Map<String, Object?> bookOrder({
     'min_amount': minAmount?.toString(),
     'max_amount': maxAmount?.toString(),
     'payment_method': paymentMethod,
-    'is_explicit': false,
+    'is_explicit': isExplicit,
     'premium': premium.toString(),
-    'satoshis': null,
+    'satoshis': satoshis,
     'maker': 1,
     'escrow_duration': escrow,
     'bond_size': bond.toString(),
@@ -60,15 +62,16 @@ Map<String, Object?> bookOrder({
   };
 }
 
-/// Reads [elements] as the book of temple on mainnet, through the real parser of the package.
+/// Reads [elements] as the book of [alias] on mainnet, temple by default, through the real parser of the package.
 Future<List<PublicOrder>> parseOrders(
-  List<Map<String, Object?>> elements,
-) async {
-  final transport = FakeTransport(books: {'temple': elements});
+  List<Map<String, Object?>> elements, {
+  String alias = 'temple',
+}) async {
+  final transport = FakeTransport(books: {alias: elements});
   final result = await CoordinatorClient(
     transport,
     clock: () => testNow,
-  ).fetchBook(coordinator('temple'), RobosatsNetwork.mainnet);
+  ).fetchBook(coordinator(alias), RobosatsNetwork.mainnet);
   return switch (result) {
     Ok(:final value) => value.orders,
     Err(:final failure) => throw StateError('$failure'),

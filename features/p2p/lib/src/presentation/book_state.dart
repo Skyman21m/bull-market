@@ -77,6 +77,10 @@ final class BookState {
       if (value is CoordinatorBookFailed) key,
   ];
 
+  /// Whether a coordinator gave its book, even an empty one: until one does, an empty book is not known to be empty.
+  bool get hasAnswer =>
+      coordinators.values.any((status) => status is CoordinatorBookLoaded);
+
   /// Whether no book has arrived yet, so there is nothing to show but a wait.
   bool get isWaitingForFirstBook =>
       coordinators.isEmpty ||

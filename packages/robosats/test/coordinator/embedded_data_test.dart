@@ -254,34 +254,42 @@ void main() {
       expect(_isCompressedPoint('02${'f' * 64}'), isFalse);
     });
 
-    test('has contacts and onion addresses in printable ASCII', () {
-      // The app offers a contact or an address for copy only when it is printable ASCII: a change of the list that breaks it fails here, not silently in the app.
-      final printable = RegExp(r'^[\x20-\x7E]+$');
-      for (final coordinator in Federation.robosats.coordinators) {
-        final contact = coordinator.contact;
-        for (final text in [
-          contact.email,
-          contact.telegram,
-          contact.simplex,
-          contact.matrix,
-          contact.website,
-          contact.nostr,
-          contact.pgp,
-          contact.fingerprint,
-          contact.reddit,
-          contact.twitter,
-          coordinator.mainnet.onion,
-          coordinator.testnet.onion,
-        ]) {
-          if (text == null) continue;
-          expect(
-            printable.hasMatch(text),
-            isTrue,
-            reason: '${coordinator.shortAlias}: $text',
-          );
+    test(
+      'has contacts and onion addresses in printable ASCII, with no space at either end',
+      () {
+        // The app offers a contact or an address for copy only when it is printable ASCII that neither starts nor ends with a space: a change of the list that breaks it fails here, not silently in the app.
+        final printable = RegExp(r'^[\x21-\x7E](?:[\x20-\x7E]*[\x21-\x7E])?$');
+        expect(printable.hasMatch('a'), isTrue);
+        expect(printable.hasMatch('a b'), isTrue);
+        for (final text in ['', ' ', ' a', 'a ', 'a\tb']) {
+          expect(printable.hasMatch(text), isFalse, reason: '"$text"');
         }
-      }
-    });
+        for (final coordinator in Federation.robosats.coordinators) {
+          final contact = coordinator.contact;
+          for (final text in [
+            contact.email,
+            contact.telegram,
+            contact.simplex,
+            contact.matrix,
+            contact.website,
+            contact.nostr,
+            contact.pgp,
+            contact.fingerprint,
+            contact.reddit,
+            contact.twitter,
+            coordinator.mainnet.onion,
+            coordinator.testnet.onion,
+          ]) {
+            if (text == null) continue;
+            expect(
+              printable.hasMatch(text),
+              isTrue,
+              reason: '${coordinator.shortAlias}: $text',
+            );
+          }
+        }
+      },
+    );
 
     test('has free text that needs no cleaning and stays short', () {
       // The list is reviewed when it is generated, but its text comes from RoboSats contributors: it must already be what the cleaning of coordinator text would leave.

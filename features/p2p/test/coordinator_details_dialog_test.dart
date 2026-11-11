@@ -740,7 +740,7 @@ void main() {
     'the text of the coordinator answer is shown cleaned, the notice whole',
     (tester) async {
       String hidden(String text) =>
-          text.replaceAll('|', String.fromCharCodes([0x200B, 0x3164, 0xFE0F]));
+          text.replaceAll('|', String.fromCharCodes([0x200B, 0x3164, 0x2060]));
       // Longer than a line, shorter than the bound of a notice.
       final notice = 'Maintenance|${'n' * 2000}';
       final info = recordedInfo('temple', RobosatsNetwork.mainnet)
