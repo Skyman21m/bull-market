@@ -79,7 +79,7 @@ void main() {
       // A screen reader announces it with the button.
       expect(
         tester.getSemantics(find.byType(IconButton)),
-        containsSemantics(tooltip: 'Copy', isButton: true),
+        isSemantics(tooltip: 'Copy', isButton: true),
       );
 
       await tester.pumpWidget(
