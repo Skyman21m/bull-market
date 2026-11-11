@@ -2351,6 +2351,80 @@ void main() {
     });
   });
 
+  group('the log of a session given up', () {
+    test(
+      'counts them, and names neither the coordinator, nor the robot, nor the session',
+      () async {
+        final server = await serve({'/api/robot/': _json('{}')});
+        final identity = _identity(1);
+        // None of the sessions of this test finishes closing.
+        for (var index = 0; index < 3; index++) {
+          sessions.closeGates[index] = Completer<void>().future;
+        }
+        final tor = transport(closeTimeout: const Duration(milliseconds: 200));
+        final printed = <String>[];
+        final print = debugPrint;
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) printed.add(message);
+        };
+        try {
+          for (var round = 0; round < 3; round++) {
+            final result = await tor.send(
+              _get(
+                server.url('/api/robot/'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': identity.authorizationHeader(),
+                },
+                robot: identity.sessionKey,
+              ),
+            );
+            expect(result, isA<Ok<Object?, Failure>>());
+            await tor.closeRobotSessions(identity.sessionKey);
+          }
+        } finally {
+          debugPrint = print;
+        }
+
+        expect(tor.countsForTesting.sessionsGivenUp, 3);
+        expect(tor.countsForTesting.places, 0);
+        // The first and the second are logged; the third waits for the fourth.
+        final givenUp = printed.where((line) => line.contains('given up'));
+        expect(givenUp, hasLength(2));
+        for (final (line, count) in [
+          (givenUp.first, 1),
+          (givenUp.last, 2),
+        ]) {
+          expect(
+            line,
+            matches(
+              RegExp(
+                'P2P Tor session given up: it did not close in time \\($count so far\\)(\\x1B\\[0m)?\\s*\$',
+              ),
+            ),
+          );
+        }
+        for (final line in printed) {
+          for (final secret in [
+            '127.0.0.1',
+            'http:',
+            '/api/robot',
+            'TorSession',
+            'TorProxyEndpoint',
+            identity.tokenSha256Base91,
+            identity.hashId.hex,
+            identity.nickname,
+            'Token ',
+            'Authorization',
+            'RobotSessionKey',
+          ]) {
+            expect(line, isNot(contains(secret)), reason: secret);
+          }
+        }
+      },
+    );
+  });
+
   group('headers', () {
     test(
       'that cannot be written as they are fail before any session',

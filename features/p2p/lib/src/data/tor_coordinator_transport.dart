@@ -45,6 +45,7 @@ const maxSessionsPerRobotAndCoordinator = 2;
 ///
 /// Closing a session is local work in the embedded Tor, the end of a SOCKS listener, with nothing to wait for from the network: ten seconds is far more than it needs, and far less than [coordinatorRequestDeadline].
 /// A session that has not closed by then is given up: it no longer counts among [maxRobotSessions], so a close that never completes cannot keep a place for good.
+/// Each session given up is counted, and the count is logged as a warning when it reaches 1, 2, 4, 8 and so on, without naming a coordinator, a robot or a session.
 const torSessionCloseTimeout = Duration(seconds: 10);
 
 /// The longest header name and the longest header value a request may carry, in characters, which are bytes since only ASCII is sent.
@@ -80,7 +81,7 @@ const maxHeaderLength = 16 * 1024;
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
 /// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
 /// An [Error] raised inside Dio reaches the adapter wrapped in a [DioException], and becomes [CoordinatorTransportFailed].
-/// A session or a client that fails to close with an exception is dropped silently, and so is a session that does not close within [torSessionCloseTimeout].
+/// A session or a client that fails to close with an exception is dropped silently; a session that does not close within [torSessionCloseTimeout] is dropped too, and counted and logged as said there.
 /// An [Error] thrown by the close of a Tor session reaches whoever waits for that close, [closeSessions] or [closeRobotSessions] included, once the session has left the count: the next close does not meet it again.
 ///
 /// A connection failure is a SOCKS or socket error before any response header, or a connection closed before the headers, which is also what a dead pooled connection gives: the session is replaced, and a `GET` is retried at most [coordinatorConnectRetries] times within the same deadline.
@@ -119,6 +120,9 @@ final class TorCoordinatorTransport
 
   /// The robots that have a request running, each with the generation [closeRobotSessions] increments: a request of that robot that started before fails.
   final Map<RobotSessionKey, _RobotRequests> _robotRequests = {};
+
+  /// The Tor sessions given up after the close timeout since this transport was built.
+  int _sessionsGivenUp = 0;
 
   /// The headers this adapter decides, whatever the request says.
   static const _ownHeaders = {
@@ -220,6 +224,7 @@ final class TorCoordinatorTransport
     live: _live.length,
     waiting: _slots.values.fold(0, (sum, slot) => sum + slot.waiting),
     robotsWithRequests: _robotRequests.length,
+    sessionsGivenUp: _sessionsGivenUp,
   );
 
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> _exchange(
@@ -476,7 +481,7 @@ final class TorCoordinatorTransport
         session,
         client,
         _attemptTimeout,
-        _closeTimeout,
+        _closeSession,
         _forget,
       );
       _live.add(route);
@@ -490,7 +495,7 @@ final class TorCoordinatorTransport
           await route.close();
         } else {
           try {
-            if (session != null) await _closeSession(session, _closeTimeout);
+            if (session != null) await _closeSession(session);
           } finally {
             if (key.robot != null) _givePlaceBack(key);
           }
@@ -517,7 +522,7 @@ final class TorCoordinatorTransport
       (session) {
         timer.cancel();
         if (result.isCompleted) {
-          unawaited(_closeSession(session, _closeTimeout));
+          unawaited(_closeSession(session));
         } else {
           result.complete(session);
         }
@@ -694,14 +699,18 @@ final class TorCoordinatorTransport
         _ => const CoordinatorTransportFailed(),
       };
 
-  /// Closes [session] and tells whether it is closed: `false` when it did not answer within [timeout], and is given up.
-  static Future<bool> _closeSession(
-    TorSession session,
-    Duration timeout,
-  ) async {
+  /// Closes [session] and tells whether it is closed: `false` when it did not answer within the close timeout, and is given up.
+  Future<bool> _closeSession(TorSession session) async {
     try {
-      await session.close().timeout(timeout);
+      await session.close().timeout(_closeTimeout);
     } on TimeoutException {
+      _sessionsGivenUp++;
+      // The count only, at 1, 2, 4, 8 and so on, so that a Tor that never closes a session cannot fill the support log: the coordinator, the robot and the session are never named.
+      if (_sessionsGivenUp & (_sessionsGivenUp - 1) == 0) {
+        log.warning(
+          'P2P Tor session given up: it did not close in time ($_sessionsGivenUp so far)',
+        );
+      }
       return false;
     } on Exception {
       // Closing is best effort: the session is dropped either way.
@@ -769,12 +778,16 @@ final class TorTransportCounts {
   /// The robots that have a request running.
   final int robotsWithRequests;
 
+  /// The Tor sessions given up after the close timeout since the transport was built.
+  final int sessionsGivenUp;
+
   const TorTransportCounts({
     required this.places,
     required this.placesOf,
     required this.live,
     required this.waiting,
     required this.robotsWithRequests,
+    required this.sessionsGivenUp,
   });
 }
 
@@ -783,7 +796,7 @@ final class _Route {
   final _RouteKey key;
   final TorSession _session;
   final HttpClient _client;
-  final Duration _closeTimeout;
+  final Future<bool> Function(TorSession session) _closeSession;
   final void Function(_Route route) _onClosed;
   final Dio dio;
   int _users = 0;
@@ -798,7 +811,7 @@ final class _Route {
     this._session,
     HttpClient client,
     Duration attemptTimeout,
-    this._closeTimeout,
+    this._closeSession,
     this._onClosed,
   ) : _client = client,
       dio =
@@ -852,10 +865,7 @@ final class _Route {
       } on Exception {
         // Closing is best effort: the session below is closed either way.
       }
-      return await TorCoordinatorTransport._closeSession(
-        _session,
-        _closeTimeout,
-      );
+      return await _closeSession(_session);
     } finally {
       _onClosed(this);
     }
