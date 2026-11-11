@@ -647,7 +647,7 @@ void main() {
       // A screen reader announces the button with its label.
       expect(
         tester.getSemantics(copy),
-        containsSemantics(tooltip: label, isButton: true),
+        isSemantics(tooltip: label, isButton: true),
       );
       semantics.dispose();
     });
