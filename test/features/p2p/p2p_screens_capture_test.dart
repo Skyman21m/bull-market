@@ -169,6 +169,15 @@ void main() {
         await capture('offres-tous');
 
         final l10n = lookupP2pLocalizations(locale);
+        // The depth chart of every order received, then back to the list.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        // Lets the view bar slide to its new segment.
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-tous');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
+
         // « I want to Buy and use EUR », the choices of the mock-up.
         await tester.tap(find.text(l10n.p2pBookFilterAny).first);
         await settle();
@@ -179,6 +188,34 @@ void main() {
         await tester.tap(find.text('EUR').last);
         await settle();
         await capture('offres');
+
+        // The depth chart under the currency of the filter: on the premium axis, with an order under the finger, then on the price axis.
+        await tester.tap(find.text(l10n.p2pBookViewChart));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique');
+        final plot = find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.painter.runtimeType.toString() == '_DepthChartPainter',
+        );
+        final finger = await tester.startGesture(
+          tester.getCenter(plot) + const Offset(40, -60),
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle();
+        await capture('graphique-ordre');
+        await finger.up();
+        await settle();
+        await tester.tap(find.text(l10n.p2pBookColumnPremium));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.text(l10n.p2pBookColumnPrice));
+        await settle();
+        await tester.pump(const Duration(seconds: 1));
+        await capture('graphique-prix');
+        await tester.tap(find.text(l10n.p2pBookViewList));
+        await settle();
 
         await tester.tap(find.textContaining(' EUR', findRichText: true).first);
         // Lets the page transition end.

@@ -15,6 +15,8 @@ abstract final class ChartTicks {
     final span = max - min;
     if (!span.isFinite) return const [];
     final raw = span / count;
+    // A span so small that a step underflows to zero has no power of ten.
+    if (!(raw > 0)) return const [];
     final power = (math.log(raw) / math.ln10).floor();
     final magnitude = math.pow(10, power).toDouble();
     if (!magnitude.isFinite || magnitude == 0) return const [];
@@ -32,12 +34,10 @@ abstract final class ChartTicks {
     if (!denominator.isFinite || !unit.isFinite) return const [];
     final step = unit / denominator;
     double at(double k) => k * unit / denominator;
-    // The nearest multiples first, then one step in where rounding put them outside: 0.3 / 0.1 is just below 3.
-    var first = (min / step).roundToDouble();
-    var last = (max / step).roundToDouble();
+    // The nearest multiples, not the ones inside, since 0.3 / 0.1 is just below 3: a value outside the bounds is left out below.
+    final first = (min / step).roundToDouble();
+    final last = (max / step).roundToDouble();
     if (!first.isFinite || !last.isFinite) return const [];
-    if (at(first) < min) first++;
-    if (at(last) > max) last--;
     final ticks = <double>[];
     // At most [maxTicks] turns, even where the values are too large for one more step to change them.
     for (var i = 0; i < maxTicks && first + i <= last; i++) {

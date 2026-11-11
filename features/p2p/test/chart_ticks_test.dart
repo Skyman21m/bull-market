@@ -53,6 +53,8 @@ void main() {
       expect(ChartTicks.between(0, 1, 0), isEmpty);
       // A span too wide to be a number.
       expect(ChartTicks.between(-1.7e308, 1.7e308, 5), isEmpty);
+      // A span so narrow that its step underflows to zero.
+      expect(ChartTicks.between(0, 5e-324, 50), isEmpty);
     },
   );
 

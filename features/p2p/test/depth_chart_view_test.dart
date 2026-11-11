@@ -293,6 +293,81 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('hostile numbers are drawn without error, or not at all', (
+    tester,
+  ) async {
+    transport = FakeTransport(
+      books: {
+        'temple': [
+          // The largest premium and amount the package reads, orders priced in sats, in dollars.
+          bookOrder(
+            id: 1,
+            currency: 1,
+            premium: 999999999999,
+            satoshisNow: 2100000000000000,
+            amount: 1e10,
+            isExplicit: true,
+            satoshis: 2100000000000000,
+            makerSeed: 1,
+          ),
+          bookOrder(
+            id: 2,
+            type: 0,
+            currency: 1,
+            premium: 999999999999,
+            satoshisNow: 0,
+            isExplicit: true,
+            satoshis: 1,
+            makerSeed: 2,
+          ),
+          // A euro order at a price beyond the bound of the labels, and no sats.
+          bookOrder(
+            id: 3,
+            premium: 0,
+            price: 1e308,
+            satoshisNow: null,
+            makerSeed: 3,
+          ),
+        ],
+      },
+    );
+    await openChart(tester);
+    expect(tester.takeException(), isNull);
+    expect(chart, findsOneWidget);
+    // The median premium, 999999999999%, is far but within the bound: the chart draws it.
+    expect(find.text('1.00e+12%'), findsNothing);
+    expect(zoomButton(tester, 'Zoom out').onPressed, isNotNull);
+    await tester.tapAt(nearTopRight(tester));
+    await settle(tester);
+    expect(find.byType(OrderDetailsScreen), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await settle(tester);
+    await tester.pump(const Duration(seconds: 1));
+    await settle(tester);
+
+    // On the price axis, in euros, the market price is 1e308: beyond the bound, nothing is drawn.
+    await tester.tap(find.text('List'));
+    await settle(tester);
+    await tester.tap(find.text('ANY').at(1));
+    await settle(tester);
+    await tester.tap(find.text('EUR').last);
+    await settle(tester);
+    await tester.tap(find.text('Chart'));
+    await settle(tester);
+    await tester.tap(find.text('Premium'));
+    await settle(tester);
+    await tester.tap(find.text('Price'));
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text('-'), findsOneWidget);
+    expect(zoomButton(tester, 'Zoom in').onPressed, isNull);
+    expect(zoomButton(tester, 'Zoom out').onPressed, isNull);
+    // A tap where nothing is drawn opens nothing.
+    await tester.tapAt(nearTopRight(tester));
+    await settle(tester);
+    expect(find.byType(OrderDetailsScreen), findsNothing);
+  });
+
   testWidgets('an empty book says so, as the list does', (tester) async {
     transport = FakeTransport();
     await openChart(tester);
