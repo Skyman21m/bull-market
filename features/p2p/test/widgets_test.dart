@@ -2,6 +2,7 @@ import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/bond_warning.dart';
+import 'package:p2p/src/presentation/p2p_failure_l10n.dart';
 import 'package:p2p/src/ui/widgets/expiry_ring.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/src/ui/widgets/reversible_payments_dialog.dart';
@@ -166,6 +167,39 @@ void main() {
 
       expect(find.text('Paiements réversibles'), findsOneWidget);
       expect(find.text('Compris'), findsOneWidget);
+    });
+  });
+
+  group('the text of a coordinator failure', () {
+    Future<void> show(WidgetTester tester, CoordinatorFailure failure) =>
+        tester.pumpWidget(
+          harness(
+            Builder(builder: (context) => Text(failure.toTranslated(context))),
+          ),
+        );
+
+    testWidgets('says offline for a coordinator that could not be reached', (
+      tester,
+    ) async {
+      for (final failure in const <CoordinatorFailure>[
+        CoordinatorUnreachable(),
+        CoordinatorTimedOut(),
+        CoordinatorTransportFailed(),
+        CoordinatorNotOnNetwork(),
+      ]) {
+        await show(tester, failure);
+
+        expect(find.text('Coordinator offline'), findsOneWidget);
+      }
+    });
+
+    testWidgets('does not say offline when the transport was busy', (
+      tester,
+    ) async {
+      await show(tester, const CoordinatorTransportBusy());
+
+      expect(find.text('Coordinator offline'), findsNothing);
+      expect(find.text('An error occurred.'), findsOneWidget);
     });
   });
 }
