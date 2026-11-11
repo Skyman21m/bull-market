@@ -88,6 +88,15 @@ final class BookFilter {
     return true;
   }
 
+  /// Whether the depth chart draws [order]: it filters by currency and host only, as the official client's chart does, so it shows both sides, every payment method, and the swaps when every currency is shown.
+  bool showsInDepthChart(PublicOrder order) {
+    if (currency case final currency? when order.currency != currency) {
+      return false;
+    }
+    if (host case final host? when order.coordinator != host) return false;
+    return true;
+  }
+
   /// The orders that match, in the default order of the official client (`components/BookTable/index.tsx`).
   ///
   /// Buying sorts by premium from the lowest, selling from the highest, the best offer first either way.

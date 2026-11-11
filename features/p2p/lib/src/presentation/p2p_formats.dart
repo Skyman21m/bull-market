@@ -90,7 +90,26 @@ final class P2pFormats {
       _percent(percent, minDecimals: 1, maxDecimals: 1);
 
   /// The on-chain payout fee of the coordinator dialog, with 3 significant digits as the official client writes it there (`toPrecision(3)`): `3.44%`, `0.500%`.
-  String swapFeeRate(double percent) {
+  String swapFeeRate(double percent) => _threeDigitsPercent(percent);
+
+  /// The premium at the centre of the depth chart, with 3 significant digits as the official client writes it (`toPrecision(3)`): `2.00%`, `-1.00%`.
+  String chartCenterPremium(double percent) => _threeDigitsPercent(percent);
+
+  /// A tick of the premium axis of the depth chart, such as `-2.5%`.
+  String chartPremium(double percent) =>
+      _percent(percent, minDecimals: 0, maxDecimals: 4);
+
+  /// A tick of the price axis of the depth chart, in the short notation of the locale with every decimal it needs, as the official client writes `93.02K` or `1.2M`.
+  String chartPrice(double price) => (NumberFormat.compact(
+    locale: _locale,
+  )..maximumFractionDigits = 6).format(price);
+
+  /// A tick of the bitcoin axis of the depth chart, such as `0.05`.
+  String chartBtc(double btc) => (NumberFormat.decimalPattern(
+    _locale,
+  )..maximumFractionDigits = 8).format(btc);
+
+  String _threeDigitsPercent(double percent) {
     final precise = percent.toStringAsPrecision(3);
     final dot = precise.indexOf('.');
     final decimals = dot < 0 || precise.contains('e')
