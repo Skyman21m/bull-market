@@ -288,7 +288,9 @@ class FlutterSecureStorageDatasource {
         }
       }
 
-      final model = KeyModel.dek(
+      final model = KeyModel(
+        version: KeyModel.currentVersion,
+        kind: kind,
         name: key,
         bytesHex: generateHex(),
         createdAt: DateTime.now().toUtc(),

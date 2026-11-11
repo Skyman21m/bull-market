@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrets/secrets.dart';
+import 'package:secrets/src/data/data.dart'
+    show FlutterSecureStorageDatasource, KeyKind;
 
 import 'fake_secure_storage_platform.dart';
 import 'result_helpers.dart';
@@ -39,6 +43,37 @@ void main() {
         '{"v":1,"kind":"dek","name":"$storageKey",'
         '"bytes":"${key.hex}","createdAt":"$createdAt"}',
       );
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'read-or-create writes the kind it is asked for, and reads it back',
+    () async {
+      // It used to write a `dek` envelope whatever the kind: another kind
+      // would have stored a key its own read refuses, and never replaced.
+      const storageKey = 'com.bullbitcoin.secrets/garage/probe/main';
+      final storage = FakeSecureStoragePlatform()..install();
+      final source = FlutterSecureStorageDatasource();
+
+      final created = await source.fetchOrCreateModuleKey(
+        kind: KeyKind.garage,
+        package: 'probe',
+        name: 'main',
+        generateHex: () => '01' * 32,
+      );
+
+      expect(created.kind, KeyKind.garage);
+      final stored =
+          jsonDecode(storage.entries[storageKey] ?? fail('nothing stored'))
+              as Map<String, dynamic>;
+      expect(stored['kind'], 'garage');
+      final read = await source.fetchModuleKey(
+        kind: KeyKind.garage,
+        package: 'probe',
+        name: 'main',
+      );
+      expect(read?.bytesHex, '01' * 32);
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );
