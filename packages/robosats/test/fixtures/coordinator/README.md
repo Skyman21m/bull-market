@@ -34,8 +34,10 @@ Everything else hostile or rare is built by the tests.
 
 The `/api/book/` requests had no query parameter, as the official client sends them: every currency and both order types.
 lake on testnet did not answer: 3 attempts per endpoint, each a SOCKS failure (`curl` exit code 97), between 13:54:22 and 13:55:51 UTC.
+gumpellite (mainnet only) entered the embedded federation list later, with RoboSats commit e56f9cf7c: it has no recorded response, and the tests that need one build it or reuse a recorded body.
 
 ## Sources
 
-`sources/` holds verbatim copies of the RoboSats files the constants of `lib/src/coordinator/` are generated from, at commit ff1998caed30888b2fb60e15022c29063a60f1ba, written by `tool/generate_coordinator_data.dart`: `federation.json`, `currencies.json` and `MethodList.ts`.
-`test/coordinator/embedded_data_test.dart` checks that the constants equal them.
+`sources/` holds byte-for-byte copies of the RoboSats files the constants of `lib/src/coordinator/` are generated from, written by `tool/generate_coordinator_data.dart`: `federation.json`, `currencies.json` and `MethodList.ts`.
+Each generated file records the commit its file was taken at and the Git blob id of the file (`robosatsFederationSource`, `robosatsCurrenciesSource`, `robosatsMethodsSource`), so `git rev-parse <commit>:<path>` in a RoboSats clone must print that id.
+`test/coordinator/embedded_data_test.dart` checks that the constants equal the copies, that each copy has the recorded blob id, and which commits are recorded.

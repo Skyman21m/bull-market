@@ -1,52 +1,89 @@
 // Regenerates the RoboSats data embedded in `lib/src/coordinator/`: the federation list, the currency ids and the payment methods the official client recognises.
 //
-// Usage, from `packages/robosats`: `fvm dart run tool/generate_coordinator_data.dart <path to a RoboSats checkout> <commit>`, then `fvm dart format lib/src/coordinator`.
-// It also copies the source files into `test/fixtures/coordinator/sources/`, which the tests compare with the generated constants.
+// Usage, from `packages/robosats`: `fvm dart run tool/generate_coordinator_data.dart <robosats files> <commit> [federation] [currencies] [methods]`, then `fvm dart format lib/src/coordinator`.
+// `<robosats files>` is a folder that holds RoboSats files at their paths in the RoboSats repository, as they are at `<commit>`, a full 40-character commit id: a checkout of that commit, or only the files needed, downloaded at that commit (procedure in `AGENTS.md`, section "Troc (fork)").
+// Without a name every list is regenerated; with names, only those, so that each list can come from its own commit.
+// Each generated file records its source in a constant: the path of the file in RoboSats, the commit, and the Git blob id of the file, which `git rev-parse <commit>:<path>` prints in a RoboSats clone.
+// It does not check its input against RoboSats, not even in a git checkout: check by hand each blob id it prints (step 4 of the refresh procedure), then pin the new (commit, blob) pairs in `test/coordinator/embedded_data_test.dart`.
+// It also copies the source files byte for byte into `test/fixtures/coordinator/sources/`, which the tests compare with the generated constants and with the recorded blob ids.
 // Review the diff of the federation list by hand: onion addresses and node keys are what the client trusts.
 import 'dart:convert';
 import 'dart:io';
 
-const _federationSource = 'frontend/static/federation.json';
-const _currenciesSource = 'frontend/static/assets/currencies.json';
-const _methodsSource = 'frontend/src/components/PaymentMethods/MethodList.ts';
+import 'package:crypto/crypto.dart';
+
+/// What each name of the command line regenerates: the RoboSats file, the generated file, the name of the copy in the fixtures, the import and the name of the source constant of the generated file, and the generator of its other constants.
+const _lists = {
+  'federation': (
+    source: 'frontend/static/federation.json',
+    output: 'lib/src/coordinator/federation_data.dart',
+    copy: 'federation.json',
+    import: 'package:robosats/src/coordinator/coordinator.dart',
+    constant: 'robosatsFederationSource',
+    generate: _federation,
+  ),
+  'currencies': (
+    source: 'frontend/static/assets/currencies.json',
+    output: 'lib/src/coordinator/currency_data.dart',
+    copy: 'currencies.json',
+    import: null,
+    constant: 'robosatsCurrenciesSource',
+    generate: _currencies,
+  ),
+  'methods': (
+    source: 'frontend/src/components/PaymentMethods/MethodList.ts',
+    output: 'lib/src/coordinator/payment_method_data.dart',
+    copy: 'MethodList.ts',
+    import: 'package:robosats/src/coordinator/payment_methods.dart',
+    constant: 'robosatsMethodsSource',
+    generate: _methods,
+  ),
+};
+
+final _commitId = RegExp(r'^[0-9a-f]{40}$');
 
 void main(List<String> arguments) {
-  if (arguments.length != 2) {
+  final names = arguments.skip(2).toSet();
+  if (arguments.length < 2 ||
+      !_commitId.hasMatch(arguments[1]) ||
+      names.any((name) => !_lists.containsKey(name))) {
     stderr.writeln(
-      'usage: dart run tool/generate_coordinator_data.dart <robosats checkout> <commit>',
+      'usage: dart run tool/generate_coordinator_data.dart <robosats files> <40-character commit id> [${_lists.keys.join('] [')}]',
     );
     exit(64);
   }
-  final [checkout, commit] = arguments;
-  final federationText = File(
-    '$checkout/$_federationSource',
-  ).readAsStringSync();
-  final currenciesText = File(
-    '$checkout/$_currenciesSource',
-  ).readAsStringSync();
-  final methodsText = File('$checkout/$_methodsSource').readAsStringSync();
-
-  File(
-    'lib/src/coordinator/federation_data.dart',
-  ).writeAsStringSync(_federation(federationText, commit));
-  File(
-    'lib/src/coordinator/currency_data.dart',
-  ).writeAsStringSync(_currencies(currenciesText, commit));
-  File(
-    'lib/src/coordinator/payment_method_data.dart',
-  ).writeAsStringSync(_methods(methodsText, commit));
-
+  final [files, commit, ...] = arguments;
   final sources = Directory('test/fixtures/coordinator/sources')
     ..createSync(recursive: true);
-  File('${sources.path}/federation.json').writeAsStringSync(federationText);
-  File('${sources.path}/currencies.json').writeAsStringSync(currenciesText);
-  File('${sources.path}/MethodList.ts').writeAsStringSync(methodsText);
+  for (final name in names.isEmpty ? _lists.keys : names) {
+    final list = _lists[name];
+    if (list == null) continue;
+    final bytes = File('$files/${list.source}').readAsBytesSync();
+    final blob = _gitBlobId(bytes);
+    final import = list.import;
+    File(list.output).writeAsStringSync(
+      '// Generated by `tool/generate_coordinator_data.dart` from RoboSats `${list.source}` (https://github.com/RoboSats/robosats, commit $commit).\n'
+      '// RoboSats is licensed under AGPL-3.0, as is this fork.\n'
+      '// Do not edit by hand: rerun the generator, and review the diff.\n\n'
+      '${import == null ? '' : "import '$import';\n\n"}'
+      '/// The RoboSats file the constants of this file were generated from: its path in the repository, the commit it was taken at, and its Git blob id, which `git rev-parse <commit>:<path>` prints.\n'
+      'const ${list.constant} = (\n'
+      '  path: ${_literal(list.source)},\n'
+      '  commit: ${_literal(commit)},\n'
+      '  blob: ${_literal(blob)},\n'
+      ');\n\n'
+      '${list.generate(utf8.decode(bytes))}',
+    );
+    File('${sources.path}/${list.copy}').writeAsBytesSync(bytes);
+    stdout.writeln('$name: ${list.source} at $commit, Git blob $blob');
+  }
 }
 
-String _header(String source, String commit) =>
-    '// Generated by `tool/generate_coordinator_data.dart` from RoboSats `$source` (https://github.com/RoboSats/robosats, commit $commit).\n'
-    '// RoboSats is licensed under AGPL-3.0, as is this fork.\n'
-    '// Do not edit by hand: rerun the generator, and review the diff.\n\n';
+/// The Git blob id of a file with these bytes: what `git hash-object <file>` prints.
+String _gitBlobId(List<int> bytes) => sha1.convert([
+  ...ascii.encode('blob ${bytes.length}\x00'),
+  ...bytes,
+]).toString();
 
 String _literal(String value) {
   final escaped = value
@@ -83,11 +120,9 @@ String _strings(Object? value) {
   return '[${list.map(_required).join(', ')}]';
 }
 
-String _federation(String text, String commit) {
+String _federation(String text) {
   final document = jsonDecode(text) as Map<String, dynamic>;
-  final buffer = StringBuffer(_header(_federationSource, commit))
-    ..writeln("import 'package:robosats/src/coordinator/coordinator.dart';")
-    ..writeln()
+  final buffer = StringBuffer()
     ..writeln(
       '/// The coordinators of the federation list, in the order of the file.',
     )
@@ -157,9 +192,9 @@ String _federation(String text, String commit) {
   return buffer.toString();
 }
 
-String _currencies(String text, String commit) {
+String _currencies(String text) {
   final document = jsonDecode(text) as Map<String, dynamic>;
-  final buffer = StringBuffer(_header(_currenciesSource, commit))
+  final buffer = StringBuffer()
     ..writeln(
       '/// The currency ids of RoboSats and their codes, in the order of the file.',
     )
@@ -171,7 +206,7 @@ String _currencies(String text, String commit) {
   return buffer.toString();
 }
 
-String _methods(String text, String commit) {
+String _methods(String text) {
   final pattern = RegExp(
     r"\{ name: '([^']*)', icon: '([^']*)', reversible: (true|false) \}",
   );
@@ -185,9 +220,7 @@ String _methods(String text, String commit) {
     ].join('\n');
   }
 
-  return '${_header(_methodsSource, commit)}'
-      "import 'package:robosats/src/coordinator/payment_methods.dart';\n\n"
-      '/// The fiat payment methods the official client shows with an icon, in the order of the file.\n'
+  return '/// The fiat payment methods the official client shows with an icon, in the order of the file.\n'
       'const List<PaymentMethodInfo> robosatsFiatMethods = [\n${list('fiatMethods')}\n];\n\n'
       '/// The swap destinations the official client shows with an icon, in the order of the file.\n'
       'const List<PaymentMethodInfo> robosatsSwapMethods = [\n${list('swapMethods')}\n];\n';

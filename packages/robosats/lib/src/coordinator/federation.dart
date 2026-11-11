@@ -11,7 +11,7 @@ final class Federation {
 
   const Federation(this.coordinators);
 
-  /// The federation list embedded in this package: `frontend/static/federation.json` of RoboSats at commit ff1998c.
+  /// The federation list embedded in this package: `frontend/static/federation.json` of RoboSats at commit e56f9cf7c (2026-11-08), as `robosatsFederationSource` records it.
   ///
   /// It is validated twice: `test/coordinator/embedded_data_test.dart` checks that it equals the RoboSats file and that [problems] finds nothing, and `FederationBookReader.requestAll` asserts it in debug and test builds for whatever federation it is given.
   static const Federation robosats = Federation(robosatsCoordinators);

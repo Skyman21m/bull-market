@@ -24,7 +24,7 @@ final _now = DateTime.utc(2026, 11, 10, 14);
 
 const _fixtures = 'packages/robosats/test/fixtures/coordinator';
 
-/// Answers each coordinator with its recorded `/api/book/` and `/api/info/`, or as not found when nothing was recorded.
+/// Answers each coordinator with its recorded `/api/book/` and `/api/info/`, a recorded `not_found` book with status 404, and as unreachable when nothing was recorded (lake on testnet, gumpellite).
 final class _RecordedTransport implements CoordinatorTransport {
   final RobosatsNetwork network;
 

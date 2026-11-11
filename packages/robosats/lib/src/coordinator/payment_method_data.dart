@@ -4,6 +4,13 @@
 
 import 'package:robosats/src/coordinator/payment_methods.dart';
 
+/// The RoboSats file the constants of this file were generated from: its path in the repository, the commit it was taken at, and its Git blob id, which `git rev-parse <commit>:<path>` prints.
+const robosatsMethodsSource = (
+  path: 'frontend/src/components/PaymentMethods/MethodList.ts',
+  commit: 'ff1998caed30888b2fb60e15022c29063a60f1ba',
+  blob: '85df6c6c3aba192af16926694ed47a49e1bd32b3',
+);
+
 /// The fiat payment methods the official client shows with an icon, in the order of the file.
 const List<PaymentMethodInfo> robosatsFiatMethods = [
   PaymentMethodInfo('Advcash', 'advcash', reversible: false),
