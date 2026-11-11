@@ -29,10 +29,11 @@ final coordinatorRequestDeadline = torConnectDeadline * 2;
 /// Retries of an idempotent request after a connection failure, each on a new Tor session.
 const coordinatorConnectRetries = 2;
 
-/// Tor sessions that may exist for robots at any moment, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
+/// Places for robot Tor sessions, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
 ///
-/// A session counts from the moment it starts to open until it is closed, the sessions replaced after a connection failure included while a request still uses them.
+/// A session holds a place from the moment it starts to open until it is closed, the sessions replaced after a connection failure included while a request still uses them.
 /// A session nobody uses is closed to make room for a new one, the least recently used first.
+/// It bounds places, not the sessions of the embedded Tor: a session given up after [torSessionCloseTimeout], and one whose opening was given up but that opens after all, exist there without a place until they end.
 const maxRobotSessions = 32;
 
 /// Places among [maxRobotSessions] that the robot sessions of one coordinator may hold together, so that the robots of the other coordinators always keep the other eight.
@@ -42,10 +43,11 @@ const maxRobotSessions = 32;
 /// Twenty-four is twelve robots with both of their sessions on one coordinator, far more than a person trades with at once; a user who has more robots there gets their idle sessions recycled, the least recently used first, as at [maxRobotSessions].
 const maxRobotSessionsPerCoordinator = 24;
 
-/// Tor sessions one robot may have on one coordinator at any moment, among [maxRobotSessions]: the one its requests use, and one more that a connection failure replaced while a request still uses it, or that is closing.
+/// Places one robot may hold on one coordinator, among [maxRobotSessions]: the session its requests use, and one more that a connection failure replaced while a request still uses it, or that is closing.
 ///
 /// Without it, a coordinator that drops some connections and holds the others makes every request of one robot keep a session of its own, and takes every place from the robots of the other coordinators.
-/// At two, a robot that already has two sessions never reaches the code that closes the unused session of another robot: write that rule down there before raising this number.
+/// It bounds places, not Tor sessions: the place of a session that is closing may be handed over to a new session, of this robot or of another, and then counts for that one, so the robot may have a third session in the embedded Tor until that one has closed; and a session given up after [torSessionCloseTimeout] no longer counts at all.
+/// At two, a robot that already has two places never reaches the code that closes the unused session of another robot: write that rule down there before raising this number.
 const maxSessionsPerRobotAndCoordinator = 2;
 
 /// Time the close of one Tor session may take before the transport stops waiting for it.
@@ -70,16 +72,17 @@ const maxTotalHeaderLength = 32 * 1024;
 /// Sessions: one Tor session per coordinator origin for the anonymous requests, and one more per robot for the requests made for it ([CoordinatorRequest.robot]).
 /// A session, with its own HTTP client, so its own connections and circuits, is opened at the first request that needs it, shared by the requests of the same origin and robot while it works, and replaced by a new session after a connection failure.
 /// So a coordinator, or anyone watching one, sees nothing that ties a robot to another robot, to the same robot on another coordinator, or to the anonymous reads of this device.
-/// Robot sessions are bounded by [maxRobotSessions], whatever their coordinator, and the bound counts every session that is opening, open or closing: beyond it the least recently used session that no request is using is closed first, and the new session opens only once that one is closed.
+/// Robot sessions are bounded by [maxRobotSessions] places, whatever their coordinator, and a session that is opening, open or closing holds its place until it is closed, or given up as said below: beyond the bound the least recently used session that no request is using is closed first, and the new session opens only once that one is closed.
 /// One robot has at most [maxSessionsPerRobotAndCoordinator] of them on one coordinator, and the robots of one coordinator at most [maxRobotSessionsPerCoordinator] together, so a coordinator takes no more places than twice the robots this device sent to it, and never the places left to the robots of the other coordinators, whatever it does with their connections.
 /// When no place can be had, because every session is in use, because the robot already has its two on that coordinator and neither is closing, because the robots of that coordinator have their [maxRobotSessionsPerCoordinator] and none of those sessions is closing or unused, or because the session whose place was taken did not close within [torSessionCloseTimeout], the request fails with [CoordinatorTransportBusy], a retry after a connection failure included.
-/// [CoordinatorTransportBusy] is given for nothing else: a caller that gets it sends the request again later, and does not report a coordinator that does not work.
+/// [CoordinatorTransportBusy] is given for nothing else, and says that the request may be sent again later, not that the coordinator works: the places go to the requests in flight, so a coordinator that holds or drops the connections of its robots uses up their places, up to the limits above (see [CoordinatorTransportBusy] for what a caller does).
 /// The opening of a session is given [coordinatorRequestDeadline]: an opening that has not completed by then is given up and gives its place back, the requests waiting for it fail with [CoordinatorUnreachable], and a session that opens after all is closed unused.
 /// [closeRobotSessions] closes the sessions of one robot, [closeSessions] closes them all, the sessions a connection failure replaced while a request still used them included: the requests still running fail, and the next request opens new sessions.
 /// A session still opening is no longer waited for: it gives its place back at once, or once the session whose place it took has closed, and it is closed unused as soon as it opens.
 /// Both complete even when a Tor session never finishes closing: such a session is given up after [torSessionCloseTimeout].
 /// Neither is a lock: a request started after [closeRobotSessions] was called, the second request of a `fetchRobot` that follows error 7004 included, opens a new session of that robot.
 /// The transport cannot tell such a request from the next request of the robot, which must go through, so a caller that gives up a robot lets its calls end, or drops them, before it closes its sessions.
+/// The session such a request leaves is the most recently used one, so it is the last that the bound closes to make room, not the first.
 ///
 /// Guarantees of the port contract:
 /// - [send] always completes, with an [Ok] or an [Err], within [coordinatorRequestDeadline]: a timer answers [CoordinatorTimedOut] when it passes, whatever the request is waiting for (Tor, the session, the connection, a body sent a byte at a time), and cancels the attempt in progress;

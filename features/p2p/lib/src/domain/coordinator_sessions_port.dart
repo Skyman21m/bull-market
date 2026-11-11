@@ -7,7 +7,7 @@ abstract interface class CoordinatorSessionsPort {
 
   /// Closes the sessions of [robot] to every coordinator: its requests still running fail, and its next request opens a new session.
   ///
-  /// It is not a lock: a call for that robot that is still running, such as a `fetchRobot` between its two requests, may send its next request on a new session after this.
+  /// It is not a lock: a call for that robot that is still running, such as a `fetchRobot` between its two requests, may send its next request on a new session after this, a `GET` up to three times after connection failures, each time on a new session.
   /// So let the calls made for a robot end, or drop them, before closing its sessions for good.
   Future<void> closeRobotSessions(RobotSessionKey robot);
 }
