@@ -94,15 +94,22 @@ void main() {
       );
     }, timeout: slow);
 
-    test(
-      'two simultaneous creates store one key, from two handles too',
-      () async {
+    for (final (label, handles) in [
+      ('one handle', 1),
+      ('two handles, the lock being static', 2),
+    ]) {
+      test('two simultaneous creates store one key, from $label', () async {
         // Unserialised, both would settle a miss, draw, and write; the second
         // write would win, and the first caller would derive robots from a key
-        // that no longer exists. The lock is static, so separate `Secrets` share it.
-        final storage = FakeSecureStoragePlatform()..install();
+        // that no longer exists. The store's writes take time, as a real
+        // keystore's do: an in-memory write lands within the first caller's
+        // microtasks, before the second caller's last read, so without the
+        // delay this test passes with no lock at all.
+        final storage = _SlowWrites()..install();
         final first = Secrets(scratchDirectory: () async => '.').garageKeys();
-        final second = Secrets(scratchDirectory: () async => '.').garageKeys();
+        final second = handles == 1
+            ? first
+            : Secrets(scratchDirectory: () async => '.').garageKeys();
 
         final (a, b) = await (
           first.create(slot: GarageKeySlot.mainnet),
@@ -121,9 +128,8 @@ void main() {
           stored(storage, mainnetKey)['bytes'],
           convert.hex.encode(created.single.value.bytes),
         );
-      },
-      timeout: slow,
-    );
+      }, timeout: slow);
+    }
   });
 
   group('a stored entry is never replaced', () {
@@ -589,4 +595,17 @@ void main() {
       );
     }
   });
+}
+
+/// A keystore whose writes take time, as a real one does: the in-memory store answers within microtasks, so a racing caller never reads between another caller's last read and its write.
+class _SlowWrites extends FakeSecureStoragePlatform {
+  @override
+  Future<void> write({
+    required String key,
+    required String value,
+    required Map<String, String> options,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    return super.write(key: key, value: value, options: options);
+  }
 }
