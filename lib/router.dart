@@ -178,26 +178,33 @@ class AppRouter {
                                   }
                                 }
                               },
+                              // One item per tab of the tested list, so labels and destinations cannot drift apart.
                               items: [
-                                BottomNavigationBarItem(
-                                  icon: const Icon(Icons.currency_bitcoin),
-                                  label: context.loc.navigationTabWallet,
-                                  backgroundColor: context.appColors.background,
-                                ),
-                                if (showP2p)
-                                  BottomNavigationBarItem(
-                                    icon: const Icon(Icons.swap_horiz),
-                                    label: P2pLocalizations.of(
-                                      context,
-                                    ).p2pTabLabel,
-                                    backgroundColor:
-                                        context.appColors.background,
-                                  ),
-                                BottomNavigationBarItem(
-                                  icon: const Icon(Icons.attach_money),
-                                  label: context.loc.navigationTabExchange,
-                                  backgroundColor: context.appColors.background,
-                                ),
+                                for (final tab in tabs)
+                                  switch (tab) {
+                                    ShellTab.wallet => BottomNavigationBarItem(
+                                      icon: const Icon(Icons.currency_bitcoin),
+                                      label: context.loc.navigationTabWallet,
+                                      backgroundColor:
+                                          context.appColors.background,
+                                    ),
+                                    ShellTab.p2p => BottomNavigationBarItem(
+                                      icon: const Icon(Icons.swap_horiz),
+                                      label: P2pLocalizations.of(
+                                        context,
+                                      ).p2pTabLabel,
+                                      backgroundColor:
+                                          context.appColors.background,
+                                    ),
+                                    ShellTab.exchange =>
+                                      BottomNavigationBarItem(
+                                        icon: const Icon(Icons.attach_money),
+                                        label:
+                                            context.loc.navigationTabExchange,
+                                        backgroundColor:
+                                            context.appColors.background,
+                                      ),
+                                  },
                               ],
                             ),
                           ],
