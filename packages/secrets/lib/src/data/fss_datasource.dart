@@ -355,7 +355,7 @@ class FlutterSecureStorageDatasource {
   ///
   /// For a key that must never be replaced, such as a Garage Key: writing over one loses every robot derived from it. So **any present entry wins**, whatever it holds — a value, an empty one, one that does not parse, one of another kind: [ModuleKeyOccupiedException], and nothing is written. Unlike [fetchOrCreateModuleKey], the present entry is not parsed: a caller that wants it reads it, and a corrupt one is then refused by the read.
   ///
-  /// Absence is believed only after the [_ReadBudget.settled] budget, under the lock: up to ~4.5 s with the lock held, paid once per key on a genuine miss. A read that keeps throwing propagates and nothing is written; a locked keystore passes through at once.
+  /// Absence is believed only after the [_ReadBudget.settled] budget, under the lock: ~4.5 s of pauses plus the reads with the lock held, paid by every call that finds the entry absent (the first for a key, and again after each delete). A read that keeps throwing propagates and nothing is written; a locked keystore passes through at once.
   ///
   /// [bytesHex] is called under the lock, only after the absence is settled, so that a generated key is drawn for a write that will happen. Generation is the caller's, as for [fetchOrCreateModuleKey].
   Future<KeyModel> storeModuleKeyIfAbsent({
