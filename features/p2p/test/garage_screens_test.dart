@@ -1228,11 +1228,11 @@ void main() {
       // Reachable by a screen reader, unlike the text of the field.
       expect(
         tester.getSemantics(find.byTooltip('Paste')),
-        containsSemantics(tooltip: 'Paste', isButton: true, hasTapAction: true),
+        isSemantics(tooltip: 'Paste', isButton: true, hasTapAction: true),
       );
       expect(
         tester.getSemantics(find.byTooltip('Clear')),
-        containsSemantics(tooltip: 'Clear', isButton: true),
+        isSemantics(tooltip: 'Clear', isButton: true),
       );
 
       clipboard = 'not a key';
