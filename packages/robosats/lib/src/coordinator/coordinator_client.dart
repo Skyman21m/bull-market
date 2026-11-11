@@ -114,7 +114,7 @@ final class CoordinatorClient {
   /// Nothing in a `200` answer tells the two cases apart but [CoordinatorRobot.found], so the answer is always checked against this device: see [CoordinatorRobot.parse].
   /// A robot first created by another device, with another key pair, is therefore a [RobotPgpKeyMismatch], never a silent change of key.
   /// Fails with a [CoordinatorRobotFailure] when the coordinator refuses the robot or returns another one, and with any other [CoordinatorFailure] as the public reads do.
-  /// A [RobotNicknameTaken] is only reported once a second request, with the short header, has shown that the coordinator does not know this robot.
+  /// A [RobotNicknameTaken] is only reported after a second request, with the short header, did not read the robot back.
   ///
   /// [nostrKeyDerivation] chooses the Nostr public key sent: keep the default, the other formula gives a key whose secret the coordinator can compute.
   /// The coordinator keeps the key of the first contact for good.
@@ -185,8 +185,7 @@ final class CoordinatorClient {
       '/api/robot/',
       const {},
       CoordinatorReadBounds.robotBytes,
-      authorization: authorization,
-      identity: identity,
+      robot: (identity: identity, authorization: authorization),
     );
     final CoordinatorResponse answer;
     switch (response) {
@@ -263,8 +262,7 @@ final class CoordinatorClient {
     String path,
     Map<String, String> query,
     int maxResponseBytes, {
-    String? authorization,
-    RobotIdentity? identity,
+    ({RobotIdentity identity, String authorization})? robot,
   }) async {
     final onion = coordinator.origins(network).onion;
     if (onion == null) return const Err(CoordinatorNotOnNetwork());
@@ -273,9 +271,13 @@ final class CoordinatorClient {
       url: Uri.parse(
         onion,
       ).replace(path: path, queryParameters: query.isEmpty ? null : query),
-      headers: {'Accept': 'application/json', 'Authorization': ?authorization},
+      // A credential never travels without the name of its robot, which keeps it off the anonymous sessions of the transport.
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': ?robot?.authorization,
+      },
       maxResponseBytes: maxResponseBytes,
-      robot: identity?.sessionKey,
+      robot: robot?.identity.sessionKey,
     );
     final Result<CoordinatorResponse, CoordinatorTransportFailure> result;
     try {

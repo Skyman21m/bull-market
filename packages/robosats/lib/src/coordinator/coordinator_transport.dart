@@ -79,7 +79,7 @@ final class CoordinatorResponse {
 /// - it must stop reading a body at [CoordinatorRequest.maxResponseBytes] and fail with [CoordinatorResponseTooLarge] before buffering more;
 /// - it must give header names in lowercase;
 /// - it must not follow redirects;
-/// - it must keep the requests of each [CoordinatorRequest.robot] on connections and Tor circuits of their own, per coordinator, apart from those of every other robot and from the anonymous requests;
+/// - it must keep the requests of each [CoordinatorRequest.robot] on connections and Tor circuits of their own, per coordinator, apart from those of every other robot and from the anonymous requests, and refuse a request that carries an `Authorization` header without naming its robot;
 /// - it must never log or keep the headers of a request, which may hold a credential;
 /// - it maps everything else that goes wrong into a [CoordinatorTransportFailure].
 ///
