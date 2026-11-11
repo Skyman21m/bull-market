@@ -44,6 +44,11 @@ class FakeSecureStoragePlatform extends FlutterSecureStoragePlatform {
 
   int reads = 0;
 
+  /// Every key a read asked for, in order, whether or not it was answered: the key of each [read], and every stored key for a [readAll], which asks for them all.
+  ///
+  /// Lets a test prove what an operation did *not* read — that no seed entry was touched, say — rather than only what it returned.
+  final List<String> readKeys = [];
+
   FakeSecureStoragePlatform({
     Map<String, String>? entries,
     this.locked = false,
@@ -76,6 +81,7 @@ class FakeSecureStoragePlatform extends FlutterSecureStoragePlatform {
     required Map<String, String> options,
   }) async {
     reads++;
+    readKeys.add(key);
     if (locked) throw lockedError;
     if (scripted.isNotEmpty) {
       final next = scripted.removeAt(0);
@@ -90,6 +96,7 @@ class FakeSecureStoragePlatform extends FlutterSecureStoragePlatform {
     required Map<String, String> options,
   }) async {
     reads++;
+    readKeys.addAll(entries.keys);
     if (locked) throw lockedError;
     return Map<String, String>.from(entries);
   }
