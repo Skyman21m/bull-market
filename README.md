@@ -22,7 +22,7 @@ These are goals: the "Project status" section says what actually exists.
 
 ## Preview (mock-up)
 
-> These screens are a **mock-up**: they show the target, not the current app. Offers, amounts, nicknames and messages are made up. No P2P screen is in the app yet.
+> These screens are a **mock-up**: they show the target, not the current app. Offers, amounts, nicknames and messages are made up. Only the first screens exist in the app so far: see [First screens in the app](#first-screens-in-the-app) below.
 
 <table>
   <tr>
@@ -69,6 +69,39 @@ A few notes on what the mock-up shows:
 
 </details>
 
+## First screens in the app
+
+> These are **real screens**, rendered from the app's own code by a test, with order books recorded from the RoboSats coordinators. They are read-only and only visible when both superuser mode and developer mode are on. They have not been tried on a phone yet.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/en-tor-wait.png" width="170" alt="App screen: connecting to the Tor network"><br><sub>Connecting to Tor</sub></td>
+    <td align="center"><img src="docs/screenshots/en-order-book.png" width="170" alt="App screen: order book filtered on buying with EUR"><br><sub>The order book</sub></td>
+    <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of an order, with the Take Order button disabled"><br><sub>Order details</sub></td>
+    <td align="center"><img src="docs/screenshots/en-reversible-payments.png" width="170" alt="App screen: warning about reversible payment methods"><br><sub>Reversible payments warning</sub></td>
+  </tr>
+</table>
+
+What these screens do today: wait for Tor inside the tab, load the order book coordinator by coordinator, filter it (buy or sell, currency, payment method, host), show RoboSats' low-bond and reversible-payment warnings, and show the details of an order. "Take Order" is displayed but disabled. The robot avatars are provisional ([#22](https://github.com/Skyman21m/troc/issues/22)).
+
+<details>
+<summary>Captures en français</summary>
+
+<br>
+
+*Écrans réels, rendus par le code de l'application dans un test, avec des carnets d'ordres enregistrés. Lecture seule, visibles uniquement en mode super-utilisateur et développeur.*
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/fr-tor-wait.png" width="170" alt="Écran de l'application : connexion au réseau Tor"><br><sub>Connexion à Tor</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-order-book.png" width="170" alt="Écran de l'application : carnet d'ordres filtré sur l'achat en EUR"><br><sub>Le carnet d'ordres</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre, bouton « Prendre l'ordre » inactif"><br><sub>La fiche d'un ordre</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-reversible-payments.png" width="170" alt="Écran de l'application : avertissement sur les paiements réversibles"><br><sub>Avertissement « Paiements réversibles »</sub></td>
+  </tr>
+</table>
+
+</details>
+
 ## How a trade works
 
 The planned flow is the RoboSats one; none of this is usable in the app yet. Example for a buyer who takes an order:
@@ -94,17 +127,18 @@ Status as of November 10, 2026. The work is split into phases, tracked with [mil
 | 4 | Comfort and robustness: Nostr chat, notifications, disputes | Upcoming |
 | 5 | Polish, independent security audit, beta | Upcoming |
 
-What already exists in the code, with no screen yet:
+What already exists in the code:
 
 - **Robot identity**: Garage Key, tokens, ID, nickname, checked against reference values taken from RoboSats; the Nostr key is computed, but its formula is still to be confirmed against a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)) ([report](docs/spikes/robot-identity.md)).
 - **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js, not yet tried against a coordinator ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
 - **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC for now, not yet on a phone ([measurements](docs/spikes/tor-robosats.md)).
 - **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC behind a VPN, before the review fixes (not rerun since), and not yet on a phone ([report](docs/spikes/tor-transport.md)).
+- **The first screens of the P2P tab**: Tor wait, order book and order details, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books, not yet tried on a phone.
 
-In progress: the first screens ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
+In progress: the rest of the read-only screens (Garage, chart, map and search views, coordinator details) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
-Not done yet: any P2P screen, creating a robot with a coordinator, and any operation that involves money.
+Not done yet: creating a robot with a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
 
 Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issues [#4](https://github.com/Skyman21m/troc/issues/4) and [#17](https://github.com/Skyman21m/troc/issues/17).
 
@@ -115,7 +149,7 @@ Troc adds two modules to Bull's code; Troc touches the rest as little as possibl
 | Module | Role |
 |---|---|
 | [`packages/robosats`](packages/robosats/README.md) | Part of the RoboSats protocol in pure Dart, with no screen and no network access of its own: robot identity, OpenPGP, reading the coordinators. It talks to the network through an entry point that the app provides. |
-| `features/p2p` | The app side: the transport over the wallet's Tor and the facade that the screens will use are in place ([#27](https://github.com/Skyman21m/troc/issues/27)); the screens of the P2P tab are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
+| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the first read-only screens of the P2P tab, shown only in superuser and developer mode; the Garage and the chart, map and search views are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
 
 Principles:
 
