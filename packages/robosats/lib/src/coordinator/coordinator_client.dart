@@ -114,7 +114,11 @@ final class CoordinatorClient {
   /// Nothing in a `200` answer tells the two cases apart but [CoordinatorRobot.found], so the answer is always checked against this device: see [CoordinatorRobot.parse].
   /// A robot first created by another device, with another key pair, is therefore a [RobotPgpKeyMismatch], never a silent change of key.
   /// Fails with a [CoordinatorRobotFailure] when the coordinator refuses the robot or returns another one, and with any other [CoordinatorFailure] as the public reads do.
-  /// A [RobotNicknameTaken] is only reported after a second request, with the short header, did not read the robot back.
+  ///
+  /// Error 7004, [RobotNicknameTaken], is followed by one request with the short header, which reads the robot back when the coordinator created it for another copy of this very request, as when the transport retries a request whose connection broke after it was sent.
+  /// That check has a blind window: the reference coordinator creates the user (`robosats/middleware.py:152`) before the token (`:163`), so a follow-up that lands between the two is answered 7001, and [RobotNicknameTaken] is reported although the robot is being created for this device.
+  /// A coordinator can also answer 7004 for ever, to every robot.
+  /// So a caller must not give up a Garage Key index on one [RobotNicknameTaken]: it asks again with [fetchKnownRobot] a little later before it moves to the next index, and it bounds how many indexes a single coordinator can make it give up.
   ///
   /// [nostrKeyDerivation] chooses the Nostr public key sent: keep the default, the other formula gives a key whose secret the coordinator can compute.
   /// The coordinator keeps the key of the first contact for good.
@@ -141,7 +145,7 @@ final class CoordinatorClient {
     );
     if (contact case Err(failure: RobotNicknameTaken())) {
       // The nickname may be taken by this very robot: a coordinator that receives the first contact twice at once, as when the transport retries a request whose connection broke after it was sent, creates the robot for one and refuses the other.
-      // The short header tells: it reads the robot if the coordinator knows this token, and creates nothing.
+      // The short header tells, unless it lands before the coordinator has stored the token: it reads the robot if the coordinator knows this token, and creates nothing.
       final known = await fetchKnownRobot(
         coordinator,
         network,

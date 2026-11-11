@@ -13,9 +13,10 @@ import 'package:robosats/src/robot_token.dart';
 
 /// Which formula turns a robot token into its Nostr secret key.
 ///
-/// The RoboSats repository (commit ff1998c) holds two, and they give different keys.
-/// A coordinator checks neither: it stores whatever 64 hexadecimal characters the first contact carries, keeps them for good, hands them to the trade peer and sends its notifications to them (`robosats/middleware.py:29-37` and `:126-172`).
-/// A testnet coordinator confirmed it on 2026-11-11: it stored the key of either formula as it was sent, and kept the first one when the other was sent later: see `docs/spikes/robot-coordinator.md`.
+/// The RoboSats repository (commit ff1998c, v0.8.8) holds two, and they give different keys.
+/// The coordinator of that source checks neither: it stores the 64 hexadecimal characters the first contact carries, hands them to the trade peer and sends its notifications to them (`robosats/middleware.py:29-37` and `:126-172`).
+/// It never changes them afterwards, with one exception: a stored key made only of zeros, its placeholder for a lost key, is replaced by the one a later request carries (`:98-107`).
+/// One testnet coordinator, running v0.8.6, was seen to behave so on 2026-11-11 with the two keys of this enum, and with no other: it stored each as sent, and kept the first when the other was sent later: see `docs/spikes/robot-coordinator.md`.
 /// So the formula only has to be the one of the client that reads the messages, and Troc uses [currentFrontend].
 enum NostrKeyDerivation {
   /// `sha256(sha512(utf8(token)))`, the code of the official client since July 2025 (`frontend/src/models/Slot.model.ts:34-38`).
@@ -118,6 +119,7 @@ final class RobotIdentity {
   /// The official client sends this form on `GET /api/robot/`, `POST /api/make/` and `GET /api/order/`.
   /// [pgpPublicKey] and [pgpEncryptedPrivateKey] are the ASCII-armored PGP blocks, taken as opaque strings: each line break becomes a backslash, as in `frontend/src/models/Robot.model.ts:82-83`.
   /// The coordinator splits the value on `" | "` and requires exactly four parts (`robosats/middleware.py:53-59`).
+  /// So pass the blocks of a `RobotPgpKey`, which are canonical armor, base64 between two fixed lines: an armor header of another origin could hold a `" | "`, or a character an HTTP header cannot carry.
   /// It is a credential: never log it.
   String firstContactAuthorizationHeader({
     required String pgpPublicKey,
