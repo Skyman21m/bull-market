@@ -28,17 +28,27 @@ final coordinatorRequestDeadline = torConnectDeadline * 2;
 /// Retries of an idempotent request after a connection failure, each on a new Tor session.
 const coordinatorConnectRetries = 2;
 
+/// Tor sessions that may exist for robots at any moment, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
+///
+/// A session counts from the moment it starts to open until it is closed, the sessions replaced after a connection failure included while a request still uses them.
+/// A session nobody uses is closed to make room for a new one, the least recently used first.
+const maxRobotSessions = 32;
+
 /// The [CoordinatorTransport] of the app: every request goes through the embedded Tor.
 ///
-/// Sessions: one Tor session per coordinator origin, opened at its first request, shared by the requests to that origin while it works, and replaced by a new session, so new circuits, after a connection failure.
-/// [closeSessions] closes them all; the next request opens new ones.
+/// Sessions: one Tor session per coordinator origin for the anonymous requests, and one more per robot for the requests made for it ([CoordinatorRequest.robot]).
+/// A session, with its own HTTP client, so its own connections and circuits, is opened at the first request that needs it, shared by the requests of the same origin and robot while it works, and replaced by a new session after a connection failure.
+/// So a coordinator, or anyone watching one, sees nothing that ties a robot to another robot, to the same robot on another coordinator, or to the anonymous reads of this device.
+/// Robot sessions are bounded by [maxRobotSessions], whatever their coordinator, and the bound counts every session that is opening, open or closing: beyond it the least recently used session that no request is using is closed first, and when every one is in use the request fails with [CoordinatorTransportFailed], a retry after a connection failure included.
+/// [closeRobotSessions] closes the sessions of one robot, [closeSessions] closes them all, the sessions a connection failure replaced while a request still used them included: the requests still running fail, and the next request opens new sessions.
 ///
 /// Guarantees of the port contract:
 /// - [send] always completes, with an [Ok] or an [Err], within [coordinatorRequestDeadline]: a timer answers [CoordinatorTimedOut] when it passes, whatever the request is waiting for (Tor, the session, the connection, a body sent a byte at a time), and cancels the attempt in progress;
 /// - the body is read as a stream and the request is cancelled as soon as it exceeds [CoordinatorRequest.maxResponseBytes], or at once when the announced `Content-Length` does;
 /// - redirects are never followed: a `3xx` answer is returned as it is;
 /// - header names are given in lowercase;
-/// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened.
+/// - only `http` URLs to a `.onion` host, without user information, are sent: anything else fails with [CoordinatorTransportFailed] before a session is opened;
+/// - a request with an `Authorization` header and no [CoordinatorRequest.robot] fails the same way: a credential never travels on an anonymous session.
 ///
 /// Rule 11 of `AGENTS.md`, precisely: every exception becomes a [CoordinatorTransportFailure].
 /// An [Error] thrown by this adapter, or by the session opener or the client factory it is given, propagates to the caller of [send], after the session it concerns is closed.
@@ -61,14 +71,20 @@ final class TorCoordinatorTransport
   final Duration _attemptTimeout;
   final bool Function(String host) _acceptsHost;
 
-  /// The session of each origin, opening or open.
-  final Map<String, Future<_Route>> _routes = {};
+  /// The session new requests use for each origin and robot, opening or open, the least recently used first.
+  final Map<_RouteKey, _Slot> _slots = {};
 
-  /// The open sessions, closed by [closeSessions].
+  /// Every session that is open: the ones of [_slots], and the ones a connection failure replaced or that are closing, until they are closed.
   final Set<_Route> _live = {};
 
-  /// Incremented by [closeSessions]: a session that finishes opening after it is closed at once.
+  /// The places taken among [maxRobotSessions]: one per robot session that is opening, open or closing.
+  int _robotPlaces = 0;
+
+  /// Incremented by [closeSessions]: a request that started before fails, and a session that finishes opening after it is closed at once.
   int _epoch = 0;
+
+  /// The robots that have a request running, each with the generation [closeRobotSessions] increments: a request of that robot that started before fails.
+  final Map<RobotSessionKey, _RobotRequests> _robotRequests = {};
 
   /// The headers this adapter decides, whatever the request says.
   static const _ownHeaders = {
@@ -137,10 +153,23 @@ final class TorCoordinatorTransport
   @override
   Future<void> closeSessions() async {
     _epoch++;
-    _routes.clear();
-    final live = List.of(_live);
-    _live.clear();
-    await Future.wait(live.map((route) => route.close()));
+    _slots.clear();
+    // Every open session, the ones a connection failure replaced included: each leaves [_live] once it is closed.
+    await Future.wait(List.of(_live).map((route) => route.close()));
+  }
+
+  @override
+  Future<void> closeRobotSessions(RobotSessionKey robot) async {
+    // The requests of this robot that are running fail at their next step, whatever session they are on.
+    _robotRequests[robot]?.generation++;
+    for (final key in List.of(_slots.keys)) {
+      // A session still opening closes itself as soon as it is open.
+      if (key.robot == robot) _slots.remove(key)?.dropped = true;
+    }
+    await Future.wait([
+      for (final route in List.of(_live))
+        if (route.key.robot == robot) route.close(),
+    ]);
   }
 
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> _exchange(
@@ -156,22 +185,79 @@ final class TorCoordinatorTransport
         !_acceptsHost(url.host)) {
       return const Err(CoordinatorTransportFailed());
     }
-    final origin = url.origin;
+    // A credential on an anonymous session would tie that session, and the reads of the book, to a robot.
+    // Only `Authorization` is looked at, the one place a robot credential travels in today: the chat websocket will carry the token hash in a query parameter (`token_sha256_hex`), and this guard must be extended to it, and to any other credential, when it arrives.
+    if (request.robot == null &&
+        request.headers.keys.any(
+          (name) => name.toLowerCase() == HttpHeaders.authorizationHeader,
+        )) {
+      return const Err(CoordinatorTransportFailed());
+    }
+    // Checked before any session opens: `dart:io` would refuse such a header with an exception that quotes its value.
+    if (!_areSendable(request.headers)) {
+      return const Err(CoordinatorTransportFailed());
+    }
+    final robot = request.robot;
+    if (robot == null) return _run(request, deadline, null);
+    final requests = _robotRequests.putIfAbsent(robot, _RobotRequests.new);
+    requests.running++;
+    try {
+      return await _run(request, deadline, requests);
+    } finally {
+      requests.running--;
+      if (requests.running == 0 && identical(_robotRequests[robot], requests)) {
+        _robotRequests.remove(robot);
+      }
+    }
+  }
+
+  static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
+  static final RegExp _headerValue = RegExp(r'^[\x20-\x7E]*$');
+
+  /// Whether every header can be written on the wire as it is: a name that is an HTTP token, and a value made of printable ASCII characters and spaces only.
+  ///
+  /// A token hash in base91, an armored key and a Nostr key need nothing else, so anything else is a mistake of the caller, and never something to send.
+  static bool _areSendable(Map<String, String> headers) =>
+      headers.entries.every(
+        (header) =>
+            _headerName.hasMatch(header.key) &&
+            _headerValue.hasMatch(header.value),
+      );
+
+  /// Sends [request] on the session of its origin and robot, opening or replacing that session as needed.
+  ///
+  /// [requests] is the entry of the robot of the request in [_robotRequests], `null` for an anonymous request.
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> _run(
+    CoordinatorRequest request,
+    _Deadline deadline,
+    _RobotRequests? requests,
+  ) async {
+    final key = (origin: request.url.origin, robot: request.robot);
     final retries = request.method == CoordinatorHttpMethod.get
         ? coordinatorConnectRetries
         : 0;
     final epoch = _epoch;
+    final generation = requests?.generation;
+    // Whether [closeSessions], or [closeRobotSessions] for the robot of this request, ran since the request started.
+    bool closed() => epoch != _epoch || generation != requests?.generation;
     for (var attempt = 0; ; attempt++) {
       if (deadline.passed) return const Err(CoordinatorTimedOut());
-      // After [closeSessions], a request still running fails instead of opening a new session.
-      if (epoch != _epoch) return const Err(CoordinatorTransportFailed());
-      final opening = _routeFor(origin);
+      // After [closeSessions] or [closeRobotSessions], a request still running fails instead of opening a new session, whichever session it was on.
+      if (closed()) return const Err(CoordinatorTransportFailed());
+      final slot = _slotFor(key);
+      // Every robot session is in use: nothing can be closed to make room.
+      if (slot == null) return const Err(CoordinatorTransportFailed());
       final _Route route;
+      // Counted from here, without a gap, so that the session is never closed as unused before this request takes it.
+      slot.waiting++;
       try {
-        route = await opening;
+        route = await slot.opening;
       } on _RouteException catch (exception) {
         return Err(exception.failure);
+      } finally {
+        slot.waiting--;
       }
+      if (closed()) return const Err(CoordinatorTransportFailed());
       if (deadline.passed) return const Err(CoordinatorTimedOut());
 
       route.acquire();
@@ -186,13 +272,14 @@ final class TorCoordinatorTransport
         case _Answered(:final result):
           return result;
         case _Abandoned():
-          _retire(origin, opening, route);
+          _retire(key, slot, route);
           return const Err(CoordinatorTimedOut());
         case _ConnectFailed(:final reason):
-          _retire(origin, opening, route);
+          _retire(key, slot, route);
           if (attempt >= retries || deadline.passed) {
             return const Err(CoordinatorUnreachable());
           }
+          // The reason and two counters only: the coordinator, the robot and the headers of the request never go to a log, where they would tie a robot to a coordinator or leak its credential.
           log.info(
             'P2P coordinator connection failed (${reason.name}), retrying on a new Tor session (${attempt + 1}/$retries)',
           );
@@ -200,31 +287,76 @@ final class TorCoordinatorTransport
     }
   }
 
-  Future<_Route> _routeFor(String origin) {
-    final existing = _routes[origin];
-    if (existing != null) return existing;
-    final opening = _open(_epoch);
-    _routes[origin] = opening;
+  /// The session of [key], opened if there is none, and marked as the most recently used; `null` when a robot needs a new one and no place can be had for it.
+  _Slot? _slotFor(_RouteKey key) {
+    final existing = _slots.remove(key);
+    if (existing != null) return _slots[key] = existing;
+    Future<void>? vacated;
+    if (key.robot != null) {
+      final place = _placeForRobot();
+      if (place == null) return null;
+      vacated = place.vacated;
+    }
+    final slot = _Slot();
+    final opening = slot.opening = _open(_epoch, key, slot, vacated);
+    _slots[key] = slot;
     // A session that fails to open leaves no trace, so the next request tries again.
     opening.then<void>(
       (_) {},
       onError: (Object _) {
-        if (identical(_routes[origin], opening)) _routes.remove(origin);
+        if (identical(_slots[key], slot)) _slots.remove(key);
       },
     );
-    return opening;
+    return slot;
   }
 
-  Future<_Route> _open(int epoch) async {
-    final TorSession session;
-    try {
-      session = await _openSession();
-    } on Exception {
-      // Tor did not start, or gave no session: there is no circuit to the coordinator.
-      throw const _RouteException(CoordinatorUnreachable());
+  /// A place for one more robot session among [maxRobotSessions], or `null` when every place is taken by a session that is opening or in use.
+  ///
+  /// When all are taken, the place of a session that is already closing is handed over, or else the least recently used session that no request uses is closed and its place handed over.
+  /// The new session then opens only once that one is closed, [_Place.vacated], so there are never more than [maxRobotSessions] at a time.
+  _Place? _placeForRobot() {
+    if (_robotPlaces < maxRobotSessions) {
+      _robotPlaces++;
+      return (vacated: null);
     }
-    var kept = false;
+    for (final route in _live) {
+      if (route.key.robot != null &&
+          route.isClosing &&
+          !route.placeHandedOver) {
+        route.placeHandedOver = true;
+        return (vacated: route.close());
+      }
+    }
+    for (final MapEntry(:key, value: slot) in _slots.entries) {
+      final route = slot.route;
+      if (key.robot == null || route == null || !slot.isIdle) continue;
+      _slots.remove(key);
+      route.placeHandedOver = true;
+      return (vacated: route.close());
+    }
+    return null;
+  }
+
+  /// Opens the session of [slot], after the session whose place it takes, if any, is closed.
+  Future<_Route> _open(
+    int epoch,
+    _RouteKey key,
+    _Slot slot,
+    Future<void>? vacated,
+  ) async {
+    TorSession? session;
+    _Route? route;
+    // [closeSessions], or [closeRobotSessions] for this robot, ran while this session was opening.
+    bool closed() => epoch != _epoch || slot.dropped;
     try {
+      if (vacated != null) await vacated;
+      if (closed()) throw const _RouteException(CoordinatorTransportFailed());
+      try {
+        session = await _openSession();
+      } on Exception {
+        // Tor did not start, or gave no session: there is no circuit to the coordinator.
+        throw const _RouteException(CoordinatorUnreachable());
+      }
       final HttpClient client;
       try {
         client = _createHttpClient(session.endpoint);
@@ -234,25 +366,33 @@ final class TorCoordinatorTransport
       client
         ..userAgent = null
         ..autoUncompress = false;
-      final route = _Route(session, client, _attemptTimeout);
-      if (epoch != _epoch) {
-        // [closeSessions] ran while this session was opening.
-        await route.close();
-        throw const _RouteException(CoordinatorTransportFailed());
-      }
+      route = _Route(key, session, client, _attemptTimeout, _forget);
       _live.add(route);
-      kept = true;
+      if (closed()) throw const _RouteException(CoordinatorTransportFailed());
+      slot.route = route;
       return route;
     } finally {
-      // Whatever went wrong, a bug included, the session does not stay open.
-      if (!kept) await _closeSession(session);
+      // Whatever went wrong, a bug included, the session does not stay open, and its place is given back once it is closed.
+      if (slot.route == null) {
+        if (route != null) {
+          await route.close();
+        } else {
+          if (session != null) await _closeSession(session);
+          if (key.robot != null) _robotPlaces--;
+        }
+      }
     }
   }
 
-  /// Stops reusing [route] for [origin]: it closes once its last request ends.
-  void _retire(String origin, Future<_Route> opening, _Route route) {
-    if (identical(_routes[origin], opening)) _routes.remove(origin);
+  /// Called once [route] is closed: it no longer counts.
+  void _forget(_Route route) {
     _live.remove(route);
+    if (route.key.robot != null && !route.placeHandedOver) _robotPlaces--;
+  }
+
+  /// Stops reusing [route] for [key]: it closes once its last request ends, and until then [closeSessions] and [closeRobotSessions] still reach it.
+  void _retire(_RouteKey key, _Slot slot, _Route route) {
+    if (identical(_slots[key], slot)) _slots.remove(key);
     route.retire();
   }
 
@@ -378,6 +518,8 @@ final class TorCoordinatorTransport
       // The coordinator answered, but not in HTTP: a new circuit would get the same answer.
       HttpException() when exception.type == DioExceptionType.unknown =>
         const _Answered(Err(CoordinatorTransportFailed())),
+      // `dart:io` refused to write the request, such as a header it finds invalid: no session would send it, and the message of the exception, which may quote a header value, is dropped here.
+      FormatException() => const _Answered(Err(CoordinatorTransportFailed())),
       final Object cause => _ConnectFailed(
         TorHttpClientFactory.classify(cause),
       ),
@@ -408,17 +550,59 @@ final class TorCoordinatorTransport
   }
 }
 
-/// One Tor session with its HTTP client, shared by the requests to one origin.
+/// What a session is kept for: one origin, and one robot or the anonymous requests.
+typedef _RouteKey = ({String origin, RobotSessionKey? robot});
+
+/// A place for a new robot session, and the closing of the session it is taken from, to wait for before opening.
+typedef _Place = ({Future<void>? vacated});
+
+/// The requests of one robot that are running.
+final class _RobotRequests {
+  /// How many are running: the entry is dropped when none is.
+  int running = 0;
+
+  /// Incremented by [TorCoordinatorTransport.closeRobotSessions].
+  int generation = 0;
+}
+
+/// The session of one [_RouteKey], while it opens and once it is open.
+final class _Slot {
+  late final Future<_Route> opening;
+
+  /// The session once it is open.
+  _Route? route;
+
+  /// The requests that picked this session and wait for it to open.
+  int waiting = 0;
+
+  /// Set by [TorCoordinatorTransport.closeRobotSessions] while the session opens: it is closed as soon as it is open.
+  bool dropped = false;
+
+  /// Whether the session is open and no request uses it or is about to.
+  bool get isIdle => waiting == 0 && (route?.isUnused ?? false);
+}
+
+/// One Tor session with its HTTP client, shared by the requests of one [_RouteKey].
 final class _Route {
+  final _RouteKey key;
   final TorSession _session;
   final HttpClient _client;
+  final void Function(_Route route) _onClosed;
   final Dio dio;
   int _users = 0;
   bool _retired = false;
   Future<void>? _closing;
 
-  _Route(this._session, HttpClient client, Duration attemptTimeout)
-    : _client = client,
+  /// Whether a new session already waits for this one to close to take its place among the robot sessions.
+  bool placeHandedOver = false;
+
+  _Route(
+    this.key,
+    this._session,
+    HttpClient client,
+    Duration attemptTimeout,
+    this._onClosed,
+  ) : _client = client,
       dio =
           Dio(
               BaseOptions(
@@ -435,6 +619,10 @@ final class _Route {
               createHttpClient: () => client,
             );
 
+  bool get isUnused => _users == 0;
+
+  bool get isClosing => _closing != null;
+
   void acquire() => _users++;
 
   void release() {
@@ -449,7 +637,7 @@ final class _Route {
 
   Future<void> close() => _closing ??= _close();
 
-  /// Closes the client, which also cancels a connection still being made, then the session.
+  /// Closes the client, which also cancels a connection still being made, then the session, and only then tells the transport.
   Future<void> _close() async {
     try {
       dio.close(force: true);
@@ -463,6 +651,7 @@ final class _Route {
       // Closing is best effort: the session below is closed either way.
     }
     await TorCoordinatorTransport._closeSession(_session);
+    _onClosed(this);
   }
 }
 

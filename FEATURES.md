@@ -14,7 +14,7 @@ graph TB
     BULL_LOGGER[Bull Logger Package<br/>Logger, diagnostics, log files]
     BULL_PAYJOIN[Bull Payjoin Package<br/>Public contract]
     BULL_PRICER[Bull Pricer Package<br/>Bitcoin price and history]
-    ROBOSATS[RoboSats Package<br/>Robot identity, coordinator client]
+    ROBOSATS[RoboSats Package<br/>Robot identity, coordinator client, robot on a coordinator]
 
     %% Feature modules
     SETTINGS[Settings]
@@ -288,7 +288,7 @@ graph TB
 - **Send**: Depends on Fees, Network, Payjoin, Swaps, UTXO Management, Wallets
 - **Receive**: Depends on Payjoin, Swaps
 - **Backups**: Depends on BIP85, Tor, Wallets
-- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book, order details, read-only); the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
+- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book, order details, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, which no screen uses yet and which the app-facing facade does not offer; the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
 
 ### Exchange-Related Features
 

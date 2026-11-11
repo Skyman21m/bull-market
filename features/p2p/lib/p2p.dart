@@ -7,6 +7,7 @@ export 'generated/l10n/p2p_localizations.dart' show P2pLocalizations;
 
 export 'package:primitives/primitives.dart' show Err, Ok, Result, Sats;
 // The types of the facade's signatures, and of their fields, so that a screen shows a coordinator, its info and its orders without importing `robosats`.
+// Nothing that makes, holds or reveals a robot is exported: Garage Keys, robot identities and robot keys stay inside the feature, where the custody rules of `AGENTS.md` apply to them.
 export 'package:robosats/robosats.dart'
     show
         BondSize,

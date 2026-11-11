@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/src/coordinator/robot_session_key.dart';
 import 'package:robosats/src/robosats_failure.dart';
 
 /// The HTTP methods the RoboSats API uses.
@@ -16,6 +17,8 @@ final class CoordinatorRequest {
   final Uri url;
 
   /// The request headers, which never include a `User-Agent`: the adapter chooses it.
+  ///
+  /// An authenticated request carries the credential of its robot in `Authorization`: never log the headers.
   final Map<String, String> headers;
 
   final Uint8List? body;
@@ -23,15 +26,21 @@ final class CoordinatorRequest {
   /// The largest body this request accepts, in bytes: the adapter must stop reading and fail with [CoordinatorResponseTooLarge] before buffering more.
   final int maxResponseBytes;
 
+  /// The robot this request is made for, or `null` for an anonymous request, such as the read of a book.
+  ///
+  /// The adapter must never let two requests with different values, `null` included, share a connection or a Tor circuit: a coordinator, or anyone watching it, would otherwise tie a robot to another robot or to the anonymous reads of the same device.
+  final RobotSessionKey? robot;
+
   const CoordinatorRequest({
     required this.method,
     required this.url,
     required this.headers,
     required this.maxResponseBytes,
     this.body,
+    this.robot,
   });
 
-  /// The method and the path, which are public: requests in this package carry no credential in the URL.
+  /// The method and the path, which are public: requests in this package carry no credential in the URL, and the headers and the robot are left out.
   @override
   String toString() =>
       'CoordinatorRequest(${method.name.toUpperCase()} ${url.path})';
@@ -70,9 +79,11 @@ final class CoordinatorResponse {
 /// - it must stop reading a body at [CoordinatorRequest.maxResponseBytes] and fail with [CoordinatorResponseTooLarge] before buffering more;
 /// - it must give header names in lowercase;
 /// - it must not follow redirects;
+/// - it must keep the requests of each [CoordinatorRequest.robot] on connections and Tor circuits of their own, per coordinator, apart from those of every other robot and from the anonymous requests, and refuse a request that carries an `Authorization` header without naming its robot;
+/// - it must never log or keep the headers of a request, which may hold a credential;
 /// - it maps everything else that goes wrong into a [CoordinatorTransportFailure].
 ///
-/// Calls may run concurrently, one per coordinator.
+/// Calls may run concurrently, one per coordinator and per robot.
 abstract interface class CoordinatorTransport {
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
     CoordinatorRequest request,

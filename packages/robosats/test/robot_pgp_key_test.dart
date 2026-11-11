@@ -52,57 +52,75 @@ void main() {
   const repositoryCreationTimes = {1: 1699986799, 2: 1699195195, 3: 1740323676};
 
   for (final number in [1, 2, 3]) {
-    group(
-      'key of RoboSats test robot $number, made by the official client',
-      () {
-        final identity = repositoryRobotIdentity(number);
-        final key = repositoryRobotKey(number);
+    group('key of RoboSats test robot $number, made by the official client', () {
+      final identity = repositoryRobotIdentity(number);
+      final key = repositoryRobotKey(number);
 
-        test('has the fingerprint GnuPG reports', () {
-          expect(key.publicKey.fingerprint, repositoryFingerprints[number]);
-        });
+      test('has the fingerprint GnuPG reports', () {
+        expect(key.publicKey.fingerprint, repositoryFingerprints[number]);
+      });
 
-        test('is named after the hash id of its token', () {
-          expect(key.publicKey.userId, identity.pgpUserId);
-          expect(key.isNamedAfter(identity), isTrue);
-          expect(key.isNamedAfter(_identity), isFalse);
-        });
+      test('is named after the hash id of its token', () {
+        expect(key.publicKey.userId, identity.pgpUserId);
+        expect(key.isNamedAfter(identity), isTrue);
+        expect(key.isNamedAfter(_identity), isFalse);
+      });
 
-        test('carries its creation time', () {
-          expect(
-            key.publicKey.createdAt,
-            DateTime.fromMillisecondsSinceEpoch(
-              (repositoryCreationTimes[number] ?? 0) * 1000,
-              isUtc: true,
-            ),
-          );
-          expect(key.publicKey.createdAt.isUtc, isTrue);
-        });
+      test('carries its creation time', () {
+        expect(
+          key.publicKey.createdAt,
+          DateTime.fromMillisecondsSinceEpoch(
+            (repositoryCreationTimes[number] ?? 0) * 1000,
+            isUtc: true,
+          ),
+        );
+        expect(key.publicKey.createdAt.isUtc, isTrue);
+      });
 
-        test('keeps both armored blocks', () {
-          expect(key.publicKey.armored, repositoryRobotFile(number, 'pub_key'));
-          expect(
-            key.encryptedPrivateKeyArmored,
-            repositoryRobotFile(number, 'enc_priv_key'),
-          );
-        });
+      test('keeps the packets of both blocks, in canonical armor', () {
+        final public = armorDecode(
+          ArmorBlock.publicKey,
+          repositoryRobotFile(number, 'pub_key'),
+        );
+        final private = armorDecode(
+          ArmorBlock.privateKey,
+          repositoryRobotFile(number, 'enc_priv_key'),
+        );
+        if (public == null || private == null) fail('not armored');
+        // `pub_key` is a GnuPG export, with lines of 64 characters: only the wrapping changes.
+        expect(
+          armorDecode(ArmorBlock.publicKey, key.publicKey.armored),
+          public,
+        );
+        expect(
+          key.publicKey.armored,
+          armorEncode(ArmorBlock.publicKey, public),
+        );
+        expect(
+          armorDecode(ArmorBlock.privateKey, key.encryptedPrivateKeyArmored),
+          private,
+        );
+        expect(
+          key.encryptedPrivateKeyArmored,
+          armorEncode(ArmorBlock.privateKey, private),
+        );
+      });
 
-        test('is unlocked by its token and by no other', () {
-          expectOk(key.unlock(identity));
-          expect(expectErr(key.unlock(_identity)), isA<PgpWrongPassphrase>());
-        });
+      test('is unlocked by its token and by no other', () {
+        expectOk(key.unlock(identity));
+        expect(expectErr(key.unlock(_identity)), isA<PgpWrongPassphrase>());
+      });
 
-        test('signs a text that its public key verifies', () {
-          final signed = expectOk(
-            expectOk(key.unlock(identity)).signCleartext('lnbcrt1invoice'),
-          );
-          expect(
-            expectOk(key.publicKey.verifyCleartext(signed)),
-            'lnbcrt1invoice',
-          );
-        });
-      },
-    );
+      test('signs a text that its public key verifies', () {
+        final signed = expectOk(
+          expectOk(key.unlock(identity)).signCleartext('lnbcrt1invoice'),
+        );
+        expect(
+          expectOk(key.publicKey.verifyCleartext(signed)),
+          'lnbcrt1invoice',
+        );
+      });
+    });
   }
 
   group('PgpPublicKey.parse', () {
@@ -111,7 +129,65 @@ void main() {
     test('reads a key carried on one line with backslashes', () {
       final key = expectOk(PgpPublicKey.parse(pgpArmorToWire(armored)));
       expect(key.fingerprint, repositoryFingerprints[1]);
-      expect(key.armored, armored);
+      expect(key.armored, expectOk(PgpPublicKey.parse(armored)).armored);
+    });
+
+    test('gives the same canonical armor whatever armor it reads', () {
+      final canonical = expectOk(PgpPublicKey.parse(armored)).armored;
+      final lines = armored.trim().split('\n');
+      final variants = {
+        'with GnuPG headers': [
+          lines.first,
+          'Version: GnuPG v2',
+          'Comment: any text',
+          ...lines.skip(1),
+        ].join('\n'),
+        // What the reviewer of #39 tried: a header with a pipe between spaces, a tab and a letter outside ASCII.
+        'with an exotic header': [
+          lines.first,
+          'Comment: café | pipe\ttab',
+          ...lines.skip(1),
+        ].join('\n'),
+        'with CRLF': armored.replaceAll('\n', '\r\n'),
+        'without its checksum line': lines
+            .where((line) => !(line.startsWith('=') && line.length == 5))
+            .join('\n'),
+        'with space around': '  \n\n$armored\n \t\n',
+        'on one line': pgpArmorToWire(armored),
+        'already canonical': canonical,
+      };
+      for (final MapEntry(key: label, value: variant) in variants.entries) {
+        expect(
+          expectOk(PgpPublicKey.parse(variant)).armored,
+          canonical,
+          reason: label,
+        );
+      }
+      // Canonical armor is the two fixed lines, base64 and line feeds: nothing a header of the original can reach.
+      expect(
+        canonical,
+        matches(
+          RegExp(
+            r'^-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n([A-Za-z0-9+/]{1,60}={0,2}\n)+=[A-Za-z0-9+/]{4}\n-----END PGP PUBLIC KEY BLOCK-----\n$',
+          ),
+        ),
+      );
+    });
+
+    test('leaves a generated key as it is: it is canonical already', () {
+      final generated = _generate();
+      final again = expectOk(
+        RobotPgpKey.parse(
+          publicKey: generated.publicKey.armored,
+          encryptedPrivateKey: generated.encryptedPrivateKeyArmored,
+        ),
+      );
+
+      expect(again.publicKey.armored, generated.publicKey.armored);
+      expect(
+        again.encryptedPrivateKeyArmored,
+        generated.encryptedPrivateKeyArmored,
+      );
     });
 
     test('reads a key with CRLF line endings', () {

@@ -101,6 +101,6 @@ final class P2pFacade {
   /// The state of the embedded Tor, at once and then at each change.
   Stream<P2pTorState> watchTorState() => _watchTorState.execute();
 
-  /// Closes every Tor session to the coordinators; the next request opens new ones.
+  /// Closes every Tor session to the coordinators, those of the robots included; the next request opens new ones.
   Future<void> closeSessions() => _closeSessions.execute();
 }

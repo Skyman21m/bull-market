@@ -22,6 +22,18 @@ GarageKeyFailure _rejection(String encoded) =>
       Err(:final failure) => failure,
     };
 
+GarageRobot _robotOf(Result<GarageRobot, RobosatsFailure> result) =>
+    switch (result) {
+      Ok(:final value) => value,
+      Err(:final failure) => fail('expected a robot, got $failure'),
+    };
+
+RobosatsFailure _failureOf<T>(Result<T, RobosatsFailure> result) =>
+    switch (result) {
+      Ok() => fail('expected a failure, got a value'),
+      Err(:final failure) => failure,
+    };
+
 /// A checksummed bech32 string for [bytes], built with the third-party codec only, to craft inputs this package must reject.
 String _bech32(String hrp, List<int> bytes) {
   final words = <int>[];
@@ -276,6 +288,160 @@ void main() {
           isA<AccountIndexOutOfRange>(),
         );
       }
+    });
+  });
+
+  group('GarageKey.deriveIdentity', () {
+    final key = _key(_exampleKey);
+
+    test('derives the identity of the token at each index', () {
+      for (final robot in garageKeyRobots) {
+        final index = robot['account_index'] as int;
+        final result = key.deriveIdentity(index);
+        expect(result, isA<Ok<RobotIdentity, RobosatsFailure>>());
+        final identity = (result as Ok<RobotIdentity, RobosatsFailure>).value;
+        expect(identity.token.reveal(), robot['token']);
+        expect(identity.hashId.hex, robot['hash_id']);
+      }
+    });
+
+    test('rejects an index outside 0..2^31-1', () {
+      for (final index in [-1, 0x80000000]) {
+        expect(
+          _failureOf(key.deriveIdentity(index)),
+          isA<AccountIndexOutOfRange>(),
+        );
+      }
+    });
+  });
+
+  group('GarageKey.firstUsableRobot', () {
+    final key = _key(_exampleKey);
+
+    /// The identity of a real robot, standing for whatever index a test puts it at.
+    RobotIdentity identity(int number) => switch (key.deriveIdentity(number)) {
+      Ok(:final value) => value,
+      Err(:final failure) => fail('expected an identity, got $failure'),
+    };
+
+    /// What the entropy rule answers for a token it refuses.
+    const tooLow = TokenEntropyTooLow(
+      TokenEntropy(bitsEntropy: 0, shannonEntropy: 0),
+    );
+
+    test('is the robot of the index asked when its token is strong', () {
+      for (final robot in garageKeyRobots) {
+        final index = robot['account_index'] as int;
+        final found = _robotOf(key.firstUsableRobot(index));
+        expect(found.accountIndex, index);
+        expect(found.identity.token.reveal(), robot['token']);
+        expect(found, GarageRobot(index, identity(index)));
+      }
+    });
+
+    test('skips an index whose token fails the entropy rule', () {
+      final asked = <int>[];
+      final found = _robotOf(
+        GarageKey.firstUsableRobotAmong(7, (index) {
+          asked.add(index);
+          return index < 9 ? const Err(tooLow) : Ok(identity(index));
+        }),
+      );
+
+      expect(asked, [7, 8, 9]);
+      expect(found.accountIndex, 9);
+      expect(found.identity, identity(9));
+    });
+
+    test('skips an index whose hash id has no nickname', () {
+      final found = _robotOf(
+        GarageKey.firstUsableRobotAmong(
+          0,
+          (index) => index == 0
+              ? const Err(NicknameUnavailable())
+              : Ok(identity(index)),
+        ),
+      );
+
+      expect(found.accountIndex, 1);
+    });
+
+    test('really refuses a weak token, which is what the skip relies on', () {
+      // No Garage Key is known to give one: this is the token a skipped index would have.
+      expect(
+        RobotToken.parse('A' * 36),
+        isA<Err<RobotToken, TokenEntropyTooLow>>(),
+      );
+    });
+
+    test('looks at 100 indexes at most, as the official client', () {
+      final asked = <int>[];
+      final result = GarageKey.firstUsableRobotAmong(5, (index) {
+        asked.add(index);
+        return const Err(tooLow);
+      });
+
+      expect(_failureOf(result), isA<NoUsableAccountIndex>());
+      expect(asked, [for (var index = 5; index < 105; index++) index]);
+      expect(GarageKey.maxAccountSearch, 100);
+    });
+
+    test('finds a robot at the last index of the search', () {
+      final found = _robotOf(
+        GarageKey.firstUsableRobotAmong(
+          5,
+          (index) => index < 104 ? const Err(tooLow) : Ok(identity(1)),
+        ),
+      );
+
+      expect(found.accountIndex, 104);
+    });
+
+    test('stops at any other failure', () {
+      final asked = <int>[];
+      final result = GarageKey.firstUsableRobotAmong(3, (index) {
+        asked.add(index);
+        return index == 3 ? const Err(tooLow) : const Err(HashIdMalformed());
+      });
+
+      expect(_failureOf(result), isA<HashIdMalformed>());
+      expect(asked, [3, 4]);
+    });
+
+    test('rejects a start outside 0..2^31-1 without deriving anything', () {
+      for (final index in [-1, 0x80000000, 0x100000000]) {
+        final result = GarageKey.firstUsableRobotAmong(
+          index,
+          (_) => fail('nothing to derive'),
+        );
+        expect(_failureOf(result), isA<AccountIndexOutOfRange>());
+        expect(
+          _failureOf(key.firstUsableRobot(index)),
+          isA<AccountIndexOutOfRange>(),
+        );
+      }
+    });
+
+    test('never searches past the highest index', () {
+      final asked = <int>[];
+      final result = GarageKey.firstUsableRobotAmong(0x7ffffffe, (index) {
+        asked.add(index);
+        return const Err(tooLow);
+      });
+
+      expect(_failureOf(result), isA<AccountIndexOutOfRange>());
+      expect(asked, [0x7ffffffe, 0x7fffffff]);
+      expect(
+        _robotOf(key.firstUsableRobot(0x7fffffff)).accountIndex,
+        0x7fffffff,
+      );
+    });
+
+    test('prints the index and the nickname only', () {
+      final robot = _robotOf(key.firstUsableRobot(0));
+
+      expect('$robot', 'GarageRobot(0, ${robot.identity.nickname})');
+      expect('$robot', isNot(contains(robot.identity.token.reveal())));
     });
   });
 

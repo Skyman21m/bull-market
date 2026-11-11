@@ -6,7 +6,9 @@ import 'data/tor_coordinator_transport.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
+import 'domain/usecases/close_robot_sessions_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
@@ -53,6 +55,13 @@ final class P2pLocator {
       () => FetchCoordinatorInfoUsecase(
         CoordinatorClient(transport(), clock: clock),
       ),
+    );
+    // The robot use-cases have no caller yet: the Garage cubits of this feature will be the first, and nothing outside the feature reaches them.
+    locator.registerFactory<FetchRobotUsecase>(
+      () => FetchRobotUsecase(CoordinatorClient(transport(), clock: clock)),
+    );
+    locator.registerFactory<CloseRobotSessionsUsecase>(
+      () => CloseRobotSessionsUsecase(sessions()),
     );
     locator.registerFactory<WatchP2pTorStateUsecase>(
       () => WatchP2pTorStateUsecase(tor),

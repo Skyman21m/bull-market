@@ -1,23 +1,37 @@
-/// Test seam of the P2P feature: its real screens and cubits over a fake coordinator transport, fake Tor states and a fixed clock, without network.
+/// Test seam of the P2P feature: its real screens and cubits over a fake coordinator transport, fake Tor states and a fixed clock, without network, and its real transport for the live integration tests.
 ///
-/// For widget tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
+/// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
+import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
 
+import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
+// And what a live integration test needs to make a throwaway robot and drive the coordinator client itself over [liveCoordinatorTransportForTesting].
+// The app-facing library exports none of the robot types: they are here for tests only, and `test/features/p2p/p2p_testing_seam_test.dart` checks that no library of the app imports this file.
 export 'package:robosats/robosats.dart'
     show
+        CoordinatorClient,
+        CoordinatorHttpMethod,
         CoordinatorRequest,
         CoordinatorResponse,
+        CoordinatorRobot,
         CoordinatorTransport,
-        Federation;
+        Federation,
+        GarageKey,
+        NostrKeyDerivation,
+        RobotIdentity,
+        RobotKeysRefused,
+        RobotPgpKey,
+        RobotPgpKeyMismatch,
+        RobotUnknown;
 
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 
@@ -38,11 +52,21 @@ void setUpP2pForTesting(
   );
 }
 
+/// The transport of the app, over the embedded Tor, once the feature is registered with `P2pFeature.setup`.
+///
+/// For live integration tests only, which use it for what the facade leaves out on purpose: every request made for a robot, the raw answer of a coordinator, and a first contact that sends the Nostr key of the formula Troc does not use.
+@visibleForTesting
+CoordinatorTransport liveCoordinatorTransportForTesting(GetIt locator) =>
+    locator<TorCoordinatorTransport>();
+
 final class _NoSessions implements CoordinatorSessionsPort {
   const _NoSessions();
 
   @override
   Future<void> closeSessions() async {}
+
+  @override
+  Future<void> closeRobotSessions(RobotSessionKey robot) async {}
 }
 
 /// A Tor that only reports states: starting it or retrying it does nothing.

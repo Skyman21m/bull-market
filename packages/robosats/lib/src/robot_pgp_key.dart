@@ -38,7 +38,10 @@ int? _epochSeconds(DateTime? time, {Duration back = Duration.zero}) {
 /// A coordinator returns the peer's key as `peer_pubkey` on `GET /api/chat/` (`chat/views.py:99-111`).
 @immutable
 final class PgpPublicKey {
-  /// The ASCII-armored block, with line feeds.
+  /// The key in canonical ASCII armor, with line feeds: its packets armored as the official client armors them, without any armor header, whatever the armor the key was read from.
+  ///
+  /// It is therefore made of the two fixed lines, base64 characters and line feeds only, which is what makes it safe to put in the `Authorization` header of a first contact: a `Comment` header of the armor it was read from, which may hold any text, never comes along.
+  /// Two keys with the same packets have the same text.
   final String armored;
 
   /// The fingerprint of the primary key: 40 uppercase hexadecimal characters, as GnuPG prints it.
@@ -66,18 +69,21 @@ final class PgpPublicKey {
 
   /// Reads an armored public key, with its line breaks or with the backslashes RoboSats puts in their place.
   ///
+  /// Armor headers such as `Version` or `Comment` are accepted, as GnuPG writes them, and dropped: [armored] is the canonical armor of the packets read.
   /// The key is not checked against a clock: [verifyCleartext] and the chat methods do that.
   /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpKeyUnsupported].
   static Result<PgpPublicKey, PgpFailure> parse(String armored) {
     if (armored.length > PgpLimits.keyArmorChars) {
       return const Err(PgpInputTooLarge());
     }
-    final text = pgpArmorFromWire(armored);
-    final bytes = armorDecode(ArmorBlock.publicKey, text);
+    final bytes = armorDecode(ArmorBlock.publicKey, pgpArmorFromWire(armored));
     if (bytes == null) return const Err(PgpArmorMalformed());
     try {
       return Ok(
-        PgpPublicKey._(text, TransferableKey.parse(bytes, secret: false)),
+        PgpPublicKey._(
+          armorEncode(ArmorBlock.publicKey, bytes),
+          TransferableKey.parse(bytes, secret: false),
+        ),
       );
     } on FormatException {
       return const Err(PgpKeyUnsupported());
@@ -151,7 +157,7 @@ final class PgpPublicKey {
 final class RobotPgpKey {
   final PgpPublicKey publicKey;
 
-  /// The ASCII-armored private key, each secret part encrypted with the robot token as passphrase.
+  /// The private key in canonical ASCII armor, as [PgpPublicKey.armored] is, each secret part encrypted with the robot token as passphrase.
   ///
   /// Coordinators store it and hand it back on `GET /api/robot/`: it is only as secret as the token.
   final String encryptedPrivateKeyArmored;
@@ -209,6 +215,7 @@ final class RobotPgpKey {
   /// Reads the two blocks of a robot, as generated earlier or as a coordinator returns them (`public_key` and `encrypted_private_key` of `GET /api/robot/`).
   ///
   /// The private key is not unlocked: no token is needed.
+  /// Both blocks may carry armor headers, which are dropped: the key holds the canonical armor of the packets read, so nothing but base64 ever goes from it into a request.
   /// Fails with [PgpInputTooLarge], [PgpArmorMalformed], [PgpKeyUnsupported], or [PgpKeyPairMismatch] when the two blocks are not the same key.
   static Result<RobotPgpKey, PgpFailure> parse({
     required String publicKey,
@@ -224,8 +231,10 @@ final class RobotPgpKey {
     if (encryptedPrivateKey.length > PgpLimits.keyArmorChars) {
       return const Err(PgpInputTooLarge());
     }
-    final privateText = pgpArmorFromWire(encryptedPrivateKey);
-    final bytes = armorDecode(ArmorBlock.privateKey, privateText);
+    final bytes = armorDecode(
+      ArmorBlock.privateKey,
+      pgpArmorFromWire(encryptedPrivateKey),
+    );
     if (bytes == null) return const Err(PgpArmorMalformed());
     final TransferableKey secretKey;
     try {
@@ -245,7 +254,13 @@ final class RobotPgpKey {
         )) {
       return const Err(PgpKeyPairMismatch());
     }
-    return Ok(RobotPgpKey._(public, privateText, secretKey));
+    return Ok(
+      RobotPgpKey._(
+        public,
+        armorEncode(ArmorBlock.privateKey, bytes),
+        secretKey,
+      ),
+    );
   }
 
   /// Whether the key carries the user ID the official client gives the key of [identity].
