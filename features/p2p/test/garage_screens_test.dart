@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:bull_logger/bull_logger.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +17,7 @@ import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_field.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
 import 'package:p2p/testing.dart';
-import 'package:robosats/robosats.dart' show GarageKey;
+import 'package:primitives/primitives.dart' show Failure;
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
@@ -106,7 +105,10 @@ void main() {
     final setup = FakeSecureStoragePlatform()..install();
     final vault = Secrets(scratchDirectory: () async => '.').garageKeys();
     for (final slot in GarageKeySlot.values) {
-      await vault.import(slot: slot, bytes: fixedKey.revealBytes());
+      expect(
+        await vault.import(slot: slot, bytes: fixedKey.revealBytes()),
+        isA<Ok<Object?, Failure>>(),
+      );
     }
     storedFixedKeys = Map.of(setup.entries);
   });
@@ -657,10 +659,12 @@ void main() {
       await tester.enterText(input, 'bad');
       await settle(tester);
       expect(find.text('Must start with "robo1"'), findsOneWidget);
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Continue'), warnIfMissed: false);
       await letTheVaultSettle(tester);
       expect(storage.entries, isEmpty);
       expect(find.text('Robot #0'), findsNothing);
+      // « Continue » is disabled: the text never reached the cubit, which would say why under « Generate Garage Key ».
+      expect(find.text('Must start with "robo1"'), findsOneWidget);
 
       await tester.enterText(input, 'robo1abc');
       await settle(tester);
