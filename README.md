@@ -71,7 +71,7 @@ A few notes on what the mock-up shows:
 
 ## First screens in the app
 
-> These are **real screens**, rendered from the app's own code by a test, with order books recorded from the RoboSats coordinators. They are read-only and only visible when both superuser mode and developer mode are on. They have not been tried on a phone yet.
+> These are **real screens**, rendered from the app's own code by a test, with order books recorded from the RoboSats coordinators. They are read-only and only visible when both superuser mode and developer mode are on. They were tried once on an Android phone, with a debug build (see the status below).
 
 <table>
   <tr>
@@ -116,11 +116,11 @@ The planned flow is the RoboSats one; none of this is usable in the app yet. Exa
 
 ## Project status
 
-Status as of November 10, 2026. The work is split into phases, tracked with [milestones](https://github.com/Skyman21m/troc/milestones) and [issues](https://github.com/Skyman21m/troc/issues).
+Status as of November 11, 2026. The work is split into phases, tracked with [milestones](https://github.com/Skyman21m/troc/milestones) and [issues](https://github.com/Skyman21m/troc/issues).
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Setup, continuous integration, technical checks (Tor to a coordinator, robot identity, PGP, hold invoices) | Partly done: Tor and robot identity verified; PGP verified offline, not yet against a coordinator ([#7](https://github.com/Skyman21m/troc/issues/7)); paying hold invoices not tried yet ([#8](https://github.com/Skyman21m/troc/issues/8)); end-of-phase decision still to be made ([#9](https://github.com/Skyman21m/troc/issues/9)) |
+| 0 | Setup, continuous integration, technical checks (Tor to a coordinator, robot identity, PGP, hold invoices) | Partly done: Tor and robot identity verified; a testnet coordinator accepted a robot and its OpenPGP key pair, while signatures and chat encryption are verified offline only, since they need an order ([#7](https://github.com/Skyman21m/troc/issues/7)); paying hold invoices not tried yet ([#8](https://github.com/Skyman21m/troc/issues/8)); end-of-phase decision still to be made ([#9](https://github.com/Skyman21m/troc/issues/9)) |
 | 1 | Read-only foundation: order book, robots, list and detail screens | In progress |
 | 2 | Taking an order (taker flow) | Upcoming |
 | 3 | Creating an order (maker flow) | Upcoming |
@@ -129,18 +129,20 @@ Status as of November 10, 2026. The work is split into phases, tracked with [mil
 
 What already exists in the code:
 
-- **Robot identity**: Garage Key, tokens, ID, nickname, checked against reference values taken from RoboSats; the Nostr key is computed, but its formula is still to be confirmed against a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)) ([report](docs/spikes/robot-identity.md)).
-- **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js, not yet tried against a coordinator ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
+- **Robot identity**: Garage Key, tokens, ID, nickname, checked against reference values taken from RoboSats; the Nostr key follows the formula of the current official client ([report](docs/spikes/robot-identity.md)).
+- **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js; a coordinator has accepted the key pair, but no signature or chat message has been tried against one yet ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
-- **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC for now, not yet on a phone ([measurements](docs/spikes/tor-robosats.md)).
-- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC behind a VPN, before the review fixes (not rerun since), and not yet on a phone ([report](docs/spikes/tor-transport.md)).
-- **The first screens of the P2P tab**: Tor wait, order book and order details, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books, not yet tried on a phone.
+- **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC ([measurements](docs/spikes/tor-robosats.md)).
+- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). It was tried live once, on a desktop PC behind a VPN, before the review fixes ([report](docs/spikes/tor-transport.md)); the robot test and the phone trial below have since run the corrected code live.
+- **The first screens of the P2P tab**: Tor wait, order book and order details, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
+- **A robot on a coordinator**: the code creates a robot on a coordinator and reads it back, over a Tor session of its own, and refuses any answer that is not the robot and the key pair of this device. A test did it six times on one testnet coordinator, from a desktop build ([report](docs/spikes/robot-coordinator.md)). No screen uses it yet, and the Garage Key is not stored yet ([#28](https://github.com/Skyman21m/troc/issues/28)).
+- **A first trial on a phone** (November 11, 2026, one Android phone, debug build): the P2P tab appeared, Tor connected in about 30 seconds, the six coordinators of the mainnet list all ended up answering, some later than others, and the order book, its filters, pull to refresh, the order details and the reversible-payment warning worked. This is what the tester saw; nothing was measured. Not checked on the phone: the testnet banner, the Tor error and its retry, an offline coordinator, the English texts.
 
 In progress: the rest of the read-only screens (Garage, chart, map and search views, coordinator details) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
 
-Not done yet: creating a robot with a coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
+Not done yet: storing the Garage Key and creating a robot from the app ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
 
-Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issues [#4](https://github.com/Skyman21m/troc/issues/4) and [#17](https://github.com/Skyman21m/troc/issues/17).
+Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issue [#17](https://github.com/Skyman21m/troc/issues/17).
 
 ## How it is built
 
