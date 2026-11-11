@@ -69,9 +69,9 @@ final class CoordinatorRobot {
   ///
   /// Any invalid field rejects the whole answer with [CoordinatorResponseMalformed].
   /// `hash_id`, `nickname`, `public_key` and `encrypted_private_key` are required; `earned_rewards`, `wants_stealth`, `found`, the order ids, `last_login` and `nostr_pubkey` may be missing, as the official client allows.
-  /// Then the answer must describe the robot of this device, in this order: the hash id ([RobotHashIdMismatch]), the nickname ([RobotNicknameMismatch]), and the key pair ([RobotPgpKeyMismatch]).
-  /// A public key that is well-formed but of a kind this package does not make is a [RobotPgpKeyMismatch] too, whatever the rest says.
-  /// The public key is compared by the fingerprints of its primary key and of its encryption subkey, since a coordinator returns it re-exported by GnuPG; the encrypted private key is compared as text.
+  /// Then the answer must describe the robot of this device, in this order: the hash id ([RobotHashIdMismatch]), the nickname ([RobotNicknameMismatch]), and the key pair ([RobotPgpKeyMismatch]); the keys are only parsed once the hash id and the nickname are the right ones.
+  /// A public key that is well-formed but of a kind this package does not make is a [RobotPgpKeyMismatch] too.
+  /// The public key is compared by the fingerprints of its primary key and of its encryption subkey, since a coordinator returns it re-exported by GnuPG; the encrypted private key is compared by its packets, whatever its armor.
   @internal
   static Result<CoordinatorRobot, CoordinatorFailure> parse(
     Object? body,
@@ -121,6 +121,11 @@ final class CoordinatorRobot {
     if (storedNostrKey != null && !_nostrKey.hasMatch(storedNostrKey)) {
       return const Err(CoordinatorResponseMalformed('nostr_pubkey'));
     }
+    // The cheap comparisons first: nothing of an answer about another robot is parsed as a key.
+    if (hashId != identity.hashId.hex) return const Err(RobotHashIdMismatch());
+    if (nickname != identity.nickname) {
+      return const Err(RobotNicknameMismatch());
+    }
     final PgpPublicKey storedPublicKey;
     switch (PgpPublicKey.parse(publicKey)) {
       case Ok(:final value):
@@ -130,11 +135,6 @@ final class CoordinatorRobot {
         return const Err(RobotPgpKeyMismatch());
       case Err():
         return const Err(CoordinatorResponseMalformed('public_key'));
-    }
-
-    if (hashId != identity.hashId.hex) return const Err(RobotHashIdMismatch());
-    if (nickname != identity.nickname) {
-      return const Err(RobotNicknameMismatch());
     }
     if (storedPublicKey != pgpKey.publicKey) {
       return const Err(RobotPgpKeyMismatch());
@@ -149,8 +149,9 @@ final class CoordinatorRobot {
       case Err():
         return const Err(CoordinatorResponseMalformed('encrypted_private_key'));
     }
-    if (storedKey.encryptedPrivateKeyArmored.trim() !=
-        pgpKey.encryptedPrivateKeyArmored.trim()) {
+    // Both are canonical armor, so this compares the packets, whatever armor the coordinator wrapped them in.
+    if (storedKey.encryptedPrivateKeyArmored !=
+        pgpKey.encryptedPrivateKeyArmored) {
       return const Err(RobotPgpKeyMismatch());
     }
 

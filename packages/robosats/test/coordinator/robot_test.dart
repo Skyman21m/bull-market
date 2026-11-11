@@ -149,6 +149,38 @@ void main() {
       }
     });
 
+    test('never carries the armor headers a key was read with', () async {
+      // What the reviewer of #39 tried: a `Comment` header would have made five parts, and a value `dart:io` refuses.
+      String withHeader(String armored) {
+        final lines = armored.trim().split('\n');
+        return [
+          lines.first,
+          'Version: Another client',
+          'Comment: café | pipe\ttab',
+          ...lines.skip(1),
+        ].join('\n');
+      }
+
+      final read = expectOk(
+        RobotPgpKey.parse(
+          publicKey: withHeader(_key.publicKey.armored),
+          encryptedPrivateKey: withHeader(_key.encryptedPrivateKeyArmored),
+        ),
+      );
+      serveJson(_robot());
+      expectOk(await fetch(pgpKey: read));
+      await fetch();
+
+      final [fromRead, fromGenerated] = transport.requests;
+      final header = fromRead.headers['Authorization'] ?? '';
+      expect(header, fromGenerated.headers['Authorization']);
+      expect(header.split(' | '), hasLength(4));
+      expect(header, isNot(contains('Comment')));
+      expect(header, isNot(contains('café')));
+      // Printable ASCII only, which every HTTP stack carries.
+      expect(header, matches(RegExp(r'^[\x20-\x7E]+$')));
+    });
+
     test('names its robot, and only authenticated requests do', () async {
       serveJson(_robot());
       await fetch();
@@ -252,6 +284,28 @@ void main() {
         expectOk(await fetch());
       },
     );
+
+    test('is read when the keys come back in another armor', () async {
+      String withHeader(String armored) {
+        final lines = armored.trim().split('\n');
+        return [lines.first, 'Comment: x', ...lines.skip(1)].join('\n');
+      }
+
+      for (final rearmor in <String Function(String)>[
+        withHeader,
+        (armored) => armored.replaceAll('\n', '\r\n'),
+        (armored) => '\n  $armored\n\n',
+      ]) {
+        serveJson(
+          _robot({
+            'public_key': rearmor(_reexportedPublicKey),
+            'encrypted_private_key': rearmor(_key.encryptedPrivateKeyArmored),
+          }),
+        );
+
+        expectOk(await fetch());
+      }
+    });
 
     test('is read when the public key comes back exactly as sent', () async {
       serveJson(_robot({'public_key': _key.publicKey.armored}));
@@ -482,6 +536,54 @@ void main() {
       );
 
       expect(expectErr(await fetch(pgpKey: local)), isA<RobotPgpKeyMismatch>());
+    });
+
+    test('by another primary key that binds the subkey of this device', () async {
+      // A coordinator can make a primary key of its own and bind the encryption subkey of the robot under it: the subkey alone proves nothing.
+      final own = CraftedKey();
+      final local = expectOk(
+        RobotPgpKey.parse(
+          publicKey: own.publicArmored,
+          encryptedPrivateKey: own.privateArmored('a passphrase'),
+        ),
+      );
+      final foreign = CraftedKey(
+        label: 'another primary key',
+        subkeyPoint: x25519PublicKey(own.scalar),
+      );
+      expect(foreign.subkeyBody, own.subkeyBody);
+      expect(foreign.publicKey.fingerprint, isNot(own.publicKey.fingerprint));
+      serveJson(
+        _robot({
+          'public_key': foreign.publicArmored,
+          'encrypted_private_key': own.privateArmored('a passphrase'),
+        }),
+      );
+
+      expect(expectErr(await fetch(pgpKey: local)), isA<RobotPgpKeyMismatch>());
+    });
+
+    test('by its hash id before any key is read', () async {
+      // A wrong hash id with a key that is not even a key: the answer is about another robot, and nothing of it is parsed.
+      for (final key in ['not a key', '', 'A' * 20000]) {
+        serveJson(
+          _robot({
+            'hash_id': interopPeerIdentity.hashId.hex,
+            'public_key': key,
+            'encrypted_private_key': key,
+          }),
+        );
+        expect(expectErr(await fetch()), isA<RobotHashIdMismatch>());
+
+        serveJson(
+          _robot({
+            'nickname': interopPeerIdentity.nickname,
+            'public_key': key,
+            'encrypted_private_key': key,
+          }),
+        );
+        expect(expectErr(await fetch()), isA<RobotNicknameMismatch>());
+      }
     });
 
     test('by a public key of a kind this package does not make', () async {
