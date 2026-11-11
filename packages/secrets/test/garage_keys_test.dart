@@ -6,6 +6,8 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:primitives/primitives.dart';
 import 'package:secrets/secrets.dart';
+import 'package:secrets/src/data/data.dart'
+    show FlutterSecureStorageDatasource, KeyKind;
 
 import 'fake_secure_storage_platform.dart';
 import 'result_helpers.dart';
@@ -247,6 +249,75 @@ void main() {
         isA<StoreSecretFailure>(),
       );
       expect(storage.entries, isEmpty);
+    }, timeout: slow);
+  });
+
+  group('a refused create or import draws nothing', () {
+    // `create` draws its bytes, and `import` encodes the caller's, in the closure both hand to the datasource's write-if-absent; the drawn bytes never leave the package, so the draws are counted there. The closure runs under the lock, only once the slot is settled empty.
+    Future<int> drawsFor(
+      FakeSecureStoragePlatform storage, {
+      int calls = 1,
+    }) async {
+      storage.install();
+      var draws = 0;
+      Future<Object?> attempt() async {
+        try {
+          return await FlutterSecureStorageDatasource().storeModuleKeyIfAbsent(
+            kind: KeyKind.garage,
+            package: 'p2p',
+            name: 'mainnet',
+            bytesHex: () {
+              draws++;
+              return testHex;
+            },
+          );
+        } on Exception catch (e) {
+          return e;
+        }
+      }
+
+      await Future.wait([for (var i = 0; i < calls; i++) attempt()]);
+      return draws;
+    }
+
+    final occupied = <String, FakeSecureStoragePlatform Function()>{
+      'a stored key': () =>
+          FakeSecureStoragePlatform(entries: {mainnetKey: envelope()}),
+      'an empty value': () =>
+          FakeSecureStoragePlatform(entries: {mainnetKey: ''}),
+      'a value that is not JSON': () =>
+          FakeSecureStoragePlatform(entries: {mainnetKey: 'not json at all'}),
+      'a key hidden by four false misses': () => FakeSecureStoragePlatform(
+        entries: {mainnetKey: envelope()},
+        scripted: [null, null, null, null],
+      ),
+      'reads that keep failing': () => FakeSecureStoragePlatform(
+        scripted: List.generate(5, (_) => PlatformException(code: 'boom')),
+      ),
+      'a locked keystore': () => FakeSecureStoragePlatform(locked: true),
+    };
+    for (final MapEntry(key: label, value: store) in occupied.entries) {
+      test('$label: no draw, nothing written', () async {
+        final storage = store();
+        final before = Map.of(storage.entries);
+
+        expect(await drawsFor(storage), 0);
+        expect(storage.entries, before);
+      }, timeout: slow);
+    }
+
+    test('an empty slot: exactly one draw, the one written', () async {
+      final storage = FakeSecureStoragePlatform();
+
+      expect(await drawsFor(storage), 1);
+      expect(stored(storage, mainnetKey)['bytes'], testHex);
+    }, timeout: slow);
+
+    test('two racing calls on an empty slot: one draw between them', () async {
+      final storage = _SlowWrites();
+
+      expect(await drawsFor(storage, calls: 2), 1);
+      expect(storage.entries.keys, [mainnetKey]);
     }, timeout: slow);
   });
 
