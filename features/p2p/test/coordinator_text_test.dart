@@ -41,7 +41,7 @@ void main() {
   });
 
   test('the code points drawn as nothing are removed', () {
-    // Soft hyphen, combining grapheme joiner, Hangul fillers, Khmer inherent vowel, Mongolian variation selector, zero width space, word joiner, byte order mark, variation selectors, tag characters (one unassigned).
+    // Soft hyphen, combining grapheme joiner, Hangul fillers, Khmer inherent vowel, Mongolian variation selector, zero width space, word joiner, byte order mark, variation selectors other than 15 and 16, tag characters (one unassigned).
     for (final code in [
       0x00AD,
       0x034F,
@@ -51,7 +51,8 @@ void main() {
       0x200B,
       0x2060,
       0x3164,
-      0xFE0F,
+      0xFE00,
+      0xFE0D,
       0xFEFF,
       0xFFA0,
       // The interlinear annotation characters, which Unicode does not count as default ignorable.
@@ -109,6 +110,48 @@ void main() {
           'templeofsats',
         );
       }
+    },
+  );
+
+  test(
+    'prose keeps the variation selectors that choose the form of an emoji, a copied value does not',
+    () {
+      // A heart followed by U+FE0F is drawn as an emoji, by U+FE0E as text.
+      for (final selector in [0xFE0E, 0xFE0F]) {
+        final heart = String.fromCharCodes([0x2764, selector]);
+        expect(clean('I $heart sats'), 'I $heart sats');
+        expect(
+          CoordinatorText.copyable('a${String.fromCharCode(selector)}b'),
+          'ab',
+          reason: selector.toRadixString(16),
+        );
+      }
+      // A selector counts towards the bound as one code point, like any other.
+      expect(
+        clean(String.fromCharCodes([0x2764, 0xFE0F, 0x2764, 0xFE0F]), 2),
+        '${String.fromCharCodes([0x2764, 0xFE0F])}…',
+      );
+    },
+  );
+
+  test(
+    'a value with spaces at either end, or of spaces only, is not offered for copy',
+    () {
+      // What the reader cannot see is not copied: a space before or after a value, or a value of blanks.
+      for (final text in [' ', '   ', ' site.org', 'site.org ', ' site.org ']) {
+        expect(CoordinatorText.copyable(text), isNull, reason: '"$text"');
+      }
+      // A line break or a tab is cleaned into a space, so it counts as one.
+      for (final text in ['\nsite.org', 'site.org\t', '\n']) {
+        expect(CoordinatorText.copyable(text), isNull);
+      }
+      // An invisible code point removed at an end leaves no space behind it.
+      expect(
+        CoordinatorText.copyable('site.org${String.fromCharCode(0x200B)}'),
+        'site.org',
+      );
+      // Spaces inside a value are seen, and copied.
+      expect(CoordinatorText.copyable('a b'), 'a b');
     },
   );
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +13,9 @@ import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_failure_l10n.dart';
+import 'depth_chart_view.dart';
 import 'search_order_dialog.dart';
+import 'widgets/filter_choice.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
 
@@ -25,6 +28,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
+/// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
@@ -41,8 +45,11 @@ class _BookViewState extends State<BookView> {
   /// Moves the expiry rings on: they show hours or minutes, so once a minute is enough.
   Timer? _ticker;
 
-  /// How many times « Search » was chosen, the key that puts the view bar back on the list.
+  /// How many times « Search » was chosen, the key that puts the view bar back on the view shown.
   int _searches = 0;
+
+  /// The view shown: the list, or the depth chart.
+  BookViewChoice _view = BookViewChoice.list;
 
   @override
   void initState() {
@@ -80,20 +87,23 @@ class _BookViewState extends State<BookView> {
         Expanded(
           child: BullRefreshIndicator(
             onRefresh: cubit.refresh,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(child: BookFilterSentence(state: state)),
-                SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
-                ..._content(context, state),
-              ],
-            ),
+            child: switch (_view) {
+              BookViewChoice.list => CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(child: BookFilterSentence(state: state)),
+                  SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
+                  ..._content(context, state),
+                ],
+              ),
+              BookViewChoice.chart => _chart(context, state),
+            },
           ),
         ),
         Padding(
           padding: const EdgeInsets.all(BullSpacing.md),
           child: BullSegmented(
-            // « Search » is not a view: once it is chosen the bar is built again on the list.
+            // « Search » is not a view: once it is chosen the bar is built again on the view shown.
             key: ValueKey(_searches),
             items: {
               l10n.p2pBookViewList,
@@ -101,10 +111,19 @@ class _BookViewState extends State<BookView> {
               l10n.p2pBookViewMap,
               l10n.p2pCommonSearch,
             },
-            initialValue: l10n.p2pBookViewList,
-            disabledItems: {l10n.p2pBookViewChart, l10n.p2pBookViewMap},
+            initialValue: switch (_view) {
+              BookViewChoice.list => l10n.p2pBookViewList,
+              BookViewChoice.chart => l10n.p2pBookViewChart,
+            },
+            disabledItems: {l10n.p2pBookViewMap},
             onSelected: (item) {
-              if (item == l10n.p2pCommonSearch) unawaited(_searchOrder());
+              if (item == l10n.p2pCommonSearch) {
+                unawaited(_searchOrder());
+              } else if (item == l10n.p2pBookViewList) {
+                setState(() => _view = BookViewChoice.list);
+              } else if (item == l10n.p2pBookViewChart) {
+                setState(() => _view = BookViewChoice.chart);
+              }
             },
           ),
         ),
@@ -128,6 +147,42 @@ class _BookViewState extends State<BookView> {
       case OrderSearchInvalidUrl() || null:
         break;
     }
+  }
+
+  /// The least height of the depth chart: on a short screen it scrolls rather than shrinks.
+  static const _chartMinHeight = 320.0;
+
+  /// The state of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still loading and one has answered.
+  ///
+  /// The state of the coordinators scrolls with the chart, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text.
+  /// A coordinator that failed is shown above with « Retry », whether the others gave orders or not: a failure is not an empty book.
+  Widget _chart(BuildContext context, BookState state) {
+    final colors = context.bull;
+    final Widget content = state.receivedOrders.isNotEmpty
+        ? DepthChartView(state: state, onOpenOrder: widget.onOpenOrder)
+        : state.isWaitingForFirstBook || state.loadingCoordinators.isNotEmpty
+        ? Center(child: CircularProgressIndicator(color: colors.primary))
+        : state.hasAnswer
+        ? EmptyBook(state: state)
+        : const SizedBox.shrink();
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
+        SliverLayoutBuilder(
+          builder: (context, constraints) => SliverToBoxAdapter(
+            child: SizedBox(
+              height: math.max(
+                constraints.viewportMainAxisExtent -
+                    constraints.precedingScrollExtent,
+                _chartMinHeight,
+              ),
+              child: content,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   List<Widget> _content(BuildContext context, BookState state) {
@@ -160,11 +215,16 @@ class _BookViewState extends State<BookView> {
         ),
       ];
     }
+    // When every coordinator failed, their lines above and « Retry » say so: the book is not empty, it is unknown.
+    if (!state.hasAnswer) return const [];
     return [
       SliverFillRemaining(hasScrollBody: false, child: EmptyBook(state: state)),
     ];
   }
 }
+
+/// The views of the book the bar below it offers; « Map » is not built yet and « Search » opens a dialog.
+enum BookViewChoice { list, chart }
 
 /// « I want to [Buy] and use [EUR] pay with [ANY] hosted by [ANY] »: each choice opens a list.
 class BookFilterSentence extends StatelessWidget {
@@ -308,42 +368,6 @@ final class _Choice<T extends Object> {
   const _Choice(this.value);
 }
 
-/// A choice of the filter sentence: the current value in a box that opens its list.
-class FilterChoice extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const FilterChoice({super.key, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    return Material(
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(BullRadius.xxs),
-        side: BorderSide(color: colors.outline),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(BullRadius.xxs),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: BullSpacing.sm,
-            vertical: BullSpacing.xxs + 2,
-          ),
-          child: Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(color: colors.text),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The coordinators still loading, and those whose book failed with a way to ask them again: a failed coordinator never hides the others.
 class CoordinatorsStatus extends StatelessWidget {
   final BookState state;
@@ -379,9 +403,12 @@ class CoordinatorsStatus extends StatelessWidget {
                   ),
                 ),
                 const Gap(BullSpacing.xs),
-                Text(
-                  l10n.p2pBookCoordinatorsLoading(loading.length),
-                  style: text.labelMedium?.copyWith(color: colors.textMuted),
+                // A long line, or a large text size, wraps rather than overflows.
+                Flexible(
+                  child: Text(
+                    l10n.p2pBookCoordinatorsLoading(loading.length),
+                    style: text.labelMedium?.copyWith(color: colors.textMuted),
+                  ),
                 ),
               ],
             ),

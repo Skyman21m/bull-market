@@ -483,4 +483,52 @@ class P2pLocalizationsRu extends P2pLocalizations {
 
   @override
   String get p2pCommonCopy => 'Copy';
+
+  @override
+  String get p2pBookColumnPrice => 'Price';
+
+  @override
+  String get p2pChartBtc => 'BTC';
+
+  @override
+  String get p2pChartZoomOut => 'Zoom out';
+
+  @override
+  String get p2pChartZoomIn => 'Zoom in';
+
+  @override
+  String p2pChartCenterPrice(String price, String currencyCode) {
+    return '$price $currencyCode';
+  }
+
+  @override
+  String p2pChartBuyOrders(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count buy orders',
+      one: '1 buy order',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pChartSellOrders(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sell orders',
+      one: '1 sell order',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pChartSummary(String center, String buyOrders, String sellOrders) {
+    return 'Depth chart centered on $center: $buyOrders and $sellOrders.';
+  }
+
+  @override
+  String get p2pChartSummaryNoAxis =>
+      'Depth chart: nothing to draw on this axis.';
 }

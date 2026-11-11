@@ -130,7 +130,7 @@
   },
   "p2pBookColumnPremium": "Premium",
   "@p2pBookColumnPremium": {
-    "description": "Label of the premium of an offer in the book."
+    "description": "Label of the premium of an offer in the book, and choice of the horizontal axis of the depth chart."
   },
   "p2pBookColumnBond": "Bond",
   "@p2pBookColumnBond": {
@@ -676,5 +676,70 @@
   "p2pCommonCopy": "Copy",
   "@p2pCommonCopy": {
     "description": "Label of a copy button: its tooltip, and what a screen reader announces."
+  },
+  "p2pBookColumnPrice": "Price",
+  "@p2pBookColumnPrice": {
+    "description": "Choice of the horizontal axis of the depth chart, and header of the price column of the book in RoboSats."
+  },
+  "p2pChartBtc": "BTC",
+  "@p2pChartBtc": {
+    "description": "Not in the RoboSats texts, which writes it in code: legend of the vertical axis of the depth chart, the bitcoin the orders add up to."
+  },
+  "p2pChartZoomOut": "Zoom out",
+  "@p2pChartZoomOut": {
+    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window."
+  },
+  "p2pChartZoomIn": "Zoom in",
+  "@p2pChartZoomIn": {
+    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window."
+  },
+  "p2pChartCenterPrice": "{price} {currencyCode}",
+  "@p2pChartCenterPrice": {
+    "description": "Not in the RoboSats texts, which composes it in code: the price at the centre of the depth chart on its price axis, between its zoom buttons. {price} is a price written in the conventions of the language, {currencyCode} a currency code such as EUR.",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChartBuyOrders": "{count, plural, =1{1 buy order} other{{count} buy orders}}",
+  "@p2pChartBuyOrders": {
+    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who buy that the chart shows.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pChartSellOrders": "{count, plural, =1{1 sell order} other{{count} sell orders}}",
+  "@p2pChartSellOrders": {
+    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who sell that the chart shows.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pChartSummary": "Depth chart centered on {center}: {buyOrders} and {sellOrders}.",
+  "@p2pChartSummary": {
+    "description": "Not in the RoboSats texts: what a screen reader says of the depth chart, which it cannot read. {center} is the value between the zoom buttons, such as « 2.00% » or « 93,330 EUR »; {buyOrders} and {sellOrders} are the two counts above.",
+    "placeholders": {
+      "center": {
+        "type": "String"
+      },
+      "buyOrders": {
+        "type": "String"
+      },
+      "sellOrders": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChartSummaryNoAxis": "Depth chart: nothing to draw on this axis.",
+  "@p2pChartSummaryNoAxis": {
+    "description": "Not in the RoboSats texts: what a screen reader says of the depth chart when its axis cannot be drawn, such as the price axis when no order gives a market price in its currency."
   }
 }

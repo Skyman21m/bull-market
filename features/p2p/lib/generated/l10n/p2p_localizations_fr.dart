@@ -490,4 +490,52 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pCommonCopy => 'Copier';
+
+  @override
+  String get p2pBookColumnPrice => 'Prix';
+
+  @override
+  String get p2pChartBtc => 'BTC';
+
+  @override
+  String get p2pChartZoomOut => 'Zoom arrière';
+
+  @override
+  String get p2pChartZoomIn => 'Zoom avant';
+
+  @override
+  String p2pChartCenterPrice(String price, String currencyCode) {
+    return '$price $currencyCode';
+  }
+
+  @override
+  String p2pChartBuyOrders(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ordres d\'achat',
+      one: '$count ordre d\'achat',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pChartSellOrders(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ordres de vente',
+      one: '$count ordre de vente',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pChartSummary(String center, String buyOrders, String sellOrders) {
+    return 'Graphique de profondeur centré sur $center : $buyOrders et $sellOrders.';
+  }
+
+  @override
+  String get p2pChartSummaryNoAxis =>
+      'Graphique de profondeur : rien à tracer sur cet axe.';
 }

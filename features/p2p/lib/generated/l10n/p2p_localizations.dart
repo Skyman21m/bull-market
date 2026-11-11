@@ -338,7 +338,7 @@ abstract class P2pLocalizations {
   /// **'Amount'**
   String get p2pBookColumnAmount;
 
-  /// Label of the premium of an offer in the book.
+  /// Label of the premium of an offer in the book, and choice of the horizontal axis of the depth chart.
   ///
   /// In en, this message translates to:
   /// **'Premium'**
@@ -971,6 +971,60 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Copy'**
   String get p2pCommonCopy;
+
+  /// Choice of the horizontal axis of the depth chart, and header of the price column of the book in RoboSats.
+  ///
+  /// In en, this message translates to:
+  /// **'Price'**
+  String get p2pBookColumnPrice;
+
+  /// Not in the RoboSats texts, which writes it in code: legend of the vertical axis of the depth chart, the bitcoin the orders add up to.
+  ///
+  /// In en, this message translates to:
+  /// **'BTC'**
+  String get p2pChartBtc;
+
+  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom out'**
+  String get p2pChartZoomOut;
+
+  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom in'**
+  String get p2pChartZoomIn;
+
+  /// Not in the RoboSats texts, which composes it in code: the price at the centre of the depth chart on its price axis, between its zoom buttons. {price} is a price written in the conventions of the language, {currencyCode} a currency code such as EUR.
+  ///
+  /// In en, this message translates to:
+  /// **'{price} {currencyCode}'**
+  String p2pChartCenterPrice(String price, String currencyCode);
+
+  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who buy that the chart shows.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 buy order} other{{count} buy orders}}'**
+  String p2pChartBuyOrders(int count);
+
+  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who sell that the chart shows.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 sell order} other{{count} sell orders}}'**
+  String p2pChartSellOrders(int count);
+
+  /// Not in the RoboSats texts: what a screen reader says of the depth chart, which it cannot read. {center} is the value between the zoom buttons, such as « 2.00% » or « 93,330 EUR »; {buyOrders} and {sellOrders} are the two counts above.
+  ///
+  /// In en, this message translates to:
+  /// **'Depth chart centered on {center}: {buyOrders} and {sellOrders}.'**
+  String p2pChartSummary(String center, String buyOrders, String sellOrders);
+
+  /// Not in the RoboSats texts: what a screen reader says of the depth chart when its axis cannot be drawn, such as the price axis when no order gives a market price in its currency.
+  ///
+  /// In en, this message translates to:
+  /// **'Depth chart: nothing to draw on this axis.'**
+  String get p2pChartSummaryNoAxis;
 }
 
 class _P2pLocalizationsDelegate
