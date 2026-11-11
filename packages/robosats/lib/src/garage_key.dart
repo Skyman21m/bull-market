@@ -11,8 +11,32 @@ import 'package:robosats/src/base62.dart';
 import 'package:robosats/src/bip32.dart';
 import 'package:robosats/src/nostr_key_pair.dart';
 import 'package:robosats/src/robosats_failure.dart';
+import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_token.dart';
 import 'package:robosats/src/secp256k1.dart';
+
+/// A robot of a Garage Key: its index and the identity derived from the token of that index.
+@immutable
+final class GarageRobot {
+  /// The index of the robot, the hardened BIP32 child number its token is derived at.
+  final int accountIndex;
+
+  final RobotIdentity identity;
+
+  const GarageRobot(this.accountIndex, this.identity);
+
+  @override
+  bool operator ==(Object other) =>
+      other is GarageRobot &&
+      other.accountIndex == accountIndex &&
+      other.identity == identity;
+
+  @override
+  int get hashCode => Object.hash(accountIndex, identity);
+
+  @override
+  String toString() => 'GarageRobot($accountIndex, ${identity.nickname})';
+}
 
 /// A RoboSats Garage Key: 32 random bytes from which one robot token per index is derived.
 ///
@@ -26,6 +50,9 @@ final class GarageKey {
 
   /// The highest robot index: the index is a hardened BIP32 child number.
   static const int maxAccountIndex = 0x7fffffff;
+
+  /// How many indexes [firstUsableRobot] looks at: `maxSearch` of `findNextUnusedAccount` in the official client (`frontend/src/models/Garage.model.ts:581`).
+  static const int maxAccountSearch = 100;
 
   static const String _humanReadablePart = 'robo';
   static const int _coinType = 88;
@@ -96,7 +123,7 @@ final class GarageKey {
   /// The token of the robot number [accountIndex].
   ///
   /// The seed is the SHA-512 of the key bytes, the BIP32 path is `m/44'/88'/{accountIndex}'/0`, and the token is made of the 36 low-order base62 digits of the derived private key.
-  /// Fails with [AccountIndexOutOfRange], or with [TokenEntropyTooLow] in the very unlikely case where the derived token fails the client-side entropy rule: the official client would hold such a robot but never contact a coordinator with it, so skip to the next index.
+  /// Fails with [AccountIndexOutOfRange], or with [TokenEntropyTooLow] in the very unlikely case where the derived token fails the client-side entropy rule: the official client would hold such a robot but never contact a coordinator with it, so skip to the next index, as [firstUsableRobot] does.
   Result<RobotToken, RobosatsFailure> deriveToken(int accountIndex) {
     if (accountIndex < 0 || accountIndex > maxAccountIndex) {
       return const Err(AccountIndexOutOfRange());
@@ -109,6 +136,54 @@ final class GarageKey {
     ]);
     final token = base62LowDigits(bigIntFromBytes(derivedKey), _tokenLength);
     return RobotToken.parse(token).mapErr((failure) => failure);
+  }
+
+  /// The identity of the robot number [accountIndex]: [deriveToken], then `RobotIdentity.fromToken`.
+  ///
+  /// Fails as [deriveToken] does, or with [NicknameUnavailable].
+  Result<RobotIdentity, RobosatsFailure> deriveIdentity(int accountIndex) =>
+      switch (deriveToken(accountIndex)) {
+        Ok(value: final token) => RobotIdentity.fromToken(
+          token,
+        ).mapErr((failure) => failure),
+        Err(:final failure) => Err(failure),
+      };
+
+  /// The first robot at or after [fromIndex] that a coordinator can be contacted with.
+  ///
+  /// An index is skipped when its token fails the entropy rule, which a token made of 36 base62 characters almost never does.
+  /// The official client has no explicit rule for that case (commit ff1998c): it keeps such a robot, never asks a coordinator about it (`Robot.model.ts:99`) and leaves it loading for ever, so that its automatic choice of a robot never finds it reusable and moves on to the next index (`Slot.isReusable`, `Garage.ensureReusableSlot`, `findNextUnusedAccount`).
+  /// Skipping the index gives the same robots on the same indexes, without the robot that never loads.
+  /// An index is also skipped when its hash id has no nickname, about once in 2^54: no coordinator can create that robot, and the official client would fail on it for ever.
+  ///
+  /// Fails with [AccountIndexOutOfRange] when [fromIndex] is not an index, or when the search runs past the last one, and with [NoUsableAccountIndex] after [maxAccountSearch] indexes.
+  Result<GarageRobot, RobosatsFailure> firstUsableRobot(int fromIndex) =>
+      firstUsableRobotAmong(fromIndex, deriveIdentity);
+
+  /// [firstUsableRobot] over the identities [identityOf] gives for each index.
+  ///
+  /// For tests only: no Garage Key is known that has an index to skip.
+  @visibleForTesting
+  static Result<GarageRobot, RobosatsFailure> firstUsableRobotAmong(
+    int fromIndex,
+    Result<RobotIdentity, RobosatsFailure> Function(int accountIndex)
+    identityOf,
+  ) {
+    if (fromIndex < 0 || fromIndex > maxAccountIndex) {
+      return const Err(AccountIndexOutOfRange());
+    }
+    for (var index = fromIndex; index < fromIndex + maxAccountSearch; index++) {
+      if (index > maxAccountIndex) return const Err(AccountIndexOutOfRange());
+      switch (identityOf(index)) {
+        case Ok(value: final identity):
+          return Ok(GarageRobot(index, identity));
+        case Err(failure: TokenEntropyTooLow() || NicknameUnavailable()):
+          continue;
+        case Err(:final failure):
+          return Err(failure);
+      }
+    }
+    return const Err(NoUsableAccountIndex());
   }
 
   /// The Nostr identity of the Garage Key itself, used by RoboSats to publish and recover the current robot index.

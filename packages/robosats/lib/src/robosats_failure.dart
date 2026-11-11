@@ -206,3 +206,10 @@ final class CoordinatorNetworkMismatch extends CoordinatorIdentityFailure {
 final class CoordinatorNodeIdMismatch extends CoordinatorIdentityFailure {
   const CoordinatorNodeIdMismatch();
 }
+
+/// No robot can be made from the Garage Key in the range searched: every token failed the entropy rule or had no nickname.
+///
+/// It takes 100 such indexes in a row, which does not happen with a Garage Key drawn at random.
+final class NoUsableAccountIndex extends RobosatsFailure {
+  const NoUsableAccountIndex();
+}

@@ -43,7 +43,7 @@ export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
 
-export 'src/garage_key.dart' show GarageKey;
+export 'src/garage_key.dart' show GarageKey, GarageRobot;
 export 'src/nostr_key_pair.dart' show NostrKeyPair;
 export 'src/pgp_wire.dart' show pgpArmorFromWire, pgpArmorToWire;
 export 'src/robosats_failure.dart';
