@@ -154,8 +154,8 @@ Future<void> main({bool isInitialized = false}) async {
           // When the first robot was created on each coordinator, in milliseconds on [watch].
           final createdAt = <Coordinator, int>{};
           try {
-            final coordinators = facade.requestBooks(_network).keys.toList();
-            for (final coordinator in coordinators) {
+            // The federation list itself: asking the facade for the books would start anonymous requests next to the ones measured here.
+            for (final coordinator in Federation.robosats.on(_network)) {
               final alias = coordinator.shortAlias;
               // A testnet instance has its own onion address: never the mainnet one.
               expect(coordinator.testnet.onion, isNotNull);
