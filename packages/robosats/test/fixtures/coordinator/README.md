@@ -37,5 +37,6 @@ lake on testnet did not answer: 3 attempts per endpoint, each a SOCKS failure (`
 
 ## Sources
 
-`sources/` holds verbatim copies of the RoboSats files the constants of `lib/src/coordinator/` are generated from, at commit ff1998caed30888b2fb60e15022c29063a60f1ba, written by `tool/generate_coordinator_data.dart`: `federation.json`, `currencies.json` and `MethodList.ts`.
-`test/coordinator/embedded_data_test.dart` checks that the constants equal them.
+`sources/` holds byte-for-byte copies of the RoboSats files the constants of `lib/src/coordinator/` are generated from, written by `tool/generate_coordinator_data.dart`: `federation.json`, `currencies.json` and `MethodList.ts`.
+Each generated file records the commit its file was taken at and the Git blob id of the file (`robosatsFederationSource`, `robosatsCurrenciesSource`, `robosatsMethodsSource`), so `git rev-parse <commit>:<path>` in a RoboSats clone must print that id.
+`test/coordinator/embedded_data_test.dart` checks that the constants equal the copies, that each copy has the recorded blob id, and which commits are recorded.

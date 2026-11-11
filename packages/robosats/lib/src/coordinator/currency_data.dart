@@ -2,6 +2,13 @@
 // RoboSats is licensed under AGPL-3.0, as is this fork.
 // Do not edit by hand: rerun the generator, and review the diff.
 
+/// The RoboSats file the constants of this file were generated from: its path in the repository, the commit it was taken at, and its Git blob id, which `git rev-parse <commit>:<path>` prints.
+const robosatsCurrenciesSource = (
+  path: 'frontend/static/assets/currencies.json',
+  commit: 'ff1998caed30888b2fb60e15022c29063a60f1ba',
+  blob: '6cce82c269a1e301b7a3b700dc15868fbc81bc62',
+);
+
 /// The currency ids of RoboSats and their codes, in the order of the file.
 const Map<int, String> robosatsCurrencyCodes = {
   1: 'USD',

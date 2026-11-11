@@ -4,6 +4,13 @@
 
 import 'package:robosats/src/coordinator/coordinator.dart';
 
+/// The RoboSats file the constants of this file were generated from: its path in the repository, the commit it was taken at, and its Git blob id, which `git rev-parse <commit>:<path>` prints.
+const robosatsFederationSource = (
+  path: 'frontend/static/federation.json',
+  commit: 'ff1998caed30888b2fb60e15022c29063a60f1ba',
+  blob: '7962613082ecf299655d4779718fee70456c9c40',
+);
+
 /// The coordinators of the federation list, in the order of the file.
 const List<Coordinator> robosatsCoordinators = [
   Coordinator(
