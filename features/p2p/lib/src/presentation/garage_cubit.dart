@@ -4,11 +4,16 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../domain/network_garage_key.dart';
 import '../domain/p2p_failure.dart';
+import '../domain/robot_binding.dart';
 import '../domain/usecases/delete_garage_key_usecase.dart';
 import '../domain/usecases/generate_garage_key_usecase.dart';
 import '../domain/usecases/import_garage_key_usecase.dart';
+import '../domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import '../domain/usecases/read_garage_key_usecase.dart';
 import 'garage_state.dart';
+
+/// Asks the user the wallet's re-authentication, its PIN, and completes with `true` only when the user passed it: what the screen lends [GarageCubit] for a delete that needs it.
+typedef GarageReauthenticator = Future<bool> Function();
 
 /// The Garage of one network: the Garage Key of that network in the vault, the robot shown, and the actions of the user on them.
 ///
@@ -16,6 +21,9 @@ import 'garage_state.dart';
 /// It follows the rules of the vault: a key is generated or imported only in [GarageWithoutKey], so only after a read found no key or a delete the vault confirmed; a stored key is never replaced, and « Generate new » deletes it first, after the user confirmed; after a failed write the slot is read again before anything is offered.
 /// An action started while another is running is ignored.
 /// An action the user started finishes in the vault even when the user leaves the Garage, but a closed cubit never reads the vault again.
+///
+/// Deleting a key, by « Delete All », « Generate new » or the way out of a key that cannot be read, asks the wallet's PIN once a robot of the key may live on a coordinator, as [NeedsPinToDeleteGarageKeyUsecase] reads it from the feature's database when the user deletes, and always for a slot that cannot be read; RoboSats asks only the confirmation.
+/// The PIN comes after « Delete Garage Key? », which the screen asks first, and before anything is deleted; a PIN the user leaves, or no PIN to ask, deletes nothing and leaves the screen as it was, but for a hide of the app meanwhile, which [conceal] still applies.
 ///
 /// A key is shown without the PIN only right after the vault drew it, while the user stays in the Garage with the app in the foreground the whole time from the tap on « Generate Garage Key » or « Generate new » ([GarageWithKey.showWithoutPin]); a pasted key never is.
 /// [conceal], called whenever the app is hidden or paused, ends that for this key: it hides a key shown, and a hide while the vault is still deleting or drawing keeps the key behind the PIN when it arrives; leaving the Garage closes the cubit.
@@ -25,10 +33,17 @@ class GarageCubit extends Cubit<GarageState> {
   final GenerateGarageKeyUsecase _generate;
   final ImportGarageKeyUsecase _import;
   final DeleteGarageKeyUsecase _delete;
+  final NeedsPinToDeleteGarageKeyUsecase _needsPin;
   final UnacknowledgedGarageKeys _unacknowledged;
 
   /// Whether the app was hidden or paused since the user asked for a new key: the key then arrives behind the PIN.
   bool _concealedSinceAsked = false;
+
+  /// Whether a delete or a « Generate new » is running, its PIN included: the state does not show it while the PIN is asked, so that leaving the PIN leaves the screen as it was, and a second tap is ignored by this.
+  bool _deleting = false;
+
+  /// Whether the key this cubit drew could not be recorded as drawn on this device: said on the robot step and the profile until the key is deleted.
+  bool _drawUnrecorded = false;
 
   GarageCubit(
     RobosatsNetwork network,
@@ -36,17 +51,23 @@ class GarageCubit extends Cubit<GarageState> {
     this._generate,
     this._import,
     this._delete,
+    this._needsPin,
     this._unacknowledged,
   ) : super(GarageWorking(network));
 
   RobosatsNetwork get _network => state.network;
 
-  /// Reads the key of the network: when the user opens the Garage.
-  Future<void> load() => _settle(failure: null, isNew: false);
+  /// Reads the key of the network: when the user opens the Garage, and on « Retry » when the vault could not say.
+  ///
+  /// Ignored while a delete or a « Generate new » runs, its PIN included, so that the state it decided on is the one it deletes: « Retry » could otherwise turn a slot that could not be read into a key read since.
+  Future<void> load() async {
+    if (_deleting) return;
+    await _settle(failure: null, isNew: false);
+  }
 
   /// Draws a new key in the vault for a network that has none, on the user's request, then reads it back to show it for backup at once, unless the app was hidden meanwhile.
   Future<void> generate() async {
-    if (state is! GarageWithoutKey) return;
+    if (_deleting || state is! GarageWithoutKey) return;
     _concealedSinceAsked = false;
     await _draw();
   }
@@ -55,10 +76,11 @@ class GarageCubit extends Cubit<GarageState> {
     if (state is! GarageWithoutKey) return;
     emit(GarageWorking(_network));
     switch (await _generate.execute(_network)) {
-      // A key whose history could not be recorded (`GarageKeyHistory.unknown`) is told to the user by the step that makes robots usable, which does not exist yet.
-      case Ok():
+      case Ok(value: final history):
         // Remembered before anything else, so that a user who left meanwhile gets the backup alert at the next visit.
         _unacknowledged._networks.add(_network);
+        // The key is stored all the same, of unknown history: the screens say so, and its robots are treated as coming from elsewhere.
+        _drawUnrecorded = history == GarageKeyHistory.unknown;
         await _settle(failure: null, isNew: true, justDrawn: true);
       case Err(:final failure):
         await _settle(failure: failure, isNew: false);
@@ -69,8 +91,9 @@ class GarageCubit extends Cubit<GarageState> {
   ///
   /// Text that is not a key changes nothing in the vault and leaves the Garage without a key, with the reason; the text itself is not kept.
   Future<void> import(String text) async {
-    if (state is! GarageWithoutKey) return;
+    if (_deleting || state is! GarageWithoutKey) return;
     emit(GarageWorking(_network));
+    _drawUnrecorded = false;
     switch (await _import.execute(_network, text: text)) {
       case Ok():
         await _settle(failure: null, isNew: true);
@@ -81,29 +104,76 @@ class GarageCubit extends Cubit<GarageState> {
     }
   }
 
-  /// Deletes the key of the network, whatever its entry holds: only after the user confirmed « Delete Garage Key? ».
+  /// Deletes the key of the network, whatever its entry holds: only after the user confirmed « Delete Garage Key? », then, when a robot of the key may live on a coordinator, passed [reauthenticate], the wallet's PIN.
   ///
+  /// Without [reauthenticate], such a key is not deleted.
   /// The key of the other network is never touched.
-  Future<void> delete() async {
-    if (state is GarageWorking || state is GarageWithoutKey) return;
+  Future<void> delete({required GarageReauthenticator? reauthenticate}) async {
+    if (_deleting || state is GarageWorking || state is GarageWithoutKey) {
+      return;
+    }
+    _deleting = true;
+    try {
+      if (await _mayDelete(reauthenticate)) await _deleteKey();
+    } finally {
+      _deleting = false;
+    }
+  }
+
+  /// « Generate new » with a key stored: deletes it, then draws a new one; only after the user confirmed « Delete Garage Key? », then passed [reauthenticate] when the delete needs it, once for both.
+  ///
+  /// A hide of the app at any time from here, during the PIN and the delete as during the draw, keeps the new key behind the PIN.
+  Future<void> replace({required GarageReauthenticator? reauthenticate}) async {
+    if (_deleting || state is! GarageWithKey) return;
+    _deleting = true;
+    _concealedSinceAsked = false;
+    try {
+      if (!await _mayDelete(reauthenticate)) return;
+      await _deleteKey();
+      await _draw();
+    } finally {
+      _deleting = false;
+    }
+  }
+
+  /// Whether the key shown may be deleted now: at once when no robot of it may live on a coordinator, as the feature's database says at this moment, and otherwise only once the user passed [reauthenticate]; never without it, and never when this cubit was closed meanwhile.
+  ///
+  /// A slot that cannot be read hands no key to the use case, which then always asks the PIN.
+  /// Nothing is emitted here but what the database said; a PIN the user leaves leaves the screen as it was, but for a hide of the app meanwhile.
+  /// An [Error] of the database read is a bug (AGENTS.md, rule 11): it is not caught, the delete throws, and nothing is deleted.
+  Future<bool> _mayDelete(GarageReauthenticator? reauthenticate) async {
+    final needsPin = await _needsPin.execute(switch (state) {
+      GarageWithKey(:final key) => key,
+      _ => null,
+    });
+    if (isClosed) return false;
+    _showDeletionNeedsPin(needsPin);
+    if (!needsPin) return true;
+    if (reauthenticate == null) return false;
+    return await reauthenticate() && !isClosed;
+  }
+
+  /// Shows on the state whether the delete of a key needs the PIN, as the database just said, when it differs from what the state shows; the rest of the state is kept as it is.
+  void _showDeletionNeedsPin(bool needsPin) {
+    final current = state;
+    if (current is GarageWithKey && current.deletionNeedsPin != needsPin) {
+      emit(
+        current.copyWith(deletionNeedsPin: needsPin, failure: current.failure),
+      );
+    }
+  }
+
+  Future<void> _deleteKey() async {
+    if (isClosed) return;
     emit(GarageWorking(_network));
     switch (await _delete.execute(_network)) {
       case Ok():
         _unacknowledged._networks.remove(_network);
+        _drawUnrecorded = false;
         if (!isClosed) emit(GarageWithoutKey(_network));
       case Err(:final failure):
         await _settle(failure: failure, isNew: false);
     }
-  }
-
-  /// « Generate new » with a key stored: deletes it, then draws a new one; only after the user confirmed « Delete Garage Key? ».
-  ///
-  /// A hide of the app at any time from here, during the delete as during the draw, keeps the new key behind the PIN.
-  Future<void> replace() async {
-    if (state is! GarageWithKey) return;
-    _concealedSinceAsked = false;
-    await delete();
-    await _draw();
   }
 
   /// The app was hidden or paused, whatever the Garage shows: a key shown without the PIN is hidden, and a key still being drawn will arrive behind the PIN; from now on the key is shown only behind it.
@@ -146,6 +216,8 @@ class GarageCubit extends Cubit<GarageState> {
   /// Reads the slot again and settles on what it holds, with [failure] as the outcome of the action that led here; a closed cubit reads nothing.
   ///
   /// A key drawn and not acknowledged yet awaits its backup; it is shown without the PIN only when this cubit has [justDrawn] it and the app was not hidden since the user asked for it.
+  /// For a key that can be read, the feature's database is read too, for whether its delete would ask the PIN; a slot that cannot be read always asks it ([GarageUnknown.deletionNeedsPin]).
+  /// An [Error] of that read is a bug (AGENTS.md, rule 11): it is not caught, and the Garage stays on its wait.
   Future<void> _settle({
     required P2pFailure? failure,
     required bool isNew,
@@ -154,6 +226,12 @@ class GarageCubit extends Cubit<GarageState> {
     if (isClosed) return;
     emit(GarageWorking(_network));
     final read = await _read.execute(_network);
+    if (isClosed) return;
+    // Read before the state is built, so that nothing awaited lies between the state and its emit: a hide of the app during this read keeps a key just drawn behind the PIN.
+    final needsPin = switch (read) {
+      Ok(value: final key) => await _needsPin.execute(key),
+      Err() => true,
+    };
     if (isClosed) return;
     emit(switch (read) {
       Ok(value: final key) => switch (key.firstUsableRobot(0)) {
@@ -166,6 +244,8 @@ class GarageCubit extends Cubit<GarageState> {
             awaitsBackup: awaitsBackup,
             showWithoutPin: justDrawn && awaitsBackup && !_concealedSinceAsked,
             failure: failure,
+            historyNotRecorded: _drawUnrecorded,
+            deletionNeedsPin: needsPin,
           ),
         },
         Err(failure: final robotFailure) => GarageUnknown(

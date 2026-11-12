@@ -11,6 +11,7 @@ import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
 import 'account_navigator.dart';
 import 'delete_garage_key_dialog.dart';
+import 'garage_key_history_notice.dart';
 import 'garage_reauthentication.dart';
 import 'garage_wizard.dart' show RobotNickname;
 
@@ -19,6 +20,9 @@ import 'garage_wizard.dart' show RobotNickname;
 /// The Garage Key is hidden until the user asks for it and passes the app's own re-authentication, the PIN the wallet asks before it shows its seeds, which [reauthenticate] brings from the shell; the official client shows it at once.
 /// It is hidden again when the profile is left and when the app goes to the background.
 /// Without [reauthenticate] the key cannot be shown here at all.
+/// « Delete All » asks « Delete Garage Key? », then the same re-authentication when a robot of the key may live on a coordinator, which the cubit decides; RoboSats asks only the confirmation.
+/// Without [reauthenticate] such a key cannot be deleted here.
+/// Right after a draw whose history could not be recorded, it says so.
 /// What needs a coordinator is not shown: the settings of the robot, its orders and rewards, and whether it was used in a trade.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
@@ -74,6 +78,7 @@ class _GarageProfileState extends State<GarageProfile> {
     final state = widget.state;
     final robot = state.robot;
     final reauthenticate = widget.reauthenticate;
+    final deleteDisabled = state.deletionNeedsPin && reauthenticate == null;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.md),
       child: Column(
@@ -97,6 +102,10 @@ class _GarageProfileState extends State<GarageProfile> {
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(color: colors.error),
             ),
+          ],
+          if (state.historyNotRecorded) ...[
+            const Gap(BullSpacing.md),
+            const GarageKeyHistoryNotRecorded(),
           ],
           const Gap(BullSpacing.md),
           Container(
@@ -143,16 +152,31 @@ class _GarageProfileState extends State<GarageProfile> {
                 Center(
                   child: Tooltip(
                     message: l10n.p2pGarageProfileDeleteAllTooltip,
-                    child: TextButton.icon(
-                      onPressed: () async {
-                        if (await DeleteGarageKeyDialog.show(context)) {
-                          await cubit.delete();
-                        }
-                      },
-                      icon: Icon(Icons.delete_sweep, color: colors.error),
-                      label: Text(
-                        l10n.p2pGarageProfileDeleteAll,
-                        style: text.labelLarge?.copyWith(color: colors.error),
+                    // Without the shell's re-authentication, a key whose delete asks the PIN cannot be deleted here, as it cannot be shown.
+                    child: Opacity(
+                      opacity: deleteDisabled ? 0.5 : 1,
+                      child: TextButton.icon(
+                        onPressed: deleteDisabled
+                            ? null
+                            : () async {
+                                if (!await DeleteGarageKeyDialog.show(
+                                      context,
+                                    ) ||
+                                    !context.mounted) {
+                                  return;
+                                }
+                                await cubit.delete(
+                                  reauthenticate: reauthenticationFrom(
+                                    context,
+                                    reauthenticate,
+                                  ),
+                                );
+                              },
+                        icon: Icon(Icons.delete_sweep, color: colors.error),
+                        label: Text(
+                          l10n.p2pGarageProfileDeleteAll,
+                          style: text.labelLarge?.copyWith(color: colors.error),
+                        ),
                       ),
                     ),
                   ),

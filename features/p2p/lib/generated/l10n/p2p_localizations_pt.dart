@@ -772,6 +772,10 @@ class P2pLocalizationsPt extends P2pLocalizations {
 
   @override
   String get p2pCommonClear => 'Clear';
+
+  @override
+  String get p2pGarageKeyHistoryNotRecorded =>
+      'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).

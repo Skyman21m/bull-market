@@ -23,6 +23,7 @@ import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
+import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
@@ -113,6 +114,9 @@ final class P2pLocator {
     locator.registerFactory<DeleteGarageKeyUsecase>(
       () => DeleteGarageKeyUsecase(locator()),
     );
+    locator.registerFactory<NeedsPinToDeleteGarageKeyUsecase>(
+      () => NeedsPinToDeleteGarageKeyUsecase(locator()),
+    );
     // The Garage of a network, created when the user opens it.
     // The keys drawn and not acknowledged yet, in memory, for the whole run of the app.
     locator.registerLazySingleton<UnacknowledgedGarageKeys>(
@@ -121,6 +125,7 @@ final class P2pLocator {
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
+        locator(),
         locator(),
         locator(),
         locator(),

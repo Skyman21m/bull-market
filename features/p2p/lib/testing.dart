@@ -3,6 +3,8 @@
 /// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
+import 'dart:io' show FileSystemException;
+
 import 'package:bull_tor/tor.dart';
 import 'package:drift/native.dart';
 import 'package:get_it/get_it.dart';
@@ -50,6 +52,7 @@ export 'src/ui/widgets/coordinator_images.dart'
 /// Tor reports either [torStates], or [torReports] when a test needs the share of its start too; [shuffle] orders what the screens show in no order of their own, as given by default.
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
+/// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
   GetIt locator, {
@@ -59,6 +62,7 @@ void setUpP2pForTesting(
   required DateTime Function() clock,
   P2pShuffle shuffle = P2pShuffle.unshuffled,
   GarageKeys? garageKeys,
+  bool databaseUnavailable = false,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -81,7 +85,15 @@ void setUpP2pForTesting(
     P2pLocator.registerGarageKeys(
       locator,
       garageKeys,
-      database: () => P2pDatabase.forTesting(NativeDatabase.memory()),
+      database: () => P2pDatabase.forTesting(
+        NativeDatabase.memory(
+          // Each opening fails, as for a file that cannot be opened, and closing it has nothing to release.
+          setup: databaseUnavailable
+              ? (_) =>
+                    throw const FileSystemException('unavailable for the test')
+              : null,
+        ),
+      ),
       transport: () => transport,
       clock: clock,
     );
