@@ -28,6 +28,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
+/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running above the orders while a coordinator is still loading, after a pull to refresh or a retry too.
 /// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
@@ -77,11 +78,23 @@ class _BookViewState extends State<BookView> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     final cubit = context.read<BookCubit>();
     final state = context.watch<BookCubit>().state;
+    final shown = switch (_view) {
+      BookViewChoice.list => state.orders.isNotEmpty,
+      BookViewChoice.chart => state.receivedOrders.isNotEmpty,
+    };
     return Column(
       children: [
+        // While a coordinator is still loading over orders already shown, a bar runs above them, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner below is the wait.
+        BullFadingLinearProgress(
+          trigger: shown && state.loadingCoordinators.isNotEmpty,
+          height: 3,
+          foregroundColor: colors.primary,
+          backgroundColor: colors.transparent,
+        ),
         Expanded(
           child: BullRefreshIndicator(
             onRefresh: cubit.refresh,
@@ -205,10 +218,16 @@ class _BookViewState extends State<BookView> {
     }
     if (state.isWaitingForFirstBook || state.loadingCoordinators.isNotEmpty) {
       return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: CircularProgressIndicator(color: colors.primary),
+        SliverLayoutBuilder(
+          builder: (context, constraints) => SliverToBoxAdapter(
+            child: SizedBox(
+              height: math.max(
+                constraints.viewportMainAxisExtent -
+                    constraints.precedingScrollExtent,
+                BookSkeleton.rowExtent,
+              ),
+              child: BookSkeleton(state: state),
+            ),
           ),
         ),
       ];
@@ -452,6 +471,102 @@ class CoordinatorsStatus extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The list while no order is shown and a coordinator is still loading: rows of grey shapes that shimmer, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
+///
+/// Each row has the shape of an offer: the robot, three lines, the amount and the expiry ring.
+/// The shapes are hidden from the accessibility tree; before the first book, when the line of the coordinators still loading is not shown, the skeleton says it instead.
+class BookSkeleton extends StatelessWidget {
+  final BookState state;
+
+  /// The height of one row and its divider.
+  static const rowExtent = 89.0;
+
+  const BookSkeleton({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final loading = state.loadingCoordinators.length;
+    final label = state.isWaitingForFirstBook && loading > 0
+        ? P2pLocalizations.of(context).p2pBookCoordinatorsLoading(loading)
+        : null;
+    return Semantics(
+      label: label,
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final rows = math.max(
+              1,
+              (constraints.maxHeight / rowExtent).ceil(),
+            );
+            return ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.topCenter,
+                maxHeight: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var row = 0; row < rows; row++) ...[
+                      const _SkeletonRow(),
+                      Divider(height: 1, color: colors.outlineVariant),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of [BookSkeleton], in the shape of an offer row.
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line(double width, double height) =>
+        BullShimmerLine(width: width, height: height, padding: EdgeInsets.zero);
+    Widget disc(double size) => ClipOval(child: line(size, size));
+    return SizedBox(
+      height: BookSkeleton.rowExtent - 1,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: BullSpacing.md,
+          vertical: BullSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            disc(40),
+            const Gap(BullSpacing.sm),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  line(120, 14),
+                  const Gap(BullSpacing.xs),
+                  line(170, 10),
+                  const Gap(BullSpacing.xs),
+                  line(110, 10),
+                ],
+              ),
+            ),
+            const Gap(BullSpacing.xs),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [line(64, 14), const Gap(BullSpacing.xs), disc(36)],
+            ),
+          ],
+        ),
       ),
     );
   }

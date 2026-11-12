@@ -6,6 +6,7 @@ import '../domain/tor_wait.dart';
 
 /// The wait for Tor inside the P2P tab, in the three steps of the official Android client: initializing, connecting, connected.
 ///
+/// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress: the official Android client shows a spinner that turns until Tor is ready (`activity_main.xml` at commit ff1998c), with no share of the work done.
 /// The wallet stays usable meanwhile: only this tab waits.
 class TorWaitView extends StatelessWidget {
   final TorWait tor;
@@ -70,12 +71,13 @@ class TorWaitView extends StatelessWidget {
               ),
             ),
             const Gap(BullSpacing.sm),
+            // Runs for as long as Tor starts, as the official Android client's spinner turns until Tor is ready; fades out when Tor fails.
             ClipRRect(
               borderRadius: BorderRadius.circular(BullRadius.xxs),
-              child: LinearProgressIndicator(
-                value: reached / steps.length,
-                minHeight: 4,
-                color: colors.primary,
+              child: BullFadingLinearProgress(
+                trigger: !failed && tor != TorWait.ready,
+                height: 4,
+                foregroundColor: colors.primary,
                 backgroundColor: colors.surfaceContainer,
               ),
             ),
