@@ -382,8 +382,29 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     super.visitNamedType(node);
   }
 
+  /// Production code does not import or export `package:p2p/testing.dart`, the feature's test seam, which registers the Garage over a handle a test made (#54): the resolved library, the decoded text and every conditional alternative are read, so an escaped URI does not hide it.
+  void checkP2pSeam(NamespaceDirective node, LibraryElement? library) {
+    final uris = [
+      library?.uri.toString(),
+      node.uri.stringValue,
+      for (final configuration in node.configurations) ...[
+        configuration.uri.stringValue,
+        if (configuration.resolvedUri case DirectiveUriWithSource(
+          :final source,
+        ))
+          source.uri.toString(),
+      ],
+    ];
+    if (uris.contains('package:p2p/testing.dart')) {
+      violations.add(
+        '$path: package:p2p/testing.dart#test seam in production code',
+      );
+    }
+  }
+
   @override
   void visitImportDirective(ImportDirective node) {
+    checkP2pSeam(node, node.libraryImport?.importedLibrary);
     checkTestingLibrary(node.libraryImport?.importedLibrary?.uri.toString());
     checkTestingLibrary(node.uri.stringValue);
     for (final configuration in node.configurations) {
@@ -394,6 +415,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitExportDirective(ExportDirective node) {
+    checkP2pSeam(node, node.libraryExport?.exportedLibrary);
     checkTestingLibrary(node.libraryExport?.exportedLibrary?.uri.toString());
     checkTestingLibrary(node.uri.stringValue);
     for (final configuration in node.configurations) {
@@ -542,6 +564,72 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     for (final failure in readerFailures) {
       checkFailure(failure);
     }
+    // A reader's file declares what the table lists and nothing else: a top-level function or an extension there would reach the reader's private members (the second review of #58).
+    final reader = _garageKeyReaders[path];
+    if (reader != null) {
+      for (final declaration in node.declarations) {
+        for (final name in _declaredNames(declaration)) {
+          if (!reader.declarations.contains(name)) {
+            violations.add(
+              '$path: $name#declaration in the file of a reader, not in the table of readers',
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /// No dynamic or unresolved access to a member in a reader's file: it would reach the reader's private members without naming them (the second review of #58).
+  void checkDynamicAccess(SimpleIdentifier node) {
+    final parent = node.parent;
+    if (!_garageKeyReaders.containsKey(path) || node.element != null) return;
+    if ((parent is PropertyAccess && parent.propertyName == node) ||
+        (parent is PrefixedIdentifier && parent.identifier == node) ||
+        (parent is MethodInvocation && parent.methodName == node)) {
+      violations.add(
+        '$path: ${node.name}#dynamic access in the file of a reader',
+      );
+    }
+  }
+
+  /// Outside the files of [_vaultUsers], no file of `features/*/lib` or `packages/*/lib` invokes or reads a member of a value whose static type mentions a declaration of the vault, though it names none of its types (the second review of #58: a handle reached through a function of an allowed file, and an extension on `GarageKeys`).
+  void checkVaultTarget(Expression? target) {
+    if (target == null ||
+        !(path.startsWith('features/') || path.startsWith('packages/')) ||
+        _vaultUsers.containsKey(path)) {
+      return;
+    }
+    final type = target.staticType;
+    final declaration = type == null ? null : _vaultTypeIn(type);
+    if (declaration != null) {
+      violations.add(
+        '$path: package:secrets#$declaration outside the files that may use the vault',
+      );
+    }
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    checkVaultTarget(node.realTarget);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    checkVaultTarget(node.prefix);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitCascadeExpression(CascadeExpression node) {
+    checkVaultTarget(node.target);
+    super.visitCascadeExpression(node);
+  }
+
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    checkVaultTarget(node.realTarget);
+    super.visitIndexExpression(node);
   }
 
   // The bridge's default handler is the only one that sees call arguments: a
@@ -557,12 +645,14 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       violations.add('$path: $_bridgeLibrary#BullSdk.init with arguments');
     }
     checkContainer(node, element);
+    checkVaultTarget(node.realTarget);
     super.visitMethodInvocation(node);
   }
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     checkContainer(node, node.element);
+    checkVaultTarget(node.function);
     super.visitFunctionExpressionInvocation(node);
   }
 
@@ -669,6 +759,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       checkVaultUse(node.element);
       checkPrivateUse(node.element, node);
       noteReaderFailure(node.element);
+      checkDynamicAccess(node);
     }
     super.visitSimpleIdentifier(node);
   }
@@ -817,11 +908,12 @@ String? materialSymbol(Element element) {
 /// The repository converts the stored bytes into a `GarageKey` and back for an import (#28).
 /// The widget shows the `robo1…` text on the protected screens of the Garage (#29), and no other production file may reveal that text.
 /// A step that needs another name, member or signature changes this table in the same pull request, where review sees both.
-/// [supertypes] are the only supertypes the class may name, besides `Object`, and [surface] the only public members it may declare, each with its signature as the analyzer prints it.
+/// [declarations] are the only top-level declarations of the reader's file, [supertypes] the only supertypes the class may name, besides `Object`, and [surface] the only public members it may declare, each with its signature as the analyzer prints it.
 const _garageKeyReaders = {
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': (
     owner: 'GarageKeyRepositoryImpl',
     members: {'GarageKeyMaterial.bytes', 'GarageKey.revealBytes'},
+    declarations: {'GarageKeyRepositoryImpl'},
     supertypes: {'GarageKeyRepository'},
     surface: {
       'new': 'GarageKeyRepositoryImpl Function(GarageKeys)',
@@ -839,6 +931,8 @@ const _garageKeyReaders = {
   'features/p2p/lib/src/ui/widgets/garage_key_view.dart': (
     owner: 'GarageKeyView',
     members: {'GarageKey.revealBech32'},
+    // The copy button of the view, a private widget and its state (#54).
+    declarations: {'GarageKeyView', '_CopyButton', '_CopyButtonState'},
     supertypes: {'StatelessWidget'},
     surface: {
       // The analyzer prints named parameters in alphabetical order.
@@ -877,6 +971,7 @@ Iterable<String> _surfaceViolations(
   ({
     String owner,
     Set<String> members,
+    Set<String> declarations,
     Set<String> supertypes,
     Map<String, String> surface,
   })
@@ -896,6 +991,31 @@ Iterable<String> _surfaceViolations(
     if (!reader.supertypes.contains(supertype.element.name) ||
         !known(supertype.element)) {
       yield '#supertype ${supertype.element.name}';
+    }
+  }
+  // A supertype from the workspace declares abstract members only, so that the class inherits nothing that the table does not list (the second review of #58 made the repository's interface a class with a public field).
+  for (final supertype in owner.allSupertypes) {
+    final type = supertype.element;
+    final library = type.library.uri.toString();
+    if (library.startsWith('dart:') || library.startsWith('package:flutter/')) {
+      continue;
+    }
+    final fields = {
+      for (final field in type.fields)
+        if (field.isOriginDeclaration) field.name,
+    };
+    for (final field in fields) {
+      yield '#supertype ${type.name} declares the field $field';
+    }
+    // The getters and setters of a declared field are its own, already reported.
+    for (final member in <ExecutableElement>[
+      ...type.methods,
+      ...type.getters,
+      ...type.setters,
+    ]) {
+      if (!member.isAbstract && !fields.contains(member.name)) {
+        yield '#supertype ${type.name} declares the concrete member ${member.name}';
+      }
     }
   }
   for (final member in <ExecutableElement>[
@@ -921,6 +1041,17 @@ Iterable<String> _surfaceViolations(
         }
       }
     }
+  }
+}
+
+/// The names that a top-level [declaration] introduces.
+Iterable<String> _declaredNames(CompilationUnitMember declaration) sync* {
+  if (declaration is TopLevelVariableDeclaration) {
+    for (final variable in declaration.variables.variables) {
+      yield variable.name.lexeme;
+    }
+  } else {
+    yield declaration.declaredFragment?.name ?? '<unnamed>';
   }
 }
 

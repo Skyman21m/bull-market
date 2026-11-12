@@ -839,20 +839,27 @@ List<int> copy(GarageKeyMaterial material) => [...material.bytes];
 
         // Another class of the named file.
         expect(
-          await inspect(
-            'garage_repository_other_class',
-            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyCache'),
-            policyPath: repositoryPath,
+          keyReads(
+            await inspect(
+              'garage_repository_other_class',
+              repository.replaceAll(
+                'GarageKeyRepositoryImpl',
+                'GarageKeyCache',
+              ),
+              policyPath: repositoryPath,
+            ),
           ),
           hasLength(2),
         );
         // Code outside any class of the named file.
         expect(
-          (await inspect('garage_repository_top_level', '''
+          keyReads(
+            await inspect('garage_repository_top_level', '''
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {}
 Object leak(GarageKeyMaterial material) => material.bytes;
-''', policyPath: repositoryPath)).single,
+''', policyPath: repositoryPath),
+          ).single,
           endsWith('#GarageKeyMaterial.bytes'),
         );
         // The repository's reads are not the widget's, and the other way round.
@@ -2028,6 +2035,30 @@ void wire(GetIt locator) {
       },
     );
 
+    test('production code does not import or export the P2P test seam', () async {
+      // The second review of #58: the feature's seam test reads the text of the directives, which an escape hides.
+      for (final (name, directive) in [
+        ('seam_import', "import 'package:p2p/testing.dart';"),
+        ('seam_escaped', "import 'package:p2p/\\x74esting.dart';"),
+        (
+          'seam_export',
+          "export 'package:p2p/testing.dart' show setUpP2pForTesting;",
+        ),
+        (
+          'seam_inactive',
+          "import 'dart:core' if (dart.library.html) 'package:p2p/testing.dart';",
+        ),
+      ]) {
+        expect(
+          keyReads(await inspect(name, '$directive\n')),
+          contains(
+            'lib/$name.dart: package:p2p/testing.dart#test seam in production code',
+          ),
+          reason: name,
+        );
+      }
+    });
+
     test('a conditional export fails closed', () async {
       expect(
         await inspect('vault_conditional_export', '''
@@ -2189,6 +2220,21 @@ typedef Vault = Secrets;
         ),
         [outside('packages/robosats/lib/src/vault_alias.dart', 'Secrets')],
       );
+      // The second review of #58 (H2): a handle handed out by a function of another library, used through an extension declared there, never naming a vault type.
+      File('${fixture.path}/vault_holder.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+GarageKeys? handleOf(Object holder) => null;
+extension Wipe on GarageKeys {
+  Object wipe() => 0;
+}
+''');
+      expect(
+        await inspect('vault_use_inferred', '''
+import 'vault_holder.dart';
+Object? use(Object holder) => handleOf(holder)?.wipe();
+''', policyPath: otherPath),
+        [outside(otherPath, 'GarageKeys')],
+      );
       // A value of the vault reached without naming one of its types.
       expect(
         await inspect('vault_use_value', '''
@@ -2261,11 +2307,7 @@ final class GarageKeyRepositoryImpl {
 
     test('a repository with the members of the table passes', () async {
       expect(
-        await inspect(
-          'readerPathtoday',
-          repository,
-          policyPath: repositoryPath,
-        ),
+        await inspect('reader_today', repository, policyPath: repositoryPath),
         isEmpty,
       );
     });
@@ -2347,7 +2389,7 @@ final class GarageKeyRepositoryImpl {
             : signature;
         expect(
           await inspect(
-            'readerPath${name.replaceAll(RegExp(r'\W'), '_')}',
+            'reader_${name.replaceAll(RegExp(r'\W'), '_')}',
             source,
             policyPath: repositoryPath,
           ),
@@ -2358,7 +2400,7 @@ final class GarageKeyRepositoryImpl {
       // The repository of main, before #54: `firstUsableRobot` returns a `GarageRobot`, which the table no longer lists.
       expect(
         await inspect(
-          'readerPathmain_robot',
+          'reader_main_robot',
           withMember(
             'Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network) async =>\n'
             '      throw UnimplementedError();',
@@ -2375,7 +2417,7 @@ final class GarageKeyRepositoryImpl {
       // The review of #50 (N07): a constructor that takes a callback, here a sink, for what the class reads.
       expect(
         await inspect(
-          'readerPathconstructor',
+          'reader_constructor',
           repository.replaceAll(
             '  const GarageKeyRepositoryImpl(this._garageKeys);',
             '  final Sink<List<int>>? _tap;\n\n'
@@ -2395,7 +2437,7 @@ final class GarageKeyRepositoryImpl {
     test('a type of the same name from another library fails', () async {
       expect(
         await inspect(
-          'readerPathshadow',
+          'reader_shadow',
           '${repository.replaceAll("import 'package:p2p/src/domain/p2p_failure.dart';\n", '')}'
               'final class P2pFailure extends Failure {\n'
               '  final List<int> bytes;\n'
@@ -2414,39 +2456,43 @@ final class GarageKeyRepositoryImpl {
       // The review of #58 (C1): a public field inherited from a mixin, or from a base class.
       expect(
         await inspect(
-          'readerPathmixin',
+          'reader_mixin',
           '${repository.replaceAll('final class GarageKeyRepositoryImpl {', 'final class GarageKeyRepositoryImpl with KeyCache {').replaceAll('  const GarageKeyRepositoryImpl(', '  GarageKeyRepositoryImpl(')}'
               'mixin KeyCache {\n  Uint8List? lastKey;\n}\n',
           policyPath: repositoryPath,
         ),
         [
           '$repositoryPath: GarageKeyRepositoryImpl#mixin KeyCache, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache declares the field lastKey, not in the table of readers',
+          '$repositoryPath: KeyCache#declaration in the file of a reader, not in the table of readers',
         ],
       );
       expect(
         await inspect(
-          'readerPathbase',
+          'reader_base',
           '${repository.replaceAll('final class GarageKeyRepositoryImpl {', 'final class GarageKeyRepositoryImpl extends KeyCache {').replaceAll('  const GarageKeyRepositoryImpl(', '  GarageKeyRepositoryImpl(')}'
               'class KeyCache {\n  Uint8List? lastKey;\n}\n',
           policyPath: repositoryPath,
         ),
         [
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache declares the field lastKey, not in the table of readers',
           '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache, not in the table of readers',
+          '$repositoryPath: KeyCache#declaration in the file of a reader, not in the table of readers',
         ],
       );
     });
 
     test('no part, no extension and no use of its private members from outside', () async {
       // The review of #50 (N08): a part of the repository with an extension that hands out the handle and the bytes.
-      File('${fixture.path}/readerPathextras.dart').writeAsStringSync('''
-part of 'readerPathwith_part.dart';
+      File('${fixture.path}/reader_extras.dart').writeAsStringSync('''
+part of 'reader_with_part.dart';
 ''');
       expect(
         await inspect(
-          'readerPathwith_part',
+          'reader_with_part',
           repository.replaceAll(
             "import 'package:secrets/secrets.dart';\n",
-            "import 'package:secrets/secrets.dart';\npart 'readerPathextras.dart';\n",
+            "import 'package:secrets/secrets.dart';\npart 'reader_extras.dart';\n",
           ),
           policyPath: repositoryPath,
         ),
@@ -2454,7 +2500,7 @@ part of 'readerPathwith_part.dart';
       );
       expect(
         await inspect(
-          'readerPathextension',
+          'reader_extension',
           '${repository}extension Extras on GarageKeyRepositoryImpl {\n'
               '  GarageKeys get handle => _handle;\n'
               '  Uint8List copyOf(GarageKeyMaterial material) => _copyOf(material);\n'
@@ -2464,9 +2510,11 @@ part of 'readerPathwith_part.dart';
           policyPath: repositoryPath,
         ),
         [
+          '$repositoryPath: Extras#declaration in the file of a reader, not in the table of readers',
           '$repositoryPath: GarageKeyRepositoryImpl._copyOf#private member used outside its class',
           '$repositoryPath: GarageKeyRepositoryImpl._handle#private member used outside its class',
           '$repositoryPath: extension on GarageKeyRepositoryImpl',
+          '$repositoryPath: leak#declaration in the file of a reader, not in the table of readers',
         ],
       );
       // An extension elsewhere, on the class of the table's file.
@@ -2477,7 +2525,7 @@ part of 'readerPathwith_part.dart';
         ..writeAsStringSync(repository);
       expect(
         await inspect(
-          'readerPathextension_elsewhere',
+          'reader_extension_elsewhere',
           '''
 import 'features/p2p/lib/src/data/garage_key_repository_impl.dart';
 extension Elsewhere on GarageKeyRepositoryImpl {
@@ -2501,13 +2549,10 @@ class GarageKeyView {
   String _text() => garageKey.revealBech32();
 }
 ''';
-      expect(
-        await inspect('readerPathview', view, policyPath: viewPath),
-        isEmpty,
-      );
+      expect(await inspect('reader_view', view, policyPath: viewPath), isEmpty);
       expect(
         await inspect(
-          'readerPathview_text',
+          'reader_view_text',
           view.replaceAll('String _text()', 'String text()'),
           policyPath: viewPath,
         ),
@@ -2517,12 +2562,77 @@ class GarageKeyView {
       );
       expect(
         await inspect(
-          'readerPathview_constructor',
+          'reader_view_constructor',
           view.replaceAll('GarageKeyView._(', 'GarageKeyView('),
           policyPath: viewPath,
         ),
         [
           '$viewPath: GarageKeyView.new#GarageKeyView Function(GarageKey), not in the table of readers',
+        ],
+      );
+    });
+
+    test('a supertype from the workspace declares abstract members only', () async {
+      // The second review of #58 (H4): the repository's interface turned into a class with a public field that the repository fills.
+      File('${fixture.path}/reader_interface.dart').writeAsStringSync('''
+abstract class GarageKeyRepository {
+  List<int>? lastKey;
+  bool get ready => true;
+}
+''');
+      final violations = await inspect(
+        'reader_filled_interface',
+        repository
+            .replaceAll(
+              "import 'package:secrets/secrets.dart';\n",
+              "import 'package:secrets/secrets.dart';\nimport 'reader_interface.dart';\n",
+            )
+            .replaceAll(
+              'final class GarageKeyRepositoryImpl {',
+              'final class GarageKeyRepositoryImpl implements GarageKeyRepository {\n'
+                  '  @override\n  List<int>? lastKey;\n\n'
+                  '  @override\n  bool get ready => true;\n',
+            )
+            .replaceAll(
+              '  const GarageKeyRepositoryImpl(',
+              '  GarageKeyRepositoryImpl(',
+            ),
+        policyPath: repositoryPath,
+      );
+      expect(
+        violations,
+        containsAll([
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype GarageKeyRepository declares the field lastKey, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype GarageKeyRepository declares the concrete member ready, not in the table of readers',
+        ]),
+      );
+    });
+
+    test('a reader\'s file declares the table and has no dynamic access', () async {
+      // The second review of #58 (H1): a top-level function of the reader's file reaches a private member dynamically.
+      expect(
+        await inspect(
+          'reader_dynamic_private',
+          '${repository}Object? peek(Object repository, GarageKeyMaterial material) =>\n'
+              '    (repository as dynamic)._copyOf(material);\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: _copyOf#dynamic access in the file of a reader',
+          '$repositoryPath: peek#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+      // H2: an extension on the handle, declared in the reader's file.
+      expect(
+        await inspect(
+          'reader_handle_extension',
+          '${repository}extension GarageKeysWipe on GarageKeys {\n'
+              '  Future<Object> wipe() => delete(slot: GarageKeySlot.mainnet);\n'
+              '}\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeysWipe#declaration in the file of a reader, not in the table of readers',
         ],
       );
     });
@@ -2591,18 +2701,18 @@ final class GarageKeyRepositoryImpl {
         return (await checkKeyMaterial(root.path)).violations;
       }
 
-      const readerPath =
+      const readerFile =
           'features/p2p/lib/src/data/garage_key_repository_impl.dart';
       expect(await run('missing', 'const GarageKeyMissingFailure()'), isEmpty);
       expect(await run('invalid', 'GarageKeyInvalidFailure(reason)'), isEmpty);
       // The review of #58 (N06): a failure that carries the bytes of an import.
       expect(await run('echo', 'const GarageKeyEchoFailure([])'), [
-        '$readerPath: GarageKeyEchoFailure.bytes#field of a P2P failure the reader uses',
+        '$readerFile: GarageKeyEchoFailure.bytes#field of a P2P failure the reader uses',
       ]);
       // The second review of #58 (H3): the field comes from a mixin declared in another file.
       expect(await run('mixed', 'GarageKeyMixedFailure(0)'), [
-        '$readerPath: FailurePayload.payload#field of a P2P failure the reader uses',
-        '$readerPath: GarageKeyMixedFailure#mixin FailurePayload in a P2P failure the reader uses',
+        '$readerFile: FailurePayload.payload#field of a P2P failure the reader uses',
+        '$readerFile: GarageKeyMixedFailure#mixin FailurePayload in a P2P failure the reader uses',
       ]);
       // A message passed to `Failure.logMessage` through the base class.
       expect(
@@ -2614,7 +2724,7 @@ final class GarageKeyRepositoryImpl {
             'const P2pFailure([super.logMessage]);',
           ),
         ),
-        ['$readerPath: P2pFailure.new#constructor with parameters'],
+        ['$readerFile: P2pFailure.new#constructor with parameters'],
       );
       expect(
         await run(
@@ -2626,7 +2736,7 @@ final class GarageKeyRepositoryImpl {
           ),
         ),
         [
-          '$readerPath: GarageKeyMissingFailure.last#field of a P2P failure the reader uses',
+          '$readerFile: GarageKeyMissingFailure.last#field of a P2P failure the reader uses',
         ],
       );
     });
