@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' show Random;
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
@@ -13,6 +15,7 @@ import 'data/tor_coordinator_transport.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
+import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/robot_key_compute_port.dart';
@@ -26,6 +29,7 @@ import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
+import 'domain/usecases/load_federation_books_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
 import 'domain/usecases/read_robot_standing_usecase.dart';
@@ -61,6 +65,8 @@ final class P2pLocator {
       sessions: () => locator<TorCoordinatorTransport>(),
       tor: () => locator<Tor>(),
       clock: DateTime.now,
+      // The book's waits before it asks a coordinator again: real timers, spread by a random draw that nothing secret depends on.
+      waits: P2pWaits(start: Timer.new, random: Random().nextDouble),
     );
     if (garageKeys != null && databaseDirectory != null) {
       registerGarageKeys(
@@ -156,22 +162,28 @@ final class P2pLocator {
     );
   }
 
-  /// Registers the use-cases and the cubits over [transport], [tor], [clock] and [shuffle], which tests replace.
+  /// Registers the use-cases and the cubits over [transport], [tor], [clock], [waits] and [shuffle], which tests replace.
   static void registerOver(
     GetIt locator, {
     required CoordinatorTransport Function() transport,
     required CoordinatorSessionsPort Function() sessions,
     required Tor Function() tor,
     required DateTime Function() clock,
+    required P2pWaits waits,
     P2pShuffle shuffle = P2pShuffle.random,
   }) {
     locator.registerSingleton<P2pClock>(P2pClock(clock));
     locator.registerSingleton<P2pShuffle>(shuffle);
+    locator.registerSingleton<P2pWaits>(waits);
     locator.registerFactory<RequestFederationBooksUsecase>(
       () => RequestFederationBooksUsecase(
         FederationBookReader(transport(), clock: clock),
         Federation.robosats,
       ),
+    );
+    // A factory: each book gets its own, which remembers the coordinators it reached and its requests in flight.
+    locator.registerFactory<LoadFederationBooksUsecase>(
+      () => LoadFederationBooksUsecase(locator(), locator()),
     );
     locator.registerFactory<FetchCoordinatorInfoUsecase>(
       () => FetchCoordinatorInfoUsecase(
