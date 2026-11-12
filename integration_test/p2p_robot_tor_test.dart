@@ -98,14 +98,21 @@ bool _gaveUp<T>(Result<T, CoordinatorFailure> result) => switch (result) {
   _ => false,
 };
 
-/// The robot of an answer: as it is when it carries the pair the request has just sent, and otherwise once the robot's token has proved the pair the coordinator returned, as `FetchRobotUsecase` of the app does away from the UI isolate.
-Result<CoordinatorRobot, CoordinatorFailure> _settled(
+/// The robot of an answer: as it is when it carries the pair the request has just sent, and otherwise once the robot's token has proved the pair the coordinator returned, in an isolate of its own, by the port `FetchRobotUsecase` of the app uses.
+///
+/// The use case itself is not driven here: it needs a Garage Key in a vault, and the only vault a test can make replaces the keystore of the whole process, which the other integration tests run in; `features/p2p/test/robot_request_wiring_test.dart` drives it offline.
+Future<Result<CoordinatorRobot, CoordinatorFailure>> _settled(
   Result<CoordinatorRobotAnswer, CoordinatorFailure> answer,
-) => switch (answer) {
+) async => switch (answer) {
   Err(:final failure) => Err(failure),
   Ok(value: final CoordinatorRobot robot) => Ok(robot),
   Ok(value: final UnprovenCoordinatorRobot unproven) =>
-    unproven.prove().mapErr<CoordinatorFailure>((failure) => failure),
+    switch (await const IsolateRobotKeyCompute().prove(unproven)) {
+      Ok(value: final proof) => proof.mapErr<CoordinatorFailure>(
+        (failure) => failure,
+      ),
+      Err() => fail('no isolate could be started to prove the pair'),
+    },
 };
 
 /// Runs [step] until it gives anything but a transport failure, [_attempts] times at most, and measures each try.
@@ -235,7 +242,7 @@ Future<void> main({bool isInitialized = false}) async {
                 alias,
                 label,
                 watch,
-                () async => _settled(await call()),
+                () async => await _settled(await call()),
                 fields: _robotFields,
               );
 
@@ -488,7 +495,7 @@ Future<void> main({bool isInitialized = false}) async {
                 alias,
                 'a_short_header_after_five_minutes',
                 watch,
-                () async => _settled(
+                () async => await _settled(
                   await client.fetchKnownRobot(
                     coordinator,
                     _network,
