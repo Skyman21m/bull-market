@@ -917,7 +917,9 @@ const _garageKeyReaders = {
     supertypes: {'GarageKeyRepository'},
     surface: {
       'new': 'GarageKeyRepositoryImpl Function(GarageKeys)',
-      'create': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+      // The key the draw made, built from the bytes the vault drew, so that the draw records the history of that very key (#28, review of #60).
+      'create':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
       'import':
           'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKey)',
       'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',

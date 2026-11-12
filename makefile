@@ -95,10 +95,11 @@ build-runner:
 	@fvm dart run build_runner build --force-jit
 	@(cd packages/bull_payjoin && fvm dart run build_runner build --force-jit)
 	@(cd packages/bull_pricer && fvm dart run build_runner build --force-jit)
+	@(cd features/p2p && fvm dart run build_runner build --force-jit)
 
 build-runner-watch:
 	@echo "🏗️ Build runner for json_serializable and flutter_gen (watch mode)"
-	@bash -c 'trap "kill \$$(jobs -p) 2>/dev/null || true" INT TERM EXIT; fvm dart run build_runner watch --force-jit & (cd packages/bull_payjoin && fvm dart run build_runner watch --force-jit) & (cd packages/bull_pricer && fvm dart run build_runner watch --force-jit) & wait'
+	@bash -c 'trap "kill \$$(jobs -p) 2>/dev/null || true" INT TERM EXIT; fvm dart run build_runner watch --force-jit & (cd packages/bull_payjoin && fvm dart run build_runner watch --force-jit) & (cd packages/bull_pricer && fvm dart run build_runner watch --force-jit) & (cd features/p2p && fvm dart run build_runner watch --force-jit) & wait'
 
 translations:
 	@echo "🌐 Generating translations files"
@@ -117,6 +118,7 @@ drift-migrations:
 	@echo "🔄 Create schema and sum migrations"
 	fvm dart run drift_dev make-migrations
 	cd packages/bull_payjoin && fvm dart run drift_dev make-migrations
+	cd features/p2p && fvm dart run drift_dev make-migrations
 
 ios-pod-update:
 	@if [ "$$(uname)" != "Darwin" ]; then echo "Skipping pod update (not macOS)"; exit 0; fi

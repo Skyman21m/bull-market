@@ -9,7 +9,7 @@ import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
 /// The Garage Keys of P2P, through the real vault of `package:secrets` over its in-memory keystore.
@@ -114,9 +114,12 @@ void main() {
       final storage = FakeSecureStoragePlatform();
       final repository = repositoryOver(storage);
 
-      ok(await repository.create(RobosatsNetwork.testnet));
+      final drawn = ok(await repository.create(RobosatsNetwork.testnet));
 
       expect(storage.entries.keys, [testnetEntry]);
+      // The key the vault drew, with the network of its slot: the one stored.
+      expect(drawn.network, RobosatsNetwork.testnet);
+      expect(ok(await repository.read(RobosatsNetwork.testnet)), drawn);
       expect(storage.readKeys.toSet(), {testnetEntry});
       expect(ok(await repository.exists(RobosatsNetwork.testnet)), isTrue);
       final robot = ok(
@@ -124,6 +127,57 @@ void main() {
       );
       expect(robot.accountIndex, 0);
     }, timeout: slow);
+
+    test(
+      'create hands back the key the vault drew, tagged with the slot of each network',
+      () async {
+        final storage = FakeSecureStoragePlatform();
+        final repository = repositoryOver(storage);
+
+        final drawn = {
+          for (final network in RobosatsNetwork.values)
+            network: ok(await repository.create(network)),
+        };
+
+        expect(
+          storage.entries.keys,
+          unorderedEquals([mainnetEntry, testnetEntry]),
+        );
+        for (final network in RobosatsNetwork.values) {
+          expect(drawn[network]?.network, network);
+          expect(ok(await repository.read(network)), drawn[network]);
+        }
+        // Two draws, two keys.
+        expect(
+          drawn[RobosatsNetwork.mainnet]?.key,
+          isNot(drawn[RobosatsNetwork.testnet]?.key),
+        );
+      },
+      timeout: slow,
+    );
+
+    test(
+      'create reads nothing back: the keystore sees the reads of the vault\'s own draw, no more',
+      () async {
+        // The vault's draw alone, on an empty keystore of its own: the reads it settles the empty slot with.
+        final alone = FakeSecureStoragePlatform()..install();
+        expect(
+          await Secrets(
+            scratchDirectory: () async => '.',
+          ).garageKeys().create(slot: GarageKeySlot.testnet),
+          isA<Ok<Object, Failure>>(),
+        );
+        final readsOfTheVault = alone.reads;
+
+        final storage = FakeSecureStoragePlatform();
+        final repository = repositoryOver(storage);
+        ok(await repository.create(RobosatsNetwork.testnet));
+
+        // A read of the slot after the write, to hand back what it holds, would show here.
+        expect(storage.reads, readsOfTheVault);
+      },
+      timeout: slow,
+    );
 
     test('takes an imported key, which gives its own robots back', () async {
       final storage = FakeSecureStoragePlatform();

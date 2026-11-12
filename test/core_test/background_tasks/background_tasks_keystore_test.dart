@@ -48,7 +48,7 @@ void main() {
   });
 
   // `AppLocator.setup` cannot run in a unit test, so these read the code of `lib/`, with its comments and the text of its strings removed; `test/locator_test.dart` runs what each value of the flag registers.
-  // They prove which literal each composition passes, that `setup` forwards its own flag, and that nothing else in `lib/` names `setupP2p` or `withGarageKeys`.
+  // They prove which literal each composition passes, that `setup` forwards its own flag, that the P2P database directory follows the same flag, and that nothing else in `lib/` names `setupP2p` or `withGarageKeys`, or sets up P2P.
   // They do not run the handler, so they prove nothing about what happens at run time, and they do not see a handle obtained by any other path: the custody gate refuses `Secrets.garageKeys` outside `AppLocator`.
   group('only the foreground composition hands P2P the Garage Key handle', () {
     final code = _codeOfLib();
@@ -98,12 +98,36 @@ void main() {
       },
     );
 
+    test(
+      'setupP2p gives P2P the handle and the directory of its database under that one flag',
+      () {
+        expect(
+          _calls(
+            code['lib/locator.dart'] ?? '',
+            RegExp(r'\bP2pFeature\s*\(\s*\)\s*\.\s*setup\s*\('),
+          ),
+          [
+            [
+              'locator',
+              'garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null',
+              'databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null',
+            ],
+          ],
+        );
+        // Nothing else in `lib/` sets up P2P, so nothing else hands it a directory.
+        expect(
+          _occurrences(code, RegExp(r'\bP2pFeature\s*\(\s*\)\s*\.\s*setup\b')),
+          {'lib/locator.dart': 1},
+        );
+      },
+    );
+
     test('the flag is named in the three compositions only', () {
       expect(_occurrences(code, RegExp(r'\bwithGarageKeys\b')), {
         'lib/init.dart': 1,
         'lib/core/background_tasks/handler.dart': 1,
-        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its use.
-        'lib/locator.dart': 5,
+        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its two uses.
+        'lib/locator.dart': 6,
       });
     });
 
@@ -138,7 +162,7 @@ Map<String, String> _codeOfLib() => {
     if (file is File && file.path.endsWith('.dart'))
       if (file.readAsStringSync() case final source
           when RegExp(
-            'AppLocator|setupP2p|GarageKeys|garageKeys',
+            'AppLocator|setupP2p|GarageKeys|garageKeys|P2pFeature',
           ).hasMatch(source))
         file.path: _codeOf(source),
 };

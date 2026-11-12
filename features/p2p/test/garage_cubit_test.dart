@@ -18,6 +18,7 @@ import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
 import 'support/key_output.dart';
+import 'support/robot_bindings.dart';
 
 /// The Garage of one network over the real vault of `package:secrets`, on its in-memory keystore: empty, holding a key, corrupt, locked or unreadable, and the slot of the other network never touched.
 ///
@@ -64,11 +65,13 @@ void main() {
     final repository = GarageKeyRepositoryImpl(
       Secrets(scratchDirectory: () async => '.').garageKeys(),
     );
+    // The cubit's own tests: what the use cases record of a key is `garage_key_usecases_test.dart`'s.
+    final bindings = RecordingBindings();
     return GarageCubit(
       network,
       ReadGarageKeyUsecase(repository),
-      GenerateGarageKeyUsecase(repository),
-      ImportGarageKeyUsecase(repository),
+      GenerateGarageKeyUsecase(repository, bindings),
+      ImportGarageKeyUsecase(repository, bindings),
       DeleteGarageKeyUsecase(repository),
       unacknowledged ?? UnacknowledgedGarageKeys(),
     );

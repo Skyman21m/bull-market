@@ -33,6 +33,7 @@ import 'package:secrets/testing.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/key_output.dart';
+import 'support/robot_bindings.dart';
 
 /// The `no_screenshot` plugin behind `PrivacyScreen` answers on this channel.
 const _privacyChannel = MethodChannel('com.flutterplaza.no_screenshot_methods');
@@ -1845,11 +1846,12 @@ void main() {
       final repository = GarageKeyRepositoryImpl(
         Secrets(scratchDirectory: () async => '.').garageKeys(),
       );
+      final bindings = RecordingBindings();
       final cubit = GarageCubit(
         RobosatsNetwork.testnet,
         ReadGarageKeyUsecase(repository),
-        GenerateGarageKeyUsecase(repository),
-        ImportGarageKeyUsecase(repository),
+        GenerateGarageKeyUsecase(repository, bindings),
+        ImportGarageKeyUsecase(repository, bindings),
         DeleteGarageKeyUsecase(repository),
         UnacknowledgedGarageKeys(),
       );

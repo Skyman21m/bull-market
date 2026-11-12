@@ -1,13 +1,18 @@
+import 'dart:io';
+
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
 import 'data/garage_key_repository_impl.dart';
+import 'data/p2p_database.dart';
+import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/repositories/garage_key_repository.dart';
+import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
 import 'domain/usecases/delete_garage_key_usecase.dart';
@@ -30,8 +35,12 @@ import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
-  /// [garageKeys] is the vault's handle on the Garage Keys: without it, nothing that reads or writes a Garage Key is registered.
-  static void setup(GetIt locator, {required GarageKeys? garageKeys}) {
+  /// [garageKeys] is the vault's handle on the Garage Keys and [databaseDirectory] gives the directory of the feature's database: without them, nothing that reads or writes a Garage Key, a binding or the database is registered.
+  static void setup(
+    GetIt locator, {
+    required GarageKeys? garageKeys,
+    required Future<Directory> Function()? databaseDirectory,
+  }) {
     // `Tor` and its HTTP client factory are read lazily, so this runs whether or not the Tor package is registered yet.
     locator.registerLazySingleton<TorCoordinatorTransport>(
       () => TorCoordinatorTransport(
@@ -47,24 +56,52 @@ final class P2pLocator {
       tor: () => locator<Tor>(),
       clock: DateTime.now,
     );
-    if (garageKeys != null) registerGarageKeys(locator, garageKeys);
+    if (garageKeys != null && databaseDirectory != null) {
+      registerGarageKeys(
+        locator,
+        garageKeys,
+        database: () => P2pDatabase.open(databaseDirectory),
+        transport: () => locator<TorCoordinatorTransport>(),
+        clock: DateTime.now,
+      );
+    }
   }
 
-  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, and the Garage that shows it.
+  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, the Garage that shows it, and the bindings of its robots in the database [database] makes, with the request of a robot that checks them over [transport].
   ///
-  /// Registering touches no key: the keystore is read or written only when a use-case runs, and the Garage runs them only once the user opens it.
-  static void registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
+  /// Registering touches no key and no file: the keystore and the database are read or written only when a use-case runs, and the Garage runs them only once the user opens it.
+  static void registerGarageKeys(
+    GetIt locator,
+    GarageKeys garageKeys, {
+    required P2pDatabase Function() database,
+    required CoordinatorTransport Function() transport,
+    required DateTime Function() clock,
+  }) {
     locator.registerLazySingleton<GarageKeyRepository>(
       () => GarageKeyRepositoryImpl(garageKeys),
+    );
+    locator.registerLazySingleton<P2pDatabase>(
+      database,
+      dispose: (database) => database.close(),
+    );
+    locator.registerLazySingleton<RobotBindingRepository>(
+      () => RobotBindingRepositoryImpl(locator(), clock: clock),
+    );
+    // The request of a robot: its only caller will be the Garage of this feature, and nothing outside the feature reaches it.
+    locator.registerFactory<FetchRobotUsecase>(
+      () => FetchRobotUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+      ),
     );
     locator.registerFactory<HasGarageKeyUsecase>(
       () => HasGarageKeyUsecase(locator()),
     );
     locator.registerFactory<GenerateGarageKeyUsecase>(
-      () => GenerateGarageKeyUsecase(locator()),
+      () => GenerateGarageKeyUsecase(locator(), locator()),
     );
     locator.registerFactory<ImportGarageKeyUsecase>(
-      () => ImportGarageKeyUsecase(locator()),
+      () => ImportGarageKeyUsecase(locator(), locator()),
     );
     locator.registerFactory<ReadGarageKeyUsecase>(
       () => ReadGarageKeyUsecase(locator()),
@@ -117,10 +154,7 @@ final class P2pLocator {
         CoordinatorClient(transport(), clock: clock),
       ),
     );
-    // The robot use-cases have no caller yet: the Garage cubits of this feature will be the first, and nothing outside the feature reaches them.
-    locator.registerFactory<FetchRobotUsecase>(
-      () => FetchRobotUsecase(CoordinatorClient(transport(), clock: clock)),
-    );
+    // It has no caller yet: the Garage cubits of this feature will be the first, and nothing outside the feature reaches it.
     locator.registerFactory<CloseRobotSessionsUsecase>(
       () => CloseRobotSessionsUsecase(sessions()),
     );

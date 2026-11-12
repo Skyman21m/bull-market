@@ -4,6 +4,8 @@ linter:
   rules:
     # Nothing of the feature prints: a printed line can carry key material past every other check.
     - avoid_print
+    # A call through `dynamic` is resolved at run time only: the architecture tests of the feature, which resolve every reference, would not see it (review of #60).
+    - avoid_dynamic_calls
     - implementation_imports
     - prefer_final_locals
     - require_trailing_commas
@@ -13,3 +15,4 @@ analyzer:
   errors:
     # Reaching into another package's src/ is a boundary violation, not a style preference.
     implementation_imports: error
+    avoid_dynamic_calls: error
