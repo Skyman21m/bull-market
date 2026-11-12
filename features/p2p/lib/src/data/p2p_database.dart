@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
+import 'p2p_database.steps.dart';
+
 part 'p2p_database.g.dart';
 
 /// What this device knows of the history of each Garage Key, per network: absent, the history is unknown.
@@ -14,7 +16,7 @@ class GarageKeyHistories extends Table {
   /// The `GarageKeyFingerprint` of the key, 64 hexadecimal characters.
   TextColumn get keyFingerprint => text()();
 
-  /// `generated` for a key drawn on this device, `imported` for a key pasted in: only `generated` lets a robot of the key be bound to a coordinator for the first time.
+  /// `generated` for a key drawn on this device, `imported` for a key pasted in, `acknowledged` (since schema 2) for a key of unknown history whose robots the user accepted to bind: only `generated` and `acknowledged` let a robot of the key be bound to a coordinator for the first time.
   TextColumn get origin => text()();
 
   /// When the origin was recorded, in milliseconds since the epoch.
@@ -27,7 +29,7 @@ class GarageKeyHistories extends Table {
   List<String> get customConstraints => const [
     "CHECK (network IN ('mainnet', 'testnet'))",
     'CHECK (length(key_fingerprint) = 64)',
-    "CHECK (origin IN ('generated', 'imported'))",
+    "CHECK (origin IN ('generated', 'imported', 'acknowledged'))",
   ];
 }
 
@@ -62,6 +64,14 @@ class RobotBindings extends Table {
   /// When the binding was written, in milliseconds since the epoch.
   IntColumn get boundAt => integer()();
 
+  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2).
+  ///
+  /// Its constraints are the column's own, so that schema 2 adds it to the table without rebuilding it; its default is for the bindings of schema 1, all made under a key drawn here.
+  TextColumn get provenance => text().customConstraint(
+    "NOT NULL DEFAULT 'generated' "
+    "CHECK (provenance IN ('generated', 'acknowledged'))",
+  )();
+
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
 
@@ -83,7 +93,7 @@ class RobotBindings extends Table {
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
 @DriftDatabase(tables: [GarageKeyHistories, RobotBindings])
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 1;
+  static const int schema = 2;
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -112,4 +122,34 @@ final class P2pDatabase extends _$P2pDatabase {
 
   @override
   int get schemaVersion => schema;
+
+  /// Each step brings a file from one version to the next, and can run again over a file it left halfway: the version is written only once the step is done.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: stepByStep(
+      from1To2: (m, schema) async {
+        // `acknowledged` widens the CHECK of the histories, which SQLite cannot change in place: the table is rebuilt in one transaction, its rows copied as they are.
+        // drift marks `TableMigration` experimental: that warning, and no other, is silenced on its line, as in the wallet's own migrations (`lib/core/storage/migrations/`).
+        await m.alterTable(
+          // ignore: experimental_member_use
+          TableMigration(schema.garageKeyHistories),
+        );
+        // The bindings gain their provenance without a rebuild, so that no binding is ever copied or dropped: every binding of schema 1 was made under a key drawn here, the default.
+        // A step that stopped after this column was added does not add it twice when it runs again.
+        if (!await _hasColumn('robot_bindings', 'provenance')) {
+          await m.addColumn(
+            schema.robotBindings,
+            schema.robotBindings.provenance,
+          );
+        }
+      },
+    ),
+  );
+
+  /// Whether [table] has a column named [column], read from SQLite's own description of the table.
+  Future<bool> _hasColumn(String table, String column) async =>
+      (await customSelect(
+        'SELECT 1 FROM pragma_table_info(?) WHERE name = ?',
+        variables: [Variable.withString(table), Variable.withString(column)],
+      ).get()).isNotEmpty;
 }

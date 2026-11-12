@@ -30,7 +30,7 @@ typedef BindingCall = (String method, Object? first, Object? second);
 
 /// Bindings that keep the calls made to them and give [failure] to every write, or to the first [failures] writes when it is set, or success without it; the reads give [readFailure] when it is set.
 ///
-/// Its reads follow its writes, as the database's do: a key is drawn here once a record of its draw succeeded, or when [drawnHere] names it, until a record of its import succeeds; a key is bound once a binding of one of its robots succeeded; [exposure], when set, answers instead.
+/// Its reads follow its writes, as the database's do: a key is drawn here once a record of its draw succeeded, or when [drawnHere] names it, until a record of its import succeeds; an imported or unrecorded key is acknowledged once a record of its acknowledgement succeeded; a key is bound once a binding of one of its robots succeeded, with the provenance its history gives; [exposure], when set, answers instead.
 final class RecordingBindings implements RobotBindingRepository {
   final List<BindingCall> calls = [];
   P2pFailure? failure;
@@ -52,6 +52,9 @@ final class RecordingBindings implements RobotBindingRepository {
 
   /// The fingerprints of the keys with a robot bound, whatever the network.
   final Set<GarageKeyFingerprint> _bound = {};
+
+  /// The binding of each robot index of each key, whatever the network.
+  final Map<(GarageKeyFingerprint, int), RobotBinding> _bindings = {};
 
   /// [drawnHere] are the networks and keys recorded as drawn here from the start, as for a key the test stored in the keystore.
   RecordingBindings({
@@ -103,14 +106,65 @@ final class RecordingBindings implements RobotBindingRepository {
   }
 
   @override
+  Future<Result<void, P2pFailure>> recordAcknowledgedKey(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) async {
+    calls.add(('recordAcknowledgedKey', network, key));
+    final result = _result;
+    // It never overrides a key recorded as drawn here.
+    if (result case Ok()) {
+      _histories.update(
+        (network, key),
+        (history) => history == GarageKeyHistory.drawnHere
+            ? history
+            : GarageKeyHistory.acknowledged,
+        ifAbsent: () => GarageKeyHistory.acknowledged,
+      );
+    }
+    return result;
+  }
+
+  @override
   Future<Result<void, P2pFailure>> bind(
     RobotSlot robot,
     CoordinatorIdentity coordinator,
   ) async {
     calls.add(('bind', robot, coordinator));
     final result = _result;
-    if (result case Ok()) _bound.add(robot.keyFingerprint);
+    if (result case Ok()) {
+      _bound.add(robot.keyFingerprint);
+      _bindings.putIfAbsent(
+        (robot.keyFingerprint, robot.accountIndex),
+        () => RobotBinding(
+          coordinator,
+          testNow,
+          _histories[(robot.network, robot.keyFingerprint)] ==
+                  GarageKeyHistory.acknowledged
+              ? BindingProvenance.acknowledged
+              : BindingProvenance.drawnHere,
+        ),
+      );
+    }
     return result;
+  }
+
+  @override
+  Future<Result<RobotStanding, P2pFailure>> standingOf(RobotSlot robot) async {
+    calls.add(('standingOf', robot, null));
+    await _slowRead();
+    return switch (readFailure) {
+      final failure? => Err(failure),
+      null => Ok(
+        RobotStanding(
+          network: robot.network,
+          binding: _bindings[(robot.keyFingerprint, robot.accountIndex)],
+          history:
+              _histories[(robot.network, robot.keyFingerprint)] ??
+              GarageKeyHistory.unknown,
+        ),
+      ),
+    };
   }
 
   @override

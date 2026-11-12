@@ -753,8 +753,18 @@ final class _OrderedBindings implements RobotBindingRepository {
   ) => _bindings.recordImportedKey(network, key);
 
   @override
+  Future<Result<void, P2pFailure>> recordAcknowledgedKey(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _bindings.recordAcknowledgedKey(network, key);
+
+  @override
   Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
     RobosatsNetwork network,
     GarageKeyFingerprint key,
   ) => _bindings.exposureOf(network, key);
+
+  @override
+  Future<Result<RobotStanding, P2pFailure>> standingOf(RobotSlot robot) =>
+      _bindings.standingOf(robot);
 }

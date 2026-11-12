@@ -68,43 +68,61 @@ void main() {
     }
   });
 
-  test('no file silences a diagnostic but the two the generators write', () {
-    // AGENTS.md bans `// ignore`: an `ignore` of `invalid_use_of_internal_member`, or of a whole type of warnings, would let a file call the package's internals without a sign (review of #67).
-    // gen-l10n writes `// ignore: unused_import` and `// ignore_for_file: type=lint`, Drift the second: neither silences a warning.
-    final offenders = <String>[];
-    for (final path in libraries.keys) {
-      for (final ignore in _ignores(File(path).readAsStringSync())) {
-        final generated =
-            path.startsWith('lib/generated/l10n/p2p_localizations') ||
-            path.endsWith('.g.dart');
-        if (!generated ||
-            !{
-              'ignore: unused_import',
-              'ignore_for_file: type=lint',
-            }.contains(ignore)) {
-          offenders.add('$path $ignore');
+  test(
+    'no file silences a diagnostic but those the generators write, and the experimental table migration',
+    () {
+      // AGENTS.md bans `// ignore`: an `ignore` of `invalid_use_of_internal_member`, or of a whole type of warnings, would let a file call the package's internals without a sign (review of #67).
+      // gen-l10n writes `// ignore: unused_import` and `// ignore_for_file: type=lint`, Drift the second in its code and both on one line in its migration steps: lints and unused imports only.
+      // The migration to schema 2 rebuilds the histories with drift's `TableMigration`, which drift marks experimental: one `ignore` of that warning, on that line, as the wallet's own migrations have it.
+      final offenders = <String>[];
+      for (final path in libraries.keys) {
+        final ignores = _ignores(File(path).readAsStringSync());
+        if (path == 'lib/src/data/p2p_database.dart') {
+          expect(ignores, ['ignore: experimental_member_use']);
+          continue;
+        }
+        final allowed = switch (path) {
+          _ when path.startsWith('lib/generated/l10n/p2p_localizations') => {
+            'ignore: unused_import',
+            'ignore_for_file: type=lint',
+          },
+          _ when path.endsWith('.g.dart') => {'ignore_for_file: type=lint'},
+          'lib/src/data/p2p_database.steps.dart' => {
+            'ignore_for_file: type=lint, unused_import',
+          },
+          _ => const <String>{},
+        };
+        for (final ignore in ignores) {
+          if (!allowed.contains(ignore)) offenders.add('$path $ignore');
         }
       }
-    }
-    expect(offenders, isEmpty);
-    // The check sees each form.
-    // The diagnostic's name is put together at run time: the custody check of CI refuses it written after an `ignore` anywhere, the samples of a test included.
-    final internal = ['invalid', 'use', 'of', 'internal', 'member'].join('_');
-    expect(
-      _ignores(
-        '// ignore: $internal\n'
-        'x; // ignore:$internal, unused_import\n'
-        '/* ignore_for_file: type=warning */\n'
-        '// ignore_for_file: type=lint\n',
-      ),
-      [
-        'ignore: $internal',
-        'ignore: $internal, unused_import',
-        'ignore_for_file: type=warning',
-        'ignore_for_file: type=lint',
-      ],
-    );
-  });
+      expect(offenders, isEmpty);
+      // The one `ignore` of the database sits right before the table migration, so that it silences nothing else.
+      final database = File('lib/src/data/p2p_database.dart').readAsLinesSync();
+      final line = database.indexWhere((l) => l.contains('ignore:'));
+      expect(
+        database[line + 1].trim(),
+        'TableMigration(schema.garageKeyHistories),',
+      );
+      // The check sees each form.
+      // The diagnostic's name is put together at run time: the custody check of CI refuses it written after an `ignore` anywhere, the samples of a test included.
+      final internal = ['invalid', 'use', 'of', 'internal', 'member'].join('_');
+      expect(
+        _ignores(
+          '// ignore: $internal\n'
+          'x; // ignore:$internal, unused_import\n'
+          '/* ignore_for_file: type=warning */\n'
+          '// ignore_for_file: type=lint\n',
+        ),
+        [
+          'ignore: $internal',
+          'ignore: $internal, unused_import',
+          'ignore_for_file: type=warning',
+          'ignore_for_file: type=lint',
+        ],
+      );
+    },
+  );
 
   group('resolved by the analyzer,', () {
     late AnalysisContextCollection collection;
@@ -314,9 +332,18 @@ void main() {
       ),
       {
         'lib/src/data/p2p_database.dart',
+        // The migration steps `make drift-migrations` writes from the snapshots.
+        'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/testing.dart',
       },
+    );
+    expect(
+      where(
+        (facts) =>
+            facts.imports.any((uri) => uri.endsWith('p2p_database.steps.dart')),
+      ),
+      {'lib/src/data/p2p_database.dart'},
     );
     expect(where((facts) => facts.constructed.contains('P2pDatabase.open')), {
       'lib/src/p2p_locator.dart',
@@ -333,8 +360,11 @@ void main() {
         fail('no repository');
     final database =
         libraries['lib/src/data/p2p_database.dart'] ?? fail('no database');
+    final steps =
+        libraries['lib/src/data/p2p_database.steps.dart'] ??
+        fail('no migration steps');
 
-    for (final facts in [repository, database]) {
+    for (final facts in [repository, database, steps]) {
       expect(
         facts.invoked.intersection({
           'delete',
@@ -364,13 +394,24 @@ void main() {
         );
       }
     }
-    // The one upsert moves the history of a key to `imported`, never a binding.
+    // The two upserts move the history of a key, to `imported` or to `acknowledged`, never a binding.
     expect(
       repository.namesByMethod.entries
           .where((entry) => entry.value.contains('DoUpdate'))
           .map((entry) => entry.key),
-      ['recordImportedKey'],
+      ['recordImportedKey', 'recordAcknowledgedKey'],
     );
+    // The migration rebuilds the histories only: the bindings gain a column, and no binding is copied or dropped.
+    expect(database.calls.where((call) => call.startsWith('TableMigration(')), [
+      'TableMigration(schema.garageKeyHistories)',
+    ]);
+    expect(
+      database.calls.where((call) => call.startsWith('alterTable(')),
+      everyElement(isNot(contains('robotBindings'))),
+    );
+    expect(database.calls.where((call) => call.startsWith('addColumn(')), [
+      'addColumn(schema.robotBindings, schema.robotBindings.provenance)',
+    ]);
   });
 }
 
@@ -385,6 +426,9 @@ final class _Facts {
   /// The names used in the body of each method or function, by its name.
   final Map<String, Set<String>> namesByMethod;
 
+  /// Each invocation, as its name and its arguments, `name(a, b)`.
+  final List<String> calls;
+
   _Facts(
     this.imports,
     this.names,
@@ -392,6 +436,7 @@ final class _Facts {
     this.constructed,
     this.strings,
     this.namesByMethod,
+    this.calls,
   );
 
   factory _Facts.of(String source) {
@@ -409,6 +454,7 @@ final class _Facts {
       visitor.constructed,
       visitor.strings,
       visitor.namesByMethod,
+      visitor.calls,
     );
   }
 }
@@ -419,6 +465,7 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   final Set<String> constructed = {};
   final List<String> strings = [];
   final Map<String, Set<String>> namesByMethod = {};
+  final List<String> calls = [];
   String? _method;
 
   @override
@@ -450,6 +497,9 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     invoked.add(node.methodName.name);
+    calls.add(
+      '${node.methodName.name}(${node.argumentList.arguments.map((argument) => argument.toSource()).join(', ')})',
+    );
     // `P2pDatabase.open(…)` parses as an invocation of `open` on `P2pDatabase` when the parser does not resolve it.
     if (node.target case SimpleIdentifier(:final name)) {
       constructed.add('$name.${node.methodName.name}');
@@ -508,7 +558,12 @@ const _watched = {
   'CoordinatorTransport': ('package:robosats/', {'send'}),
   'RobotBindingRepository': (
     'package:p2p/',
-    {'bind', 'recordGeneratedKey', 'recordImportedKey'},
+    {
+      'bind',
+      'recordGeneratedKey',
+      'recordImportedKey',
+      'recordAcknowledgedKey',
+    },
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),

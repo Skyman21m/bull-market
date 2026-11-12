@@ -193,6 +193,9 @@ void main() {
       (GarageKeyHistory.drawnHere, true, true),
       (GarageKeyHistory.unknown, false, true),
       (GarageKeyHistory.unknown, true, true),
+      // Acknowledged: its robots may live on coordinators from elsewhere.
+      (GarageKeyHistory.acknowledged, false, true),
+      (GarageKeyHistory.acknowledged, true, true),
     ]) {
       recording.exposure = GarageKeyExposure(
         history: history,
