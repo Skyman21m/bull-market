@@ -1148,6 +1148,51 @@ void main() {
     });
 
     test(
+      'by a key block padded with signatures, refused before any of them is verified',
+      () async {
+        // Copies of the key's own certification: each would verify, and each would cost an Ed25519 verification on the calling isolate (#69).
+        final crafted = CraftedKey(
+          label: 'padded',
+          userId: _identity.pgpUserId,
+        );
+        List<RawPacket> padded(List<RawPacket> packets, int signatures) => [
+          ...packets.take(3),
+          for (var i = 2; i < signatures; i++) packets[2],
+          ...packets.skip(3),
+        ];
+        final private = crafted.privatePackets(_identity.token.reveal());
+        void serveWith(int public, int encrypted) => serveJson(
+          _robot({
+            'public_key': armorPackets(
+              ArmorBlock.publicKey,
+              padded(crafted.publicPackets, public),
+            ),
+            'encrypted_private_key': armorPackets(
+              ArmorBlock.privateKey,
+              padded(private, encrypted),
+            ),
+          }),
+        );
+
+        // At the bound, both blocks are read and the token proves the pair.
+        serveWith(PgpLimits.keySignatures, PgpLimits.keySignatures);
+        expect(expectOk(_settled(await fetchKnown())).hashId, _identity.hashId);
+        for (final (public, encrypted) in [
+          (PgpLimits.keySignatures + 1, 2),
+          (2, PgpLimits.keySignatures + 1),
+        ]) {
+          serveWith(public, encrypted);
+
+          expect(
+            await failures(),
+            everyElement(isA<RobotPgpKeyNotProven>()),
+            reason: '$public and $encrypted signatures',
+          );
+        }
+      },
+    );
+
+    test(
       'by secret values that are not those of its public key, though the token unlocks them',
       () async {
         // The token unlocks both parts, but the primary key's part holds the seed of another key: unlocking checks the values against the points.
