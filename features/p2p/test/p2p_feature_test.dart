@@ -212,12 +212,11 @@ void main() {
           .keys
           .first;
 
-      for (final createIfUnknown in [true, false]) {
-        final result = await fetchRobot.execute(
-          temple,
-          testnetRobot,
-          createIfUnknown: createIfUnknown,
-        );
+      for (final contact in [
+        RobotContact.firstContact(testnetRobot),
+        RobotContact.readBack(testnetRobot),
+      ]) {
+        final result = await fetchRobot.execute(temple, contact);
 
         expect(result, answeredWith<CoordinatorUnreachable>());
       }
@@ -229,7 +228,7 @@ void main() {
       await facade.fetchInfo(temple, RobosatsNetwork.testnet);
       final afterAnonymous = tor.openedSessions;
 
-      await fetchRobot.execute(temple, testnetRobot, createIfUnknown: false);
+      await fetchRobot.execute(temple, RobotContact.readBack(testnetRobot));
 
       // The anonymous reads of temple already asked for a session: the robot does not wait for it or reuse it.
       expect(tor.openedSessions, greaterThan(afterAnonymous));
@@ -246,8 +245,7 @@ void main() {
 
         final result = await fetchRobot.execute(
           bazaar,
-          testnetRobot,
-          createIfUnknown: true,
+          RobotContact.firstContact(testnetRobot),
         );
 
         expect(result, answeredWith<CoordinatorNotOnNetwork>());

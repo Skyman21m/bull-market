@@ -119,7 +119,7 @@ void main() {
 
       // The coordinator does not know the robot yet.
       expect(
-        await fetch.execute(temple, robot, createIfUnknown: false),
+        await fetch.execute(temple, RobotContact.readBack(robot)),
         isA<Ok<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>()
             .having(
               (ok) => ok.value,
@@ -132,10 +132,10 @@ void main() {
             ),
       );
       final created = robotOf(
-        await fetch.execute(temple, robot, createIfUnknown: true),
+        await fetch.execute(temple, RobotContact.firstContact(robot)),
       );
       final readBack = robotOf(
-        await fetch.execute(temple, robot, createIfUnknown: false),
+        await fetch.execute(temple, RobotContact.readBack(robot)),
       );
 
       expect(created.pgpKeyProven, isFalse);
@@ -145,7 +145,7 @@ void main() {
       expect(readBack.hashId, robot.identity.hashId);
       // One robot, one coordinator: the binding was written before the first request.
       expect(
-        await fetch.execute(lake, robot, createIfUnknown: true),
+        await fetch.execute(lake, RobotContact.firstContact(robot)),
         isA<Err<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>()
             .having(
               (err) => err.failure,
