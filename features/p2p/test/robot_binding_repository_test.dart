@@ -237,6 +237,72 @@ void main() {
     );
 
     test(
+      'drawn on mainnet and pasted into testnet: the other direction',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintB),
+          passes,
+        );
+        expect(await bindings.recordImportedKey(testnet, fingerprintB), passes);
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintB, 0),
+            identityOf('lake', mainnet),
+          ),
+          passes,
+        );
+
+        // The same alias on the other network is another coordinator.
+        for (final alias in ['temple', 'lake']) {
+          expect(
+            await bindings.bind(
+              RobotSlot(testnet, fingerprintB, 0),
+              identityOf(alias, testnet),
+            ),
+            refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+            reason: alias,
+          );
+        }
+        expect(
+          await bindings.bind(RobotSlot(testnet, fingerprintB, 1), temple),
+          refusedWith<RobotHistoryUnknownFailure>(),
+        );
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintB, 1),
+            identityOf('temple', mainnet),
+          ),
+          passes,
+        );
+      },
+    );
+
+    test(
+      'first contacts of one index on both networks at once: one binding',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintA),
+          passes,
+        );
+
+        final results = await Future.wait([
+          bindings.bind(
+            RobotSlot(mainnet, fingerprintA, 0),
+            identityOf('lake', mainnet),
+          ),
+          bindings.bind(RobotSlot(testnet, fingerprintA, 0), lake),
+        ]);
+
+        expect(results.whereType<Ok<void, P2pFailure>>(), hasLength(1));
+        expect(
+          results.whereType<Err<void, P2pFailure>>().single.failure,
+          isA<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+        expect(await rows(), hasLength(1));
+      },
+    );
+
+    test(
       'a robot without a binding follows the history of its key on its own network',
       () async {
         // Drawn on testnet only: on mainnet the same key has an unknown history.
@@ -536,6 +602,50 @@ void main() {
         }
       },
       timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'a file of the first shape of version 1, which no build shipped, refuses every binding',
+      () async {
+        // The tables of `drift_schema_v1.json` at 30c8578ac, where the network was part of the primary key of a binding.
+        final file = File('${directory.path}/p2p.sqlite');
+        final first = P2pDatabase.forTesting(
+          NativeDatabase(
+            file,
+            setup: (database) {
+              database.execute(
+                'CREATE TABLE "garage_key_histories" ("network" TEXT NOT NULL, "key_fingerprint" TEXT NOT NULL, "origin" TEXT NOT NULL, "recorded_at" INTEGER NOT NULL, PRIMARY KEY ("network", "key_fingerprint"))',
+              );
+              database.execute(
+                'CREATE TABLE "robot_bindings" ("network" TEXT NOT NULL, "key_fingerprint" TEXT NOT NULL, "robot_index" INTEGER NOT NULL, "coordinator_alias" TEXT NOT NULL, "coordinator_onion" TEXT NOT NULL, "coordinator_node_keys" TEXT NOT NULL, "coordinator_nostr_key" TEXT NOT NULL, "bound_at" INTEGER NOT NULL, PRIMARY KEY ("network", "key_fingerprint", "robot_index"))',
+              );
+              database.execute('PRAGMA user_version = 1');
+            },
+          ),
+        );
+        await first.customSelect('SELECT 1').get();
+        await first.close();
+
+        final opened = P2pDatabase.open(() async => directory);
+        final repository = bindingsInMemory(database: opened);
+        expect(
+          await repository.recordGeneratedKey(testnet, fingerprintA),
+          passes,
+        );
+        // Its primary key does not match the conflict target of a binding: every bind fails closed, on either network.
+        expect(
+          await repository.bind(RobotSlot(testnet, fingerprintA, 0), temple),
+          refusedWith<P2pStorageFailure>(),
+        );
+        expect(
+          await repository.bind(
+            RobotSlot(mainnet, fingerprintA, 0),
+            identityOf('lake', mainnet),
+          ),
+          refusedWith<P2pStorageFailure>(),
+        );
+        await opened.close();
+      },
     );
 
     test('a database that cannot be opened refuses everything', () async {
