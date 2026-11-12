@@ -67,7 +67,7 @@ abstract interface class RobotBindingRepository {
   /// Where [robot] stands: the binding of its index, made on either network, with its provenance, or none, and the history of its key on the robot's network.
   ///
   /// Both are read in one statement, so they describe the same moment.
-  /// It reads only: a database that cannot be read, or a row this code did not write, is a [P2pStorageFailure].
+  /// It reads only: a database that cannot be read is a [P2pStorageFailure], and so is a row this code never writes (a value of another type, a NULL the schema forbids, an origin, network or provenance outside the constraints, or a time no `DateTime` holds), never read as a free robot or a known history.
   @useResult
   Future<Result<RobotStanding, P2pFailure>> standingOf(RobotSlot robot);
 }

@@ -1001,6 +1001,164 @@ void main() {
       await loose.close();
     });
 
+    group('rows no version writes, in tables stripped of every constraint', () {
+      // The columns keep their types, so SQLite stores what it can convert and keeps the rest as given; nothing forbids a NULL.
+      const histories =
+          'CREATE TABLE garage_key_histories (network TEXT, key_fingerprint TEXT, origin TEXT, recorded_at INTEGER, PRIMARY KEY (network, key_fingerprint))';
+      const bindingsTable =
+          'CREATE TABLE robot_bindings (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, coordinator_node_keys TEXT, coordinator_nostr_key TEXT, bound_at INTEGER, provenance TEXT, PRIMARY KEY (key_fingerprint, robot_index))';
+      final good = {
+        'network': "'testnet'",
+        'key_fingerprint': "'${fingerprintA.hex}'",
+        'robot_index': '0',
+        'coordinator_alias': "'temple'",
+        'coordinator_onion': "'${temple.onion}'",
+        'coordinator_node_keys': "'${temple.nodeKeys.join(',')}'",
+        'coordinator_nostr_key': "'${temple.nostrKey}'",
+        'bound_at': '0',
+        'provenance': "'generated'",
+      };
+
+      /// A database of schema 2 holding [statements] of SQL, written as they are.
+      P2pDatabase holding(List<String> statements) {
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        return P2pDatabase.forTesting(
+          NativeDatabase.memory(
+            setup: (raw) {
+              raw.execute(histories);
+              raw.execute(bindingsTable);
+              statements.forEach(raw.execute);
+              raw.execute('PRAGMA user_version = ${P2pDatabase.schema}');
+            },
+          ),
+        );
+      }
+
+      String bindingRow(Map<String, String> values) =>
+          'INSERT INTO robot_bindings (${values.keys.join(', ')}) VALUES (${values.values.join(', ')})';
+      String historyRow(String origin) =>
+          "INSERT INTO garage_key_histories VALUES ('testnet', '${fingerprintA.hex}', $origin, 0)";
+      final refused = isA<Err<RobotStanding, P2pFailure>>().having(
+        (err) => err.failure,
+        'failure',
+        isA<P2pStorageFailure>(),
+      );
+
+      test(
+        'the rows of the test are read when they hold what this code writes',
+        () async {
+          final database = holding([
+            bindingRow(good),
+            historyRow("'generated'"),
+          ]);
+
+          expect(
+            await bindingsInMemory(
+              database: database,
+            ).standingOf(RobotSlot(testnet, fingerprintA, 0)),
+            isA<Ok<RobotStanding, P2pFailure>>().having(
+              (ok) => ok.value,
+              'standing',
+              RobotStanding(
+                network: testnet,
+                binding: RobotBinding(
+                  temple,
+                  DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+                  BindingProvenance.drawnHere,
+                ),
+                history: GarageKeyHistory.drawnHere,
+              ),
+            ),
+          );
+          await database.close();
+        },
+      );
+
+      test(
+        'a binding with a value of another type, out of range, unknown or NULL is a storage failure',
+        () async {
+          for (final (column, value) in [
+            ('bound_at', "'abc'"),
+            ('bound_at', '9000000000000000'),
+            ('bound_at', '-9000000000000000'),
+            ('bound_at', '1.5'),
+            ('provenance', "'imported'"),
+            ('provenance', '7'),
+            ('network', "'signet'"),
+            for (final column in good.keys.where(
+              (column) =>
+                  column != 'key_fingerprint' && column != 'robot_index',
+            ))
+              (column, 'NULL'),
+          ]) {
+            final database = holding([
+              bindingRow({...good, column: value}),
+            ]);
+
+            expect(
+              await bindingsInMemory(
+                database: database,
+              ).standingOf(RobotSlot(testnet, fingerprintA, 0)),
+              refused,
+              reason: '$column = $value',
+            );
+            await database.close();
+          }
+        },
+      );
+
+      test(
+        'a binding whose time no DateTime holds refuses a bind too, rather than throwing',
+        () async {
+          for (final value in ["'abc'", '9000000000000000']) {
+            final database = holding([
+              bindingRow({...good, 'bound_at': value}),
+              historyRow("'generated'"),
+            ]);
+
+            expect(
+              await bindingsInMemory(
+                database: database,
+              ).bind(RobotSlot(testnet, fingerprintA, 0), temple),
+              refusedWith<P2pStorageFailure>(),
+              reason: value,
+            );
+            await database.close();
+          }
+        },
+      );
+
+      test(
+        'an origin unknown, of another type or NULL is a storage failure for the standing, and an unknown history for the PIN',
+        () async {
+          for (final origin in ["'elsewhere'", "''", '7', 'NULL']) {
+            final database = holding([historyRow(origin)]);
+            final repository = bindingsInMemory(database: database);
+
+            expect(
+              await repository.standingOf(RobotSlot(testnet, fingerprintA, 0)),
+              refused,
+              reason: origin,
+            );
+            // Unknown asks the PIN before a delete: the safe answer there.
+            expect(
+              await repository.exposureOf(testnet, fingerprintA),
+              isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+                (ok) => ok.value,
+                'exposure',
+                const GarageKeyExposure(
+                  history: GarageKeyHistory.unknown,
+                  hasBinding: false,
+                ),
+              ),
+              reason: origin,
+            );
+            await database.close();
+          }
+        },
+      );
+    });
+
     test('prints neither the key nor its fingerprint', () {
       final read = RobotStanding(
         network: testnet,
