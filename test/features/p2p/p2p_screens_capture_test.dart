@@ -47,7 +47,14 @@ final class _RecordedTransport implements CoordinatorTransport {
   /// Coordinators that answer as unreachable whatever was recorded.
   final Set<String> offline;
 
-  const _RecordedTransport(this.network, {this.offline = const {}});
+  /// Coordinators that do not answer during the captures, so that their book is still loading.
+  final Set<String> held;
+
+  const _RecordedTransport(
+    this.network, {
+    this.offline = const {},
+    this.held = const {},
+  });
 
   @override
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
@@ -62,6 +69,12 @@ final class _RecordedTransport implements CoordinatorTransport {
         )
         .shortAlias;
     if (offline.contains(alias)) return const Err(CoordinatorUnreachable());
+    if (held.contains(alias)) {
+      return Completer<
+            Result<CoordinatorResponse, CoordinatorTransportFailure>
+          >()
+          .future;
+    }
     final endpoint = request.url.path.contains('info') ? 'info' : 'book';
     final file = File('$_fixtures/$alias-${network.name}-$endpoint.json');
     if (!file.existsSync()) return const Err(CoordinatorUnreachable());
@@ -150,6 +163,7 @@ void main() {
         Future<StreamController<P2pTorState>> show(
           RobosatsNetwork network, {
           Set<String> offline = const {},
+          Set<String> held = const {},
         }) async {
           final locator = GetIt.asNewInstance();
           final tor = StreamController<P2pTorState>.broadcast();
@@ -157,7 +171,11 @@ void main() {
           addTearDown(locator.reset);
           setUpP2pForTesting(
             locator,
-            transport: _RecordedTransport(network, offline: offline),
+            transport: _RecordedTransport(
+              network,
+              offline: offline,
+              held: held,
+            ),
             torStates: () => tor.stream,
             clock: () => _now,
           );
@@ -191,6 +209,25 @@ void main() {
         tor.add(P2pTorState.ready);
         await settle();
         await capture('offres-testnet-vide');
+
+        // The wait for the book: no coordinator has answered yet, then only Temple of Sats has.
+        final mainnet = {
+          for (final coordinator in Federation.robosats.on(
+            RobosatsNetwork.mainnet,
+          ))
+            coordinator.shortAlias,
+        };
+        tor = await show(RobosatsNetwork.mainnet, held: mainnet);
+        tor.add(P2pTorState.ready);
+        await settle();
+        await capture('offres-attente');
+        tor = await show(
+          RobosatsNetwork.mainnet,
+          held: mainnet.difference({'temple'}),
+        );
+        tor.add(P2pTorState.ready);
+        await settle();
+        await capture('offres-attente-partielle');
 
         // The recorded mainnet books.
         tor = await show(RobosatsNetwork.mainnet);
