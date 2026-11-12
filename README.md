@@ -71,7 +71,7 @@ A few notes on what the mock-up shows:
 
 ## Screens in the app
 
-> These are **real screens**, rendered from the app's own code by a test: the order book screens with books recorded from the RoboSats coordinators on November 10, 2026 (Gumpellite, added to the app's coordinator list after that recording, shows as offline), and the Garage with the public example Garage Key of the RoboSats tests. They are only visible when both superuser mode and developer mode are on. The order book screens were tried on a phone with a debug build; the Garage screens have not been tried on a phone yet (see the status below).
+> These are **real screens**, rendered from the app's own code by a test: the order book screens with books recorded from the RoboSats coordinators on November 10, 2026 (Gumpellite, added to the app's coordinator list after that recording, shows as offline), and the Garage, on testnet, with the public example Garage Key of the RoboSats tests (the backup alert shows a throwaway key drawn by the test, kept hidden). They are only visible when both superuser mode and developer mode are on. The order book screens were tried on a phone with a debug build; the Garage screens have not been tried on a phone yet (see the status below).
 
 <table>
   <tr>
@@ -98,14 +98,14 @@ What these screens do today, read-only: wait for Tor inside the tab, load the or
   </tr>
 </table>
 
-The Garage, where RoboSats keeps the Garage Key and its robots, works on the device only: it generates a Garage Key or takes a pasted one, shows it for backup with RoboSats' alert, shows the first robot derived from it, and then lets the user browse the robots, show the key again behind the wallet's PIN (when one is set), recover a robot by pasting a key, and delete the key. The key is kept by the wallet's vault, one per network, and never goes into the wallet's backups: the user backs it up separately. The whole Garage is protected against screen capture. Nothing is sent to a coordinator yet, and each visit starts again at robot 0.
+The Garage (RoboSats' name for the screen that holds the Garage Key and its robots) works on the device only. With no key stored, it generates a Garage Key or takes a pasted one, shows it for backup with RoboSats' alert, and shows the first robot derived from it; from the welcome screen, "Recovery" stores a pasted key. With a key stored, the user can browse the robots, show the key again behind the wallet's PIN (when one is set), and delete the key. The key is kept, one per network, in the wallet's secure storage on the device (`packages/secrets`, which also holds the seeds), never in a wallet backup: the user backs it up separately. The whole Garage asks for the wallet's screen-capture protection, as the seed screens do (on unless the user turned "Screen Privacy" off in the wallet's settings; not yet checked on a phone). Nothing is sent to a coordinator yet, and each visit starts again at robot 0.
 
 <details>
 <summary>Captures en français</summary>
 
 <br>
 
-*Écrans réels, rendus par le code de l'application dans un test, avec des carnets d'ordres enregistrés et, pour le Garage, la clé de garage d'exemple publique des tests de RoboSats. Visibles uniquement en mode super-utilisateur et développeur.*
+*Écrans réels, rendus par le code de l'application dans un test : les écrans du carnet d'ordres (lecture seule) avec des carnets enregistrés le 10 novembre 2026 (Gumpellite, ajouté à la liste des coordinateurs de l'application après cet enregistrement, apparaît hors ligne) ; le Garage, sur testnet, avec la clé de garage d'exemple, publique, des tests de RoboSats (l'alerte de sauvegarde montre une clé jetable tirée par le test, masquée). Visibles uniquement en mode super-utilisateur et développeur. Les écrans du carnet ont été essayés sur un téléphone avec une version de débogage ; le Garage ne l'a pas encore été.*
 
 <table>
   <tr>
@@ -134,7 +134,7 @@ The Garage, where RoboSats keeps the Garage Key and its robots, works on the dev
 
 ## How a trade works
 
-The planned flow is the RoboSats one; only the first three steps exist in the app so far, and no order can be taken yet. Example for a buyer who takes an order:
+The planned flow is the RoboSats one; only the first three steps exist in the app so far (the robots on the device only), and no order can be taken yet. Example for a buyer who takes an order:
 
 1. **Tor.** The P2P tab connects to the Tor network; the wallet stays usable in the meantime.
 2. **Robot.** The app creates a Garage Key, a master key from which it derives as many robots as needed. A robot is a disposable identity: a nickname, an avatar and its own keys.
@@ -166,14 +166,14 @@ What already exists in the code:
 - **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). Its own live test ran once, on a desktop PC behind a VPN, before the review fixes ([report](docs/spikes/tor-transport.md)); the robot test and the phone trials below have since gone through the corrected transport live, without targeting the fixed paths.
 - **The order book screens of the P2P tab**: Tor wait, order book and its depth chart, order details, the details of a coordinator and the search of an order by its URL, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
 - **A robot on a coordinator**: the code creates a robot on a coordinator and reads it back, over a Tor session of its own, and refuses any answer that is not the robot and the key pair of this device. A test did it six times on one testnet coordinator, from a desktop build ([report](docs/spikes/robot-coordinator.md)). No screen uses it yet ([#28](https://github.com/Skyman21m/troc/issues/28)).
-- **The Garage Key kept by the wallet's vault**: one per network (mainnet and testnet), random, never derived from the wallet's seed and never part of its backup; the P2P module can generate, import, find, delete it and derive its robots, only in the app in the foreground, and the custody checks limit which files may read it ([#28](https://github.com/Skyman21m/troc/issues/28)).
-- **The Garage screens**: generate or paste a Garage Key, back it up, meet the first robot, the profile with the key behind the wallet's PIN, robot recovery and deletion, the whole Garage protected against screen capture; on the device only, nothing is sent to a coordinator ([#29](https://github.com/Skyman21m/troc/issues/29)). Tested over a vault held in memory. Before any release, a copied key is to be flagged as sensitive to Android, and a key typed into the app is to be kept away from the system keyboard ([#56](https://github.com/Skyman21m/troc/issues/56)).
+- **The Garage Key kept in the wallet's secure storage**: one per network (mainnet and testnet), random, never derived from the wallet's seed and never part of its backup; the P2P module can generate, import, find, delete it and derive its robots, only in the app in the foreground, and the custody checks limit which files may read it ([#28](https://github.com/Skyman21m/troc/issues/28)).
+- **The Garage screens**: generate or paste a Garage Key, back it up, meet the first robot, the profile with the key behind the wallet's PIN (when one is set), robot recovery from a pasted key, and deleting the key; on the device only, nothing is sent to a coordinator ([#29](https://github.com/Skyman21m/troc/issues/29)). The whole Garage asks for the wallet's screen-capture protection, as the seed screens do (on unless the user turned "Screen Privacy" off in the wallet's settings; not yet checked on a phone). Tested over an in-memory stand-in for the secure storage. Before any release, a copied key is to be flagged as sensitive to Android, and a key typed into the app is to be kept away from the system keyboard ([#56](https://github.com/Skyman21m/troc/issues/56)).
 - **A first trial on a phone** (November 11, 2026, one Android phone, debug build): the P2P tab appeared, Tor connected in about 30 seconds, the six coordinators of the mainnet list all ended up answering, some later than others, and the order book, its filters (which ones were tried was not recorded), pull to refresh, the order details and the reversible-payment warning worked. This is what the tester saw; nothing was measured. Not checked on the phone: the low-bond warning, the testnet banner, the Tor error and its retry, an offline coordinator, the English texts.
-- **A second trial on a phone** (later on November 11, 2026, debug build of `main` at `55ba5139c`): the P2P tab, Tor, the order book, the order details, the coordinator details, the search and the depth chart worked. That build came before the Garage screens, which have not been tried on a phone yet.
+- **A second trial on a phone** (later on November 11, 2026, debug build of `main` at `55ba5139c`): the tester reported that everything tried worked as expected, the coordinator details, the Search entry and the depth chart included; what exactly was tried on each screen was not recorded. That build came before the Garage screens, which have not been tried on a phone yet.
 
 In progress: binding each robot to a single coordinator before any request, since a robot's credential is the same on every coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)), then contacting the coordinators from the Garage ([#29](https://github.com/Skyman21m/troc/issues/29)).
 
-Next: taking an order (phase 2, [#12](https://github.com/Skyman21m/troc/issues/12)).
+Next, once the bond decision is made ([#9](https://github.com/Skyman21m/troc/issues/9)): taking an order (phase 2, [#12](https://github.com/Skyman21m/troc/issues/12)).
 
 Not done yet: the map view of the order book ([#30](https://github.com/Skyman21m/troc/issues/30)), creating an order, the chat, and any operation that involves money.
 
@@ -181,17 +181,17 @@ Android first. Nothing is released yet. At this stage, the app still shows Bull'
 
 ## How it is built
 
-Troc adds two modules to Bull's code; Troc touches the rest as little as possible, so that it can keep up with updates of the original wallet.
+Troc adds two modules to Bull's code; Troc touches the rest as little as possible, so that it can keep up with updates of the original wallet. Outside them, the main changes to Bull's own code are in `packages/secrets`, which now also keeps the Garage Keys apart from the seeds, under its custody checks ([#45](https://github.com/Skyman21m/troc/pull/45), [#58](https://github.com/Skyman21m/troc/pull/58)), and in the shell that mounts the P2P tab and hands it that storage (`lib/router.dart`, `lib/locator.dart`).
 
 | Module | Role |
 |---|---|
 | [`packages/robosats`](packages/robosats/README.md) | Part of the RoboSats protocol in pure Dart, with no screen and no network access of its own: robot identity, OpenPGP, reading the coordinators. It talks to the network through an entry point that the app provides. |
-| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the screens of the P2P tab, shown only in superuser and developer mode: the order book and its views, read-only ([#30](https://github.com/Skyman21m/troc/issues/30)), and the Garage, on the device only ([#29](https://github.com/Skyman21m/troc/issues/29)), whose Garage Key is kept by the wallet's vault (`packages/secrets`). The map view is not built yet. |
+| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the screens of the P2P tab, shown only in superuser and developer mode: the order book and its views, read-only ([#30](https://github.com/Skyman21m/troc/issues/30)), and the Garage, on the device only ([#29](https://github.com/Skyman21m/troc/issues/29)), whose Garage Key is kept in the wallet's secure storage (`packages/secrets`). The map view is not built yet. |
 
 Principles:
 
 - **Tor only.** RoboSats coordinators are only reached at their `.onion` address.
-- **Identities kept apart from the wallet.** Robot keys are disposable and are never derived from the wallet's recovery phrase. The Garage Key is kept in the wallet's vault on the device, but never in the wallet's backups: neither the recovery phrase nor a wallet backup restores it, so it needs its own backup.
+- **Identities kept apart from the wallet.** Robot keys are disposable and are never derived from the wallet's recovery phrase. The Garage Key is kept in the wallet's secure storage on the device, never in a wallet backup: neither the recovery phrase nor an Encrypted Vault backup restores it, so it needs its own backup.
 - **Received data is treated as untrusted.** Coordinator responses and the other party's messages are bounded in size and checked before use. As in RoboSats, the coordinator must still be trusted for the escrow, disputes and relaying the other party's key.
 
 The code has not been audited yet. An independent security audit is planned before any beta (phase 5).
