@@ -658,12 +658,16 @@ void main() {
       await cubit.load();
       tor.embedded.ready();
       await until(cubit, known);
+      final shown = cubit.state;
+      final reads = bindings.calls.length;
 
       await cubit.putOn(lake);
       await _settle();
 
       expect(paths(), ['temple read']);
-      expect((cubit.state as RobotOnCoordinator).coordinator, temple);
+      // The cubit itself asks nothing: not even the use case, which would refuse it too.
+      expect(identical(cubit.state, shown), isTrue);
+      expect(bindings.calls, hasLength(reads));
     });
 
     test(
@@ -756,10 +760,15 @@ void main() {
         );
         tor.embedded.ready();
         final cubit = cubitAt(0);
+        final seen = <RobotCoordinatorState>[];
+        final subscription = cubit.stream.listen(seen.add);
+        addTearDown(subscription.cancel);
         await cubit.load();
         tor.embedded.ready();
         await _settle();
 
+        // Said at once, from the binding and the list: the coordinator is never shown as the robot's.
+        expect(seen.whereType<RobotOnCoordinator>(), isEmpty);
         expect(
           cubit.state,
           isA<RobotCoordinatorChanged>()
@@ -815,6 +824,98 @@ void main() {
       expect(coordinators.requests, isEmpty);
     },
   );
+
+  group('the coordinator of a binding, as the list gives it now', () {
+    final hosts = ListRobotHostsUsecase(
+      Federation.robosats,
+      RobotRequestLimiter(
+        elapsed: () => Duration.zero,
+        delay: (_) => Future<void>.value(),
+        random: () => 0.5,
+      ),
+    ).execute(_testnet);
+    final identity = switch (CoordinatorIdentity.of(temple, _testnet)) {
+      final identity? => identity,
+      null => throw StateError('no testnet instance'),
+    };
+    RobotBinding boundTo(CoordinatorIdentity coordinator) =>
+        RobotBinding(coordinator, testNow, BindingProvenance.drawnHere);
+    Matcher refused<T>() => isA<Err<Coordinator, P2pFailure>>().having(
+      (err) => err.failure,
+      'failure',
+      isA<T>(),
+    );
+
+    test('is the listed coordinator when nothing changed', () {
+      expect(
+        hosts.boundTo(boundTo(identity)),
+        isA<Ok<Coordinator, P2pFailure>>().having(
+          (ok) => ok.value,
+          'value',
+          temple,
+        ),
+      );
+    });
+
+    test('changed, when its keys or its address differ', () {
+      for (final changed in [
+        CoordinatorIdentity(
+          network: _testnet,
+          alias: 'temple',
+          onion: identity.onion,
+          nodeKeys: identity.nodeKeys,
+          nostrKey: '00${identity.nostrKey.substring(2)}',
+        ),
+        CoordinatorIdentity(
+          network: _testnet,
+          alias: 'temple',
+          onion: identity.onion,
+          nodeKeys: const [],
+          nostrKey: identity.nostrKey,
+        ),
+        CoordinatorIdentity(
+          network: _testnet,
+          alias: 'temple',
+          onion: 'http://${'a' * 56}.onion',
+          nodeKeys: identity.nodeKeys,
+          nostrKey: identity.nostrKey,
+        ),
+      ]) {
+        expect(
+          hosts.boundTo(boundTo(changed)),
+          refused<RobotCoordinatorChangedFailure>(),
+        );
+      }
+    });
+
+    test('changed, when the list no longer has it on the network', () {
+      final gone = CoordinatorIdentity(
+        network: _testnet,
+        alias: 'gone',
+        onion: identity.onion,
+        nodeKeys: identity.nodeKeys,
+        nostrKey: identity.nostrKey,
+      );
+      expect(
+        hosts.boundTo(boundTo(gone)),
+        refused<RobotCoordinatorChangedFailure>(),
+      );
+      expect(hosts.listed('gone'), isNull);
+      // Ammanaya has no testnet instance.
+      expect(hosts.listed('ammanaya'), isNull);
+    });
+
+    test('another coordinator, when the binding is of the other network', () {
+      final mainnetTemple = switch (CoordinatorIdentity.of(temple, _mainnet)) {
+        final identity? => identity,
+        null => throw StateError('no mainnet instance'),
+      };
+      expect(
+        hosts.boundTo(boundTo(mainnetTemple)),
+        refused<RobotBoundToAnotherCoordinatorFailure>(),
+      );
+    });
+  });
 
   test('the hosts of each network, in the order of the federation', () {
     expect(cubitAt(0).hosts().map((host) => host.coordinator.shortAlias), [
