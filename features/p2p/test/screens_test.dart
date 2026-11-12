@@ -43,8 +43,10 @@ void main() {
     );
 
     /// The bar below the steps.
-    BullFadingLinearProgress bar(WidgetTester tester) => tester
-        .widget<BullFadingLinearProgress>(find.byType(BullFadingLinearProgress));
+    BullFadingLinearProgress bar(WidgetTester tester) =>
+        tester.widget<BullFadingLinearProgress>(
+          find.byType(BullFadingLinearProgress),
+        );
 
     /// Lets a bar that stopped fade out: once it has, nothing on the screen moves any more.
     Future<void> fadeOut(WidgetTester tester) async {

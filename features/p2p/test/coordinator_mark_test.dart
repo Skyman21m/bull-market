@@ -66,13 +66,14 @@ void main() {
   };
 
   /// The letters of the mark shown.
-  String initials(WidgetTester tester) => tester
-      .widget<Text>(
-        find.descendant(
-          of: find.byType(CoordinatorMark),
-          matching: find.byType(Text),
-        ),
-      )
+  String initials(WidgetTester tester) =>
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byType(CoordinatorMark),
+              matching: find.byType(Text),
+            ),
+          )
           .data ??
       '';
 
@@ -134,8 +135,8 @@ void main() {
       for (final (alias, expected) in [
         ('TheBigLake', 'TB'),
         ('Ammanaya', 'A'),
-        ('‮Temple‍ of Satś', 'TS'),
-        ('élan sans capitale', 'T'),
+        ('\u202eTemple\u200d of Sats\u0301', 'TS'),
+        ('\u00e9lan sans capitale', 'T'),
         ('', 'T'),
       ]) {
         await show(tester, renamed(alias));
@@ -155,7 +156,10 @@ void main() {
           minScaleFactor: 3,
           maxScaleFactor: 3,
           child: Center(
-            child: CoordinatorMark(coordinator: coordinator('temple'), size: 44),
+            child: CoordinatorMark(
+              coordinator: coordinator('temple'),
+              size: 44,
+            ),
           ),
         ),
       ),
