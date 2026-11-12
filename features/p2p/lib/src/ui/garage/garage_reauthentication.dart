@@ -26,3 +26,13 @@ Future<bool> askReauthentication(
   );
   return passed ?? false;
 }
+
+/// [askReauthentication] from [context], for a cubit that decides itself whether to ask it: `null` without [reauthenticate], so that the cubit refuses what needs it, and `false` once [context] is gone.
+Future<bool> Function()? reauthenticationFrom(
+  BuildContext context,
+  P2pReauthentication? reauthenticate,
+) => switch (reauthenticate) {
+  null => null,
+  final gate =>
+    () async => context.mounted && await askReauthentication(context, gate),
+};

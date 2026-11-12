@@ -40,4 +40,14 @@ abstract interface class RobotBindingRepository {
     RobotSlot robot,
     CoordinatorIdentity coordinator,
   );
+
+  /// What this device records about the key of [key]: its history on [network], `drawnHere` only when it is recorded as drawn on this device for [network], and whether any robot index of it is bound, on either network.
+  ///
+  /// Both are read in one statement, so they describe the same moment.
+  /// It reads only: a database that cannot be read is a [P2pStorageFailure].
+  @useResult
+  Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  );
 }

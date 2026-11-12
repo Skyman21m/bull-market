@@ -14,6 +14,7 @@ import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
 import 'account_navigator.dart';
 import 'delete_garage_key_dialog.dart';
+import 'garage_key_history_notice.dart';
 import 'garage_reauthentication.dart';
 
 /// The address of the RoboSats documentation, which the official client opens from the third step.
@@ -27,8 +28,9 @@ const simplexGroupUrl =
 ///
 /// 1. The Garage Key: « Generate Garage Key » draws it in the vault, which stores it at once, and it is shown right after for backup, with the official client's alert, without asking the user to authenticate again, as long as the user stays and the app stays in the foreground.
 /// Once the app was hidden or paused, from the tap on « Generate Garage Key » on, or at a later visit while the user has not pressed « Continue », the alert stays and the key is behind the PIN, as on the profile.
-/// The official client keeps a generated key in memory until « Continue », so pasting over it or « Generate new » replace it silently; here the key is stored as soon as it is drawn, so the field where a key is pasted comes before it is generated, and « Generate new » asks « Delete Garage Key? » first.
+/// The official client keeps a generated key in memory until « Continue », so pasting over it or « Generate new » replace it silently; here the key is stored as soon as it is drawn, so the field where a key is pasted comes before it is generated, and « Generate new » asks « Delete Garage Key? » first, then the PIN when a robot of the key may live on a coordinator, as « Delete All » does.
 /// 2. The robot of the key, derived on the device, and the robot navigator; the official client also asks the coordinators about it, which Troc does not do yet.
+/// Right after a draw whose history could not be recorded, it says so.
 /// 3. Browse or create: « Search » shows the offers, « Create » is disabled, and the help links are shown for copy, never opened.
 class GarageWizard extends StatefulWidget {
   /// The step shown, from 1 to 3.
@@ -153,10 +155,12 @@ class _GarageWizardState extends State<GarageWizard> {
       :final key,
       :final failure,
       :final showWithoutPin,
+      :final deletionNeedsPin,
     )) {
       // Without the PIN only right after the draw, in the foreground; otherwise behind the PIN, as on the profile.
       final visible = showWithoutPin || _revealed;
       final reauthenticate = widget.reauthenticate;
+      final replaceDisabled = deletionNeedsPin && reauthenticate == null;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -191,16 +195,29 @@ class _GarageWizardState extends State<GarageWizard> {
           if (failure != null) _FailureLine(failure.toTranslated(context)),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () async {
-                if (await DeleteGarageKeyDialog.show(context)) {
-                  await cubit.replace();
-                }
-              },
-              icon: Icon(Icons.casino, color: colors.primary),
-              label: Text(
-                l10n.p2pGarageOnboardingGenerateNew,
-                style: text.labelLarge?.copyWith(color: colors.primary),
+            // Without the shell's re-authentication, a key whose delete asks the PIN cannot be replaced here.
+            child: Opacity(
+              opacity: replaceDisabled ? 0.5 : 1,
+              child: TextButton.icon(
+                onPressed: replaceDisabled
+                    ? null
+                    : () async {
+                        if (!await DeleteGarageKeyDialog.show(context) ||
+                            !context.mounted) {
+                          return;
+                        }
+                        await cubit.replace(
+                          reauthenticate: reauthenticationFrom(
+                            context,
+                            reauthenticate,
+                          ),
+                        );
+                      },
+                icon: Icon(Icons.casino, color: colors.primary),
+                label: Text(
+                  l10n.p2pGarageOnboardingGenerateNew,
+                  style: text.labelLarge?.copyWith(color: colors.primary),
+                ),
               ),
             ),
           ),
@@ -318,6 +335,10 @@ class _GarageWizardState extends State<GarageWizard> {
         ),
         if (state.failure case final failure?)
           _FailureLine(failure.toTranslated(context)),
+        if (state.historyNotRecorded) ...[
+          const Gap(BullSpacing.sm),
+          const GarageKeyHistoryNotRecorded(),
+        ],
         const Gap(BullSpacing.sm),
         BullButton.big(
           label: l10n.p2pCommonContinue,
