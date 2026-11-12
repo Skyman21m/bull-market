@@ -252,6 +252,27 @@ Coordinator _withoutTestnet(Coordinator coordinator) => Coordinator(
   federated: coordinator.federated,
 );
 
+/// [coordinator] as a later list could give it, with another Nostr key.
+Coordinator _withNostrKey(Coordinator coordinator, String nostrHexPubkey) =>
+    Coordinator(
+      shortAlias: coordinator.shortAlias,
+      longAlias: coordinator.longAlias,
+      identifier: coordinator.identifier,
+      description: coordinator.description,
+      motto: coordinator.motto,
+      color: coordinator.color,
+      established: coordinator.established,
+      nostrHexPubkey: nostrHexPubkey,
+      contact: coordinator.contact,
+      badges: coordinator.badges,
+      policies: coordinator.policies,
+      mainnet: coordinator.mainnet,
+      testnet: coordinator.testnet,
+      mainnetNodesPubkeys: coordinator.mainnetNodesPubkeys,
+      testnetNodesPubkeys: coordinator.testnetNodesPubkeys,
+      federated: coordinator.federated,
+    );
+
 /// The armored public key a first contact sent, from its header.
 String? _sentPublicKey(CoordinatorRequest request) {
   final parts = (request.headers['Authorization'] ?? '').split(' | ');
@@ -994,7 +1015,7 @@ void main() {
         bindings,
         keys,
       );
-      put = PutRobotOnCoordinatorUsecase(fetch, limiter);
+      put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
       read = ReadRobotOnCoordinatorUsecase(
         fetch,
         bindings,
@@ -1134,6 +1155,7 @@ void main() {
                 bindings,
                 keys,
               ),
+              bindings,
               time.limiter(),
             );
 
@@ -1381,6 +1403,122 @@ void main() {
           );
         },
       );
+
+      test(
+        'a robot bound there and known is read back, and sent no first contact',
+        () async {
+          // The coordinator stored the first contact, and its answer was lost.
+          coordinators.script.add(_Reply.storedThenTimedOut);
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<CoordinatorTimedOut>(),
+          );
+
+          final face = _face(await put.execute(robots[0], temple));
+
+          // Found by the read: a pair this call did not send.
+          expect(face.alreadyExisted, isTrue);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+          ]);
+          expect(keys.generated, [robots[0].identity.hashId]);
+          expect(keys.proved, [robots[0].identity.hashId]);
+        },
+      );
+
+      test(
+        'a robot bound there and unknown is read, then sent one first contact',
+        () async {
+          coordinators.script.add(_Reply.timedOut);
+          await put.execute(robots[0], temple);
+
+          final face = _face(await put.execute(robots[0], temple));
+
+          expect(face.alreadyExisted, isFalse);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+            secondPair.publicKey.armored,
+          ]);
+          expect(keys.proved, isEmpty);
+        },
+      );
+
+      test(
+        'the busy and 7004 rules hold on both requests of a robot bound there',
+        () async {
+          coordinators.script.add(_Reply.timedOut);
+          await put.execute(robots[0], temple);
+          coordinators.script.addAll([
+            _Reply.busy,
+            _Reply.unknown,
+            _Reply.busy,
+            _Reply.nicknameTaken,
+            _Reply.unknown,
+            _Reply.unknown,
+          ]);
+
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<RobotNicknameTaken>(),
+          );
+          expect(time.waits, [
+            const Duration(seconds: 2),
+            const Duration(seconds: 2),
+            RobotRequestLimiter.nicknameRecheckWait,
+          ]);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+            null,
+            secondPair.publicKey.armored,
+            secondPair.publicKey.armored,
+            null,
+            null,
+          ]);
+          // The refusal counted.
+          for (var i = 0; i < 2; i++) {
+            limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+          }
+          expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        },
+      );
+
+      test(
+        'a robot bound to a coordinator that changed since is sent nothing',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          final sent = coordinators.requests.length;
+          final changed = _withNostrKey(temple, '1' * 64);
+
+          expect(
+            await put.execute(robots[0], changed),
+            _refused<RobotCoordinatorChangedFailure>(),
+          );
+          expect(
+            await put.execute(robots[0], lake),
+            _refused<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(coordinators.requests, hasLength(sent));
+        },
+      );
+
+      test('a database that cannot be read sends nothing', () async {
+        final failing = RecordingBindings()
+          ..readFailure = const P2pStorageFailure();
+
+        expect(
+          await PutRobotOnCoordinatorUsecase(
+            fetch,
+            failing,
+            limiter,
+          ).execute(robots[0], temple),
+          _refused<P2pStorageFailure>(),
+        );
+        expect(coordinators.requests, isEmpty);
+        expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+      });
 
       test(
         'first contacts running at once never pass the cap of 7004 refusals',

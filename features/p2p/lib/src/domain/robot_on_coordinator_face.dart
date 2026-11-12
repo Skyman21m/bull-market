@@ -33,10 +33,11 @@ final class RobotOnCoordinatorFace {
   /// Which Nostr key the coordinator holds for the robot.
   final RobotNostrKeyStatus nostrKey;
 
-  /// Whether a first contact found the robot already on the coordinator: the coordinator returned a key pair that is not the one this first contact sent, proven by the robot's token.
+  /// Whether putting the robot on the coordinator found it already there: the coordinator returned a key pair, proven by the robot's token, that the call putting it did not send.
   ///
+  /// That is the robot a read finds before any first contact, for a robot already bound to that coordinator, or another pair answered to a first contact.
   /// It was made by another device or client, or by an earlier request of this device whose answer was lost: the coordinator says so, no more (AGENTS.md, « A robot on a coordinator »).
-  /// Always false for a read back, which sends no pair.
+  /// Always false for `ReadRobotOnCoordinatorUsecase`, which puts nothing.
   final bool alreadyExisted;
 
   const RobotOnCoordinatorFace({
@@ -47,7 +48,7 @@ final class RobotOnCoordinatorFace {
     required this.alreadyExisted,
   });
 
-  /// What [robot] shows of itself; [alreadyExisted] as the first contact that read it tells it.
+  /// What [robot] shows of itself; [alreadyExisted] as the call that read it tells it.
   factory RobotOnCoordinatorFace.of(
     CoordinatorRobot robot, {
     required bool alreadyExisted,

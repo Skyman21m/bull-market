@@ -121,7 +121,7 @@ final class P2pLocator {
     });
     // A robot put on a coordinator, read back from it, and let go: their only callers will be the Garage's robot panel, and nothing outside the feature reaches them.
     locator.registerFactory<PutRobotOnCoordinatorUsecase>(
-      () => PutRobotOnCoordinatorUsecase(locator(), locator()),
+      () => PutRobotOnCoordinatorUsecase(locator(), locator(), locator()),
     );
     locator.registerFactory<ReadRobotOnCoordinatorUsecase>(
       () => ReadRobotOnCoordinatorUsecase(
