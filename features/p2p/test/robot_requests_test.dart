@@ -1606,6 +1606,24 @@ void main() {
           );
         },
       );
+
+      for (final (reply, failure) in [
+        (_Reply.unreachable, 'unreachable'),
+        (_Reply.failed, 'failed'),
+      ]) {
+        test('a transport that $failure is not sent again', () async {
+          coordinators.script.add(reply);
+
+          expect(
+            await put.execute(robots[0], temple),
+            reply == _Reply.unreachable
+                ? _answered<CoordinatorUnreachable>()
+                : _answered<CoordinatorTransportFailed>(),
+          );
+          expect(coordinators.requests, hasLength(1));
+          expect(time.waits, isEmpty);
+        });
+      }
     });
 
     group('ReadRobotOnCoordinatorUsecase', () {
@@ -1814,6 +1832,58 @@ void main() {
           );
         },
       );
+
+      test(
+        'reads a robot from the coordinator its binding names, wherever the list puts it',
+        () async {
+          _face(await put.execute(robots[1], lake));
+          _face(await put.execute(mainnetRobots[2], lake));
+          final reversed = Federation([
+            ...Federation.robosats.coordinators.reversed,
+          ]);
+
+          for (final federation in [Federation.robosats, reversed]) {
+            final reading = ReadRobotOnCoordinatorUsecase(
+              fetch,
+              bindings,
+              limiter,
+              federation,
+            );
+            for (final (robot, network) in [
+              (robots[1], _testnet),
+              (mainnetRobots[2], _mainnet),
+            ]) {
+              _face(await reading.execute(robot));
+              final request = coordinators.requests.last;
+              expect(request.url.host, hostOf('lake', network));
+              expect(
+                request.headers['Authorization'],
+                robot.identity.authorizationHeader(),
+              );
+            }
+          }
+          expect(coordinators.requests, hasLength(6));
+        },
+      );
+
+      for (final (reply, failure) in [
+        (_Reply.unreachable, 'unreachable'),
+        (_Reply.failed, 'failed'),
+      ]) {
+        test('a transport that $failure is not sent again', () async {
+          _face(await put.execute(robots[0], temple));
+          coordinators.script.add(reply);
+
+          expect(
+            await read.execute(robots[0]),
+            reply == _Reply.unreachable
+                ? _answered<CoordinatorUnreachable>()
+                : _answered<CoordinatorTransportFailed>(),
+          );
+          expect(coordinators.requests, hasLength(2));
+          expect(time.waits, isEmpty);
+        });
+      }
     });
 
     group('ReleaseRobotUsecase', () {
