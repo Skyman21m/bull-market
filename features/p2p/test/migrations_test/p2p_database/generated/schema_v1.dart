@@ -4,7 +4,8 @@
 //
 import 'package:drift/drift.dart';
 
-class GarageKeyHistories extends Table with TableInfo {
+class GarageKeyHistories extends Table
+    with TableInfo<GarageKeyHistories, GarageKeyHistoriesData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -56,8 +57,26 @@ class GarageKeyHistories extends Table with TableInfo {
   @override
   Set<GeneratedColumn> get $primaryKey => {network, keyFingerprint};
   @override
-  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
-    throw UnsupportedError('TableInfo.map in schema verification code');
+  GarageKeyHistoriesData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GarageKeyHistoriesData(
+      network: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}network'],
+      )!,
+      keyFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key_fingerprint'],
+      )!,
+      origin: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin'],
+      )!,
+      recordedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}recorded_at'],
+      )!,
+    );
   }
 
   @override
@@ -76,7 +95,199 @@ class GarageKeyHistories extends Table with TableInfo {
   bool get dontWriteConstraints => true;
 }
 
-class RobotBindings extends Table with TableInfo {
+class GarageKeyHistoriesData extends DataClass
+    implements Insertable<GarageKeyHistoriesData> {
+  final String network;
+  final String keyFingerprint;
+  final String origin;
+  final int recordedAt;
+  const GarageKeyHistoriesData({
+    required this.network,
+    required this.keyFingerprint,
+    required this.origin,
+    required this.recordedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['network'] = Variable<String>(network);
+    map['key_fingerprint'] = Variable<String>(keyFingerprint);
+    map['origin'] = Variable<String>(origin);
+    map['recorded_at'] = Variable<int>(recordedAt);
+    return map;
+  }
+
+  GarageKeyHistoriesCompanion toCompanion(bool nullToAbsent) {
+    return GarageKeyHistoriesCompanion(
+      network: Value(network),
+      keyFingerprint: Value(keyFingerprint),
+      origin: Value(origin),
+      recordedAt: Value(recordedAt),
+    );
+  }
+
+  factory GarageKeyHistoriesData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GarageKeyHistoriesData(
+      network: serializer.fromJson<String>(json['network']),
+      keyFingerprint: serializer.fromJson<String>(json['keyFingerprint']),
+      origin: serializer.fromJson<String>(json['origin']),
+      recordedAt: serializer.fromJson<int>(json['recordedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'network': serializer.toJson<String>(network),
+      'keyFingerprint': serializer.toJson<String>(keyFingerprint),
+      'origin': serializer.toJson<String>(origin),
+      'recordedAt': serializer.toJson<int>(recordedAt),
+    };
+  }
+
+  GarageKeyHistoriesData copyWith({
+    String? network,
+    String? keyFingerprint,
+    String? origin,
+    int? recordedAt,
+  }) => GarageKeyHistoriesData(
+    network: network ?? this.network,
+    keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+    origin: origin ?? this.origin,
+    recordedAt: recordedAt ?? this.recordedAt,
+  );
+  GarageKeyHistoriesData copyWithCompanion(GarageKeyHistoriesCompanion data) {
+    return GarageKeyHistoriesData(
+      network: data.network.present ? data.network.value : this.network,
+      keyFingerprint: data.keyFingerprint.present
+          ? data.keyFingerprint.value
+          : this.keyFingerprint,
+      origin: data.origin.present ? data.origin.value : this.origin,
+      recordedAt: data.recordedAt.present
+          ? data.recordedAt.value
+          : this.recordedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GarageKeyHistoriesData(')
+          ..write('network: $network, ')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('origin: $origin, ')
+          ..write('recordedAt: $recordedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(network, keyFingerprint, origin, recordedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GarageKeyHistoriesData &&
+          other.network == this.network &&
+          other.keyFingerprint == this.keyFingerprint &&
+          other.origin == this.origin &&
+          other.recordedAt == this.recordedAt);
+}
+
+class GarageKeyHistoriesCompanion
+    extends UpdateCompanion<GarageKeyHistoriesData> {
+  final Value<String> network;
+  final Value<String> keyFingerprint;
+  final Value<String> origin;
+  final Value<int> recordedAt;
+  final Value<int> rowid;
+  const GarageKeyHistoriesCompanion({
+    this.network = const Value.absent(),
+    this.keyFingerprint = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GarageKeyHistoriesCompanion.insert({
+    required String network,
+    required String keyFingerprint,
+    required String origin,
+    required int recordedAt,
+    this.rowid = const Value.absent(),
+  }) : network = Value(network),
+       keyFingerprint = Value(keyFingerprint),
+       origin = Value(origin),
+       recordedAt = Value(recordedAt);
+  static Insertable<GarageKeyHistoriesData> custom({
+    Expression<String>? network,
+    Expression<String>? keyFingerprint,
+    Expression<String>? origin,
+    Expression<int>? recordedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (network != null) 'network': network,
+      if (keyFingerprint != null) 'key_fingerprint': keyFingerprint,
+      if (origin != null) 'origin': origin,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GarageKeyHistoriesCompanion copyWith({
+    Value<String>? network,
+    Value<String>? keyFingerprint,
+    Value<String>? origin,
+    Value<int>? recordedAt,
+    Value<int>? rowid,
+  }) {
+    return GarageKeyHistoriesCompanion(
+      network: network ?? this.network,
+      keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+      origin: origin ?? this.origin,
+      recordedAt: recordedAt ?? this.recordedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (network.present) {
+      map['network'] = Variable<String>(network.value);
+    }
+    if (keyFingerprint.present) {
+      map['key_fingerprint'] = Variable<String>(keyFingerprint.value);
+    }
+    if (origin.present) {
+      map['origin'] = Variable<String>(origin.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<int>(recordedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GarageKeyHistoriesCompanion(')
+          ..write('network: $network, ')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('origin: $origin, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class RobotBindings extends Table
+    with TableInfo<RobotBindings, RobotBindingsData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -166,8 +377,42 @@ class RobotBindings extends Table with TableInfo {
   @override
   Set<GeneratedColumn> get $primaryKey => {keyFingerprint, robotIndex};
   @override
-  Never map(Map<String, dynamic> data, {String? tablePrefix}) {
-    throw UnsupportedError('TableInfo.map in schema verification code');
+  RobotBindingsData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RobotBindingsData(
+      network: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}network'],
+      )!,
+      keyFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key_fingerprint'],
+      )!,
+      robotIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}robot_index'],
+      )!,
+      coordinatorAlias: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coordinator_alias'],
+      )!,
+      coordinatorOnion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coordinator_onion'],
+      )!,
+      coordinatorNodeKeys: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coordinator_node_keys'],
+      )!,
+      coordinatorNostrKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coordinator_nostr_key'],
+      )!,
+      boundAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bound_at'],
+      )!,
+    );
   }
 
   @override
@@ -187,6 +432,315 @@ class RobotBindings extends Table with TableInfo {
   ];
   @override
   bool get dontWriteConstraints => true;
+}
+
+class RobotBindingsData extends DataClass
+    implements Insertable<RobotBindingsData> {
+  final String network;
+  final String keyFingerprint;
+  final int robotIndex;
+  final String coordinatorAlias;
+  final String coordinatorOnion;
+  final String coordinatorNodeKeys;
+  final String coordinatorNostrKey;
+  final int boundAt;
+  const RobotBindingsData({
+    required this.network,
+    required this.keyFingerprint,
+    required this.robotIndex,
+    required this.coordinatorAlias,
+    required this.coordinatorOnion,
+    required this.coordinatorNodeKeys,
+    required this.coordinatorNostrKey,
+    required this.boundAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['network'] = Variable<String>(network);
+    map['key_fingerprint'] = Variable<String>(keyFingerprint);
+    map['robot_index'] = Variable<int>(robotIndex);
+    map['coordinator_alias'] = Variable<String>(coordinatorAlias);
+    map['coordinator_onion'] = Variable<String>(coordinatorOnion);
+    map['coordinator_node_keys'] = Variable<String>(coordinatorNodeKeys);
+    map['coordinator_nostr_key'] = Variable<String>(coordinatorNostrKey);
+    map['bound_at'] = Variable<int>(boundAt);
+    return map;
+  }
+
+  RobotBindingsCompanion toCompanion(bool nullToAbsent) {
+    return RobotBindingsCompanion(
+      network: Value(network),
+      keyFingerprint: Value(keyFingerprint),
+      robotIndex: Value(robotIndex),
+      coordinatorAlias: Value(coordinatorAlias),
+      coordinatorOnion: Value(coordinatorOnion),
+      coordinatorNodeKeys: Value(coordinatorNodeKeys),
+      coordinatorNostrKey: Value(coordinatorNostrKey),
+      boundAt: Value(boundAt),
+    );
+  }
+
+  factory RobotBindingsData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RobotBindingsData(
+      network: serializer.fromJson<String>(json['network']),
+      keyFingerprint: serializer.fromJson<String>(json['keyFingerprint']),
+      robotIndex: serializer.fromJson<int>(json['robotIndex']),
+      coordinatorAlias: serializer.fromJson<String>(json['coordinatorAlias']),
+      coordinatorOnion: serializer.fromJson<String>(json['coordinatorOnion']),
+      coordinatorNodeKeys: serializer.fromJson<String>(
+        json['coordinatorNodeKeys'],
+      ),
+      coordinatorNostrKey: serializer.fromJson<String>(
+        json['coordinatorNostrKey'],
+      ),
+      boundAt: serializer.fromJson<int>(json['boundAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'network': serializer.toJson<String>(network),
+      'keyFingerprint': serializer.toJson<String>(keyFingerprint),
+      'robotIndex': serializer.toJson<int>(robotIndex),
+      'coordinatorAlias': serializer.toJson<String>(coordinatorAlias),
+      'coordinatorOnion': serializer.toJson<String>(coordinatorOnion),
+      'coordinatorNodeKeys': serializer.toJson<String>(coordinatorNodeKeys),
+      'coordinatorNostrKey': serializer.toJson<String>(coordinatorNostrKey),
+      'boundAt': serializer.toJson<int>(boundAt),
+    };
+  }
+
+  RobotBindingsData copyWith({
+    String? network,
+    String? keyFingerprint,
+    int? robotIndex,
+    String? coordinatorAlias,
+    String? coordinatorOnion,
+    String? coordinatorNodeKeys,
+    String? coordinatorNostrKey,
+    int? boundAt,
+  }) => RobotBindingsData(
+    network: network ?? this.network,
+    keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+    robotIndex: robotIndex ?? this.robotIndex,
+    coordinatorAlias: coordinatorAlias ?? this.coordinatorAlias,
+    coordinatorOnion: coordinatorOnion ?? this.coordinatorOnion,
+    coordinatorNodeKeys: coordinatorNodeKeys ?? this.coordinatorNodeKeys,
+    coordinatorNostrKey: coordinatorNostrKey ?? this.coordinatorNostrKey,
+    boundAt: boundAt ?? this.boundAt,
+  );
+  RobotBindingsData copyWithCompanion(RobotBindingsCompanion data) {
+    return RobotBindingsData(
+      network: data.network.present ? data.network.value : this.network,
+      keyFingerprint: data.keyFingerprint.present
+          ? data.keyFingerprint.value
+          : this.keyFingerprint,
+      robotIndex: data.robotIndex.present
+          ? data.robotIndex.value
+          : this.robotIndex,
+      coordinatorAlias: data.coordinatorAlias.present
+          ? data.coordinatorAlias.value
+          : this.coordinatorAlias,
+      coordinatorOnion: data.coordinatorOnion.present
+          ? data.coordinatorOnion.value
+          : this.coordinatorOnion,
+      coordinatorNodeKeys: data.coordinatorNodeKeys.present
+          ? data.coordinatorNodeKeys.value
+          : this.coordinatorNodeKeys,
+      coordinatorNostrKey: data.coordinatorNostrKey.present
+          ? data.coordinatorNostrKey.value
+          : this.coordinatorNostrKey,
+      boundAt: data.boundAt.present ? data.boundAt.value : this.boundAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RobotBindingsData(')
+          ..write('network: $network, ')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('robotIndex: $robotIndex, ')
+          ..write('coordinatorAlias: $coordinatorAlias, ')
+          ..write('coordinatorOnion: $coordinatorOnion, ')
+          ..write('coordinatorNodeKeys: $coordinatorNodeKeys, ')
+          ..write('coordinatorNostrKey: $coordinatorNostrKey, ')
+          ..write('boundAt: $boundAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    network,
+    keyFingerprint,
+    robotIndex,
+    coordinatorAlias,
+    coordinatorOnion,
+    coordinatorNodeKeys,
+    coordinatorNostrKey,
+    boundAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RobotBindingsData &&
+          other.network == this.network &&
+          other.keyFingerprint == this.keyFingerprint &&
+          other.robotIndex == this.robotIndex &&
+          other.coordinatorAlias == this.coordinatorAlias &&
+          other.coordinatorOnion == this.coordinatorOnion &&
+          other.coordinatorNodeKeys == this.coordinatorNodeKeys &&
+          other.coordinatorNostrKey == this.coordinatorNostrKey &&
+          other.boundAt == this.boundAt);
+}
+
+class RobotBindingsCompanion extends UpdateCompanion<RobotBindingsData> {
+  final Value<String> network;
+  final Value<String> keyFingerprint;
+  final Value<int> robotIndex;
+  final Value<String> coordinatorAlias;
+  final Value<String> coordinatorOnion;
+  final Value<String> coordinatorNodeKeys;
+  final Value<String> coordinatorNostrKey;
+  final Value<int> boundAt;
+  final Value<int> rowid;
+  const RobotBindingsCompanion({
+    this.network = const Value.absent(),
+    this.keyFingerprint = const Value.absent(),
+    this.robotIndex = const Value.absent(),
+    this.coordinatorAlias = const Value.absent(),
+    this.coordinatorOnion = const Value.absent(),
+    this.coordinatorNodeKeys = const Value.absent(),
+    this.coordinatorNostrKey = const Value.absent(),
+    this.boundAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RobotBindingsCompanion.insert({
+    required String network,
+    required String keyFingerprint,
+    required int robotIndex,
+    required String coordinatorAlias,
+    required String coordinatorOnion,
+    required String coordinatorNodeKeys,
+    required String coordinatorNostrKey,
+    required int boundAt,
+    this.rowid = const Value.absent(),
+  }) : network = Value(network),
+       keyFingerprint = Value(keyFingerprint),
+       robotIndex = Value(robotIndex),
+       coordinatorAlias = Value(coordinatorAlias),
+       coordinatorOnion = Value(coordinatorOnion),
+       coordinatorNodeKeys = Value(coordinatorNodeKeys),
+       coordinatorNostrKey = Value(coordinatorNostrKey),
+       boundAt = Value(boundAt);
+  static Insertable<RobotBindingsData> custom({
+    Expression<String>? network,
+    Expression<String>? keyFingerprint,
+    Expression<int>? robotIndex,
+    Expression<String>? coordinatorAlias,
+    Expression<String>? coordinatorOnion,
+    Expression<String>? coordinatorNodeKeys,
+    Expression<String>? coordinatorNostrKey,
+    Expression<int>? boundAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (network != null) 'network': network,
+      if (keyFingerprint != null) 'key_fingerprint': keyFingerprint,
+      if (robotIndex != null) 'robot_index': robotIndex,
+      if (coordinatorAlias != null) 'coordinator_alias': coordinatorAlias,
+      if (coordinatorOnion != null) 'coordinator_onion': coordinatorOnion,
+      if (coordinatorNodeKeys != null)
+        'coordinator_node_keys': coordinatorNodeKeys,
+      if (coordinatorNostrKey != null)
+        'coordinator_nostr_key': coordinatorNostrKey,
+      if (boundAt != null) 'bound_at': boundAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RobotBindingsCompanion copyWith({
+    Value<String>? network,
+    Value<String>? keyFingerprint,
+    Value<int>? robotIndex,
+    Value<String>? coordinatorAlias,
+    Value<String>? coordinatorOnion,
+    Value<String>? coordinatorNodeKeys,
+    Value<String>? coordinatorNostrKey,
+    Value<int>? boundAt,
+    Value<int>? rowid,
+  }) {
+    return RobotBindingsCompanion(
+      network: network ?? this.network,
+      keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+      robotIndex: robotIndex ?? this.robotIndex,
+      coordinatorAlias: coordinatorAlias ?? this.coordinatorAlias,
+      coordinatorOnion: coordinatorOnion ?? this.coordinatorOnion,
+      coordinatorNodeKeys: coordinatorNodeKeys ?? this.coordinatorNodeKeys,
+      coordinatorNostrKey: coordinatorNostrKey ?? this.coordinatorNostrKey,
+      boundAt: boundAt ?? this.boundAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (network.present) {
+      map['network'] = Variable<String>(network.value);
+    }
+    if (keyFingerprint.present) {
+      map['key_fingerprint'] = Variable<String>(keyFingerprint.value);
+    }
+    if (robotIndex.present) {
+      map['robot_index'] = Variable<int>(robotIndex.value);
+    }
+    if (coordinatorAlias.present) {
+      map['coordinator_alias'] = Variable<String>(coordinatorAlias.value);
+    }
+    if (coordinatorOnion.present) {
+      map['coordinator_onion'] = Variable<String>(coordinatorOnion.value);
+    }
+    if (coordinatorNodeKeys.present) {
+      map['coordinator_node_keys'] = Variable<String>(
+        coordinatorNodeKeys.value,
+      );
+    }
+    if (coordinatorNostrKey.present) {
+      map['coordinator_nostr_key'] = Variable<String>(
+        coordinatorNostrKey.value,
+      );
+    }
+    if (boundAt.present) {
+      map['bound_at'] = Variable<int>(boundAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RobotBindingsCompanion(')
+          ..write('network: $network, ')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('robotIndex: $robotIndex, ')
+          ..write('coordinatorAlias: $coordinatorAlias, ')
+          ..write('coordinatorOnion: $coordinatorOnion, ')
+          ..write('coordinatorNodeKeys: $coordinatorNodeKeys, ')
+          ..write('coordinatorNostrKey: $coordinatorNostrKey, ')
+          ..write('boundAt: $boundAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
 }
 
 class DatabaseAtV1 extends GeneratedDatabase {

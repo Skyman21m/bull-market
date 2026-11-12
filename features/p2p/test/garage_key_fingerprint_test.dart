@@ -217,7 +217,7 @@ void main() {
       nodeKeys: const ['02aa', '03bb'],
       nostrKey: 'nostr-temple',
     );
-    final binding = RobotBinding(temple, testNow);
+    final binding = RobotBinding(temple, testNow, BindingProvenance.drawnHere);
 
     Matcher refusedWith<T>() => isA<Err<void, P2pFailure>>().having(
       (err) => err.failure,

@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_key_compute_port.dart';
+import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
@@ -17,6 +18,7 @@ import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/testing.dart'
     show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
 import 'package:robosats/robosats.dart' show Federation;
@@ -71,6 +73,9 @@ void main() {
     // A robot comes from a Garage Key only, so its request is registered with the Garage, over the bindings and the key work of its pair.
     locator.isRegistered<RobotKeyComputePort>(),
     locator.isRegistered<FetchRobotUsecase>(),
+    // The local reads and records of a robot's standing, over the same database.
+    locator.isRegistered<ReadRobotStandingUsecase>(),
+    locator.isRegistered<AcknowledgeGarageKeyHistoryUsecase>(),
   ];
 
   test(
@@ -122,7 +127,9 @@ void main() {
         ..get<ImportGarageKeyUsecase>()
         ..get<DeriveFirstRobotUsecase>()
         ..get<DeleteGarageKeyUsecase>()
-        ..get<FetchRobotUsecase>();
+        ..get<FetchRobotUsecase>()
+        ..get<ReadRobotStandingUsecase>()
+        ..get<AcknowledgeGarageKeyHistoryUsecase>();
       expect(storage.reads, 0);
       expect(storage.entries, isEmpty);
       expect(directoryAsked, 0);

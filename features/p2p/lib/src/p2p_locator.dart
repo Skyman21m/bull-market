@@ -16,6 +16,7 @@ import 'domain/p2p_shuffle.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/robot_key_compute_port.dart';
+import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
 import 'domain/usecases/delete_garage_key_usecase.dart';
@@ -27,6 +28,7 @@ import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
+import 'domain/usecases/read_robot_standing_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
@@ -123,6 +125,13 @@ final class P2pLocator {
     );
     locator.registerFactory<NeedsPinToDeleteGarageKeyUsecase>(
       () => NeedsPinToDeleteGarageKeyUsecase(locator()),
+    );
+    // The local reads and records of the Garage's robot panel: nothing outside the feature reaches them.
+    locator.registerFactory<ReadRobotStandingUsecase>(
+      () => ReadRobotStandingUsecase(locator()),
+    );
+    locator.registerFactory<AcknowledgeGarageKeyHistoryUsecase>(
+      () => AcknowledgeGarageKeyHistoryUsecase(locator()),
     );
     // The Garage of a network, created when the user opens it.
     // The keys drawn and not acknowledged yet, in memory, for the whole run of the app.

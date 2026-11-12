@@ -93,6 +93,10 @@ Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>
 /// A binding, torn off.
 Object bindByTearOff(RobotBindingRepository bindings) => bindings.bind;
 
+/// The acknowledgement of a key's unknown history, torn off.
+Object acknowledgeByTearOff(RobotBindingRepository bindings) =>
+    bindings.recordAcknowledgedKey;
+
 /// A robot proven on the calling isolate, torn off.
 Object proveByTearOff(UnprovenCoordinatorRobot robot) => robot.prove;
 

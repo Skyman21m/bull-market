@@ -33,13 +33,31 @@ final class RobotSlot {
   String toString() => 'RobotSlot(${network.name}, $accountIndex)';
 }
 
-/// What this device knows of the history of a Garage Key: where its robots may already have gone.
+/// What this device knows of the history of a Garage Key on one network: where its robots may already have gone.
 enum GarageKeyHistory {
   /// The key was drawn on this device and recorded so: a robot of it without a binding has been sent to no coordinator, and may be bound for the first time.
   drawnHere,
 
-  /// The key was imported, or this device has no record of drawing it (the record could not be written, or the database was lost): a robot of it without a binding may already live on a coordinator, so it is never bound.
+  /// The history of the key is unknown, and the user acknowledged that its robots may already live on coordinators: a robot of it without a binding may be bound, and its binding records that provenance.
+  ///
+  /// An import of the key makes its history unknown again, since a pasted copy may have travelled.
+  acknowledged,
+
+  /// The key was imported, or this device has no record of drawing it (the record could not be written, or the database was lost), and the user did not acknowledge it since: a robot of it without a binding may already live on a coordinator, so it is not bound.
   unknown,
+}
+
+/// The history of a robot's key on the robot's network when the robot was bound, recorded with the binding and never changed.
+///
+/// Phase 2 reads it to decide what such a robot may do with an order.
+/// It is the history on the robot's own network only, while a robot's token is the same on both: a key drawn on testnet and pasted into the mainnet slot keeps `drawnHere` for the robots bound on testnet.
+/// So `drawnHere` does not mean that the key never left the device: phase 2 must read the key's history on the other network too before it relies on that.
+enum BindingProvenance {
+  /// The key was drawn on this device: the robot had been sent to no coordinator before.
+  drawnHere,
+
+  /// The history of the key was unknown and the user acknowledged it: the robot may also live on other coordinators, from elsewhere, which hold its credential.
+  acknowledged,
 }
 
 /// What this device records about where the robots of one Garage Key may be: the history of the key on one network, and whether any robot index of it is bound to a coordinator, on either network.
@@ -55,7 +73,7 @@ final class GarageKeyExposure {
 
   const GarageKeyExposure({required this.history, required this.hasBinding});
 
-  /// Whether a robot of the key may live on a coordinator: one is bound, on either network, or the key was not recorded as drawn on this device for its network, so its robots may have reached coordinators from elsewhere.
+  /// Whether a robot of the key may live on a coordinator: one is bound, on either network, or the key was not recorded as drawn on this device for its network (imported, acknowledged or never recorded), so its robots may have reached coordinators from elsewhere.
   ///
   /// Only a key drawn here, recorded so, with no robot bound, has none: deleting it loses no robot that a coordinator knows.
   bool get mayHaveRobotsOnCoordinators =>
@@ -154,7 +172,10 @@ final class RobotBinding {
   /// When the binding was written, just before the first request of the robot left for [coordinator].
   final DateTime boundAt;
 
-  const RobotBinding(this.coordinator, this.boundAt);
+  /// The history of the robot's key on the robot's network when it was bound.
+  final BindingProvenance provenance;
+
+  const RobotBinding(this.coordinator, this.boundAt, this.provenance);
 
   /// Whether a request of the robot may go to [requested]: only to the coordinator it is bound to, on the same network, with the onion address and the keys it had then.
   ///
@@ -175,11 +196,58 @@ final class RobotBinding {
   bool operator ==(Object other) =>
       other is RobotBinding &&
       other.coordinator == coordinator &&
-      other.boundAt == boundAt;
+      other.boundAt == boundAt &&
+      other.provenance == provenance;
 
   @override
-  int get hashCode => Object.hash(coordinator, boundAt);
+  int get hashCode => Object.hash(coordinator, boundAt, provenance);
 
   @override
-  String toString() => 'RobotBinding($coordinator)';
+  String toString() => 'RobotBinding($coordinator, ${provenance.name})';
+}
+
+/// Where a robot stands on this device: the coordinator its index is bound to, if any, and the history of its key on the robot's network.
+///
+/// It is what the Garage reads to show a robot, with no request.
+/// It holds no token, no key and no fingerprint: the network of the robot, the coordinator as its binding recorded it with the provenance of that binding, and the history.
+@immutable
+final class RobotStanding {
+  /// The network of the robot's key, the one [history] is about.
+  final RobosatsNetwork network;
+
+  /// The binding of the robot's index, made on either network, or `null` when this device sent its credential to no coordinator.
+  final RobotBinding? binding;
+
+  /// The history of the robot's key on [network].
+  final GarageKeyHistory history;
+
+  const RobotStanding({
+    required this.network,
+    required this.binding,
+    required this.history,
+  });
+
+  /// Whether the user must acknowledge the history of the robot's key before the robot can be bound: it has no binding, and its key is neither recorded as drawn here nor acknowledged on [network].
+  bool get needsAcknowledgement =>
+      binding == null && history == GarageKeyHistory.unknown;
+
+  /// Whether the robot is bound to a coordinator of the other network, so that no coordinator of [network] may receive it.
+  bool get isBoundOnOtherNetwork => switch (binding) {
+    final bound? => bound.coordinator.network != network,
+    null => false,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is RobotStanding &&
+      other.network == network &&
+      other.binding == binding &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(network, binding, history);
+
+  @override
+  String toString() =>
+      'RobotStanding(${network.name}, ${binding ?? 'unbound'}, ${history.name})';
 }

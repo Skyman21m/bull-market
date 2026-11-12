@@ -68,43 +68,61 @@ void main() {
     }
   });
 
-  test('no file silences a diagnostic but the two the generators write', () {
-    // AGENTS.md bans `// ignore`: an `ignore` of `invalid_use_of_internal_member`, or of a whole type of warnings, would let a file call the package's internals without a sign (review of #67).
-    // gen-l10n writes `// ignore: unused_import` and `// ignore_for_file: type=lint`, Drift the second: neither silences a warning.
-    final offenders = <String>[];
-    for (final path in libraries.keys) {
-      for (final ignore in _ignores(File(path).readAsStringSync())) {
-        final generated =
-            path.startsWith('lib/generated/l10n/p2p_localizations') ||
-            path.endsWith('.g.dart');
-        if (!generated ||
-            !{
-              'ignore: unused_import',
-              'ignore_for_file: type=lint',
-            }.contains(ignore)) {
-          offenders.add('$path $ignore');
+  test(
+    'no file silences a diagnostic but those the generators write, and the experimental table migration',
+    () {
+      // AGENTS.md bans `// ignore`: an `ignore` of `invalid_use_of_internal_member`, or of a whole type of warnings, would let a file call the package's internals without a sign (review of #67).
+      // gen-l10n writes `// ignore: unused_import` and `// ignore_for_file: type=lint`, Drift the second in its code and both on one line in its migration steps: lints and unused imports only.
+      // The migration to schema 2 rebuilds the histories with drift's `TableMigration`, which drift marks experimental: one `ignore` of that warning, on that line, as the wallet's own migrations have it.
+      final offenders = <String>[];
+      for (final path in libraries.keys) {
+        final ignores = _ignores(File(path).readAsStringSync());
+        if (path == 'lib/src/data/p2p_database.dart') {
+          expect(ignores, ['ignore: experimental_member_use']);
+          continue;
+        }
+        final allowed = switch (path) {
+          _ when path.startsWith('lib/generated/l10n/p2p_localizations') => {
+            'ignore: unused_import',
+            'ignore_for_file: type=lint',
+          },
+          _ when path.endsWith('.g.dart') => {'ignore_for_file: type=lint'},
+          'lib/src/data/p2p_database.steps.dart' => {
+            'ignore_for_file: type=lint, unused_import',
+          },
+          _ => const <String>{},
+        };
+        for (final ignore in ignores) {
+          if (!allowed.contains(ignore)) offenders.add('$path $ignore');
         }
       }
-    }
-    expect(offenders, isEmpty);
-    // The check sees each form.
-    // The diagnostic's name is put together at run time: the custody check of CI refuses it written after an `ignore` anywhere, the samples of a test included.
-    final internal = ['invalid', 'use', 'of', 'internal', 'member'].join('_');
-    expect(
-      _ignores(
-        '// ignore: $internal\n'
-        'x; // ignore:$internal, unused_import\n'
-        '/* ignore_for_file: type=warning */\n'
-        '// ignore_for_file: type=lint\n',
-      ),
-      [
-        'ignore: $internal',
-        'ignore: $internal, unused_import',
-        'ignore_for_file: type=warning',
-        'ignore_for_file: type=lint',
-      ],
-    );
-  });
+      expect(offenders, isEmpty);
+      // The one `ignore` of the database sits right before the table migration, so that it silences nothing else.
+      final database = File('lib/src/data/p2p_database.dart').readAsLinesSync();
+      final line = database.indexWhere((l) => l.contains('ignore:'));
+      expect(
+        database[line + 1].trim(),
+        'TableMigration(schema.garageKeyHistories),',
+      );
+      // The check sees each form.
+      // The diagnostic's name is put together at run time: the custody check of CI refuses it written after an `ignore` anywhere, the samples of a test included.
+      final internal = ['invalid', 'use', 'of', 'internal', 'member'].join('_');
+      expect(
+        _ignores(
+          '// ignore: $internal\n'
+          'x; // ignore:$internal, unused_import\n'
+          '/* ignore_for_file: type=warning */\n'
+          '// ignore_for_file: type=lint\n',
+        ),
+        [
+          'ignore: $internal',
+          'ignore: $internal, unused_import',
+          'ignore_for_file: type=warning',
+          'ignore_for_file: type=lint',
+        ],
+      );
+    },
+  );
 
   group('resolved by the analyzer,', () {
     late AnalysisContextCollection collection;
@@ -169,6 +187,9 @@ void main() {
             'rawProcess': {'network Process'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
+            'acknowledgeByTearOff': {
+              'RobotBindingRepository.recordAcknowledgedKey',
+            },
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
           },
@@ -283,6 +304,14 @@ void main() {
       },
     );
 
+    test('only the acknowledgement of the user records a key as acknowledged', () {
+      // It lets the robots of a key of unknown history be bound: no other path may write it on the user's behalf.
+      expect(
+        referring((r) => r == 'RobotBindingRepository.recordAcknowledgedKey'),
+        {'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart'},
+      );
+    });
+
     test('deleting a key cannot reach the bindings', () {
       expect(
         references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
@@ -314,9 +343,18 @@ void main() {
       ),
       {
         'lib/src/data/p2p_database.dart',
+        // The migration steps `make drift-migrations` writes from the snapshots.
+        'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/testing.dart',
       },
+    );
+    expect(
+      where(
+        (facts) =>
+            facts.imports.any((uri) => uri.endsWith('p2p_database.steps.dart')),
+      ),
+      {'lib/src/data/p2p_database.dart'},
     );
     expect(where((facts) => facts.constructed.contains('P2pDatabase.open')), {
       'lib/src/p2p_locator.dart',
@@ -333,8 +371,11 @@ void main() {
         fail('no repository');
     final database =
         libraries['lib/src/data/p2p_database.dart'] ?? fail('no database');
+    final steps =
+        libraries['lib/src/data/p2p_database.steps.dart'] ??
+        fail('no migration steps');
 
-    for (final facts in [repository, database]) {
+    for (final facts in [repository, database, steps]) {
       expect(
         facts.invoked.intersection({
           'delete',
@@ -349,6 +390,10 @@ void main() {
           'insertAllOnConflictUpdate',
           'deleteTable',
           'drop',
+          // A column of the bindings dropped or renamed, or the table renamed, would lose what a binding records (review of #72).
+          'dropColumn',
+          'renameColumn',
+          'renameTable',
         }),
         isEmpty,
       );
@@ -364,12 +409,91 @@ void main() {
         );
       }
     }
-    // The one upsert moves the history of a key to `imported`, never a binding.
+    // The two upserts move the history of a key, to `imported` or to `acknowledged`, never a binding.
     expect(
       repository.namesByMethod.entries
           .where((entry) => entry.value.contains('DoUpdate'))
           .map((entry) => entry.key),
-      ['recordImportedKey'],
+      ['recordImportedKey', 'recordAcknowledgedKey'],
+    );
+    // The migration rebuilds the histories only: the bindings gain a column, and no binding is copied or dropped.
+    expect(database.calls.where((call) => call.startsWith('TableMigration(')), [
+      'TableMigration(schema.garageKeyHistories)',
+    ]);
+    expect(
+      database.calls.where((call) => call.startsWith('alterTable(')),
+      everyElement(isNot(contains('robotBindings'))),
+    );
+    expect(database.calls.where((call) => call.startsWith('addColumn(')), [
+      'addColumn(schema.robotBindings, schema.robotBindings.provenance)',
+    ]);
+    // Every call of the migrator, in order: nothing else changes a table.
+    expect(database.qualifiedCalls.where((call) => call.startsWith('m.')), [
+      'm.alterTable(TableMigration(schema.garageKeyHistories))',
+      'm.addColumn(schema.robotBindings, schema.robotBindings.provenance)',
+    ]);
+  });
+
+  test('a robot is bound by one statement that reads the history itself', () {
+    // The binding may be written only while the key's history allows it: a read of the history followed by a write would let an import of the key, from another connection, land in between (review of #72).
+    // The tests of binds at once check the order of their results, not this: these pins guard that the check and the write are one statement.
+    final repository =
+        libraries['lib/src/data/robot_binding_repository_impl.dart'] ??
+        fail('no repository');
+    final bind = repository.callsByMethod['bind'] ?? fail('no bind');
+
+    expect(
+      bind.where((call) => call.startsWith('customInsert(')),
+      hasLength(1),
+    );
+    expect(
+      bind.where((call) => call.startsWith('customInsert(_bindIfFreshSql,')),
+      hasLength(1),
+    );
+    expect(bind.where((call) => call.startsWith('customSelect(')), isEmpty);
+    // Across the whole file too: a helper that read the history and wrote the binding, the pinned insert left unused in `bind`, passed a check of `bind` alone (second review of #72).
+    expect(
+      repository.calls.where((call) => call.startsWith('customInsert(')),
+      hasLength(1),
+    );
+    expect(
+      repository.calls.where(
+        (call) => call.startsWith('customInsert(_bindIfFreshSql,'),
+      ),
+      hasLength(1),
+    );
+    // The table of the bindings is handed to its reads and to that insert only: no typed insert, batch or other write.
+    expect(
+      repository.calls.where(
+        (call) =>
+            call.contains('robotBindings') &&
+            !RegExp(r'^(select|customSelect|customInsert)\(').hasMatch(call),
+      ),
+      isEmpty,
+    );
+    // And no SQL text inserts but the pinned one.
+    final pinned =
+        repository.constants['_bindIfFreshSql'] ?? fail('no _bindIfFreshSql');
+    expect(
+      repository.strings.where(
+        (text) =>
+            RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
+            !pinned.contains(text),
+      ),
+      isEmpty,
+    );
+    expect(
+      repository.namesByMethod['bind'],
+      isNot(contains('garageKeyHistories')),
+    );
+    expect(
+      repository.constants['_bindIfFreshSql'],
+      'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
+      'coordinator_alias, coordinator_onion, coordinator_node_keys, '
+      'coordinator_nostr_key, bound_at, provenance) '
+      'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
+      'WHERE network = ? AND key_fingerprint = ? AND origin IN (?, ?) '
+      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING',
     );
   });
 }
@@ -385,6 +509,18 @@ final class _Facts {
   /// The names used in the body of each method or function, by its name.
   final Map<String, Set<String>> namesByMethod;
 
+  /// Each invocation, as its name and its arguments, `name(a, b)`.
+  final List<String> calls;
+
+  /// The invocations in the body of each method or function, by its name, as [calls] gives them.
+  final Map<String, List<String>> callsByMethod;
+
+  /// Each invocation on a simple name, as `target.name(a, b)`.
+  final List<String> qualifiedCalls;
+
+  /// The text of each variable initialised with a string literal, by its name.
+  final Map<String, String> constants;
+
   _Facts(
     this.imports,
     this.names,
@@ -392,6 +528,10 @@ final class _Facts {
     this.constructed,
     this.strings,
     this.namesByMethod,
+    this.calls,
+    this.callsByMethod,
+    this.qualifiedCalls,
+    this.constants,
   );
 
   factory _Facts.of(String source) {
@@ -409,6 +549,10 @@ final class _Facts {
       visitor.constructed,
       visitor.strings,
       visitor.namesByMethod,
+      visitor.calls,
+      visitor.callsByMethod,
+      visitor.qualifiedCalls,
+      visitor.constants,
     );
   }
 }
@@ -419,6 +563,10 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   final Set<String> constructed = {};
   final List<String> strings = [];
   final Map<String, Set<String>> namesByMethod = {};
+  final List<String> calls = [];
+  final Map<String, List<String>> callsByMethod = {};
+  final List<String> qualifiedCalls = [];
+  final Map<String, String> constants = {};
   String? _method;
 
   @override
@@ -450,6 +598,13 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     invoked.add(node.methodName.name);
+    final call =
+        '${node.methodName.name}(${node.argumentList.arguments.map((argument) => argument.toSource()).join(', ')})';
+    calls.add(call);
+    if (_method case final method?) (callsByMethod[method] ??= []).add(call);
+    if (node.target case SimpleIdentifier(:final name)) {
+      qualifiedCalls.add('$name.$call');
+    }
     // `P2pDatabase.open(…)` parses as an invocation of `open` on `P2pDatabase` when the parser does not resolve it.
     if (node.target case SimpleIdentifier(:final name)) {
       constructed.add('$name.${node.methodName.name}');
@@ -463,6 +618,16 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
     final named = node.constructorName.name?.name;
     constructed.add(named == null ? type : '$type.$named');
     super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    if (node.initializer case final StringLiteral literal?) {
+      if (literal.stringValue case final text?) {
+        constants[node.name.lexeme] = text;
+      }
+    }
+    super.visitVariableDeclaration(node);
   }
 
   @override
@@ -508,7 +673,12 @@ const _watched = {
   'CoordinatorTransport': ('package:robosats/', {'send'}),
   'RobotBindingRepository': (
     'package:p2p/',
-    {'bind', 'recordGeneratedKey', 'recordImportedKey'},
+    {
+      'bind',
+      'recordGeneratedKey',
+      'recordImportedKey',
+      'recordAcknowledgedKey',
+    },
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
