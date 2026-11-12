@@ -8,11 +8,11 @@ import 'package:robosats/robosats.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 
-/// [temple] with another long alias.
-Coordinator renamed(String longAlias) {
+/// [temple] with another long alias, and another short alias when given.
+Coordinator renamed(String longAlias, {String? shortAlias}) {
   final temple = coordinator('temple');
   return Coordinator(
-    shortAlias: temple.shortAlias,
+    shortAlias: shortAlias ?? temple.shortAlias,
     longAlias: longAlias,
     identifier: temple.identifier,
     description: temple.description,
@@ -122,6 +122,28 @@ void main() {
       }
 
       expect(marks, hasLength(Federation.robosats.coordinators.length));
+    },
+  );
+
+  testWidgets(
+    'whatever its short alias, a coordinator is drawn in one of five theme colours, never red or grey',
+    (tester) async {
+      final used = <Color>{};
+      for (final alias in [
+        for (final unit in 'abcdefghijklmnopqrstuvwxyz0123456789'.codeUnits)
+          String.fromCharCode(unit),
+      ]) {
+        await show(tester, renamed('Example', shortAlias: alias));
+        used.add(frameColor(tester));
+      }
+
+      expect(used, {
+        testBullTheme.info,
+        testBullTheme.success,
+        testBullTheme.tertiary,
+        testBullTheme.bitcoinOrange,
+        testBullTheme.secondary,
+      });
     },
   );
 
