@@ -55,7 +55,7 @@ class GarageCubit extends Cubit<GarageState> {
     if (state is! GarageWithoutKey) return;
     emit(GarageWorking(_network));
     switch (await _generate.execute(_network)) {
-      // Whether the key's history could be recorded is for the screens that send a robot to a coordinator, which do not exist yet.
+      // A key whose history could not be recorded (`GarageKeyHistory.unknown`) is told to the user by the step that makes robots usable, which does not exist yet.
       case Ok():
         // Remembered before anything else, so that a user who left meanwhile gets the backup alert at the next visit.
         _unacknowledged._networks.add(_network);

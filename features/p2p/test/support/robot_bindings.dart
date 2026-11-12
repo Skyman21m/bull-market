@@ -28,17 +28,23 @@ RobotBindingRepositoryImpl bindingsInMemory({
 /// One call made to [RecordingBindings].
 typedef BindingCall = (String method, Object? first, Object? second);
 
-/// Bindings that keep the calls made to them and give [failure] to every call, or success without it.
+/// Bindings that keep the calls made to them and give [failure] to every call, or to the first [failures] calls when it is set, or success without it.
 final class RecordingBindings implements RobotBindingRepository {
   final List<BindingCall> calls = [];
   P2pFailure? failure;
+  int? failures;
 
-  RecordingBindings({this.failure});
+  RecordingBindings({this.failure, this.failures});
 
-  Result<void, P2pFailure> get _result => switch (failure) {
-    final failure? => Err(failure),
-    null => const Ok(null),
-  };
+  Result<void, P2pFailure> get _result {
+    final failure = this.failure;
+    if (failure == null) return const Ok(null);
+    if (failures case final left?) {
+      if (left <= 0) return const Ok(null);
+      failures = left - 1;
+    }
+    return Err(failure);
+  }
 
   @override
   Future<Result<void, P2pFailure>> recordGeneratedKey(

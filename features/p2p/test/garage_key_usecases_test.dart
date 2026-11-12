@@ -332,6 +332,27 @@ void main() {
     });
 
     test(
+      'a record that fails once is tried again while the drawn key is in hand',
+      () async {
+        bindings
+          ..failure = const P2pStorageFailure()
+          ..failures = 1;
+
+        expect(
+          await GenerateGarageKeyUsecase(
+            repository,
+            bindings,
+          ).execute(RobosatsNetwork.testnet),
+          drawnWith(GarageKeyHistory.drawnHere),
+        );
+        expect(bindings.calls, [
+          ('recordGeneratedKey', RobosatsNetwork.testnet, exampleFingerprint),
+          ('recordGeneratedKey', RobosatsNetwork.testnet, exampleFingerprint),
+        ]);
+      },
+    );
+
+    test(
       'a key drawn whose record cannot be written is stored, and its history is reported unknown',
       () async {
         bindings.failure = const P2pStorageFailure();
@@ -344,7 +365,8 @@ void main() {
           drawnWith(GarageKeyHistory.unknown),
         );
         expect(repository.calls, ['create testnet']);
-        expect(bindings.calls, hasLength(1));
+        // Tried twice, never more.
+        expect(bindings.calls, hasLength(2));
       },
     );
   });

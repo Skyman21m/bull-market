@@ -21,7 +21,8 @@ final class GenerateGarageKeyUsecase {
   /// Draws the key, then records the fingerprint of the key the vault drew, as the repository hands it back, as drawn on this device: only such a key lets its robots be bound to a coordinator for the first time.
   ///
   /// Nothing is read back from the slot in between, so the record is about the key this draw made and no other.
-  /// The record comes after the key, whose bytes the vault draws: when it cannot be written, the key is stored all the same and the result is `Ok(GarageKeyHistory.unknown)`, so the caller learns that the robots of this key will be refused until a later step offers a way out; `Ok(GarageKeyHistory.drawnHere)` otherwise.
+  /// The record comes after the key, whose bytes the vault draws, and is tried twice while the drawn key is still in hand, since nothing can record it afterwards: when neither write succeeds, the key is stored all the same and the result is `Ok(GarageKeyHistory.unknown)`, so the caller learns that the robots of this key will be refused; `Ok(GarageKeyHistory.drawnHere)` otherwise.
+  /// Telling the user is for the step that makes robots usable, with a way out for a key of unknown history; the Garage ignores the value until then.
   /// The key itself is not handed out: the screen that shows it for backup reads it.
   @useResult
   Future<Result<GarageKeyHistory, P2pFailure>> execute(
@@ -33,9 +34,12 @@ final class GenerateGarageKeyUsecase {
 
   Future<GarageKeyHistory> _record(NetworkGarageKey key) async {
     if (key.fingerprint case Ok(value: final fingerprint)) {
-      if (await _bindings.recordGeneratedKey(key.network, fingerprint)
-          case Ok()) {
-        return GarageKeyHistory.drawnHere;
+      // A second try for a write that failed for a moment, such as a busy database.
+      for (var attempt = 0; attempt < 2; attempt++) {
+        if (await _bindings.recordGeneratedKey(key.network, fingerprint)
+            case Ok()) {
+          return GarageKeyHistory.drawnHere;
+        }
       }
     }
     return GarageKeyHistory.unknown;
