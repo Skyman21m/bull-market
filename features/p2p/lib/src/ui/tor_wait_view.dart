@@ -11,6 +11,7 @@ import 'widgets/tor_wait_phrases.dart';
 ///
 /// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress, as the official Android client's spinner turns until Tor is ready (`activity_main.xml` at commit ff1998c).
 /// Once Tor reports how far it has got, the bar is filled to that share and the [percent] stands next to it: the official Android client reads Tor's bootstrap percentage (`TorKmpManager.kt`) but shows none, and the owner asked for it (#68).
+/// The room of the percentage is kept for the whole wait, so nothing moves when it comes.
 /// Under the bar, short phrases change every 2 seconds ([TorWaitPhrases], Troc's own texts, also asked for by the owner).
 /// Neither the percentage nor the phrases show once Tor is ready or has failed.
 /// The wallet stays usable meanwhile: only this tab waits.
@@ -41,6 +42,11 @@ class TorWaitView extends StatelessWidget {
     final failed = tor == TorWait.failed;
     final waiting = tor == TorWait.initializing || tor == TorWait.connecting;
     final percent = tor == TorWait.connecting ? this.percent : null;
+    final formats = P2pFormats.of(context);
+    final percentStyle = text.labelLarge?.copyWith(
+      color: colors.text,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     // Tor fails while it connects: the failure shows on that step.
     final reached = switch (tor) {
       TorWait.initializing => 0,
@@ -97,13 +103,25 @@ class TorWaitView extends StatelessWidget {
                 Expanded(
                   child: _TorBar(running: waiting, percent: percent),
                 ),
-                if (percent != null) ...[
-                  const Gap(BullSpacing.xs),
-                  Text(
-                    P2pFormats.of(context).torProgress(percent),
-                    style: text.labelLarge?.copyWith(color: colors.text),
-                  ),
-                ],
+                const Gap(BullSpacing.xs),
+                // The room of the widest percentage is kept for the whole wait, so that neither the bar nor the screen moves when a percentage comes, goes or gains a digit.
+                Stack(
+                  alignment: AlignmentDirectional.centerEnd,
+                  children: [
+                    Visibility(
+                      visible: false,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      maintainSize: true,
+                      child: Text(
+                        formats.torProgress(TorWait.maxPercent),
+                        style: percentStyle,
+                      ),
+                    ),
+                    if (percent != null)
+                      Text(formats.torProgress(percent), style: percentStyle),
+                  ],
+                ),
               ],
             ),
             if (waiting) ...[
@@ -134,7 +152,7 @@ class TorWaitView extends StatelessWidget {
 
 /// The bar under the steps.
 ///
-/// It runs for as long as Tor starts, as the official Android client's spinner turns until Tor is ready, and fades out once Tor is ready or has failed.
+/// It runs while [running], as the official Android client's spinner turns until Tor is ready, and fades out when it stops.
 /// With a [percent], the part done is filled and the run goes on over the whole bar: dimmed where the start is not done yet, so that it does not read as done, and in a lighter tint over the fill, so that the bar never stands still while Tor is not ready, even at 0 % or during the seconds `bull_tor` holds readiness at a full share.
 class _TorBar extends StatelessWidget {
   static const height = 4.0;

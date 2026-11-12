@@ -146,6 +146,23 @@ BullFadingLinearProgress bar(WidgetTester tester) =>
       find.byType(BullFadingLinearProgress).first,
     );
 
+/// The texts with a percent sign that are painted: the one that keeps the room of the percentage for the whole wait is not.
+List<String> shownPercents(WidgetTester tester) {
+  final hidden = find
+      .descendant(of: find.byType(Visibility), matching: find.byType(Text))
+      .evaluate()
+      .toSet();
+  return [
+    for (final element in find.textContaining('%').evaluate())
+      if (!hidden.contains(element)) (element.widget as Text).data ?? '',
+  ];
+}
+
+/// The bar under the steps.
+final barArea = find.byWidgetPredicate(
+  (widget) => widget.runtimeType.toString() == '_TorBar',
+);
+
 /// The fill of the bar, drawn only with a percentage.
 final fill = find.byType(AnimatedFractionallySizedBox);
 
@@ -179,7 +196,7 @@ void main() {
       await tester.pumpWidget(wait(TorWait.connecting));
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.textContaining('%'), findsNothing);
+      expect(shownPercents(tester), isEmpty);
       expect(fill, findsNothing);
       expect(bar(tester).trigger, isTrue);
       expect(bar(tester).foregroundColor, testBullTheme.primary);
@@ -190,7 +207,9 @@ void main() {
     testWidgets(
       'the bar filled to the percentage, which stands next to it, and still running',
       (tester) async {
-        await tester.pumpWidget(wait(TorWait.connecting, percent: 42));
+        await tester.pumpWidget(
+          wait(TorWait.connecting, percent: 42, still: false),
+        );
         await tester.pump(const Duration(milliseconds: 100));
 
         expect(find.text('42%'), findsOneWidget);
@@ -226,10 +245,12 @@ void main() {
 
     for (final percent in [0, 99]) {
       testWidgets('$percent %: the bar still runs', (tester) async {
-        await tester.pumpWidget(wait(TorWait.connecting, percent: percent));
+        await tester.pumpWidget(
+          wait(TorWait.connecting, percent: percent, still: false),
+        );
         await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.text('$percent%'), findsOneWidget);
+        expect(shownPercents(tester), ['$percent%']);
         expect(filled(tester), closeTo(percent / 100, 0.001));
         expect(bar(tester).trigger, isTrue);
         expect(tester.hasRunningAnimations, isTrue);
@@ -242,7 +263,7 @@ void main() {
       ) async {
         await tester.pumpWidget(wait(tor, percent: 42));
 
-        expect(find.textContaining('%'), findsNothing);
+        expect(shownPercents(tester), isEmpty);
         expect(fill, findsNothing);
       });
     }
@@ -259,7 +280,7 @@ void main() {
 
       // A new attempt of Tor: no share yet.
       await tester.pumpWidget(wait(TorWait.connecting));
-      expect(find.textContaining('%'), findsNothing);
+      expect(shownPercents(tester), isEmpty);
       expect(fill, findsNothing);
       expect(bar(tester).foregroundColor, testBullTheme.primary);
     });
@@ -292,17 +313,76 @@ void main() {
 
       expect(find.bySemanticsLabel('Initializing Tor daemon'), findsOneWidget);
       expect(find.bySemanticsLabel('42%'), findsOneWidget);
+      // The text that only keeps the room of the percentage is not read.
+      expect(find.bySemanticsLabel('99%'), findsNothing);
       semantics.dispose();
     });
 
     testWidgets(
+      'nothing moves when a percentage comes or gains a digit: the title, the bar and its length',
+      (tester) async {
+        Future<(Rect, Rect)> layout(TorWait tor, int? percent) async {
+          await tester.pumpWidget(wait(tor, percent: percent));
+          return (
+            tester.getRect(find.text('Connecting to Tor network').first),
+            tester.getRect(barArea),
+          );
+        }
+
+        final before = await layout(TorWait.initializing, null);
+        for (final (tor, percent) in [
+          (TorWait.connecting, null),
+          (TorWait.connecting, 0),
+          (TorWait.connecting, 5),
+          (TorWait.connecting, 42),
+          (TorWait.connecting, 99),
+        ]) {
+          expect(await layout(tor, percent), before, reason: '$tor $percent');
+        }
+      },
+    );
+
+    testWidgets(
+      'nothing moves on a 320-point screen at text scale 3, in French either',
+      (tester) async {
+        const size = Size(320, 568);
+        useScreen(tester, size);
+        Future<(Rect, Rect)> layout(int? percent) async {
+          await tester.pumpWidget(
+            wait(
+              TorWait.connecting,
+              percent: percent,
+              locale: const Locale('fr'),
+              size: size,
+              textScale: 3,
+            ),
+          );
+          return (
+            tester.getRect(find.text('Connexion au réseau Tor').first),
+            tester.getRect(barArea),
+          );
+        }
+
+        final before = await layout(null);
+        for (final percent in [0, 7, 99]) {
+          expect(await layout(percent), before, reason: '$percent');
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+
+    testWidgets(
       'Tor fails after a percentage: the run fades out, as it does without one',
       (tester) async {
-        await tester.pumpWidget(wait(TorWait.connecting, percent: 42));
+        await tester.pumpWidget(
+          wait(TorWait.connecting, percent: 42, still: false),
+        );
         await tester.pump(const Duration(milliseconds: 100));
         final run = tester.element(find.byType(BullFadingLinearProgress).first);
 
-        await tester.pumpWidget(wait(TorWait.failed, percent: 42));
+        await tester.pumpWidget(
+          wait(TorWait.failed, percent: 42, still: false),
+        );
         expect(find.byType(BullFadingLinearProgress), findsOneWidget);
         // The same run, so its fade goes on from where it was.
         expect(tester.element(find.byType(BullFadingLinearProgress)), run);
@@ -678,7 +758,7 @@ void main() {
         await open(tester);
         reports.add(P2pTorReport(P2pTorState.connecting));
         await settle(tester);
-        expect(find.textContaining('%'), findsNothing);
+        expect(shownPercents(tester), isEmpty);
         expect(shownPhrases(tester), [englishPhrases[1]]);
 
         reports.add(P2pTorReport(P2pTorState.connecting, progress: 0.42));
@@ -687,7 +767,7 @@ void main() {
 
         reports.add(P2pTorReport(P2pTorState.connecting, progress: 1));
         await settle(tester);
-        expect(find.text('99%'), findsOneWidget);
+        expect(shownPercents(tester), ['99%']);
         expect(find.text('100%'), findsNothing);
 
         reports.add(P2pTorReport(P2pTorState.ready));
@@ -722,14 +802,14 @@ void main() {
         reports.add(P2pTorReport(P2pTorState.failed));
         await settle(tester);
         expect(find.text('Connection error'), findsOneWidget);
-        expect(find.textContaining('%'), findsNothing);
+        expect(shownPercents(tester), isEmpty);
         expect(phrases, findsNothing);
 
         await tester.tap(find.text('Retry'));
         await settle(tester);
         expect(draws, 2);
         expect(shownPhrases(tester), [englishPhrases[2]]);
-        expect(find.textContaining('%'), findsNothing);
+        expect(shownPercents(tester), isEmpty);
       },
     );
   });
