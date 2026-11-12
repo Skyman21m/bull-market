@@ -1469,6 +1469,192 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.'**
   String get p2pGarageKeyHistoryNotRecorded;
+
+  /// Title of the panel under the robot navigator of the Garage profile. The RoboSats profile dialog says « Coordinators that know your robot: » (`components/Dialogs/Profile.tsx`); in Troc a robot lives on one coordinator only, hence the singular. French from the RoboSats French text, in the singular.
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator that knows your robot:'**
+  String get p2pRobotCoordinatorTitle;
+
+  /// Panel of a robot that no coordinator received from this device. Not in the RoboSats texts (design note of #29, § 2.2). Choosing a coordinator here is optional: nothing says a robot must be sent before trading.
+  ///
+  /// In en, this message translates to:
+  /// **'No coordinator knows this robot yet.'**
+  String get p2pRobotNoCoordinator;
+
+  /// Button of the panel of a robot without a coordinator, and title of the sheet that lists the coordinators: the RoboSats label of a coordinator choice (`components/BookTable/BookControl.tsx`). French as the book filter « Select Host » (RoboSats French corrected).
+  ///
+  /// In en, this message translates to:
+  /// **'Select Host'**
+  String get p2pRobotSelectHost;
+
+  /// Tooltip and screen reader label of the info button of a coordinator in the « Select Host » sheet, which opens the coordinator dialog. Not in the RoboSats texts, where the avatar opens it without a label. {coordinator} is the long alias of the coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Details of {coordinator}'**
+  String p2pRobotHostDetails(String coordinator);
+
+  /// Title of the confirmation after a coordinator is chosen in « Select Host ». Not in the RoboSats texts (design note of #29, § 2.2). {nickname} is the robot nickname, {coordinator} the long alias of the coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Send {nickname} to {coordinator}?'**
+  String p2pRobotSendTitle(String nickname, String coordinator);
+
+  /// First paragraph of the confirmation. Not in the RoboSats texts (design note of #29, § 2.2): the official client sends every robot it shows to every coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} will know this robot from now on. In Troc a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.'**
+  String p2pRobotSendBody(String coordinator);
+
+  /// Second paragraph of the confirmation. Not in the RoboSats texts (design note of #29, § 2.2).
+  ///
+  /// In en, this message translates to:
+  /// **'If you also use this Garage Key in another app, that app may send this robot to every coordinator.'**
+  String get p2pRobotSendOtherApp;
+
+  /// Shown with a progress bar during the first contact of a robot with the coordinator chosen. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Building your robot!'**
+  String get p2pGarageBuildingRobot;
+
+  /// Shown with a progress bar while a robot is read back from its coordinator. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`); its French says « commandes », the glossary says « ordres ».
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for orders!'**
+  String get p2pRobotLookingForOrders;
+
+  /// Added under the progress line when a request of a robot has run for 30 seconds. Not in the RoboSats texts (design note of #29, § 2.2).
+  ///
+  /// In en, this message translates to:
+  /// **'Still waiting for {coordinator}. Tor can take a minute.'**
+  String p2pRobotStillWaiting(String coordinator);
+
+  /// The order the robot is the maker or the taker of, as its coordinator says; plain text, since Troc has no page for it yet. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`). {orderId} is the number of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'Active order #{orderId}'**
+  String p2pRobotActiveOrder(String orderId);
+
+  /// The last order of the robot, when it has none in progress, as its coordinator says; plain text. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`). {orderId} is the number of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'Last order #{orderId}'**
+  String p2pRobotLastOrder(String orderId);
+
+  /// The coordinator knows no order of the robot. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`); its French says « commande », the glossary says « ordre ».
+  ///
+  /// In en, this message translates to:
+  /// **'No existing orders found'**
+  String get p2pRobotNoOrders;
+
+  /// Information when the robot has a last order and no active one: Troc does not read that order yet, so any last order counts as a trade, as RoboSats counts an unknown status. RoboSats text (`basic/GaragePage/GarageKeyProfile.tsx`), French of the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'This robot was involved in a trade. Navigate to a new account for fresh privacy.'**
+  String get p2pRobotUsedInTrade;
+
+  /// Caption above the sats a coordinator owes the robot, shown when there are some. RoboSats text (`components/RobotInfo/index.tsx`); claiming them comes later.
+  ///
+  /// In en, this message translates to:
+  /// **'Your compensations'**
+  String get p2pRobotRewards;
+
+  /// After a first contact whose answer carried a key pair other than the one sent, proven by the robot. Not in the RoboSats texts (design note of #29, § 2.2). {coordinator} is the long alias of the coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'This robot already existed on {coordinator}.'**
+  String p2pRobotAlreadyExisted(String coordinator);
+
+  /// Panel of a robot bound to a coordinator of the other network, which happens only when the same Garage Key is in both slots. Not in the RoboSats texts (design note of #29, § 2.2). {network} is « testnet » or « mainnet ».
+  ///
+  /// In en, this message translates to:
+  /// **'This robot lives on a {network, select, testnet{testnet} other{mainnet}} coordinator.'**
+  String p2pRobotOnOtherNetwork(String network);
+
+  /// Under a coordinator of the « Select Host » sheet that refused three robots with a nickname already taken in this run of the app, which is then disabled. Not in the RoboSats texts (design note of #29, § 3.5).
+  ///
+  /// In en, this message translates to:
+  /// **'This coordinator refused too many robots.'**
+  String get p2pRobotCoordinatorTooManyRefusals;
+
+  /// A robot request that kept finding the connection to the coordinator busy. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'Too many requests are waiting for this coordinator. Try again in a moment.'**
+  String get p2pRobotBusy;
+
+  /// A first contact refused with a nickname already taken (error 7004), still taken 10 seconds later. Not in the RoboSats texts (design note of #29, § 2.3). No button: the robot navigator gives the next robot.
+  ///
+  /// In en, this message translates to:
+  /// **'This robot\'s name is already taken on {coordinator}, so it cannot be created there. Use the next robot.'**
+  String p2pRobotNicknameTaken(String coordinator);
+
+  /// A robot bound to the coordinator, which says it does not know it. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry », which makes a new first contact to that coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} does not know this robot yet.'**
+  String p2pRobotNotCreated(String coordinator);
+
+  /// A first contact whose key the coordinator found less than 12 hours old (error 1056). Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} refused the robot\'s key as too recent. Check your phone\'s date and time, then try again.'**
+  String p2pRobotKeyTooRecent(String coordinator);
+
+  /// A coordinator that refused the keys or the credentials of the robot. Not in the RoboSats texts (design note of #29, § 2.3). No button: another robot.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} refused this robot. It may run another version of RoboSats.'**
+  String p2pRobotRefused(String coordinator);
+
+  /// An answer whose hash id or nickname is not the robot's, or whose key pair the robot's token does not prove. Not in the RoboSats texts (design note of #29, § 2.3). No button.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} answered with another robot, or with keys this robot did not make. Do not use this robot there.'**
+  String p2pRobotMismatch(String coordinator);
+
+  /// An answer of the coordinator that cannot be read. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} sent an answer Troc cannot read.'**
+  String p2pRobotBadAnswer(String coordinator);
+
+  /// A robot bound to a coordinator whose address or keys in the federation list of the app changed since. Not in the RoboSats texts (design note of #29, § 2.3). No button.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} changed its address or keys since this robot was sent to it. Nothing was sent. Until an update of the app has checked the change, use another robot.'**
+  String p2pRobotCoordinatorChanged(String coordinator);
+
+  /// The feature's database could not be read or written. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'Troc could not read its records on this device. Nothing was sent.'**
+  String get p2pRobotStorage;
+
+  /// Warning on a robot whose coordinator holds the Nostr key of the first formula of the official client. Not in the RoboSats texts (design note of #29, § 2.3).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} holds an old Nostr key for this robot, which it can compute: its notifications are not private. Prefer another robot for trading.'**
+  String p2pRobotNostrOld(String coordinator);
+
+  /// Warning on a robot whose coordinator holds no Nostr key of this robot. Not in the RoboSats texts (design note of #29, § 2.3).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} holds a Nostr key this app cannot use: notifications about this robot will not reach it.'**
+  String p2pRobotNostrUnknown(String coordinator);
+
+  /// This device could not make or prove the OpenPGP key pair of a robot: its clock is outside the dates a key can hold, or the work could not start. Not in the RoboSats texts, nor in the design note of #29, whose table has no row for it. With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'This phone could not make or check the keys of this robot. Check its date and time, then try again.'**
+  String get p2pRobotKeyComputeFailed;
+
+  /// A request refused because the robot is bound to another coordinator. Not in the RoboSats texts, nor in the design note of #29: the panel never offers it, and shows where the robot lives instead.
+  ///
+  /// In en, this message translates to:
+  /// **'This robot lives on another coordinator. Nothing was sent.'**
+  String get p2pRobotBoundElsewhere;
 }
 
 class _P2pLocalizationsDelegate

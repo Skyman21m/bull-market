@@ -776,4 +776,142 @@ class P2pLocalizationsTh extends P2pLocalizations {
   @override
   String get p2pGarageKeyHistoryNotRecorded =>
       'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.';
+
+  @override
+  String get p2pRobotCoordinatorTitle => 'Coordinator that knows your robot:';
+
+  @override
+  String get p2pRobotNoCoordinator => 'No coordinator knows this robot yet.';
+
+  @override
+  String get p2pRobotSelectHost => 'Select Host';
+
+  @override
+  String p2pRobotHostDetails(String coordinator) {
+    return 'Details of $coordinator';
+  }
+
+  @override
+  String p2pRobotSendTitle(String nickname, String coordinator) {
+    return 'Send $nickname to $coordinator?';
+  }
+
+  @override
+  String p2pRobotSendBody(String coordinator) {
+    return '$coordinator will know this robot from now on. In Troc a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.';
+  }
+
+  @override
+  String get p2pRobotSendOtherApp =>
+      'If you also use this Garage Key in another app, that app may send this robot to every coordinator.';
+
+  @override
+  String get p2pGarageBuildingRobot => 'Building your robot!';
+
+  @override
+  String get p2pRobotLookingForOrders => 'Looking for orders!';
+
+  @override
+  String p2pRobotStillWaiting(String coordinator) {
+    return 'Still waiting for $coordinator. Tor can take a minute.';
+  }
+
+  @override
+  String p2pRobotActiveOrder(String orderId) {
+    return 'Active order #$orderId';
+  }
+
+  @override
+  String p2pRobotLastOrder(String orderId) {
+    return 'Last order #$orderId';
+  }
+
+  @override
+  String get p2pRobotNoOrders => 'No existing orders found';
+
+  @override
+  String get p2pRobotUsedInTrade =>
+      'This robot was involved in a trade. Navigate to a new account for fresh privacy.';
+
+  @override
+  String get p2pRobotRewards => 'Your compensations';
+
+  @override
+  String p2pRobotAlreadyExisted(String coordinator) {
+    return 'This robot already existed on $coordinator.';
+  }
+
+  @override
+  String p2pRobotOnOtherNetwork(String network) {
+    String _temp0 = intl.Intl.selectLogic(network, {
+      'testnet': 'testnet',
+      'other': 'mainnet',
+    });
+    return 'This robot lives on a $_temp0 coordinator.';
+  }
+
+  @override
+  String get p2pRobotCoordinatorTooManyRefusals =>
+      'This coordinator refused too many robots.';
+
+  @override
+  String get p2pRobotBusy =>
+      'Too many requests are waiting for this coordinator. Try again in a moment.';
+
+  @override
+  String p2pRobotNicknameTaken(String coordinator) {
+    return 'This robot\'s name is already taken on $coordinator, so it cannot be created there. Use the next robot.';
+  }
+
+  @override
+  String p2pRobotNotCreated(String coordinator) {
+    return '$coordinator does not know this robot yet.';
+  }
+
+  @override
+  String p2pRobotKeyTooRecent(String coordinator) {
+    return '$coordinator refused the robot\'s key as too recent. Check your phone\'s date and time, then try again.';
+  }
+
+  @override
+  String p2pRobotRefused(String coordinator) {
+    return '$coordinator refused this robot. It may run another version of RoboSats.';
+  }
+
+  @override
+  String p2pRobotMismatch(String coordinator) {
+    return '$coordinator answered with another robot, or with keys this robot did not make. Do not use this robot there.';
+  }
+
+  @override
+  String p2pRobotBadAnswer(String coordinator) {
+    return '$coordinator sent an answer Troc cannot read.';
+  }
+
+  @override
+  String p2pRobotCoordinatorChanged(String coordinator) {
+    return '$coordinator changed its address or keys since this robot was sent to it. Nothing was sent. Until an update of the app has checked the change, use another robot.';
+  }
+
+  @override
+  String get p2pRobotStorage =>
+      'Troc could not read its records on this device. Nothing was sent.';
+
+  @override
+  String p2pRobotNostrOld(String coordinator) {
+    return '$coordinator holds an old Nostr key for this robot, which it can compute: its notifications are not private. Prefer another robot for trading.';
+  }
+
+  @override
+  String p2pRobotNostrUnknown(String coordinator) {
+    return '$coordinator holds a Nostr key this app cannot use: notifications about this robot will not reach it.';
+  }
+
+  @override
+  String get p2pRobotKeyComputeFailed =>
+      'This phone could not make or check the keys of this robot. Check its date and time, then try again.';
+
+  @override
+  String get p2pRobotBoundElsewhere =>
+      'This robot lives on another coordinator. Nothing was sent.';
 }
