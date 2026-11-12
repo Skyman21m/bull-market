@@ -1,6 +1,8 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
+import 'seed_hash.dart';
+
 /// A provisional robot avatar, drawn from a seed such as the hash id of a robot or the alias of a coordinator.
 ///
 /// The same seed always gives the same robot, so a maker is recognisable from one screen to the next.
@@ -30,7 +32,7 @@ class RobotAvatar extends StatelessWidget {
       colors.secondary,
       colors.onSurfaceVariant,
     ];
-    final hash = _hash(seed);
+    final hash = seedHash(seed);
     final body = hash % palette.length;
     // The background never takes the colour of the body.
     final background =
@@ -58,18 +60,6 @@ class RobotAvatar extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// A small stable hash of [seed], the same on every run (unlike `String.hashCode`).
-  static int _hash(String seed) {
-    var hash = 17;
-    for (final unit in seed.codeUnits) {
-      hash = (hash * 31 + unit) & 0x3fffffff;
-    }
-    // Mixes the bits so that seeds differing in their last characters still differ in every trait.
-    hash ^= hash >> 13;
-    hash = (hash * 0x5bd1e995) & 0x3fffffff;
-    return hash ^ (hash >> 15);
   }
 }
 
