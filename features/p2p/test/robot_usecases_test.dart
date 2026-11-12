@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:p2p/src/data/isolate_robot_key_compute.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
@@ -14,6 +18,7 @@ import 'package:test/test.dart';
 
 import 'support/fakes.dart';
 import 'support/robot_bindings.dart';
+import 'support/robot_keys.dart';
 
 /// A coordinator that answers every request with [answer], or the transport [failure], and keeps what it received; [onSend] runs as each request leaves.
 final class _RobotTransport implements CoordinatorTransport {
@@ -81,6 +86,16 @@ void main() {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
+  // Another pair of the same robot, as a second device would make.
+  final otherPgpKey = switch (RobotPgpKey.generate(identity)) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
+  // The pair of the next robot, locked by its token.
+  final otherRobotPgpKey = switch (RobotPgpKey.generate(_identityAt(1))) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
 
   Map<String, Object?> robot() => {
     'nickname': identity.nickname,
@@ -95,12 +110,14 @@ void main() {
   group('FetchRobotUsecase', () {
     late _RobotTransport transport;
     late RobotBindingRepositoryImpl bindings;
+    late RecordingRobotKeys keys;
     late FetchRobotUsecase usecase;
 
     setUp(() async {
       transport = _RobotTransport(_json(200, robot()));
       bindings = bindingsInMemory();
-      usecase = FetchRobotUsecase(CoordinatorClient(transport), bindings);
+      keys = RecordingRobotKeys(pgpKey);
+      usecase = FetchRobotUsecase(CoordinatorClient(transport), bindings, keys);
       // The test key, as if this device had drawn it for both networks.
       for (final network in RobosatsNetwork.values) {
         expect(
@@ -121,7 +138,6 @@ void main() {
     }) => usecase.execute(
       to ?? temple,
       as ?? networkRobot,
-      pgpKey: pgpKey,
       createIfUnknown: createIfUnknown,
     );
 
@@ -160,6 +176,20 @@ void main() {
         expect(parts, hasLength(4));
         expect(parts.first, identity.authorizationHeader());
         expect(parts.last, 'Nostr ${identity.nostrKeyPair().publicKeyHex}');
+        // The pair sent is the one the use case had made for this robot, and it came back as sent: no proof ran.
+        expect(keys.generated, [identity]);
+        expect(parts[1], 'Public ${pgpArmorToWire(pgpKey.publicKey.armored)}');
+        expect(
+          parts[2],
+          'Private ${pgpArmorToWire(pgpKey.encryptedPrivateKeyArmored)}',
+        );
+        expect(keys.proved, isEmpty);
+        final robot = switch (result) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(robot.pgpKey, same(pgpKey));
+        expect(robot.pgpKeyProven, isFalse);
       },
     );
 
@@ -205,11 +235,72 @@ void main() {
       );
     });
 
-    test('reads a known robot without creating it', () async {
-      final result = answered(await execute(createIfUnknown: false));
+    test(
+      'reads a known robot without creating it, with nothing held: its pair is proven',
+      () async {
+        final result = answered(await execute(createIfUnknown: false));
 
-      expect(result, isA<Ok<CoordinatorRobot, CoordinatorFailure>>());
-    });
+        final robot = switch (result) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        // No pair is made or sent for a read, and the pair the coordinator holds went through the port to be proven.
+        expect(keys.generated, isEmpty);
+        expect(keys.proved, hasLength(1));
+        expect(keys.proved.single.hashId, identity.hashId);
+        expect(robot.pgpKeyProven, isTrue);
+        expect(robot.pgpKey, pgpKey);
+      },
+    );
+
+    test(
+      'a first contact answered with another pair of the robot is proven, through the port',
+      () async {
+        // The robot existed with the pair `pgpKey`; this first contact sends another one, which the coordinator ignores.
+        keys = RecordingRobotKeys(otherPgpKey);
+        usecase = FetchRobotUsecase(
+          CoordinatorClient(transport),
+          bindings,
+          keys,
+        );
+
+        final result = answered(await execute(createIfUnknown: true));
+
+        expect(keys.generated, [identity]);
+        expect(keys.proved, hasLength(1));
+        expect(
+          result,
+          isA<Ok<CoordinatorRobot, CoordinatorFailure>>()
+              .having((ok) => ok.value.pgpKey, 'pgpKey', pgpKey)
+              .having((ok) => ok.value.pgpKeyProven, 'pgpKeyProven', isTrue),
+        );
+      },
+    );
+
+    test(
+      'gives a pair its token does not prove as a failure, never the robot',
+      () async {
+        // The pair of the next robot, under the hash id and nickname of this one: locked by another token.
+        transport.answer = _json(200, {
+          ...robot(),
+          'public_key': otherRobotPgpKey.publicKey.armored,
+          'encrypted_private_key': otherRobotPgpKey.encryptedPrivateKeyArmored,
+        });
+
+        for (final createIfUnknown in [true, false]) {
+          expect(
+            answered(await execute(createIfUnknown: createIfUnknown)),
+            isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              isA<RobotPgpKeyNotProven>(),
+            ),
+            reason: 'createIfUnknown: $createIfUnknown',
+          );
+        }
+        expect(keys.proved, hasLength(2));
+      },
+    );
 
     test('gives a mismatch as a failure, never the robot', () async {
       final other = _identityAt(1);
@@ -229,6 +320,87 @@ void main() {
           ),
         );
       }
+      // Refused on the hash id, before any key of the answer is read: nothing goes to be proven.
+      expect(keys.proved, isEmpty);
+    });
+
+    group('the key work:', () {
+      test(
+        'the pair of a first contact is made after the binding and before the request',
+        () async {
+          final order = <String>[];
+          final recording = RecordingBindings();
+          final ordered = FetchRobotUsecase(
+            CoordinatorClient(transport),
+            _OrderedBindings(recording, order),
+            keys,
+          );
+          keys.onGenerate = () => order.add('generate');
+          transport.onSend = () async => order.add('send');
+
+          answered(
+            await ordered.execute(temple, networkRobot, createIfUnknown: true),
+          );
+          answered(
+            await ordered.execute(temple, networkRobot, createIfUnknown: false),
+          );
+
+          expect(order, ['bind', 'generate', 'send', 'bind', 'send']);
+        },
+      );
+
+      test('a robot refused by its binding costs no key work', () async {
+        final refusing = FetchRobotUsecase(
+          CoordinatorClient(transport),
+          RecordingBindings(failure: const RobotHistoryUnknownFailure()),
+          keys,
+        );
+
+        for (final createIfUnknown in [true, false]) {
+          expect(
+            await refusing.execute(
+              temple,
+              networkRobot,
+              createIfUnknown: createIfUnknown,
+            ),
+            refusedWith<RobotHistoryUnknownFailure>(),
+          );
+        }
+        expect(keys.generated, isEmpty);
+        expect(keys.proved, isEmpty);
+        expect(transport.requests, isEmpty);
+      });
+
+      test(
+        'a pair that cannot be made sends nothing, and the binding stays',
+        () async {
+          keys.generateFailure = const RobotKeyComputeFailure();
+
+          expect(
+            await execute(createIfUnknown: true),
+            refusedWith<RobotKeyComputeFailure>(),
+          );
+          expect(transport.requests, isEmpty);
+          expect(
+            await execute(createIfUnknown: true, to: coordinator('lake')),
+            refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+        },
+      );
+
+      test(
+        'a proof that cannot run drops the answer, which was received',
+        () async {
+          keys.proveFailure = const RobotKeyComputeFailure();
+
+          expect(
+            await execute(createIfUnknown: false),
+            refusedWith<RobotKeyComputeFailure>(),
+          );
+          expect(transport.requests, hasLength(1));
+          expect(keys.proved, hasLength(1));
+        },
+      );
     });
 
     group('one robot, one coordinator:', () {
@@ -313,6 +485,7 @@ void main() {
           final refusing = FetchRobotUsecase(
             CoordinatorClient(transport),
             unknown,
+            keys,
           );
 
           for (final createIfUnknown in [true, false]) {
@@ -320,7 +493,6 @@ void main() {
               await refusing.execute(
                 temple,
                 networkRobot,
-                pgpKey: pgpKey,
                 createIfUnknown: createIfUnknown,
               ),
               refusedWith<RobotHistoryUnknownFailure>(),
@@ -341,18 +513,15 @@ void main() {
                 () async => throw StateError('no directory'),
               ),
             ),
+            keys,
           );
 
           await expectLater(
-            broken.execute(
-              temple,
-              networkRobot,
-              pgpKey: pgpKey,
-              createIfUnknown: true,
-            ),
+            broken.execute(temple, networkRobot, createIfUnknown: true),
             throwsA(isA<StateError>()),
           );
           expect(transport.requests, isEmpty);
+          expect(keys.generated, isEmpty);
         },
       );
 
@@ -360,15 +529,11 @@ void main() {
         final failing = FetchRobotUsecase(
           CoordinatorClient(transport),
           RecordingBindings(failure: const P2pStorageFailure()),
+          keys,
         );
 
         expect(
-          await failing.execute(
-            temple,
-            networkRobot,
-            pgpKey: pgpKey,
-            createIfUnknown: true,
-          ),
+          await failing.execute(temple, networkRobot, createIfUnknown: true),
           refusedWith<P2pStorageFailure>(),
         );
         expect(transport.requests, isEmpty);
@@ -381,12 +546,12 @@ void main() {
           final checked = FetchRobotUsecase(
             CoordinatorClient(transport),
             recording,
+            keys,
           );
 
           final result = await checked.execute(
             coordinator('bazaar'),
             networkRobot,
-            pgpKey: pgpKey,
             createIfUnknown: true,
           );
 
@@ -444,6 +609,108 @@ void main() {
     });
   });
 
+  group('IsolateRobotKeyCompute', () {
+    const compute = IsolateRobotKeyCompute();
+
+    /// What [work] gives, and the ticks a timer of this isolate made meanwhile: work done on this isolate would leave it none.
+    Future<(T, int)> ticking<T>(Future<T> Function() work) async {
+      var ticks = 0;
+      final timer = Timer.periodic(
+        const Duration(milliseconds: 1),
+        (_) => ticks++,
+      );
+      try {
+        return (await work(), ticks);
+      } finally {
+        timer.cancel();
+      }
+    }
+
+    Future<UnprovenCoordinatorRobot> unprovenWith(RobotPgpKey pair) async {
+      final client = CoordinatorClient(
+        _RobotTransport(
+          _json(200, {
+            ...robot(),
+            'public_key': pair.publicKey.armored,
+            'encrypted_private_key': pair.encryptedPrivateKeyArmored,
+          }),
+        ),
+      );
+      return switch (await client.fetchKnownRobot(
+        temple,
+        network,
+        identity: identity,
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+    }
+
+    test(
+      'makes a pair of the robot, locked by its token, in another isolate',
+      () async {
+        final (generated, ticks) = await ticking(
+          () => compute.generate(identity),
+        );
+
+        final pair = switch (generated) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(ticks, greaterThan(5));
+        expect(pair.isNamedAfter(identity), isTrue);
+        expect(pair, isNot(pgpKey));
+        // Its token proves it.
+        expect(
+          await compute.prove(await unprovenWith(pair)),
+          isA<Ok<Result<CoordinatorRobot, RobotPgpKeyNotProven>, P2pFailure>>()
+              .having(
+                (ok) => ok.value,
+                'proof',
+                isA<Ok<CoordinatorRobot, RobotPgpKeyNotProven>>(),
+              ),
+        );
+      },
+    );
+
+    test(
+      'proves a pair in another isolate, and gives the robot back',
+      () async {
+        final unproven = await unprovenWith(pgpKey);
+
+        final (proof, ticks) = await ticking(() => compute.prove(unproven));
+
+        expect(ticks, greaterThan(5));
+        expect(
+          proof,
+          isA<Ok<Result<CoordinatorRobot, RobotPgpKeyNotProven>, P2pFailure>>()
+              .having(
+                (ok) => ok.value,
+                'proof',
+                isA<Ok<CoordinatorRobot, RobotPgpKeyNotProven>>()
+                    .having((ok) => ok.value.pgpKey, 'pgpKey', pgpKey)
+                    .having((ok) => ok.value.hashId, 'hashId', identity.hashId)
+                    .having((ok) => ok.value.pgpKeyProven, 'proven', isTrue),
+              ),
+        );
+      },
+    );
+
+    test('refuses there a pair its token does not unlock', () async {
+      final unproven = await unprovenWith(otherRobotPgpKey);
+
+      expect(
+        await compute.prove(unproven),
+        isA<Ok<Result<CoordinatorRobot, RobotPgpKeyNotProven>, P2pFailure>>()
+            .having(
+              (ok) => ok.value,
+              'proof',
+              isA<Err<CoordinatorRobot, RobotPgpKeyNotProven>>(),
+            ),
+      );
+    });
+  });
+
   group('CloseRobotSessionsUsecase', () {
     test('closes the sessions of that robot, and only those', () async {
       final sessions = _RecordingSessions();
@@ -455,4 +722,33 @@ void main() {
       expect(sessions.closedAll, 0);
     });
   });
+}
+
+/// Bindings that note each `bind` in [order] before they bind.
+final class _OrderedBindings implements RobotBindingRepository {
+  final RobotBindingRepository _bindings;
+  final List<String> order;
+
+  _OrderedBindings(this._bindings, this.order);
+
+  @override
+  Future<Result<void, P2pFailure>> bind(
+    RobotSlot robot,
+    CoordinatorIdentity coordinator,
+  ) {
+    order.add('bind');
+    return _bindings.bind(robot, coordinator);
+  }
+
+  @override
+  Future<Result<void, P2pFailure>> recordGeneratedKey(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _bindings.recordGeneratedKey(network, key);
+
+  @override
+  Future<Result<void, P2pFailure>> recordImportedKey(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _bindings.recordImportedKey(network, key);
 }

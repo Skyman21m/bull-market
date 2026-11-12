@@ -1,4 +1,4 @@
-// Ways to reach a robot request, a robot credential, a raw network client or a binding that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found, in the declaration it is in.
+// Ways to reach a robot request, a robot credential, a raw network client, a binding or the work on a robot's key pair that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found, in the declaration it is in.
 // The placements of the reviews of #60 are among them: a tear-off, an extension, a raw request with the token hash, and a call through an explicit `as dynamic` cast, which `avoid_dynamic_calls` lets through (it refuses a call on an implicitly dynamic value only).
 // Never imported by the feature; the analyzer resolves it in that test only.
 import 'dart:io';
@@ -37,16 +37,10 @@ Object firstContactByTearOff(RobotIdentity identity) =>
 
 /// A robot request in an extension of the client.
 extension ReviewPeek on CoordinatorClient {
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> reviewPeek(
+  Future<Result<UnprovenCoordinatorRobot, CoordinatorFailure>> reviewPeek(
     Coordinator coordinator,
     NetworkRobot robot,
-    RobotPgpKey pgpKey,
-  ) => fetchKnownRobot(
-    coordinator,
-    robot.network,
-    identity: robot.identity,
-    pgpKey: pgpKey,
-  );
+  ) => fetchKnownRobot(coordinator, robot.network, identity: robot.identity);
 }
 
 /// The token hash sent over a raw HTTP client, with no member of the coordinator client.
@@ -70,12 +64,10 @@ Future<Object?> dynamicCall(
   Object client,
   Coordinator coordinator,
   NetworkRobot robot,
-  Object pgpKey,
 ) async => await (client as dynamic).fetchKnownRobot(
   coordinator,
   robot.network,
   identity: robot.identity,
-  pgpKey: pgpKey,
 );
 
 /// The HTTP client of `dart:io`, declared in `dart:_http` (third review of #60).
@@ -100,3 +92,9 @@ Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>
 
 /// A binding, torn off.
 Object bindByTearOff(RobotBindingRepository bindings) => bindings.bind;
+
+/// A robot proven on the calling isolate, torn off.
+Object proveByTearOff(UnprovenCoordinatorRobot robot) => robot.prove;
+
+/// A pair made on the calling isolate, torn off.
+Object generateByTearOff() => RobotPgpKey.generate;

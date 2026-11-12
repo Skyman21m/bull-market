@@ -28,6 +28,7 @@ export 'package:robosats/robosats.dart'
         CoordinatorRequest,
         CoordinatorResponse,
         CoordinatorRobot,
+        CoordinatorRobotAnswer,
         CoordinatorTransport,
         Federation,
         GarageKey,
@@ -35,8 +36,9 @@ export 'package:robosats/robosats.dart'
         RobotIdentity,
         RobotKeysRefused,
         RobotPgpKey,
-        RobotPgpKeyMismatch,
-        RobotUnknown;
+        RobotPgpKeyNotProven,
+        RobotUnknown,
+        UnprovenCoordinatorRobot;
 
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 

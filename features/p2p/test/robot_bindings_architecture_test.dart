@@ -10,7 +10,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:test/test.dart';
 
-/// Where the robot requests, the robot credentials, raw network clients and the bindings can be reached in `features/p2p/lib`.
+/// Where the robot requests, the robot credentials, raw network clients, the bindings and the work on a robot's key pair can be reached in `features/p2p/lib`.
 ///
 /// What refers to them is resolved by the analyzer, calls, tear-offs, cascades, prefixes, extensions and implementations alike, in every Dart file of `lib/` but the committed translations.
 /// A member reached through `dynamic` is reported here: `avoid_dynamic_calls`, an error in this feature, refuses a call on an implicitly dynamic value, but lets an explicit `as dynamic` cast through.
@@ -144,6 +144,8 @@ void main() {
             'rawProcess': {'network Process'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
+            'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
+            'generateByTearOff': {'RobotPgpKey.generate'},
           },
         );
       },
@@ -160,6 +162,25 @@ void main() {
       });
       expect(referring((r) => r == 'CoordinatorTransport.send'), isEmpty);
     });
+
+    test(
+      'only the key work in its own isolate proves a robot, or makes or unlocks a pair',
+      () {
+        // Each hashes 32 MiB or more: on the UI isolate, the screens would freeze.
+        expect(referring((r) => r == 'UnprovenCoordinatorRobot.prove'), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
+        expect(
+          referring(
+            (r) =>
+                r == 'RobotPgpKey.generate' || r == 'RobotPgpKey.generateWith',
+          ),
+          {'lib/src/data/isolate_robot_key_compute.dart'},
+        );
+        // Nothing of the feature unlocks a robot's key yet: the proof wipes what it unlocks.
+        expect(referring((r) => r == 'RobotPgpKey.unlock'), isEmpty);
+      },
+    );
 
     test('no file reads a robot credential, but the fingerprint its token', () {
       // The fingerprint keys an HMAC with the token of the key's first robot, which never leaves the device.
@@ -446,6 +467,8 @@ const _watched = {
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
+  'UnprovenCoordinatorRobot': ('package:robosats/', {'prove'}),
+  'RobotPgpKey': ('package:robosats/', {'generate', 'generateWith', 'unlock'}),
 };
 
 /// The members that hold or make a robot's credential: its token, the token's hash in both forms, and the two `Authorization` headers.

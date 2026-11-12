@@ -15,6 +15,7 @@ import 'package:robosats/robosats.dart'
 import 'package:test/test.dart';
 
 import 'support/robot_bindings.dart';
+import 'support/robot_keys.dart';
 
 /// A Tor that never gives a session, with the states the test chooses.
 final class _FakeTor implements Tor {
@@ -189,6 +190,7 @@ void main() {
       fetchRobot = FetchRobotUsecase(
         CoordinatorClient(locator<TorCoordinatorTransport>()),
         bindings,
+        RecordingRobotKeys(pgpKey),
       );
     });
 
@@ -214,7 +216,6 @@ void main() {
         final result = await fetchRobot.execute(
           temple,
           testnetRobot,
-          pgpKey: pgpKey,
           createIfUnknown: createIfUnknown,
         );
 
@@ -228,12 +229,7 @@ void main() {
       await facade.fetchInfo(temple, RobosatsNetwork.testnet);
       final afterAnonymous = tor.openedSessions;
 
-      await fetchRobot.execute(
-        temple,
-        testnetRobot,
-        pgpKey: pgpKey,
-        createIfUnknown: false,
-      );
+      await fetchRobot.execute(temple, testnetRobot, createIfUnknown: false);
 
       // The anonymous reads of temple already asked for a session: the robot does not wait for it or reuse it.
       expect(tor.openedSessions, greaterThan(afterAnonymous));
@@ -251,7 +247,6 @@ void main() {
         final result = await fetchRobot.execute(
           bazaar,
           testnetRobot,
-          pgpKey: pgpKey,
           createIfUnknown: true,
         );
 
@@ -287,6 +282,8 @@ void main() {
         'NostrKeyDerivation',
         'CoordinatorClient',
         'CoordinatorRobot',
+        'CoordinatorRobotAnswer',
+        'UnprovenCoordinatorRobot',
         'CoordinatorTransport',
         'CoordinatorRequest',
         'RobotSessionKey',
