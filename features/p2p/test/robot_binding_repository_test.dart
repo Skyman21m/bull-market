@@ -474,8 +474,9 @@ void main() {
       ]) {
         expect(stored.contains(secret), isFalse);
       }
-      // Not a credential, but what a coordinator publishes about the robot: the database does not name it either.
+      // Not credentials, but what a coordinator publishes about the robot: the database does not name them either.
       expect(stored.contains(identity.hashId.hex), isFalse);
+      expect(stored.contains(identity.nickname), isFalse);
     }
     // The bytes of the key, in hexadecimal: the test made them, 0x01 to 0x20.
     final keyHex = [
