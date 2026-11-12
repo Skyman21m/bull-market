@@ -42,6 +42,38 @@ enum GarageKeyHistory {
   unknown,
 }
 
+/// What this device records about where the robots of one Garage Key may be: the history of the key on one network, and whether any robot index of it is bound to a coordinator, on either network.
+///
+/// It holds no key, no fingerprint and no coordinator: only what decides whether a robot of the key may live on a coordinator.
+@immutable
+final class GarageKeyExposure {
+  /// The history of the key on the network of its slot.
+  final GarageKeyHistory history;
+
+  /// Whether a robot index of the key is bound to a coordinator, on either network.
+  final bool hasBinding;
+
+  const GarageKeyExposure({required this.history, required this.hasBinding});
+
+  /// Whether a robot of the key may live on a coordinator: one is bound, on either network, or the key was not recorded as drawn on this device for its network, so its robots may have reached coordinators from elsewhere.
+  ///
+  /// Only a key drawn here, recorded so, with no robot bound, has none: deleting it loses no robot that a coordinator knows.
+  bool get mayHaveRobotsOnCoordinators =>
+      hasBinding || history != GarageKeyHistory.drawnHere;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GarageKeyExposure &&
+      other.history == history &&
+      other.hasBinding == hasBinding;
+
+  @override
+  int get hashCode => Object.hash(history, hasBinding);
+
+  @override
+  String toString() => 'GarageKeyExposure(${history.name}, $hasBinding)';
+}
+
 /// A coordinator as a binding records it: the network of its instance, its short alias, the onion address of that instance, and the keys the federation list publishes for it there.
 ///
 /// Its alias alone would not do: the federation list of a later version of the app could give that alias another server, node or Nostr key, which must not receive the robot without a review.
