@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
@@ -8,6 +9,7 @@ import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -16,10 +18,11 @@ import 'package:test/test.dart';
 final class _RecordingRepository implements GarageKeyRepository {
   final List<String> calls = [];
   final List<GarageKey> imported = [];
-  final GarageRobot robot;
+  final NetworkGarageKey key;
+  final NetworkRobot robot;
   P2pFailure? failure;
 
-  _RecordingRepository(this.robot);
+  _RecordingRepository(this.key, this.robot);
 
   Result<T, P2pFailure> _answer<T>(T value) => switch (failure) {
     final P2pFailure failure => Err(failure),
@@ -49,7 +52,15 @@ final class _RecordingRepository implements GarageKeyRepository {
   }
 
   @override
-  Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(
+  Future<Result<NetworkGarageKey, P2pFailure>> read(
+    RobosatsNetwork network,
+  ) async {
+    calls.add('read ${network.name}');
+    return _answer(key);
+  }
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   ) async {
     calls.add('firstUsableRobot ${network.name}');
@@ -78,14 +89,15 @@ void main() {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
-  final exampleRobot = switch (exampleKey.firstUsableRobot(0)) {
+  final networkKey = NetworkGarageKey(RobosatsNetwork.testnet, exampleKey);
+  final exampleRobot = switch (networkKey.firstUsableRobot(0)) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
 
   late _RecordingRepository repository;
 
-  setUp(() => repository = _RecordingRepository(exampleRobot));
+  setUp(() => repository = _RecordingRepository(networkKey, exampleRobot));
 
   group('importing a Garage Key', () {
     test('stores the key the text names, for the network given', () async {
@@ -191,6 +203,10 @@ void main() {
           'exists mainnet': (
             (r) => HasGarageKeyUsecase(r).execute(RobosatsNetwork.mainnet),
             true,
+          ),
+          'read testnet': (
+            (r) => ReadGarageKeyUsecase(r).execute(RobosatsNetwork.testnet),
+            networkKey,
           ),
           'firstUsableRobot testnet': (
             (r) => DeriveFirstRobotUsecase(r).execute(RobosatsNetwork.testnet),

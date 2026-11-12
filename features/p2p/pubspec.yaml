@@ -24,6 +24,8 @@ dependencies:
   meta: ^1.17.0
   primitives:
   robosats:
+  # The capture protection of the screens that show a Garage Key, as the wallet's seed screens have it.
+  screen_privacy:
   # Only for the Garage Key handle that the shell passes to the feature: see `GarageKeyRepositoryImpl`.
   secrets:
 

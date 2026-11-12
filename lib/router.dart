@@ -5,6 +5,7 @@ import 'package:bb_mobile/core/themes/app_theme.dart';
 import 'package:bb_mobile/core/utils/build_context_x.dart';
 import 'package:bb_mobile/features/announcements/presentation/announcements_cubit.dart';
 import 'package:bb_mobile/features/autobuy/public/autobuy_facade.dart';
+import 'package:bb_mobile/features/app_unlock/public/app_unlock_facade.dart';
 import 'package:bb_mobile/features/app_unlock/ui/app_unlock_router.dart';
 import 'package:bb_mobile/features/labels/labels_facade.dart';
 import 'package:bb_mobile/features/bip85_entropy/router.dart';
@@ -226,6 +227,12 @@ class AppRouter {
                 )
                 ? RobosatsNetwork.testnet
                 : RobosatsNetwork.mainnet,
+            // The Garage asks the PIN the wallet asks before it shows its seeds, before it shows a stored Garage Key.
+            reauthenticate: (onAuthenticated) =>
+                const AppUnlockFacade().buildReauthenticationGate(
+                  canPop: true,
+                  onSuccess: (_) => onAuthenticated(),
+                ),
           ),
           ...ExchangeRouter.routes(
             ExchangeRouterConfig(

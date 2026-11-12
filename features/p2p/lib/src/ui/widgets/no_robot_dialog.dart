@@ -5,14 +5,20 @@ import '../../../generated/l10n/p2p_localizations.dart';
 
 /// « You do not have a Garage Key », what the official client shows when a page needs a robot the user does not have (`components/Dialogs/NoRobot.tsx` at commit ff1998c).
 ///
-/// Its two ways out, to the Garage and to a new Garage Key, are shown disabled: the Garage of Troc is not there yet.
+/// « I have a Garage Key » closes it and opens the Garage, as in the official client, when [onOpenGarage] is given: the Garage is there only when the feature has the vault's handle.
+/// « Generate Garage Key » is shown disabled: the official client makes a key and a robot on the coordinators from it, which Troc does not do yet.
 /// A tap outside closes it, as in the official client.
 class NoRobotDialog extends StatelessWidget {
-  const NoRobotDialog({super.key});
+  final VoidCallback? onOpenGarage;
 
-  static Future<void> show(BuildContext context) => BullDialog.show<void>(
+  const NoRobotDialog({super.key, this.onOpenGarage});
+
+  static Future<void> show(
+    BuildContext context, {
+    VoidCallback? onOpenGarage,
+  }) => BullDialog.show<void>(
     context: context,
-    builder: (_) => const NoRobotDialog(),
+    builder: (_) => NoRobotDialog(onOpenGarage: onOpenGarage),
   );
 
   @override
@@ -39,8 +45,11 @@ class NoRobotDialog extends StatelessWidget {
             label: l10n.p2pNoRobotHaveKey,
             iconData: Icons.key,
             iconFirst: true,
-            onPressed: () {},
-            disabled: true,
+            onPressed: () {
+              Navigator.of(context).pop();
+              onOpenGarage?.call();
+            },
+            disabled: onOpenGarage == null,
             outlined: true,
             bgColor: colors.transparent,
             textColor: colors.primary,

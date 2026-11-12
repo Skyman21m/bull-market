@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:robosats/robosats.dart'
@@ -145,11 +147,20 @@ void main() {
   });
 
   group('a robot, through the use-cases the feature keeps to itself,', () {
-    final garageKey = GarageKey.generate();
-    final identity = switch (garageKey.firstUsableRobot(0)) {
-      Ok(:final value) => value.identity,
+    // Fixed test bytes, 0x01 to 0x20: not a key anyone uses.
+    final garageKey = switch (GarageKey.fromBytes(
+      Uint8List.fromList(List<int>.generate(32, (i) => i + 1)),
+    )) {
+      Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };
+    NetworkRobot robotOn(RobosatsNetwork network) =>
+        switch (NetworkGarageKey(network, garageKey).firstUsableRobot(0)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+    final testnetRobot = robotOn(RobosatsNetwork.testnet);
+    final identity = testnetRobot.identity;
     final pgpKey = switch (RobotPgpKey.generate(identity)) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
@@ -164,8 +175,7 @@ void main() {
       for (final createIfUnknown in [true, false]) {
         final result = await locator<FetchRobotUsecase>().execute(
           temple,
-          RobosatsNetwork.testnet,
-          identity: identity,
+          testnetRobot,
           pgpKey: pgpKey,
           createIfUnknown: createIfUnknown,
         );
@@ -189,8 +199,7 @@ void main() {
 
       await locator<FetchRobotUsecase>().execute(
         temple,
-        RobosatsNetwork.testnet,
-        identity: identity,
+        testnetRobot,
         pgpKey: pgpKey,
         createIfUnknown: false,
       );
@@ -199,31 +208,33 @@ void main() {
       expect(tor.openedSessions, greaterThan(afterAnonymous));
     });
 
-    test('is not sent to a coordinator that is not on the network', () async {
-      final bazaar = locator<P2pFacade>()
-          .requestBooks(RobosatsNetwork.mainnet)
-          .keys
-          .firstWhere((coordinator) => coordinator.shortAlias == 'bazaar');
-      final before = tor.openedSessions;
+    test(
+      'is not sent to a coordinator that is not on the network of its key',
+      () async {
+        final bazaar = locator<P2pFacade>()
+            .requestBooks(RobosatsNetwork.mainnet)
+            .keys
+            .firstWhere((coordinator) => coordinator.shortAlias == 'bazaar');
+        final before = tor.openedSessions;
 
-      final result = await locator<FetchRobotUsecase>().execute(
-        bazaar,
-        RobosatsNetwork.testnet,
-        identity: identity,
-        pgpKey: pgpKey,
-        createIfUnknown: true,
-      );
+        final result = await locator<FetchRobotUsecase>().execute(
+          bazaar,
+          testnetRobot,
+          pgpKey: pgpKey,
+          createIfUnknown: true,
+        );
 
-      expect(
-        result,
-        isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<CoordinatorNotOnNetwork>(),
-        ),
-      );
-      expect(tor.openedSessions, before);
-    });
+        expect(
+          result,
+          isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<CoordinatorNotOnNetwork>(),
+          ),
+        );
+        expect(tor.openedSessions, before);
+      },
+    );
 
     test('sessions close with none open', () async {
       await locator<CloseRobotSessionsUsecase>().execute(identity);

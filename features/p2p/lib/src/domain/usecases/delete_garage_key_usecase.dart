@@ -9,9 +9,8 @@ import '../repositories/garage_key_repository.dart';
 ///
 /// Destructive: the robots of the key are lost unless the user kept a copy of it, so call it only on the user's explicit confirmation.
 /// It is also the only way out of a key that cannot be read.
-/// When the feature stores the state of its robots, such as the coordinator each robot index is bound to, the key is deleted first and that state last.
-/// So a failure part way leaves bindings without a key, which only restrict, and never a key without its bindings, whose robot 0 would look new and could be sent to a second coordinator: the loss of funds that the rule "one robot, one coordinator" of AGENTS.md prevents.
-/// That state will also be tied to the key it belongs to, so that bindings left behind never pass for those of another key.
+/// The feature stores no state of its robots yet, such as the coordinator each robot index is bound to (the rule "one robot, one coordinator" of AGENTS.md).
+/// When it does, that state is tied to a fingerprint of its key and is not erased here: the keystore's delete reaches the disk asynchronously on Android, so a key can come back after the app dies, and its robot 0 must not look new then.
 final class DeleteGarageKeyUsecase {
   final GarageKeyRepository _repository;
 

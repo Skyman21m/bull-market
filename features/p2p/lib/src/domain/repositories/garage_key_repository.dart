@@ -1,15 +1,14 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart'
-    show GarageKey, GarageRobot, RobosatsNetwork;
+import 'package:robosats/robosats.dart' show GarageKey, RobosatsNetwork;
 
+import '../network_garage_key.dart';
 import '../p2p_failure.dart';
 
 /// The RoboSats Garage Key of each network, kept by the vault of the wallet, and the robots derived from it.
 ///
-/// What leaves it today is deliberately narrow: whether a key is stored, and robots derived from it.
-/// The key itself, its bytes and its text form do not: the master key of every robot lives for the time of one call.
-/// The screen that shows the key for backup will need one more read, which hands a `GarageKey` to `GarageKeyView` alone, the only class the custody gate allows to reveal its text.
+/// What leaves it is deliberately narrow: whether a key is stored, robots derived from it, each with the network of its key, and, for the screens of the Garage only, the key of a network as a [NetworkGarageKey].
+/// The bytes of the key never leave it, and its text form is made by `GarageKeyView` alone, the only class the custody gate allows to reveal it.
 ///
 /// The rules of the vault hold for every caller: create or import a key only on an explicit action of the user, never at startup or in the background; only after [exists] said that no key is stored, never after a failure; a stored key is never replaced; after a key that cannot be read, the only way out is [delete].
 abstract interface class GarageKeyRepository {
@@ -35,11 +34,18 @@ abstract interface class GarageKeyRepository {
   @useResult
   Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network);
 
-  /// The first robot of the key stored for [network] that a coordinator can be contacted with, from index 0.
+  /// The key stored for [network], with that network, for the screens of the Garage: `GarageKeyView`, which shows it for backup, and the account navigator, which derives robot number N from it.
+  ///
+  /// No key is a [GarageKeyMissingFailure].
+  /// Hold it no longer than the screen that uses it.
+  @useResult
+  Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network);
+
+  /// The first robot of the key stored for [network] that a coordinator can be contacted with, from index 0, tagged with [network].
   ///
   /// No key is a [GarageKeyMissingFailure].
   @useResult
-  Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(
+  Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
     RobosatsNetwork network,
   );
 

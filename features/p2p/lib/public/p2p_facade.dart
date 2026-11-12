@@ -12,6 +12,7 @@ import '../src/domain/usecases/request_federation_books_usecase.dart';
 import '../src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import '../src/p2p_locator.dart';
 import '../src/p2p_router.dart';
+import '../src/ui/garage/garage_reauthentication.dart';
 
 /// Public application-shell composition for the P2P feature.
 final class P2pFeature {
@@ -35,7 +36,9 @@ final class P2pFeature {
   /// The P2P tab, with the page of an order inside it, to mount in the bottom bar of the shell.
   ///
   /// The route is always registered: the shell hides the tab and sends every location of it elsewhere with [redirect] while the gate is closed, so that no widget, cubit or Tor start of P2P is ever built then.
-  /// [network] is read from the context of the tab each time it builds, so a change of network reloads the book.
+  /// [network] is read from the context of the tab each time it builds, so a change of network reloads the book and gives the Garage the key of that network.
+  /// [reauthenticate] is the app's own re-authentication, which the Garage asks before it shows a stored Garage Key; without it, a stored key is never shown.
+  /// The Garage is offered only when [setup] was given the vault's handle, and it reads the vault only once the user opens it.
   ///
   /// How the tab uses Tor:
   /// - each entry in the tab builds a new book: it calls `ensureReady` on the embedded Tor, waits for it, then asks every coordinator again;
@@ -45,7 +48,8 @@ final class P2pFeature {
   GoRoute route(
     GetIt locator, {
     required RobosatsNetwork Function(BuildContext context) network,
-  }) => P2pRouter.route(locator, network);
+    P2pReauthentication? reauthenticate,
+  }) => P2pRouter.route(locator, network, reauthenticate: reauthenticate);
 
   /// Whether [location] is a page of the P2P tab.
   static bool isP2pPath(String location) => P2pRouter.isP2pPath(location);

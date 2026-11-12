@@ -1,4 +1,4 @@
-// Renders the screens of the P2P tab to PNG files, with the real widgets, the dark theme and fonts of the app, and the books recorded from the live federation.
+// Renders the screens of the P2P tab to PNG files, with the real widgets, the dark theme and fonts of the app, and the books recorded from the live federation, then the Garage over a vault in memory with the public example key of the RoboSats tests.
 // They are review material, compared by eye with the validated mock-up: nothing is asserted on the pixels.
 // Skipped unless P2P_CAPTURE_DIR names the folder to write to, for example:
 // P2P_CAPTURE_DIR=/tmp/captures fvm flutter test test/features/p2p/p2p_screens_capture_test.dart
@@ -18,11 +18,27 @@ import 'package:go_router/go_router.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/testing.dart';
+import 'package:secrets/secrets.dart' show Secrets;
+import 'package:secrets/testing.dart';
 
 /// The books were recorded on 2026-11-10 between 13:51 and 13:55 UTC: the screens are rendered a few minutes later.
 final _now = DateTime.utc(2026, 11, 10, 14);
 
 const _fixtures = 'packages/robosats/test/fixtures/coordinator';
+
+/// The example key of the RoboSats frontend tests, as `packages/robosats` records it: the only key the Garage captures show, never one drawn at random.
+String _exampleGarageKey() =>
+    ((jsonDecode(
+                  File(
+                    'packages/robosats/test/fixtures/robot-identity-vectors.json',
+                  ).readAsStringSync(),
+                )
+                as Map<String, dynamic>)['garage_key']
+            as Map<String, dynamic>)['garage_key']
+        as String;
+
+/// The `no_screenshot` plugin behind the capture protection of the Garage answers on this channel.
+const _privacyChannel = MethodChannel('com.flutterplaza.no_screenshot_methods');
 
 /// Answers each coordinator with its recorded `/api/book/` and `/api/info/`, a recorded `not_found` book with status 404, and as unreachable when nothing was recorded (lake on testnet, gumpellite).
 final class _RecordedTransport implements CoordinatorTransport {
@@ -85,6 +101,15 @@ Future<void> _loadFonts() async {
   if (icons.existsSync()) {
     await load('MaterialIcons', [
       Future.value(ByteData.sublistView(icons.readAsBytesSync())),
+    ]);
+  }
+  // The Garage Key and the robot number are drawn in the platform's monospace family, which a test has not: the Roboto Mono of the SDK's tools stands in for it.
+  final mono = File(
+    '$flutterRoot/bin/cache/dart-sdk/bin/resources/devtools/assets/fonts/Roboto_Mono/RobotoMono-Regular.ttf',
+  );
+  if (mono.existsSync()) {
+    await load('monospace', [
+      Future.value(ByteData.sublistView(mono.readAsBytesSync())),
     ]);
   }
 }
@@ -307,6 +332,153 @@ void main() {
       },
     );
   }
+
+  // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery ».
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the Garage in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          // A page or a dialog opened or closed.
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // An empty slot is believed after the vault's full read budget, about 4.5 s.
+        Future<void> vault() async {
+          await settle();
+          await tester.pump(const Duration(seconds: 6));
+          await settle();
+        }
+
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: const _RecordedTransport(RobosatsNetwork.testnet),
+          torStates: () => tor.stream,
+          clock: () => _now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.testnet,
+          ),
+        );
+        tor.add(P2pTorState.ready);
+        await settle();
+        final l10n = lookupP2pLocalizations(locale);
+        final example = _exampleGarageKey();
+
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await vault();
+        await capture('garage-accueil');
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await capture('garage-etape1');
+        await tester.enterText(find.byType(EditableText), example);
+        await settle();
+        await capture('garage-etape1-cle-collee');
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await vault();
+        await capture('garage-etape2');
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await capture('garage-etape3');
+        await tester.tapOnText(
+          find.textRange.ofSubstring(l10n.p2pGarageOnboardingHelpLink),
+        );
+        await settle();
+        await capture('garage-lien-simplex');
+        await tester.tapAt(const Offset(4, 4));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageSeeProfile));
+        await settle();
+        await capture('garage-profil');
+        await tester.tap(find.text(l10n.p2pGarageKeyReveal));
+        await settle();
+        await capture('garage-pin-factice');
+        await tester.tap(find.text('PIN'));
+        await settle();
+        await capture('garage-profil-cle');
+        await tester.tap(find.text(l10n.p2pGarageProfileDeleteAll));
+        await settle();
+        await capture('garage-supprimer');
+        await tester.tap(find.text(l10n.p2pDeleteKeyConfirm));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
+        await settle();
+        await tester.enterText(find.byType(EditableText), example);
+        await settle();
+        await capture('garage-recuperation');
+
+        // The backup step of a key drawn in memory, after a trip to the background: the alert stays and the key is behind the PIN, so the capture holds no key.
+        await tester.tapAt(const Offset(4, 4));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await vault();
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await settle();
+        if (find.text(l10n.p2pGarageKeyReveal).evaluate().isEmpty) {
+          throw StateError('the backup step does not hide the key');
+        }
+        await capture('garage-alerte-sauvegarde');
+      },
+    );
+  }
 }
 
 const _frame = ValueKey('p2p-capture-frame');
@@ -354,7 +526,21 @@ class _App extends StatelessWidget {
               ),
             );
           },
-          routes: [const P2pFeature().route(locator, network: (_) => network)],
+          routes: [
+            const P2pFeature().route(
+              locator,
+              network: (_) => network,
+              // A stand-in for the wallet's PIN screen, which needs the app's own locator: one button that passes.
+              reauthenticate: (onAuthenticated) => Scaffold(
+                body: Center(
+                  child: TextButton(
+                    onPressed: onAuthenticated,
+                    child: const Text('PIN'),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
