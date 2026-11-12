@@ -751,4 +751,10 @@ final class _OrderedBindings implements RobotBindingRepository {
     RobosatsNetwork network,
     GarageKeyFingerprint key,
   ) => _bindings.recordImportedKey(network, key);
+
+  @override
+  Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _bindings.exposureOf(network, key);
 }
