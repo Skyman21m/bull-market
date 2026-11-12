@@ -40,6 +40,7 @@ export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it; without it, the Garage is disabled, as in a feature set up without the vault's handle.
+@visibleForTesting
 void setUpP2pForTesting(
   GetIt locator, {
   required CoordinatorTransport transport,
