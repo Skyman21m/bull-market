@@ -205,6 +205,48 @@ void main() {
       );
     });
 
+    test('is refused with more signatures than a key block may hold', () {
+      // Copies of the key's own certification, each a valid signature: the bound counts signature packets, whatever they hold, before any is verified (#69).
+      final key = CraftedKey();
+      List<RawPacket> withSignatures(List<RawPacket> packets, int count) => [
+        ...packets.take(3),
+        for (var i = 2; i < count; i++) packets[2],
+        ...packets.skip(3),
+      ];
+      expect(
+        withSignatures(
+          key.publicPackets,
+          PgpLimits.keySignatures,
+        ).where((packet) => packet.tag == PacketTag.signature),
+        hasLength(PgpLimits.keySignatures),
+      );
+      expectOk(
+        PgpPublicKey.parse(
+          armorPackets(
+            ArmorBlock.publicKey,
+            withSignatures(key.publicPackets, PgpLimits.keySignatures),
+          ),
+        ),
+      );
+      _expectUnsupported(
+        armorPackets(
+          ArmorBlock.publicKey,
+          withSignatures(key.publicPackets, PgpLimits.keySignatures + 1),
+        ),
+      );
+      // A private block too, before anything of it is unlocked.
+      final private = key.privatePackets(_token);
+      expectOk(
+        _parsePair(key, withSignatures(private, PgpLimits.keySignatures)),
+      );
+      expect(
+        expectErr(
+          _parsePair(key, withSignatures(private, PgpLimits.keySignatures + 1)),
+        ),
+        isA<PgpKeyUnsupported>(),
+      );
+    });
+
     test('is not read at all beyond its size bound', () {
       final huge =
           '${CraftedKey().publicArmored}${' ' * PgpLimits.keyArmorChars}';

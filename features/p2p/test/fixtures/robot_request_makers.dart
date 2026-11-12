@@ -4,8 +4,10 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
+import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' as robosats;
 import 'package:robosats/robosats.dart';
@@ -102,3 +104,16 @@ Object proveByTearOff(UnprovenCoordinatorRobot robot) => robot.prove;
 
 /// A pair made on the calling isolate, torn off.
 Object generateByTearOff() => RobotPgpKey.generate;
+
+/// The robot request of the feature, torn off: it binds and checks, but goes around the places and the retries of the robot use cases.
+Object fetchByUseCaseTearOff(FetchRobotUsecase usecase) => usecase.execute;
+
+/// The sessions of a robot closed through the port itself, not after its requests have ended (review of step 3).
+Future<void> closeByPort(
+  CoordinatorSessionsPort sessions,
+  RobotSessionKey robot,
+) => sessions.closeRobotSessions(robot);
+
+/// A first contact made elsewhere than in the use case that puts a robot.
+Object firstContactOutsidePut(NetworkRobot robot) =>
+    RobotContact.firstContact(robot);

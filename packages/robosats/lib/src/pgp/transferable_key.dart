@@ -60,7 +60,7 @@ final class TransferableKey {
 
   /// Reads the packets of a public key block ([secret] false) or of a private key block ([secret] true).
   ///
-  /// Throws a [FormatException] for malformed packets and an [UnsupportedPgpException] for a key outside the RoboSats shape: another algorithm or version, no certified user ID, no bound Curve25519 subkey, or a secret key that is not passphrase-protected.
+  /// Throws a [FormatException] for malformed packets and an [UnsupportedPgpException] for a key outside the RoboSats shape: another algorithm or version, no certified user ID, no bound Curve25519 subkey, a secret key that is not passphrase-protected, or more than [PgpLimits.keySignatures] signature packets, refused before any signature is verified.
   /// Dates are not looked at here, since reading a key needs no clock: see [couldSignAt] and [canReceiveAt].
   /// Revocation is not evaluated: a coordinator keeps the first key of a robot for good.
   factory TransferableKey.parse(Uint8List bytes, {required bool secret}) {
@@ -68,6 +68,11 @@ final class TransferableKey {
     if (packets.isEmpty ||
         packets.first.tag !=
             (secret ? PacketTag.secretKey : PacketTag.publicKey)) {
+      throw const UnsupportedPgpException();
+    }
+    // Each signature read may cost an Ed25519 verification on the calling isolate: a block a coordinator padded with signatures is refused before the first one.
+    if (packets.where((packet) => packet.tag == PacketTag.signature).length >
+        PgpLimits.keySignatures) {
       throw const UnsupportedPgpException();
     }
     final primaryReader = ByteReader(packets.first.body);
