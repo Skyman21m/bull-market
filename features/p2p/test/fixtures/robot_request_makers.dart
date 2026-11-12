@@ -1,5 +1,5 @@
 // Ways to reach a robot request, a robot credential, a raw network client or a binding that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found, in the declaration it is in.
-// The placements of the reviews of #60 are among them: a tear-off, an extension, and a raw request with the token hash; the call through `dynamic` is refused by the analyzer, so that test writes it to a temporary file instead.
+// The placements of the reviews of #60 are among them: a tear-off, an extension, a raw request with the token hash, and a call through an explicit `as dynamic` cast, which `avoid_dynamic_calls` lets through (it refuses a call on an implicitly dynamic value only).
 // Never imported by the feature; the analyzer resolves it in that test only.
 import 'package:dio/dio.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
@@ -62,6 +62,19 @@ List<Object> credentials(RobotIdentity identity) => [
   identity.tokenSha256Hex,
   identity.token.reveal(),
 ];
+
+/// The call of the second review of #60, through an explicit `as dynamic` cast: no member is resolved, and the lint lets it through.
+Future<Object?> dynamicCall(
+  Object client,
+  Coordinator coordinator,
+  NetworkRobot robot,
+  Object pgpKey,
+) async => await (client as dynamic).fetchKnownRobot(
+  coordinator,
+  robot.network,
+  identity: robot.identity,
+  pgpKey: pgpKey,
+);
 
 /// A raw request to a coordinator, which could carry either header.
 Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>

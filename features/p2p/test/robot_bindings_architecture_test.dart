@@ -12,7 +12,8 @@ import 'package:test/test.dart';
 
 /// Where the robot requests, the robot credentials, raw network clients and the bindings can be reached in `features/p2p/lib`.
 ///
-/// What refers to them is resolved by the analyzer, calls, tear-offs, cascades, prefixes, extensions and implementations alike, in every Dart file of `lib/` but the committed translations; a call through `dynamic` is refused by `avoid_dynamic_calls`, an error in this feature, and also reported here.
+/// What refers to them is resolved by the analyzer, calls, tear-offs, cascades, prefixes, extensions and implementations alike, in every Dart file of `lib/` but the committed translations.
+/// A member reached through `dynamic` is reported here: `avoid_dynamic_calls`, an error in this feature, refuses a call on an implicitly dynamic value, but lets an explicit `as dynamic` cast through.
 /// What imports the database and what its SQL says is read from the syntax tree.
 /// The behaviour is tested elsewhere (`robot_binding_repository_test.dart`, `robot_usecases_test.dart`): these keep it from being walked around inside the feature.
 /// They do not see code outside `features/p2p/lib` (the robot types stay out of the app-facing library for that, `p2p_feature_test.dart`), `packages/robosats` itself, nor a credential copied into a plain `String` by an allowed file and sent later.
@@ -27,6 +28,21 @@ void main() {
     for (final MapEntry(key: path, value: facts) in libraries.entries)
       if (test(facts)) path,
   };
+
+  test('the scan leaves out the committed translations and nothing else', () {
+    for (final (path, scanned) in [
+      ('lib/generated/l10n/p2p_localizations.dart', false),
+      ('lib/generated/l10n/p2p_localizations_fr.dart', false),
+      // A file put next to the translations is read: generated code is code.
+      ('lib/generated/zz_gen.dart', true),
+      ('lib/generated/other/zz_gen.dart', true),
+      ('lib/src/data/p2p_database.g.dart', true),
+      ('lib/src/zz.dart', true),
+      ('test/zz_test.dart', false),
+    ]) {
+      expect(_isScanned(path), scanned, reason: path);
+    }
+  });
 
   test('every Dart file of lib/ is scanned but the committed translations', () {
     final all = [
@@ -109,28 +125,10 @@ void main() {
               'credential RobotIdentity.tokenSha256Hex',
               'credential RobotToken.reveal',
             },
+            'dynamicCall': {'dynamic fetchKnownRobot'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
           },
-        );
-      },
-      timeout: const Timeout(Duration(minutes: 3)),
-    );
-
-    test(
-      'a call through dynamic is seen, as the analyzer refuses it',
-      () async {
-        // The reviewer's placement of #60: in lib/ it fails `avoid_dynamic_calls`, an error in this feature; written to a temporary file here so that the analysis of the package stays clean.
-        final directory = Directory('test').createTempSync('zz_dynamic_');
-        addTearDown(() => directory.deleteSync(recursive: true));
-        final file = File('${directory.path}/zz_dynamic.dart')
-          ..writeAsStringSync("""
-Future<Object?> reviewDynamic(Object client, Object coordinator, Object robot) async =>
-    await (client as dynamic).fetchKnownRobot(coordinator, robot);
-""");
-        expect(
-          (await _referencesIn(collection, file.path)).values.expand((r) => r),
-          contains('dynamic fetchKnownRobot'),
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
@@ -409,14 +407,17 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
-/// The Dart files the tests read: every one under `lib/` but the translations, which `gen-l10n` writes and Git tracks.
+/// The Dart files the tests read: every one under `lib/` that [_isScanned].
 List<String> _scanned() => [
   for (final file in Directory('lib').listSync(recursive: true))
-    if (file is File &&
-        file.path.endsWith('.dart') &&
-        !file.path.startsWith('lib/generated/l10n/'))
-      file.path,
+    if (file is File && _isScanned(file.path)) file.path,
 ];
+
+/// Whether the tests read the file at [path]: any Dart file under `lib/` but the translations, which `gen-l10n` writes and Git tracks; the rest of `lib/generated/` and generated `.g.dart` files are read.
+bool _isScanned(String path) =>
+    path.startsWith('lib/') &&
+    path.endsWith('.dart') &&
+    !path.startsWith('lib/generated/l10n/');
 
 /// Members watched by name, by the class that declares them and its library: a member of a subtype, an implementation of the interface included, counts as the member of its supertype.
 const _watched = {
