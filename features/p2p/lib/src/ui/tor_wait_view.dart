@@ -3,16 +3,28 @@ import 'package:flutter/material.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/tor_wait.dart';
+import '../presentation/p2p_formats.dart';
 
 /// The wait for Tor inside the P2P tab, in the three steps of the official Android client: initializing, connecting, connected.
 ///
-/// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress: the official Android client shows a spinner that turns until Tor is ready (`activity_main.xml` at commit ff1998c), with no share of the work done.
+/// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress, as the official Android client's spinner turns until Tor is ready (`activity_main.xml` at commit ff1998c).
+/// Once Tor reports how far it has got, the bar is filled to that share and the [percent] stands next to it: the official Android client reads Tor's bootstrap percentage (`TorKmpManager.kt`) but shows none, and the owner asked for it (#68).
+/// No percentage shows once Tor is ready or has failed.
 /// The wallet stays usable meanwhile: only this tab waits.
 class TorWaitView extends StatelessWidget {
   final TorWait tor;
+
+  /// How far Tor has got in starting, as `TorWait.percentAfter` gives it; shown only while Tor connects, and `null` shows none.
+  final int? percent;
+
   final VoidCallback onRetry;
 
-  const TorWaitView({super.key, required this.tor, required this.onRetry});
+  const TorWaitView({
+    super.key,
+    required this.tor,
+    this.percent,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +32,8 @@ class TorWaitView extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final failed = tor == TorWait.failed;
+    final waiting = tor == TorWait.initializing || tor == TorWait.connecting;
+    final percent = tor == TorWait.connecting ? this.percent : null;
     // Tor fails while it connects: the failure shows on that step.
     final reached = switch (tor) {
       TorWait.initializing => 0,
@@ -71,15 +85,19 @@ class TorWaitView extends StatelessWidget {
               ),
             ),
             const Gap(BullSpacing.sm),
-            // Runs for as long as Tor starts, as the official Android client's spinner turns until Tor is ready; fades out when Tor fails.
-            ClipRRect(
-              borderRadius: BorderRadius.circular(BullRadius.xxs),
-              child: BullFadingLinearProgress(
-                trigger: !failed && tor != TorWait.ready,
-                height: 4,
-                foregroundColor: colors.primary,
-                backgroundColor: colors.surfaceContainer,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _TorBar(running: waiting, percent: percent),
+                ),
+                if (percent != null) ...[
+                  const Gap(BullSpacing.xs),
+                  Text(
+                    P2pFormats.of(context).torProgress(percent),
+                    style: text.labelLarge?.copyWith(color: colors.text),
+                  ),
+                ],
+              ],
             ),
             const Gap(BullSpacing.sm),
             Text(
@@ -96,6 +114,61 @@ class TorWaitView extends StatelessWidget {
                 textColor: colors.onPrimary,
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The bar under the steps.
+///
+/// It runs for as long as Tor starts, as the official Android client's spinner turns until Tor is ready, and fades out once Tor is ready or has failed.
+/// With a [percent], the bar is filled to it, and the run goes on over the fill in a lighter tint, so that the bar never stands still while Tor is not ready, even at 0 % or during the seconds `bull_tor` holds readiness at a full share.
+class _TorBar extends StatelessWidget {
+  static const height = 4.0;
+
+  final bool running;
+  final int? percent;
+
+  const _TorBar({required this.running, required this.percent});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final percent = this.percent;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(BullRadius.xxs),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (percent != null)
+              ColoredBox(
+                color: colors.surfaceContainer,
+                child: AnimatedFractionallySizedBox(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 300),
+                  alignment: AlignmentDirectional.centerStart,
+                  widthFactor: percent / 100,
+                  child: ColoredBox(color: colors.primary),
+                ),
+              ),
+            BullFadingLinearProgress(
+              trigger: running,
+              height: height,
+              foregroundColor: percent == null
+                  ? colors.primary
+                  : Color.alphaBlend(
+                      colors.onPrimary.withValues(alpha: 0.45),
+                      colors.primary,
+                    ),
+              backgroundColor: percent == null
+                  ? colors.surfaceContainer
+                  : colors.transparent,
+            ),
           ],
         ),
       ),

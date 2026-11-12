@@ -48,6 +48,9 @@ final class BookState {
   final RobosatsNetwork network;
   final TorWait tor;
 
+  /// The percentage of its start Tor has done, as the wait shows it (`TorWait.percentAfter`); `null` shows none.
+  final int? torPercent;
+
   /// One entry per coordinator of the network once the book is requested, in the order of the federation.
   final Map<Coordinator, CoordinatorBookStatus> coordinators;
   final BookFilter filter;
@@ -58,6 +61,7 @@ final class BookState {
   const BookState({
     required this.network,
     this.tor = TorWait.initializing,
+    this.torPercent,
     this.coordinators = const {},
     this.filter = const BookFilter(),
     this.orders = const [],
@@ -88,14 +92,17 @@ final class BookState {
         (status) => status is CoordinatorBookLoading && status.previous == null,
       );
 
+  /// A copy with what is given; [torPercent] goes with [tor], so a new step without a percentage shows none.
   BookState copyWith({
     TorWait? tor,
+    int? torPercent,
     Map<Coordinator, CoordinatorBookStatus>? coordinators,
     BookFilter? filter,
     List<PublicOrder>? orders,
   }) => BookState(
     network: network,
     tor: tor ?? this.tor,
+    torPercent: tor == null ? this.torPercent : torPercent,
     coordinators: coordinators ?? this.coordinators,
     filter: filter ?? this.filter,
     orders: orders ?? this.orders,

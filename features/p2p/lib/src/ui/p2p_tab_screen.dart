@@ -80,7 +80,8 @@ class P2pTabScreen extends StatelessWidget {
                   ? garage(context)
                   : BlocBuilder<BookCubit, BookState>(
                       buildWhen: (previous, current) =>
-                          previous.tor != current.tor,
+                          previous.tor != current.tor ||
+                          previous.torPercent != current.torPercent,
                       builder: (context, state) => switch (state.tor) {
                         TorWait.ready => BookView(
                           now: now,
@@ -91,6 +92,7 @@ class P2pTabScreen extends StatelessWidget {
                         ),
                         final tor => TorWaitView(
                           tor: tor,
+                          percent: state.torPercent,
                           onRetry: context.read<BookCubit>().retryTor,
                         ),
                       },

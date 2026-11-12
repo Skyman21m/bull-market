@@ -38,23 +38,34 @@ export 'package:robosats/robosats.dart'
         RobotPgpKeyMismatch,
         RobotUnknown;
 
-export 'src/domain/p2p_tor_state.dart' show P2pTorState;
+export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'
     show CoordinatorImage, coordinatorImages;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
+/// Tor reports either [torStates], or [torReports] when a test needs the share of its start too.
+///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 @visibleForTesting
 void setUpP2pForTesting(
   GetIt locator, {
   required CoordinatorTransport transport,
-  required Stream<P2pTorState> Function() torStates,
+  Stream<P2pTorState> Function()? torStates,
+  Stream<P2pTorReport> Function()? torReports,
   required DateTime Function() clock,
   GarageKeys? garageKeys,
 }) {
-  final tor = _StatesOnlyTor(torStates);
+  final Stream<P2pTorReport> Function() reports = switch ((
+    torStates,
+    torReports,
+  )) {
+    (final states?, null) => () => states().map(P2pTorReport.new),
+    (null, final reports?) => reports,
+    _ => throw ArgumentError('Tor reports either states or reports'),
+  };
+  final tor = _StatesOnlyTor(reports);
   P2pLocator.registerOver(
     locator,
     transport: () => transport,
@@ -106,17 +117,17 @@ final class _StatesOnlyTor implements Tor {
   @override
   final EmbeddedTor embedded;
 
-  _StatesOnlyTor(Stream<P2pTorState> Function() states)
-    : embedded = _StatesOnlyEmbeddedTor(states);
+  _StatesOnlyTor(Stream<P2pTorReport> Function() reports)
+    : embedded = _StatesOnlyEmbeddedTor(reports);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _StatesOnlyEmbeddedTor implements EmbeddedTor {
-  final Stream<P2pTorState> Function() _states;
+  final Stream<P2pTorReport> Function() _reports;
 
-  _StatesOnlyEmbeddedTor(this._states);
+  _StatesOnlyEmbeddedTor(this._reports);
 
   static final _route = TorRoute(
     source: TorSource.embedded,
@@ -125,10 +136,13 @@ final class _StatesOnlyEmbeddedTor implements EmbeddedTor {
   );
 
   @override
-  Stream<TorConnectionState> get states => _states().map(
-    (state) => switch (state) {
+  Stream<TorConnectionState> get states => _reports().map(
+    (report) => switch (report.state) {
       P2pTorState.notStarted => const TorUninitialized(),
-      P2pTorState.connecting => const TorConnecting(source: TorSource.embedded),
+      P2pTorState.connecting => TorConnecting(
+        source: TorSource.embedded,
+        progress: report.progress,
+      ),
       P2pTorState.ready => TorReady(_route),
       P2pTorState.failed => const TorUnavailable(
         source: TorSource.embedded,

@@ -8,7 +8,9 @@ final class WatchP2pTorStateUsecase {
 
   const WatchP2pTorStateUsecase(this._tor);
 
-  /// The current state at once, then each change; it does not start Tor, the first request does.
-  Stream<P2pTorState> execute() =>
-      _tor().embedded.states.map(P2pTorState.of).distinct();
+  /// The current report at once, then each change, the share of the start included; it does not start Tor, the first request does.
+  ///
+  /// It is the embedded Tor's, whatever proxy the wallet is set to: the P2P tab always goes through the embedded Tor.
+  Stream<P2pTorReport> execute() =>
+      _tor().embedded.states.map(P2pTorReport.of).distinct();
 }
