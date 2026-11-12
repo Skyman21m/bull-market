@@ -12,6 +12,7 @@ import 'widgets/tor_wait_phrases.dart';
 /// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress, as the official Android client's spinner turns until Tor is ready (`activity_main.xml` at commit ff1998c).
 /// Once Tor reports how far it has got, the bar is filled to that share and the [percent] stands next to it: the official Android client reads Tor's bootstrap percentage (`TorKmpManager.kt`) but shows none, and the owner asked for it (#68).
 /// The room of the percentage is kept for the whole wait, so nothing moves when it comes.
+/// With reduced motion, the run of the bar stops once a percentage is shown: the fill and the number carry the progress.
 /// Under the bar, short phrases change every 2 seconds ([TorWaitPhrases], Troc's own texts, also asked for by the owner).
 /// Neither the percentage nor the phrases show once Tor is ready or has failed.
 /// The wallet stays usable meanwhile: only this tab waits.
@@ -101,7 +102,14 @@ class TorWaitView extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _TorBar(running: waiting, percent: percent),
+                  child: _TorBar(
+                    // With reduced motion, the fill and the number carry the progress once Tor reports a share, and the run stops; before that, it runs, as decided in #62.
+                    running:
+                        waiting &&
+                        !(MediaQuery.disableAnimationsOf(context) &&
+                            percent != null),
+                    percent: percent,
+                  ),
                 ),
                 const Gap(BullSpacing.xs),
                 // The room of the widest percentage is kept for the whole wait, so that neither the bar nor the screen moves when a percentage comes, goes or gains a digit.

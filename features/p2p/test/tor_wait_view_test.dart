@@ -372,6 +372,39 @@ void main() {
     );
 
     testWidgets(
+      'reduced motion: the run goes on before a percentage, and stops once one is shown',
+      (tester) async {
+        await tester.pumpWidget(wait(TorWait.connecting));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(bar(tester).trigger, isTrue);
+        expect(tester.hasRunningAnimations, isTrue);
+
+        await tester.pumpWidget(wait(TorWait.connecting, percent: 42));
+        expect(bar(tester).trigger, isFalse);
+        expect(
+          tester.widget<BullFadingLinearProgress>(lightRun).trigger,
+          isFalse,
+        );
+        await fadeOut(tester);
+        expect(tester.hasRunningAnimations, isFalse);
+        // The fill and the number carry the progress.
+        expect(filled(tester), closeTo(0.42, 0.001));
+        expect(shownPercents(tester), ['42%']);
+
+        await tester.pumpWidget(wait(TorWait.connecting, percent: 60));
+        await tester.pump();
+        expect(filled(tester), closeTo(0.6, 0.001));
+        expect(tester.hasRunningAnimations, isFalse);
+
+        // A new attempt of Tor, with no share yet: the run comes back.
+        await tester.pumpWidget(wait(TorWait.connecting));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(bar(tester).trigger, isTrue);
+        expect(tester.hasRunningAnimations, isTrue);
+      },
+    );
+
+    testWidgets(
       'Tor fails after a percentage: the run fades out, as it does without one',
       (tester) async {
         await tester.pumpWidget(
