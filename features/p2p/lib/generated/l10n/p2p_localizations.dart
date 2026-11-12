@@ -1025,6 +1025,372 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Depth chart: nothing to draw on this axis.'**
   String get p2pChartSummaryNoAxis;
+
+  /// Button that moves on to the next step of the Garage wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get p2pCommonContinue;
+
+  /// Subtitle of the Garage welcome screen, where RoboSats shows its logo.
+  ///
+  /// In en, this message translates to:
+  /// **'A Simple and Private LN P2P Exchange'**
+  String get p2pGarageWelcomeTagline;
+
+  /// Text of the box above « Start » on the Garage welcome screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a new robot and learn to use RoboSats'**
+  String get p2pGarageWelcomeCreateRobot;
+
+  /// Button of the Garage welcome screen: opens the three-step Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get p2pGarageWelcomeStart;
+
+  /// Text above « Recovery » on the Garage welcome screen. RoboSats keeps « token » in Garage Key mode; the French text says « clé de garage » (decision of 2026-11-10).
+  ///
+  /// In en, this message translates to:
+  /// **'Recover an existing robot using your token'**
+  String get p2pGarageWelcomeRecoverHint;
+
+  /// Text button of the Garage welcome screen: opens « Robot recovery », where the user pastes a Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery'**
+  String get p2pGarageWelcomeRecovery;
+
+  /// Text button of the Garage welcome screen: shows the offers (RoboSats opens its guided search, which Troc does not have).
+  ///
+  /// In en, this message translates to:
+  /// **'Search for Orders'**
+  String get p2pGarageWelcomeSearchForOrders;
+
+  /// Text button of the Garage welcome screen, disabled: creating an order comes in a later phase.
+  ///
+  /// In en, this message translates to:
+  /// **'Fast Generate Order'**
+  String get p2pGarageWelcomeFastGenerateOrder;
+
+  /// Title of the first step of the Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Generate your Garage Key'**
+  String get p2pGarageOnboardingStep1Title;
+
+  /// Text of the first step of the Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'Your Garage Key is a master key that derives unlimited robot identities. Generate it once and use it forever.'**
+  String get p2pGarageOnboardingStep1Text;
+
+  /// Bold start of the alert shown with a new Garage Key: the key is never part of the wallet backup.
+  ///
+  /// In en, this message translates to:
+  /// **'Store it somewhere safe!'**
+  String get p2pGarageOnboardingStoreItTitle;
+
+  /// Rest of the alert shown with a new Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'This key is the master key to all your robots. Keep it secret and backed up securely.'**
+  String get p2pGarageOnboardingStoreItText;
+
+  /// Helper text under the Garage Key, in the wizard and on the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Store your Garage Key safely'**
+  String get p2pGarageKeyHelper;
+
+  /// Error under the Garage Key field when what was typed is not a Garage Key and no more precise reason applies.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid garage key'**
+  String get p2pGarageKeyInvalid;
+
+  /// Text of the first step of the wizard, about pasting a Garage Key the user already has.
+  ///
+  /// In en, this message translates to:
+  /// **'Or paste an existing Garage Key to recover your robots.'**
+  String get p2pGarageOnboardingPasteExisting;
+
+  /// Small button with a die: replaces the Garage Key, after the delete confirmation when one is stored.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate new'**
+  String get p2pGarageOnboardingGenerateNew;
+
+  /// Title of the second step of the Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Meet your robot identity'**
+  String get p2pGarageOnboardingStep2Title;
+
+  /// Text of the second step of the wizard, above the robot's avatar, and its label on the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'This is your trading avatar'**
+  String get p2pGarageTradingAvatar;
+
+  /// Followed by the robot's nickname, in bold between two bolts.
+  ///
+  /// In en, this message translates to:
+  /// **'Hi! My name is'**
+  String get p2pGarageHiMyNameIs;
+
+  /// Tooltip and screen-reader label of the left arrow of the « Robot #N » navigator.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous account'**
+  String get p2pGaragePreviousAccount;
+
+  /// Tooltip and screen-reader label of the right arrow of the « Robot #N » navigator.
+  ///
+  /// In en, this message translates to:
+  /// **'Next account'**
+  String get p2pGarageNextAccount;
+
+  /// Word before « #N » in the robot navigator (« Robot #3 »).
+  ///
+  /// In en, this message translates to:
+  /// **'Robot'**
+  String get p2pGarageRobotLabel;
+
+  /// Title of the third step of the Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'3. Browse or create an order'**
+  String get p2pGarageOnboardingStep3Title;
+
+  /// Text of the third step of the Garage Key wizard.
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats is a peer-to-peer marketplace. You can browse the public offers or create a new one.'**
+  String get p2pGarageOnboardingStep3Text;
+
+  /// Start of the help sentence of the third step, followed by the link p2pGarageOnboardingHelpLink.
+  ///
+  /// In en, this message translates to:
+  /// **'If you need help on your RoboSats journey join our public support'**
+  String get p2pGarageOnboardingHelpIntro;
+
+  /// Name of the public RoboSats support group: shown with its link for copy, never opened.
+  ///
+  /// In en, this message translates to:
+  /// **'SimpleX group'**
+  String get p2pGarageOnboardingHelpLink;
+
+  /// End of the help sentence of the third step, after « , ».
+  ///
+  /// In en, this message translates to:
+  /// **'or visit the robot school for documentation.'**
+  String get p2pGarageOnboardingHelpOutro;
+
+  /// Button of the third step: shows the address of the RoboSats documentation for copy, never opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn RoboSats'**
+  String get p2pGarageLearnRoboSats;
+
+  /// Text button of the third step: opens the Garage profile.
+  ///
+  /// In en, this message translates to:
+  /// **'See profile'**
+  String get p2pGarageSeeProfile;
+
+  /// Caption of the box that holds the Garage Key on the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Garage Key'**
+  String get p2pGarageKeyLabel;
+
+  /// Tooltip of the red « Delete All » button of the profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Garage Key and all robots'**
+  String get p2pGarageProfileDeleteAllTooltip;
+
+  /// Red button of the profile: opens « Delete Garage Key? ».
+  ///
+  /// In en, this message translates to:
+  /// **'Delete All'**
+  String get p2pGarageProfileDeleteAll;
+
+  /// Title of the dialog where the user pastes a Garage Key to recover their robots.
+  ///
+  /// In en, this message translates to:
+  /// **'Robot recovery'**
+  String get p2pRecoveryTitle;
+
+  /// Chip next to the title of « Robot recovery ».
+  ///
+  /// In en, this message translates to:
+  /// **'Garage Key Mode'**
+  String get p2pRecoveryModeGarageKey;
+
+  /// Text of « Robot recovery »; « robo1... » is the literal start of a key, never translated.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your garage key (robo1...) to recover all your robot accounts.'**
+  String get p2pRecoveryGarageKeyText;
+
+  /// Label of the field where the Garage Key is pasted, as RoboSats words it in both of its modes.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste token here'**
+  String get p2pRecoveryPasteHere;
+
+  /// Shown with a progress bar while the pasted key is stored.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovering your robot. This may take a moment.'**
+  String get p2pRecoveryInProgress;
+
+  /// Button of « Robot recovery », disabled until the field holds a Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover'**
+  String get p2pRecoveryRecover;
+
+  /// Title of the confirmation before deleting the Garage Key of this network.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Garage Key?'**
+  String get p2pDeleteKeyTitle;
+
+  /// Question of the delete confirmation; the capitals are RoboSats's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to permanently delete this Garage Key and ALL associated robots?'**
+  String get p2pDeleteKeyQuestion;
+
+  /// Warning of the delete confirmation, with RoboSats's own emoji.
+  ///
+  /// In en, this message translates to:
+  /// **'⚠️ This action cannot be undone!'**
+  String get p2pDeleteCannotBeUndone;
+
+  /// Followed by three bullet points.
+  ///
+  /// In en, this message translates to:
+  /// **'Before deleting, make sure you have:'**
+  String get p2pDeleteBeforeDeleting;
+
+  /// First bullet point: the key is not part of the wallet backup.
+  ///
+  /// In en, this message translates to:
+  /// **'Stored your Garage Key safely'**
+  String get p2pDeleteKeyStoredKey;
+
+  /// Second bullet point.
+  ///
+  /// In en, this message translates to:
+  /// **'No active or pending orders in ANY robot'**
+  String get p2pDeleteKeyNoActiveOrders;
+
+  /// Third bullet point.
+  ///
+  /// In en, this message translates to:
+  /// **'Exported any important data'**
+  String get p2pDeleteExportedData;
+
+  /// Red confirmation button of the delete confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Garage Key'**
+  String get p2pDeleteKeyConfirm;
+
+  /// Error under the Garage Key field: the text of RoboSats's validator, which it never translates. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Must start with \"robo1\"'**
+  String get p2pGarageKeyMustStartWith;
+
+  /// Error under the Garage Key field when the text is not 55 to 65 characters long: the text of RoboSats's validator. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid length'**
+  String get p2pGarageKeyInvalidLength;
+
+  /// Error under the Garage Key field when the text does not hold 32 bytes: the text of RoboSats's validator. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid key data'**
+  String get p2pGarageKeyInvalidData;
+
+  /// Button of the profile: asks for the wallet's PIN, then shows the Garage Key. RoboSats shows the key at once; Troc hides it until the user authenticates again (owner's decision). Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Garage Key'**
+  String get p2pGarageKeyReveal;
+
+  /// Shown instead of the Garage Key when screenshot protection could not be turned on, as the wallet does for its seeds (screenPrivacyUnavailable). Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen protection could not be turned on, so the Garage Key stays hidden.'**
+  String get p2pGarageScreenPrivacyUnavailable;
+
+  /// The device's keystore is locked: a stored key, if any, is intact. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'The keystore is locked. Unlock your device, then try again.'**
+  String get p2pGarageKeyLocked;
+
+  /// The vault could not read the entry of this network. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'The Garage Key stored on this device cannot be read.'**
+  String get p2pGarageKeyUnreadable;
+
+  /// The entry of this network is there but is not a Garage Key. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'The Garage Key stored on this device is damaged.'**
+  String get p2pGarageKeyUnusable;
+
+  /// Under an unreadable or damaged key, above « Retry » and « Delete Garage Key ». Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again. If it keeps failing, delete it: the key and its robots are lost unless you kept a copy.'**
+  String get p2pGarageKeyUnreadableHelp;
+
+  /// The keystore did not store the new or pasted key. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'The Garage Key could not be saved. Try again.'**
+  String get p2pGarageKeyNotSaved;
+
+  /// The keystore did not delete the key: it may still be stored. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'The Garage Key could not be deleted. Try again.'**
+  String get p2pGarageKeyNotDeleted;
+
+  /// A key is already stored: it is never replaced without the delete confirmation. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'A Garage Key is already stored for this network.'**
+  String get p2pGarageKeyAlreadyStored;
+
+  /// No usable robot index was found from this key, which does not happen with a key drawn at random. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'No robot can be made from this Garage Key.'**
+  String get p2pGarageRobotUnavailable;
+
+  /// Button next to the Garage Key field: reads the clipboard once and puts its text in the field. It replaces the field's long-press menu, which Troc removes so that a key is never copied, shared or translated from it. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get p2pCommonPaste;
+
+  /// Button next to the Garage Key field: empties it. Not in the phase-1 catalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get p2pCommonClear;
 }
 
 class _P2pLocalizationsDelegate

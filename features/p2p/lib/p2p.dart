@@ -52,3 +52,4 @@ export 'package:robosats/robosats.dart'
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
+export 'src/ui/garage/garage_reauthentication.dart' show P2pReauthentication;

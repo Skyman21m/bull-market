@@ -33,7 +33,15 @@ class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
 
-  const BookView({super.key, required this.now, required this.onOpenOrder});
+  /// Opens the Garage from « You do not have a Garage Key », when the tab has one.
+  final VoidCallback? onOpenGarage;
+
+  const BookView({
+    super.key,
+    required this.now,
+    required this.onOpenOrder,
+    this.onOpenGarage,
+  });
 
   @override
   State<BookView> createState() => _BookViewState();
@@ -74,16 +82,6 @@ class _BookViewState extends State<BookView> {
     final state = context.watch<BookCubit>().state;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: BullSpacing.md),
-          child: BullSegmented(
-            items: {l10n.p2pNavOffers, l10n.p2pNavCreate, l10n.p2pNavGarage},
-            initialValue: l10n.p2pNavOffers,
-            disabledItems: {l10n.p2pNavCreate, l10n.p2pNavGarage},
-            onSelected: (_) {},
-          ),
-        ),
-        const Gap(BullSpacing.sm),
         Expanded(
           child: BullRefreshIndicator(
             onRefresh: cubit.refresh,
@@ -143,7 +141,7 @@ class _BookViewState extends State<BookView> {
       case OrderSearchFound(:final order):
         widget.onOpenOrder(order);
       case OrderSearchNeedsRobot():
-        await NoRobotDialog.show(context);
+        await NoRobotDialog.show(context, onOpenGarage: widget.onOpenGarage);
       case OrderSearchInvalidUrl() || null:
         break;
     }

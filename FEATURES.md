@@ -15,6 +15,7 @@ graph TB
     BULL_PAYJOIN[Bull Payjoin Package<br/>Public contract]
     BULL_PRICER[Bull Pricer Package<br/>Bitcoin price and history]
     ROBOSATS[RoboSats Package<br/>Robot identity, coordinator client, robot on a coordinator]
+    SCREEN_PRIVACY[Screen Privacy Package<br/>Capture protection]
 
     %% Feature modules
     SETTINGS[Settings]
@@ -83,6 +84,7 @@ graph TB
     P2P --> BULL_LOGGER
     P2P --> BULL_UI
     P2P --> SECRETS
+    P2P --> SCREEN_PRIVACY
     CORE --> BULL_PAYJOIN
     BULL_PAYJOIN --> PRIMITIVES
     CORE --> BULL_PRICER
@@ -217,7 +219,7 @@ graph TB
     classDef featureStyle fill:#1a202c,stroke:#2d3748,stroke-width:2px,color:#e2e8f0
 
     class CORE coreStyle
-    class SECRETS,PRIMITIVES,BULL_PAYJOIN,BULL_PRICER,ROBOSATS,TOR packageStyle
+    class SECRETS,PRIMITIVES,BULL_PAYJOIN,BULL_PRICER,ROBOSATS,TOR,SCREEN_PRIVACY packageStyle
     class SETTINGS,P2P,PIN_CODE,LABELS,HW_WALLETS,BTC_PRICE,NETWORK,BIP85,FEES,WALLETS,EXCHANGE,EXCHANGE_SETTINGS,EXCHANGE_SUPPORT_CHAT,APP_STARTUP,UTXO_MGMT,ADDRESS_MGMT,RECIPIENTS,FUNDING,BACKUPS,SWAPS,WITHDRAWAL,STATUS,SEND,RECEIVE,TRANSFER,TX_HISTORY,REPLACE_BY_FEE,BG_TASKS,AUTOSWAP,AUTOBUY,DCA,DEFAULT_WALLETS,LIMIT_ORDERS,SELL,PAY,BUY,COINS,ANNOUNCEMENTS,CONSOLIDATION,ALL_SEED_VIEW,APP_UNLOCK,SP featureStyle
 ```
 
@@ -289,7 +291,7 @@ graph TB
 - **Send**: Depends on Fees, Network, Payjoin, Swaps, UTXO Management, Wallets
 - **Receive**: Depends on Payjoin, Swaps
 - **Backups**: Depends on BIP85, Tor, Wallets
-- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book and its depth chart, order details and the dialog of its coordinator, search of an order by its URL, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, which no screen uses yet and which the app-facing facade does not offer; depends on the Secrets package for the RoboSats Garage Key of each network, whose handle the shell passes to `P2pFeature.setup` in the foreground composition only, and which internal use cases generate, import, find, derive robots from and delete, with no screen yet; the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
+- **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book and its depth chart, order details and the dialog of its coordinator, search of an order by its URL, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, which no screen uses yet and which the app-facing facade does not offer; depends on the Secrets package for the RoboSats Garage Key of each network, whose handle the shell passes to `P2pFeature.setup` in the foreground composition only, and which internal use cases generate, import, read, derive robots from and delete for the Garage of the tab (welcome, wizard, profile, robot navigator, delete, recovery by pasting a key; everything on the device, no robot is sent to a coordinator); depends on the Screen Privacy package, which protects the whole Garage from capture as the wallet's seed screens are; the PIN re-authentication the profile asks before it shows a stored key is App Unlock's `buildReauthenticationGate`, which the shell lends to `P2pFeature.route` (the feature does not import App Unlock); the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
 
 ### Exchange-Related Features
 

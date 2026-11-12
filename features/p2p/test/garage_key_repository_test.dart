@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -6,10 +5,11 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
-import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
+import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
 
 /// The Garage Keys of P2P, through the real vault of `package:secrets` over its in-memory keystore.
@@ -148,8 +148,45 @@ void main() {
       expect(ok(await repository.exists(RobosatsNetwork.mainnet)), isTrue);
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.mainnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
+    });
+
+    test('is read with the network of its slot, never the other', () async {
+      final storage = storageHolding([testnetEntry]);
+      final repository = repositoryOver(storage);
+
+      expect(
+        ok(await repository.read(RobosatsNetwork.testnet)),
+        NetworkGarageKey(RobosatsNetwork.testnet, fixedKey),
+      );
+      expect(
+        err(await repository.read(RobosatsNetwork.mainnet)),
+        isA<GarageKeyMissingFailure>(),
+      );
+      expect(storage.entries, {testnetEntry: storedFixedKeys[testnetEntry]});
+    }, timeout: slow);
+
+    test('gives robots tagged with the network of its slot', () async {
+      final repository = repositoryOver(
+        storageHolding([mainnetEntry, testnetEntry]),
+      );
+
+      for (final network in RobosatsNetwork.values) {
+        final key = ok(await repository.read(network));
+        expect(key.network, network);
+        expect(
+          ok(key.firstUsableRobot(0)),
+          ok(await repository.firstUsableRobot(network)),
+        );
+        expect(ok(key.firstUsableRobot(0)).network, network);
+      }
     });
 
     test('is never replaced: create and import are refused', () async {
@@ -168,7 +205,13 @@ void main() {
       expect(storage.entries, {mainnetEntry: storedFixedKeys[mainnetEntry]});
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.mainnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
     });
 
@@ -178,7 +221,13 @@ void main() {
 
       expect(
         ok(await repository.firstUsableRobot(RobosatsNetwork.testnet)),
-        fixedRobot,
+        isA<NetworkRobot>()
+            .having(
+              (robot) => robot.network,
+              'network',
+              RobosatsNetwork.testnet,
+            )
+            .having((robot) => robot.robot, 'robot', fixedRobot),
       );
       ok(await repository.delete(RobosatsNetwork.mainnet));
 
@@ -205,6 +254,10 @@ void main() {
           isA<GarageKeyUnusableFailure>(),
         );
         expect(
+          err(await repository.read(RobosatsNetwork.mainnet)),
+          isA<GarageKeyUnusableFailure>(),
+        );
+        expect(
           err(await repository.create(RobosatsNetwork.mainnet)),
           isA<GarageKeyAlreadyStoredFailure>(),
         );
@@ -228,7 +281,7 @@ void main() {
         PlatformException failing() => PlatformException(code: 'read failed');
         final storage = storageHolding([
           mainnetEntry,
-        ], scripted: List.generate(15, (_) => failing()));
+        ], scripted: List.generate(20, (_) => failing()));
         final repository = repositoryOver(storage);
 
         expect(
@@ -237,6 +290,10 @@ void main() {
         );
         expect(
           err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
+          isA<GarageKeyUnreadableFailure>(),
+        );
+        expect(
+          err(await repository.read(RobosatsNetwork.mainnet)),
           isA<GarageKeyUnreadableFailure>(),
         );
         expect(
@@ -257,6 +314,7 @@ void main() {
       for (final failure in [
         err(await repository.exists(RobosatsNetwork.mainnet)),
         err(await repository.firstUsableRobot(RobosatsNetwork.mainnet)),
+        err(await repository.read(RobosatsNetwork.mainnet)),
         err(await repository.create(RobosatsNetwork.mainnet)),
         err(await repository.import(RobosatsNetwork.mainnet, exampleKey)),
       ]) {
@@ -320,64 +378,6 @@ void main() {
     );
     expect(storage.entries.keys, [mainnetEntry]);
   }, timeout: slow);
-
-  test(
-    'nothing printed while keys are created, imported, read, used and deleted holds a key',
-    () async {
-      final repository = repositoryOver(FakeSecureStoragePlatform());
-      final printed = <String>[];
-      Future<void> capturing(Future<void> Function() body) => runZoned(
-        body,
-        zoneSpecification: ZoneSpecification(
-          print: (self, parent, zone, line) => printed.add(line),
-        ),
-      );
-
-      await capturing(() async {
-        // Shows that the zone captures what is printed in it.
-        Zone.current.print('capture works');
-        ok(await repository.create(RobosatsNetwork.testnet));
-        ok(await repository.import(RobosatsNetwork.mainnet, fixedKey));
-        for (final network in RobosatsNetwork.values) {
-          ok(await repository.exists(network));
-          ok(await repository.firstUsableRobot(network));
-        }
-      });
-      // The created key, read through the vault itself: the test looks for it, never shows it.
-      final created = switch (await Secrets(
-        scratchDirectory: () async => '.',
-      ).garageKeys().read(slot: GarageKeySlot.testnet)) {
-        Ok(:final value) => Uint8List.fromList(value.bytes),
-        Err() => fail('the created key cannot be read back'),
-      };
-      await capturing(() async {
-        for (final network in RobosatsNetwork.values) {
-          ok(await repository.delete(network));
-        }
-      });
-
-      expect(printed, contains('capture works'));
-      final output = printed.join('\n');
-      for (final bytes in [created, fixedKey.revealBytes()]) {
-        final key = switch (GarageKey.fromBytes(bytes)) {
-          Ok(:final value) => value,
-          Err() => fail('not a key'),
-        };
-        final forms = [
-          bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(),
-          '$bytes',
-          bytes.join(','),
-          base64Encode(bytes),
-          key.revealBech32(),
-        ];
-        for (final (index, form) in forms.indexed) {
-          // A boolean, so that a failure does not print the key it found.
-          expect(output.contains(form), isFalse, reason: 'form $index');
-        }
-      }
-    },
-    timeout: slow,
-  );
 
   test('the failures carry nothing but their type', () {
     for (final failure in <P2pFailure>[

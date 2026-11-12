@@ -17,13 +17,16 @@ import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
+import 'domain/usecases/read_garage_key_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
+import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
@@ -44,13 +47,13 @@ final class P2pLocator {
       tor: () => locator<Tor>(),
       clock: DateTime.now,
     );
-    if (garageKeys != null) _registerGarageKeys(locator, garageKeys);
+    if (garageKeys != null) registerGarageKeys(locator, garageKeys);
   }
 
-  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], and the use-cases that create, import, read and delete it.
+  /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, and the Garage that shows it.
   ///
-  /// Registering touches no key: the keystore is read or written only when a use-case runs.
-  static void _registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
+  /// Registering touches no key: the keystore is read or written only when a use-case runs, and the Garage runs them only once the user opens it.
+  static void registerGarageKeys(GetIt locator, GarageKeys garageKeys) {
     locator.registerLazySingleton<GarageKeyRepository>(
       () => GarageKeyRepositoryImpl(garageKeys),
     );
@@ -63,11 +66,34 @@ final class P2pLocator {
     locator.registerFactory<ImportGarageKeyUsecase>(
       () => ImportGarageKeyUsecase(locator()),
     );
+    locator.registerFactory<ReadGarageKeyUsecase>(
+      () => ReadGarageKeyUsecase(locator()),
+    );
     locator.registerFactory<DeriveFirstRobotUsecase>(
       () => DeriveFirstRobotUsecase(locator()),
     );
     locator.registerFactory<DeleteGarageKeyUsecase>(
       () => DeleteGarageKeyUsecase(locator()),
+    );
+    // The Garage of a network, created when the user opens it.
+    // The keys drawn and not acknowledged yet, in memory, for the whole run of the app.
+    locator.registerLazySingleton<UnacknowledgedGarageKeys>(
+      UnacknowledgedGarageKeys.new,
+    );
+    locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
+      (network, _) => GarageCubit(
+        network,
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+      ),
+    );
+    // One for the feature, so that a copied key is cleared even after the screen that copied it is gone.
+    locator.registerLazySingleton<GarageKeyClipboard>(
+      GarageKeyClipboard.new,
+      dispose: (clipboard) => clipboard.dispose(),
     );
   }
 

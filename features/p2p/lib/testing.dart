@@ -7,6 +7,7 @@ import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart' show GarageKeys;
 
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
@@ -37,11 +38,14 @@ export 'package:robosats/robosats.dart'
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
+///
+/// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 void setUpP2pForTesting(
   GetIt locator, {
   required CoordinatorTransport transport,
   required Stream<P2pTorState> Function() torStates,
   required DateTime Function() clock,
+  GarageKeys? garageKeys,
 }) {
   final tor = _StatesOnlyTor(torStates);
   P2pLocator.registerOver(
@@ -51,6 +55,7 @@ void setUpP2pForTesting(
     tor: () => tor,
     clock: clock,
   );
+  if (garageKeys != null) P2pLocator.registerGarageKeys(locator, garageKeys);
 }
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.

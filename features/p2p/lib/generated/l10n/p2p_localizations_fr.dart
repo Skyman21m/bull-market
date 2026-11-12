@@ -538,4 +538,214 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pChartSummaryNoAxis =>
       'Graphique de profondeur : rien à tracer sur cet axe.';
+
+  @override
+  String get p2pCommonContinue => 'Continuer';
+
+  @override
+  String get p2pGarageWelcomeTagline =>
+      'Une bourse d\'échange P2P LN simple et privée';
+
+  @override
+  String get p2pGarageWelcomeCreateRobot =>
+      'Créer un nouveau robot et apprendre à utiliser RoboSats';
+
+  @override
+  String get p2pGarageWelcomeStart => 'Commencer';
+
+  @override
+  String get p2pGarageWelcomeRecoverHint =>
+      'Récupérer un robot existant à l\'aide de votre clé de garage';
+
+  @override
+  String get p2pGarageWelcomeRecovery => 'Récupération';
+
+  @override
+  String get p2pGarageWelcomeSearchForOrders => 'Rechercher des ordres';
+
+  @override
+  String get p2pGarageWelcomeFastGenerateOrder => 'Générer un ordre rapidement';
+
+  @override
+  String get p2pGarageOnboardingStep1Title => '1. Générez votre clé de garage';
+
+  @override
+  String get p2pGarageOnboardingStep1Text =>
+      'Votre clé de garage est une clé maîtresse dont dérive un nombre illimité d\'identités de robot. Générez-la une fois, utilisez-la pour toujours.';
+
+  @override
+  String get p2pGarageOnboardingStoreItTitle => 'Conservez-la en lieu sûr !';
+
+  @override
+  String get p2pGarageOnboardingStoreItText =>
+      'Cette clé est la clé maîtresse de tous vos robots. Gardez-la secrète et sauvegardez-la en lieu sûr.';
+
+  @override
+  String get p2pGarageKeyHelper => 'Conservez votre clé de garage en sécurité';
+
+  @override
+  String get p2pGarageKeyInvalid => 'Clé de garage invalide';
+
+  @override
+  String get p2pGarageOnboardingPasteExisting =>
+      'Ou collez une clé de garage existante pour récupérer vos robots.';
+
+  @override
+  String get p2pGarageOnboardingGenerateNew => 'Générer une nouvelle';
+
+  @override
+  String get p2pGarageOnboardingStep2Title =>
+      '2. Découvrez votre identité robotique';
+
+  @override
+  String get p2pGarageTradingAvatar => 'Ceci est votre avatar d\'échange';
+
+  @override
+  String get p2pGarageHiMyNameIs => 'Bonjour, je m\'appelle';
+
+  @override
+  String get p2pGaragePreviousAccount => 'Compte précédent';
+
+  @override
+  String get p2pGarageNextAccount => 'Compte suivant';
+
+  @override
+  String get p2pGarageRobotLabel => 'Robot';
+
+  @override
+  String get p2pGarageOnboardingStep3Title => '3. Consulter ou créer un ordre';
+
+  @override
+  String get p2pGarageOnboardingStep3Text =>
+      'RoboSats est une place de marché pair à pair. Vous pouvez consulter les offres publiques ou en créer une nouvelle.';
+
+  @override
+  String get p2pGarageOnboardingHelpIntro =>
+      'Si vous avez besoin d\'aide dans votre parcours RoboSats, rejoignez notre entraide publique sur le';
+
+  @override
+  String get p2pGarageOnboardingHelpLink => 'groupe SimpleX';
+
+  @override
+  String get p2pGarageOnboardingHelpOutro =>
+      'ou visitez l\'école des robots pour la documentation.';
+
+  @override
+  String get p2pGarageLearnRoboSats => 'Apprendre RoboSats';
+
+  @override
+  String get p2pGarageSeeProfile => 'Voir le profil';
+
+  @override
+  String get p2pGarageKeyLabel => 'Clé de garage';
+
+  @override
+  String get p2pGarageProfileDeleteAllTooltip =>
+      'Supprimer la clé de garage et tous les robots';
+
+  @override
+  String get p2pGarageProfileDeleteAll => 'Tout supprimer';
+
+  @override
+  String get p2pRecoveryTitle => 'Récupération du robot';
+
+  @override
+  String get p2pRecoveryModeGarageKey => 'Mode clé de garage';
+
+  @override
+  String get p2pRecoveryGarageKeyText =>
+      'Saisissez votre clé de garage (robo1...) pour récupérer tous vos comptes robot.';
+
+  @override
+  String get p2pRecoveryPasteHere => 'Coller le jeton ici';
+
+  @override
+  String get p2pRecoveryInProgress =>
+      'Récupération de votre robot. Cela peut prendre un moment.';
+
+  @override
+  String get p2pRecoveryRecover => 'Récupérer';
+
+  @override
+  String get p2pDeleteKeyTitle => 'Supprimer la clé de garage ?';
+
+  @override
+  String get p2pDeleteKeyQuestion =>
+      'Êtes-vous sûr de vouloir supprimer définitivement cette clé de garage et TOUS les robots associés ?';
+
+  @override
+  String get p2pDeleteCannotBeUndone =>
+      '⚠️ Cette action ne peut pas être annulée !';
+
+  @override
+  String get p2pDeleteBeforeDeleting =>
+      'Avant de supprimer, assurez-vous d\'avoir :';
+
+  @override
+  String get p2pDeleteKeyStoredKey =>
+      'Conservé votre clé de garage en lieu sûr';
+
+  @override
+  String get p2pDeleteKeyNoActiveOrders =>
+      'Aucun ordre actif ou en attente, sur TOUS vos robots';
+
+  @override
+  String get p2pDeleteExportedData => 'Exporté toutes les données importantes';
+
+  @override
+  String get p2pDeleteKeyConfirm => 'Supprimer la clé de garage';
+
+  @override
+  String get p2pGarageKeyMustStartWith => 'Doit commencer par « robo1 »';
+
+  @override
+  String get p2pGarageKeyInvalidLength => 'Longueur invalide';
+
+  @override
+  String get p2pGarageKeyInvalidData => 'Données de clé invalides';
+
+  @override
+  String get p2pGarageKeyReveal => 'Afficher la clé de garage';
+
+  @override
+  String get p2pGarageScreenPrivacyUnavailable =>
+      'La protection de l’écran n’a pas pu être activée : la clé de garage reste masquée.';
+
+  @override
+  String get p2pGarageKeyLocked =>
+      'Le coffre de l’appareil est verrouillé. Déverrouillez votre appareil, puis réessayez.';
+
+  @override
+  String get p2pGarageKeyUnreadable =>
+      'La clé de garage enregistrée sur cet appareil ne peut pas être lue.';
+
+  @override
+  String get p2pGarageKeyUnusable =>
+      'La clé de garage enregistrée sur cet appareil est endommagée.';
+
+  @override
+  String get p2pGarageKeyUnreadableHelp =>
+      'Réessayez. Si l’échec persiste, supprimez-la : la clé et ses robots sont perdus, sauf si vous en avez gardé une copie.';
+
+  @override
+  String get p2pGarageKeyNotSaved =>
+      'La clé de garage n’a pas pu être enregistrée. Réessayez.';
+
+  @override
+  String get p2pGarageKeyNotDeleted =>
+      'La clé de garage n’a pas pu être supprimée. Réessayez.';
+
+  @override
+  String get p2pGarageKeyAlreadyStored =>
+      'Une clé de garage est déjà enregistrée pour ce réseau.';
+
+  @override
+  String get p2pGarageRobotUnavailable =>
+      'Aucun robot ne peut être créé à partir de cette clé de garage.';
+
+  @override
+  String get p2pCommonPaste => 'Coller';
+
+  @override
+  String get p2pCommonClear => 'Effacer';
 }

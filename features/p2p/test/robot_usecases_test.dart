@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:primitives/primitives.dart';
@@ -51,16 +52,20 @@ final GarageKey _garageKey = switch (GarageKey.fromBytes(
   Err(:final failure) => throw StateError('$failure'),
 };
 
-RobotIdentity _identityAt(int index) =>
-    switch (_garageKey.firstUsableRobot(index)) {
-      Ok(:final value) => value.identity,
+NetworkRobot _robotAt(int index, RobosatsNetwork network) =>
+    switch (NetworkGarageKey(network, _garageKey).firstUsableRobot(index)) {
+      Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };
+
+RobotIdentity _identityAt(int index) =>
+    _robotAt(index, RobosatsNetwork.testnet).identity;
 
 void main() {
   const network = RobosatsNetwork.testnet;
   final temple = coordinator('temple');
-  final identity = _identityAt(0);
+  final networkRobot = _robotAt(0, network);
+  final identity = networkRobot.identity;
   final pgpKey = switch (RobotPgpKey.generate(identity)) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
@@ -89,8 +94,7 @@ void main() {
       required bool createIfUnknown,
     }) => usecase.execute(
       temple,
-      network,
-      identity: identity,
+      networkRobot,
       pgpKey: pgpKey,
       createIfUnknown: createIfUnknown,
     );
@@ -140,6 +144,30 @@ void main() {
       final request = transport.requests.single;
       expect(request.headers['Authorization'], identity.authorizationHeader());
       expect(request.robot, identity.sessionKey);
+    });
+
+    test('asks on the network of the key the robot comes from', () async {
+      // The same robot, derived from the same bytes kept as the mainnet key.
+      final mainnetRobot = _robotAt(0, RobosatsNetwork.mainnet);
+      expect(mainnetRobot.identity, identity);
+
+      for (final createIfUnknown in [true, false]) {
+        await usecase.execute(
+          temple,
+          mainnetRobot,
+          pgpKey: pgpKey,
+          createIfUnknown: createIfUnknown,
+        );
+      }
+
+      expect(transport.requests.map((request) => request.url.host), [
+        hostOf('temple', RobosatsNetwork.mainnet),
+        hostOf('temple', RobosatsNetwork.mainnet),
+      ]);
+      expect(
+        hostOf('temple', RobosatsNetwork.mainnet),
+        isNot(hostOf('temple', network)),
+      );
     });
 
     test('reads a known robot without creating it', () async {
