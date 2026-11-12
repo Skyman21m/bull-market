@@ -43,6 +43,8 @@ void main() {
           'lib/src/domain/repositories/garage_key_repository.dart',
           'lib/src/domain/usecases/import_garage_key_usecase.dart',
           'lib/src/domain/usecases/derive_first_robot_usecase.dart',
+          'lib/src/domain/usecases/read_robot_standing_usecase.dart',
+          'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart',
         ]),
       );
     });

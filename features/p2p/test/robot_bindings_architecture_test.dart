@@ -187,6 +187,9 @@ void main() {
             'rawProcess': {'network Process'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
+            'acknowledgeByTearOff': {
+              'RobotBindingRepository.recordAcknowledgedKey',
+            },
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
           },
@@ -300,6 +303,14 @@ void main() {
         }
       },
     );
+
+    test('only the acknowledgement of the user records a key as acknowledged', () {
+      // It lets the robots of a key of unknown history be bound: no other path may write it on the user's behalf.
+      expect(
+        referring((r) => r == 'RobotBindingRepository.recordAcknowledgedKey'),
+        {'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart'},
+      );
+    });
 
     test('deleting a key cannot reach the bindings', () {
       expect(

@@ -294,6 +294,12 @@ void main() {
         'CoordinatorIdentity',
         'RobotBindingRepository',
         'P2pDatabase',
+        // Where a robot stands, and the acknowledgement of a key of unknown history.
+        'RobotStanding',
+        'BindingProvenance',
+        'GarageKeyHistory',
+        'ReadRobotStandingUsecase',
+        'AcknowledgeGarageKeyHistoryUsecase',
       ]) {
         expect(identifiers(library), isNot(contains(name)), reason: name);
         expect(identifiers(facade), isNot(contains(name)), reason: name);
