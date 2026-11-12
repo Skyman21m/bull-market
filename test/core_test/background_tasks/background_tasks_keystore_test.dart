@@ -48,7 +48,7 @@ void main() {
   });
 
   // `AppLocator.setup` cannot run in a unit test, so these read the code of `lib/`, with its comments and the text of its strings removed; `test/locator_test.dart` runs what each value of the flag registers.
-  // They prove which literal each composition passes, that `setup` forwards its own flag, that the P2P database directory follows the same flag, and that nothing else in `lib/` names `setupP2p`, `withGarageKeys` or `databaseDirectory`.
+  // They prove which literal each composition passes, that `setup` forwards its own flag, that the P2P database directory follows the same flag, and that nothing else in `lib/` names `setupP2p` or `withGarageKeys`, or sets up P2P.
   // They do not run the handler, so they prove nothing about what happens at run time, and they do not see a handle obtained by any other path: the custody gate refuses `Secrets.garageKeys` outside `AppLocator`.
   group('only the foreground composition hands P2P the Garage Key handle', () {
     final code = _codeOfLib();
@@ -114,10 +114,11 @@ void main() {
             ],
           ],
         );
-        // Nothing else in `lib/` hands P2P a directory.
-        expect(_occurrences(code, RegExp(r'\bdatabaseDirectory\b')), {
-          'lib/locator.dart': 1,
-        });
+        // Nothing else in `lib/` sets up P2P, so nothing else hands it a directory.
+        expect(
+          _occurrences(code, RegExp(r'\bP2pFeature\s*\(\s*\)\s*\.\s*setup\b')),
+          {'lib/locator.dart': 1},
+        );
       },
     );
 
@@ -161,7 +162,7 @@ Map<String, String> _codeOfLib() => {
     if (file is File && file.path.endsWith('.dart'))
       if (file.readAsStringSync() case final source
           when RegExp(
-            'AppLocator|setupP2p|GarageKeys|garageKeys|databaseDirectory',
+            'AppLocator|setupP2p|GarageKeys|garageKeys|P2pFeature',
           ).hasMatch(source))
         file.path: _codeOf(source),
 };
