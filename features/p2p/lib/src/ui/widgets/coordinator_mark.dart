@@ -40,11 +40,16 @@ class CoordinatorMark extends StatelessWidget {
         height: size,
         padding: EdgeInsets.all(size * 0.14),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(color.withValues(alpha: 0.28), colors.surface),
+          color: Color.alphaBlend(
+            color.withValues(alpha: 0.28),
+            colors.surface,
+          ),
           border: Border.all(color: color, width: frame),
           borderRadius: BorderRadius.circular(size * 0.24),
         ),
+        // One letter or two keep the same size; only a very wide pair shrinks to fit.
         child: FittedBox(
+          fit: BoxFit.scaleDown,
           child: Text(
             initialsOf(coordinator),
             maxLines: 1,
