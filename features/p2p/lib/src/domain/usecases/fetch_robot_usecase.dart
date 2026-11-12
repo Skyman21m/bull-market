@@ -77,12 +77,18 @@ final class FetchRobotUsecase {
     return switch (answer) {
       Err(:final failure) => Ok(Err(failure)),
       Ok(value: final CoordinatorRobot sent) => Ok(Ok(sent)),
-      Ok(value: final UnprovenCoordinatorRobot unproven) => switch (await _keys
-          .prove(unproven)) {
+      Ok(value: final UnprovenCoordinatorRobot unproven) => await _proven(
+        unproven,
+      ),
+    };
+  }
+
+  /// The robot of [unproven] once its token has proved its pair, away from the UI isolate, as [execute] gives it.
+  Future<Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>
+  _proven(UnprovenCoordinatorRobot unproven) async =>
+      switch (await _keys.prove(unproven)) {
         Ok(value: Ok(value: final proven)) => Ok(Ok(proven)),
         Ok(value: Err(:final failure)) => Ok(Err(failure)),
         Err(:final failure) => Err(failure),
-      },
-    };
-  }
+      };
 }

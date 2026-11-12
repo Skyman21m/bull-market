@@ -291,7 +291,7 @@ final class RobotPgpKey {
   /// The private key must unlock with the token and hold the secret values of the public key: its primary key and its encryption subkey must be, packet body for packet body, the ones of the public block, which [parse] compared by fingerprint only.
   /// It proves who made the pair because each secret part is locked by an S2K salted and iterated over the token itself, and a coordinator never receives the token, only its SHA-256.
   /// Nothing is hashed when the two blocks are not the same key, or when unlocking would hash more than [PgpLimits.proofHashedBytes]; otherwise it costs what [unlock] costs, 32 MiB of SHA-256 for a key of the official client or of Troc: call it off the UI isolate.
-  /// The passphrase and the secret values it unlocked are wiped before it returns, and nothing unlocked is kept.
+  /// The passphrase and the secret values it unlocked are wiped before it returns, and it keeps nothing it unlocked; copies made by the code it calls, as the reversed scalar, are left to the garbage collector.
   /// Fails with [PgpKeyPairMismatch], [PgpInputTooLarge], [PgpWrongPassphrase], or [PgpKeyUnsupported] when the secret values are not those of the public key.
   @internal
   Result<void, PgpFailure> proveMadeBy(RobotIdentity identity) {

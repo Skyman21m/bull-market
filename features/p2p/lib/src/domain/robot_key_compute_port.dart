@@ -11,7 +11,7 @@ import 'p2p_failure.dart';
 
 /// Runs the work on the OpenPGP key pair of a robot that costs seconds of CPU, away from the UI isolate: tests replace it.
 ///
-/// Making a pair and proving one each hash 32 MiB of SHA-256 for a key of the official client or of Troc, and proving a pair a coordinator made up up to `PgpLimits.proofHashedBytes`: on the UI isolate, that would freeze the screens.
+/// Making a pair and proving one each hash 32 MiB of SHA-256 for a key of the official client or of Troc, and proving a pair a coordinator made up can cost up to `PgpLimits.proofHashedBytes`: on the UI isolate, that would freeze the screens.
 abstract interface class RobotKeyComputePort {
   /// A new key pair for [identity], as `RobotPgpKey.generate` makes it: locked by its token, dated a day back.
   ///
