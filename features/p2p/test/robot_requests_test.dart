@@ -731,6 +731,44 @@ void main() {
       },
     );
 
+    test(
+      'a request that waited while its coordinator turned busy is not sent',
+      () async {
+        // Twelve busy answers already.
+        for (var i = 0; i < 3; i++) {
+          await limiter
+              .open(keyOf[3])
+              .send(_testnet, temple, () async => 'busy', isBusy: busyAnswer);
+        }
+        final started = <String>[];
+        final gates = [Completer<String>(), Completer<String>()];
+        final holding = [
+          for (var i = 0; i < 2; i++)
+            limiter.open(keyOf[i + 1]).send(_testnet, temple, () {
+              started.add('robot ${i + 1}');
+              return gates[i].future;
+            }, isBusy: busyAnswer),
+        ];
+        final waiting = limiter.open(keyOf[0]).send(_testnet, temple, () async {
+          started.add('robot 0');
+          return 'answer';
+        }, isBusy: busyAnswer);
+        await _settle();
+
+        // The 13th busy answer frees a place for robot 0, and refuses the coordinator first.
+        gates[0].complete('busy');
+
+        expect(
+          await holding[0],
+          _failed<String, RobotCoordinatorBusyFailure>(),
+        );
+        expect(await waiting, _failed<String, RobotCoordinatorBusyFailure>());
+        expect(started, ['robot 1', 'robot 2']);
+        gates[1].complete('answer');
+        expect(await holding[1], _sent('answer'));
+      },
+    );
+
     test('a clock set back does not keep a coordinator refused', () async {
       var attempts = 0;
       for (var i = 0; i < 4; i++) {

@@ -231,14 +231,13 @@ final class RobotRequests {
         return const Err(RobotCoordinatorBusyFailure());
       }
       final T answer;
-      switch (await _inPlace(lane, request)) {
+      switch (await _inPlace(lane, request, isBusy)) {
         case Err(:final failure):
           return Err(failure);
         case Ok(:final value):
           answer = value;
       }
       if (!isBusy(answer)) return Ok(answer);
-      _limiter._noteBusy(lane);
       if (attempt >= RobotRequestLimiter.maxAttempts ||
           _limiter._refuses(lane)) {
         return const Err(RobotCoordinatorBusyFailure());
@@ -259,9 +258,12 @@ final class RobotRequests {
   }
 
   /// [request] run in a place of [lane], or why it was not run.
+  ///
+  /// A busy answer, as [isBusy] reads it, is counted before the place goes to the next request, so that a request that waited sees its coordinator refused by that very answer.
   Future<Result<T, P2pFailure>> _inPlace<T>(
     _Lane lane,
     Future<T> Function() request,
+    bool Function(T answer) isBusy,
   ) async {
     if (!await _limiter._turn(lane, this)) {
       return const Err(RobotReleasedFailure());
@@ -273,7 +275,9 @@ final class RobotRequests {
       if (_limiter._refuses(lane)) {
         return const Err(RobotCoordinatorBusyFailure());
       }
-      return Ok(await request());
+      final answer = await request();
+      if (isBusy(answer)) _limiter._noteBusy(lane);
+      return Ok(answer);
     } finally {
       _inFlight--;
       _limiter._leave(lane);
