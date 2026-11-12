@@ -452,6 +452,30 @@ void main() {
         await tester.enterText(find.byType(EditableText), example);
         await settle();
         await capture('garage-recuperation');
+
+        // The backup step of a key drawn in memory, after a trip to the background: the alert stays and the key is behind the PIN, so the capture holds no key.
+        await tester.tapAt(const Offset(4, 4));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await vault();
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await settle();
+        if (find.text(l10n.p2pGarageKeyReveal).evaluate().isEmpty) {
+          throw StateError('the backup step does not hide the key');
+        }
+        await capture('garage-alerte-sauvegarde');
       },
     );
   }
