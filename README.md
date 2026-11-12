@@ -22,7 +22,7 @@ These are goals: the "Project status" section says what actually exists.
 
 ## Preview (mock-up)
 
-> These screens are a **mock-up**: they show the target, not the current app. Offers, amounts, nicknames and messages are made up. Only the first screens exist in the app so far: see [First screens in the app](#first-screens-in-the-app) below.
+> These screens are a **mock-up**: they show the target, not the current app. Offers, amounts, nicknames and messages are made up. Only the first screens exist in the app so far: see [Screens in the app](#screens-in-the-app) below.
 
 <table>
   <tr>
@@ -69,34 +69,64 @@ A few notes on what the mock-up shows:
 
 </details>
 
-## First screens in the app
+## Screens in the app
 
-> These are **real screens**, rendered from the app's own code by a test, with order books recorded from the RoboSats coordinators. They are read-only and only visible when both superuser mode and developer mode are on. They were tried on one Android phone, with a debug build (see the status below).
+> These are **real screens**, rendered from the app's own code by a test: the order book screens with books recorded from the RoboSats coordinators on November 10, 2026 (Gumpellite, added to the app's coordinator list after that recording, shows as offline), and the Garage with the public example Garage Key of the RoboSats tests. They are only visible when both superuser mode and developer mode are on. The order book screens were tried on a phone with a debug build; the Garage screens have not been tried on a phone yet (see the status below).
 
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/en-tor-wait.png" width="170" alt="App screen: connecting to the Tor network"><br><sub>Connecting to Tor</sub></td>
     <td align="center"><img src="docs/screenshots/en-order-book.png" width="170" alt="App screen: order book filtered on buying with EUR"><br><sub>The order book</sub></td>
+    <td align="center"><img src="docs/screenshots/en-depth-chart.png" width="170" alt="App screen: depth chart of the EUR orders on the premium axis, with one order shown under the finger"><br><sub>The depth chart</sub></td>
+    <td align="center"><img src="docs/screenshots/en-search-order.png" width="170" alt="App screen: Search order dialog asking for an order URL"><br><sub>Search order</sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of an order, with the Take Order button disabled"><br><sub>Order details</sub></td>
     <td align="center"><img src="docs/screenshots/en-reversible-payments.png" width="170" alt="App screen: warning about reversible payment methods"><br><sub>Reversible payments warning</sub></td>
+    <td align="center"><img src="docs/screenshots/en-coordinator-details.png" width="170" alt="App screen: details of the coordinator that hosts the order"><br><sub>Coordinator details</sub></td>
   </tr>
 </table>
 
-What these screens do today: wait for Tor inside the tab, load the order book coordinator by coordinator, filter it (buy or sell, currency, payment method, host), show RoboSats' low-bond and reversible-payment warnings, and show the details of an order. "Take Order" is displayed but disabled. The robot avatars are provisional ([#22](https://github.com/Skyman21m/troc/issues/22)).
+What these screens do today, read-only: wait for Tor inside the tab, load the order book coordinator by coordinator, filter it (buy or sell, currency, payment method, host), draw its depth chart (premium or price axis, zoom; a long press shows an order, a tap opens it), show RoboSats' low-bond and reversible-payment warnings, the details of an order and of the coordinator that hosts it, and open an order of the public book from its URL ("Search order"; an order that is not in the public book needs a robot, which the app cannot use yet). "Take Order" is displayed but disabled. A coordinator's links and contacts are shown, never opened, so nothing leaves Tor. The robot avatars are provisional ([#22](https://github.com/Skyman21m/troc/issues/22)).
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/en-garage-welcome.png" width="170" alt="App screen: Garage welcome, with Start and Recovery"><br><sub>The Garage</sub></td>
+    <td align="center"><img src="docs/screenshots/en-garage-backup-alert.png" width="170" alt="App screen: step 1 of the Garage, the backup alert with the Garage Key hidden"><br><sub>Back up the Garage Key</sub></td>
+    <td align="center"><img src="docs/screenshots/en-garage-robot.png" width="170" alt="App screen: step 2 of the Garage, the first robot with its avatar and nickname"><br><sub>The first robot</sub></td>
+    <td align="center"><img src="docs/screenshots/en-garage-profile.png" width="170" alt="App screen: Garage profile, the robot navigator and the Garage Key hidden"><br><sub>Profile, key hidden</sub></td>
+  </tr>
+</table>
+
+The Garage, where RoboSats keeps the Garage Key and its robots, works on the device only: it generates a Garage Key or takes a pasted one, shows it for backup with RoboSats' alert, shows the first robot derived from it, and then lets the user browse the robots, show the key again behind the wallet's PIN (when one is set), recover a robot by pasting a key, and delete the key. The key is kept by the wallet's vault, one per network, and never goes into the wallet's backups: the user backs it up separately. The whole Garage is protected against screen capture. Nothing is sent to a coordinator yet, and each visit starts again at robot 0.
 
 <details>
 <summary>Captures en français</summary>
 
 <br>
 
-*Écrans réels, rendus par le code de l'application dans un test, avec des carnets d'ordres enregistrés. Lecture seule, visibles uniquement en mode super-utilisateur et développeur.*
+*Écrans réels, rendus par le code de l'application dans un test, avec des carnets d'ordres enregistrés et, pour le Garage, la clé de garage d'exemple publique des tests de RoboSats. Visibles uniquement en mode super-utilisateur et développeur.*
 
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/fr-tor-wait.png" width="170" alt="Écran de l'application : connexion au réseau Tor"><br><sub>Connexion à Tor</sub></td>
     <td align="center"><img src="docs/screenshots/fr-order-book.png" width="170" alt="Écran de l'application : carnet d'ordres filtré sur l'achat en EUR"><br><sub>Le carnet d'ordres</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-depth-chart.png" width="170" alt="Écran de l'application : graphique de profondeur des ordres en EUR sur l'axe de la prime, un ordre affiché sous le doigt"><br><sub>Le graphique de profondeur</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-search-order.png" width="170" alt="Écran de l'application : fenêtre « Rechercher un ordre » qui demande l'URL d'un ordre"><br><sub>Rechercher un ordre</sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre, bouton « Prendre l'ordre » inactif"><br><sub>La fiche d'un ordre</sub></td>
     <td align="center"><img src="docs/screenshots/fr-reversible-payments.png" width="170" alt="Écran de l'application : avertissement sur les paiements réversibles"><br><sub>Avertissement « Paiements réversibles »</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-coordinator-details.png" width="170" alt="Écran de l'application : fiche du coordinateur qui héberge l'ordre"><br><sub>La fiche du coordinateur</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/fr-garage-welcome.png" width="170" alt="Écran de l'application : accueil du Garage, avec « Commencer » et « Récupération »"><br><sub>Le Garage</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-garage-backup-alert.png" width="170" alt="Écran de l'application : étape 1 du Garage, l'alerte de sauvegarde, clé de garage masquée"><br><sub>Sauvegarder la clé de garage</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-garage-robot.png" width="170" alt="Écran de l'application : étape 2 du Garage, le premier robot avec son avatar et son pseudo"><br><sub>Le premier robot</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-garage-profile.png" width="170" alt="Écran de l'application : profil du Garage, navigation entre robots et clé de garage masquée"><br><sub>Le profil, clé masquée</sub></td>
   </tr>
 </table>
 
@@ -104,7 +134,7 @@ What these screens do today: wait for Tor inside the tab, load the order book co
 
 ## How a trade works
 
-The planned flow is the RoboSats one; none of this is usable in the app yet. Example for a buyer who takes an order:
+The planned flow is the RoboSats one; only the first three steps exist in the app so far, and no order can be taken yet. Example for a buyer who takes an order:
 
 1. **Tor.** The P2P tab connects to the Tor network; the wallet stays usable in the meantime.
 2. **Robot.** The app creates a Garage Key, a master key from which it derives as many robots as needed. A robot is a disposable identity: a nickname, an avatar and its own keys.
@@ -116,7 +146,7 @@ The planned flow is the RoboSats one; none of this is usable in the app yet. Exa
 
 ## Project status
 
-Status as of November 11, 2026. The work is split into phases, tracked with [milestones](https://github.com/Skyman21m/troc/milestones) and [issues](https://github.com/Skyman21m/troc/issues).
+Status as of November 12, 2026. The work is split into phases, tracked with [milestones](https://github.com/Skyman21m/troc/milestones) and [issues](https://github.com/Skyman21m/troc/issues).
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -133,15 +163,19 @@ What already exists in the code:
 - **Robot OpenPGP keys and messages**: robot key, signatures, chat encryption, checked both ways with GnuPG and OpenPGP.js; a testnet coordinator has accepted key pairs made by this code when creating a robot, but no signature or chat message has been tried against one yet ([report](docs/spikes/pgp.md)). This layer is written in Dart and is provisional: a proven Rust library must replace it before any release ([#25](https://github.com/Skyman21m/troc/issues/25)).
 - **Reading the coordinators**: info, order book and limits of each coordinator in the federation, with a check of its identity and of everything it returns ([details](packages/robosats/README.md)).
 - **A first contact over Tor**: a test reaches the real coordinators through the wallet's embedded Tor, on a PC ([measurements](docs/spikes/tor-robosats.md)).
-- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). Its own live test ran once, on a desktop PC behind a VPN, before the review fixes ([report](docs/spikes/tor-transport.md)); the robot test and the phone trial below have since gone through the corrected transport live, without targeting the fixed paths.
-- **The first screens of the P2P tab**: Tor wait, order book and its depth chart, order details, the details of a coordinator and the search of an order by its URL, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
+- **Reading the coordinators over the wallet's Tor**: the `features/p2p` module plugs this reading into the wallet's embedded Tor ([#27](https://github.com/Skyman21m/troc/issues/27)). Its own live test ran once, on a desktop PC behind a VPN, before the review fixes ([report](docs/spikes/tor-transport.md)); the robot test and the phone trials below have since gone through the corrected transport live, without targeting the fixed paths.
+- **The order book screens of the P2P tab**: Tor wait, order book and its depth chart, order details, the details of a coordinator and the search of an order by its URL, read-only, behind superuser and developer mode ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). Tested with recorded order books.
 - **A robot on a coordinator**: the code creates a robot on a coordinator and reads it back, over a Tor session of its own, and refuses any answer that is not the robot and the key pair of this device. A test did it six times on one testnet coordinator, from a desktop build ([report](docs/spikes/robot-coordinator.md)). No screen uses it yet ([#28](https://github.com/Skyman21m/troc/issues/28)).
-- **The Garage Key kept by the wallet's vault**: one per network (mainnet and testnet), random, never derived from the wallet's seed and never part of its backup; the P2P module can generate, import, find, delete it and derive its robots, only in the app in the foreground, and the custody checks limit which files may read it. No screen offers any of this yet ([#28](https://github.com/Skyman21m/troc/issues/28)).
+- **The Garage Key kept by the wallet's vault**: one per network (mainnet and testnet), random, never derived from the wallet's seed and never part of its backup; the P2P module can generate, import, find, delete it and derive its robots, only in the app in the foreground, and the custody checks limit which files may read it ([#28](https://github.com/Skyman21m/troc/issues/28)).
+- **The Garage screens**: generate or paste a Garage Key, back it up, meet the first robot, the profile with the key behind the wallet's PIN, robot recovery and deletion, the whole Garage protected against screen capture; on the device only, nothing is sent to a coordinator ([#29](https://github.com/Skyman21m/troc/issues/29)). Tested over a vault held in memory. Before any release, a copied key is to be flagged as sensitive to Android, and a key typed into the app is to be kept away from the system keyboard ([#56](https://github.com/Skyman21m/troc/issues/56)).
 - **A first trial on a phone** (November 11, 2026, one Android phone, debug build): the P2P tab appeared, Tor connected in about 30 seconds, the six coordinators of the mainnet list all ended up answering, some later than others, and the order book, its filters (which ones were tried was not recorded), pull to refresh, the order details and the reversible-payment warning worked. This is what the tester saw; nothing was measured. Not checked on the phone: the low-bond warning, the testnet banner, the Tor error and its retry, an offline coordinator, the English texts.
+- **A second trial on a phone** (later on November 11, 2026, debug build of `main` at `55ba5139c`): the P2P tab, Tor, the order book, the order details, the coordinator details, the search and the depth chart worked. That build came before the Garage screens, which have not been tried on a phone yet.
 
-In progress: the rest of the read-only screens (Garage, map view) ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)).
+In progress: binding each robot to a single coordinator before any request, since a robot's credential is the same on every coordinator ([#28](https://github.com/Skyman21m/troc/issues/28)), then contacting the coordinators from the Garage ([#29](https://github.com/Skyman21m/troc/issues/29)).
 
-Not done yet: the Garage screens that generate, show and import the key, and creating a robot from the app ([#28](https://github.com/Skyman21m/troc/issues/28)), taking or creating an order, the chat, and any operation that involves money.
+Next: taking an order (phase 2, [#12](https://github.com/Skyman21m/troc/issues/12)).
+
+Not done yet: the map view of the order book ([#30](https://github.com/Skyman21m/troc/issues/30)), creating an order, the chat, and any operation that involves money.
 
 Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issue [#17](https://github.com/Skyman21m/troc/issues/17).
 
@@ -152,12 +186,12 @@ Troc adds two modules to Bull's code; Troc touches the rest as little as possibl
 | Module | Role |
 |---|---|
 | [`packages/robosats`](packages/robosats/README.md) | Part of the RoboSats protocol in pure Dart, with no screen and no network access of its own: robot identity, OpenPGP, reading the coordinators. It talks to the network through an entry point that the app provides. |
-| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the first read-only screens of the P2P tab, shown only in superuser and developer mode; the Garage and the map view are not built yet ([#29](https://github.com/Skyman21m/troc/issues/29), [#30](https://github.com/Skyman21m/troc/issues/30)). |
+| `features/p2p` | The app side: the transport over the wallet's Tor and its facade ([#27](https://github.com/Skyman21m/troc/issues/27)), and the screens of the P2P tab, shown only in superuser and developer mode: the order book and its views, read-only ([#30](https://github.com/Skyman21m/troc/issues/30)), and the Garage, on the device only ([#29](https://github.com/Skyman21m/troc/issues/29)), whose Garage Key is kept by the wallet's vault (`packages/secrets`). The map view is not built yet. |
 
 Principles:
 
 - **Tor only.** RoboSats coordinators are only reached at their `.onion` address.
-- **Identities kept apart from the wallet.** Robot keys are disposable and are never derived from the wallet's recovery phrase. That phrase therefore does not restore them: the Garage Key needs its own backup.
+- **Identities kept apart from the wallet.** Robot keys are disposable and are never derived from the wallet's recovery phrase. The Garage Key is kept in the wallet's vault on the device, but never in the wallet's backups: neither the recovery phrase nor a wallet backup restores it, so it needs its own backup.
 - **Received data is treated as untrusted.** Coordinator responses and the other party's messages are bounded in size and checked before use. As in RoboSats, the coordinator must still be trusted for the escrow, disputes and relaying the other party's key.
 
 The code has not been audited yet. An independent security audit is planned before any beta (phase 5).
