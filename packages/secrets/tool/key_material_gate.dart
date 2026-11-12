@@ -472,7 +472,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
         );
     if (!isFailure) return;
     for (final field in element.fields) {
-      if (field.isSynthetic) continue;
+      if (!field.isOriginDeclaration) continue;
       final type = field.type;
       final described = type is InterfaceType
           ? '${type.element.library.uri}#${type.getDisplayString()}'
@@ -838,7 +838,7 @@ Iterable<String> _surfaceViolations(
     ...owner.setters,
   ]) {
     if (!member.isPublic ||
-        (member is ConstructorElement && member.isSynthetic)) {
+        (member is ConstructorElement && member.isOriginImplicitDefault)) {
       continue;
     }
     final key = member is SetterElement ? '${member.name}=' : '${member.name}';
