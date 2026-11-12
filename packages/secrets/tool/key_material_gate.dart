@@ -392,26 +392,106 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     super.visitExportDirective(node);
   }
 
-  /// A class of [_garageKeyReaders] reads a key for its own use: no public member's signature can hand the bytes or the text out (issue #47).
+  /// A class of [_garageKeyReaders] has the public surface the table gives it, and nothing more (issue #47).
   ///
-  /// Its constructors, methods, getters, setters and fields, static ones included, return no type that [_canCarry] key material, and take no parameter that [_canReceive] it.
-  /// This sees what the class's signatures let out, not where a value goes inside them, nor what other declarations of its file do with its private members.
+  /// Each public member, constructors, fields, getters, setters and static members included, must be in the table with its exact signature, and each type a signature or a supertype names must come from the library [_readerTypes] gives it; a mixin, a supertype not in the table, an override not in the table (`toString` among them) fail.
+  /// The implicit constructor of a class that declares none takes nothing and is not counted.
+  /// This fixes what the class lets out through its own members, not what the values it returns let out (a `GarageKey` derives every robot of the key).
   @override
   void visitClassDeclaration(ClassDeclaration node) {
     final reader = _garageKeyReaders[path];
     final name = node.namePart.typeName.lexeme;
+    final element = node.declaredFragment?.element;
     if (name == 'AppLocator') declaresAppLocator = true;
     if (reader != null && name == reader.owner) {
-      final element = node.declaredFragment?.element;
       if (element == null) {
         violations.add('$path: $name#unresolved class');
       } else {
-        for (final member in _waysOut(element)) {
-          violations.add('$path: $name.$member#can hand out key material');
+        for (final detail in _surfaceViolations(element, reader)) {
+          violations.add('$path: $name$detail, not in the table of readers');
         }
       }
     }
+    if (element != null) checkFailureFields(element);
     super.visitClassDeclaration(node);
+  }
+
+  /// Whether [element] is a class of [_garageKeyReaders], in its file.
+  bool isReaderClass(Element? element) =>
+      element is InterfaceElement &&
+      _garageKeyReaders[declarationPath(element)]?.owner == element.name;
+
+  /// No other code reaches into a reader: no part in its file, no extension on it, and no use of its private members outside it (issue #47).
+  @override
+  void visitPartDirective(PartDirective node) {
+    if (_garageKeyReaders.containsKey(path)) {
+      violations.add('$path: part directive in the file of a reader');
+    }
+    super.visitPartDirective(node);
+  }
+
+  @override
+  void visitPartOfDirective(PartOfDirective node) {
+    if (_garageKeyReaders.containsKey(path)) {
+      violations.add('$path: part directive in the file of a reader');
+    }
+    super.visitPartOfDirective(node);
+  }
+
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    final extended = node.declaredFragment?.element.extendedType;
+    if (extended is InterfaceType && isReaderClass(extended.element)) {
+      violations.add('$path: extension on ${extended.element.name}');
+    }
+    super.visitExtensionDeclaration(node);
+  }
+
+  void checkPrivateUse(Element? element, AstNode node) {
+    final owner = element?.enclosingElement;
+    if (element == null ||
+        !(element.name?.startsWith('_') ?? false) ||
+        !isReaderClass(owner)) {
+      return;
+    }
+    final holder = node.thisOrAncestorOfType<ClassDeclaration>();
+    if (holder?.declaredFragment?.element != owner) {
+      violations.add(
+        '$path: ${owner?.name}.${element.name}#private member used outside its class',
+      );
+    }
+  }
+
+  /// The P2P failures carry no data but the reason of an invalid Garage Key, and their base class passes no message (issue #47).
+  void checkFailureFields(InterfaceElement element) {
+    final isFailure =
+        [element, ...element.allSupertypes.map((type) => type.element)].any(
+          (type) =>
+              type.name == 'P2pFailure' &&
+              declarationPath(type) == _p2pFailurePath,
+        );
+    if (!isFailure) return;
+    for (final field in element.fields) {
+      if (field.isSynthetic) continue;
+      final type = field.type;
+      final described = type is InterfaceType
+          ? '${type.element.library.uri}#${type.getDisplayString()}'
+          : type.getDisplayString();
+      if (_failureFields[element.name]?[field.name] != described) {
+        violations.add(
+          '$path: ${element.name}.${field.name}#field of a P2P failure',
+        );
+      }
+    }
+    if (element.name == 'P2pFailure') {
+      for (final constructor in element.constructors) {
+        if (constructor.formalParameters.isNotEmpty) {
+          violations.add(
+            '$path: P2pFailure.${constructor.name}#constructor with parameters',
+          );
+        }
+      }
+    }
   }
 
   // The bridge's default handler is the only one that sees call arguments: a
@@ -523,6 +603,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       check(node.element, node);
       checkComposition(node);
       checkVaultUse(node.element);
+      checkPrivateUse(node.element, node);
     }
     super.visitSimpleIdentifier(node);
   }
@@ -555,6 +636,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   void visitPatternField(PatternField node) {
     check(node.element, node);
     checkVaultUse(node.element);
+    checkPrivateUse(node.element, node);
     super.visitPatternField(node);
   }
 
@@ -665,78 +747,146 @@ String? materialSymbol(Element element) {
   return forbidden ? '$uri#$symbol' : null;
 }
 
-/// Where the P2P feature may read a Garage Key, and what each place may read (issue #28).
+/// Where the P2P feature may read a Garage Key, what each place may read, and the whole public surface of the class that reads it (issues #28, #47).
 ///
-/// The repository converts the stored bytes into a `GarageKey` and back for an import (#28). The widget that shows the `robo1…` text on a protected screen does not exist yet, so no production file may reveal that text. A step that needs another name changes this table in the same pull request, where review sees both.
+/// The repository converts the stored bytes into a `GarageKey` and back for an import (#28). The widget shows the `robo1…` text on the protected screens of the Garage (#29), and no other production file may reveal that text. A step that needs another name, member or signature changes this table in the same pull request, where review sees both.
+/// [supertypes] are the only supertypes the class may name, besides `Object`, and [surface] the only public members it may declare, each with its signature as the analyzer prints it.
 const _garageKeyReaders = {
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': (
     owner: 'GarageKeyRepositoryImpl',
     members: {'GarageKeyMaterial.bytes', 'GarageKey.revealBytes'},
+    supertypes: {'GarageKeyRepository'},
+    surface: {
+      'new': 'GarageKeyRepositoryImpl Function(GarageKeys)',
+      'create': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+      'import':
+          'Future<Result<void, P2pFailure>> Function(RobosatsNetwork, GarageKey)',
+      'exists': 'Future<Result<bool, P2pFailure>> Function(RobosatsNetwork)',
+      'read':
+          'Future<Result<NetworkGarageKey, P2pFailure>> Function(RobosatsNetwork)',
+      'firstUsableRobot':
+          'Future<Result<NetworkRobot, P2pFailure>> Function(RobosatsNetwork)',
+      'delete': 'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+    },
   ),
   'features/p2p/lib/src/ui/widgets/garage_key_view.dart': (
     owner: 'GarageKeyView',
     members: {'GarageKey.revealBech32'},
+    supertypes: {'StatelessWidget'},
+    surface: {
+      // The analyzer prints named parameters in alphabetical order.
+      'new':
+          'GarageKeyView Function({required GarageKeyClipboard clipboard, required GarageKey garageKey, Key? key})',
+      'garageKey': 'GarageKey',
+      'clipboard': 'GarageKeyClipboard',
+      'build': 'Widget Function(BuildContext)',
+    },
   ),
 };
 
-/// The public members of [owner] whose signature can hand out key material.
-List<String> _waysOut(InterfaceElement owner) => [
+/// The library of each type that the public surface or the supertypes of a reader may name (issue #47): a type of the same name from another library fails, so that the printed signatures of [_garageKeyReaders] say what they mean.
+const _readerTypes = {
+  'bool': 'dart:core',
+  'Future': 'dart:async',
+  'Result': 'package:primitives/src/result.dart',
+  'GarageKey': 'package:robosats/src/garage_key.dart',
+  'RobosatsNetwork': 'package:robosats/src/coordinator/robosats_network.dart',
+  'GarageKeys': 'package:secrets/src/public/secrets.dart',
+  'P2pFailure': 'package:p2p/src/domain/p2p_failure.dart',
+  'NetworkGarageKey': 'package:p2p/src/domain/network_garage_key.dart',
+  'NetworkRobot': 'package:p2p/src/domain/network_garage_key.dart',
+  'GarageKeyRepository':
+      'package:p2p/src/domain/repositories/garage_key_repository.dart',
+  'GarageKeyClipboard': 'package:p2p/src/ui/widgets/garage_key_clipboard.dart',
+  'Key': 'package:flutter/src/foundation/key.dart',
+  'BuildContext': 'package:flutter/src/widgets/framework.dart',
+  'Widget': 'package:flutter/src/widgets/framework.dart',
+  'StatelessWidget': 'package:flutter/src/widgets/framework.dart',
+};
+
+/// What of [owner] is not in its entry of [_garageKeyReaders], each as the text that follows the class name in a violation.
+Iterable<String> _surfaceViolations(
+  InterfaceElement owner,
+  ({
+    String owner,
+    Set<String> members,
+    Set<String> supertypes,
+    Map<String, String> surface,
+  })
+  reader,
+) sync* {
+  bool known(InterfaceElement type) =>
+      type == owner || _readerTypes[type.name] == type.library.uri.toString();
+  for (final mixin in owner.mixins) {
+    yield '#mixin ${mixin.element.name}';
+  }
+  for (final supertype in [
+    if (owner.supertype case final superclass?
+        when !superclass.isDartCoreObject)
+      superclass,
+    ...owner.interfaces,
+  ]) {
+    if (!reader.supertypes.contains(supertype.element.name) ||
+        !known(supertype.element)) {
+      yield '#supertype ${supertype.element.name}';
+    }
+  }
   for (final member in <ExecutableElement>[
     ...owner.constructors,
     ...owner.methods,
     ...owner.getters,
     ...owner.setters,
-  ])
-    if (member.isPublic &&
-        ((member is! ConstructorElement &&
-                member is! SetterElement &&
-                _canCarry(member.returnType)) ||
-            member.formalParameters.any(
-              (parameter) => _canReceive(parameter.type),
-            )))
-      member.name ?? '',
-];
+  ]) {
+    if (!member.isPublic ||
+        (member is ConstructorElement && member.isSynthetic)) {
+      continue;
+    }
+    final key = member is SetterElement ? '${member.name}=' : '${member.name}';
+    final signature = member is GetterElement
+        ? member.returnType.getDisplayString()
+        : member.type.getDisplayString();
+    if (reader.surface[key] != signature) {
+      yield '.$key#$signature';
+    } else {
+      for (final type in _interfaceTypesIn(member.type)) {
+        if (!known(type.element)) {
+          yield '.$key#${type.element.name} of ${type.element.library.uri}';
+        }
+      }
+    }
+  }
+}
 
-/// Whether a value of [type] can hold the bytes or the text of a key.
-///
-/// Text, bytes (any `Iterable<int>`, any type of `dart:typed_data`), a `BigInt`, a value of any type (`Object`, `dynamic`, a type parameter, `Function`), and a function, record or generic type with one of those anywhere in it.
-bool _canCarry(DartType type) => switch (type) {
-  DynamicType() || InvalidType() || TypeParameterType() => true,
-  FunctionType(:final returnType, :final formalParameters) =>
-    _canCarry(returnType) ||
-        formalParameters.any((parameter) => _canCarry(parameter.type)),
-  RecordType(:final positionalFields, :final namedFields) => [
-    for (final field in positionalFields) field.type,
-    for (final field in namedFields) field.type,
-  ].any(_canCarry),
-  InterfaceType(:final element, :final typeArguments) =>
-    type.isDartCoreObject ||
-        type.isDartCoreString ||
-        type.isDartCoreFunction ||
-        (element.library.isDartCore && element.name == 'BigInt') ||
-        element.library.uri.toString() == 'dart:typed_data' ||
-        [type, ...type.allSupertypes].any(
-          (supertype) =>
-              supertype.isDartCoreIterable &&
-              supertype.typeArguments.single.isDartCoreInt,
-        ) ||
-        typeArguments.any(_canCarry),
-  _ => false,
-};
+/// Every interface type that [type] names, its type arguments, parameters and record fields included.
+Iterable<InterfaceType> _interfaceTypesIn(DartType type) sync* {
+  switch (type) {
+    case InterfaceType(:final typeArguments):
+      yield type;
+      for (final argument in typeArguments) {
+        yield* _interfaceTypesIn(argument);
+      }
+    case FunctionType(:final returnType, :final formalParameters):
+      yield* _interfaceTypesIn(returnType);
+      for (final parameter in formalParameters) {
+        yield* _interfaceTypesIn(parameter.type);
+      }
+    case RecordType(:final positionalFields, :final namedFields):
+      for (final field in positionalFields) {
+        yield* _interfaceTypesIn(field.type);
+      }
+      for (final field in namedFields) {
+        yield* _interfaceTypesIn(field.type);
+      }
+    default:
+  }
+}
 
-/// Whether an argument of [type] can be handed key material by the member that takes it: a callback that takes a value [_canCarry] covers, a value of any type, which may be such a callback, or a container of either.
-bool _canReceive(DartType type) => switch (type) {
-  DynamicType() || InvalidType() || TypeParameterType() => true,
-  FunctionType() => _canCarry(type),
-  RecordType(:final positionalFields, :final namedFields) => [
-    for (final field in positionalFields) field.type,
-    for (final field in namedFields) field.type,
-  ].any(_canReceive),
-  InterfaceType(:final typeArguments) =>
-    type.isDartCoreObject ||
-        type.isDartCoreFunction ||
-        typeArguments.any(_canReceive),
-  _ => false,
+/// The file of the P2P failures, and the only field they may declare (issue #47): the reason of an invalid Garage Key, a failure of `package:robosats`.
+const _p2pFailurePath = 'features/p2p/lib/src/domain/p2p_failure.dart';
+const _failureFields = {
+  'GarageKeyInvalidFailure': {
+    'reason': 'package:robosats/src/robosats_failure.dart#GarageKeyFailure',
+  },
 };
 
 /// A declaration of `package:secrets`.
@@ -746,10 +896,12 @@ bool _isVaultDeclaration(Element element) =>
 /// The files of the workspace's packages and features that may refer to the vault, `package:secrets`, and the declarations each one may refer to (issue #47).
 ///
 /// Only the P2P feature does: its facade receives the Garage Key handle from the shell, its locator registers it, and its repository uses it.
+/// Its test seam, `package:p2p/testing.dart`, registers the Garage over a handle a test made (#54); no production library imports it (`test/features/p2p/p2p_testing_seam_test.dart`).
 /// `features/p2p/test/secrets_imports_test.dart` pins the names these files import; a declaration here may be used without being imported, as the repository uses `GarageKeyMaterial` through the result of a read.
 const _vaultUsers = {
   'features/p2p/lib/public/p2p_facade.dart': {'GarageKeys'},
   'features/p2p/lib/src/p2p_locator.dart': {'GarageKeys'},
+  'features/p2p/lib/testing.dart': {'GarageKeys'},
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': {
     'GarageKeyAlreadyExistsFailure',
     'GarageKeyCorruptFailure',
