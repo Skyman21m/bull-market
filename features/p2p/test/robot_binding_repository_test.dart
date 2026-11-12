@@ -891,7 +891,14 @@ void main() {
             history: GarageKeyHistory.acknowledged,
           ),
         );
-        // Another index of the key, and the same index of a key without bindings, are unbound.
+        // The indexes below and above it, and the same index of a key without bindings, are unbound.
+        for (final index in [0, 1]) {
+          expect(
+            (await standing(RobotSlot(testnet, fingerprintA, index))).binding,
+            isNull,
+            reason: 'index $index',
+          );
+        }
         expect(
           (await standing(RobotSlot(testnet, fingerprintA, 3))).binding,
           isNull,
@@ -1327,17 +1334,24 @@ void main() {
           List.generate(20, (i) => i),
           () => other.recordAcknowledgedKey(testnet, fingerprintA),
         );
-        // Refused until the acknowledgement, never once it is recorded.
+        // Refused until the acknowledgement, never once it is recorded; a phase where every bind gave up would check nothing (review of #72).
+        expect(acknowledging.where((r) => bound(r) || refused(r)), isNotEmpty);
         final firstBound = acknowledging.indexWhere(bound);
         expect(
           acknowledging.skip(firstBound < 0 ? 20 : firstBound).any(refused),
           isFalse,
+        );
+        // Once the acknowledgement is recorded, and nothing else writes, a robot is bound with that provenance.
+        expect(
+          await one.bind(RobotSlot(testnet, fingerprintA, 40), temple),
+          passes,
         );
         final importing = await bindDuring(
           List.generate(20, (i) => 20 + i),
           () => other.recordImportedKey(testnet, fingerprintA),
         );
         // Bound until the import, never once it is recorded.
+        expect(importing.where((r) => bound(r) || refused(r)), isNotEmpty);
         final firstRefused = importing.indexWhere(refused);
         expect(
           importing.skip(firstRefused < 0 ? 20 : firstRefused).any(bound),
@@ -1345,7 +1359,7 @@ void main() {
         );
         // A robot bound once the key is imported again would carry a provenance it does not have.
         expect(
-          await one.bind(RobotSlot(testnet, fingerprintA, 40), temple),
+          await one.bind(RobotSlot(testnet, fingerprintA, 41), temple),
           refusedWith<RobotHistoryUnknownFailure>(),
         );
 
@@ -1355,6 +1369,8 @@ void main() {
           if (bound(result)) expect(storedIndexes, contains(i));
           if (refused(result)) expect(storedIndexes, isNot(contains(i)));
         }
+        expect(storedIndexes, contains(40));
+        expect(storedIndexes, isNot(contains(41)));
         expect(
           stored.map((row) => row.provenance),
           everyElement('acknowledged'),
