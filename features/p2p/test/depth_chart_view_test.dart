@@ -298,6 +298,21 @@ void main() {
             .shortAlias,
         'temple',
       );
+      // Its name is written below: the badge says nothing more to a screen reader.
+      expect(
+        tester
+            .widget<Semantics>(
+              find
+                  .ancestor(
+                    of: inTooltip(find.byType(CoordinatorAvatar)),
+                    matching: find.byType(Semantics),
+                  )
+                  .first,
+            )
+            .properties
+            .label,
+        isNull,
+      );
       // Near the right edge, the tooltip opens on the left of the finger, inside the chart.
       expect(tester.getRect(tooltip).right, lessThanOrEqualTo(at.dx));
       expect(

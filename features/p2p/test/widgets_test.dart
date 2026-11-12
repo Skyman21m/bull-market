@@ -1,13 +1,16 @@
 import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/bond_warning.dart';
 import 'package:p2p/src/presentation/p2p_failure_l10n.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/expiry_ring.dart';
+import 'package:p2p/src/ui/widgets/maker_avatar.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/src/ui/widgets/reversible_payments_dialog.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
@@ -115,11 +118,63 @@ void main() {
 
       expect(find.byType(Tooltip), findsNothing);
     });
+  });
+
+  group('the badge of a maker', () {
+    /// Temple of Sats, or a copy of it that is not a coordinator of the federation.
+    Coordinator temple({required bool federated}) {
+      final temple = coordinator('temple');
+      return Coordinator(
+        shortAlias: temple.shortAlias,
+        longAlias: temple.longAlias,
+        identifier: temple.identifier,
+        description: temple.description,
+        motto: temple.motto,
+        color: temple.color,
+        established: temple.established,
+        nostrHexPubkey: temple.nostrHexPubkey,
+        contact: temple.contact,
+        badges: temple.badges,
+        policies: temple.policies,
+        mainnet: temple.mainnet,
+        testnet: temple.testnet,
+        mainnetNodesPubkeys: temple.mainnetNodesPubkeys,
+        testnetNodesPubkeys: temple.testnetNodesPubkeys,
+        federated: federated,
+      );
+    }
+
+    /// Shows the row of an order of Temple of Sats, read from its book as the app reads it.
+    Future<void> showRow(
+      WidgetTester tester, {
+      bool federated = true,
+      Locale locale = const Locale('en'),
+    }) async {
+      final result = await CoordinatorClient(
+        FakeTransport(
+          books: {
+            'temple': [bookOrder(id: 1)],
+          },
+        ),
+        clock: () => testNow,
+      ).fetchBook(temple(federated: federated), RobosatsNetwork.mainnet);
+      final order = switch (result) {
+        Ok(:final value) => value.orders.single,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      usePhoneScreen(tester);
+      await tester.pumpWidget(
+        harness(
+          OfferRow(order: order, now: testNow, onTap: () {}),
+          locale: locale,
+        ),
+      );
+    }
 
     testWidgets(
-      'the maker is badged with its coordinator at the robot\'s bottom left, without moving the row',
+      'lies over the robot\'s bottom-left corner, on top of it, and takes no room',
       (tester) async {
-        await showRow(tester, 3);
+        await showRow(tester);
 
         final robot = tester.getRect(find.byType(RobotAvatar));
         final badge = find.byType(CoordinatorAvatar);
@@ -130,14 +185,61 @@ void main() {
         // The robot keeps its size and its place, after the row's padding.
         expect(robot.size, const Size.square(40));
         expect(robot.left, tester.getRect(find.byType(OfferRow)).left + 16);
-        // The badge is two fifths of the robot, over its bottom-left corner.
-        final corner = tester.getRect(badge);
-        expect(corner.size, const Size.square(16));
-        expect(corner.center.dx, lessThan(robot.center.dx));
-        expect(corner.center.dy, greaterThan(robot.center.dy));
-        expect(corner.overlaps(robot), isTrue);
+        // Two fifths of the robot, passing its left and bottom edges by 8 % of it.
+        expect(
+          tester.getRect(badge),
+          Rect.fromLTWH(robot.left - 3.2, robot.bottom + 3.2 - 16, 16, 16),
+        );
+        // Drawn after the robot, so over it, and not cut where it passes the robot's box.
+        final stack = tester.widget<Stack>(
+          find.descendant(
+            of: find.byType(MakerAvatar),
+            matching: find.byType(Stack),
+          ),
+        );
+        expect(stack.children.last, isA<Positioned>());
+        expect(stack.clipBehavior, Clip.none);
       },
     );
+
+    for (final (locale, announced) in [
+      (
+        const Locale('en'),
+        'Temple of Sats\nObliquePlush348\nSeller\nInstant SEPA · Revolut\nPremium +2.0% · Bond 3%\n100 EUR\n17h',
+      ),
+      (
+        const Locale('fr'),
+        'Temple of Sats\nObliquePlush348\nVendeur\nInstant SEPA · Revolut\nPrime +2,0\u00a0% · Caution 3\u00a0%\n100 EUR\n17 h',
+      ),
+    ]) {
+      testWidgets(
+        'tells a screen reader the coordinator\'s name, in a row that stays one announcement, in ${locale.languageCode}',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          await showRow(tester, locale: locale);
+
+          final row = tester.getSemantics(find.byType(OfferRow));
+          expect(row.label, announced);
+          expect(row.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+          semantics.dispose();
+        },
+      );
+    }
+
+    testWidgets('only a coordinator of the federation is badged', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await showRow(tester, federated: false);
+
+      expect(find.byType(RobotAvatar), findsOneWidget);
+      expect(find.byType(CoordinatorAvatar), findsNothing);
+      expect(
+        tester.getSemantics(find.byType(OfferRow)).label,
+        isNot(contains('Temple of Sats')),
+      );
+      semantics.dispose();
+    });
   });
 
   group('reversible payments', () {
