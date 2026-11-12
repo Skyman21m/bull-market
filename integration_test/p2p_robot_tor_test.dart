@@ -35,6 +35,7 @@ Map<String, Object?> _failure(CoordinatorFailure failure) => {
 
 /// What a robot answer says, without anything that identifies the robot.
 Map<String, Object?> _robotFields(CoordinatorRobot robot) => {
+  'pgpKeyProven': robot.pgpKeyProven,
   'found': robot.found,
   'earnedRewards': robot.earnedRewards.value.toInt(),
   'wantsStealth': robot.wantsStealth,
@@ -97,6 +98,23 @@ bool _gaveUp<T>(Result<T, CoordinatorFailure> result) => switch (result) {
   _ => false,
 };
 
+/// The robot of an answer: as it is when it carries the pair the request has just sent, and otherwise once the robot's token has proved the pair the coordinator returned, in an isolate of its own, by the port `FetchRobotUsecase` of the app uses.
+///
+/// The use case itself is not driven here: it needs a Garage Key in a vault, and the only vault a test can make replaces the keystore of the whole process, which the other integration tests run in; `features/p2p/test/robot_request_wiring_test.dart` drives it offline.
+Future<Result<CoordinatorRobot, CoordinatorFailure>> _settled(
+  Result<CoordinatorRobotAnswer, CoordinatorFailure> answer,
+) async => switch (answer) {
+  Err(:final failure) => Err(failure),
+  Ok(value: final CoordinatorRobot robot) => Ok(robot),
+  Ok(value: final UnprovenCoordinatorRobot unproven) =>
+    switch (await const IsolateRobotKeyCompute().prove(unproven)) {
+      Ok(value: final proof) => proof.mapErr<CoordinatorFailure>(
+        (failure) => failure,
+      ),
+      Err() => fail('no isolate could be started to prove the pair'),
+    },
+};
+
 /// Runs [step] until it gives anything but a transport failure, [_attempts] times at most, and measures each try.
 Future<Result<T, CoordinatorFailure>> _try<T>(
   String alias,
@@ -141,7 +159,7 @@ Future<void> main({bool isInitialized = false}) async {
         : 'creates robots on live RoboSats testnet coordinators: set RUN_LIVE_ROBOSATS_TEST=true',
     () {
       test(
-        'creates a robot, reads it back, and settles the Nostr key question',
+        'creates a robot, reads it back with nothing in memory, and settles the Nostr key question',
         timeout: const Timeout(Duration(minutes: 45)),
         () async {
           final facade = locator<P2pFacade>();
@@ -214,11 +232,19 @@ Future<void> main({bool isInitialized = false}) async {
                 expect(value.network, RobosatsNetwork.testnet);
               }
 
+              // A step proves the pair of an answer when it is not the one just sent: the time of the proof is in the time of the step.
               Future<Result<CoordinatorRobot, CoordinatorFailure>> step(
                 String label,
-                Future<Result<CoordinatorRobot, CoordinatorFailure>> Function()
+                Future<Result<CoordinatorRobotAnswer, CoordinatorFailure>>
+                Function()
                 call,
-              ) => _try(alias, label, watch, call, fields: _robotFields);
+              ) => _try(
+                alias,
+                label,
+                watch,
+                () async => await _settled(await call()),
+                fields: _robotFields,
+              );
 
               // The app-facing facade has no robot call: the client of the package is driven here over the real transport of the app.
               // 1. The short header before any first contact: the coordinator does not know the robot.
@@ -228,7 +254,6 @@ Future<void> main({bool isInitialized = false}) async {
                   coordinator,
                   _network,
                   identity: first.identity,
-                  pgpKey: firstKey,
                 ),
               );
               if (_gaveUp(unknown)) continue;
@@ -259,8 +284,10 @@ Future<void> main({bool isInitialized = false}) async {
                 ),
               };
               createdAt[coordinator] = watch.elapsedMilliseconds;
-              // The cross-checks passed: hash id, nickname and both PGP keys are the ones of this device.
+              // The cross-checks passed: hash id, nickname and both PGP keys are the ones of this device, the pair taken as sent, without a proof.
               expect(createdRobot.hashId, first.identity.hashId);
+              expect(createdRobot.pgpKey, same(firstKey));
+              expect(createdRobot.pgpKeyProven, isFalse);
               expect(
                 createdRobot.nostrPublicKeyHex,
                 first.identity.nostrKeyPair().publicKeyHex,
@@ -270,25 +297,38 @@ Future<void> main({bool isInitialized = false}) async {
                 NostrKeyDerivation.currentFrontend,
               );
 
-              // 3. The short header now reads the same robot back.
+              // 3. The short header now reads the same robot back with nothing in memory, as after a restart: the robot derived again from the Garage Key, a new client, no pair given; the pair comes from the coordinator and is taken once the token has proved it.
               final readBack = await step(
-                'a_short_header_after_first_contact',
-                () => client.fetchKnownRobot(
-                  coordinator,
-                  _network,
-                  identity: first.identity,
-                  pgpKey: firstKey,
-                ),
+                'a_read_back_with_nothing_in_memory',
+                () async {
+                  final again = switch (garageKey.firstUsableRobot(
+                    first.accountIndex,
+                  )) {
+                    Ok(:final value) => value,
+                    Err() => fail('the robot cannot be derived again'),
+                  };
+                  return CoordinatorClient(transport).fetchKnownRobot(
+                    coordinator,
+                    _network,
+                    identity: again.identity,
+                  );
+                },
               );
               if (_gaveUp(readBack)) continue;
-              expect(
-                readBack,
-                isA<Ok<CoordinatorRobot, CoordinatorFailure>>().having(
-                  (ok) => ok.value.nostrKeyDerivation,
-                  'nostrKeyDerivation',
-                  NostrKeyDerivation.currentFrontend,
+              final readBackRobot = switch (readBack) {
+                Ok(:final value) => value,
+                Err(:final failure) => fail(
+                  'read back refused: ${_failure(failure)}',
                 ),
+              };
+              expect(readBackRobot.hashId, first.identity.hashId);
+              expect(
+                readBackRobot.nostrKeyDerivation,
+                NostrKeyDerivation.currentFrontend,
               );
+              // The pair the token proved is the one the first contact sent, which this test kept only to compare.
+              expect(readBackRobot.pgpKeyProven, isTrue);
+              expect(readBackRobot.pgpKey, firstKey);
 
               // 4. A first contact again, as the official client sends at every start: same robot.
               final again = await step(
@@ -301,9 +341,16 @@ Future<void> main({bool isInitialized = false}) async {
                 ),
               );
               if (_gaveUp(again)) continue;
-              expect(again, isA<Ok<CoordinatorRobot, CoordinatorFailure>>());
+              expect(
+                again,
+                isA<Ok<CoordinatorRobot, CoordinatorFailure>>().having(
+                  (ok) => ok.value.pgpKeyProven,
+                  'pgpKeyProven',
+                  isFalse,
+                ),
+              );
 
-              // 5. A first contact with another key pair for the same token, as a second device would send: the coordinator keeps the first key, which this package reports as a mismatch.
+              // 5. A first contact with another key pair for the same token, as a second device would send: the coordinator keeps the first pair, which the token proves, so it is taken instead of the pair sent.
               final otherKey = await step(
                 'a_first_contact_with_another_key_pair',
                 () => client.fetchRobot(
@@ -316,11 +363,13 @@ Future<void> main({bool isInitialized = false}) async {
               if (_gaveUp(otherKey)) continue;
               expect(
                 otherKey,
-                isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
-                  (err) => err.failure,
-                  'failure',
-                  isA<RobotPgpKeyMismatch>(),
-                ),
+                isA<Ok<CoordinatorRobot, CoordinatorFailure>>()
+                    .having((ok) => ok.value.pgpKey, 'pgpKey', firstKey)
+                    .having(
+                      (ok) => ok.value.pgpKeyProven,
+                      'pgpKeyProven',
+                      isTrue,
+                    ),
               );
 
               // 6. A first contact for the known robot with the Nostr key of the other formula: the coordinator keeps the first one.
@@ -362,7 +411,6 @@ Future<void> main({bool isInitialized = false}) async {
                   coordinator,
                   _network,
                   identity: second.identity,
-                  pgpKey: secondKey,
                 ),
               );
               if (_gaveUp(fixturesRead)) continue;
@@ -447,11 +495,12 @@ Future<void> main({bool isInitialized = false}) async {
                 alias,
                 'a_short_header_after_five_minutes',
                 watch,
-                () => client.fetchKnownRobot(
-                  coordinator,
-                  _network,
-                  identity: first.identity,
-                  pgpKey: firstKey,
+                () async => await _settled(
+                  await client.fetchKnownRobot(
+                    coordinator,
+                    _network,
+                    identity: first.identity,
+                  ),
                 ),
                 fields: _robotFields,
               );

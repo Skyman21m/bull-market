@@ -36,6 +36,9 @@ final class TransferableKey {
   /// The first user ID the primary key certifies.
   final String userId;
 
+  /// The bytes of [userId], as the certification covers them.
+  final Uint8List _userIdBytes;
+
   /// The most recent encryption subkey the primary key binds.
   final PublicKeyBody subkey;
 
@@ -47,6 +50,7 @@ final class TransferableKey {
   const TransferableKey._(
     this.primary,
     this.userId,
+    this._userIdBytes,
     this.subkey,
     this._certification,
     this._binding,
@@ -75,6 +79,7 @@ final class TransferableKey {
     if (!primaryReader.isDone) throw const UnsupportedPgpException();
 
     String? userId;
+    Uint8List? userIdBytes;
     SignatureBody? certification;
     List<int>? pendingUserId;
     _Subkey? pendingSubkey;
@@ -118,6 +123,7 @@ final class TransferableKey {
                 );
             if (certified) {
               userId = utf8.decode(pendingUserId, allowMalformed: true);
+              userIdBytes = Uint8List.fromList(pendingUserId);
               certification = signature;
             }
           }
@@ -125,6 +131,7 @@ final class TransferableKey {
     }
     final binding = subkey?.binding;
     if (userId == null ||
+        userIdBytes == null ||
         certification == null ||
         subkey == null ||
         binding == null) {
@@ -133,6 +140,7 @@ final class TransferableKey {
     return TransferableKey._(
       primary,
       userId,
+      userIdBytes,
       subkey.body,
       certification,
       binding,
@@ -236,6 +244,43 @@ final class TransferableKey {
       subkey.createdAt <= time &&
       _binding.isCurrentAt(time) &&
       !_isExpired(subkey, _binding, time);
+
+  /// Whether both secret parts are locked in a way that proves their locker held the passphrase: see `ProtectedSecret.provesPassphraseWith`; false on a public key.
+  bool get secretsProvePassphrase =>
+      (_primarySecret?.provesPassphrase ?? false) &&
+      (_subkeySecret?.provesPassphrase ?? false);
+
+  /// The packets of this key that [parse] verified and kept, and nothing else: the primary key, the user ID it certifies with that certification, and the encryption subkey with its binding, in that order, each signature without its unhashed area, framed as OpenPGP.js frames them.
+  ///
+  /// With [secret], the key packets carry their secret parts, as read; throws a [StateError] on a public key.
+  /// Whatever else the block held, packets [parse] skipped, other user IDs, subkeys or keys, and the unhashed areas nobody signs, is left out.
+  Uint8List verifiedPackets({required bool secret}) {
+    final primarySecret = _primarySecret;
+    final subkeySecret = _subkeySecret;
+    if (secret && (primarySecret == null || subkeySecret == null)) {
+      throw StateError('a public key has no secret packets');
+    }
+    return Uint8List.fromList([
+      ...encodePacket(secret ? PacketTag.secretKey : PacketTag.publicKey, [
+        ...primary.bytes,
+        if (secret) ...?primarySecret?.encode(),
+      ]),
+      ...encodePacket(PacketTag.userId, _userIdBytes),
+      ...encodePacket(PacketTag.signature, _certification.coveredBytes),
+      ...encodePacket(
+        secret ? PacketTag.secretSubkey : PacketTag.publicSubkey,
+        [...subkey.bytes, if (secret) ...?subkeySecret?.encode()],
+      ),
+      ...encodePacket(PacketTag.signature, _binding.coveredBytes),
+    ]);
+  }
+
+  /// The bytes [unlock] feeds its hashes with a right passphrase of [passphraseLength] bytes, both secret parts together, computed without hashing anything; 0 on a public key.
+  ///
+  /// A passphrase that does not unlock the primary key's part hashes that part only, since [unlock] stops there.
+  int unlockHashedBytes(int passphraseLength) =>
+      (_primarySecret?.unlockHashedBytes(passphraseLength) ?? 0) +
+      (_subkeySecret?.unlockHashedBytes(passphraseLength) ?? 0);
 
   /// The secret values behind both packets, or `null` when [passphrase] is wrong.
   ///

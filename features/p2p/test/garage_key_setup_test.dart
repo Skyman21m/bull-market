@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/robot_key_compute_port.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
@@ -67,7 +68,8 @@ void main() {
     hasP2pDatabaseForTesting(locator),
     locator.isRegistered<P2pDatabase>(),
     locator.isRegistered<RobotBindingRepository>(),
-    // A robot comes from a Garage Key only, so its request is registered with the Garage, over the bindings.
+    // A robot comes from a Garage Key only, so its request is registered with the Garage, over the bindings and the key work of its pair.
+    locator.isRegistered<RobotKeyComputePort>(),
     locator.isRegistered<FetchRobotUsecase>(),
   ];
 

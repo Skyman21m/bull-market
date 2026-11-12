@@ -90,6 +90,14 @@ final class RobotCoordinatorChangedFailure extends P2pFailure {
   const RobotCoordinatorChangedFailure();
 }
 
+/// This device could not make or check the OpenPGP key pair of a robot: its clock is outside the dates an OpenPGP key can hold, or the isolate that does that work could not be started.
+///
+/// Before a first contact, nothing was sent, and the binding written just before stays, as after any request that failed.
+/// After an answer whose key pair was to be proven, the request was sent and its answer is dropped, neither taken nor refused: asking again is harmless, since a read creates nothing and a coordinator keeps the pair of the first contact.
+final class RobotKeyComputeFailure extends P2pFailure {
+  const RobotKeyComputeFailure();
+}
+
 /// This robot has no binding, and the history of its Garage Key is unknown: nothing was written or sent.
 ///
 /// The key was imported, or this device has no record of drawing it, so the robot may already live on another coordinator, and sending it here could hand its token hash to a second one.
