@@ -2860,6 +2860,33 @@ void main() {
         },
       );
 
+      testWidgets(
+        'a robot found again at Retry: no « already existed », in ${locale.languageCode}',
+        (tester) async {
+          await boundTo(0, 'temple');
+          final kept = Map.of(robotCoordinators.kept);
+          robotCoordinators.kept.clear();
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          expect(
+            find.text(l10n.p2pRobotNotCreated('Temple of Sats')),
+            findsOneWidget,
+          );
+          // The coordinator knows it again: the put reads it back first and finds it.
+          robotCoordinators.kept.addAll(kept);
+
+          await tester.tap(find.text(l10n.p2pCommonRetry));
+          await settle(tester);
+
+          expect(find.text(l10n.p2pRobotNoOrders), findsOneWidget);
+          expect(
+            find.text(l10n.p2pRobotAlreadyExisted('Temple of Sats')),
+            findsNothing,
+          );
+          expect(robotCoordinators.firstContacts, isEmpty);
+        },
+      );
+
       // Each failure of the design note of #29, § 2.3: its text and its way out.
       for (final (name, replies, firstContact, text, retry)
           in <

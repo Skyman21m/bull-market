@@ -139,7 +139,13 @@ final class RobotContacting extends RobotActivity {
 final class RobotKnown extends RobotActivity {
   final RobotOnCoordinatorFace face;
 
-  const RobotKnown(this.face);
+  /// Whether this answer is that of « Select Host » for a robot no coordinator had received from this device.
+  ///
+  /// Only then does [RobotOnCoordinatorFace.alreadyExisted] tell the user something new: the robot was there before the user sent it, made elsewhere.
+  /// After « Retry » the robot is bound there already, and the use case reads it back before any first contact: a robot found so « already existed » because this device put it there earlier.
+  final bool afterSelectHost;
+
+  const RobotKnown(this.face, {this.afterSelectHost = false});
 }
 
 /// The last request failed: why, and the way out the panel offers.
@@ -165,7 +171,7 @@ enum RobotWayOut {
   /// « Retry » reads the robot back from its coordinator: a request that may have reached it is never sent again as a first contact.
   readBack,
 
-  /// « Retry » is a new first contact to the coordinator of the binding: the coordinator said it does not know the robot, or refused its key as too recent.
+  /// « Retry » puts the robot on the coordinator of its binding again, which the use case does by reading it back first and making a new first contact only when the coordinator does not know it: the coordinator said it does not know the robot, or refused its key as too recent.
   firstContact,
 
   /// No button: the text says to use another robot, or there is nothing to retry.

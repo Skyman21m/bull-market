@@ -81,10 +81,10 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
     final current = state;
     if (_working || current is! RobotWithoutCoordinator) return;
     if (!current.mayChooseHost) return;
-    await _firstContact(coordinator);
+    await _firstContact(coordinator, afterSelectHost: true);
   }
 
-  /// « Retry » after a failure: the database read again, or the robot read back from the coordinator of its binding, or a new first contact to that same coordinator when it said it does not know the robot or refused its key as too recent.
+  /// « Retry » after a failure: the database read again, or the robot read back from the coordinator of its binding, or the robot put on that same coordinator again when it said it does not know the robot or refused its key as too recent (`PutRobotOnCoordinatorUsecase` reads a bound robot back first, and makes a first contact only when the coordinator does not know it).
   Future<void> retry() async {
     if (_working) return;
     switch (state) {
@@ -98,7 +98,7 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
           case RobotWayOut.readBack:
             await _readBack(coordinator);
           case RobotWayOut.firstContact:
-            await _firstContact(coordinator);
+            await _firstContact(coordinator, afterSelectHost: false);
           case RobotWayOut.none:
             return;
         }
@@ -214,8 +214,13 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
     }
   }
 
-  /// The first contact of the robot with [coordinator], which binds it there before anything leaves; a failure is shown where the robot stands afterwards, read again on the device.
-  Future<void> _firstContact(Coordinator coordinator) async {
+  /// The robot put on [coordinator] (`PutRobotOnCoordinatorUsecase`): the first contact of a robot without a binding, which binds it there before anything leaves, or, for a robot bound there, a read back and a first contact only if the coordinator does not know it; a failure is shown where the robot stands afterwards, read again on the device.
+  ///
+  /// [afterSelectHost] tells the card whether this is the user's « Select Host » for a robot no coordinator had received from this device (`RobotKnown.afterSelectHost`).
+  Future<void> _firstContact(
+    Coordinator coordinator, {
+    required bool afterSelectHost,
+  }) async {
     if (isClosed || _working) return;
     _working = true;
     final RobotRequestProblem problem;
@@ -232,7 +237,12 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
       if (isClosed) return;
       switch (result) {
         case Ok(value: Ok(value: final face)):
-          emit(RobotOnCoordinator(coordinator, RobotKnown(face)));
+          emit(
+            RobotOnCoordinator(
+              coordinator,
+              RobotKnown(face, afterSelectHost: afterSelectHost),
+            ),
+          );
           return;
         case Ok(value: Err(:final failure)):
           problem = RobotRequestAnswered(failure);

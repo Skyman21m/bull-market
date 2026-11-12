@@ -281,6 +281,11 @@ void main() {
         expect(face.nostrKey, RobotNostrKeyStatus.current);
         expect(face.alreadyExisted, isFalse);
         expect(
+          ((cubit.state as RobotOnCoordinator).activity as RobotKnown)
+              .afterSelectHost,
+          isTrue,
+        );
+        expect(
           seen.whereType<RobotOnCoordinator>().map((state) => state.activity),
           [
             isA<RobotContacting>()
@@ -685,6 +690,38 @@ void main() {
         // The put reads it back first, then makes the first contact the coordinator needs.
         expect(paths(), ['temple read', 'temple read', 'temple create']);
         expect((cubit.state as RobotOnCoordinator).coordinator, temple);
+        expect(
+          (cubit.state as RobotOnCoordinator).activity,
+          isA<RobotKnown>().having(
+            (a) => a.afterSelectHost,
+            'afterSelectHost',
+            isFalse,
+          ),
+        );
+      },
+    );
+
+    test(
+      'unknown, then known at « Retry »: no first contact, and no « already existed »',
+      () async {
+        await bound(robots[0], temple);
+        final kept = Map.of(coordinators.kept);
+        coordinators.kept.clear();
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await until(cubit, failed);
+        // The coordinator knows the robot again, as after a first contact whose answer was lost.
+        coordinators.kept.addAll(kept);
+
+        await cubit.retry();
+        final state = await until(cubit, known) as RobotOnCoordinator;
+
+        expect(paths(), ['temple read', 'temple read']);
+        final activity = state.activity as RobotKnown;
+        // The use case says it was there already, which this device made it: the card does not say so.
+        expect(activity.face.alreadyExisted, isTrue);
+        expect(activity.afterSelectHost, isFalse);
       },
     );
 
