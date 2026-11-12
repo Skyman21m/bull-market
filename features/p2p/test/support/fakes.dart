@@ -180,8 +180,10 @@ final class FakeEmbeddedTor implements EmbeddedTor {
 
   void stopped() => controller.add(const TorStopped(TorSource.embedded));
 
-  void connecting() =>
-      controller.add(const TorConnecting(source: TorSource.embedded));
+  /// Tor connects, with the share of its start Arti reports once it reports one.
+  void connecting([double? progress]) => controller.add(
+    TorConnecting(source: TorSource.embedded, progress: progress),
+  );
 
   void ready() => controller.add(TorReady(route));
 

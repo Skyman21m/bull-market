@@ -77,6 +77,10 @@ final class P2pFormats {
   String premiumOverMarket(Premium premium) =>
       _percent(premium.percent, minDecimals: 0, maxDecimals: 2);
 
+  /// How far Tor has got in starting, a whole percentage such as `42%`.
+  String torProgress(int percent) =>
+      _percent(percent.toDouble(), minDecimals: 0, maxDecimals: 0);
+
   /// The bond of an order, such as `3%`.
   String bond(BondSize bond) =>
       _percent(bond.percent, minDecimals: 0, maxDecimals: 2);
