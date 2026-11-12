@@ -12,46 +12,47 @@ const _reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
 /// The commit the embedded federation list comes from, which adds Gumpellite and its image.
 const _federation = 'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6';
 
-/// The image the official client shows for each coordinator of the embedded federation list, by short alias: the small version (80 by 80) of `frontend/static/federation/avatars/<alias>.small.webp`.
+/// The image the official client shows for each coordinator of the embedded federation list, by short alias: `frontend/static/federation/avatars/<alias>.webp`, 200 by 200 pixels, the version its Android app loads for every use.
 ///
 /// Each image is the coordinator operator's own artwork, distributed in the RoboSats repository under its AGPL-3.0 notice, and bundled by the decision of the owner of 2026-11-12 (`NOTICE.md`): it is removed on request.
 /// The asset paths are these constants, keyed by the aliases of the embedded list: nothing a coordinator sends, and no other text, can name an asset.
-/// `test/coordinator_images_test.dart` pins every (commit, blob) pair and checks each asset against its blob id; a coordinator added to the list with an image needs its row here, its blob checked against RoboSats, and its pin.
+/// `test/coordinator_images_test.dart` pins every (commit, blob) pair; `test/features/p2p/p2p_coordinator_images_test.dart`, in the app, recomputes the blob of each asset its bundle serves.
+/// A coordinator added to the list with an image needs its row here, its blob checked against RoboSats, and its pin.
 const coordinatorImages = <String, CoordinatorImage>{
   'temple': (
-    asset: 'assets/coordinators/temple.small.webp',
-    path: 'frontend/static/federation/avatars/temple.small.webp',
+    asset: 'assets/coordinators/temple.webp',
+    path: 'frontend/static/federation/avatars/temple.webp',
     commit: _reference,
-    blob: '166ad7ed623aba45dc4cb84b71b36bd2dc8e111e',
+    blob: '01172a3738529ee58d554d92f57fd0e9085a22ee',
   ),
   'lake': (
-    asset: 'assets/coordinators/lake.small.webp',
-    path: 'frontend/static/federation/avatars/lake.small.webp',
+    asset: 'assets/coordinators/lake.webp',
+    path: 'frontend/static/federation/avatars/lake.webp',
     commit: _reference,
-    blob: 'c90d069fffa4f0dc0dc70d3e7f7341f5d40ecd76',
+    blob: '8936c1cd93d8b0599c47522d5a83133c83cc0415',
   ),
   'bazaar': (
-    asset: 'assets/coordinators/bazaar.small.webp',
-    path: 'frontend/static/federation/avatars/bazaar.small.webp',
+    asset: 'assets/coordinators/bazaar.webp',
+    path: 'frontend/static/federation/avatars/bazaar.webp',
     commit: _reference,
-    blob: 'cbdaa1e17ba97eaf355905121990127a8eb57a9c',
+    blob: '816a7c8478bcb72908f5bda2f104d468c222bb7f',
   ),
   'freeport': (
-    asset: 'assets/coordinators/freeport.small.webp',
-    path: 'frontend/static/federation/avatars/freeport.small.webp',
+    asset: 'assets/coordinators/freeport.webp',
+    path: 'frontend/static/federation/avatars/freeport.webp',
     commit: _reference,
-    blob: '13bd8f64d87ccd872eb4a0faaa8300f169edfec7',
+    blob: '56b583ac77d992df27300cf0851d8e6d70439158',
   ),
   'ammanaya': (
-    asset: 'assets/coordinators/ammanaya.small.webp',
-    path: 'frontend/static/federation/avatars/ammanaya.small.webp',
+    asset: 'assets/coordinators/ammanaya.webp',
+    path: 'frontend/static/federation/avatars/ammanaya.webp',
     commit: _reference,
-    blob: '041b4f19bae4d75b4a3e852ea92ad28a40bde06f',
+    blob: 'ebaa03a3cd2b923c07efc78a3dad4453afe51a3f',
   ),
   'gumpellite': (
-    asset: 'assets/coordinators/gumpellite.small.webp',
-    path: 'frontend/static/federation/avatars/gumpellite.small.webp',
+    asset: 'assets/coordinators/gumpellite.webp',
+    path: 'frontend/static/federation/avatars/gumpellite.webp',
     commit: _federation,
-    blob: 'def8359b4f8939b668bcb795082e552e98939329',
+    blob: 'b625b66c3052eb46260bb915ba4aca5e15a0d319',
   ),
 };

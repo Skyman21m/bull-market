@@ -7,7 +7,8 @@ import 'coordinator_mark.dart';
 
 /// The avatar of a coordinator: the image the official client shows for it, in a disc, as its avatar component draws a coordinator (`components/RobotAvatar/index.tsx` at commit ff1998c), with a thin ring in the theme's outline colour.
 ///
-/// The image is an asset bundled with the feature, found in [coordinatorImages] by the coordinator's short alias, and decoded at the size it is drawn, never larger than its 80 by 80 pixels.
+/// The image is an asset bundled with the feature, found in [coordinatorImages] by the coordinator's short alias.
+/// It is asked at the size it is drawn, in device pixels (`cacheWidth`, `cacheHeight`), so the 200-pixel file of a 16-point badge is decoded at 48 pixels on a screen of density 3; Flutter's `ResizeImage` never enlarges, so a larger size decodes at the file's own 200 pixels.
 /// It is never read from the network or from what a coordinator sends.
 /// A coordinator without a row in that table, or whose image cannot be loaded or decoded, is drawn with its [CoordinatorMark], so the place is never blank; while the image is decoded, a plain disc stands in.
 /// The avatar is decorative: the name of the coordinator is always written beside it.

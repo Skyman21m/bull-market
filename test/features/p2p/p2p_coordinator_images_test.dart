@@ -15,7 +15,7 @@ String _gitBlobId(List<int> bytes) => sha1.convert([
 
 void main() {
   testWidgets(
-    'every coordinator image is in the app bundle, decodes at 80 by 80, and is its pinned RoboSats file',
+    'every coordinator image is in the app bundle, decodes at 200 by 200, and is its pinned RoboSats file',
     (tester) async {
       await tester.runAsync(() async {
         final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
@@ -32,7 +32,7 @@ void main() {
           )).getNextFrame();
           expect(
             (frame.image.width, frame.image.height),
-            (80, 80),
+            (200, 200),
             reason: alias,
           );
         }
