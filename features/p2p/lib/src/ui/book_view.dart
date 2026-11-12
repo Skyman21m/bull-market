@@ -28,7 +28,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
-/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running above the orders while a coordinator is still loading, after a pull to refresh or a retry too.
+/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still loading over orders shown, after a pull to refresh or a retry too.
 /// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
@@ -88,27 +88,43 @@ class _BookViewState extends State<BookView> {
     };
     return Column(
       children: [
-        // While a coordinator is still loading over orders already shown, a bar runs above them, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner below is the wait.
-        BullFadingLinearProgress(
-          trigger: shown && state.loadingCoordinators.isNotEmpty,
-          height: 3,
-          foregroundColor: colors.primary,
-          backgroundColor: colors.transparent,
-        ),
         Expanded(
-          child: BullRefreshIndicator(
-            onRefresh: cubit.refresh,
-            child: switch (_view) {
-              BookViewChoice.list => CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: BookFilterSentence(state: state)),
-                  SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
-                  ..._content(context, state),
-                ],
+          child: Stack(
+            children: [
+              BullRefreshIndicator(
+                onRefresh: cubit.refresh,
+                child: switch (_view) {
+                  BookViewChoice.list => CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: BookFilterSentence(state: state),
+                      ),
+                      SliverToBoxAdapter(
+                        child: CoordinatorsStatus(state: state),
+                      ),
+                      ..._content(context, state),
+                    ],
+                  ),
+                  BookViewChoice.chart => _chart(context, state),
+                },
               ),
-              BookViewChoice.chart => _chart(context, state),
-            },
+              // While a coordinator is still loading over orders already shown, a bar runs over the top of the book, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner is the wait.
+              // It lies over the book rather than above it, so that the book does not move when it comes and goes, and it lets touches through.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: BullFadingLinearProgress(
+                    trigger: shown && state.loadingCoordinators.isNotEmpty,
+                    height: 3,
+                    foregroundColor: colors.primary,
+                    backgroundColor: colors.transparent,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         Padding(
