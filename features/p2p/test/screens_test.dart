@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:bull_ui/bull_ui.dart';
 import 'package:bull_ui/testing.dart';
@@ -283,6 +284,20 @@ void main() {
         await tester.pump();
       }
 
+      final skeletonRows = find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == '_SkeletonRow',
+      );
+
+      /// The scrolling part of the book, below the bar.
+      Rect bookViewport(WidgetTester tester) => tester.getRect(
+        find
+            .descendant(
+              of: find.byType(BookView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+
       testWidgets(
         'before the first book: skeleton rows that shimmer, then the offers',
         (tester) async {
@@ -295,9 +310,19 @@ void main() {
           expect(find.byType(BookSkeleton), findsOneWidget);
           expect(find.byType(BullShimmerLine), findsWidgets);
           expect(find.byType(CircularProgressIndicator), findsNothing);
+          // The rows go down to the bottom of the book, as the official client's skeleton fills its grid.
+          final bottom = [
+            for (var row = 0; row < skeletonRows.evaluate().length; row++)
+              tester.getRect(skeletonRows.at(row)).bottom,
+          ].reduce(math.max);
+          expect(bottom, greaterThanOrEqualTo(bookViewport(tester).bottom));
+          // Before the first book the line of the coordinators still loading is hidden: the skeleton says it.
           expect(
-            find.bySemanticsLabel(
-              '${mainnet.length} coordinators are still loading',
+            find.descendant(
+              of: find.byType(BookSkeleton),
+              matching: find.bySemanticsLabel(
+                '${mainnet.length} coordinators are still loading',
+              ),
             ),
             findsOneWidget,
           );
@@ -320,7 +345,7 @@ void main() {
       );
 
       testWidgets(
-        'offers shown while a coordinator still loads: a bar runs above them, in the chart too, until it answers',
+        'offers shown while a coordinator still loads: a bar runs over them, in the chart too, until it answers, and the book does not move',
         (tester) async {
           transport.held.add('lake');
           await open(tester);
@@ -332,6 +357,21 @@ void main() {
           expect(find.byType(BookSkeleton), findsNothing);
           expect(find.text('1 coordinator is still loading'), findsOneWidget);
           expect(bar(tester).trigger, isTrue);
+          // The bar lies over the top of the book and takes no room: the book starts where the view starts.
+          final top = tester.getRect(find.byType(BookView)).top;
+          expect(
+            tester
+                .getRect(
+                  find.descendant(
+                    of: find.byType(BookView),
+                    matching: find.byType(BullFadingLinearProgress),
+                  ),
+                )
+                .top,
+            top,
+          );
+          expect(tester.getRect(find.byType(BookFilterSentence)).top, top);
+          final sentence = tester.getRect(find.text('I want to'));
 
           await tester.tap(find.text('Chart'));
           await settle(tester);
@@ -347,8 +387,128 @@ void main() {
           expect(bar(tester).trigger, isFalse);
           await fadeOut(tester);
           expect(tester.hasRunningAnimations, isFalse);
+          // Gone, the bar leaves the book where it was.
+          expect(tester.getRect(find.text('I want to')), sentence);
         },
       );
+
+      testWidgets('a drag that starts on the bar scrolls the book', (
+        tester,
+      ) async {
+        transport = FakeTransport(
+          books: {
+            'temple': [
+              for (var id = 1; id <= 30; id++) bookOrder(id: id, makerSeed: id),
+            ],
+          },
+          held: {'lake'},
+        );
+        await locator.reset();
+        setUpP2pForTesting(
+          locator,
+          transport: transport,
+          torStates: () => tor.stream,
+          clock: () => testNow,
+        );
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        expect(bar(tester).trigger, isTrue);
+
+        final onBar = tester.getRect(
+          find.descendant(
+            of: find.byType(BookView),
+            matching: find.byType(BullFadingLinearProgress),
+          ),
+        );
+        final list = tester.state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byType(BookView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(list.position.pixels, 0);
+        await tester.dragFrom(
+          Offset(onBar.center.dx, onBar.top + 1),
+          const Offset(0, -200),
+        );
+        await settle(tester);
+
+        expect(list.position.pixels, greaterThan(100));
+      });
+
+      testWidgets(
+        'when the first answer is an empty book, the line says what still loads and the skeleton does not repeat it',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          // Gumpellite answers an empty book; the others are held.
+          transport.held.addAll(
+            mainnet.where((alias) => alias != 'gumpellite'),
+          );
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+
+          final loading =
+              '${mainnet.length - 1} coordinators are still loading';
+          expect(find.byType(BookSkeleton), findsOneWidget);
+          expect(find.text(loading), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(BookSkeleton),
+              matching: find.bySemanticsLabel(RegExp('loading')),
+            ),
+            findsNothing,
+          );
+          semantics.dispose();
+        },
+      );
+
+      testWidgets(
+        'in the chart, before the first order, the spinner is the wait, without the bar',
+        (tester) async {
+          transport.held.addAll(mainnet);
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+
+          await tester.tap(find.text('Chart'));
+          await settle(tester);
+
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          expect(bar(tester).trigger, isFalse);
+        },
+      );
+
+      // Each shimmer runs an animation and a mask layer of its own: one per row at most, on a phone as on a tablet.
+      for (final (name, size) in const [
+        ('phone', Size(390, 844)),
+        ('tablet', Size(1024, 1366)),
+      ]) {
+        testWidgets('the skeleton shimmers once per row on a $name', (
+          tester,
+        ) async {
+          transport.held.addAll(mainnet);
+          await open(tester);
+          tester.view
+            ..physicalSize = size * 3
+            ..devicePixelRatio = 3;
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+
+          final rows = skeletonRows.evaluate().length;
+          expect(rows, greaterThan(1));
+          expect(
+            rows,
+            lessThanOrEqualTo(
+              (bookViewport(tester).height / BookSkeleton.rowExtent).ceil(),
+            ),
+          );
+          expect(find.byType(BullShimmerLine), findsNWidgets(rows));
+        });
+      }
 
       testWidgets(
         'a pull to refresh keeps the offers and runs the bar until every coordinator answered again',
