@@ -751,5 +751,5 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyHistoryNotRecorded =>
-      'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots vous demanderont une confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.';
+      'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.';
 }

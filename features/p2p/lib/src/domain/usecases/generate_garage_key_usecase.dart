@@ -22,7 +22,7 @@ final class GenerateGarageKeyUsecase {
   ///
   /// Nothing is read back from the slot in between, so the record is about the key this draw made and no other.
   /// The record comes after the key, whose bytes the vault draws, and is tried twice while the drawn key is still in hand, since nothing can record it afterwards: when neither write succeeds, the key is stored all the same and the result is `Ok(GarageKeyHistory.unknown)`, so the caller learns that the robots of this key will be refused; `Ok(GarageKeyHistory.drawnHere)` otherwise.
-  /// Telling the user is for the step that makes robots usable, with a way out for a key of unknown history; the Garage ignores the value until then.
+  /// The Garage tells the user of a key of unknown history right after the draw, on the robot step and the profile, and its delete asks the PIN.
   /// The key itself is not handed out: the screen that shows it for backup reads it.
   @useResult
   Future<Result<GarageKeyHistory, P2pFailure>> execute(

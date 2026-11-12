@@ -2200,7 +2200,7 @@ void main() {
     for (final (locale, notice, labels) in [
       (
         const Locale('en'),
-        'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.',
+        'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.',
         (
           start: 'Start',
           generate: 'Generate Garage Key',
@@ -2212,7 +2212,7 @@ void main() {
       ),
       (
         const Locale('fr'),
-        'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots vous demanderont une confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.',
+        'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.',
         (
           start: 'Commencer',
           generate: 'Générer une clé de garage',

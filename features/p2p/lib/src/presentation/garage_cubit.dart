@@ -79,7 +79,7 @@ class GarageCubit extends Cubit<GarageState> {
       case Ok(value: final history):
         // Remembered before anything else, so that a user who left meanwhile gets the backup alert at the next visit.
         _unacknowledged._networks.add(_network);
-        // The key is stored all the same, of unknown history: the screens say so, and its robots will ask before they reach a coordinator.
+        // The key is stored all the same, of unknown history: the screens say so, and its robots are treated as coming from elsewhere.
         _drawUnrecorded = history == GarageKeyHistory.unknown;
         await _settle(failure: null, isNew: true, justDrawn: true);
       case Err(:final failure):

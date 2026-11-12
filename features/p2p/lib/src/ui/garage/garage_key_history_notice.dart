@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 
-/// What the robot step of the wizard and the profile say right after a draw whose history this device could not record: its robots will ask before they reach a coordinator, and a new key avoids that.
+/// What the robot step of the wizard and the profile say right after a draw whose history this device could not record: its robots are treated as those of a key from elsewhere, and a new key avoids that.
 ///
 /// The key is stored all the same: the feature's database refused the record, which only the draw can write.
 class GarageKeyHistoryNotRecorded extends StatelessWidget {

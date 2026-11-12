@@ -207,5 +207,5 @@
   "p2pGarageRobotUnavailable": "Aucun robot ne peut être créé à partir de cette clé de garage.",
   "p2pCommonPaste": "Coller",
   "p2pCommonClear": "Effacer",
-  "p2pGarageKeyHistoryNotRecorded": "Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots vous demanderont une confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé."
+  "p2pGarageKeyHistoryNotRecorded": "Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé."
 }
