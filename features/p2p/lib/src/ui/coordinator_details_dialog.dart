@@ -9,13 +9,14 @@ import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
 import 'widgets/coordinator_link_sheet.dart';
-import 'widgets/robot_avatar.dart';
+import 'widgets/coordinator_mark.dart';
 
 /// The details of a coordinator, in the order of the official client's dialog (`components/Dialogs/Coordinator.tsx` at commit ff1998c): name, avatar, motto, contacts, notice, badges, description, date, web app, then its policies, summary and statistics once it answers.
 ///
 /// It shows two things the official client reads elsewhere differently:
 /// - no rating: the official client reads the ratings of a coordinator from Nostr relays, which Troc does not reach;
 /// - no client version beside the coordinator version: Troc is not a RoboSats client release.
+/// The avatar is the coordinator's mark (`CoordinatorMark`), in place of the image the official client shows, which Troc does not bundle.
 /// Every link is shown in full and copied, never opened, and every text of the coordinator is plain text.
 class CoordinatorDetailsDialog extends StatefulWidget {
   const CoordinatorDetailsDialog({super.key});
@@ -73,7 +74,7 @@ class _CoordinatorDetailsDialogState extends State<CoordinatorDetailsDialog> {
             style: text.displaySmall?.copyWith(color: colors.text),
           ),
           const Gap(BullSpacing.sm),
-          Center(child: RobotAvatar(seed: coordinator.shortAlias, size: 96)),
+          Center(child: CoordinatorMark(coordinator: coordinator, size: 96)),
           const Gap(BullSpacing.xs),
           Text(
             CoordinatorText.of(
