@@ -367,6 +367,61 @@ void main() {
       );
     });
 
+    test(
+      'only the robot panel calls the robot use cases, and reaches nothing behind them',
+      () {
+        // A robot reaches a coordinator from a screen only through the panel's cubit, which the user drives: « Select Host », then « Continue ».
+        const cubit = 'lib/src/presentation/robot_coordinator_cubit.dart';
+        for (final member in [
+          'PutRobotOnCoordinatorUsecase.execute',
+          'ReadRobotOnCoordinatorUsecase.execute',
+          'ReleaseRobotUsecase.execute',
+        ]) {
+          expect(referring((r) => r == member), {cubit}, reason: member);
+        }
+        // The cubit, its states and every widget reach a robot request only through those use cases: never the use case that binds, the coordinator client, the limiter, the bindings, the database, a credential or a raw client.
+        final panel = [
+          for (final path in references.keys)
+            if (path == cubit ||
+                path == 'lib/src/presentation/robot_coordinator_state.dart' ||
+                path.startsWith('lib/src/ui/'))
+              path,
+        ];
+        expect(
+          panel,
+          containsAll([
+            cubit,
+            'lib/src/ui/garage/robot_coordinator_panel.dart',
+            'lib/src/ui/garage/select_host_sheet.dart',
+            'lib/src/ui/garage/send_robot_dialog.dart',
+          ]),
+        );
+        for (final path in panel) {
+          final found = references[path] ?? const <String>{};
+          expect(
+            found.where(
+              (r) =>
+                  r.startsWith('request ') ||
+                  r.startsWith('credential ') ||
+                  r.startsWith('network ') ||
+                  r.startsWith('dynamic ') ||
+                  r.startsWith('FetchRobotUsecase.') ||
+                  r.startsWith('RobotBindingRepository.') ||
+                  {
+                    'type FetchRobotUsecase',
+                    'type CoordinatorClient',
+                    'type RobotRequestLimiter',
+                    'type RobotBindingRepository',
+                    'type P2pDatabase',
+                  }.contains(r),
+            ),
+            isEmpty,
+            reason: path,
+          );
+        }
+      },
+    );
+
     test('deleting a key cannot reach the bindings', () {
       expect(
         references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
@@ -710,6 +765,13 @@ const _watched = {
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
   'CloseRobotSessionsUsecase': ('package:p2p/', {'execute'}),
+  // The robot use cases of the Garage's panel, and what its cubit and widgets must not reach but through them (#29, step 5).
+  'PutRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
+  'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
+  'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
+  'RobotRequestLimiter': ('package:p2p/', <String>{}),
+  'CoordinatorClient': ('package:robosats/', <String>{}),
+  'P2pDatabase': ('package:p2p/', <String>{}),
   'UnprovenCoordinatorRobot': ('package:robosats/', {'prove', 'parse'}),
   'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
   'RobotPgpKey': (

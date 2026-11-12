@@ -52,6 +52,14 @@ void main() {
           'lib/src/domain/usecases/put_robot_on_coordinator_usecase.dart',
           'lib/src/domain/usecases/read_robot_on_coordinator_usecase.dart',
           'lib/src/domain/usecases/release_robot_usecase.dart',
+          // The robot panel of the Garage: its cubit holds the Garage Key and derives each robot, token included, when it calls a use case.
+          'lib/src/domain/robot_host.dart',
+          'lib/src/domain/usecases/list_robot_hosts_usecase.dart',
+          'lib/src/presentation/robot_coordinator_cubit.dart',
+          'lib/src/presentation/robot_coordinator_state.dart',
+          'lib/src/ui/garage/robot_coordinator_panel.dart',
+          'lib/src/ui/garage/select_host_sheet.dart',
+          'lib/src/ui/garage/send_robot_dialog.dart',
         ]),
       );
     });
