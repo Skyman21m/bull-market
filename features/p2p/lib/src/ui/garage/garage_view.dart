@@ -47,11 +47,26 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
   /// The step of the wizard shown, or `null` outside the wizard: local to this visit of the Garage.
   int? _step;
 
+  /// The cubit of the Garage, once the gate has built the Garage: before that, nothing has read the vault, and nothing can be shown.
+  GarageCubit? _cubit;
+
+  /// Tells the cubit whenever the app is hidden or paused, for the whole visit, whatever the Garage shows, the wait of a draw included: a key drawn without the app staying in the foreground is shown only behind the PIN.
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onHide: _conceal, onPause: _conceal);
+  }
+
   @override
   void dispose() {
+    _lifecycle.dispose();
     unawaited(disableScreenPrivacy());
     super.dispose();
   }
+
+  void _conceal() => _cubit?.conceal();
 
   @override
   Widget build(BuildContext context) {
@@ -63,9 +78,13 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
       onRetry: () => setState(() {
         _protection = enableScreenPrivacy();
       }),
-      builder: (context) => BlocBuilder<GarageCubit, GarageState>(
-        builder: (context, state) => _content(context, state),
-      ),
+      builder: (context) {
+        // Reading the cubit here creates it, so only once the protection is on.
+        _cubit = context.read<GarageCubit>();
+        return BlocBuilder<GarageCubit, GarageState>(
+          builder: (context, state) => _content(context, state),
+        );
+      },
     );
   }
 

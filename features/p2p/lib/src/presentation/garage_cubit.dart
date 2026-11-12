@@ -17,7 +17,8 @@ import 'garage_state.dart';
 /// An action started while another is running is ignored.
 /// An action the user started finishes in the vault even when the user leaves the Garage, but a closed cubit never reads the vault again.
 ///
-/// A key is shown without the PIN only right after the vault drew it, while the user stays in the Garage with the app in the foreground ([GarageWithKey.showWithoutPin]); [conceal] ends that when the app is hidden or paused, and leaving the Garage closes the cubit.
+/// A key is shown without the PIN only right after the vault drew it, while the user stays in the Garage with the app in the foreground the whole time from the tap on « Generate Garage Key » or « Generate new » ([GarageWithKey.showWithoutPin]); a pasted key never is.
+/// [conceal], called whenever the app is hidden or paused, ends that for this key: it hides a key shown, and a hide while the vault is still deleting or drawing keeps the key behind the PIN when it arrives; leaving the Garage closes the cubit.
 /// From then on, until the user saw the key and pressed « Continue » or deleted it, [UnacknowledgedGarageKeys] makes each visit show the backup alert, with the key behind the PIN.
 class GarageCubit extends Cubit<GarageState> {
   final ReadGarageKeyUsecase _read;
@@ -25,6 +26,9 @@ class GarageCubit extends Cubit<GarageState> {
   final ImportGarageKeyUsecase _import;
   final DeleteGarageKeyUsecase _delete;
   final UnacknowledgedGarageKeys _unacknowledged;
+
+  /// Whether the app was hidden or paused since the user asked for a new key: the key then arrives behind the PIN.
+  bool _concealedSinceAsked = false;
 
   GarageCubit(
     RobosatsNetwork network,
@@ -40,8 +44,14 @@ class GarageCubit extends Cubit<GarageState> {
   /// Reads the key of the network: when the user opens the Garage.
   Future<void> load() => _settle(failure: null, isNew: false);
 
-  /// Draws a new key in the vault for a network that has none, on the user's request, then reads it back to show it for backup at once.
+  /// Draws a new key in the vault for a network that has none, on the user's request, then reads it back to show it for backup at once, unless the app was hidden meanwhile.
   Future<void> generate() async {
+    if (state is! GarageWithoutKey) return;
+    _concealedSinceAsked = false;
+    await _draw();
+  }
+
+  Future<void> _draw() async {
     if (state is! GarageWithoutKey) return;
     emit(GarageWorking(_network));
     switch (await _generate.execute(_network)) {
@@ -86,14 +96,18 @@ class GarageCubit extends Cubit<GarageState> {
   }
 
   /// « Generate new » with a key stored: deletes it, then draws a new one; only after the user confirmed « Delete Garage Key? ».
+  ///
+  /// A hide of the app at any time from here, during the delete as during the draw, keeps the new key behind the PIN.
   Future<void> replace() async {
     if (state is! GarageWithKey) return;
+    _concealedSinceAsked = false;
     await delete();
-    await generate();
+    await _draw();
   }
 
-  /// The app was hidden or paused: a key shown without the PIN is hidden, and from now on shown only behind it.
+  /// The app was hidden or paused, whatever the Garage shows: a key shown without the PIN is hidden, and a key still being drawn will arrive behind the PIN; from now on the key is shown only behind it.
   void conceal() {
+    _concealedSinceAsked = true;
     final current = state;
     if (current is! GarageWithKey || !current.showWithoutPin) return;
     emit(current.copyWith(showWithoutPin: false));
@@ -130,7 +144,7 @@ class GarageCubit extends Cubit<GarageState> {
 
   /// Reads the slot again and settles on what it holds, with [failure] as the outcome of the action that led here; a closed cubit reads nothing.
   ///
-  /// A key drawn and not acknowledged yet awaits its backup; it is shown without the PIN only when this cubit has [justDrawn] it.
+  /// A key drawn and not acknowledged yet awaits its backup; it is shown without the PIN only when this cubit has [justDrawn] it and the app was not hidden since the user asked for it.
   Future<void> _settle({
     required P2pFailure? failure,
     required bool isNew,
@@ -149,7 +163,7 @@ class GarageCubit extends Cubit<GarageState> {
             robot: GarageRobotFace.of(robot),
             isNew: isNew || awaitsBackup,
             awaitsBackup: awaitsBackup,
-            showWithoutPin: justDrawn && awaitsBackup,
+            showWithoutPin: justDrawn && awaitsBackup && !_concealedSinceAsked,
             failure: failure,
           ),
         },

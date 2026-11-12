@@ -26,7 +26,7 @@ const simplexGroupUrl =
 /// The three steps of the Garage Key wizard of the official client (`basic/GaragePage/GarageKeyOnboarding.tsx` at commit ff1998c), one below the other, the title of the step shown in full and the others greyed.
 ///
 /// 1. The Garage Key: « Generate Garage Key » draws it in the vault, which stores it at once, and it is shown right after for backup, with the official client's alert, without asking the user to authenticate again, as long as the user stays and the app stays in the foreground.
-/// Once the app was hidden or paused, or at a later visit while the user has not pressed « Continue », the alert stays and the key is behind the PIN, as on the profile.
+/// Once the app was hidden or paused, from the tap on « Generate Garage Key » on, or at a later visit while the user has not pressed « Continue », the alert stays and the key is behind the PIN, as on the profile.
 /// The official client keeps a generated key in memory until « Continue », so pasting over it or « Generate new » replace it silently; here the key is stored as soon as it is drawn, so the field where a key is pasted comes before it is generated, and « Generate new » asks « Delete Garage Key? » first.
 /// 2. The robot of the key, derived on the device, and the robot navigator; the official client also asks the coordinators about it, which Troc does not do yet.
 /// 3. Browse or create: « Search » shows the offers, « Create » is disabled, and the help links are shown for copy, never opened.
@@ -74,7 +74,7 @@ class _GarageWizardState extends State<GarageWizard> {
   /// Whether step 1 shows the key because the user passed the PIN for it; dropped with the wizard and when the app goes to the background.
   bool _revealed = false;
 
-  /// Hides the key of step 1 when the app is hidden or paused, whether it was shown right after it was drawn or after the PIN.
+  /// Hides the key of step 1 that the PIN revealed when the app is hidden or paused; a key shown right after its draw is hidden by `GarageView`, which tells the cubit.
   late final AppLifecycleListener _lifecycle;
 
   @override
@@ -92,9 +92,7 @@ class _GarageWizardState extends State<GarageWizard> {
   }
 
   void _conceal() {
-    if (!mounted) return;
-    context.read<GarageCubit>().conceal();
-    if (_revealed) setState(() => _revealed = false);
+    if (_revealed && mounted) setState(() => _revealed = false);
   }
 
   Future<void> _reveal(P2pReauthentication reauthenticate) async {

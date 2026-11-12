@@ -1532,6 +1532,31 @@ void main() {
     await settle(tester);
   }
 
+  /// The app goes to the background, and stays there.
+  Future<void> toBackground(WidgetTester tester) async {
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+      await tester.pump();
+    }
+  }
+
+  /// The app comes back from the background.
+  Future<void> backToForeground(WidgetTester tester) async {
+    for (final state in [
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+      await tester.pump();
+    }
+    await settle(tester);
+  }
+
   Finder backupAlert() =>
       find.textContaining('Store it somewhere safe!', findRichText: true);
 
@@ -1566,6 +1591,87 @@ void main() {
         await backgroundAndBack(tester);
         expect(find.byType(GarageKeyView), findsNothing);
         expect(backupAlert(), findsOneWidget);
+      },
+    );
+
+    testWidgets('drawn while the app was hidden, is behind the PIN on return', (
+      tester,
+    ) async {
+      await openWizard(tester);
+      await tester.tap(find.text('Generate Garage Key'));
+      await tester.pump();
+      // The user presses Home or locks the phone while the vault draws; it answers in the background, and an hour passes.
+      await toBackground(tester);
+      await letTheVaultSettle(tester);
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(minutes: 1));
+      }
+      await backToForeground(tester);
+
+      expect(storage.entries.keys, [_testnetEntry]);
+      expect(backupAlert(), findsOneWidget);
+      expect(find.byType(GarageKeyView, skipOffstage: false), findsNothing);
+      expect(find.text('Show Garage Key'), findsOneWidget);
+      expect(reauthentications, 0);
+    });
+
+    testWidgets(
+      'Generate new at a later visit, the app hidden meanwhile, is behind the PIN',
+      (tester) async {
+        await openWizard(tester, slowWrites: true);
+        await tester.tap(find.text('Generate Garage Key'));
+        await settle(tester);
+        await tester.tap(find.text('Offers'));
+        await tester.pump();
+        await letTheVaultSettle(tester);
+        await tester.tap(find.text('Garage'));
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        expect(find.text('Show Garage Key'), findsOneWidget);
+        final first = storage.entries[_testnetEntry];
+
+        await tester.tap(find.text('Generate new'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        // While the vault works, the Garage shows its wait, not the wizard.
+        expect(find.text('1. Generate your Garage Key'), findsNothing);
+        await toBackground(tester);
+        await letTheVaultSettle(tester);
+        await backToForeground(tester);
+
+        expect(storage.entries[_testnetEntry], isNot(first));
+        expect(backupAlert(), findsOneWidget);
+        expect(find.byType(GarageKeyView, skipOffstage: false), findsNothing);
+        expect(reauthentications, 0);
+      },
+    );
+
+    testWidgets(
+      'hidden between its arrival and its first frame, is behind the PIN',
+      (tester) async {
+        await openWizard(tester, slowWrites: true);
+        await tester.tap(find.text('Generate Garage Key'));
+        await tester.pump();
+        // The write lands and the key is read back, with no frame drawn yet; the app is hidden before the next frame.
+        await tester.binding.delayed(const Duration(seconds: 6));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump();
+        expect(find.byType(GarageKeyView, skipOffstage: false), findsNothing);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await settle(tester);
+
+        expect(backupAlert(), findsOneWidget);
+        expect(find.byType(GarageKeyView, skipOffstage: false), findsNothing);
       },
     );
 

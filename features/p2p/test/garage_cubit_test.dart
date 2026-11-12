@@ -423,6 +423,82 @@ void main() {
       timeout: slow,
     );
 
+    test('hidden while the vault draws, arrives behind the PIN', () async {
+      final cubit = cubitOver(FakeSecureStoragePlatform());
+      await cubit.load();
+
+      final drawing = cubit.generate();
+      expect(cubit.state, isA<GarageWorking>());
+      cubit.conceal();
+      await drawing;
+
+      expect(
+        cubit.state,
+        isA<GarageWithKey>()
+            .having((state) => state.awaitsBackup, 'awaitsBackup', isTrue)
+            .having((state) => state.showWithoutPin, 'showWithoutPin', isFalse),
+      );
+      await cubit.close();
+    }, timeout: slow);
+
+    test('counts a hide from the tap on « Generate », not one before', () async {
+      final cubit = cubitOver(FakeSecureStoragePlatform());
+      await cubit.load();
+      // The app was hidden before the user asked for a key: that hide is over.
+      cubit.conceal();
+
+      await cubit.generate();
+
+      expect((cubit.state as GarageWithKey).showWithoutPin, isTrue);
+      await cubit.close();
+    }, timeout: slow);
+
+    test(
+      '« Generate new » counts a hide from its tap, the delete included',
+      () async {
+        final cubit = cubitOver(holding([testnetEntry]));
+        await cubit.load();
+        cubit.conceal();
+
+        await cubit.replace();
+        expect((cubit.state as GarageWithKey).showWithoutPin, isTrue);
+
+        final replacing = cubit.replace();
+        // The old key is being deleted: the new one is not drawn yet.
+        cubit.conceal();
+        await replacing;
+
+        expect(
+          cubit.state,
+          isA<GarageWithKey>()
+              .having((state) => state.isNew, 'isNew', isTrue)
+              .having((state) => state.awaitsBackup, 'awaitsBackup', isTrue)
+              .having(
+                (state) => state.showWithoutPin,
+                'showWithoutPin',
+                isFalse,
+              ),
+        );
+        await cubit.close();
+      },
+      timeout: slow,
+    );
+
+    test('pasted, is never shown without the PIN', () async {
+      final cubit = cubitOver(FakeSecureStoragePlatform());
+      await cubit.load();
+
+      await cubit.import(exampleText);
+
+      expect(
+        cubit.state,
+        isA<GarageWithKey>()
+            .having((state) => state.awaitsBackup, 'awaitsBackup', isFalse)
+            .having((state) => state.showWithoutPin, 'showWithoutPin', isFalse),
+      );
+      await cubit.close();
+    }, timeout: slow);
+
     test('is forgotten once deleted', () async {
       final unacknowledged = UnacknowledgedGarageKeys();
       final cubit = cubitOver(
