@@ -1,7 +1,10 @@
-// Ways to reach a robot request, a robot credential or a binding that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found.
+// Ways to reach a robot request, a robot credential, a raw network client or a binding that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found, in the declaration it is in.
+// The placements of the reviews of #60 are among them: a tear-off, an extension, and a raw request with the token hash; the call through `dynamic` is refused by the analyzer, so that test writes it to a temporary file instead.
 // Never imported by the feature; the analyzer resolves it in that test only.
+import 'package:dio/dio.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' as robosats;
 import 'package:robosats/robosats.dart';
 
@@ -29,6 +32,36 @@ Object headerByTearOff(robosats.RobotIdentity identity) =>
 /// The credential of a first contact, torn off.
 Object firstContactByTearOff(RobotIdentity identity) =>
     identity.firstContactAuthorizationHeader;
+
+/// A robot request in an extension of the client.
+extension ReviewPeek on CoordinatorClient {
+  Future<Result<CoordinatorRobot, CoordinatorFailure>> reviewPeek(
+    Coordinator coordinator,
+    NetworkRobot robot,
+    RobotPgpKey pgpKey,
+  ) => fetchKnownRobot(
+    coordinator,
+    robot.network,
+    identity: robot.identity,
+    pgpKey: pgpKey,
+  );
+}
+
+/// The token hash sent over a raw HTTP client, with no member of the coordinator client.
+Future<Object?> rawRequest(NetworkRobot robot, String onion) =>
+    Dio().get<Object?>(
+      '$onion/api/robot/',
+      options: Options(
+        headers: {'Authorization': 'Token ${robot.identity.tokenSha256Base91}'},
+      ),
+    );
+
+/// The other credentials of a robot, read.
+List<Object> credentials(RobotIdentity identity) => [
+  identity.token,
+  identity.tokenSha256Hex,
+  identity.token.reveal(),
+];
 
 /// A raw request to a coordinator, which could carry either header.
 Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>

@@ -7,21 +7,20 @@ import 'package:analyzer/dart/analysis/utilities.dart' show parseString;
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:test/test.dart';
 
-/// Where the bindings of the robots can be reached, in every library of `features/p2p/lib`: what refers to the robot requests, the robot credentials and the bindings is resolved by the analyzer; what imports the database and what its SQL says is read from the syntax tree.
+/// Where the robot requests, the robot credentials, raw network clients and the bindings can be reached in `features/p2p/lib`.
 ///
+/// What refers to them is resolved by the analyzer, calls, tear-offs, cascades, prefixes, extensions and implementations alike, in every Dart file of `lib/` but the committed translations; a call through `dynamic` is refused by `avoid_dynamic_calls`, an error in this feature, and also reported here.
+/// What imports the database and what its SQL says is read from the syntax tree.
 /// The behaviour is tested elsewhere (`robot_binding_repository_test.dart`, `robot_usecases_test.dart`): these keep it from being walked around inside the feature.
-/// They see `features/p2p/lib` only: code elsewhere that holds a `CoordinatorClient` and a robot could still request one, which is why the robot types stay out of the app-facing library (`p2p_feature_test.dart`).
+/// They do not see code outside `features/p2p/lib` (the robot types stay out of the app-facing library for that, `p2p_feature_test.dart`), `packages/robosats` itself, nor a credential copied into a plain `String` by an allowed file and sent later.
 void main() {
   // Tests run with the package directory as working directory.
   final libraries = {
-    for (final file in Directory('lib').listSync(recursive: true))
-      if (file is File &&
-          file.path.endsWith('.dart') &&
-          !file.path.endsWith('.g.dart') &&
-          !file.path.contains('/generated/'))
-        file.path: _Facts.of(file.readAsStringSync()),
+    for (final path in _scanned())
+      path: _Facts.of(File(path).readAsStringSync()),
   };
 
   Set<String> where(bool Function(_Facts facts) test) => {
@@ -29,7 +28,17 @@ void main() {
       if (test(facts)) path,
   };
 
-  test('the libraries are found', () {
+  test('every Dart file of lib/ is scanned but the committed translations', () {
+    final all = [
+      for (final file in Directory('lib').listSync(recursive: true))
+        if (file is File && file.path.endsWith('.dart')) file.path,
+    ];
+    expect(
+      libraries.keys,
+      unorderedEquals(
+        all.where((path) => !path.startsWith('lib/generated/l10n/')),
+      ),
+    );
     expect(
       libraries.keys,
       containsAll([
@@ -38,112 +47,179 @@ void main() {
         'lib/src/domain/usecases/fetch_robot_usecase.dart',
       ]),
     );
+    // The Drift code of the database, which `make build-runner` writes and Git does not track: scanned whenever it is there, as in CI; without it the database does not compile, and the feature's other tests fail first.
+    if (File('lib/src/data/p2p_database.g.dart').existsSync()) {
+      expect(libraries.keys, contains('lib/src/data/p2p_database.g.dart'));
+    }
   });
 
-  group(
-    'resolved by the analyzer, so that a tear-off, a cascade, a prefix or an implementation is the member it names,',
-    () {
-      late AnalysisContextCollection collection;
-      // Every library of the feature but the generated ones: the watched members each one refers to.
-      late Map<String, Set<String>> references;
+  group('resolved by the analyzer,', () {
+    late AnalysisContextCollection collection;
+    // What each scanned library refers to, by its path.
+    late Map<String, Set<String>> references;
 
-      setUpAll(() async {
-        collection = AnalysisContextCollection(
-          includedPaths: [Directory.current.path],
-          sdkPath: _dartSdkPath(),
-        );
-        references = {
-          for (final path in libraries.keys)
-            path: await _referencesIn(collection, path),
-        };
-      });
-
-      Set<String> referring(String member) => {
-        for (final MapEntry(key: path, value: members) in references.entries)
-          if (members.contains(member)) path,
+    setUpAll(() async {
+      collection = AnalysisContextCollection(
+        includedPaths: [Directory.current.path],
+        sdkPath: _dartSdkPath(),
+      );
+      references = {
+        for (final path in libraries.keys)
+          path: (await _referencesIn(
+            collection,
+            path,
+          )).values.fold(<String>{}, (all, found) => all..addAll(found)),
       };
+    });
 
-      test(
-        'the evasions of a check by names are seen',
-        () async {
-          expect(
-            (await _referencesIn(
-              collection,
-              'test/fixtures/robot_request_makers.dart',
-            )).where((reference) => !reference.startsWith('type ')),
-            unorderedEquals({
-              'CoordinatorClient.fetchKnownRobot',
-              'CoordinatorClient.fetchRobot',
-              'RobotIdentity.authorizationHeader',
-              'RobotIdentity.firstContactAuthorizationHeader',
-              'CoordinatorTransport.send',
-              'RobotBindingRepository.bind',
-            }),
-          );
-        },
-        timeout: const Timeout(Duration(minutes: 3)),
-      );
+    Set<String> referring(bool Function(String reference) test) => {
+      for (final MapEntry(key: path, value: found) in references.entries)
+        if (found.any(test)) path,
+    };
 
-      test(
-        'in features/p2p/lib, only the use case that binds a robot requests one or binds',
-        () {
-          for (final member in [
-            'CoordinatorClient.fetchRobot',
-            'CoordinatorClient.fetchKnownRobot',
-            'RobotBindingRepository.bind',
-          ]) {
-            expect(referring(member), {
-              'lib/src/domain/usecases/fetch_robot_usecase.dart',
-            }, reason: member);
-          }
-          // Nothing in the feature builds a robot's credential or sends a raw request: the coordinator client of `package:robosats` does both, for that use case.
-          for (final member in [
-            'RobotIdentity.authorizationHeader',
-            'RobotIdentity.firstContactAuthorizationHeader',
-            'CoordinatorTransport.send',
-          ]) {
-            expect(referring(member), isEmpty, reason: member);
-          }
-        },
-      );
-
-      test(
-        'only the draw and the import write a key, and record its history',
-        () {
-          expect(referring('GarageKeyRepository.create'), {
-            'lib/src/domain/usecases/generate_garage_key_usecase.dart',
-          });
-          expect(referring('RobotBindingRepository.recordGeneratedKey'), {
-            'lib/src/domain/usecases/generate_garage_key_usecase.dart',
-          });
-          expect(referring('GarageKeyRepository.import'), {
-            'lib/src/domain/usecases/import_garage_key_usecase.dart',
-          });
-          expect(referring('RobotBindingRepository.recordImportedKey'), {
-            'lib/src/domain/usecases/import_garage_key_usecase.dart',
-          });
-          // And only the repository asks the vault to write one.
-          for (final member in ['GarageKeys.create', 'GarageKeys.import']) {
-            expect(referring(member), {
-              'lib/src/data/garage_key_repository_impl.dart',
-            }, reason: member);
-          }
-        },
-      );
-
-      test('deleting a key cannot reach the bindings', () {
-        expect(
-          references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
-          isNot(
-            anyOf(
-              contains('type RobotBindingRepository'),
-              contains('RobotBindingRepository.bind'),
-            ),
-          ),
+    test(
+      'the evasions of a check by names are seen, each where it is',
+      () async {
+        final found = await _referencesIn(
+          collection,
+          'test/fixtures/robot_request_makers.dart',
         );
+        expect(
+          {
+            for (final MapEntry(key: declaration, value: references)
+                in found.entries)
+              declaration: references
+                  .where((r) => !r.startsWith('type '))
+                  .toSet(),
+          }..removeWhere((_, references) => references.isEmpty),
+          {
+            'fetchByTearOff': {'request CoordinatorClient.fetchKnownRobot'},
+            'fetchInCascade': {'request CoordinatorClient.fetchRobot'},
+            'ReviewPeek': {'request CoordinatorClient.fetchKnownRobot'},
+            'headerByTearOff': {'credential RobotIdentity.authorizationHeader'},
+            'firstContactByTearOff': {
+              'credential RobotIdentity.firstContactAuthorizationHeader',
+            },
+            'rawRequest': {
+              'network package:dio/',
+              'credential RobotIdentity.tokenSha256Base91',
+            },
+            'credentials': {
+              'credential RobotIdentity.token',
+              'credential RobotIdentity.tokenSha256Hex',
+              'credential RobotToken.reveal',
+            },
+            'sendRaw': {'CoordinatorTransport.send'},
+            'bindByTearOff': {'RobotBindingRepository.bind'},
+          },
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'a call through dynamic is seen, as the analyzer refuses it',
+      () async {
+        // The reviewer's placement of #60: in lib/ it fails `avoid_dynamic_calls`, an error in this feature; written to a temporary file here so that the analysis of the package stays clean.
+        final directory = Directory('test').createTempSync('zz_dynamic_');
+        addTearDown(() => directory.deleteSync(recursive: true));
+        final file = File('${directory.path}/zz_dynamic.dart')
+          ..writeAsStringSync("""
+Future<Object?> reviewDynamic(Object client, Object coordinator, Object robot) async =>
+    await (client as dynamic).fetchKnownRobot(coordinator, robot);
+""");
+        expect(
+          (await _referencesIn(collection, file.path)).values.expand((r) => r),
+          contains('dynamic fetchKnownRobot'),
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test('only the use case that binds a robot requests one, or binds', () {
+      // Every member of `CoordinatorClient` that takes a robot's identity or token, whatever its name: the requests of later tickets are watched too.
+      expect(referring((r) => r.startsWith('request ')), {
+        'lib/src/domain/usecases/fetch_robot_usecase.dart',
       });
-    },
-  );
+      expect(referring((r) => r == 'RobotBindingRepository.bind'), {
+        'lib/src/domain/usecases/fetch_robot_usecase.dart',
+      });
+      expect(referring((r) => r == 'CoordinatorTransport.send'), isEmpty);
+    });
+
+    test('no file reads a robot credential, but the fingerprint its token', () {
+      // The fingerprint keys an HMAC with the token of the key's first robot, which never leaves the device.
+      expect(referring((r) => r == 'credential RobotToken.reveal'), {
+        'lib/src/domain/garage_key_fingerprint.dart',
+      });
+      // The token hash, the token and the headers made of them: the coordinator client of `package:robosats` builds them for the use case, and no file of the feature reads them.
+      expect(
+        referring(
+          (r) =>
+              r.startsWith('credential ') &&
+              r != 'credential RobotToken.reveal',
+        ),
+        isEmpty,
+      );
+    });
+
+    test('only the transport holds a raw network client', () {
+      expect(
+        referring(
+          (r) =>
+              r.startsWith('network ') && r != 'network TorHttpClientFactory',
+        ),
+        {'lib/src/data/tor_coordinator_transport.dart'},
+      );
+      // The locator reads the factory from the shell's container and hands it to the transport.
+      expect(referring((r) => r == 'network TorHttpClientFactory'), {
+        'lib/src/data/tor_coordinator_transport.dart',
+        'lib/src/p2p_locator.dart',
+      });
+    });
+
+    test('nothing is reached through dynamic', () {
+      expect(referring((r) => r.startsWith('dynamic ')), isEmpty);
+    });
+
+    test(
+      'only the draw and the import write a key, and record its history',
+      () {
+        expect(referring((r) => r == 'GarageKeyRepository.create'), {
+          'lib/src/domain/usecases/generate_garage_key_usecase.dart',
+        });
+        expect(
+          referring((r) => r == 'RobotBindingRepository.recordGeneratedKey'),
+          {'lib/src/domain/usecases/generate_garage_key_usecase.dart'},
+        );
+        expect(referring((r) => r == 'GarageKeyRepository.import'), {
+          'lib/src/domain/usecases/import_garage_key_usecase.dart',
+        });
+        expect(
+          referring((r) => r == 'RobotBindingRepository.recordImportedKey'),
+          {'lib/src/domain/usecases/import_garage_key_usecase.dart'},
+        );
+        // And only the repository asks the vault to write one.
+        for (final member in ['GarageKeys.create', 'GarageKeys.import']) {
+          expect(referring((r) => r == member), {
+            'lib/src/data/garage_key_repository_impl.dart',
+          }, reason: member);
+        }
+      },
+    );
+
+    test('deleting a key cannot reach the bindings', () {
+      expect(
+        references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
+        isNot(
+          anyOf(
+            contains('type RobotBindingRepository'),
+            contains('RobotBindingRepository.bind'),
+          ),
+        ),
+      );
+    });
+  });
 
   test('only the data layer and the composition reach the database', () {
     expect(
@@ -333,13 +409,17 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
-/// The members watched by [_referencesIn], by the class that declares them and its library: a member of a subtype, an implementation of the interface included, counts as the member of its supertype.
+/// The Dart files the tests read: every one under `lib/` but the translations, which `gen-l10n` writes and Git tracks.
+List<String> _scanned() => [
+  for (final file in Directory('lib').listSync(recursive: true))
+    if (file is File &&
+        file.path.endsWith('.dart') &&
+        !file.path.startsWith('lib/generated/l10n/'))
+      file.path,
+];
+
+/// Members watched by name, by the class that declares them and its library: a member of a subtype, an implementation of the interface included, counts as the member of its supertype.
 const _watched = {
-  'CoordinatorClient': ('package:robosats/', {'fetchRobot', 'fetchKnownRobot'}),
-  'RobotIdentity': (
-    'package:robosats/',
-    {'authorizationHeader', 'firstContactAuthorizationHeader'},
-  ),
   'CoordinatorTransport': ('package:robosats/', {'send'}),
   'RobotBindingRepository': (
     'package:p2p/',
@@ -349,8 +429,44 @@ const _watched = {
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
 };
 
-/// Each watched member the library at [path] refers to, as `Class.member`, and each watched class it names, as `type Class`; called, torn off, in a cascade, through a prefix or an implementation alike.
-Future<Set<String>> _referencesIn(
+/// The members that hold or make a robot's credential: its token, the token's hash in both forms, and the two `Authorization` headers.
+const _credentials = {
+  'RobotIdentity': {
+    'token',
+    'tokenSha256Hex',
+    'tokenSha256Base91',
+    'authorizationHeader',
+    'firstContactAuthorizationHeader',
+  },
+  'RobotToken': {'reveal'},
+};
+
+/// The libraries and classes that open a connection without the transport: an HTTP or socket client of its own, or a Tor session.
+const _networkLibraries = [
+  'package:dio/',
+  'package:http/',
+  'package:socks5_proxy/',
+];
+const _networkClasses = {
+  'package:bull_tor/': {'TorHttpClientFactory', 'TorSessions', 'TorSession'},
+  'dart:io': {
+    'HttpClient',
+    'WebSocket',
+    'Socket',
+    'RawSocket',
+    'SecureSocket',
+    'RawSecureSocket',
+    'RawDatagramSocket',
+  },
+};
+
+/// What the library at [path] refers to, by the top-level declaration it is in (`''` for directives), each as:
+/// - `request CoordinatorClient.member`, for a member of the coordinator client that takes a robot's identity or token;
+/// - `credential Class.member`, for a member of [_credentials];
+/// - `network <library or class>`, for a raw network client;
+/// - `Class.member`, for a member of [_watched], and `type Class`, for a class of it named;
+/// - `dynamic member`, for a member reached through a value of type `dynamic`.
+Future<Map<String, Set<String>>> _referencesIn(
   AnalysisContextCollection collection,
   String path,
 ) async {
@@ -359,50 +475,126 @@ Future<Set<String>> _referencesIn(
       .contextFor(absolute)
       .currentSession
       .getResolvedUnit(absolute);
-  if (result is! ResolvedUnitResult) return {'$path: unresolved'};
-  final found = <String>{};
-  result.unit.accept(_ReferenceVisitor(found));
-  return found;
+  if (result is! ResolvedUnitResult) {
+    return {
+      '': {'$path: unresolved'},
+    };
+  }
+  final visitor = _ReferenceVisitor();
+  result.unit.accept(visitor);
+  return visitor.found;
 }
 
 final class _ReferenceVisitor extends RecursiveAstVisitor<void> {
-  final Set<String> found;
+  final Map<String, Set<String>> found = {};
+  String _declaration = '';
 
-  _ReferenceVisitor(this.found);
+  void _add(String reference) => (found[_declaration] ??= {}).add(reference);
 
-  /// The watched class [type] is, or implements, with the members watched in it, if any.
-  static ({String name, Set<String> members})? _watchedOwner(
+  static bool _in(Element element, String library) =>
+      element.library?.uri.toString().startsWith(library) ?? false;
+
+  /// The class [type] is, or implements, among [names] declared in [library], if any.
+  static String? _ownerAmong(
     InterfaceElement type,
+    Iterable<String> names,
+    String library,
   ) {
     for (final candidate in [
       type,
       for (final supertype in type.allSupertypes) supertype.element,
     ]) {
       final name = candidate.name;
-      if (_watched[name] case (final library, final members)
-          when name != null &&
-              candidate.library.uri.toString().startsWith(library)) {
-        return (name: name, members: members);
+      if (name != null && names.contains(name) && _in(candidate, library)) {
+        return name;
       }
     }
     return null;
   }
 
+  /// Whether [type] is, or holds, a robot's identity or token.
+  static bool _isRobot(DartType type) => switch (type) {
+    InterfaceType(:final element) =>
+      {'RobotIdentity', 'RobotToken'}.contains(element.name) &&
+          _in(element, 'package:robosats/'),
+    RecordType(:final positionalFields, :final namedFields) =>
+      positionalFields.any((field) => _isRobot(field.type)) ||
+          namedFields.any((field) => _isRobot(field.type)),
+    _ => false,
+  };
+
   void _check(Element? element) {
-    if (element case InterfaceElement()) {
-      if (_watchedOwner(element) case (:final name, members: _)?) {
-        found.add('type $name');
+    if (element == null) return;
+    if (element is InterfaceElement) {
+      for (final MapEntry(key: watched, value: (library, _))
+          in _watched.entries) {
+        if (_ownerAmong(element, [watched], library) != null) {
+          _add('type $watched');
+        }
       }
     }
-    if (element case ExecutableElement(
-      :final name?,
-      enclosingElement: final InterfaceElement owner,
-    )) {
-      if (_watchedOwner(owner) case (name: final ownerName, :final members)?
-          when members.contains(name)) {
-        found.add('$ownerName.$name');
+    for (final library in _networkLibraries) {
+      if (_in(element, library)) _add('network $library');
+    }
+    final named = switch (element) {
+      InterfaceElement() => element,
+      Element(enclosingElement: final InterfaceElement owner) => owner,
+      _ => null,
+    };
+    if (named != null) {
+      for (final MapEntry(key: library, value: classes)
+          in _networkClasses.entries) {
+        if (_ownerAmong(named, classes, library) case final name?) {
+          _add('network $name');
+        }
       }
     }
+    final name = element.name;
+    if (name == null) return;
+    if (element case Element(enclosingElement: final InterfaceElement owner)) {
+      if (element case ExecutableElement(:final formalParameters)
+          when _ownerAmong(owner, ['CoordinatorClient'], 'package:robosats/') !=
+                  null &&
+              formalParameters.any((parameter) => _isRobot(parameter.type))) {
+        _add('request CoordinatorClient.$name');
+      }
+      for (final MapEntry(key: holder, value: members)
+          in _credentials.entries) {
+        if (members.contains(name) &&
+            _ownerAmong(owner, [holder], 'package:robosats/') != null) {
+          _add('credential $holder.$name');
+        }
+      }
+      for (final MapEntry(key: watched, value: (library, members))
+          in _watched.entries) {
+        if (members.contains(name) &&
+            _ownerAmong(owner, [watched], library) != null) {
+          _add('$watched.$name');
+        }
+      }
+    }
+  }
+
+  /// Whether [expression] has the static type `dynamic`.
+  static bool _isDynamic(Expression? expression) =>
+      expression?.staticType is DynamicType;
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    _declaration = node.name.lexeme;
+    super.visitFunctionDeclaration(node);
+  }
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    _declaration = node.namePart.typeName.lexeme;
+    super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    _declaration = node.name?.lexeme ?? '';
+    super.visitExtensionDeclaration(node);
   }
 
   @override
@@ -415,6 +607,38 @@ final class _ReferenceVisitor extends RecursiveAstVisitor<void> {
   void visitNamedType(NamedType node) {
     _check(node.element);
     super.visitNamedType(node);
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (_isDynamic(node.realTarget)) _add('dynamic ${node.methodName.name}');
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    if (_isDynamic(node.realTarget)) _add('dynamic ${node.propertyName.name}');
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (node.prefix.element is! PrefixElement && _isDynamic(node.prefix)) {
+      _add('dynamic ${node.identifier.name}');
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    if (_isDynamic(node.function)) _add('dynamic call');
+    super.visitFunctionExpressionInvocation(node);
+  }
+
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    if (_isDynamic(node.realTarget)) _add('dynamic []');
+    super.visitIndexExpression(node);
   }
 
   /// A `[name]` in a doc comment names a member without using it.
