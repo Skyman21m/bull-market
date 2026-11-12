@@ -555,8 +555,110 @@ analyzer:
         expect(report.violations, [
           'features/other/lib: symbolic link',
           'lib/leak.dart: symbolic link',
+          'lib: no production Dart file',
           'packages/linked: symbolic link',
         ]);
+      },
+    );
+
+    test(
+      'a link standing for the folder of all packages or features fails',
+      () async {
+        // The review of #58: the files were scanned through the link, which was not reported.
+        final root = Directory('${fixture.path}/group_links')..createSync();
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const app = 0;\n');
+        File('${root.path}/elsewhere/other/lib/value.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const value = 0;\n');
+        Link('${root.path}/features').createSync('${root.path}/elsewhere');
+        Link('${root.path}/packages').createSync('${root.path}/elsewhere');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(report.violations, [
+          'features: symbolic link',
+          'packages: symbolic link',
+        ]);
+      },
+    );
+
+    test('a root without lib/ or without a Dart file fails', () async {
+      final empty = Directory('${fixture.path}/empty_root')..createSync();
+      expect((await checkKeyMaterial(empty.path)).violations, [
+        'lib: missing',
+        'lib: no production Dart file',
+      ]);
+      final bare = Directory('${fixture.path}/bare_root/lib')
+        ..createSync(recursive: true);
+      expect((await checkKeyMaterial(bare.parent.path)).violations, [
+        'lib: no production Dart file',
+      ]);
+    });
+
+    test(
+      'a package or analysis configuration under a production root fails',
+      () async {
+        // The review of #58: a pubspec.yaml and a package configuration under lib/ mapped bip39_mnemonic to a harmless copy, for the gate only.
+        final root = Directory('${fixture.path}/nested_config')..createSync();
+        final config =
+            jsonDecode(
+                  File(
+                    '${fixture.path}/.dart_tool/package_config.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        for (final package in config['packages'] as List) {
+          if (package['name'] == 'bip39_mnemonic') {
+            package['rootUri'] = '../fake';
+          }
+        }
+        for (final (path, text) in [
+          ('lib/sub/pubspec.yaml', 'name: sub\nenvironment:\n  sdk: ^3.8.0\n'),
+          ('lib/sub/.dart_tool/package_config.json', jsonEncode(config)),
+          (
+            'lib/sub/fake/lib/bip39_mnemonic.dart',
+            'class Mnemonic {}\n'
+                'extension Words on Mnemonic {\n'
+                '  List<int> get seed => const [];\n'
+                '}\n',
+          ),
+          ('lib/sub/leak.dart', reads['seed']?.source ?? ''),
+          ('features/p2p/lib/src/analysis_options.yaml', 'analyzer:\n'),
+          ('features/p2p/lib/src/plain.dart', 'const plain = 0;\n'),
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(text);
+        }
+
+        final report = await checkKeyMaterial(root.path);
+
+        for (final configuration in [
+          'features/p2p/lib/src/analysis_options.yaml',
+          'lib/sub/.dart_tool',
+          'lib/sub/.dart_tool/package_config.json',
+          'lib/sub/pubspec.yaml',
+        ]) {
+          expect(
+            report.violations,
+            contains(
+              '$configuration: package or analysis configuration under a production root',
+            ),
+          );
+        }
+        for (final path in [
+          'lib/sub/leak.dart',
+          'lib/sub/fake/lib/bip39_mnemonic.dart',
+        ]) {
+          expect(
+            report.violations,
+            contains('$path: resolved with another package configuration'),
+            reason: path,
+          );
+        }
       },
     );
 

@@ -45,16 +45,28 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
   );
   final files = productionDartFiles(root);
   final scanned = files.toSet();
+  final workspaceConfig = packageConfigPath(root);
   final violations = <String>[
     for (final link in productionLinks(root))
       '${link.substring(root.length + 1)}: symbolic link',
+    for (final configuration in productionConfigurations(root))
+      '${configuration.substring(root.length + 1)}: package or analysis configuration under a production root',
+    if (!{
+      FileSystemEntityType.directory,
+      FileSystemEntityType.link,
+    }.contains(FileSystemEntity.typeSync('$root/lib', followLinks: false)))
+      'lib: missing',
+    if (files.isEmpty) 'lib: no production Dart file',
   ];
   for (final path in files) {
     final relative = path.substring(root.length + 1);
-    final result = await _contextOf(
-      collection,
-      path,
-    ).currentSession.getResolvedUnit(path);
+    final context = _contextOf(collection, path);
+    // A package configuration of its own would make the gate resolve the file against other packages than the build does.
+    if (context.contextRoot.packagesFile?.path != workspaceConfig) {
+      violations.add('$relative: resolved with another package configuration');
+      continue;
+    }
+    final result = await context.currentSession.getResolvedUnit(path);
     if (result is! ResolvedUnitResult) {
       violations.add('$relative: unresolved unit');
       continue;
@@ -114,21 +126,43 @@ List<String> productionDartFiles(String root) => [
     if (entity is File && entity.path.endsWith('.dart')) entity.path,
 ]..sort();
 
-/// The symbolic links under the production roots, and those that stand for a whole package or feature: the gate does not follow them, so each one fails the check.
+/// The symbolic links under the production roots, and those that stand for a root, a whole package or feature, or the folder of all of them: the gate does not follow them, so each one fails the check.
 List<String> productionLinks(String root) => [
   for (final entity in _productionEntities(root))
     if (entity is Link) entity.path,
 ]..sort();
 
+/// The package and analysis configurations under the production roots, each of which fails the check (issue #47).
+///
+/// A `pubspec.yaml` with a `.dart_tool/package_config.json` beside it would make the gate resolve the files below it against other packages than the build does, and an `analysis_options.yaml` could lower the severity of an error the gate reports.
+List<String> productionConfigurations(String root) => [
+  for (final entity in _productionEntities(root))
+    if (_configurationNames.contains(entity.path.split('/').last)) entity.path,
+]..sort();
+
+const _configurationNames = {
+  'pubspec.yaml',
+  'analysis_options.yaml',
+  'package_config.json',
+  '.packages',
+  '.dart_tool',
+};
+
 Iterable<FileSystemEntity> _productionEntities(String root) sync* {
   final roots = ['$root/lib'];
   for (final group in ['packages', 'features']) {
-    final parent = Directory('$root/$group');
-    if (!parent.existsSync()) continue;
-    for (final member in parent.listSync(followLinks: false)) {
-      if (member.path == '$root/packages/secrets') continue;
-      if (member is Link) yield member;
-      if (member is Directory) roots.add('${member.path}/lib');
+    switch (FileSystemEntity.typeSync('$root/$group', followLinks: false)) {
+      case FileSystemEntityType.link:
+        yield Link('$root/$group');
+      case FileSystemEntityType.directory:
+        for (final member in Directory(
+          '$root/$group',
+        ).listSync(followLinks: false)) {
+          if (member.path == '$root/packages/secrets') continue;
+          if (member is Link) yield member;
+          if (member is Directory) roots.add('${member.path}/lib');
+        }
+      default:
     }
   }
   for (final path in roots) {
@@ -882,6 +916,19 @@ bool _isException(String path, AstNode node, String symbol) {
             library.startsWith('package:robosats/'));
   }
   return false;
+}
+
+/// The workspace's package configuration: the nearest `.dart_tool/package_config.json` at or above [start].
+String packageConfigPath(String start) {
+  var directory = Directory(start);
+  while (true) {
+    final config = File('${directory.path}/.dart_tool/package_config.json');
+    if (config.existsSync()) return config.path;
+    if (directory.parent.path == directory.path) {
+      throw StateError('No package_config.json');
+    }
+    directory = directory.parent;
+  }
 }
 
 String dartSdkPath(String start) {
