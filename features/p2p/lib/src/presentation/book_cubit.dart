@@ -21,7 +21,7 @@ class BookCubit extends Cubit<BookState> {
   final RetryP2pTorUsecase _retryTor;
   final RequestFederationBooksUsecase _requestBooks;
 
-  StreamSubscription<P2pTorState>? _torStates;
+  StreamSubscription<P2pTorReport>? _torStates;
 
   /// The number of the latest request to each coordinator: an answer to an older one is dropped.
   final Map<Coordinator, int> _requests = {};
@@ -68,11 +68,12 @@ class BookCubit extends Cubit<BookState> {
   OrderSearchOutcome searchOrder(String url) =>
       OrderSearch.run(url, state.receivedOrders);
 
-  void _onTorState(P2pTorState torState) {
+  void _onTorState(P2pTorReport report) {
     final previous = state.tor;
-    final next = previous.after(torState);
-    if (next == previous) return;
-    emit(state.copyWith(tor: next));
+    final next = previous.after(report.state);
+    final percent = next.percentAfter(report, shown: state.torPercent);
+    if (next == previous && percent == state.torPercent) return;
+    emit(state.copyWith(tor: next, torPercent: percent));
     if (next == TorWait.ready) unawaited(_request(null));
   }
 

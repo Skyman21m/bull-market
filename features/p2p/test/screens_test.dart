@@ -41,7 +41,13 @@ void main() {
       TorWait tor, {
       VoidCallback? onRetry,
     }) => tester.pumpWidget(
-      harness(TorWaitView(tor: tor, onRetry: onRetry ?? () {})),
+      harness(
+        TorWaitView(
+          tor: tor,
+          shuffle: P2pShuffle.unshuffled,
+          onRetry: onRetry ?? () {},
+        ),
+      ),
     );
 
     /// The bar below the steps.
@@ -70,7 +76,7 @@ void main() {
       expect(find.text('Retry'), findsNothing);
     });
 
-    // As the official Android client's spinner, the bar has no share of the work done: it runs, even though the tests ask for reduced motion, until Tor is ready or fails.
+    // Before Tor reports a share of its start, the bar runs as the official Android client's spinner turns, with no share of the work done, even though the tests ask for reduced motion, until Tor is ready or fails.
     for (final tor in [TorWait.initializing, TorWait.connecting]) {
       testWidgets('${tor.name}: the bar runs', (tester) async {
         await show(tester, tor);
@@ -140,7 +146,11 @@ void main() {
     testWidgets('in French', (tester) async {
       await tester.pumpWidget(
         harness(
-          TorWaitView(tor: TorWait.connecting, onRetry: () {}),
+          TorWaitView(
+            tor: TorWait.connecting,
+            shuffle: P2pShuffle.unshuffled,
+            onRetry: () {},
+          ),
           locale: const Locale('fr'),
         ),
       );

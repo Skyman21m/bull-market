@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/p2p_shuffle.dart';
 import '../domain/tor_wait.dart';
 import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
@@ -20,6 +21,9 @@ enum P2pDestination { offers, garage }
 /// Without [garage], when the feature was set up without the vault's handle, « Garage » is disabled.
 class P2pTabScreen extends StatelessWidget {
   final DateTime Function() now;
+
+  /// The order of the phrases of the Tor wait.
+  final P2pShuffle shuffle;
   final ValueChanged<PublicOrder> onOpenOrder;
   final P2pDestination destination;
   final ValueChanged<P2pDestination> onDestination;
@@ -28,6 +32,7 @@ class P2pTabScreen extends StatelessWidget {
   const P2pTabScreen({
     super.key,
     required this.now,
+    required this.shuffle,
     required this.onOpenOrder,
     required this.destination,
     required this.onDestination,
@@ -80,7 +85,8 @@ class P2pTabScreen extends StatelessWidget {
                   ? garage(context)
                   : BlocBuilder<BookCubit, BookState>(
                       buildWhen: (previous, current) =>
-                          previous.tor != current.tor,
+                          previous.tor != current.tor ||
+                          previous.torPercent != current.torPercent,
                       builder: (context, state) => switch (state.tor) {
                         TorWait.ready => BookView(
                           now: now,
@@ -91,6 +97,8 @@ class P2pTabScreen extends StatelessWidget {
                         ),
                         final tor => TorWaitView(
                           tor: tor,
+                          percent: state.torPercent,
+                          shuffle: shuffle,
                           onRetry: context.read<BookCubit>().retryTor,
                         ),
                       },

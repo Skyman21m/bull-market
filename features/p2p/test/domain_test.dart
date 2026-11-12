@@ -1,4 +1,6 @@
+import 'package:bull_tor/tor.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/p2p_shuffle.dart';
 import 'package:p2p/src/domain/p2p_tor_state.dart';
 import 'package:p2p/src/domain/taker_estimate.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
@@ -47,6 +49,295 @@ void main() {
         TorWait.initializing,
       );
       expect(TorWait.failed.after(P2pTorState.connecting), TorWait.connecting);
+    });
+  });
+
+  group('P2pTorReport', () {
+    test('carries the share Tor reports while it connects, and only then', () {
+      expect(
+        P2pTorReport.of(
+          const TorConnecting(source: TorSource.embedded, progress: 0.3),
+        ),
+        P2pTorReport(P2pTorState.connecting, progress: 0.3),
+      );
+      expect(
+        P2pTorReport.of(const TorConnecting(source: TorSource.embedded)),
+        P2pTorReport(P2pTorState.connecting),
+      );
+      expect(
+        P2pTorReport.of(
+          const TorConnecting(source: TorSource.embedded),
+        ).progress,
+        isNull,
+      );
+      expect(
+        P2pTorReport.of(const TorStopped(TorSource.embedded)),
+        P2pTorReport(P2pTorState.notStarted),
+      );
+      expect(
+        P2pTorReport.of(const TorUninitialized()),
+        P2pTorReport(P2pTorState.notStarted),
+      );
+      expect(
+        P2pTorReport.of(
+          const TorUnavailable(
+            source: TorSource.embedded,
+            failure: TorBootstrapTimeoutFailure(),
+          ),
+        ),
+        P2pTorReport(P2pTorState.failed),
+      );
+      for (final state in [
+        P2pTorState.notStarted,
+        P2pTorState.ready,
+        P2pTorState.failed,
+      ]) {
+        expect(P2pTorReport(state, progress: 0.5).progress, isNull);
+      }
+    });
+
+    test(
+      'keeps a share within 0 and 1, and reads one that is not a number as 0',
+      () {
+        double? share(double progress) =>
+            P2pTorReport(P2pTorState.connecting, progress: progress).progress;
+
+        expect(share(1.5), 1);
+        expect(share(-0.2), 0);
+        expect(share(double.infinity), 1);
+        expect(share(double.nan), 0);
+        expect(share(0.42), 0.42);
+      },
+    );
+
+    test('two reports alike are equal, so a repeat is dropped', () {
+      expect(
+        P2pTorReport(P2pTorState.connecting, progress: 0.3),
+        P2pTorReport(P2pTorState.connecting, progress: 0.3),
+      );
+      expect(
+        P2pTorReport(P2pTorState.connecting, progress: 0.3).hashCode,
+        P2pTorReport(P2pTorState.connecting, progress: 0.3).hashCode,
+      );
+      expect(
+        P2pTorReport(P2pTorState.connecting, progress: 0.3),
+        isNot(P2pTorReport(P2pTorState.connecting, progress: 0.4)),
+      );
+      expect(
+        P2pTorReport(P2pTorState.connecting),
+        isNot(P2pTorReport(P2pTorState.connecting, progress: 0)),
+      );
+    });
+  });
+
+  group('the percentage of the Tor wait', () {
+    P2pTorReport connecting([double? share]) =>
+        P2pTorReport(P2pTorState.connecting, progress: share);
+    final stopped = P2pTorReport(P2pTorState.notStarted);
+    final ready = P2pTorReport(P2pTorState.ready);
+    final failed = P2pTorReport(P2pTorState.failed);
+
+    /// The step and the percentage the wait shows after each report, from [from] with no percentage.
+    List<(TorWait, int?)> walk(
+      List<P2pTorReport> reports, {
+      TorWait from = TorWait.initializing,
+    }) {
+      var wait = from;
+      int? percent;
+      final shown = <(TorWait, int?)>[];
+      for (final report in reports) {
+        wait = wait.after(report.state);
+        percent = wait.percentAfter(report, shown: percent);
+        shown.add((wait, percent));
+      }
+      return shown;
+    }
+
+    List<int?> percents(List<P2pTorReport> reports, {TorWait? from}) => [
+      for (final (_, percent) in walk(
+        reports,
+        from: from ?? TorWait.initializing,
+      ))
+        percent,
+    ];
+
+    test('none before Tor reports a share, then 0 % when it reports 0', () {
+      // A cold start as `bull_tor` reports it: not started, connecting with no share (the repository starts an attempt), stopped (the backend cleans up), then Arti's shares from 0.
+      expect(
+        walk([
+          stopped,
+          connecting(),
+          stopped,
+          connecting(0),
+          connecting(0),
+          connecting(0.12),
+        ]),
+        [
+          (TorWait.initializing, null),
+          (TorWait.connecting, null),
+          (TorWait.connecting, null),
+          (TorWait.connecting, 0),
+          (TorWait.connecting, 0),
+          (TorWait.connecting, 12),
+        ],
+      );
+    });
+
+    test('a middle share, rounded down to the whole percent', () {
+      expect(percents([connecting(0.5)]), [50]);
+      expect(percents([connecting(0.429)]), [42]);
+      expect(percents([connecting(0.004)]), [0]);
+      expect(percents([connecting(0.29)]), [29]);
+      // 0.29 as Arti's single-precision fraction reaches Dart.
+      expect(percents([connecting(0.28999999165534973)]), [29]);
+    });
+
+    test('never 100 % while Tor is not ready, even at a full share', () {
+      expect(percents([connecting(0.995)]), [99]);
+      expect(percents([connecting(0.99999)]), [99]);
+      expect(percents([connecting(1)]), [99]);
+      expect(TorWait.maxPercent, 99);
+    });
+
+    test('a share that goes back during one attempt keeps the highest', () {
+      expect(
+        percents([
+          connecting(0.6),
+          connecting(0.4),
+          connecting(0.59),
+          connecting(0.65),
+        ]),
+        [60, 60, 60, 65],
+      );
+    });
+
+    test('a share that is not a number keeps the percentage shown', () {
+      expect(
+        percents([connecting(0.5), connecting(double.nan), connecting(0.3)]),
+        [50, 50, 50],
+      );
+      expect(percents([connecting(double.nan)]), [0]);
+    });
+
+    test('a jump is shown as it comes', () {
+      expect(percents([connecting(0.05), connecting(0.9)]), [5, 90]);
+    });
+
+    test('a full share held before ready reads 99 %, then none once ready', () {
+      // `bull_tor` reports a full share while it holds readiness, then ready.
+      expect(walk([connecting(0.8), connecting(1), connecting(1), ready]), [
+        (TorWait.connecting, 80),
+        (TorWait.connecting, 99),
+        (TorWait.connecting, 99),
+        (TorWait.ready, null),
+      ]);
+    });
+
+    test('once ready, a directory refresh brings no percentage back', () {
+      expect(
+        walk([
+          connecting(0.5),
+          ready,
+          connecting(0.3),
+          connecting(1),
+          stopped,
+        ]).skip(1),
+        everyElement((TorWait.ready, null)),
+      );
+    });
+
+    test('none once Tor has failed', () {
+      expect(walk([connecting(0.4), failed]).last, (TorWait.failed, null));
+    });
+
+    test('a new attempt starts over: none, then its own shares', () {
+      // The Snowflake fallback after a timeout of the direct attempt: the repository starts a new attempt (connecting with no share), the backend stops the old Arti, then reports from 0.
+      expect(
+        walk([
+          connecting(0.45),
+          connecting(),
+          stopped,
+          connecting(0),
+          connecting(0.2),
+        ]),
+        [
+          (TorWait.connecting, 45),
+          (TorWait.connecting, null),
+          (TorWait.connecting, null),
+          (TorWait.connecting, 0),
+          (TorWait.connecting, 20),
+        ],
+      );
+    });
+
+    test('Retry: from the error, a new attempt with its own shares', () {
+      // The cubit shows « initializing » with no percentage when the user retries; `bull_tor` stops Arti and starts it again.
+      expect(
+        percents([
+          connecting(),
+          stopped,
+          connecting(0),
+          connecting(0.1),
+        ], from: TorWait.initializing),
+        [null, null, 0, 10],
+      );
+      expect(percents([connecting(0.3)], from: TorWait.failed), [30]);
+    });
+  });
+
+  group('P2pShuffle', () {
+    test('unshuffled gives each position in order', () {
+      expect(P2pShuffle.unshuffled.positions(4), [0, 1, 2, 3]);
+      expect(P2pShuffle.unshuffled.positions(0), isEmpty);
+    });
+
+    test('the positions follow the order given', () {
+      final reversed = P2pShuffle(
+        (count) => [for (var i = count - 1; i >= 0; i--) i],
+      );
+      expect(reversed.positions(4), [3, 2, 1, 0]);
+    });
+
+    test('an order that does not give each position once is not used', () {
+      for (final wrong in <List<int>>[
+        [0, 1, 2],
+        [0, 1, 2, 3, 4],
+        [0, 0, 1, 2],
+        [1, 2, 3, 4],
+        [-1, 0, 1, 2],
+      ]) {
+        expect(P2pShuffle((_) => wrong).positions(4), [0, 1, 2, 3]);
+      }
+    });
+
+    test('random draws a new order: two at least in ten draws', () {
+      final orders = <String>{};
+      for (var i = 0; i < 10; i++) {
+        final order = P2pShuffle.random.positions(12);
+        expect(order.toSet(), {for (var j = 0; j < 12; j++) j});
+        orders.add(order.join(','));
+      }
+      // The same order ten times in a row has a chance of 1 in (12!)^9 when the order is drawn at random.
+      expect(orders.length, greaterThan(1));
+    });
+
+    test('random gives each position once', () {
+      for (var i = 0; i < 20; i++) {
+        final order = P2pShuffle.random.positions(12);
+        expect(order, hasLength(12));
+        expect(order.toSet(), {for (var j = 0; j < 12; j++) j});
+      }
+    });
+
+    test('the positions cannot be changed by whoever reads them', () {
+      expect(
+        () => P2pShuffle.unshuffled.positions(3).add(3),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => P2pShuffle((count) => [1, 0]).positions(2).add(2),
+        throwsUnsupportedError,
+      );
     });
   });
 
