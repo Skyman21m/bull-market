@@ -122,8 +122,9 @@ jobs:
     if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
     name: Static checks and unit tests
     runs-on: ubuntu-24.04
-    # A normal run takes 22-29 min (build_runner and unit tests dominate).
-    timeout-minutes: 45
+    # A normal run takes 34-44 min in this fork (set-up 9-16 min, unit tests 18-26 min), more than upstream's 22-29 min: Troc adds the robosats and p2p test suites.
+    # At 45 min a slow set-up cut a run during the unit tests with no test failing, so the limit leaves room for that.
+    timeout-minutes: 60
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
