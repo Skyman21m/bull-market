@@ -586,6 +586,30 @@ analyzer:
       },
     );
 
+    test(
+      'a file reached through a link to a folder outside the repository is a dependency',
+      () async {
+        // The review of #58: the link resolution of the reach check was untested; a toolchain linked into the checkout (`.fvm/flutter_sdk`) relies on it.
+        final root = Directory('${fixture.path}/reach_link')..createSync();
+        File('${fixture.path}/reach_link_outside/lib/dependency.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const dependency = 0;\n');
+        Link(
+          '${root.path}/sdk',
+        ).createSync('${fixture.path}/reach_link_outside');
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(
+            "import '../sdk/lib/dependency.dart';\nconst app = dependency;\n",
+          );
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(report.violations, isEmpty);
+      },
+    );
+
     test('a root without lib/ or without a Dart file fails', () async {
       final empty = Directory('${fixture.path}/empty_root')..createSync();
       expect((await checkKeyMaterial(empty.path)).violations, [
@@ -1453,6 +1477,18 @@ class Bull {
               'setupP2p(locator, withGarageKeys: withGarageKeys);',
               'final register = setupP2p;\n'
                   '    register(locator, withGarageKeys: withGarageKeys);',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator.setupP2p#not a direct call'],
+        );
+        // The review of #58 (A7): `call` on the method, the method being the target of the invocation.
+        expect(
+          await inspect(
+            'composition_p2p_call',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'setupP2p.call(locator, withGarageKeys: withGarageKeys);',
             ),
             policyPath: locatorPath,
           ),
