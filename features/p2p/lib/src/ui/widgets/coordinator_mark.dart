@@ -23,14 +23,13 @@ class CoordinatorMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
+    // Neither the primary red, which is also the colour of errors and of « Seller », nor the variant grey, which reads as disabled.
     final palette = [
       colors.info,
       colors.success,
       colors.tertiary,
-      colors.primary,
       colors.bitcoinOrange,
       colors.secondary,
-      colors.onSurfaceVariant,
     ];
     final color = palette[seedHash(coordinator.shortAlias) % palette.length];
     final frame = math.max(1.5, size * 0.045);
