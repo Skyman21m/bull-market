@@ -1328,6 +1328,43 @@ void main() {
       );
     });
 
+    testWidgets('a field focused again during the paste gets nothing', (
+      tester,
+    ) async {
+      await openWizard(tester);
+      clipboard = exampleText;
+      await tester.tap(pasteInput());
+      await settle(tester);
+      tester.testTextInput.log.clear();
+
+      await tester.tap(find.byTooltip('Paste'));
+      // Microtasks only, no timer: the clipboard is read and the focus leaves, and the write waits for its zero-length timer.
+      // `tester.idle()` would not do: it fires the zero-length timers too, so the write would come before the tap below.
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.value();
+      }
+      final focus = tester
+          .state<EditableTextState>(pasteInput())
+          .widget
+          .focusNode;
+      final controller = tester.widget<EditableText>(pasteInput()).controller;
+      expect(focus.hasFocus, isFalse);
+      expect(controller.text.isEmpty, isTrue);
+      // A tap on the field lands in that turn, before the write.
+      focus.requestFocus();
+      await settle(tester);
+
+      expect(focus.hasFocus, isTrue);
+      // Booleans, so that a failure does not print the key it found.
+      expect(controller.text.isEmpty, isTrue);
+      expect(
+        tester.testTextInput.log.any(
+          (call) => '${call.arguments}'.contains(exampleText.substring(5, 30)),
+        ),
+        isFalse,
+      );
+    });
+
     testWidgets('a pasted text is bounded as a typed one', (tester) async {
       await openWizard(tester);
 
