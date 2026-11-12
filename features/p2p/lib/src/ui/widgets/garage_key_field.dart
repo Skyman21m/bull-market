@@ -8,9 +8,11 @@ import '../../presentation/p2p_failure_l10n.dart';
 
 /// The field where the user pastes or types a Garage Key, as the official client's (`GarageKeyInput.tsx` at commit ff1998c): whitespace removed and lower case as it is typed, and the validator's error under it, or [helper].
 ///
-/// The text cannot be selected and the field has no text menu, as the wallet's recovery phrase fields: no Copy or Cut, which would put the key on the clipboard without the clearing of `GarageKeyClipboard`, and no Share or text actions (Android's « Translate » and the like), which would hand it to another app.
-/// So a « Paste » button reads the clipboard once, when the user taps it, and puts its text in the field through the same cleaning and checks; « Clear » empties the field.
-/// The key can also be typed, from a copy on paper: the keyboard is told not to learn, suggest, correct or autofill it, as for a password, but it still sees what is typed, where the wallet keeps its recovery phrase off the system keyboard; pasting avoids that.
+/// The text cannot be selected from the app's own interface or a hardware keyboard, and the field has no text menu, as the wallet's recovery phrase fields: no Copy or Cut, which would put the key on the clipboard without the clearing of `GarageKeyClipboard`, and no Share or text actions (Android's « Translate » and the like), which would hand it to another app.
+/// The system keyboard is another matter: while the field has focus, Android's input connection performs its Select all, Cut and Copy itself, without asking Flutter (`InputConnectionAdaptor` of the engine), so a keyboard's own editing panel can still copy a typed key, and the keyboard receives the text of the field.
+/// So a « Paste » button reads the clipboard once, when the user taps it, takes the focus away from the field so that the keyboard is closed, then puts the text in the field through the same cleaning and checks: a pasted key is never sent to the keyboard, unless the user focuses the field again.
+/// « Clear » empties the field.
+/// The key can also be typed, from a copy on paper: the keyboard is told not to learn, suggest, correct or autofill it, as for a password, but it sees what is typed, where the wallet keeps its recovery phrase off the system keyboard; a field with an in-app keyboard, as the wallet's, is issue #56.
 /// The text stays in [controller], which the screen that owns it disposes with it; it is never put in a state, a failure or a log, and it is kept out of the semantics tree, which hears [label], the error and the two buttons, not the text, as the wallet keeps its recovery phrase out of it.
 class GarageKeyField extends StatelessWidget {
   final TextEditingController controller;
@@ -125,6 +127,8 @@ class GarageKeyField extends StatelessWidget {
   }
 
   /// Reads the clipboard once, on the user's tap, and puts its text in the field, cleaned and bounded as if it had been typed; an empty or unreadable clipboard changes nothing.
+  ///
+  /// The focus leaves the field first, and the text is written only once the field has closed its connection to the keyboard: the keyboard never receives a pasted key.
   Future<void> _paste(BuildContext context) async {
     final String? held;
     try {
@@ -134,6 +138,10 @@ class GarageKeyField extends StatelessWidget {
     }
     final cleaned = normalizeGarageKeyText(held ?? '');
     if (cleaned.isEmpty || !context.mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    // The change of focus applies after this turn: the field closes its connection to the keyboard then.
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) return;
     final bounded = cleaned.length > maxLength
         ? cleaned.substring(0, maxLength)
         : cleaned;

@@ -9,12 +9,12 @@ import '../../domain/garage_key_text.dart';
 
 /// The one place a Garage Key reaches the clipboard: it writes the text `GarageKeyView` gives it, and empties the clipboard [clearAfter] later if it still holds that key.
 ///
-/// One object for the whole feature, registered once, so that the clipboard is emptied even after the screen that copied the key is gone, and at once when the app is torn down (its lifecycle detaches), when the platform still lets it run.
+/// One object for the whole feature, registered once, so that the clipboard is emptied even after the screen that copied the key is gone, and at once when the app is torn down (its lifecycle detaches): best effort, since swiping the app away usually kills the process before it runs.
 /// Until then it keeps the key as a [GarageKey], never its text, and tells whether the clipboard still holds it by reading what the clipboard holds and parsing it: a key the user replaced with something else is left alone.
 /// That read brings another app's clip into memory, for the time of the comparison; Android turns a clip that is not text, such as a content URI, into text to answer it, and Android 12 and later may show « pasted from your clipboard » when the clip came from another app.
 /// When the clipboard cannot be read, as on Android 10 and later while the app is in the background, it is emptied anyway: a key left there is worse than another clip lost.
 ///
-/// What the 30 seconds do not protect: the clip is not flagged sensitive, because Flutter's `Clipboard.setData` cannot set `ClipDescription.EXTRA_IS_SENSITIVE` and the app has no platform channel for it (the wallet's BIP85 copy has the same gap).
+/// What the 30 seconds do not protect: the clip is not flagged sensitive, because Flutter's `Clipboard.setData` cannot set `ClipDescription.EXTRA_IS_SENSITIVE` and the app has no platform channel for it yet (issue #56; the wallet's BIP85 copy has the same gap).
 /// So from Android 13 the system shows a preview of the copied key at each copy, and a keyboard with a clipboard history may keep its own copy, which clearing the clipboard does not remove.
 /// A key still on the clipboard when the app is killed stays there.
 final class GarageKeyClipboard {
