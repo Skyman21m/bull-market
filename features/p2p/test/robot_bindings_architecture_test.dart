@@ -46,6 +46,22 @@ void main() {
     }
   });
 
+  test('an ignore followed by a comment of its own is read whole', () {
+    // `// ignore: unused_import // a reason` silences the analyzer all the same: read up to the slash, it passed for the form gen-l10n writes (#69).
+    expect(
+      _ignores(
+        '// ignore: unused_import // a reason\n'
+        'x; /* ignore_for_file: type=lint */ y;\n'
+        '// ignore_for_file: type=lint, unused_import  \n',
+      ),
+      [
+        'ignore: unused_import // a reason',
+        'ignore_for_file: type=lint',
+        'ignore_for_file: type=lint, unused_import',
+      ],
+    );
+  });
+
   test('every Dart file of lib/ is scanned', () {
     final all = [
       for (final file in Directory('lib').listSync(recursive: true))
@@ -192,10 +208,39 @@ void main() {
             },
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
+            'fetchByUseCaseTearOff': {'FetchRobotUsecase.execute'},
           },
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'only the two robot use cases send a robot request, through the use case that binds',
+      () {
+        // `FetchRobotUsecase` binds and checks a robot before each request; the robot use cases add the places, the retries after a busy answer and the 7004 rules of `RobotRequestLimiter`, which no other file may go around.
+        expect(referring((r) => r == 'FetchRobotUsecase.execute'), {
+          'lib/src/domain/usecases/put_robot_on_coordinator_usecase.dart',
+          'lib/src/domain/usecases/read_robot_on_coordinator_usecase.dart',
+        });
+        // Its own file and the composition, which builds it, name it too.
+        expect(referring((r) => r == 'type FetchRobotUsecase'), {
+          'lib/src/domain/usecases/fetch_robot_usecase.dart',
+          'lib/src/domain/usecases/put_robot_on_coordinator_usecase.dart',
+          'lib/src/domain/usecases/read_robot_on_coordinator_usecase.dart',
+          'lib/src/p2p_locator.dart',
+        });
+      },
+    );
+
+    test(
+      'the feature never names a robot\'s token: the proof is the package\'s',
+      () {
+        expect(
+          referring((r) => r == 'credential RobotIdentity.token'),
+          isEmpty,
+        );
+      },
     );
 
     test('only the use case that binds a robot requests one, or binds', () {
@@ -546,9 +591,11 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
 }
 
 /// Every `ignore:` or `ignore_for_file:` comment of [source], normalised to `ignore: code, code`.
+///
+/// What follows the colon is read to the end of the line or of the comment, whatever it holds, so that `// ignore: code // reason`, which the analyzer obeys, is compared whole with the forms allowed and matches none (#69).
 List<String> _ignores(String source) => [
   for (final match in RegExp(
-    r'(ignore(?:_for_file)?)\s*:\s*([A-Za-z0-9_=,\s-]*?)\s*(?:\*/|$)',
+    r'(ignore(?:_for_file)?)\s*:(.*?)(?:\*/|$)',
     multiLine: true,
   ).allMatches(source))
     '${match[1]}: ${(match[2] ?? '').split(',').map((code) => code.trim()).where((code) => code.isNotEmpty).join(', ')}',
@@ -578,6 +625,7 @@ const _watched = {
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
+  'FetchRobotUsecase': ('package:p2p/', {'execute'}),
   'UnprovenCoordinatorRobot': ('package:robosats/', {'prove', 'parse'}),
   'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
   'RobotPgpKey': (
