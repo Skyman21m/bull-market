@@ -6,10 +6,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:screen_privacy/screen_privacy.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/network_garage_key.dart';
 import '../../domain/p2p_failure.dart';
+import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../../presentation/p2p_failure_l10n.dart';
+import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
 import 'delete_garage_key_dialog.dart';
 import 'garage_profile.dart';
@@ -30,11 +33,21 @@ class GarageView extends StatefulWidget {
   /// Shows the offers of the tab: « Search for Orders » and « Search ».
   final VoidCallback onBrowseOffers;
 
+  /// Makes the cubit of the panel of the robot at an index of a Garage Key, on the profile.
+  final RobotCoordinatorCubit Function(NetworkGarageKey key, int index)
+  robotCoordinator;
+
+  /// Makes the cubit of the coordinator dialog, opened from « Select Host ».
+  final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
+  coordinatorDetails;
+
   const GarageView({
     super.key,
     required this.clipboard,
     required this.reauthenticate,
     required this.onBrowseOffers,
+    required this.robotCoordinator,
+    required this.coordinatorDetails,
   });
 
   @override
@@ -104,6 +117,8 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
         state: state,
         clipboard: widget.clipboard,
         reauthenticate: widget.reauthenticate,
+        robotCoordinator: widget.robotCoordinator,
+        coordinatorDetails: widget.coordinatorDetails,
       ),
       GarageWithoutKey() ||
       GarageWorking() when step != null => _wizard(state, step),
