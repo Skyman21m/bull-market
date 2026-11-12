@@ -31,6 +31,42 @@ class P2pLocalizationsBn extends P2pLocalizations {
   String get p2pTorConnectionError => 'Connection error';
 
   @override
+  String get p2pTorWaitPhrase1 => 'Sats travelling at the speed of light';
+
+  @override
+  String get p2pTorWaitPhrase2 => 'Peeling the onion, layer by layer';
+
+  @override
+  String get p2pTorWaitPhrase3 => 'Bouncing from relay to relay';
+
+  @override
+  String get p2pTorWaitPhrase4 => 'Hiding your IP address from coordinators';
+
+  @override
+  String get p2pTorWaitPhrase5 => 'Waking up the robots';
+
+  @override
+  String get p2pTorWaitPhrase6 => 'No KYC, just robots';
+
+  @override
+  String get p2pTorWaitPhrase7 => 'Not your keys, not your coins';
+
+  @override
+  String get p2pTorWaitPhrase8 => 'Don\'t trust, verify';
+
+  @override
+  String get p2pTorWaitPhrase9 => 'Privacy is not a crime';
+
+  @override
+  String get p2pTorWaitPhrase10 => 'Be your own bank';
+
+  @override
+  String get p2pTorWaitPhrase11 => 'Tick tock, next block';
+
+  @override
+  String get p2pTorWaitPhrase12 => 'Loading with low time preference';
+
+  @override
   String get p2pNavOffers => 'Offers';
 
   @override

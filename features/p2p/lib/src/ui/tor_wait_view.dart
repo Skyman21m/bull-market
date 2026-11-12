@@ -2,14 +2,17 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/p2p_shuffle.dart';
 import '../domain/tor_wait.dart';
 import '../presentation/p2p_formats.dart';
+import 'widgets/tor_wait_phrases.dart';
 
 /// The wait for Tor inside the P2P tab, in the three steps of the official Android client: initializing, connecting, connected.
 ///
 /// Below the steps, a bar runs while Tor starts, so that the wait reads as work in progress, as the official Android client's spinner turns until Tor is ready (`activity_main.xml` at commit ff1998c).
 /// Once Tor reports how far it has got, the bar is filled to that share and the [percent] stands next to it: the official Android client reads Tor's bootstrap percentage (`TorKmpManager.kt`) but shows none, and the owner asked for it (#68).
-/// No percentage shows once Tor is ready or has failed.
+/// Under the bar, short phrases change every 2 seconds ([TorWaitPhrases], Troc's own texts, also asked for by the owner).
+/// Neither the percentage nor the phrases show once Tor is ready or has failed.
 /// The wallet stays usable meanwhile: only this tab waits.
 class TorWaitView extends StatelessWidget {
   final TorWait tor;
@@ -17,12 +20,16 @@ class TorWaitView extends StatelessWidget {
   /// How far Tor has got in starting, as `TorWait.percentAfter` gives it; shown only while Tor connects, and `null` shows none.
   final int? percent;
 
+  /// The order of the phrases, drawn anew at each wait.
+  final P2pShuffle shuffle;
+
   final VoidCallback onRetry;
 
   const TorWaitView({
     super.key,
     required this.tor,
     this.percent,
+    required this.shuffle,
     required this.onRetry,
   });
 
@@ -99,6 +106,10 @@ class TorWaitView extends StatelessWidget {
                 ],
               ],
             ),
+            if (waiting) ...[
+              const Gap(BullSpacing.sm),
+              TorWaitPhrases(shuffle: shuffle),
+            ],
             const Gap(BullSpacing.sm),
             Text(
               l10n.p2pTorWaitingLine,

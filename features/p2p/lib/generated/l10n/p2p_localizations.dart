@@ -188,6 +188,78 @@ abstract class P2pLocalizations {
   /// **'Connection error'**
   String get p2pTorConnectionError;
 
+  /// Phrase 1 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Sats travelling at the speed of light'**
+  String get p2pTorWaitPhrase1;
+
+  /// Phrase 2 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Peeling the onion, layer by layer'**
+  String get p2pTorWaitPhrase2;
+
+  /// Phrase 3 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Bouncing from relay to relay'**
+  String get p2pTorWaitPhrase3;
+
+  /// Phrase 4 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Hiding your IP address from coordinators'**
+  String get p2pTorWaitPhrase4;
+
+  /// Phrase 5 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Waking up the robots'**
+  String get p2pTorWaitPhrase5;
+
+  /// Phrase 6 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'No KYC, just robots'**
+  String get p2pTorWaitPhrase6;
+
+  /// Phrase 7 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Not your keys, not your coins'**
+  String get p2pTorWaitPhrase7;
+
+  /// Phrase 8 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t trust, verify'**
+  String get p2pTorWaitPhrase8;
+
+  /// Phrase 9 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy is not a crime'**
+  String get p2pTorWaitPhrase9;
+
+  /// Phrase 10 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Be your own bank'**
+  String get p2pTorWaitPhrase10;
+
+  /// Phrase 11 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Tick tock, next block'**
+  String get p2pTorWaitPhrase11;
+
+  /// Phrase 12 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading with low time preference'**
+  String get p2pTorWaitPhrase12;
+
   /// Destination inside the P2P tab: the order book. « Offers » because the RoboSats English says Offers.
   ///
   /// In en, this message translates to:

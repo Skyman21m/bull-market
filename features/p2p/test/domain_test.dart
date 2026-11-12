@@ -1,5 +1,6 @@
 import 'package:bull_tor/tor.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:p2p/src/domain/p2p_shuffle.dart';
 import 'package:p2p/src/domain/p2p_tor_state.dart';
 import 'package:p2p/src/domain/taker_estimate.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
@@ -273,6 +274,51 @@ void main() {
         [null, null, 0, 10],
       );
       expect(percents([connecting(0.3)], from: TorWait.failed), [30]);
+    });
+  });
+
+  group('P2pShuffle', () {
+    test('unshuffled gives each position in order', () {
+      expect(P2pShuffle.unshuffled.positions(4), [0, 1, 2, 3]);
+      expect(P2pShuffle.unshuffled.positions(0), isEmpty);
+    });
+
+    test('the positions follow the order given', () {
+      final reversed = P2pShuffle(
+        (count) => [for (var i = count - 1; i >= 0; i--) i],
+      );
+      expect(reversed.positions(4), [3, 2, 1, 0]);
+    });
+
+    test('an order that does not give each position once is not used', () {
+      for (final wrong in <List<int>>[
+        [0, 1, 2],
+        [0, 1, 2, 3, 4],
+        [0, 0, 1, 2],
+        [1, 2, 3, 4],
+        [-1, 0, 1, 2],
+      ]) {
+        expect(P2pShuffle((_) => wrong).positions(4), [0, 1, 2, 3]);
+      }
+    });
+
+    test('random gives each position once', () {
+      for (var i = 0; i < 20; i++) {
+        final order = P2pShuffle.random.positions(12);
+        expect(order, hasLength(12));
+        expect(order.toSet(), {for (var j = 0; j < 12; j++) j});
+      }
+    });
+
+    test('the positions cannot be changed by whoever reads them', () {
+      expect(
+        () => P2pShuffle.unshuffled.positions(3).add(3),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => P2pShuffle((count) => [1, 0]).positions(2).add(2),
+        throwsUnsupportedError,
+      );
     });
   });
 

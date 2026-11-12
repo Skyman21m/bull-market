@@ -41,7 +41,13 @@ void main() {
       TorWait tor, {
       VoidCallback? onRetry,
     }) => tester.pumpWidget(
-      harness(TorWaitView(tor: tor, onRetry: onRetry ?? () {})),
+      harness(
+        TorWaitView(
+          tor: tor,
+          shuffle: P2pShuffle.unshuffled,
+          onRetry: onRetry ?? () {},
+        ),
+      ),
     );
 
     /// The bar below the steps.
@@ -140,7 +146,11 @@ void main() {
     testWidgets('in French', (tester) async {
       await tester.pumpWidget(
         harness(
-          TorWaitView(tor: TorWait.connecting, onRetry: () {}),
+          TorWaitView(
+            tor: TorWait.connecting,
+            shuffle: P2pShuffle.unshuffled,
+            onRetry: () {},
+          ),
           locale: const Locale('fr'),
         ),
       );

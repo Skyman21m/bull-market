@@ -11,6 +11,7 @@ import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
+import 'domain/p2p_shuffle.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
@@ -134,15 +135,17 @@ final class P2pLocator {
     );
   }
 
-  /// Registers the use-cases and the cubits over [transport], [tor] and [clock], which tests replace.
+  /// Registers the use-cases and the cubits over [transport], [tor], [clock] and [shuffle], which tests replace.
   static void registerOver(
     GetIt locator, {
     required CoordinatorTransport Function() transport,
     required CoordinatorSessionsPort Function() sessions,
     required Tor Function() tor,
     required DateTime Function() clock,
+    P2pShuffle shuffle = P2pShuffle.random,
   }) {
     locator.registerSingleton<P2pClock>(P2pClock(clock));
+    locator.registerSingleton<P2pShuffle>(shuffle);
     locator.registerFactory<RequestFederationBooksUsecase>(
       () => RequestFederationBooksUsecase(
         FederationBookReader(transport(), clock: clock),

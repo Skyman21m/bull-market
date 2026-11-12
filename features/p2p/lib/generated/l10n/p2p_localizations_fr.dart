@@ -31,6 +31,43 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pTorConnectionError => 'Erreur de connexion';
 
   @override
+  String get p2pTorWaitPhrase1 => 'Des sats à la vitesse de la lumière';
+
+  @override
+  String get p2pTorWaitPhrase2 => 'On épluche l’oignon, couche par couche';
+
+  @override
+  String get p2pTorWaitPhrase3 => 'Rebond de relais en relais';
+
+  @override
+  String get p2pTorWaitPhrase4 =>
+      'Votre adresse IP reste cachée aux coordinateurs';
+
+  @override
+  String get p2pTorWaitPhrase5 => 'Réveil des robots';
+
+  @override
+  String get p2pTorWaitPhrase6 => 'Pas de KYC, juste des robots';
+
+  @override
+  String get p2pTorWaitPhrase7 => 'Pas vos clés, pas vos bitcoins';
+
+  @override
+  String get p2pTorWaitPhrase8 => 'Ne faites pas confiance, vérifiez';
+
+  @override
+  String get p2pTorWaitPhrase9 => 'La vie privée n’est pas un crime';
+
+  @override
+  String get p2pTorWaitPhrase10 => 'Soyez votre propre banque';
+
+  @override
+  String get p2pTorWaitPhrase11 => 'Tic tac, prochain bloc';
+
+  @override
+  String get p2pTorWaitPhrase12 => 'Chargement à faible préférence temporelle';
+
+  @override
   String get p2pNavOffers => 'Offres';
 
   @override

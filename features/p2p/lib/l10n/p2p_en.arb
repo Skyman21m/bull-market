@@ -28,6 +28,54 @@
   "@p2pTorConnectionError": {
     "description": "Tor could not start. Default value of the Tor state in RoboSats, shown until another state is known."
   },
+  "p2pTorWaitPhrase1": "Sats travelling at the speed of light",
+  "@p2pTorWaitPhrase1": {
+    "description": "Phrase 1 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase2": "Peeling the onion, layer by layer",
+  "@p2pTorWaitPhrase2": {
+    "description": "Phrase 2 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase3": "Bouncing from relay to relay",
+  "@p2pTorWaitPhrase3": {
+    "description": "Phrase 3 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase4": "Hiding your IP address from coordinators",
+  "@p2pTorWaitPhrase4": {
+    "description": "Phrase 4 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase5": "Waking up the robots",
+  "@p2pTorWaitPhrase5": {
+    "description": "Phrase 5 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase6": "No KYC, just robots",
+  "@p2pTorWaitPhrase6": {
+    "description": "Phrase 6 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase7": "Not your keys, not your coins",
+  "@p2pTorWaitPhrase7": {
+    "description": "Phrase 7 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase8": "Don't trust, verify",
+  "@p2pTorWaitPhrase8": {
+    "description": "Phrase 8 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase9": "Privacy is not a crime",
+  "@p2pTorWaitPhrase9": {
+    "description": "Phrase 9 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase10": "Be your own bank",
+  "@p2pTorWaitPhrase10": {
+    "description": "Phrase 10 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase11": "Tick tock, next block",
+  "@p2pTorWaitPhrase11": {
+    "description": "Phrase 11 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
+  "p2pTorWaitPhrase12": "Loading with low time preference",
+  "@p2pTorWaitPhrase12": {
+    "description": "Phrase 12 of the twelve shown one at a time under the bar while Tor starts in the P2P tab, changing every 2 seconds in an order shuffled at each wait. Troc's own text, approved by the owner on 2026-11-12 (#68): the official client shows none here. Decoration only, kept out of what a screen reader reads."
+  },
   "p2pNavOffers": "Offers",
   "@p2pNavOffers": {
     "description": "Destination inside the P2P tab: the order book. « Offers » because the RoboSats English says Offers."

@@ -13,6 +13,7 @@ import 'package:secrets/secrets.dart' show GarageKeys;
 import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
+import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
@@ -38,6 +39,7 @@ export 'package:robosats/robosats.dart'
         RobotPgpKeyMismatch,
         RobotUnknown;
 
+export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
 export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'
@@ -45,7 +47,7 @@ export 'src/ui/widgets/coordinator_images.dart'
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
-/// Tor reports either [torStates], or [torReports] when a test needs the share of its start too.
+/// Tor reports either [torStates], or [torReports] when a test needs the share of its start too; [shuffle] orders what the screens show in no order of their own, as given by default.
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 @visibleForTesting
@@ -55,6 +57,7 @@ void setUpP2pForTesting(
   Stream<P2pTorState> Function()? torStates,
   Stream<P2pTorReport> Function()? torReports,
   required DateTime Function() clock,
+  P2pShuffle shuffle = P2pShuffle.unshuffled,
   GarageKeys? garageKeys,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
@@ -72,6 +75,7 @@ void setUpP2pForTesting(
     sessions: () => const _NoSessions(),
     tor: () => tor,
     clock: clock,
+    shuffle: shuffle,
   );
   if (garageKeys != null) {
     P2pLocator.registerGarageKeys(
