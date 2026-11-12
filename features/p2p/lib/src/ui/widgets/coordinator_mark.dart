@@ -13,6 +13,8 @@ import 'seed_hash.dart';
 /// The initials are the capital letters A to Z of the long alias, at most two, or else the first character of the short alias, upper-cased.
 /// The colour of the frame and of the background is a theme colour chosen by the short alias, and the initials take the colour of the text.
 /// So a coordinator has the same mark on every screen and at every run, and nothing a coordinator sends changes it.
+/// The long and short aliases are those of the embedded federation list, never a coordinator's answer.
+/// Only the capitals A to Z of the long alias reach the mark; the short alias seeds the colour and gives the fallback letter, which is safe because `Federation.problems()` pins every short alias of the list to 1 to 20 lowercase letters and digits.
 /// The mark is decorative: the name of the coordinator is always written beside it.
 class CoordinatorMark extends StatelessWidget {
   final Coordinator coordinator;
