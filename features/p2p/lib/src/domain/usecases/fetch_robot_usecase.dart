@@ -22,9 +22,9 @@ final class FetchRobotUsecase {
   /// The network and the key are read from [robot] and never given apart, so a robot of the testnet key cannot be sent to a mainnet coordinator, nor checked against the bindings of another key.
   /// A robot index has one binding whatever the network, since its token hash is the same on both.
   ///
-  /// Before anything is sent, the binding of the robot is read, and written when the robot has none and its key was drawn on this device; the request leaves only once the binding is on disk.
+  /// Before anything is sent, the binding of the robot is read, and written when the robot has none and its key was drawn on this device or acknowledged by the user, for the robot's network; the request leaves only once the binding is on disk.
   /// Both kinds of request send the token hash, so both bind.
-  /// A refusal is the outer [Err], a [P2pFailure], and nothing was sent: a robot bound to another coordinator, on either network, or to one whose onion address or keys changed since, or without a binding while its key's history is unknown, or a database that cannot be read.
+  /// A refusal is the outer [Err], a [P2pFailure], and nothing was sent: a robot bound to another coordinator, on either network, or to one whose onion address or keys changed since, or without a binding while its key's history is unknown and not acknowledged, or a database that cannot be read.
   /// An [Error] from the database or from the directory the shell gave, a bug by rule 11 of AGENTS.md, is not caught: the call throws, and nothing is sent either.
   /// A coordinator without an onion address on the network of the robot gets nothing, binding included, and gives a [CoordinatorNotOnNetwork].
   /// Otherwise the inner result is what the coordinator answered, checked.

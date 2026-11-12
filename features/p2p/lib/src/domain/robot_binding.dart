@@ -50,6 +50,8 @@ enum GarageKeyHistory {
 /// The history of a robot's key on the robot's network when the robot was bound, recorded with the binding and never changed.
 ///
 /// Phase 2 reads it to decide what such a robot may do with an order.
+/// It is the history on the robot's own network only, while a robot's token is the same on both: a key drawn on testnet and pasted into the mainnet slot keeps `drawnHere` for the robots bound on testnet.
+/// So `drawnHere` does not mean that the key never left the device: phase 2 must read the key's history on the other network too before it relies on that.
 enum BindingProvenance {
   /// The key was drawn on this device: the robot had been sent to no coordinator before.
   drawnHere,
