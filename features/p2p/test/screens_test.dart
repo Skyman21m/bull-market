@@ -10,10 +10,13 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/ui/book_view.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
+import 'package:p2p/src/ui/widgets/coordinator_mark.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
+import 'package:p2p/src/ui/widgets/robot_avatar.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
 import 'package:p2p/testing.dart';
 
@@ -39,6 +42,17 @@ void main() {
       harness(TorWaitView(tor: tor, onRetry: onRetry ?? () {})),
     );
 
+    /// The bar below the steps.
+    BullFadingLinearProgress bar(WidgetTester tester) => tester
+        .widget<BullFadingLinearProgress>(find.byType(BullFadingLinearProgress));
+
+    /// Lets a bar that stopped fade out: once it has, nothing on the screen moves any more.
+    Future<void> fadeOut(WidgetTester tester) async {
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pump();
+      await tester.pump();
+    }
+
     testWidgets('initializing: the first step is current', (tester) async {
       await show(tester, TorWait.initializing);
 
@@ -50,36 +64,73 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Retry'), findsNothing);
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .value,
-        0,
-      );
     });
 
-    testWidgets('connecting: one step done out of three', (tester) async {
-      await show(tester, TorWait.connecting);
+    // As the official Android client's spinner, the bar has no share of the work done: it runs, even though the tests ask for reduced motion, until Tor is ready or fails.
+    for (final tor in [TorWait.initializing, TorWait.connecting]) {
+      testWidgets('${tor.name}: the bar runs', (tester) async {
+        await show(tester, tor);
+        await tester.pump(const Duration(milliseconds: 100));
 
-      expect(
-        tester
-            .widget<LinearProgressIndicator>(
-              find.byType(LinearProgressIndicator),
-            )
-            .value,
-        closeTo(1 / 3, 0.001),
-      );
-    });
+        expect(bar(tester).trigger, isTrue);
+        expect(
+          find.descendant(
+            of: find.byType(BullFadingLinearProgress),
+            matching: find.byType(LinearProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator),
+              )
+              .value,
+          isNull,
+        );
+        expect(tester.hasRunningAnimations, isTrue);
+      });
+    }
 
-    testWidgets('failed: the error and a retry', (tester) async {
+    testWidgets('failed: the error and a retry, and nothing runs', (
+      tester,
+    ) async {
       var retried = 0;
       await show(tester, TorWait.failed, onRetry: () => retried++);
 
       expect(find.text('Connection error'), findsOneWidget);
+      expect(bar(tester).trigger, isFalse);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.hasRunningAnimations, isFalse);
       await tester.tap(find.text('Retry'));
       expect(retried, 1);
+    });
+
+    testWidgets('the bar stops when Tor fails, and runs again on retry', (
+      tester,
+    ) async {
+      await show(tester, TorWait.connecting);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.hasRunningAnimations, isTrue);
+
+      await show(tester, TorWait.failed);
+      expect(bar(tester).trigger, isFalse);
+      await fadeOut(tester);
+      expect(tester.hasRunningAnimations, isFalse);
+
+      await show(tester, TorWait.initializing);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(bar(tester).trigger, isTrue);
+      expect(tester.hasRunningAnimations, isTrue);
+    });
+
+    testWidgets('ready: the bar stops', (tester) async {
+      await show(tester, TorWait.connecting);
+      await show(tester, TorWait.ready);
+      await fadeOut(tester);
+
+      expect(bar(tester).trigger, isFalse);
+      expect(tester.hasRunningAnimations, isFalse);
     });
 
     testWidgets('in French', (tester) async {
@@ -96,6 +147,9 @@ void main() {
         find.text('La connexion aux coordinateurs passe uniquement par Tor.'),
         findsOneWidget,
       );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(bar(tester).trigger, isTrue);
+      expect(tester.hasRunningAnimations, isTrue);
     });
   });
 
@@ -203,6 +257,167 @@ void main() {
       expect(find.text('Retry'), findsNothing);
     });
 
+    group('the wait for the book', () {
+      /// The bar above the book.
+      BullFadingLinearProgress bar(WidgetTester tester) =>
+          tester.widget<BullFadingLinearProgress>(
+            find.descendant(
+              of: find.byType(BookView),
+              matching: find.byType(BullFadingLinearProgress),
+            ),
+          );
+
+      final mainnet = [
+        for (final coordinator in Federation.robosats.on(
+          RobosatsNetwork.mainnet,
+        ))
+          coordinator.shortAlias,
+      ];
+
+      /// Lets a bar that stopped fade out.
+      Future<void> fadeOut(WidgetTester tester) async {
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pump();
+        await tester.pump();
+      }
+
+      testWidgets(
+        'before the first book: skeleton rows that shimmer, then the offers',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          transport.held.addAll(mainnet);
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+
+          expect(find.byType(BookSkeleton), findsOneWidget);
+          expect(find.byType(BullShimmerLine), findsWidgets);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(
+            find.bySemanticsLabel(
+              '${mainnet.length} coordinators are still loading',
+            ),
+            findsOneWidget,
+          );
+          // Nothing is shown yet: the skeleton is the wait, without the bar.
+          expect(bar(tester).trigger, isFalse);
+          expect(tester.hasRunningAnimations, isTrue);
+
+          for (final alias in mainnet) {
+            transport.release(alias);
+          }
+          await settle(tester);
+
+          expect(find.byType(BookSkeleton), findsNothing);
+          expect(find.text('Seller'), findsNWidgets(2));
+          expect(bar(tester).trigger, isFalse);
+          await fadeOut(tester);
+          expect(tester.hasRunningAnimations, isFalse);
+          semantics.dispose();
+        },
+      );
+
+      testWidgets(
+        'offers shown while a coordinator still loads: a bar runs above them, in the chart too, until it answers',
+        (tester) async {
+          transport.held.add('lake');
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+
+          expect(find.text('Seller'), findsNWidgets(2));
+          expect(find.text('Buyer'), findsNothing);
+          expect(find.byType(BookSkeleton), findsNothing);
+          expect(find.text('1 coordinator is still loading'), findsOneWidget);
+          expect(bar(tester).trigger, isTrue);
+
+          await tester.tap(find.text('Chart'));
+          await settle(tester);
+          expect(bar(tester).trigger, isTrue);
+          await tester.tap(find.text('List'));
+          await settle(tester);
+
+          transport.release('lake');
+          await settle(tester);
+
+          expect(find.text('Buyer'), findsOneWidget);
+          expect(find.text('1 coordinator is still loading'), findsNothing);
+          expect(bar(tester).trigger, isFalse);
+          await fadeOut(tester);
+          expect(tester.hasRunningAnimations, isFalse);
+        },
+      );
+
+      testWidgets(
+        'a pull to refresh keeps the offers and runs the bar until every coordinator answered again',
+        (tester) async {
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          await fadeOut(tester);
+          expect(bar(tester).trigger, isFalse);
+
+          transport.held.addAll({'temple', 'lake'});
+          unawaited(
+            tester
+                .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+                .show(),
+          );
+          await settle(tester);
+
+          expect(find.text('Seller'), findsNWidgets(2));
+          expect(find.text('Buyer'), findsOneWidget);
+          expect(bar(tester).trigger, isTrue);
+
+          transport
+            ..release('temple')
+            ..release('lake');
+          await settle(tester);
+          await fadeOut(tester);
+          expect(bar(tester).trigger, isFalse);
+        },
+      );
+
+      testWidgets('a retry runs the bar until the coordinator answers', (
+        tester,
+      ) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+        expect(bar(tester).trigger, isFalse);
+
+        transport.failures.clear();
+        transport.held.add('bazaar');
+        await tester.tap(find.text('Retry'));
+        await settle(tester);
+        expect(bar(tester).trigger, isTrue);
+
+        transport.release('bazaar');
+        await settle(tester);
+        expect(bar(tester).trigger, isFalse);
+        expect(find.text('Retry'), findsNothing);
+      });
+
+      testWidgets('the skeleton says what it waits for in French', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        transport.held.addAll(mainnet);
+        await open(tester, locale: const Locale('fr'));
+        tor.add(P2pTorState.ready);
+        await settle(tester);
+
+        expect(find.byType(BookSkeleton), findsOneWidget);
+        expect(
+          find.bySemanticsLabel(
+            '${mainnet.length} coordinateurs en cours de chargement',
+          ),
+          findsOneWidget,
+        );
+        semantics.dispose();
+      });
+    });
+
     testWidgets('the filter sentence narrows the book', (tester) async {
       await open(tester);
       tor.add(P2pTorState.ready);
@@ -258,6 +473,16 @@ void main() {
       expect(find.text('Temple of Sats'), findsOneWidget);
       expect(find.text('Order host'), findsOneWidget);
       expect(find.text('# 48213'), findsOneWidget);
+      // The host is drawn with its mark, not as one more robot.
+      final host = find.descendant(
+        of: find.byType(OrderDetailsScreen),
+        matching: find.byType(CoordinatorMark),
+      );
+      expect(host, findsOneWidget);
+      expect(
+        tester.widget<CoordinatorMark>(host).coordinator.shortAlias,
+        'temple',
+      );
       expect(find.text('Order Details'), findsOneWidget);
       expect(find.text('Amount'), findsOneWidget);
       expect(find.text('You send via Instant SEPA · Revolut'), findsNothing);
@@ -283,6 +508,14 @@ void main() {
         scrollable: details,
       );
       expect(find.text('Order maker · Active'), findsOneWidget);
+      // The maker is the only robot of the page.
+      expect(
+        find.descendant(
+          of: find.byType(OrderDetailsScreen),
+          matching: find.byType(RobotAvatar),
+        ),
+        findsOneWidget,
+      );
       final take = tester.widget<BullButton>(find.byType(BullButton));
       expect(take.label, 'Take Order');
       expect(take.disabled, isTrue);
@@ -307,6 +540,20 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Coordinator hosted web app'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(CoordinatorDetailsDialog),
+          matching: find.byType(CoordinatorMark),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(CoordinatorDetailsDialog),
+          matching: find.byType(RobotAvatar),
+        ),
+        findsNothing,
+      );
       // The page had read the fees: the dialog shows them without asking again.
       expect(transport.requested.where((request) => request.contains('info')), [
         'temple/api/info/',
@@ -611,6 +858,13 @@ void main() {
       await settle(tester);
 
       expect(find.text('Ordre'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(OrderDetailsScreen),
+          matching: find.byType(CoordinatorMark),
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('C 0,025'), findsOneWidget);
       // The on-chain payout fee with one decimal, as the official client writes it.
       expect(find.textContaining('3,4\u00a0%'), findsOneWidget);
