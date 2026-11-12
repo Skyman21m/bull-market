@@ -1,6 +1,7 @@
 /// The order in which the P2P screens show what has no order of its own: a new random order in the app, a fixed one in tests and screenshots.
 ///
 /// It is given to the screens as `P2pClock` is, so that no widget draws at random by itself.
+/// It orders what is shown only, and is never used for anything secret: its random order is not drawn by a cryptographic generator.
 final class P2pShuffle {
   final List<int> Function(int count) _order;
 

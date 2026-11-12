@@ -310,6 +310,17 @@ void main() {
       }
     });
 
+    test('random draws a new order: two at least in ten draws', () {
+      final orders = <String>{};
+      for (var i = 0; i < 10; i++) {
+        final order = P2pShuffle.random.positions(12);
+        expect(order.toSet(), {for (var j = 0; j < 12; j++) j});
+        orders.add(order.join(','));
+      }
+      // The same order ten times in a row has a chance of 1 in (12!)^9 when the order is drawn at random.
+      expect(orders.length, greaterThan(1));
+    });
+
     test('random gives each position once', () {
       for (var i = 0; i < 20; i++) {
         final order = P2pShuffle.random.positions(12);
