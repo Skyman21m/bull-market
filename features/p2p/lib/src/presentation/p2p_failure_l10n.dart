@@ -43,6 +43,12 @@ extension P2pFailureL10n on P2pFailure {
         l10n,
       ),
       GarageRobotUnavailableFailure() => l10n.p2pGarageRobotUnavailable,
+      // Today only an import gives it to a screen, when the record of the imported key could not be written and the key was not stored.
+      P2pStorageFailure() => l10n.p2pGarageKeyNotSaved,
+      // No screen sends a robot to a coordinator yet: their own texts come with the screens that do.
+      RobotBoundToAnotherCoordinatorFailure() ||
+      RobotCoordinatorChangedFailure() ||
+      RobotHistoryUnknownFailure() => l10n.p2pBookError,
     };
   }
 }
