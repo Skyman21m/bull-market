@@ -15,6 +15,7 @@ import 'package:p2p/src/ui/book_view.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
+import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/coordinator_mark.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
@@ -635,16 +636,21 @@ void main() {
       expect(find.text('Temple of Sats'), findsOneWidget);
       expect(find.text('Order host'), findsOneWidget);
       expect(find.text('# 48213'), findsOneWidget);
-      // The host is drawn with its mark, not as one more robot.
+      // The host is drawn with its own image, not as one more robot.
       final host = find.descendant(
         of: find.byType(OrderDetailsScreen),
-        matching: find.byType(CoordinatorMark),
+        matching: find.byType(CoordinatorAvatar),
       );
       expect(host, findsOneWidget);
       expect(
-        tester.widget<CoordinatorMark>(host).coordinator.shortAlias,
+        tester.widget<CoordinatorAvatar>(host).coordinator.shortAlias,
         'temple',
       );
+      expect(
+        find.descendant(of: host, matching: find.byType(Image)),
+        findsOneWidget,
+      );
+      expect(find.byType(CoordinatorMark), findsNothing);
       expect(find.text('Order Details'), findsOneWidget);
       expect(find.text('Amount'), findsOneWidget);
       expect(find.text('You send via Instant SEPA · Revolut'), findsNothing);
@@ -704,8 +710,11 @@ void main() {
       expect(find.text('Coordinator hosted web app'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(CoordinatorDetailsDialog),
-          matching: find.byType(CoordinatorMark),
+          of: find.descendant(
+            of: find.byType(CoordinatorDetailsDialog),
+            matching: find.byType(CoordinatorAvatar),
+          ),
+          matching: find.byType(Image),
         ),
         findsOneWidget,
       );
@@ -722,6 +731,44 @@ void main() {
       ]);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
+
+    for (final (locale, host) in [
+      (const Locale('en'), 'Order host'),
+      (const Locale('fr'), "Hôte de l'ordre"),
+    ]) {
+      testWidgets(
+        'the image of the host is out of the semantics tree and its name is announced, in ${locale.languageCode}',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          await open(tester, locale: locale);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          await tester.tap(find.text('100 EUR', findRichText: true).first);
+          await settle(tester);
+
+          Finder unlabelled() => find.descendant(
+            of: find.byType(CoordinatorAvatar),
+            matching: find.bySemanticsLabel(RegExp('.')),
+          );
+          expect(find.byType(CoordinatorAvatar), findsOneWidget);
+          expect(unlabelled(), findsNothing);
+          expect(find.bySemanticsLabel(RegExp('Temple of Sats')), findsWidgets);
+
+          await tester.tap(find.text(host));
+          await settle(tester);
+          expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
+          expect(unlabelled(), findsNothing);
+          expect(
+            find.descendant(
+              of: find.byType(CoordinatorDetailsDialog),
+              matching: find.bySemanticsLabel(RegExp('Temple of Sats')),
+            ),
+            findsWidgets,
+          );
+          semantics.dispose();
+        },
+      );
+    }
 
     testWidgets('the dialog of a host that did not answer asks it again', (
       tester,
@@ -1022,8 +1069,11 @@ void main() {
       expect(find.text('Ordre'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(OrderDetailsScreen),
-          matching: find.byType(CoordinatorMark),
+          of: find.descendant(
+            of: find.byType(OrderDetailsScreen),
+            matching: find.byType(CoordinatorAvatar),
+          ),
+          matching: find.byType(Image),
         ),
         findsOneWidget,
       );
