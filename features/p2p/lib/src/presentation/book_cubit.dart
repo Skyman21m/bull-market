@@ -74,9 +74,7 @@ class BookCubit extends Cubit<BookState> {
     final percent = next.percentAfter(report, shown: state.torPercent);
     if (next == previous && percent == state.torPercent) return;
     emit(state.copyWith(tor: next, torPercent: percent));
-    if (next == TorWait.ready && previous != TorWait.ready) {
-      unawaited(_request(null));
-    }
+    if (next == TorWait.ready) unawaited(_request(null));
   }
 
   /// Requests the books of [coordinators], or of every coordinator of the network when `null`.
