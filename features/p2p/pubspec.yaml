@@ -41,3 +41,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true
+  # The coordinators' own images, from RoboSats: their sources are pinned in `lib/src/ui/widgets/coordinator_images.dart`.
+  assets:
+    - assets/coordinators/
