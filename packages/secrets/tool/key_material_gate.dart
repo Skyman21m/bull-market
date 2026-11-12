@@ -749,7 +749,9 @@ String? materialSymbol(Element element) {
 
 /// Where the P2P feature may read a Garage Key, what each place may read, and the whole public surface of the class that reads it (issues #28, #47).
 ///
-/// The repository converts the stored bytes into a `GarageKey` and back for an import (#28). The widget shows the `robo1…` text on the protected screens of the Garage (#29), and no other production file may reveal that text. A step that needs another name, member or signature changes this table in the same pull request, where review sees both.
+/// The repository converts the stored bytes into a `GarageKey` and back for an import (#28).
+/// The widget shows the `robo1…` text on the protected screens of the Garage (#29), and no other production file may reveal that text.
+/// A step that needs another name, member or signature changes this table in the same pull request, where review sees both.
 /// [supertypes] are the only supertypes the class may name, besides `Object`, and [surface] the only public members it may declare, each with its signature as the analyzer prints it.
 const _garageKeyReaders = {
   'features/p2p/lib/src/data/garage_key_repository_impl.dart': (

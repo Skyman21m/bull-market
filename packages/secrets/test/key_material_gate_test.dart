@@ -1701,6 +1701,28 @@ ${head}class AppLocator {
             'garageKeys: locator.isRegistered<Secrets>() ?',
           ),
         ),
+        // A condition that is another boolean, and a choice whose other branch is not null.
+        (
+          'handle_other_flag',
+          allowed
+              .replaceAll(
+                'garageKeys: withGarageKeys ?',
+                'garageKeys: always ?',
+              )
+              .replaceAll(
+                '  static void setupP2p(',
+                '  static bool always = true;\n\n  static void setupP2p(',
+              ),
+        ),
+        (
+          'handle_other_branch',
+          allowed
+              .replaceAll('garageKeys() : null', 'garageKeys() : kept')
+              .replaceAll(
+                '  static void setupP2p(',
+                '  static GarageKeys? kept;\n\n  static void setupP2p(',
+              ),
+        ),
         (
           'handle_inverted',
           allowed.replaceAll(
@@ -2074,6 +2096,14 @@ Object slot() => GarageKeySlot.mainnet;
         await inspect('vault_use_alias', '''
 import 'vault_alias.dart';
 Future<Object> reach(Vault vault) => vault.list();
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      // The alias alone, with no member of the vault called.
+      expect(
+        await inspect('vault_use_alias_only', '''
+import 'vault_alias.dart';
+Object? keep(Vault? vault) => vault;
 ''', policyPath: otherPath),
         [outside(otherPath, 'Secrets')],
       );
