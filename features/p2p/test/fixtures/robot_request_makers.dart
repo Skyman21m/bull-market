@@ -1,6 +1,8 @@
 // Ways to reach a robot request, a robot credential, a raw network client or a binding that a check reading method-call names alone misses, for `test/robot_bindings_architecture_test.dart`: each one must be found, in the declaration it is in.
 // The placements of the reviews of #60 are among them: a tear-off, an extension, a raw request with the token hash, and a call through an explicit `as dynamic` cast, which `avoid_dynamic_calls` lets through (it refuses a call on an implicitly dynamic value only).
 // Never imported by the feature; the analyzer resolves it in that test only.
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
@@ -75,6 +77,22 @@ Future<Object?> dynamicCall(
   identity: robot.identity,
   pgpKey: pgpKey,
 );
+
+/// The HTTP client of `dart:io`, declared in `dart:_http` (third review of #60).
+Future<void> rawHttpClient(String onion) async {
+  final client = HttpClient();
+  await (await client.getUrl(Uri.parse('$onion/api/robot/'))).close();
+}
+
+/// The websocket of `dart:io`, declared in `dart:_http`: the route of the chat to come.
+Future<Object> rawWebSocket(String onion) =>
+    WebSocket.connect('$onion/ws/chat/');
+
+/// A socket of `dart:io`.
+Future<Object> rawSocket(String host) => Socket.connect(host, 80);
+
+/// A process that could send the request itself.
+Future<Object> rawProcess(String url) => Process.run('curl', [url]);
 
 /// A raw request to a coordinator, which could carry either header.
 Object sendRaw(CoordinatorTransport transport, CoordinatorRequest request) =>

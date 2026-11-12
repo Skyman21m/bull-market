@@ -33,6 +33,11 @@ void main() {
     for (final (path, scanned) in [
       ('lib/generated/l10n/p2p_localizations.dart', false),
       ('lib/generated/l10n/p2p_localizations_fr.dart', false),
+      ('lib/generated/l10n/p2p_localizations_pt_BR.dart', false),
+      ('lib/generated/l10n/p2p_localizations_hi_Latn.dart', false),
+      // A hand-written file next to them is read (third review of #60).
+      ('lib/generated/l10n/zz_l10n.dart', true),
+      ('lib/generated/l10n/p2p_localizations_extra.g.dart', true),
       // A file put next to the translations is read: generated code is code.
       ('lib/generated/zz_gen.dart', true),
       ('lib/generated/other/zz_gen.dart', true),
@@ -49,11 +54,18 @@ void main() {
       for (final file in Directory('lib').listSync(recursive: true))
         if (file is File && file.path.endsWith('.dart')) file.path,
     ];
+    final translations = all
+        .where((path) => path.startsWith('lib/generated/l10n/'))
+        .toList();
+    // The translations are what gen-l10n writes, and nothing else is there today.
+    expect(translations, isNotEmpty);
+    expect(
+      translations,
+      everyElement(matches(RegExp(r'^lib/generated/l10n/p2p_localizations'))),
+    );
     expect(
       libraries.keys,
-      unorderedEquals(
-        all.where((path) => !path.startsWith('lib/generated/l10n/')),
-      ),
+      unorderedEquals(all.where((path) => !translations.contains(path))),
     );
     expect(
       libraries.keys,
@@ -126,6 +138,10 @@ void main() {
               'credential RobotToken.reveal',
             },
             'dynamicCall': {'dynamic fetchKnownRobot'},
+            'rawHttpClient': {'network HttpClient'},
+            'rawWebSocket': {'network WebSocket'},
+            'rawSocket': {'network Socket'},
+            'rawProcess': {'network Process'},
             'sendRaw': {'CoordinatorTransport.send'},
             'bindByTearOff': {'RobotBindingRepository.bind'},
           },
@@ -413,11 +429,13 @@ List<String> _scanned() => [
     if (file is File && _isScanned(file.path)) file.path,
 ];
 
-/// Whether the tests read the file at [path]: any Dart file under `lib/` but the translations, which `gen-l10n` writes and Git tracks; the rest of `lib/generated/` and generated `.g.dart` files are read.
+/// Whether the tests read the file at [path]: any Dart file under `lib/` but the translations that `gen-l10n` writes, `lib/generated/l10n/p2p_localizations*.dart`, which Git tracks; any other file there, the rest of `lib/generated/` and generated `.g.dart` files are read.
 bool _isScanned(String path) =>
     path.startsWith('lib/') &&
     path.endsWith('.dart') &&
-    !path.startsWith('lib/generated/l10n/');
+    !RegExp(
+      r'^lib/generated/l10n/p2p_localizations(_[A-Za-z_]+)?\.dart$',
+    ).hasMatch(path);
 
 /// Members watched by name, by the class that declares them and its library: a member of a subtype, an implementation of the interface included, counts as the member of its supertype.
 const _watched = {
@@ -442,22 +460,38 @@ const _credentials = {
   'RobotToken': {'reveal'},
 };
 
-/// The libraries and classes that open a connection without the transport: an HTTP or socket client of its own, or a Tor session.
+/// The libraries and classes that open a connection without the transport: an HTTP or socket client of its own, a Tor session, or a process (such as `curl`).
+///
+/// A class counts by the library that declares it, so the HTTP client and the websocket of `dart:io` are listed under `dart:_http`, the private library `dart:io` re-exports them from (the third review of #60 found them unseen when listed under `dart:io`).
+/// Of the feature's own dependencies, only `dio`, `bull_tor` and the SDK offer such a route; the other packages listed are not dependencies of the feature, whose `depend_on_referenced_packages` lint refuses their import, and are watched all the same.
 const _networkLibraries = [
   'package:dio/',
   'package:http/',
   'package:socks5_proxy/',
+  'package:web_socket_channel/',
+  'dart:html',
 ];
 const _networkClasses = {
   'package:bull_tor/': {'TorHttpClientFactory', 'TorSessions', 'TorSession'},
-  'dart:io': {
+  'dart:_http': {
     'HttpClient',
+    'HttpServer',
     'WebSocket',
+    'WebSocketTransformer',
+    'HttpOverrides',
+  },
+  'dart:io': {
     'Socket',
     'RawSocket',
     'SecureSocket',
     'RawSecureSocket',
     'RawDatagramSocket',
+    'ServerSocket',
+    'RawServerSocket',
+    'SecureServerSocket',
+    'RawSecureServerSocket',
+    'ConnectionTask',
+    'Process',
   },
 };
 
