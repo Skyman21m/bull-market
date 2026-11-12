@@ -496,6 +496,7 @@ class BookSkeleton extends StatelessWidget {
         ? P2pLocalizations.of(context).p2pBookCoordinatorsLoading(loading)
         : null;
     return Semantics(
+      container: true,
       label: label,
       child: ExcludeSemantics(
         child: LayoutBuilder(
