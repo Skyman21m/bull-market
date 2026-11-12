@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -236,6 +237,23 @@ final class ProtectedSecret {
     );
   }
 
+  /// The bytes [unlock] feeds its hash with a passphrase of [passphraseLength] bytes, computed without hashing anything.
+  ///
+  /// That is the S2K count, or the salt and the passphrase when they are longer, once per digest the AES key needs: twice for SHA-1 with AES-192 or AES-256 and for SHA-224 with AES-256, once otherwise, each pass after the first preceded by as many zero bytes as passes before it.
+  int unlockHashedBytes(int passphraseLength) {
+    final digestLength = _s2kDigestLength(s2kHashId);
+    final keyLength = aesKeyLength(cipherId);
+    if (digestLength == null || keyLength == null || ciphertext.length < 23) {
+      return 0;
+    }
+    final perPass = max(
+      s2kByteCount(codedCount),
+      salt.length + passphraseLength,
+    );
+    final passes = (keyLength + digestLength - 1) ~/ digestLength;
+    return passes * perPass + passes * (passes - 1) ~/ 2;
+  }
+
   /// The secret multiprecision integers, or `null` when [passphrase] is wrong.
   Uint8List? unlock(List<int> passphrase) {
     final hash = _s2kHash(s2kHashId);
@@ -273,6 +291,16 @@ final class ProtectedSecret {
 
   static crypto.Hash? _s2kHash(int id) =>
       id == HashId.sha1 ? crypto.sha1 : signatureHash(id);
+
+  /// The length in bytes of the digest of [_s2kHash], or `null` when it has none.
+  static int? _s2kDigestLength(int id) => switch (id) {
+    HashId.sha1 => 20,
+    HashId.sha224 => 28,
+    HashId.sha256 => 32,
+    HashId.sha384 => 48,
+    HashId.sha512 => 64,
+    _ => null,
+  };
 }
 
 /// The Ed25519 seed held in the secret multiprecision integer of a primary key.

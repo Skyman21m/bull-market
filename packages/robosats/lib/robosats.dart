@@ -3,7 +3,7 @@
 /// A [GarageKey] derives one [RobotToken] per robot index, and a [RobotIdentity] holds everything RoboSats derives from a token: the token hash sent to coordinators, the [RobotHashId] with its nickname, the Nostr key and the `Authorization` header values.
 /// A [RobotPgpKey] is the OpenPGP key pair of a robot, locked by its token: once unlocked it clear-signs invoices and payout addresses and encrypts, signs, decrypts and verifies chat messages, in the formats of the official client and of the coordinators.
 /// A [CoordinatorClient] reads what a coordinator of the embedded [Federation] publishes (`/api/info/`, `/api/book/`, `/api/limits/`) through a [CoordinatorTransport] that the app implements over Tor, and a [FederationBookReader] merges the books of every coordinator.
-/// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`) as a [CoordinatorRobot], checked against what this device computed.
+/// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`), checked against what this device computed: a [CoordinatorRobot] when the coordinator returns the key pair this device has just sent, and otherwise an [UnprovenCoordinatorRobot], which gives the robot only once the robot's token has proved the pair it returned.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 library;
@@ -13,7 +13,8 @@ export 'src/coordinator/coordinator.dart'
 export 'src/coordinator/coordinator_client.dart' show CoordinatorClient;
 export 'src/coordinator/coordinator_info.dart'
     show CoordinatorInfo, CoordinatorVersion, NoticeSeverity;
-export 'src/coordinator/coordinator_robot.dart' show CoordinatorRobot;
+export 'src/coordinator/coordinator_robot.dart'
+    show CoordinatorRobot, CoordinatorRobotAnswer, UnprovenCoordinatorRobot;
 export 'src/coordinator/coordinator_transport.dart'
     show
         CoordinatorHttpMethod,

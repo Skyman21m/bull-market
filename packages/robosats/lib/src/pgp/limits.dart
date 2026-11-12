@@ -26,4 +26,11 @@ abstract final class PgpLimits {
 
   /// Bytes an iterated S2K can hash at most: the format itself stops at 65 011 712, the count GnuPG 2.4 writes, four times what OpenPGP.js 5 asks for.
   static const s2kBytes = 65011712;
+
+  /// Bytes the proof of a robot's key pair may hash in all: both secret parts, and every pass of each.
+  ///
+  /// A key of the official client or of Troc asks for 33 554 432, two parts of 16 MiB.
+  /// One S2K count can ask for this bound alone, and an S2K over SHA-1 or SHA-224 with an AES key longer than the digest hashes its count twice, so without this bound a pair a coordinator made up could cost up to 124 MiB per part to refuse.
+  /// A pair that would hash more is refused before anything is hashed: a pair GnuPG protected at its largest count, 62 MiB per part, is one.
+  static const proofHashedBytes = s2kBytes;
 }

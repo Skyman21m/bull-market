@@ -257,25 +257,28 @@ final class CraftedKey {
   );
 }
 
-/// The secret part of a key packet: [secret] locked by [passphrase] as OpenPGP.js locks it, but for the iteration count.
+/// The secret part of a key packet: [secret] locked by [passphrase] as OpenPGP.js locks it, but for the iteration count, and for the S2K hash and the cipher when given.
 Uint8List protectSecret(
   Uint8List secret,
   String passphrase, {
   int usage = 254,
   int cipherId = CipherId.aes256,
+  int s2kHashId = HashId.sha256,
   int codedCount = 96,
   int? ciphertextLength,
 }) {
   final salt = Uint8List.fromList(List.generate(8, (i) => i + 1));
   final iv = Uint8List.fromList(List.generate(16, (i) => 0x10 + i));
+  final s2kHash = _hashes[s2kHashId];
+  if (s2kHash == null) throw ArgumentError.value(s2kHashId, 's2kHashId');
   final ciphertext = aesCfb(
     encrypt: true,
     key: s2kIteratedSalted(
-      hash: crypto.sha256,
+      hash: s2kHash,
       passphrase: utf8.encode(passphrase),
       salt: salt,
       codedCount: codedCount,
-      keyLength: 32,
+      keyLength: aesKeyLength(cipherId) ?? 32,
     ),
     iv: iv,
     data: Uint8List.fromList([...secret, ...sha1(secret)]),
@@ -284,7 +287,7 @@ Uint8List protectSecret(
     usage,
     cipherId,
     3,
-    HashId.sha256,
+    s2kHashId,
     ...salt,
     codedCount,
     ...iv,

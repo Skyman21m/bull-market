@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/pgp/armor.dart';
+import 'package:robosats/src/pgp/bytes.dart';
+import 'package:robosats/src/pgp/limits.dart';
 import 'package:robosats/src/pgp/primitives.dart';
 import 'package:test/test.dart';
 
@@ -52,6 +54,70 @@ Map<String, Object?> _error(int code, [String message = 'Some text.']) => {
 String _keysMessage(int nestedCode) =>
     "Invalid keys: {'error_code': $nestedCode, 'bad_request': 'Your PGP public key was not accepted. SECRET-LOOKING-TEXT'}";
 
+/// The answer about the robot [identity], with the key pair given as the coordinator would return it.
+Map<String, Object?> _robotOf(
+  RobotIdentity identity, {
+  required String publicKey,
+  required String encryptedPrivateKey,
+}) => _robot({
+  'nickname': identity.nickname,
+  'hash_id': identity.hashId.hex,
+  'public_key': publicKey,
+  'encrypted_private_key': encryptedPrivateKey,
+  'nostr_pubkey': identity.nostrKeyPair().publicKeyHex,
+});
+
+/// The robot of a first contact whose answer carries the very pair sent: it is the robot as it is, so no proof can have run.
+CoordinatorRobot _sent(
+  Result<CoordinatorRobotAnswer, CoordinatorFailure> answer,
+) => switch (expectOk(answer)) {
+  final CoordinatorRobot robot => robot,
+  UnprovenCoordinatorRobot() => fail('the pair sent came back to prove'),
+};
+
+/// The answer of a first contact whose key pair is not the one sent.
+UnprovenCoordinatorRobot _unproven(
+  Result<CoordinatorRobotAnswer, CoordinatorFailure> answer,
+) => switch (expectOk(answer)) {
+  final UnprovenCoordinatorRobot unproven => unproven,
+  CoordinatorRobot() => fail('expected a pair to prove'),
+};
+
+/// What a caller gets in the end: the robot of the answer, its pair proven when it is not the one sent.
+Result<CoordinatorRobot, CoordinatorFailure> _settled(
+  Result<CoordinatorRobotAnswer, CoordinatorFailure> answer,
+) => switch (answer) {
+  Err(:final failure) => Err(failure),
+  Ok(value: final CoordinatorRobot robot) => Ok(robot),
+  Ok(value: final UnprovenCoordinatorRobot unproven) =>
+    unproven.prove().mapErr<CoordinatorFailure>((failure) => failure),
+};
+
+/// [key] locked again, each secret part by [passphrase] with its own S2K: [counts], [s2kHashId] and [cipherId].
+String _lockedWith(
+  CraftedKey key,
+  String passphrase, {
+  required List<int> counts,
+  int s2kHashId = HashId.sha256,
+  int cipherId = CipherId.aes256,
+}) {
+  var part = 0;
+  return armorPackets(
+    ArmorBlock.privateKey,
+    key.privatePackets(
+      passphrase,
+      protect: (secret, passphrase) => protectSecret(
+        secret,
+        passphrase,
+        // The primary key's part first, then the subkey's.
+        codedCount: counts[part++],
+        s2kHashId: s2kHashId,
+        cipherId: cipherId,
+      ),
+    ),
+  );
+}
+
 void main() {
   final temple = coordinatorNamed('temple');
   late FakeCoordinatorTransport transport;
@@ -68,7 +134,7 @@ void main() {
   void serveJson(Object? json, {int statusCode = 200}) =>
       serve(Ok(jsonResponse(json, statusCode: statusCode)));
 
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> fetch({
+  Future<Result<CoordinatorRobotAnswer, CoordinatorFailure>> fetch({
     RobotPgpKey? pgpKey,
     NostrKeyDerivation derivation = NostrKeyDerivation.currentFrontend,
   }) => client.fetchRobot(
@@ -79,8 +145,10 @@ void main() {
     nostrKeyDerivation: derivation,
   );
 
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> fetchKnown() => client
-      .fetchKnownRobot(temple, _testnet, identity: _identity, pgpKey: _key);
+  Future<Result<UnprovenCoordinatorRobot, CoordinatorFailure>> fetchKnown({
+    RobotIdentity? identity,
+  }) =>
+      client.fetchKnownRobot(temple, _testnet, identity: identity ?? _identity);
 
   group('the request', () {
     test(
@@ -205,14 +273,21 @@ void main() {
     });
 
     test('is not sent to a coordinator that is not on the network', () async {
-      final result = await client.fetchRobot(
-        coordinatorNamed('bazaar'),
+      final bazaar = coordinatorNamed('bazaar');
+      final contact = await client.fetchRobot(
+        bazaar,
         _testnet,
         identity: _identity,
         pgpKey: _key,
       );
+      final read = await client.fetchKnownRobot(
+        bazaar,
+        _testnet,
+        identity: _identity,
+      );
 
-      expect(expectErr(result), isA<CoordinatorNotOnNetwork>());
+      expect(expectErr(contact), isA<CoordinatorNotOnNetwork>());
+      expect(expectErr(read), isA<CoordinatorNotOnNetwork>());
       expect(transport.requests, isEmpty);
     });
   });
@@ -233,8 +308,10 @@ void main() {
       'is read when the coordinator returns the robot of this device',
       () async {
         serveJson(_robot());
-        final robot = expectOk(await fetch());
+        final robot = _sent(await fetch());
 
+        expect(robot.pgpKey, same(_key));
+        expect(robot.pgpKeyProven, isFalse);
         expect(robot.coordinator, temple);
         expect(robot.hashId, _identity.hashId);
         expect(robot.hashId.nickname, _identity.nickname);
@@ -259,7 +336,7 @@ void main() {
         'public_key': _reexportedPublicKey,
         'encrypted_private_key': _key.encryptedPrivateKeyArmored,
       });
-      final robot = expectOk(await fetch());
+      final robot = _sent(await fetch());
 
       expect(robot.found, isFalse);
       expect(robot.earnedRewards, Sats.fromInt(0));
@@ -281,7 +358,7 @@ void main() {
           }),
         );
 
-        expectOk(await fetch());
+        _sent(await fetch());
       },
     );
 
@@ -303,19 +380,19 @@ void main() {
           }),
         );
 
-        expectOk(await fetch());
+        _sent(await fetch());
       }
     });
 
     test('is read when the public key comes back exactly as sent', () async {
       serveJson(_robot({'public_key': _key.publicKey.armored}));
 
-      expectOk(await fetch());
+      _sent(await fetch());
     });
 
     test('prints public identifiers only', () async {
       serveJson(_robot());
-      final robot = expectOk(await fetch());
+      final robot = _sent(await fetch());
 
       expect(
         '$robot',
@@ -325,27 +402,37 @@ void main() {
   });
 
   group('a known robot', () {
-    test('is read the same way from the short header', () async {
-      serveJson(
-        _robot({
-          'found': true,
-          'earned_rewards': 1500,
-          'wants_stealth': false,
-          'active_order_id': 4242,
-        }),
-      );
-      final robot = expectOk(await fetchKnown());
+    test(
+      'is read the same way from the short header, once its pair is proven',
+      () async {
+        serveJson(
+          _robot({
+            'found': true,
+            'earned_rewards': 1500,
+            'wants_stealth': false,
+            'active_order_id': 4242,
+          }),
+        );
+        final unproven = expectOk(await fetchKnown());
 
-      expect(robot.found, isTrue);
-      expect(robot.earnedRewards, Sats.fromInt(1500));
-      expect(robot.wantsStealth, isFalse);
-      expect(robot.activeOrderId, 4242);
-      expect(robot.lastOrderId, isNull);
-    });
+        expect(unproven.coordinator, temple);
+        expect(unproven.hashId, _identity.hashId);
+        final robot = expectOk(unproven.prove());
+        expect(robot.found, isTrue);
+        expect(robot.earnedRewards, Sats.fromInt(1500));
+        expect(robot.wantsStealth, isFalse);
+        expect(robot.activeOrderId, 4242);
+        expect(robot.lastOrderId, isNull);
+        // Nothing was held on this device: the pair the token proved is the one the coordinator holds, still locked.
+        expect(robot.pgpKeyProven, isTrue);
+        expect(robot.pgpKey, _key);
+        expect(robot.pgpKey, isNot(same(_key)));
+      },
+    );
 
     test('is read the same way from a first contact it ignores', () async {
       serveJson(_robot({'found': true, 'last_order_id': 77}));
-      final robot = expectOk(await fetch());
+      final robot = _sent(await fetch());
 
       expect(robot.found, isTrue);
       expect(robot.activeOrderId, isNull);
@@ -358,8 +445,363 @@ void main() {
       expect(expectErr(await fetchKnown()), isA<RobotUnknown>());
     });
 
-    test('created elsewhere with another key pair is a mismatch', () async {
-      // What a coordinator returns to a device that restored a Garage Key: the key pair of the first device.
+    test(
+      'created elsewhere with another key pair of its token is proven, then taken',
+      () async {
+        // What a coordinator returns to a device that restored a Garage Key: the key pair of the first device, locked by the same token.
+        final other = expectOk(
+          RobotPgpKey.generateWith(
+            _identity,
+            now: interopNow,
+            random: DeterministicRandom('another device'),
+          ),
+        );
+        expect(other, isNot(_key));
+        serveJson(
+          _robot({
+            'found': true,
+            'public_key': other.publicKey.armored,
+            'encrypted_private_key': other.encryptedPrivateKeyArmored,
+          }),
+        );
+
+        final contact = _unproven(await fetch());
+        final read = expectOk(await fetchKnown());
+        for (final robot in [
+          expectOk(contact.prove()),
+          expectOk(read.prove()),
+        ]) {
+          expect(robot.pgpKey, other);
+          expect(robot.pgpKeyProven, isTrue);
+          expect(robot.found, isTrue);
+        }
+        // Proving again gives the same robot.
+        expect(expectOk(read.prove()).pgpKey, other);
+      },
+    );
+  });
+
+  group('the key pair of an answer', () {
+    test('equal to the pair sent is taken as it is, and nothing proves it', () async {
+      // A pair the token of this robot does not unlock, as a caller that sends the pair of another robot would send: it comes back as sent, and is taken without unlocking anything.
+      // `FetchRobotUsecase` of the app makes the pair of each first contact itself, for that robot, for this reason.
+      final crafted = CraftedKey(label: 'sent', userId: _identity.pgpUserId);
+      final notTheToken = crafted.privateArmored('not the token');
+      final sent = expectOk(
+        RobotPgpKey.parse(
+          publicKey: crafted.publicArmored,
+          encryptedPrivateKey: notTheToken,
+        ),
+      );
+      serveJson(
+        _robot({
+          'public_key': crafted.publicArmored,
+          'encrypted_private_key': notTheToken,
+        }),
+      );
+
+      final robot = _sent(await fetch(pgpKey: sent));
+      expect(robot.pgpKey, same(sent));
+      expect(robot.pgpKeyProven, isFalse);
+      // Read back with the short header, which sends nothing, the same pair must be proven, and is not.
+      expect(
+        expectErr(_settled(await fetchKnown())),
+        isA<RobotPgpKeyNotProven>(),
+      );
+    });
+
+    test('another than the pair sent is proven before it is taken', () async {
+      final crafted = CraftedKey(label: 'sent', userId: _identity.pgpUserId);
+      final sent = expectOk(
+        RobotPgpKey.parse(
+          publicKey: crafted.publicArmored,
+          encryptedPrivateKey: crafted.privateArmored(_identity.token.reveal()),
+        ),
+      );
+      // The same keys locked again by the token: other packets, so another pair than the one sent, which the token proves.
+      final lockedAgain = _lockedWith(
+        crafted,
+        _identity.token.reveal(),
+        counts: [97, 97],
+      );
+      serveJson(
+        _robot({
+          'public_key': crafted.publicArmored,
+          'encrypted_private_key': lockedAgain,
+        }),
+      );
+
+      final robot = expectOk(_unproven(await fetch(pgpKey: sent)).prove());
+      expect(robot.pgpKeyProven, isTrue);
+      expect(robot.pgpKey, isNot(sent));
+      expect(robot.pgpKey.publicKey, sent.publicKey);
+      expect(
+        robot.pgpKey.encryptedPrivateKeyArmored,
+        armorEncode(
+          ArmorBlock.privateKey,
+          armorDecode(ArmorBlock.privateKey, lockedAgain) ?? fail('armor'),
+        ),
+      );
+
+      // Locked again by anything but the token, it is not proven.
+      serveJson(
+        _robot({
+          'public_key': crafted.publicArmored,
+          'encrypted_private_key': _lockedWith(
+            crafted,
+            'not the token',
+            counts: [97, 97],
+          ),
+        }),
+      );
+      expect(
+        expectErr(_settled(await fetch(pgpKey: sent))),
+        isA<RobotPgpKeyNotProven>(),
+      );
+    });
+
+    test(
+      'of the test robots of the RoboSats repository is proven by their own tokens',
+      () async {
+        // Made by the official client with OpenPGP.js, the public key re-exported by GnuPG, each locked by the public token of its robot.
+        for (final number in [1, 2, 3]) {
+          final identity = repositoryRobotIdentity(number);
+          serveJson(
+            _robotOf(
+              identity,
+              publicKey: repositoryRobotFile(number, 'pub_key'),
+              encryptedPrivateKey: repositoryRobotFile(number, 'enc_priv_key'),
+            ),
+          );
+
+          final robot = expectOk(
+            expectOk(await fetchKnown(identity: identity)).prove(),
+          );
+          expect(robot.hashId, identity.hashId, reason: 'robot $number');
+          expect(robot.pgpKeyProven, isTrue);
+          expect(robot.pgpKey, repositoryRobotKey(number));
+        }
+      },
+    );
+
+    test('locked by the token of another robot is not proven', () async {
+      // The official pair of each test robot, answered for the next one: right hash id and nickname, but a pair that robot's token does not unlock.
+      for (final (owner, reader) in [(1, 2), (2, 3), (3, 1)]) {
+        final identity = repositoryRobotIdentity(reader);
+        serveJson(
+          _robotOf(
+            identity,
+            publicKey: repositoryRobotFile(owner, 'pub_key'),
+            encryptedPrivateKey: repositoryRobotFile(owner, 'enc_priv_key'),
+          ),
+        );
+
+        expect(
+          expectErr(_settled(await fetchKnown(identity: identity))),
+          isA<RobotPgpKeyNotProven>(),
+          reason: 'pair of robot $owner for robot $reader',
+        );
+      }
+      // And the pair of this robot answered for the peer robot.
+      serveJson(
+        _robotOf(
+          interopPeerIdentity,
+          publicKey: _reexportedPublicKey,
+          encryptedPrivateKey: _key.encryptedPrivateKeyArmored,
+        ),
+      );
+      expect(
+        expectErr(_settled(await fetchKnown(identity: interopPeerIdentity))),
+        isA<RobotPgpKeyNotProven>(),
+      );
+    });
+
+    test(
+      'that hashes the bound in all is proven, and a pair over it is refused before any hashing',
+      () async {
+        final crafted = CraftedKey(label: 'bound', userId: _identity.pgpUserId);
+        final token = _identity.token.reveal();
+
+        // Coded count 239 is 32 505 856 bytes: two parts of it are the bound exactly.
+        expect(s2kByteCount(239) * 2, PgpLimits.proofHashedBytes);
+        final watch = Stopwatch();
+        serveJson(
+          _robot({
+            'public_key': crafted.publicArmored,
+            'encrypted_private_key': _lockedWith(
+              crafted,
+              token,
+              counts: [239, 239],
+            ),
+          }),
+        );
+        final atBound = expectOk(await fetchKnown());
+        watch.start();
+        expectOk(atBound.prove());
+        final atBoundTime = watch.elapsed;
+
+        // Each locked by the token, so that only the bound can refuse them: one count over in one part, and the costliest pair the format allows, SHA-1 with AES-256 at the largest count, which hashes each part twice.
+        for (final over in [
+          _lockedWith(crafted, token, counts: [239, 240]),
+          _lockedWith(crafted, token, counts: [240, 239]),
+          _lockedWith(
+            crafted,
+            token,
+            counts: [255, 255],
+            s2kHashId: HashId.sha1,
+          ),
+        ]) {
+          serveJson(
+            _robot({
+              'public_key': crafted.publicArmored,
+              'encrypted_private_key': over,
+            }),
+          );
+          final unproven = expectOk(await fetchKnown());
+          watch
+            ..reset()
+            ..start();
+          expect(expectErr(unproven.prove()), isA<RobotPgpKeyNotProven>());
+          // Refused before hashing: well under a tenth of the time the pair at the bound took.
+          expect(watch.elapsed * 10, lessThan(atBoundTime));
+        }
+      },
+    );
+
+    test(
+      'counts both passes of an S2K whose digest is shorter than the key',
+      () async {
+        final crafted = CraftedKey(
+          label: 'passes',
+          userId: _identity.pgpUserId,
+        );
+        final token = _identity.token.reveal();
+        Future<Result<CoordinatorRobot, CoordinatorFailure>> proofOf(
+          String encryptedPrivateKey,
+        ) async {
+          serveJson(
+            _robot({
+              'public_key': crafted.publicArmored,
+              'encrypted_private_key': encryptedPrivateKey,
+            }),
+          );
+          return _settled(await fetchKnown());
+        }
+
+        // The parameters of the official client, two parts of 16 MiB: proven.
+        expectOk(
+          await proofOf(_lockedWith(crafted, token, counts: [224, 224])),
+        );
+        // SHA-1 with AES-128, one pass each: proven.
+        expectOk(
+          await proofOf(
+            _lockedWith(
+              crafted,
+              token,
+              counts: [224, 224],
+              s2kHashId: HashId.sha1,
+              cipherId: CipherId.aes128,
+            ),
+          ),
+        );
+        // The same count with SHA-1 and AES-256 hashes each part twice, 64 MiB in all: over the bound.
+        expect(
+          expectErr(
+            await proofOf(
+              _lockedWith(
+                crafted,
+                token,
+                counts: [224, 224],
+                s2kHashId: HashId.sha1,
+              ),
+            ),
+          ),
+          isA<RobotPgpKeyNotProven>(),
+        );
+      },
+    );
+
+    test(
+      'GnuPG protected at its largest count is over the bound, though its token unlocks it',
+      () async {
+        // `pgp_interop_test.dart` unlocks it with this token: S2K count 255, SHA-1, AES-128, 62 MiB per part.
+        final identity = interopPeerIdentity;
+        serveJson(
+          _robotOf(
+            identity,
+            publicKey: interopFile('gpg_protected_pub_key'),
+            encryptedPrivateKey: interopFile('gpg_protected_enc_priv_key'),
+          ),
+        );
+
+        expect(
+          expectErr(_settled(await fetchKnown(identity: identity))),
+          isA<RobotPgpKeyNotProven>(),
+        );
+      },
+    );
+
+    test(
+      'of armor at the bound is read, and keeps only its canonical form',
+      () async {
+        // Armor headers pad each block to the bound: they are dropped, so a pair a coordinator padded never grows what this device holds or sends.
+        String padded(String armored) {
+          final lines = armored.trim().split('\n');
+          const header = 'Comment: ';
+          final room =
+              PgpLimits.keyArmorChars -
+              armored.trim().length -
+              1 -
+              header.length;
+          return [
+            lines.first,
+            '$header${'x' * room}',
+            ...lines.skip(1),
+          ].join('\n');
+        }
+
+        final publicKey = padded(_reexportedPublicKey);
+        final encryptedPrivateKey = padded(_key.encryptedPrivateKeyArmored);
+        expect(publicKey.length, PgpLimits.keyArmorChars);
+        expect(encryptedPrivateKey.length, PgpLimits.keyArmorChars);
+        serveJson(
+          _robot({
+            'public_key': publicKey,
+            'encrypted_private_key': encryptedPrivateKey,
+          }),
+        );
+
+        final sent = _sent(await fetch());
+        final proven = expectOk(expectOk(await fetchKnown()).prove());
+        for (final robot in [sent, proven]) {
+          expect(robot.pgpKey, _key);
+          expect(robot.pgpKey.publicKey.armored, isNot(contains('Comment')));
+          expect(
+            robot.pgpKey.encryptedPrivateKeyArmored,
+            _key.encryptedPrivateKeyArmored,
+          );
+        }
+      },
+    );
+
+    test('of armor over the bound is malformed, on both requests', () async {
+      for (final field in ['public_key', 'encrypted_private_key']) {
+        serveJson(_robot({field: '${_robot()[field]}${'\n' * 20000}'}));
+
+        for (final result in [await fetch(), await fetchKnown()]) {
+          expect(
+            expectErr(result),
+            isA<CoordinatorResponseMalformed>().having(
+              (f) => f.field,
+              'field',
+              field,
+            ),
+          );
+        }
+      }
+    });
+
+    test('prints neither the token, nor its hash, nor a key', () async {
       final other = expectOk(
         RobotPgpKey.generateWith(
           _identity,
@@ -367,24 +809,61 @@ void main() {
           random: DeterministicRandom('another device'),
         ),
       );
-      expect(other.isNamedAfter(_identity), isTrue);
       serveJson(
         _robot({
-          'found': true,
           'public_key': other.publicKey.armored,
           'encrypted_private_key': other.encryptedPrivateKeyArmored,
         }),
       );
+      final unproven = _unproven(await fetch());
+      final robot = expectOk(unproven.prove());
+      serveJson(
+        _robot({
+          'public_key': other.publicKey.armored,
+          'encrypted_private_key':
+              generateInteropPeerKey().encryptedPrivateKeyArmored,
+        }),
+      );
+      final refused = expectErr(_settled(await fetch()));
 
-      expect(expectErr(await fetch()), isA<RobotPgpKeyMismatch>());
-      expect(expectErr(await fetchKnown()), isA<RobotPgpKeyMismatch>());
+      expect(
+        '$unproven',
+        'UnprovenCoordinatorRobot(temple, ${_identity.nickname})',
+      );
+      expect(
+        '$robot',
+        'CoordinatorRobot(temple, ${_identity.nickname}, found: false)',
+      );
+      expect('${robot.pgpKey}', 'RobotPgpKey(${other.publicKey.fingerprint})');
+      expect(refused, isA<RobotPgpKeyNotProven>());
+      final secrets = [
+        _identity.token.reveal(),
+        _identity.tokenSha256Hex,
+        _identity.tokenSha256Base91,
+        // A line of base64 from each block.
+        other.publicKey.armored.split('\n')[2],
+        other.encryptedPrivateKeyArmored.split('\n')[2],
+        other.encryptedPrivateKeyArmored.split('\n')[5],
+      ];
+      for (final printed in [
+        '$unproven',
+        '$robot',
+        '${robot.pgpKey}',
+        '$refused',
+        '${robot.pgpKey.publicKey}',
+      ]) {
+        expect(printed, isNot(contains('PGP')));
+        for (final secret in secrets) {
+          expect(printed, isNot(contains(secret)));
+        }
+      }
     });
   });
 
   group('the Nostr key the coordinator holds', () {
     Future<CoordinatorRobot> withKey(Object? key) async {
       serveJson(_robot({'nostr_pubkey': key}));
-      return expectOk(await fetch());
+      return _sent(await fetch());
     }
 
     test('is recognised under either formula', () async {
@@ -450,10 +929,16 @@ void main() {
   });
 
   group('a robot that is not the one of this device', () {
+    /// The failure of both requests, a first contact and a read, the pair proven when it is to be proven.
+    Future<List<CoordinatorFailure>> failures({RobotPgpKey? sent}) async => [
+      expectErr(_settled(await fetch(pgpKey: sent))),
+      expectErr(_settled(await fetchKnown())),
+    ];
+
     test('by its hash id', () async {
       serveJson(_robot({'hash_id': interopPeerIdentity.hashId.hex}));
 
-      expect(expectErr(await fetch()), isA<RobotHashIdMismatch>());
+      expect(await failures(), everyElement(isA<RobotHashIdMismatch>()));
     });
 
     test('by its hash id, whatever the nickname says', () async {
@@ -464,13 +949,13 @@ void main() {
         }),
       );
 
-      expect(expectErr(await fetch()), isA<RobotHashIdMismatch>());
+      expect(await failures(), everyElement(isA<RobotHashIdMismatch>()));
     });
 
     test('by the case of its hash id', () async {
       serveJson(_robot({'hash_id': _identity.hashId.hex.toUpperCase()}));
 
-      expect(expectErr(await fetch()), isA<RobotHashIdMismatch>());
+      expect(await failures(), everyElement(isA<RobotHashIdMismatch>()));
     });
 
     test('by its nickname', () async {
@@ -483,15 +968,43 @@ void main() {
         serveJson(_robot({'nickname': nickname}));
 
         expect(
-          expectErr(await fetch()),
-          isA<RobotNicknameMismatch>(),
+          await failures(),
+          everyElement(isA<RobotNicknameMismatch>()),
           reason: nickname,
         );
       }
     });
 
-    test('by a public key the coordinator made for the same hash id', () async {
-      // A dishonest coordinator can name a key of its own after the robot: only the fingerprints tell.
+    test('by its hash id or its nickname before any key is read', () async {
+      // A wrong hash id or nickname with a key that is not even a key, or the right pair of this robot: the answer is about another robot, and nothing of it is parsed or proven.
+      for (final (publicKey, privateKey) in [
+        ('not a key', 'not a key'),
+        ('', ''),
+        ('A' * 20000, 'A' * 20000),
+        (_reexportedPublicKey, _key.encryptedPrivateKeyArmored),
+      ]) {
+        serveJson(
+          _robot({
+            'hash_id': interopPeerIdentity.hashId.hex,
+            'public_key': publicKey,
+            'encrypted_private_key': privateKey,
+          }),
+        );
+        expect(await failures(), everyElement(isA<RobotHashIdMismatch>()));
+
+        serveJson(
+          _robot({
+            'nickname': interopPeerIdentity.nickname,
+            'public_key': publicKey,
+            'encrypted_private_key': privateKey,
+          }),
+        );
+        expect(await failures(), everyElement(isA<RobotNicknameMismatch>()));
+      }
+    });
+
+    test('by a key pair the coordinator made for the same hash id', () async {
+      // A dishonest coordinator can name a key of its own after the robot and lock it with anything but the token, which it never sees.
       final forged = CraftedKey(label: 'forged', userId: _identity.pgpUserId);
       serveJson(
         _robot({
@@ -500,7 +1013,17 @@ void main() {
         }),
       );
 
-      expect(expectErr(await fetch()), isA<RobotPgpKeyMismatch>());
+      expect(await failures(), everyElement(isA<RobotPgpKeyNotProven>()));
+      // Locked by the token hash, the credential every request sends, it is not proven either.
+      serveJson(
+        _robot({
+          'public_key': forged.publicArmored,
+          'encrypted_private_key': forged.privateArmored(
+            _identity.tokenSha256Base91,
+          ),
+        }),
+      );
+      expect(await failures(), everyElement(isA<RobotPgpKeyNotProven>()));
     });
 
     test(
@@ -510,9 +1033,23 @@ void main() {
           _robot({'public_key': generateInteropPeerKey().publicKey.armored}),
         );
 
-        expect(expectErr(await fetch()), isA<RobotPgpKeyMismatch>());
+        // Two blocks of two keys: refused when read, before any proof.
+        expect(expectErr(await fetch()), isA<RobotPgpKeyNotProven>());
+        expect(expectErr(await fetchKnown()), isA<RobotPgpKeyNotProven>());
       },
     );
+
+    test('by the private key of another pair', () async {
+      serveJson(
+        _robot({
+          'encrypted_private_key':
+              generateInteropPeerKey().encryptedPrivateKeyArmored,
+        }),
+      );
+
+      expect(expectErr(await fetch()), isA<RobotPgpKeyNotProven>());
+      expect(expectErr(await fetchKnown()), isA<RobotPgpKeyNotProven>());
+    });
 
     test('by a public key with another encryption subkey', () async {
       final own = CraftedKey();
@@ -520,31 +1057,37 @@ void main() {
       final otherSubkey = CraftedKey(
         subkeyPoint: x25519PublicKey(CraftedKey(label: 'other').scalar),
       );
+      final token = _identity.token.reveal();
       final local = expectOk(
         RobotPgpKey.parse(
           publicKey: own.publicArmored,
-          encryptedPrivateKey: own.privateArmored('a passphrase'),
+          encryptedPrivateKey: own.privateArmored(token),
         ),
       );
       expect(otherSubkey.publicKey, isNot(own.publicKey));
       expect(otherSubkey.publicKey.fingerprint, own.publicKey.fingerprint);
+      // The private key is the one sent, locked by the token: only the public key differs.
       serveJson(
         _robot({
           'public_key': otherSubkey.publicArmored,
-          'encrypted_private_key': own.privateArmored('a passphrase'),
+          'encrypted_private_key': own.privateArmored(token),
         }),
       );
 
-      expect(expectErr(await fetch(pgpKey: local)), isA<RobotPgpKeyMismatch>());
+      expect(
+        await failures(sent: local),
+        everyElement(isA<RobotPgpKeyNotProven>()),
+      );
     });
 
     test('by another primary key that binds the subkey of this device', () async {
       // A coordinator can make a primary key of its own and bind the encryption subkey of the robot under it: the subkey alone proves nothing.
       final own = CraftedKey();
+      final token = _identity.token.reveal();
       final local = expectOk(
         RobotPgpKey.parse(
           publicKey: own.publicArmored,
-          encryptedPrivateKey: own.privateArmored('a passphrase'),
+          encryptedPrivateKey: own.privateArmored(token),
         ),
       );
       final foreign = CraftedKey(
@@ -556,37 +1099,17 @@ void main() {
       serveJson(
         _robot({
           'public_key': foreign.publicArmored,
-          'encrypted_private_key': own.privateArmored('a passphrase'),
+          'encrypted_private_key': own.privateArmored(token),
         }),
       );
 
-      expect(expectErr(await fetch(pgpKey: local)), isA<RobotPgpKeyMismatch>());
+      expect(
+        await failures(sent: local),
+        everyElement(isA<RobotPgpKeyNotProven>()),
+      );
     });
 
-    test('by its hash id before any key is read', () async {
-      // A wrong hash id with a key that is not even a key: the answer is about another robot, and nothing of it is parsed.
-      for (final key in ['not a key', '', 'A' * 20000]) {
-        serveJson(
-          _robot({
-            'hash_id': interopPeerIdentity.hashId.hex,
-            'public_key': key,
-            'encrypted_private_key': key,
-          }),
-        );
-        expect(expectErr(await fetch()), isA<RobotHashIdMismatch>());
-
-        serveJson(
-          _robot({
-            'nickname': interopPeerIdentity.nickname,
-            'public_key': key,
-            'encrypted_private_key': key,
-          }),
-        );
-        expect(expectErr(await fetch()), isA<RobotNicknameMismatch>());
-      }
-    });
-
-    test('by a public key of a kind this package does not make', () async {
+    test('by a public key of a kind this package does not read', () async {
       final unsupported = CraftedKey(kdf: const [3, 1, 1, 2]).publicArmored;
       expect(
         expectErr(PgpPublicKey.parse(unsupported)),
@@ -594,47 +1117,56 @@ void main() {
       );
       serveJson(_robot({'public_key': unsupported}));
 
-      expect(expectErr(await fetch()), isA<RobotPgpKeyMismatch>());
+      expect(expectErr(await fetch()), isA<RobotPgpKeyNotProven>());
+      expect(expectErr(await fetchKnown()), isA<RobotPgpKeyNotProven>());
+    });
+
+    test('by a private key of a kind this package does not read', () async {
+      // Not passphrase-protected (S2K usage 0): nothing locks it, so nothing can prove it.
+      final crafted = CraftedKey(label: 'open', userId: _identity.pgpUserId);
+      final open = armorPackets(
+        ArmorBlock.privateKey,
+        crafted.privatePackets(
+          _identity.token.reveal(),
+          protect: (secret, passphrase) =>
+              protectSecret(secret, passphrase, usage: 0),
+        ),
+      );
+      serveJson(
+        _robot({
+          'public_key': crafted.publicArmored,
+          'encrypted_private_key': open,
+        }),
+      );
+
+      expect(expectErr(await fetch()), isA<RobotPgpKeyNotProven>());
+      expect(expectErr(await fetchKnown()), isA<RobotPgpKeyNotProven>());
     });
 
     test(
-      'by an encrypted private key that is another locking of the same key',
+      'by secret values that are not those of its public key, though the token unlocks them',
       () async {
-        final crafted = CraftedKey();
-        final local = expectOk(
-          RobotPgpKey.parse(
-            publicKey: crafted.publicArmored,
-            encryptedPrivateKey: crafted.privateArmored('a passphrase'),
-          ),
+        // The token unlocks both parts, but the primary key's part holds the seed of another key: unlocking checks the values against the points.
+        final crafted = CraftedKey(
+          label: 'values',
+          userId: _identity.pgpUserId,
         );
-        final lockedAgain = armorPackets(
+        final otherSeed = CraftedKey(label: 'other values').seed;
+        final wrongValues = armorPackets(
           ArmorBlock.privateKey,
           crafted.privatePackets(
-            'a passphrase',
-            protect: (secret, passphrase) =>
-                protectSecret(secret, passphrase, codedCount: 97),
+            _identity.token.reveal(),
+            primarySecret: mpiEncode(otherSeed),
           ),
         );
         serveJson(
           _robot({
             'public_key': crafted.publicArmored,
-            'encrypted_private_key': lockedAgain,
+            'encrypted_private_key': wrongValues,
           }),
-        );
-        expect(
-          expectErr(await fetch(pgpKey: local)),
-          isA<RobotPgpKeyMismatch>(),
         );
 
-        // The same answer with the private key as this device holds it is accepted.
-        serveJson(
-          _robot({
-            'public_key': crafted.publicArmored,
-            'encrypted_private_key':
-                '${crafted.privateArmored('a passphrase')}\n',
-          }),
-        );
-        expectOk(await fetch(pgpKey: local));
+        expect(await failures(), everyElement(isA<RobotPgpKeyNotProven>()));
       },
     );
   });
@@ -756,13 +1288,13 @@ void main() {
     });
 
     test(
-      'is rejected when the private key is not the pair of the public key',
+      'is rejected when the private key is not an armored private key',
       () async {
+        // The private key of another pair is a well-formed key: it is a pair not proven, in `a robot that is not the one of this device`.
         for (final key in [
           '',
           'not a key',
           _reexportedPublicKey,
-          generateInteropPeerKey().encryptedPrivateKeyArmored,
           _key.encryptedPrivateKeyArmored.substring(
             0,
             _key.encryptedPrivateKeyArmored.length ~/ 2,
@@ -796,7 +1328,7 @@ void main() {
         }),
       );
 
-      expectOk(await fetch());
+      _sent(await fetch());
     });
   });
 
@@ -937,11 +1469,45 @@ void main() {
         );
       });
 
-      final robot = expectOk(await fetch());
+      // The pair of the read is the one the first contact sent, so it is taken without a proof.
+      final robot = _sent(await fetch());
 
       expect(robot.hashId, _identity.hashId);
+      expect(robot.pgpKey, same(_key));
       expect(transport.requests, hasLength(2));
     });
+
+    test(
+      'of a nickname taken by this robot with another pair gives the pair to prove',
+      () async {
+        final other = expectOk(
+          RobotPgpKey.generateWith(
+            _identity,
+            now: interopNow,
+            random: DeterministicRandom('another device'),
+          ),
+        );
+        transport.route(temple, _testnet, '/api/robot/', (request) async {
+          final firstContact = (request.headers['Authorization'] ?? '')
+              .contains(' | ');
+          return Ok(
+            firstContact
+                ? jsonResponse(_error(7004), statusCode: 409)
+                : jsonResponse(
+                    _robot({
+                      'public_key': other.publicKey.armored,
+                      'encrypted_private_key': other.encryptedPrivateKeyArmored,
+                    }),
+                  ),
+          );
+        });
+
+        final robot = expectOk(_unproven(await fetch()).prove());
+
+        expect(robot.pgpKey, other);
+        expect(robot.pgpKeyProven, isTrue);
+      },
+    );
 
     test(
       'of a nickname already taken stays one when the check fails',
@@ -1085,7 +1651,7 @@ void main() {
     final calls =
         <
           String,
-          Future<Result<CoordinatorRobot, CoordinatorFailure>> Function()
+          Future<Result<CoordinatorRobotAnswer, CoordinatorFailure>> Function()
         >{'a first contact': fetch, 'a read of a known robot': fetchKnown};
 
     for (final MapEntry(key: label, value: call) in calls.entries) {

@@ -237,6 +237,13 @@ final class TransferableKey {
       _binding.isCurrentAt(time) &&
       !_isExpired(subkey, _binding, time);
 
+  /// The bytes [unlock] feeds its hashes with a right passphrase of [passphraseLength] bytes, both secret parts together, computed without hashing anything; 0 on a public key.
+  ///
+  /// A passphrase that does not unlock the primary key's part hashes that part only, since [unlock] stops there.
+  int unlockHashedBytes(int passphraseLength) =>
+      (_primarySecret?.unlockHashedBytes(passphraseLength) ?? 0) +
+      (_subkeySecret?.unlockHashedBytes(passphraseLength) ?? 0);
+
   /// The secret values behind both packets, or `null` when [passphrase] is wrong.
   ///
   /// Throws a [StateError] on a public key, and an [UnsupportedPgpException] when a secret value does not match its public key.
