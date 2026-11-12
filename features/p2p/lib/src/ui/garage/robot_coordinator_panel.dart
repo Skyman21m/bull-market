@@ -70,32 +70,30 @@ class RobotCoordinatorPanel extends StatelessWidget {
             ),
           ),
           const Gap(BullSpacing.sm),
-          // A change of what the panel says is read out by a screen reader.
-          Semantics(
-            liveRegion: true,
-            child: BlocBuilder<RobotCoordinatorCubit, RobotCoordinatorState>(
-              builder: (context, state) => switch (state) {
-                RobotStandingReading() => const _Progress(),
-                RobotStandingUnreadable(:final failure) => _Failure(
-                  message: switch (failure) {
-                    P2pStorageFailure() => l10n.p2pRobotStorage,
-                    _ => failure.toTranslated(context),
-                  },
-                  onRetry: context.read<RobotCoordinatorCubit>().retry,
-                ),
-                final RobotWithoutCoordinator state => _WithoutCoordinator(
-                  state: state,
-                  onSelectHost: () => _selectHost(context),
-                ),
-                RobotOnCoordinator(:final coordinator, :final activity) =>
-                  _OnCoordinator(coordinator: coordinator, activity: activity),
-                RobotOnOtherNetwork(:final network) => _Line(
-                  l10n.p2pRobotOnOtherNetwork(network.name),
-                ),
-                RobotCoordinatorChanged(:final alias, :final listed) =>
-                  _Changed(alias: alias, listed: listed),
-              },
-            ),
+          BlocBuilder<RobotCoordinatorCubit, RobotCoordinatorState>(
+            builder: (context, state) => switch (state) {
+              RobotStandingReading() => const _Progress(),
+              RobotStandingUnreadable(:final failure) => _Failure(
+                message: switch (failure) {
+                  P2pStorageFailure() => l10n.p2pRobotStorage,
+                  _ => failure.toTranslated(context),
+                },
+                onRetry: context.read<RobotCoordinatorCubit>().retry,
+              ),
+              final RobotWithoutCoordinator state => _WithoutCoordinator(
+                state: state,
+                onSelectHost: () => _selectHost(context),
+              ),
+              RobotOnCoordinator(:final coordinator, :final activity) =>
+                _OnCoordinator(coordinator: coordinator, activity: activity),
+              RobotOnOtherNetwork(:final network) => _Line(
+                l10n.p2pRobotOnOtherNetwork(network.name),
+              ),
+              RobotCoordinatorChanged(:final alias, :final listed) => _Changed(
+                alias: alias,
+                listed: listed,
+              ),
+            },
           ),
         ],
       ),
@@ -217,21 +215,28 @@ class _OnCoordinator extends StatelessWidget {
             ],
           ],
           RobotContacting(:final kind, :final slow) => [
-            Text(
-              switch (kind) {
-                RobotContactKind.create => l10n.p2pGarageBuildingRobot,
-                RobotContactKind.read => l10n.p2pRobotLookingForOrders,
-              },
-              style: text.bodyMedium?.copyWith(
-                color: colors.text,
-                fontWeight: FontWeight.w700,
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                switch (kind) {
+                  RobotContactKind.create => l10n.p2pGarageBuildingRobot,
+                  RobotContactKind.read => l10n.p2pRobotLookingForOrders,
+                },
+                style: text.bodyMedium?.copyWith(
+                  color: colors.text,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const Gap(BullSpacing.xs),
             const _Progress(),
             if (slow) ...[
               const Gap(BullSpacing.xs),
-              _Line(l10n.p2pRobotStillWaiting(name), color: colors.textMuted),
+              _Line(
+                l10n.p2pRobotStillWaiting(name),
+                color: colors.textMuted,
+                live: true,
+              ),
             ],
           ],
           RobotKnown(:final face) => [_Known(face: face, name: name)],
@@ -271,7 +276,7 @@ class _Known extends StatelessWidget {
           (final active?, _) => l10n.p2pRobotActiveOrder('$active'),
           (null, final last?) => l10n.p2pRobotLastOrder('$last'),
           (null, null) => l10n.p2pRobotNoOrders,
-        }),
+        }, live: true),
         // As the official client, which counts a last order of unknown status as used: Troc does not read the order yet.
         if (active == null && last != null) ...[
           const Gap(BullSpacing.sm),
@@ -411,6 +416,7 @@ class _TorLine extends StatelessWidget {
           ? l10n.p2pTorConnectionError
           : l10n.p2pTorConnecting,
       color: tor == TorWait.failed ? colors.error : colors.textMuted,
+      live: true,
     );
   }
 }
@@ -430,7 +436,7 @@ class _Failure extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Line(message, color: colors.error),
+        _Line(message, color: colors.error, live: true),
         if (onRetry != null) ...[
           const Gap(BullSpacing.sm),
           BullButton.big(
@@ -449,19 +455,23 @@ class _Failure extends StatelessWidget {
   }
 }
 
-/// A line of the panel, which wraps at any text size.
+/// A line of the panel, which wraps at any text size; a screen reader reads a [live] line out when it changes.
 class _Line extends StatelessWidget {
   final String text;
   final Color? color;
+  final bool live;
 
-  const _Line(this.text, {this.color});
+  const _Line(this.text, {this.color, this.live = false});
 
   @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(color: color ?? context.bull.text),
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: live,
+    child: Text(
+      text,
+      style: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(color: color ?? context.bull.text),
+    ),
   );
 }
 

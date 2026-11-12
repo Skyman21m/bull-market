@@ -274,7 +274,8 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   @override
   Future<void> close() async {
     _stillWaiting?.cancel();
-    await _torReports?.cancel();
+    unawaited(_torReports?.cancel());
+    _torReports = null;
     await super.close();
     // Closed first, so that an answer arriving during the release is ignored.
     if (_robot() case Ok(value: final robot)) {
