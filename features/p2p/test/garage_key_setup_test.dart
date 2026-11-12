@@ -10,6 +10,7 @@ import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_key_compute_port.dart';
+import 'package:p2p/src/domain/robot_request_limiter.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
@@ -17,8 +18,11 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
+import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
 import 'package:p2p/testing.dart'
     show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
 import 'package:robosats/robosats.dart' show Federation;
@@ -76,6 +80,11 @@ void main() {
     // The local reads and records of a robot's standing, over the same database.
     locator.isRegistered<ReadRobotStandingUsecase>(),
     locator.isRegistered<AcknowledgeGarageKeyHistoryUsecase>(),
+    // The robot requests, their places and their memory, over the same request of a robot.
+    locator.isRegistered<RobotRequestLimiter>(),
+    locator.isRegistered<PutRobotOnCoordinatorUsecase>(),
+    locator.isRegistered<ReadRobotOnCoordinatorUsecase>(),
+    locator.isRegistered<ReleaseRobotUsecase>(),
   ];
 
   test(
@@ -129,7 +138,15 @@ void main() {
         ..get<DeleteGarageKeyUsecase>()
         ..get<FetchRobotUsecase>()
         ..get<ReadRobotStandingUsecase>()
-        ..get<AcknowledgeGarageKeyHistoryUsecase>();
+        ..get<AcknowledgeGarageKeyHistoryUsecase>()
+        ..get<PutRobotOnCoordinatorUsecase>()
+        ..get<ReadRobotOnCoordinatorUsecase>()
+        ..get<ReleaseRobotUsecase>();
+      // One limiter for the whole feature.
+      expect(
+        locator<RobotRequestLimiter>(),
+        same(locator<RobotRequestLimiter>()),
+      );
       expect(storage.reads, 0);
       expect(storage.entries, isEmpty);
       expect(directoryAsked, 0);

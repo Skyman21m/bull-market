@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' show Random;
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
@@ -15,6 +16,7 @@ import 'domain/p2p_clock.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
 import 'domain/robot_key_compute_port.dart';
+import 'domain/robot_request_limiter.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
@@ -26,8 +28,11 @@ import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
+import 'domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'domain/usecases/read_garage_key_usecase.dart';
+import 'domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'domain/usecases/read_robot_standing_usecase.dart';
+import 'domain/usecases/release_robot_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
@@ -96,13 +101,36 @@ final class P2pLocator {
     locator.registerLazySingleton<RobotKeyComputePort>(
       () => const IsolateRobotKeyCompute(),
     );
-    // The request of a robot: its only caller will be the Garage of this feature, and nothing outside the feature reaches it.
+    // The request of a robot: its only callers are the two robot use cases below, and nothing outside the feature reaches it.
     locator.registerFactory<FetchRobotUsecase>(
       () => FetchRobotUsecase(
         CoordinatorClient(transport(), clock: clock),
         locator(),
         locator(),
       ),
+    );
+    // The places, retries and memory of the robot requests to each coordinator: one for the whole feature, in memory, for the run of the app.
+    locator.registerLazySingleton<RobotRequestLimiter>(
+      () => RobotRequestLimiter(
+        clock: clock,
+        delay: Future<void>.delayed,
+        random: Random().nextDouble,
+      ),
+    );
+    // A robot put on a coordinator, read back from it, and let go: their only callers will be the Garage's robot panel, and nothing outside the feature reaches them.
+    locator.registerFactory<PutRobotOnCoordinatorUsecase>(
+      () => PutRobotOnCoordinatorUsecase(locator(), locator()),
+    );
+    locator.registerFactory<ReadRobotOnCoordinatorUsecase>(
+      () => ReadRobotOnCoordinatorUsecase(
+        locator(),
+        locator(),
+        locator(),
+        Federation.robosats,
+      ),
+    );
+    locator.registerFactory<ReleaseRobotUsecase>(
+      () => ReleaseRobotUsecase(locator(), locator()),
     );
     locator.registerFactory<HasGarageKeyUsecase>(
       () => HasGarageKeyUsecase(locator()),
@@ -175,7 +203,7 @@ final class P2pLocator {
         CoordinatorClient(transport(), clock: clock),
       ),
     );
-    // It has no caller yet: the Garage cubits of this feature will be the first, and nothing outside the feature reaches it.
+    // Its only caller is `ReleaseRobotUsecase`, registered with the Garage, and nothing outside the feature reaches it.
     locator.registerFactory<CloseRobotSessionsUsecase>(
       () => CloseRobotSessionsUsecase(sessions()),
     );

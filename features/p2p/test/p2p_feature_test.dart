@@ -298,6 +298,18 @@ void main() {
         'GarageKeyHistory',
         'ReadRobotStandingUsecase',
         'AcknowledgeGarageKeyHistoryUsecase',
+        // The robot requests and what they show.
+        'FetchRobotUsecase',
+        'RobotContact',
+        'RobotFirstContact',
+        'RobotReadBack',
+        'RobotRequestLimiter',
+        'RobotRequests',
+        'PutRobotOnCoordinatorUsecase',
+        'ReadRobotOnCoordinatorUsecase',
+        'ReleaseRobotUsecase',
+        'RobotOnCoordinatorFace',
+        'RobotNostrKeyStatus',
       ]) {
         expect(identifiers(library), isNot(contains(name)), reason: name);
         expect(identifiers(facade), isNot(contains(name)), reason: name);
