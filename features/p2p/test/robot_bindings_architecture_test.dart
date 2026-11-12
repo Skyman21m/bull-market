@@ -29,47 +29,34 @@ void main() {
       if (test(facts)) path,
   };
 
-  test('the scan leaves out the committed translations and nothing else', () {
+  test('the scan reads every Dart file of lib/, the translations included', () {
     for (final (path, scanned) in [
-      ('lib/generated/l10n/p2p_localizations.dart', false),
-      ('lib/generated/l10n/p2p_localizations_fr.dart', false),
-      ('lib/generated/l10n/p2p_localizations_pt_BR.dart', false),
-      ('lib/generated/l10n/p2p_localizations_hi_Latn.dart', false),
-      // A hand-written file next to them is read (third review of #60).
+      // The translations gen-l10n writes are code too: a hand-written file named like one was not seen before (review of #67).
+      ('lib/generated/l10n/p2p_localizations.dart', true),
+      ('lib/generated/l10n/p2p_localizations_fr.dart', true),
+      ('lib/generated/l10n/p2p_localizations_zz.dart', true),
       ('lib/generated/l10n/zz_l10n.dart', true),
-      ('lib/generated/l10n/p2p_localizations_extra.g.dart', true),
-      // A file put next to the translations is read: generated code is code.
       ('lib/generated/zz_gen.dart', true),
-      ('lib/generated/other/zz_gen.dart', true),
       ('lib/src/data/p2p_database.g.dart', true),
       ('lib/src/zz.dart', true),
+      ('lib/zz.txt', false),
       ('test/zz_test.dart', false),
     ]) {
       expect(_isScanned(path), scanned, reason: path);
     }
   });
 
-  test('every Dart file of lib/ is scanned but the committed translations', () {
+  test('every Dart file of lib/ is scanned', () {
     final all = [
       for (final file in Directory('lib').listSync(recursive: true))
         if (file is File && file.path.endsWith('.dart')) file.path,
     ];
-    final translations = all
-        .where((path) => path.startsWith('lib/generated/l10n/'))
-        .toList();
-    // The translations are what gen-l10n writes, and nothing else is there today.
-    expect(translations, isNotEmpty);
-    expect(
-      translations,
-      everyElement(matches(RegExp(r'^lib/generated/l10n/p2p_localizations'))),
-    );
-    expect(
-      libraries.keys,
-      unorderedEquals(all.where((path) => !translations.contains(path))),
-    );
+    expect(libraries.keys, unorderedEquals(all));
     expect(
       libraries.keys,
       containsAll([
+        'lib/generated/l10n/p2p_localizations.dart',
+        'lib/generated/l10n/p2p_localizations_fr.dart',
         'lib/src/data/p2p_database.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/domain/usecases/fetch_robot_usecase.dart',
@@ -79,6 +66,42 @@ void main() {
     if (File('lib/src/data/p2p_database.g.dart').existsSync()) {
       expect(libraries.keys, contains('lib/src/data/p2p_database.g.dart'));
     }
+  });
+
+  test('no file silences a diagnostic but the two the generators write', () {
+    // AGENTS.md bans `// ignore`: an `ignore` of `invalid_use_of_internal_member`, or of a whole type of warnings, would let a file call the package's internals without a sign (review of #67).
+    // gen-l10n writes `// ignore: unused_import` and `// ignore_for_file: type=lint`, Drift the second: neither silences a warning.
+    final offenders = <String>[];
+    for (final path in libraries.keys) {
+      for (final ignore in _ignores(File(path).readAsStringSync())) {
+        final generated =
+            path.startsWith('lib/generated/l10n/p2p_localizations') ||
+            path.endsWith('.g.dart');
+        if (!generated ||
+            !{
+              'ignore: unused_import',
+              'ignore_for_file: type=lint',
+            }.contains(ignore)) {
+          offenders.add('$path $ignore');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+    // The check sees each form.
+    expect(
+      _ignores('''
+// ignore: invalid_use_of_internal_member
+x; // ignore:invalid_use_of_internal_member, unused_import
+/* ignore_for_file: type=warning */
+// ignore_for_file: type=lint
+'''),
+      [
+        'ignore: invalid_use_of_internal_member',
+        'ignore: invalid_use_of_internal_member, unused_import',
+        'ignore_for_file: type=warning',
+        'ignore_for_file: type=lint',
+      ],
+    );
   });
 
   group('resolved by the analyzer,', () {
@@ -181,6 +204,21 @@ void main() {
         expect(referring((r) => r == 'RobotPgpKey.unlock'), isEmpty);
       },
     );
+
+    test('no file reaches the package\'s internal proof or reads an answer', () {
+      // `proveMadeBy` proves on the calling isolate, and `parse` with a pair as « sent » makes a robot that carries any pair, without a request or a proof (review of #67): only an `invalid_use_of_internal_member` warning stands in their way, and no file may silence it.
+      // The fixture of evasions cannot hold such calls: the custody check of CI refuses an `ignore` of that warning anywhere, tests included.
+      expect(
+        referring(
+          (r) => {
+            'RobotPgpKey.proveMadeBy',
+            'CoordinatorRobotAnswer.parse',
+            'UnprovenCoordinatorRobot.parse',
+          }.contains(r),
+        ),
+        isEmpty,
+      );
+    });
 
     test('no file reads a robot credential, but the fingerprint its token', () {
       // The fingerprint keys an HMAC with the token of the key's first robot, which never leaves the device.
@@ -444,19 +482,24 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
+/// Every `ignore:` or `ignore_for_file:` comment of [source], normalised to `ignore: code, code`.
+List<String> _ignores(String source) => [
+  for (final match in RegExp(
+    r'(ignore(?:_for_file)?)\s*:\s*([A-Za-z0-9_=,\s-]*?)\s*(?:\*/|$)',
+    multiLine: true,
+  ).allMatches(source))
+    '${match[1]}: ${(match[2] ?? '').split(',').map((code) => code.trim()).where((code) => code.isNotEmpty).join(', ')}',
+];
+
 /// The Dart files the tests read: every one under `lib/` that [_isScanned].
 List<String> _scanned() => [
   for (final file in Directory('lib').listSync(recursive: true))
     if (file is File && _isScanned(file.path)) file.path,
 ];
 
-/// Whether the tests read the file at [path]: any Dart file under `lib/` but the translations that `gen-l10n` writes, `lib/generated/l10n/p2p_localizations*.dart`, which Git tracks; any other file there, the rest of `lib/generated/` and generated `.g.dart` files are read.
+/// Whether the tests read the file at [path]: every Dart file under `lib/`, generated ones included (the translations of gen-l10n were left out before the review of #67, and a hand-written file named like one went unseen).
 bool _isScanned(String path) =>
-    path.startsWith('lib/') &&
-    path.endsWith('.dart') &&
-    !RegExp(
-      r'^lib/generated/l10n/p2p_localizations(_[A-Za-z_]+)?\.dart$',
-    ).hasMatch(path);
+    path.startsWith('lib/') && path.endsWith('.dart');
 
 /// Members watched by name, by the class that declares them and its library: a member of a subtype, an implementation of the interface included, counts as the member of its supertype.
 const _watched = {
@@ -467,8 +510,12 @@ const _watched = {
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
-  'UnprovenCoordinatorRobot': ('package:robosats/', {'prove'}),
-  'RobotPgpKey': ('package:robosats/', {'generate', 'generateWith', 'unlock'}),
+  'UnprovenCoordinatorRobot': ('package:robosats/', {'prove', 'parse'}),
+  'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
+  'RobotPgpKey': (
+    'package:robosats/',
+    {'generate', 'generateWith', 'unlock', 'proveMadeBy'},
+  ),
 };
 
 /// The members that hold or make a robot's credential: its token, the token's hash in both forms, and the two `Authorization` headers.
