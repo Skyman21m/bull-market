@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/bond_warning.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/presentation/p2p_failure_l10n.dart';
+import 'package:p2p/src/presentation/robot_coordinator_state.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/expiry_ring.dart';
 import 'package:p2p/src/ui/widgets/maker_avatar.dart';
@@ -327,6 +329,186 @@ void main() {
 
       expect(find.text('Coordinator offline'), findsNothing);
       expect(find.text('An error occurred.'), findsOneWidget);
+    });
+  });
+
+  // The texts of the design note of #29, § 2.3, and their way out: each robot failure the panel can show, in English, naming the coordinator.
+  group('the text of a robot failure', () {
+    const name = 'Temple of Sats';
+    Future<String> textOf(
+      WidgetTester tester,
+      RobotRequestProblem problem,
+    ) async {
+      late String text;
+      await tester.pumpWidget(
+        harness(
+          Builder(
+            builder: (context) {
+              text = problem.toRobotText(context, coordinator: name);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      return text;
+    }
+
+    testWidgets('each answer of a coordinator', (tester) async {
+      for (final (failure, text, wayOut) in <(CoordinatorFailure, String, RobotWayOut)>[
+        (
+          const CoordinatorUnreachable(),
+          'Coordinator offline',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorTimedOut(),
+          'Coordinator offline',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorTransportFailed(),
+          'Coordinator offline',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorNotOnNetwork(),
+          'Coordinator offline',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorTransportBusy(),
+          'Too many requests are waiting for this coordinator. Try again in a moment.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorResponseTooLarge(),
+          '$name sent an answer Troc cannot read.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorNotJson(),
+          '$name sent an answer Troc cannot read.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorResponseMalformed('hash_id'),
+          '$name sent an answer Troc cannot read.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorUnexpectedStatus(500),
+          '$name sent an answer Troc cannot read.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const CoordinatorNodeIdMismatch(),
+          '$name sent an answer Troc cannot read.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const RobotUnknown(),
+          '$name does not know this robot yet.',
+          RobotWayOut.firstContact,
+        ),
+        (
+          const RobotKeysRefused(RobotKeysRefusal.keyTooRecent),
+          "$name refused the robot's key as too recent. Check your phone's date and time, then try again.",
+          RobotWayOut.firstContact,
+        ),
+        (
+          const RobotKeysRefused(RobotKeysRefusal.invalidKey),
+          '$name refused this robot. It may run another version of RoboSats.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotKeysRefused(RobotKeysRefusal.keyAlreadyUsed),
+          '$name refused this robot. It may run another version of RoboSats.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotCredentialsRejected(),
+          '$name refused this robot. It may run another version of RoboSats.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotNicknameTaken(),
+          "This robot's name is already taken on $name, so it cannot be created there. Use the next robot.",
+          RobotWayOut.none,
+        ),
+        (
+          const RobotHashIdMismatch(),
+          '$name answered with another robot, or with keys this robot did not make. Do not use this robot there.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotNicknameMismatch(),
+          '$name answered with another robot, or with keys this robot did not make. Do not use this robot there.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotPgpKeyNotProven(),
+          '$name answered with another robot, or with keys this robot did not make. Do not use this robot there.',
+          RobotWayOut.none,
+        ),
+      ]) {
+        final problem = RobotRequestAnswered(failure);
+        expect(await textOf(tester, problem), text, reason: '$failure');
+        expect(problem.wayOut, wayOut, reason: '$failure');
+      }
+    });
+
+    testWidgets('each refusal of the feature', (tester) async {
+      for (final (failure, text, wayOut) in <(P2pFailure, String, RobotWayOut)>[
+        (
+          const P2pStorageFailure(),
+          'Troc could not read its records on this device. Nothing was sent.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const RobotCoordinatorBusyFailure(),
+          'Too many requests are waiting for this coordinator. Try again in a moment.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const RobotKeyComputeFailure(),
+          'This phone could not make or check the keys of this robot. Check its date and time, then try again.',
+          RobotWayOut.readBack,
+        ),
+        (
+          const RobotCoordinatorChangedFailure(),
+          '$name changed its address or keys since this robot was sent to it. Nothing was sent. Until an update of the app has checked the change, use another robot.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotCoordinatorTooManyRefusalsFailure(),
+          'This coordinator refused too many robots.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotBoundToAnotherCoordinatorFailure(),
+          'This robot lives on another coordinator. Nothing was sent.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotHistoryUnknownFailure(),
+          'No coordinator knows this robot yet.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotNotBoundFailure(),
+          'No coordinator knows this robot yet.',
+          RobotWayOut.none,
+        ),
+        (
+          const RobotReleasedFailure(),
+          'Too many requests are waiting for this coordinator. Try again in a moment.',
+          RobotWayOut.none,
+        ),
+      ]) {
+        final problem = RobotRequestRefused(failure);
+        expect(await textOf(tester, problem), text, reason: '$failure');
+        expect(problem.wayOut, wayOut, reason: '$failure');
+      }
     });
   });
 }
