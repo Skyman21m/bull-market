@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/order_search.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
 import 'package:p2p/src/domain/usecases/start_p2p_tor_usecase.dart';
@@ -10,23 +11,31 @@ import 'package:p2p/src/presentation/book_cubit.dart';
 import 'package:p2p/src/presentation/book_state.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/book_attempts.dart';
 import 'support/fakes.dart';
 
 void main() {
   late FakeTor tor;
   late FakeTransport transport;
+  late FakeWaits waits;
 
-  BookCubit cubit({RobosatsNetwork network = RobosatsNetwork.mainnet}) =>
-      BookCubit(
-        network,
-        WatchP2pTorStateUsecase(() => tor),
-        StartP2pTorUsecase(() => tor),
-        RetryP2pTorUsecase(() => tor),
-        RequestFederationBooksUsecase(
-          FederationBookReader(transport, clock: () => testNow),
-          Federation.robosats,
-        ),
-      );
+  /// The book over [transport], or over [scripted] when given.
+  BookCubit cubit({
+    RobosatsNetwork network = RobosatsNetwork.mainnet,
+    ScriptedTransport? scripted,
+  }) => BookCubit(
+    network,
+    WatchP2pTorStateUsecase(() => tor),
+    StartP2pTorUsecase(() => tor),
+    RetryP2pTorUsecase(() => tor),
+    LoadFederationBooksUsecase(
+      RequestFederationBooksUsecase(
+        FederationBookReader(scripted ?? transport, clock: () => testNow),
+        Federation.robosats,
+      ),
+      waits.waits,
+    ),
+  );
 
   /// Lets the stream events and the request futures run.
   Future<void> settle() => Future<void>.delayed(Duration.zero);
@@ -39,6 +48,7 @@ void main() {
   setUp(() {
     tor = FakeTor();
     transport = FakeTransport();
+    waits = FakeWaits();
   });
 
   group('Tor', () {
@@ -378,7 +388,7 @@ void main() {
     );
 
     test(
-      'a coordinator that fails stays visible and does not hide the others',
+      'a coordinator that gets no answer stays awaited while it is asked again, then shows offline, and hides no other',
       () async {
         transport = FakeTransport(
           books: {
@@ -391,6 +401,24 @@ void main() {
         await settle();
         await settle();
 
+        // Asked again after 5 seconds: still awaited, the others shown.
+        expect(book.state.loadingCoordinators.map((c) => c.shortAlias), [
+          'temple',
+        ]);
+        expect(book.state.failedCoordinators, isEmpty);
+        expect(book.state.orders.map((o) => o.id), [2]);
+        expect(waits.pending.single.duration, const Duration(seconds: 5));
+
+        waits.fireAll();
+        await settle();
+        expect(book.state.loadingCoordinators.map((c) => c.shortAlias), [
+          'temple',
+        ]);
+        expect(waits.pending.single.duration, const Duration(seconds: 15));
+
+        waits.fireAll();
+        await settle();
+        expect(book.state.loadingCoordinators, isEmpty);
         expect(book.state.failedCoordinators.map((c) => c.shortAlias), [
           'temple',
         ]);
@@ -402,12 +430,17 @@ void main() {
             isA<CoordinatorUnreachable>(),
           ),
         );
+        expect(
+          transport.requested.where((r) => r == 'temple/api/book/'),
+          hasLength(3),
+        );
         expect(book.state.orders.map((o) => o.id), [2]);
+        expect(book.state.answeredCount, mainnetCoordinators - 1);
         await book.close();
       },
     );
 
-    test('retry asks again only the coordinators that failed', () async {
+    test('retry asks again only the coordinators offline', () async {
       transport = FakeTransport(
         books: {
           'temple': [bookOrder(id: 1)],
@@ -418,7 +451,11 @@ void main() {
       final book = cubit()..start();
       tor.embedded.ready();
       await settle();
+      waits.fireAll();
       await settle();
+      waits.fireAll();
+      await settle();
+      expect(book.state.failedCoordinators, [coordinator('temple')]);
       transport.requested.clear();
       transport.failures.clear();
 
@@ -460,31 +497,33 @@ void main() {
       },
     );
 
-    test('an answer to an older request is dropped', () async {
-      transport = FakeTransport(
-        books: {
-          'temple': [bookOrder(id: 1)],
-        },
-        held: {'temple'},
-      );
-      final book = cubit()..start();
-      tor.embedded.ready();
-      await settle();
-      // The first request is still held when a refresh is answered at once.
-      transport
-        ..held.remove('temple')
-        ..books['temple'] = [bookOrder(id: 2)];
-      await book.refresh();
-      expect(book.state.orders.map((o) => o.id), [2]);
+    test(
+      'a refresh sends no second request to a coordinator still in flight: it waits for that one',
+      () async {
+        transport = FakeTransport(
+          books: {
+            'temple': [bookOrder(id: 1)],
+          },
+          held: {'temple'},
+        );
+        final book = cubit()..start();
+        tor.embedded.ready();
+        await settle();
+        transport.requested.clear();
 
-      // The first request answers last, with an older book: it is dropped.
-      transport.books['temple'] = [bookOrder(id: 1)];
-      transport.release('temple');
-      await settle();
-      await settle();
-      expect(book.state.orders.map((o) => o.id), [2]);
-      await book.close();
-    });
+        final refreshed = book.refresh();
+        await settle();
+        expect(transport.requested, hasLength(mainnetCoordinators - 1));
+        expect(transport.requested, isNot(contains('temple/api/book/')));
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+
+        transport.release('temple');
+        await refreshed;
+        expect(book.state.orders.map((o) => o.id), [1]);
+        expect(book.state.loadingCoordinators, isEmpty);
+        await book.close();
+      },
+    );
 
     test('testnet asks the testnet instances', () async {
       transport = FakeTransport(network: RobosatsNetwork.testnet);
@@ -501,6 +540,178 @@ void main() {
       expect(book.state.orders, isEmpty);
       await book.close();
     });
+  });
+
+  group('asking again by itself', () {
+    late ScriptedTransport scripted;
+
+    setUp(() {
+      scripted = ScriptedTransport(
+        books: {
+          'temple': [bookOrder(id: 1)],
+          'lake': [bookOrder(id: 2, makerSeed: 2)],
+        },
+      );
+    });
+
+    Future<BookCubit> shown() async {
+      final book = cubit(scripted: scripted)..start();
+      tor.embedded.ready();
+      await settle();
+      await settle();
+      return book;
+    }
+
+    test('a book on the second attempt lights the coordinator', () async {
+      scripted.script['temple'] = const [
+        ScriptedFailure(CoordinatorUnreachable()),
+      ];
+      final book = await shown();
+      expect(book.state.loadingCoordinators, [coordinator('temple')]);
+      expect(book.state.orders.map((o) => o.id), [2]);
+
+      waits.fireAll();
+      await settle();
+      expect(book.state.loadingCoordinators, isEmpty);
+      expect(book.state.failedCoordinators, isEmpty);
+      expect(book.state.orders.map((o) => o.id), [1, 2]);
+      expect(scripted.requestsTo('temple'), 2);
+      await book.close();
+    });
+
+    test('leaving the tab ends the wait, and nothing more is sent', () async {
+      scripted.script['temple'] = const [
+        ScriptedFailure(CoordinatorUnreachable()),
+      ];
+      final book = await shown();
+      final wait = waits.pending.single;
+
+      await book.close();
+      expect(wait.cancelled, isTrue);
+      wait.fire();
+      await settle();
+      expect(scripted.requestsTo('temple'), 1);
+    });
+
+    test(
+      'Tor failing under the book shows offline at once a coordinator waiting to be asked again, and asks none again',
+      () async {
+        scripted
+          ..script['temple'] = const [ScriptedFailure(CoordinatorUnreachable())]
+          ..script['lake'] = const [ScriptedFailure(CoordinatorTimedOut())]
+          ..held.add('lake');
+        final book = await shown();
+        final wait = waits.pending.single;
+        expect(book.state.loadingCoordinators, [
+          coordinator('temple'),
+          coordinator('lake'),
+        ]);
+
+        tor.embedded.failed();
+        await settle();
+        expect(wait.cancelled, isTrue);
+        expect(book.state.tor, TorWait.ready);
+        expect(book.state.failedCoordinators, [coordinator('temple')]);
+        expect(book.state.loadingCoordinators, [coordinator('lake')]);
+
+        // The request in flight gives the last failure: no wait is started.
+        scripted.release('lake');
+        await settle();
+        expect(book.state.failedCoordinators, [
+          coordinator('temple'),
+          coordinator('lake'),
+        ]);
+        expect(waits.started, hasLength(1));
+        expect(scripted.requestsTo('temple'), 1);
+        expect(scripted.requestsTo('lake'), 1);
+        await book.close();
+      },
+    );
+
+    test(
+      'a refresh ends the wait and asks at once, with all the attempts again',
+      () async {
+        scripted.script['temple'] = [
+          for (var i = 0; i < 6; i++)
+            const ScriptedFailure(CoordinatorUnreachable()),
+        ];
+        final book = await shown();
+        waits.fireAll();
+        await settle();
+        final second = waits.pending.single;
+        expect(second.duration, const Duration(seconds: 15));
+        expect(scripted.requestsTo('temple'), 2);
+
+        final refreshed = book.refresh();
+        await settle();
+        expect(second.cancelled, isTrue);
+        expect(scripted.requestsTo('temple'), 3);
+        // Not reached yet: the attempts of a first contact again, from the first wait.
+        expect(waits.pending.single.duration, const Duration(seconds: 5));
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+
+        waits.fireAll();
+        await settle();
+        waits.fireAll();
+        await refreshed;
+        expect(scripted.requestsTo('temple'), 5);
+        expect(book.state.failedCoordinators, [coordinator('temple')]);
+        expect(scripted.mostAtOnce['temple'], 1);
+        await book.close();
+      },
+    );
+
+    test('Retry gives the offline ones all their attempts again', () async {
+      scripted.script['temple'] = [
+        for (var i = 0; i < 4; i++)
+          const ScriptedFailure(CoordinatorUnreachable()),
+      ];
+      final book = await shown();
+      waits.fireAll();
+      await settle();
+      waits.fireAll();
+      await settle();
+      expect(book.state.failedCoordinators, [coordinator('temple')]);
+      scripted.requested.clear();
+
+      final retried = book.retryFailed();
+      await settle();
+      expect(scripted.requested, ['temple/api/book/']);
+      expect(book.state.loadingCoordinators, [coordinator('temple')]);
+      expect(waits.pending.single.duration, const Duration(seconds: 5));
+
+      waits.fireAll();
+      await retried;
+      expect(book.state.failedCoordinators, isEmpty);
+      expect(book.state.orders.map((o) => o.id), [1, 2]);
+      await book.close();
+    });
+
+    test(
+      'a coordinator that answered before is asked again once, after 5 seconds, on a refresh',
+      () async {
+        final book = await shown();
+        expect(book.state.orders.map((o) => o.id), [1, 2]);
+        scripted.script['temple'] = const [
+          ScriptedFailure(CoordinatorUnreachable()),
+          ScriptedFailure(CoordinatorUnreachable()),
+        ];
+
+        final refreshed = book.refresh();
+        await settle();
+        // Its orders stay on screen while it is asked again.
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+        expect(book.state.orders.map((o) => o.id), [1, 2]);
+        expect(waits.pending.single.duration, const Duration(seconds: 5));
+
+        waits.fireAll();
+        await refreshed;
+        expect(waits.started, hasLength(1));
+        expect(book.state.failedCoordinators, [coordinator('temple')]);
+        expect(book.state.orders.map((o) => o.id), [2]);
+        await book.close();
+      },
+    );
   });
 
   group('filters', () {

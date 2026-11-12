@@ -8,31 +8,32 @@ import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../domain/p2p_tor_state.dart';
 import '../domain/tor_wait.dart';
-import '../domain/usecases/request_federation_books_usecase.dart';
+import '../domain/usecases/load_federation_books_usecase.dart';
 import '../domain/usecases/retry_p2p_tor_usecase.dart';
 import '../domain/usecases/start_p2p_tor_usecase.dart';
 import '../domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'book_state.dart';
 
 /// The P2P book: it starts Tor, waits for it, then asks every coordinator for its book and shows each one as it arrives.
+///
+/// A coordinator whose request got no answer is asked again by the use case, and stays awaited meanwhile: it is shown offline only after its last attempt.
 class BookCubit extends Cubit<BookState> {
   final WatchP2pTorStateUsecase _watchTor;
   final StartP2pTorUsecase _startTor;
   final RetryP2pTorUsecase _retryTor;
-  final RequestFederationBooksUsecase _requestBooks;
+  final LoadFederationBooksUsecase _loadBooks;
 
   StreamSubscription<P2pTorReport>? _torStates;
 
-  /// The number of the latest request to each coordinator: an answer to an older one is dropped.
-  final Map<Coordinator, int> _requests = {};
-  int _nextRequest = 0;
+  /// The attempts running for each coordinator: asking a coordinator again cancels the attempts before, whose outcome is then dropped.
+  final Map<Coordinator, CoordinatorBookAttempts> _attempts = {};
 
   BookCubit(
     RobosatsNetwork network,
     this._watchTor,
     this._startTor,
     this._retryTor,
-    this._requestBooks,
+    this._loadBooks,
   ) : super(BookState(network: network));
 
   /// Follows Tor and starts it: the book is requested once Tor is ready.
@@ -48,10 +49,10 @@ class BookCubit extends Cubit<BookState> {
     unawaited(_retryTor.execute());
   }
 
-  /// Asks every coordinator again, keeping their orders on screen meanwhile; completes when every answer is in.
+  /// Asks every coordinator again, keeping their orders on screen meanwhile, each with all its attempts; completes once each has given its book or its last attempt failed.
   Future<void> refresh() => _request(state.coordinators.keys.toSet());
 
-  /// Asks again only the coordinators whose book failed.
+  /// Asks again, with all their attempts, only the coordinators shown offline.
   Future<void> retryFailed() => _request(state.failedCoordinators.toSet());
 
   void selectSide(BookSide side) => _filter(state.filter.withSide(side));
@@ -70,6 +71,12 @@ class BookCubit extends Cubit<BookState> {
 
   void _onTorState(P2pTorReport report) {
     final previous = state.tor;
+    // Tor failed under the book: no coordinator is asked again until the user does, and those waiting to be are shown offline.
+    if (previous == TorWait.ready && report.state == P2pTorState.failed) {
+      for (final attempts in _attempts.values) {
+        attempts.stopAskingAgain();
+      }
+    }
     final next = previous.after(report.state);
     final percent = next.percentAfter(report, shown: state.torPercent);
     if (next == previous && percent == state.torPercent) return;
@@ -81,10 +88,14 @@ class BookCubit extends Cubit<BookState> {
   Future<void> _request(Set<Coordinator>? coordinators) async {
     if (state.tor != TorWait.ready) return;
     if (coordinators != null && coordinators.isEmpty) return;
-    final pending = _requestBooks.execute(state.network, only: coordinators);
+    final started = _loadBooks.execute(state.network, only: coordinators);
+    for (final MapEntry(key: coordinator, value: attempts) in started.entries) {
+      _attempts[coordinator]?.cancel();
+      _attempts[coordinator] = attempts;
+    }
     final statuses = {
       ...state.coordinators,
-      for (final coordinator in pending.keys)
+      for (final coordinator in started.keys)
         coordinator: CoordinatorBookLoading(
           switch (state.coordinators[coordinator]) {
             CoordinatorBookLoaded(:final book) => book,
@@ -95,18 +106,23 @@ class BookCubit extends Cubit<BookState> {
     };
     emit(state.copyWith(coordinators: statuses));
     await Future.wait([
-      for (final MapEntry(key: coordinator, value: outcome) in pending.entries)
-        _await(coordinator, outcome, _requests[coordinator] = _nextRequest++),
+      for (final MapEntry(key: coordinator, value: attempts) in started.entries)
+        _await(coordinator, attempts),
     ]);
   }
 
   Future<void> _await(
     Coordinator coordinator,
-    Future<CoordinatorBookOutcome> outcome,
-    int id,
+    CoordinatorBookAttempts attempts,
   ) async {
-    final result = (await outcome).result;
-    if (isClosed || _requests[coordinator] != id) return;
+    final result = await attempts.outcome;
+    // `null`: these attempts were cancelled, by a new request of the coordinator or by `close`; and an outcome that a new request overtook before it was handled is dropped too.
+    if (result == null ||
+        isClosed ||
+        !identical(_attempts[coordinator], attempts)) {
+      return;
+    }
+    _attempts.remove(coordinator);
     final status = switch (result) {
       Ok(:final value) => CoordinatorBookLoaded(value),
       Err(:final failure) => CoordinatorBookFailed(failure),
@@ -132,8 +148,13 @@ class BookCubit extends Cubit<BookState> {
     );
   }
 
+  /// Leaving the tab ends every wait before asking a coordinator again: nothing more is sent for this book.
   @override
   Future<void> close() async {
+    for (final attempts in _attempts.values) {
+      attempts.cancel();
+    }
+    _attempts.clear();
     await _torStates?.cancel();
     return super.close();
   }

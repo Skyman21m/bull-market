@@ -618,11 +618,35 @@ abstract class P2pLocalizations {
   /// **'Retry'**
   String get p2pCommonRetry;
 
-  /// Not in the RoboSats texts: shown above the book while some coordinators have not answered yet; the orders of the others are already listed.
+  /// Not in the RoboSats texts (#73, asked by the owner): the line under the row of the coordinators' images above the book, while some coordinators are still awaited, and quietly once all of them answered (« 6 of 6 coordinators answered »).
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 coordinator is still loading} other{{count} coordinators are still loading}}'**
-  String p2pBookCoordinatorsLoading(int count);
+  /// **'{total, plural, =1{{answered} of 1 coordinator answered} other{{answered} of {total} coordinators answered}}'**
+  String p2pBookCoordinatorsAnswered(int answered, int total);
+
+  /// Not in the RoboSats texts (#73): the same line, next to « Retry », once no coordinator is awaited any more and some gave no book after their last attempt.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 coordinator offline} other{{count} coordinators offline}}'**
+  String p2pBookCoordinatorsOffline(int count);
+
+  /// Not in the RoboSats texts (#73): what a screen reader says of a coordinator's image in the row above the book once its book has arrived; {name} is the coordinator's name.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, answered'**
+  String p2pBookCoordinatorAnswered(String name);
+
+  /// Not in the RoboSats texts (#73): the same, while its book is being requested or the coordinator is about to be asked again.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, awaited'**
+  String p2pBookCoordinatorAwaited(String name);
+
+  /// Not in the RoboSats texts (#73): the same, once the coordinator gave no book after its last attempt.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, offline'**
+  String p2pBookCoordinatorOffline(String name);
 
   /// Hours of a duration: the expiry ring of the book and the deposit time of an order. RoboSats writes `5h` in code, without translation.
   ///

@@ -364,12 +364,51 @@
   "@p2pCommonRetry": {
     "description": "Not in the RoboSats texts: asks again the coordinators whose book failed, or restarts Tor after a connection error."
   },
-  "p2pBookCoordinatorsLoading": "{count, plural, =1{1 coordinator is still loading} other{{count} coordinators are still loading}}",
-  "@p2pBookCoordinatorsLoading": {
-    "description": "Not in the RoboSats texts: shown above the book while some coordinators have not answered yet; the orders of the others are already listed.",
+  "p2pBookCoordinatorsAnswered": "{total, plural, =1{{answered} of 1 coordinator answered} other{{answered} of {total} coordinators answered}}",
+  "@p2pBookCoordinatorsAnswered": {
+    "description": "Not in the RoboSats texts (#73, asked by the owner): the line under the row of the coordinators' images above the book, while some coordinators are still awaited, and quietly once all of them answered (« 6 of 6 coordinators answered »).",
+    "placeholders": {
+      "answered": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pBookCoordinatorsOffline": "{count, plural, =1{1 coordinator offline} other{{count} coordinators offline}}",
+  "@p2pBookCoordinatorsOffline": {
+    "description": "Not in the RoboSats texts (#73): the same line, next to « Retry », once no coordinator is awaited any more and some gave no book after their last attempt.",
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "p2pBookCoordinatorAnswered": "{name}, answered",
+  "@p2pBookCoordinatorAnswered": {
+    "description": "Not in the RoboSats texts (#73): what a screen reader says of a coordinator's image in the row above the book once its book has arrived; {name} is the coordinator's name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookCoordinatorAwaited": "{name}, awaited",
+  "@p2pBookCoordinatorAwaited": {
+    "description": "Not in the RoboSats texts (#73): the same, while its book is being requested or the coordinator is about to be asked again.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookCoordinatorOffline": "{name}, offline",
+  "@p2pBookCoordinatorOffline": {
+    "description": "Not in the RoboSats texts (#73): the same, once the coordinator gave no book after its last attempt.",
+    "placeholders": {
+      "name": {
+        "type": "String"
       }
     }
   },
