@@ -8,8 +8,7 @@ import 'seed_hash.dart';
 
 /// The mark of a coordinator: its initials in a framed rounded square, so that a coordinator never reads as one more robot, whose avatar is round.
 ///
-/// The official client shows the image each coordinator gave RoboSats (`frontend/static/federation/avatars/` at commit ff1998c).
-/// Troc does not bundle those images while their licence is not established (#57): this mark stands in for them, for every coordinator.
+/// It stands in for the image the official client shows (`frontend/static/federation/avatars/` at commit ff1998c), which `CoordinatorAvatar` draws: for a coordinator of the list without a bundled image, and for an image that cannot be loaded or decoded.
 /// The initials are the capital letters A to Z of the long alias, at most two, or else the first character of the short alias, upper-cased.
 /// The colour of the frame and of the background is a theme colour chosen by the short alias, and the initials take the colour of the text.
 /// So a coordinator has the same mark on every screen and at every run, and nothing a coordinator sends changes it.

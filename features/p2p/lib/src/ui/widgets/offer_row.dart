@@ -6,7 +6,7 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/bond_warning.dart';
 import '../../presentation/p2p_formats.dart';
 import 'expiry_ring.dart';
-import 'robot_avatar.dart';
+import 'maker_avatar.dart';
 
 /// One offer of the book: the maker's robot and nickname, its role, payment methods, premium and bond, then the amount and the expiry ring.
 ///
@@ -39,7 +39,7 @@ class OfferRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            RobotAvatar(seed: order.maker.hex),
+            MakerAvatar(order: order),
             const Gap(BullSpacing.sm),
             Expanded(
               child: Column(
