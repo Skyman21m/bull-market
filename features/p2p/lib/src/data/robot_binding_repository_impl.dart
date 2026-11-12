@@ -30,6 +30,12 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
       'WHERE network = ? AND key_fingerprint = ? AND origin = ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING';
 
+  /// Whether any robot index of a key is bound, whatever the network, and the origin of the key on one network, absent when none is recorded, in one statement.
+  static const String _exposureSql =
+      'SELECT EXISTS (SELECT 1 FROM robot_bindings WHERE key_fingerprint = ?) '
+      'AS bound, (SELECT origin FROM garage_key_histories '
+      'WHERE network = ? AND key_fingerprint = ?) AS origin';
+
   final P2pDatabase _database;
   final DateTime Function() _clock;
 
@@ -122,6 +128,50 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
         null => const Err(P2pStorageFailure()),
       },
     };
+  }
+
+  @override
+  Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) async {
+    final QueryRow row;
+    try {
+      row = await _database
+          .customSelect(
+            _exposureSql,
+            variables: [
+              Variable.withString(key.hex),
+              Variable.withString(_networkValue(network)),
+              Variable.withString(key.hex),
+            ],
+            readsFrom: {_database.robotBindings, _database.garageKeyHistories},
+          )
+          .getSingle();
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    return Ok(
+      GarageKeyExposure(
+        // Only a key recorded as drawn here has a known history: `imported`, no row, or a value this code never writes leave it unknown.
+        history: row.readNullable<String>('origin') == _generated
+            ? GarageKeyHistory.drawnHere
+            : GarageKeyHistory.unknown,
+        hasBinding: row.read<bool>('bound'),
+      ),
+    );
+  }
+
+  @override
+  Future<Result<bool, P2pFailure>> hasAnyBinding() async {
+    try {
+      final any = await (_database.select(
+        _database.robotBindings,
+      )..limit(1)).getSingleOrNull();
+      return Ok(any != null);
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
   }
 
   static RobotBinding? _bindingOf(RobotBindingRow row) {

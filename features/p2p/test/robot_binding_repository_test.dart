@@ -417,6 +417,167 @@ void main() {
     );
   });
 
+  group('what a delete of the key reads', () {
+    Matcher exposure(GarageKeyHistory history, {required bool hasBinding}) =>
+        isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+          (ok) => ok.value,
+          'value',
+          GarageKeyExposure(history: history, hasBinding: hasBinding),
+        );
+
+    test(
+      'a key never recorded has an unknown history and no binding',
+      () async {
+        expect(
+          await bindings.exposureOf(testnet, fingerprintA),
+          exposure(GarageKeyHistory.unknown, hasBinding: false),
+        );
+      },
+    );
+
+    test(
+      'a key drawn here, with no robot bound, has none on a coordinator',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          passes,
+        );
+
+        final read = await bindings.exposureOf(testnet, fingerprintA);
+        expect(read, exposure(GarageKeyHistory.drawnHere, hasBinding: false));
+        expect(
+          (read as Ok<GarageKeyExposure, P2pFailure>)
+              .value
+              .mayHaveRobotsOnCoordinators,
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'a key imported, or drawn then imported, has an unknown history',
+      () async {
+        expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
+        expect(
+          await bindings.exposureOf(testnet, fingerprintA),
+          exposure(GarageKeyHistory.unknown, hasBinding: false),
+        );
+
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintB),
+          passes,
+        );
+        expect(await bindings.recordImportedKey(mainnet, fingerprintB), passes);
+        expect(
+          await bindings.exposureOf(mainnet, fingerprintB),
+          exposure(GarageKeyHistory.unknown, hasBinding: false),
+        );
+      },
+    );
+
+    test('the history is the one of the network asked', () async {
+      expect(await bindings.recordGeneratedKey(mainnet, fingerprintA), passes);
+
+      expect(
+        await bindings.exposureOf(mainnet, fingerprintA),
+        exposure(GarageKeyHistory.drawnHere, hasBinding: false),
+      );
+      expect(
+        await bindings.exposureOf(testnet, fingerprintA),
+        exposure(GarageKeyHistory.unknown, hasBinding: false),
+      );
+    });
+
+    test('a robot bound on this network counts', () async {
+      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), passes);
+      expect(
+        await bindings.bind(RobotSlot(testnet, fingerprintA, 4), temple),
+        passes,
+      );
+
+      expect(
+        await bindings.exposureOf(testnet, fingerprintA),
+        exposure(GarageKeyHistory.drawnHere, hasBinding: true),
+      );
+    });
+
+    test('a robot bound on the other network counts as well', () async {
+      // The same key in both slots: drawn here on each network, robot 0 bound to a mainnet coordinator.
+      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), passes);
+      expect(await bindings.recordGeneratedKey(mainnet, fingerprintA), passes);
+      expect(
+        await bindings.bind(
+          RobotSlot(mainnet, fingerprintA, 0),
+          identityOf('lake', mainnet),
+        ),
+        passes,
+      );
+
+      expect(
+        await bindings.exposureOf(testnet, fingerprintA),
+        exposure(GarageKeyHistory.drawnHere, hasBinding: true),
+      );
+    });
+
+    test('the bindings of another key do not count', () async {
+      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), passes);
+      expect(await bindings.recordGeneratedKey(testnet, fingerprintB), passes);
+      expect(
+        await bindings.bind(RobotSlot(testnet, fingerprintB, 0), temple),
+        passes,
+      );
+
+      expect(
+        await bindings.exposureOf(testnet, fingerprintA),
+        exposure(GarageKeyHistory.drawnHere, hasBinding: false),
+      );
+    });
+
+    test('any binding of any key is seen when the key is unknown', () async {
+      final none = isA<Ok<bool, P2pFailure>>().having(
+        (ok) => ok.value,
+        'value',
+        isFalse,
+      );
+      expect(await bindings.hasAnyBinding(), none);
+      // A history alone binds nothing.
+      expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
+      expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), passes);
+      expect(await bindings.hasAnyBinding(), none);
+
+      expect(
+        await bindings.bind(
+          RobotSlot(mainnet, fingerprintB, 2),
+          identityOf('temple', mainnet),
+        ),
+        passes,
+      );
+      expect(
+        await bindings.hasAnyBinding(),
+        isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
+      );
+    });
+
+    test('reading writes nothing', () async {
+      expect(
+        await bindings.exposureOf(testnet, fingerprintA),
+        isA<Ok<GarageKeyExposure, P2pFailure>>(),
+      );
+      expect(await bindings.hasAnyBinding(), isA<Ok<bool, P2pFailure>>());
+
+      expect(await rows(), isEmpty);
+      expect(await database.select(database.garageKeyHistories).get(), isEmpty);
+    });
+
+    test('prints neither the key nor its fingerprint', () {
+      const read = GarageKeyExposure(
+        history: GarageKeyHistory.unknown,
+        hasBinding: true,
+      );
+      expect('$read', 'GarageKeyExposure(unknown, true)');
+    });
+  });
+
   group('on disk', () {
     late Directory directory;
 
@@ -667,6 +828,22 @@ void main() {
         await repository.bind(RobotSlot(testnet, fingerprintA, 0), temple),
         refusedWith<P2pStorageFailure>(),
       );
+      expect(
+        await repository.exposureOf(testnet, fingerprintA),
+        isA<Err<GarageKeyExposure, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<P2pStorageFailure>(),
+        ),
+      );
+      expect(
+        await repository.hasAnyBinding(),
+        isA<Err<bool, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<P2pStorageFailure>(),
+        ),
+      );
       await broken.close();
     });
 
@@ -684,6 +861,11 @@ void main() {
         await repository.recordImportedKey(testnet, fingerprintA),
         refusedWith<P2pStorageFailure>(),
       );
+      expect(
+        await repository.exposureOf(mainnet, fingerprintA),
+        isA<Err<GarageKeyExposure, P2pFailure>>(),
+      );
+      expect(await repository.hasAnyBinding(), isA<Err<bool, P2pFailure>>());
     });
   });
 

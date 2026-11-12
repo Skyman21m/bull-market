@@ -28,11 +28,23 @@ RobotBindingRepositoryImpl bindingsInMemory({
 /// One call made to [RecordingBindings].
 typedef BindingCall = (String method, Object? first, Object? second);
 
-/// Bindings that keep the calls made to them and give [failure] to every call, or to the first [failures] calls when it is set, or success without it.
+/// Bindings that keep the calls made to them and give [failure] to every write, or to the first [failures] writes when it is set, or success without it; the reads give [readFailure] when it is set, and [exposure] and [anyBinding] otherwise.
 final class RecordingBindings implements RobotBindingRepository {
   final List<BindingCall> calls = [];
   P2pFailure? failure;
   int? failures;
+
+  /// What [exposureOf] answers when it succeeds: by default a key drawn here, with no robot bound, whose delete asks no PIN.
+  GarageKeyExposure exposure = const GarageKeyExposure(
+    history: GarageKeyHistory.drawnHere,
+    hasBinding: false,
+  );
+
+  /// What [hasAnyBinding] answers when it succeeds.
+  bool anyBinding = false;
+
+  /// What the reads, [exposureOf] and [hasAnyBinding], give instead, when it is set: the writes follow [failure].
+  P2pFailure? readFailure;
 
   RecordingBindings({this.failure, this.failures});
 
@@ -71,5 +83,26 @@ final class RecordingBindings implements RobotBindingRepository {
   ) async {
     calls.add(('bind', robot, coordinator));
     return _result;
+  }
+
+  @override
+  Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) async {
+    calls.add(('exposureOf', network, key));
+    return switch (readFailure) {
+      final failure? => Err(failure),
+      null => Ok(exposure),
+    };
+  }
+
+  @override
+  Future<Result<bool, P2pFailure>> hasAnyBinding() async {
+    calls.add(('hasAnyBinding', null, null));
+    return switch (readFailure) {
+      final failure? => Err(failure),
+      null => Ok(anyBinding),
+    };
   }
 }
