@@ -451,6 +451,37 @@ void main() {
       hasLength(1),
     );
     expect(bind.where((call) => call.startsWith('customSelect(')), isEmpty);
+    // Across the whole file too: a helper that read the history and wrote the binding, the pinned insert left unused in `bind`, passed a check of `bind` alone (second review of #72).
+    expect(
+      repository.calls.where((call) => call.startsWith('customInsert(')),
+      hasLength(1),
+    );
+    expect(
+      repository.calls.where(
+        (call) => call.startsWith('customInsert(_bindIfFreshSql,'),
+      ),
+      hasLength(1),
+    );
+    // The table of the bindings is handed to its reads and to that insert only: no typed insert, batch or other write.
+    expect(
+      repository.calls.where(
+        (call) =>
+            call.contains('robotBindings') &&
+            !RegExp(r'^(select|customSelect|customInsert)\(').hasMatch(call),
+      ),
+      isEmpty,
+    );
+    // And no SQL text inserts but the pinned one.
+    final pinned =
+        repository.constants['_bindIfFreshSql'] ?? fail('no _bindIfFreshSql');
+    expect(
+      repository.strings.where(
+        (text) =>
+            RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
+            !pinned.contains(text),
+      ),
+      isEmpty,
+    );
     expect(
       repository.namesByMethod['bind'],
       isNot(contains('garageKeyHistories')),
