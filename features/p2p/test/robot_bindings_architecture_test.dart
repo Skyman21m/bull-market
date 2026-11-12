@@ -445,6 +445,10 @@ void main() {
           'insertAllOnConflictUpdate',
           'deleteTable',
           'drop',
+          // A column of the bindings dropped or renamed, or the table renamed, would lose what a binding records (review of #72).
+          'dropColumn',
+          'renameColumn',
+          'renameTable',
         }),
         isEmpty,
       );
@@ -478,6 +482,43 @@ void main() {
     expect(database.calls.where((call) => call.startsWith('addColumn(')), [
       'addColumn(schema.robotBindings, schema.robotBindings.provenance)',
     ]);
+    // Every call of the migrator, in order: nothing else changes a table.
+    expect(database.qualifiedCalls.where((call) => call.startsWith('m.')), [
+      'm.alterTable(TableMigration(schema.garageKeyHistories))',
+      'm.addColumn(schema.robotBindings, schema.robotBindings.provenance)',
+    ]);
+  });
+
+  test('a robot is bound by one statement that reads the history itself', () {
+    // The binding may be written only while the key's history allows it: a read of the history followed by a write would let an import of the key, from another connection, land in between (review of #72).
+    // The tests of binds at once check the order of their results, not this: these pins guard that the check and the write are one statement.
+    final repository =
+        libraries['lib/src/data/robot_binding_repository_impl.dart'] ??
+        fail('no repository');
+    final bind = repository.callsByMethod['bind'] ?? fail('no bind');
+
+    expect(
+      bind.where((call) => call.startsWith('customInsert(')),
+      hasLength(1),
+    );
+    expect(
+      bind.where((call) => call.startsWith('customInsert(_bindIfFreshSql,')),
+      hasLength(1),
+    );
+    expect(bind.where((call) => call.startsWith('customSelect(')), isEmpty);
+    expect(
+      repository.namesByMethod['bind'],
+      isNot(contains('garageKeyHistories')),
+    );
+    expect(
+      repository.constants['_bindIfFreshSql'],
+      'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
+      'coordinator_alias, coordinator_onion, coordinator_node_keys, '
+      'coordinator_nostr_key, bound_at, provenance) '
+      'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
+      'WHERE network = ? AND key_fingerprint = ? AND origin IN (?, ?) '
+      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING',
+    );
   });
 }
 
@@ -495,6 +536,15 @@ final class _Facts {
   /// Each invocation, as its name and its arguments, `name(a, b)`.
   final List<String> calls;
 
+  /// The invocations in the body of each method or function, by its name, as [calls] gives them.
+  final Map<String, List<String>> callsByMethod;
+
+  /// Each invocation on a simple name, as `target.name(a, b)`.
+  final List<String> qualifiedCalls;
+
+  /// The text of each variable initialised with a string literal, by its name.
+  final Map<String, String> constants;
+
   _Facts(
     this.imports,
     this.names,
@@ -503,6 +553,9 @@ final class _Facts {
     this.strings,
     this.namesByMethod,
     this.calls,
+    this.callsByMethod,
+    this.qualifiedCalls,
+    this.constants,
   );
 
   factory _Facts.of(String source) {
@@ -521,6 +574,9 @@ final class _Facts {
       visitor.strings,
       visitor.namesByMethod,
       visitor.calls,
+      visitor.callsByMethod,
+      visitor.qualifiedCalls,
+      visitor.constants,
     );
   }
 }
@@ -532,6 +588,9 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   final List<String> strings = [];
   final Map<String, Set<String>> namesByMethod = {};
   final List<String> calls = [];
+  final Map<String, List<String>> callsByMethod = {};
+  final List<String> qualifiedCalls = [];
+  final Map<String, String> constants = {};
   String? _method;
 
   @override
@@ -563,9 +622,13 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     invoked.add(node.methodName.name);
-    calls.add(
-      '${node.methodName.name}(${node.argumentList.arguments.map((argument) => argument.toSource()).join(', ')})',
-    );
+    final call =
+        '${node.methodName.name}(${node.argumentList.arguments.map((argument) => argument.toSource()).join(', ')})';
+    calls.add(call);
+    if (_method case final method?) (callsByMethod[method] ??= []).add(call);
+    if (node.target case SimpleIdentifier(:final name)) {
+      qualifiedCalls.add('$name.$call');
+    }
     // `P2pDatabase.open(…)` parses as an invocation of `open` on `P2pDatabase` when the parser does not resolve it.
     if (node.target case SimpleIdentifier(:final name)) {
       constructed.add('$name.${node.methodName.name}');
@@ -579,6 +642,16 @@ final class _FactsVisitor extends RecursiveAstVisitor<void> {
     final named = node.constructorName.name?.name;
     constructed.add(named == null ? type : '$type.$named');
     super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    if (node.initializer case final StringLiteral literal?) {
+      if (literal.stringValue case final text?) {
+        constants[node.name.lexeme] = text;
+      }
+    }
+    super.visitVariableDeclaration(node);
   }
 
   @override

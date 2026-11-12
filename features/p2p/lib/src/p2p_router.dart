@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import 'domain/p2p_clock.dart';
+import 'domain/p2p_shuffle.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
@@ -107,6 +108,7 @@ class _P2pPageState extends State<_P2pPage> {
       create: (_) => locator<BookCubit>(param1: current)..start(),
       child: P2pTabScreen(
         now: locator<P2pClock>().now,
+        shuffle: locator<P2pShuffle>(),
         onOpenOrder: (order) => context.pushNamed(
           P2pRouter.orderName,
           extra: P2pOrderRouteArgs(order, current),

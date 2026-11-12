@@ -26,6 +26,13 @@ void main() {
     expect(fr.amount(fiat(1234.56)), '1 235');
   });
 
+  test('how far Tor has got is a whole percentage in the language', () {
+    expect(en.torProgress(0), '0%');
+    expect(en.torProgress(42), '42%');
+    expect(en.torProgress(99), '99%');
+    expect(fr.torProgress(42), '42\u00a0%');
+  });
+
   test('premium is signed, bond and fees are percentages', () {
     expect(en.premium(Premium.tryCreate(2) ?? (throw StateError(''))), '+2.0%');
     expect(

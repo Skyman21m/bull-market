@@ -783,6 +783,7 @@ void main() {
         expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
 
         // drift runs the statements of one connection in the order they are sent.
+        // This checks the order of the results only: that the history is read by the very statement that binds is pinned by `robot_bindings_architecture_test.dart` (review of #72).
         final bindFirst = await Future.wait([
           bindings.bind(RobotSlot(testnet, fingerprintA, 0), temple),
           bindings.recordAcknowledgedKey(testnet, fingerprintA),
@@ -890,7 +891,14 @@ void main() {
             history: GarageKeyHistory.acknowledged,
           ),
         );
-        // Another index of the key, and the same index of a key without bindings, are unbound.
+        // The indexes below and above it, and the same index of a key without bindings, are unbound.
+        for (final index in [0, 1]) {
+          expect(
+            (await standing(RobotSlot(testnet, fingerprintA, index))).binding,
+            isNull,
+            reason: 'index $index',
+          );
+        }
         expect(
           (await standing(RobotSlot(testnet, fingerprintA, 3))).binding,
           isNull,
@@ -998,6 +1006,164 @@ void main() {
         );
       }
       await loose.close();
+    });
+
+    group('rows no version writes, in tables stripped of every constraint', () {
+      // The columns keep their types, so SQLite stores what it can convert and keeps the rest as given; nothing forbids a NULL.
+      const histories =
+          'CREATE TABLE garage_key_histories (network TEXT, key_fingerprint TEXT, origin TEXT, recorded_at INTEGER, PRIMARY KEY (network, key_fingerprint))';
+      const bindingsTable =
+          'CREATE TABLE robot_bindings (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, coordinator_node_keys TEXT, coordinator_nostr_key TEXT, bound_at INTEGER, provenance TEXT, PRIMARY KEY (key_fingerprint, robot_index))';
+      final good = {
+        'network': "'testnet'",
+        'key_fingerprint': "'${fingerprintA.hex}'",
+        'robot_index': '0',
+        'coordinator_alias': "'temple'",
+        'coordinator_onion': "'${temple.onion}'",
+        'coordinator_node_keys': "'${temple.nodeKeys.join(',')}'",
+        'coordinator_nostr_key': "'${temple.nostrKey}'",
+        'bound_at': '0',
+        'provenance': "'generated'",
+      };
+
+      /// A database of schema 2 holding [statements] of SQL, written as they are.
+      P2pDatabase holding(List<String> statements) {
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        return P2pDatabase.forTesting(
+          NativeDatabase.memory(
+            setup: (raw) {
+              raw.execute(histories);
+              raw.execute(bindingsTable);
+              statements.forEach(raw.execute);
+              raw.execute('PRAGMA user_version = ${P2pDatabase.schema}');
+            },
+          ),
+        );
+      }
+
+      String bindingRow(Map<String, String> values) =>
+          'INSERT INTO robot_bindings (${values.keys.join(', ')}) VALUES (${values.values.join(', ')})';
+      String historyRow(String origin) =>
+          "INSERT INTO garage_key_histories VALUES ('testnet', '${fingerprintA.hex}', $origin, 0)";
+      final refused = isA<Err<RobotStanding, P2pFailure>>().having(
+        (err) => err.failure,
+        'failure',
+        isA<P2pStorageFailure>(),
+      );
+
+      test(
+        'the rows of the test are read when they hold what this code writes',
+        () async {
+          final database = holding([
+            bindingRow(good),
+            historyRow("'generated'"),
+          ]);
+
+          expect(
+            await bindingsInMemory(
+              database: database,
+            ).standingOf(RobotSlot(testnet, fingerprintA, 0)),
+            isA<Ok<RobotStanding, P2pFailure>>().having(
+              (ok) => ok.value,
+              'standing',
+              RobotStanding(
+                network: testnet,
+                binding: RobotBinding(
+                  temple,
+                  DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+                  BindingProvenance.drawnHere,
+                ),
+                history: GarageKeyHistory.drawnHere,
+              ),
+            ),
+          );
+          await database.close();
+        },
+      );
+
+      test(
+        'a binding with a value of another type, out of range, unknown or NULL is a storage failure',
+        () async {
+          for (final (column, value) in [
+            ('bound_at', "'abc'"),
+            ('bound_at', '9000000000000000'),
+            ('bound_at', '-9000000000000000'),
+            ('bound_at', '1.5'),
+            ('provenance', "'imported'"),
+            ('provenance', '7'),
+            ('network', "'signet'"),
+            for (final column in good.keys.where(
+              (column) =>
+                  column != 'key_fingerprint' && column != 'robot_index',
+            ))
+              (column, 'NULL'),
+          ]) {
+            final database = holding([
+              bindingRow({...good, column: value}),
+            ]);
+
+            expect(
+              await bindingsInMemory(
+                database: database,
+              ).standingOf(RobotSlot(testnet, fingerprintA, 0)),
+              refused,
+              reason: '$column = $value',
+            );
+            await database.close();
+          }
+        },
+      );
+
+      test(
+        'a binding whose time no DateTime holds refuses a bind too, rather than throwing',
+        () async {
+          for (final value in ["'abc'", '9000000000000000']) {
+            final database = holding([
+              bindingRow({...good, 'bound_at': value}),
+              historyRow("'generated'"),
+            ]);
+
+            expect(
+              await bindingsInMemory(
+                database: database,
+              ).bind(RobotSlot(testnet, fingerprintA, 0), temple),
+              refusedWith<P2pStorageFailure>(),
+              reason: value,
+            );
+            await database.close();
+          }
+        },
+      );
+
+      test(
+        'an origin unknown, of another type or NULL is a storage failure for the standing, and an unknown history for the PIN',
+        () async {
+          for (final origin in ["'elsewhere'", "''", '7', 'NULL']) {
+            final database = holding([historyRow(origin)]);
+            final repository = bindingsInMemory(database: database);
+
+            expect(
+              await repository.standingOf(RobotSlot(testnet, fingerprintA, 0)),
+              refused,
+              reason: origin,
+            );
+            // Unknown asks the PIN before a delete: the safe answer there.
+            expect(
+              await repository.exposureOf(testnet, fingerprintA),
+              isA<Ok<GarageKeyExposure, P2pFailure>>().having(
+                (ok) => ok.value,
+                'exposure',
+                const GarageKeyExposure(
+                  history: GarageKeyHistory.unknown,
+                  hasBinding: false,
+                ),
+              ),
+              reason: origin,
+            );
+            await database.close();
+          }
+        },
+      );
     });
 
     test('prints neither the key nor its fingerprint', () {
@@ -1133,6 +1299,7 @@ void main() {
         expect(await one.recordImportedKey(testnet, fingerprintA), passes);
 
         // The binds of one connection run in order; the record of the other lands somewhere among them.
+        // It checks the order of the results, not that a bind is atomic: a bind that read the history, then wrote, passes it most of the time; `robot_bindings_architecture_test.dart` pins the one statement (review of #72).
         // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections above: such a bind is a P2pStorageFailure that refuses the request, and a record that gave up is tried again.
         Future<List<Result<void, P2pFailure>>> bindDuring(
           Iterable<int> indexes,
@@ -1167,17 +1334,24 @@ void main() {
           List.generate(20, (i) => i),
           () => other.recordAcknowledgedKey(testnet, fingerprintA),
         );
-        // Refused until the acknowledgement, never once it is recorded.
+        // Refused until the acknowledgement, never once it is recorded; a phase where every bind gave up would check nothing (review of #72).
+        expect(acknowledging.where((r) => bound(r) || refused(r)), isNotEmpty);
         final firstBound = acknowledging.indexWhere(bound);
         expect(
           acknowledging.skip(firstBound < 0 ? 20 : firstBound).any(refused),
           isFalse,
+        );
+        // Once the acknowledgement is recorded, and nothing else writes, a robot is bound with that provenance.
+        expect(
+          await one.bind(RobotSlot(testnet, fingerprintA, 40), temple),
+          passes,
         );
         final importing = await bindDuring(
           List.generate(20, (i) => 20 + i),
           () => other.recordImportedKey(testnet, fingerprintA),
         );
         // Bound until the import, never once it is recorded.
+        expect(importing.where((r) => bound(r) || refused(r)), isNotEmpty);
         final firstRefused = importing.indexWhere(refused);
         expect(
           importing.skip(firstRefused < 0 ? 20 : firstRefused).any(bound),
@@ -1185,7 +1359,7 @@ void main() {
         );
         // A robot bound once the key is imported again would carry a provenance it does not have.
         expect(
-          await one.bind(RobotSlot(testnet, fingerprintA, 40), temple),
+          await one.bind(RobotSlot(testnet, fingerprintA, 41), temple),
           refusedWith<RobotHistoryUnknownFailure>(),
         );
 
@@ -1195,6 +1369,8 @@ void main() {
           if (bound(result)) expect(storedIndexes, contains(i));
           if (refused(result)) expect(storedIndexes, isNot(contains(i)));
         }
+        expect(storedIndexes, contains(40));
+        expect(storedIndexes, isNot(contains(41)));
         expect(
           stored.map((row) => row.provenance),
           everyElement('acknowledged'),

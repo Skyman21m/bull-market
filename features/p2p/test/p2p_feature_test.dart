@@ -8,6 +8,7 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/p2p_shuffle.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:robosats/robosats.dart'
@@ -118,6 +119,10 @@ void main() {
       }
     },
   );
+
+  test('the app draws the phrases of the Tor wait in a random order', () {
+    expect(locator<P2pShuffle>(), same(P2pShuffle.random));
+  });
 
   test('an info request fails as a value when Tor gives no session', () async {
     final facade = locator<P2pFacade>();

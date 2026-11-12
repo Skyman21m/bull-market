@@ -124,8 +124,9 @@ final class P2pFacade {
     RobosatsNetwork network,
   ) => _fetchInfo.execute(coordinator, network);
 
-  /// The state of the embedded Tor, at once and then at each change.
-  Stream<P2pTorState> watchTorState() => _watchTorState.execute();
+  /// The state of the embedded Tor, at once and then at each change of state.
+  Stream<P2pTorState> watchTorState() =>
+      _watchTorState.execute().map((report) => report.state).distinct();
 
   /// Closes every Tor session to the coordinators, those of the robots included; the next request opens new ones.
   Future<void> closeSessions() => _closeSessions.execute();

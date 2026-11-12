@@ -123,6 +123,127 @@ void main() {
       await book.close();
     });
 
+    test(
+      'the share of the start shows in whole percent while Tor connects',
+      () async {
+        final book = cubit()..start();
+        tor.embedded.notStarted();
+        await settle();
+        expect(book.state.torPercent, isNull);
+
+        tor.embedded.connecting();
+        await settle();
+        expect(
+          (book.state.tor, book.state.torPercent),
+          (TorWait.connecting, null),
+        );
+
+        tor.embedded.connecting(0);
+        await settle();
+        expect(book.state.torPercent, 0);
+
+        tor.embedded.connecting(0.429);
+        await settle();
+        expect(book.state.torPercent, 42);
+
+        // Arti's share dips while it fetches the directory: the percentage stays.
+        tor.embedded.connecting(0.3);
+        await settle();
+        expect(book.state.torPercent, 42);
+
+        // A full share before ready, while `bull_tor` holds readiness.
+        tor.embedded.connecting(1);
+        await settle();
+        expect(
+          (book.state.tor, book.state.torPercent),
+          (TorWait.connecting, 99),
+        );
+        expect(transport.requested, isEmpty);
+
+        tor.embedded.ready();
+        await settle();
+        expect((book.state.tor, book.state.torPercent), (TorWait.ready, null));
+        expect(transport.requested, hasLength(mainnetCoordinators));
+
+        // A directory refresh after ready asks nothing again and shows no percentage.
+        tor.embedded
+          ..connecting(0.5)
+          ..connecting(1)
+          ..ready();
+        await settle();
+        expect((book.state.tor, book.state.torPercent), (TorWait.ready, null));
+        expect(transport.requested, hasLength(mainnetCoordinators));
+        await book.close();
+      },
+    );
+
+    test('a new attempt starts the percentage over', () async {
+      final book = cubit()..start();
+      final shown = <(TorWait, int?)>[];
+      final subscription = book.stream.listen(
+        (s) => shown.add((s.tor, s.torPercent)),
+      );
+      tor.embedded
+        ..connecting(0.45)
+        ..connecting()
+        ..stopped()
+        ..connecting(0)
+        ..connecting(0.2);
+      await settle();
+
+      expect(shown, [
+        (TorWait.connecting, 45),
+        (TorWait.connecting, null),
+        (TorWait.connecting, 0),
+        (TorWait.connecting, 20),
+      ]);
+      await subscription.cancel();
+      await book.close();
+    });
+
+    test('a report that changes nothing shown emits nothing', () async {
+      final book = cubit()..start();
+      final shown = <(TorWait, int?)>[];
+      final subscription = book.stream.listen(
+        (s) => shown.add((s.tor, s.torPercent)),
+      );
+      tor.embedded
+        ..connecting(0.421)
+        ..connecting(0.425)
+        ..connecting(0.4);
+      await settle();
+
+      expect(shown, [(TorWait.connecting, 42)]);
+      await subscription.cancel();
+      await book.close();
+    });
+
+    test('a failure and Retry show no percentage', () async {
+      final book = cubit()..start();
+      tor.embedded.connecting(0.4);
+      await settle();
+      expect(book.state.torPercent, 40);
+
+      tor.embedded.failed();
+      await settle();
+      expect((book.state.tor, book.state.torPercent), (TorWait.failed, null));
+
+      book.retryTor();
+      await settle();
+      expect(
+        (book.state.tor, book.state.torPercent),
+        (TorWait.initializing, null),
+      );
+
+      tor.embedded
+        ..connecting()
+        ..stopped()
+        ..connecting(0.1);
+      await settle();
+      expect((book.state.tor, book.state.torPercent), (TorWait.connecting, 10));
+      await book.close();
+    });
+
     test('a failed start shows the error, and retry restarts Tor', () async {
       final book = cubit()..start();
       tor.embedded

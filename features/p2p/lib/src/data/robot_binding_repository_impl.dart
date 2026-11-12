@@ -40,8 +40,10 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
       'WHERE network = ? AND key_fingerprint = ?) AS origin';
 
   /// The origin of a key on one network, absent when none is recorded, and the binding of one of its robot indexes, its columns absent when there is none, in one statement that always gives one row.
+  ///
+  /// A recorded origin that is NULL, which the schema forbids, reads as an empty text, which no version writes, so that it is not taken for a key without a record.
   static const String _standingSql =
-      'SELECT (SELECT origin FROM garage_key_histories '
+      'SELECT (SELECT coalesce(origin, \'\') FROM garage_key_histories '
       'WHERE network = ? AND key_fingerprint = ?) AS key_origin, '
       'robot_bindings.* FROM (SELECT 1) LEFT JOIN robot_bindings '
       'ON robot_bindings.key_fingerprint = ? '
@@ -160,9 +162,17 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
     return switch (row) {
       // Not written: the key was neither drawn on this device nor acknowledged, so the robot may live on a coordinator already.
       null => const Err(RobotHistoryUnknownFailure()),
-      final stored => switch (_bindingOf(stored)) {
+      final stored => switch (_bindingFrom(
+        network: stored.network,
+        alias: stored.coordinatorAlias,
+        onion: stored.coordinatorOnion,
+        nodeKeys: stored.coordinatorNodeKeys,
+        nostrKey: stored.coordinatorNostrKey,
+        boundAt: stored.boundAt,
+        provenance: stored.provenance,
+      )) {
         final binding? => binding.admits(coordinator),
-        // A network or a provenance the constraints of the table forbid: a row this code did not write.
+        // A network, a provenance or a time the constraints of the table, or a `DateTime`, do not allow: a row this code did not write.
         null => const Err(P2pStorageFailure()),
       },
     };
@@ -200,9 +210,8 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
   @override
   Future<Result<RobotStanding, P2pFailure>> standingOf(RobotSlot robot) async {
     final fingerprint = robot.keyFingerprint.hex;
-    final QueryRow row;
     try {
-      row = await _database
+      final row = await _database
           .customSelect(
             _standingSql,
             variables: [
@@ -214,59 +223,111 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
             readsFrom: {_database.robotBindings, _database.garageKeyHistories},
           )
           .getSingle();
+      return _standingFrom(robot.network, row.data);
     } on Exception {
       return const Err(P2pStorageFailure());
     }
-    final RobotBinding? binding;
-    // A column of the primary key is absent only when the join found no binding.
-    if (row.readNullable<String>('key_fingerprint') == null) {
-      binding = null;
-    } else if (_bindingOf(_database.robotBindings.map(row.data))
-        case final stored?) {
-      binding = stored;
-    } else {
-      // A network or a provenance the constraints of the table forbid: a row this code did not write.
-      return const Err(P2pStorageFailure());
+  }
+
+  /// The standing the row of [_standingSql] gives for a robot of [network], or a [P2pStorageFailure] for a row this code never writes.
+  ///
+  /// The values are read as SQLite gives them, with no conversion that could throw: a value of another type, a NULL the schema forbids, an origin, network or provenance outside the constraints, or a time outside what a `DateTime` holds is such a row.
+  /// Unlike [exposureOf], whose `unknown` asks the PIN, an origin this code never writes is not read as an unknown history here: a robot shown as free could be bound.
+  static Result<RobotStanding, P2pFailure> _standingFrom(
+    RobosatsNetwork network,
+    Map<String, Object?> data,
+  ) {
+    final GarageKeyHistory history;
+    switch (data['key_origin']) {
+      case null:
+        // No record of the key on that network.
+        history = GarageKeyHistory.unknown;
+      case _generated:
+        history = GarageKeyHistory.drawnHere;
+      case _acknowledged:
+        history = GarageKeyHistory.acknowledged;
+      case _imported:
+        history = GarageKeyHistory.unknown;
+      default:
+        return const Err(P2pStorageFailure());
     }
+    // A column of the primary key is absent only when the join found no binding.
+    if (data['key_fingerprint'] == null) {
+      return Ok(
+        RobotStanding(network: network, binding: null, history: history),
+      );
+    }
+    final binding = switch (data) {
+      {
+        'network': final String boundNetwork,
+        'coordinator_alias': final String alias,
+        'coordinator_onion': final String onion,
+        'coordinator_node_keys': final String nodeKeys,
+        'coordinator_nostr_key': final String nostrKey,
+        'bound_at': final int boundAt,
+        'provenance': final String provenance,
+      } =>
+        _bindingFrom(
+          network: boundNetwork,
+          alias: alias,
+          onion: onion,
+          nodeKeys: nodeKeys,
+          nostrKey: nostrKey,
+          boundAt: boundAt,
+          provenance: provenance,
+        ),
+      _ => null,
+    };
+    if (binding == null) return const Err(P2pStorageFailure());
     return Ok(
-      RobotStanding(
-        network: robot.network,
-        binding: binding,
-        history: _historyFrom(row.readNullable<String>('key_origin')),
-      ),
+      RobotStanding(network: network, binding: binding, history: history),
     );
   }
 
   /// The history an origin of the table gives, absent when the key has no row on the network.
   ///
-  /// Only a key recorded as drawn here or acknowledged has a history the bindings follow: `imported`, no row, or a value this code never writes leave it unknown.
+  /// Only a key recorded as drawn here or acknowledged has a history the bindings follow: `imported`, no row, or a value this code never writes leave it unknown, which is the answer that asks the PIN.
   static GarageKeyHistory _historyFrom(String? origin) => switch (origin) {
     _generated => GarageKeyHistory.drawnHere,
     _acknowledged => GarageKeyHistory.acknowledged,
     _ => GarageKeyHistory.unknown,
   };
 
-  /// The binding a row stores, or `null` for a network or a provenance this code never writes.
-  static RobotBinding? _bindingOf(RobotBindingRow row) {
-    final network = _networkFrom(row.network);
-    final provenance = switch (row.provenance) {
+  /// The largest distance from the epoch a `DateTime` holds, in milliseconds.
+  static const int _maxMilliseconds = 8640000000000000;
+
+  /// The binding the values of a row make, or `null` for a value this code never writes: a network or a provenance outside the constraints, or a time outside what a `DateTime` holds.
+  static RobotBinding? _bindingFrom({
+    required String network,
+    required String alias,
+    required String onion,
+    required String nodeKeys,
+    required String nostrKey,
+    required int boundAt,
+    required String provenance,
+  }) {
+    final coordinatorNetwork = _networkFrom(network);
+    final bindingProvenance = switch (provenance) {
       _generated => BindingProvenance.drawnHere,
       _acknowledged => BindingProvenance.acknowledged,
       _ => null,
     };
-    if (network == null || provenance == null) return null;
+    if (coordinatorNetwork == null ||
+        bindingProvenance == null ||
+        boundAt < -_maxMilliseconds ||
+        boundAt > _maxMilliseconds) {
+      return null;
+    }
     return RobotBinding(
       CoordinatorIdentity(
-        network: network,
-        alias: row.coordinatorAlias,
-        onion: row.coordinatorOnion,
-        nodeKeys: row.coordinatorNodeKeys
-            .split(',')
-            .where((key) => key.isNotEmpty),
-        nostrKey: row.coordinatorNostrKey,
+        network: coordinatorNetwork,
+        alias: alias,
+        onion: onion,
+        nodeKeys: nodeKeys.split(',').where((key) => key.isNotEmpty),
+        nostrKey: nostrKey,
       ),
-      DateTime.fromMillisecondsSinceEpoch(row.boundAt, isUtc: true),
-      provenance,
+      DateTime.fromMillisecondsSinceEpoch(boundAt, isUtc: true),
+      bindingProvenance,
     );
   }
 

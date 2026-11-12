@@ -329,7 +329,10 @@ void main() {
         'the pair of a first contact is made after the binding and before the request',
         () async {
           final order = <String>[];
-          final recording = RecordingBindings();
+          // The key of the robot is recorded as drawn here, or the fake refuses to bind, as the database does.
+          final recording = RecordingBindings(
+            drawnHere: [(networkRobot.network, networkRobot.keyFingerprint)],
+          );
           final ordered = FetchRobotUsecase(
             CoordinatorClient(transport),
             _OrderedBindings(recording, order),
