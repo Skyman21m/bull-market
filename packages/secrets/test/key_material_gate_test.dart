@@ -77,6 +77,14 @@ export 'package:secrets/secrets.dart' show GarageKeyMaterial;
     return checkUnit(resolved.unit, policyPath ?? 'lib/$name.dart');
   }
 
+  // The violations of the reading rules alone, without those of the rules on where the vault is used and on what a reader class declares (#47), for tests about reading that place their fixtures in the feature.
+  List<String> keyReads(List<String> violations) => [
+    for (final violation in violations)
+      if (!violation.endsWith('outside the files that may use the vault') &&
+          !violation.endsWith(', not in the table of readers'))
+        violation,
+  ];
+
   test(
     'aliases and getter access resolve to the private seed declaration',
     () async {
@@ -408,21 +416,21 @@ class SwapMasterKeyModel {
   );
 
   test(
-    'production discovery excludes custody, generated code and vendor files',
+    'production discovery excludes custody and test code, not generated code',
     () {
       final root = Directory('${fixture.path}/discovery')..createSync();
       const included = [
         'lib/app.dart',
         'packages/other/lib/value.dart',
         'features/other/lib/feature.dart',
+        'lib/example.g.dart',
+        'lib/generated/example.dart',
+        'lib/vendor/example.dart',
       ];
       for (final path in [
         ...included,
         'packages/secrets/lib/private.dart',
         'test/example.dart',
-        'lib/example.g.dart',
-        'lib/generated/example.dart',
-        'lib/vendor/example.dart',
       ]) {
         File('${root.path}/$path')
           ..createSync(recursive: true)
@@ -434,6 +442,307 @@ class SwapMasterKeyModel {
       );
     },
   );
+
+  group('no production file escapes the gate for its path (#47)', () {
+    const reads = {
+      'seed': (
+        source: '''
+import 'package:bip39_mnemonic/bip39_mnemonic.dart';
+List<int> leak(Mnemonic words) => words.seed;
+''',
+        symbol: '#Mnemonic.seed',
+      ),
+      'garage': (
+        source: '''
+import 'package:secrets/secrets.dart';
+List<int> leak(GarageKeyMaterial material) => material.bytes;
+''',
+        symbol: '#GarageKeyMaterial.bytes',
+      ),
+    };
+
+    test(
+      'a seed read and a Garage Key read are flagged where the gate skipped files',
+      () async {
+        final root = Directory('${fixture.path}/formerly_skipped')
+          ..createSync();
+        // The app's own exclusions: the analyzer finds no context for these files, and the gate must resolve them all the same.
+        File('${root.path}/analysis_options.yaml').writeAsStringSync('''
+analyzer:
+  exclude:
+    - lib/**/*.g.dart
+    - lib/**/*.freezed.dart
+''');
+        const places = [
+          'features/p2p/lib/generated/%.dart',
+          'features/p2p/lib/generated/l10n/%.dart',
+          'lib/generated/%.dart',
+          'lib/%.g.dart',
+          'lib/src/%.freezed.dart',
+          'packages/robosats/lib/src/%.g.dart',
+          'features/p2p/lib/src/%.freezed.dart',
+          'lib/%.gr.dart',
+          'lib/%.config.dart',
+          'lib/%.mocks.dart',
+          'lib/%.steps.dart',
+          'features/p2p/lib/src/build/%.dart',
+          'packages/other/lib/vendor/%.dart',
+        ];
+        final written = <String, String>{};
+        for (final place in places) {
+          for (final MapEntry(key: name, value: read) in reads.entries) {
+            final path = place.replaceAll('%', name);
+            File('${root.path}/$path')
+              ..createSync(recursive: true)
+              ..writeAsStringSync(read.source);
+            written[path] = read.symbol;
+          }
+        }
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, written.length);
+        for (final MapEntry(key: path, value: symbol) in written.entries) {
+          expect(
+            report.violations,
+            contains(allOf(startsWith('$path: '), endsWith(symbol))),
+            reason: path,
+          );
+        }
+        expect(keyReads(report.violations), hasLength(written.length));
+      },
+    );
+
+    test(
+      'a repository inside a folder named build, vendor or generated is scanned',
+      () async {
+        final root = Directory(
+          '${fixture.path}/build/vendor/generated/repository',
+        )..createSync(recursive: true);
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(reads['seed']?.source ?? '');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(
+          report.violations.single,
+          allOf(startsWith('lib/app.dart: '), endsWith('#Mnemonic.seed')),
+        );
+      },
+    );
+
+    test(
+      'a symbolic link under the production roots fails the check',
+      () async {
+        final root = Directory('${fixture.path}/links')..createSync();
+        File('${root.path}/elsewhere/lib/leak.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(reads['seed']?.source ?? '');
+        Link(
+          '${root.path}/lib/leak.dart',
+        ).createSync('${root.path}/elsewhere/lib/leak.dart', recursive: true);
+        Link(
+          '${root.path}/packages/linked',
+        ).createSync('${root.path}/elsewhere', recursive: true);
+        Link(
+          '${root.path}/features/other/lib',
+        ).createSync('${root.path}/elsewhere/lib', recursive: true);
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 0);
+        expect(report.violations, [
+          'features/other/lib: symbolic link',
+          'lib/leak.dart: symbolic link',
+          'lib: no production Dart file',
+          'packages/linked: symbolic link',
+        ]);
+      },
+    );
+
+    test(
+      'a link standing for the folder of all packages or features fails',
+      () async {
+        // The review of #58: the files were scanned through the link, which was not reported.
+        final root = Directory('${fixture.path}/group_links')..createSync();
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const app = 0;\n');
+        File('${root.path}/elsewhere/other/lib/value.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const value = 0;\n');
+        Link('${root.path}/features').createSync('${root.path}/elsewhere');
+        Link('${root.path}/packages').createSync('${root.path}/elsewhere');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(report.violations, [
+          'features: symbolic link',
+          'packages: symbolic link',
+        ]);
+      },
+    );
+
+    test(
+      'a file reached through a link to a folder outside the repository is a dependency',
+      () async {
+        // The review of #58: the link resolution of the reach check was untested; a toolchain linked into the checkout (`.fvm/flutter_sdk`) relies on it.
+        final root = Directory('${fixture.path}/reach_link')..createSync();
+        File('${fixture.path}/reach_link_outside/lib/dependency.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const dependency = 0;\n');
+        Link(
+          '${root.path}/sdk',
+        ).createSync('${fixture.path}/reach_link_outside');
+        File('${root.path}/lib/app.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(
+            "import '../sdk/lib/dependency.dart';\nconst app = dependency;\n",
+          );
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 1);
+        expect(report.violations, isEmpty);
+      },
+    );
+
+    test('a root without lib/ or without a Dart file fails', () async {
+      final empty = Directory('${fixture.path}/empty_root')..createSync();
+      expect((await checkKeyMaterial(empty.path)).violations, [
+        'lib: missing',
+        'lib: no production Dart file',
+      ]);
+      final bare = Directory('${fixture.path}/bare_root/lib')
+        ..createSync(recursive: true);
+      expect((await checkKeyMaterial(bare.parent.path)).violations, [
+        'lib: no production Dart file',
+      ]);
+    });
+
+    test(
+      'a package or analysis configuration under a production root fails',
+      () async {
+        // The review of #58: a pubspec.yaml and a package configuration under lib/ mapped bip39_mnemonic to a harmless copy, for the gate only.
+        final root = Directory('${fixture.path}/nested_config')..createSync();
+        final config =
+            jsonDecode(
+                  File(
+                    '${fixture.path}/.dart_tool/package_config.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        for (final package in config['packages'] as List) {
+          if (package['name'] == 'bip39_mnemonic') {
+            package['rootUri'] = '../fake';
+          }
+        }
+        for (final (path, text) in [
+          ('lib/sub/pubspec.yaml', 'name: sub\nenvironment:\n  sdk: ^3.8.0\n'),
+          ('lib/sub/.dart_tool/package_config.json', jsonEncode(config)),
+          (
+            'lib/sub/fake/lib/bip39_mnemonic.dart',
+            'class Mnemonic {}\n'
+                'extension Words on Mnemonic {\n'
+                '  List<int> get seed => const [];\n'
+                '}\n',
+          ),
+          ('lib/sub/leak.dart', reads['seed']?.source ?? ''),
+          ('features/p2p/lib/src/analysis_options.yaml', 'analyzer:\n'),
+          ('features/p2p/lib/src/plain.dart', 'const plain = 0;\n'),
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(text);
+        }
+
+        final report = await checkKeyMaterial(root.path);
+
+        for (final configuration in [
+          'features/p2p/lib/src/analysis_options.yaml',
+          'lib/sub/.dart_tool',
+          'lib/sub/.dart_tool/package_config.json',
+          'lib/sub/pubspec.yaml',
+        ]) {
+          expect(
+            report.violations,
+            contains(
+              '$configuration: package or analysis configuration under a production root',
+            ),
+          );
+        }
+        for (final path in [
+          'lib/sub/leak.dart',
+          'lib/sub/fake/lib/bip39_mnemonic.dart',
+        ]) {
+          expect(
+            report.violations,
+            contains('$path: resolved with another package configuration'),
+            reason: path,
+          );
+        }
+      },
+    );
+
+    test(
+      'a production file may not name a file of the repository the gate skips',
+      () async {
+        final root = Directory('${fixture.path}/reach')..createSync();
+        final real = root.resolveSymbolicLinksSync();
+        for (final path in [
+          'tool/leak.dart',
+          'test/helper.dart',
+          'integration_test/alternative.dart',
+          'bin/alternative.dart',
+          'packages/secrets/test/fake.dart',
+          'lib/leak.txt',
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(reads['seed']?.source ?? '');
+        }
+        File('${root.path}/packages/secrets/lib/custody.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const custody = 0;\n');
+        File('${root.path}/lib/plain.dart')
+          ..createSync(recursive: true)
+          ..writeAsStringSync('const plain = 0;\n');
+        File(
+          '${root.path}/lib/part.inc',
+        ).writeAsStringSync("part of 'app.dart';\nconst inPart = 0;\n");
+        File('${root.path}/lib/app.dart').writeAsStringSync('''
+import '../tool/leak.dart' as escaped;
+import 'leak.txt' as text;
+import 'file://$real/test/helper.dart' as absolute;
+import 'dart:core' if (dart.library.io) '../integration_test/alternative.dart';
+import '../packages/secrets/test/fake.dart' as fake;
+import '../packages/secrets/lib/custody.dart';
+export '../bin/alternative.dart';
+part 'part.inc';
+Object use() => [escaped.leak, text.leak, absolute.leak, fake.leak, custody];
+''');
+
+        final report = await checkKeyMaterial(root.path);
+
+        expect(report.fileCount, 2);
+        expect(report.violations, [
+          for (final path in [
+            'bin/alternative.dart',
+            'integration_test/alternative.dart',
+            'lib/leak.txt',
+            'lib/part.inc',
+            'packages/secrets/test/fake.dart',
+            'test/helper.dart',
+            'tool/leak.dart',
+          ])
+            'lib/app.dart: $path#unscanned file',
+        ]);
+      },
+    );
+  });
 
   test('Silent Payments accounts built from words are checked', () async {
     final violations = await inspect('bwk_constructors', '''
@@ -477,17 +786,17 @@ import 'dart:typed_data';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {
-  Object toGarageKey(GarageKeyMaterial material) =>
+  Object _toGarageKey(GarageKeyMaterial material) =>
       GarageKey.fromBytes(material.bytes);
-  Uint8List toBytes(GarageKey key) => key.revealBytes();
+  Uint8List _toBytes(GarageKey key) => key.revealBytes();
 }
 ''';
     const view = '''
 import 'package:robosats/robosats.dart';
 class GarageKeyView {
-  final GarageKey garageKey;
-  const GarageKeyView(this.garageKey);
-  String text() => garageKey.revealBech32();
+  final GarageKey _garageKey;
+  const GarageKeyView._(this._garageKey);
+  String _text() => _garageKey.revealBech32();
 }
 ''';
 
@@ -530,28 +839,37 @@ List<int> copy(GarageKeyMaterial material) => [...material.bytes];
 
         // Another class of the named file.
         expect(
-          await inspect(
-            'garage_repository_other_class',
-            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyCache'),
-            policyPath: repositoryPath,
+          keyReads(
+            await inspect(
+              'garage_repository_other_class',
+              repository.replaceAll(
+                'GarageKeyRepositoryImpl',
+                'GarageKeyCache',
+              ),
+              policyPath: repositoryPath,
+            ),
           ),
           hasLength(2),
         );
         // Code outside any class of the named file.
         expect(
-          (await inspect('garage_repository_top_level', '''
+          keyReads(
+            await inspect('garage_repository_top_level', '''
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {}
 Object leak(GarageKeyMaterial material) => material.bytes;
-''', policyPath: repositoryPath)).single,
+''', policyPath: repositoryPath),
+          ).single,
           endsWith('#GarageKeyMaterial.bytes'),
         );
         // The repository's reads are not the widget's, and the other way round.
         expect(
-          await inspect(
-            'garage_repository_in_view_file',
-            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyView'),
-            policyPath: viewPath,
+          keyReads(
+            await inspect(
+              'garage_repository_in_view_file',
+              repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyView'),
+              policyPath: viewPath,
+            ),
           ),
           hasLength(2),
         );
@@ -565,10 +883,13 @@ Object leak(GarageKeyMaterial material) => material.bytes;
         );
         // The same class name in another file of the feature.
         expect(
-          await inspect(
-            'garage_repository_other_file',
-            repository,
-            policyPath: 'features/p2p/lib/src/data/robot_repository_impl.dart',
+          keyReads(
+            await inspect(
+              'garage_repository_other_file',
+              repository,
+              policyPath:
+                  'features/p2p/lib/src/data/robot_repository_impl.dart',
+            ),
           ),
           hasLength(2),
         );
@@ -686,7 +1007,7 @@ int length() => GarageKeyMaterial.lengthInBytes;
         const reader = '''
 import 'package:secrets/secrets.dart';
 class GarageKeyRepositoryImpl {
-  Object bytesOf(GarageKeyMaterial material) => material.bytes;
+  Object _bytesOf(GarageKeyMaterial material) => material.bytes;
 }
 ''';
         const refused = [
@@ -714,17 +1035,24 @@ class GarageKeyRepositoryImpl {
             ),
           );
         }
-        expect(report.violations, hasLength(refused.length));
+        expect(keyReads(report.violations), hasLength(refused.length));
       },
     );
   });
 
   group('only the composition root asks for the Garage Key handle', () {
     const locatorPath = 'lib/locator.dart';
+    // The one shape the composition root may ask for the handle in (#47): see the group below.
     const shell = '''
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart' show P2pFeature;
 import 'package:secrets/secrets.dart';
 class AppLocator {
-  static Object setup(Secrets secrets) => secrets.garageKeys();
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );
 }
 ''';
 
@@ -786,7 +1114,7 @@ Object handle(Secrets secrets) => secrets.garageKeys();
         ),
       ]) {
         expect(
-          (await inspect(name, source, policyPath: path)).single,
+          keyReads(await inspect(name, source, policyPath: path)).single,
           allOf(contains('package:secrets/'), endsWith('#Secrets.garageKeys')),
           reason: name,
         );
@@ -848,6 +1176,1568 @@ Object listing(Secrets secrets) => secrets.list();
 Object slot() => GarageKeySlot.mainnet;
 '''),
         isEmpty,
+      );
+    });
+  });
+
+  group('only the foreground composition hands P2P the handle (#47)', () {
+    const locatorPath = 'lib/locator.dart';
+    const initPath = 'lib/init.dart';
+    const handlerPath = 'lib/core/background_tasks/handler.dart';
+    // The shape of `lib/locator.dart`: `setup` forwards its own flag to `setupP2p`.
+    const locator = '''
+class AppLocator {
+  static Future<void> setup(
+    Object locator, {
+    required String payjoinDatabasePath,
+    required bool withGarageKeys,
+  }) async {
+    setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+
+  static void setupP2p(Object locator, {required bool withGarageKeys}) {}
+}
+''';
+    // The shape of `lib/init.dart` and of the background handler.
+    const foreground = '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> init() async {
+    await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+  }
+}
+''';
+    const background = '''
+import 'lib/locator.dart';
+Future<bool> tasksHandler(String task) async {
+  await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: false);
+  return true;
+}
+''';
+
+    // The composition is bound to its files: the class `AppLocator` of `lib/locator.dart` and `Bull` of `lib/init.dart`, here under the fixture's root.
+    setUpAll(() {
+      File('${fixture.path}/lib/locator.dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(locator);
+      File('${fixture.path}/lib/init.dart').writeAsStringSync('''
+class Bull {
+  static Future<void> init() async {}
+}
+''');
+      File('${fixture.path}/lib/bootstrap.dart').writeAsStringSync('''
+Future<void> startApp() async {}
+''');
+      File('${fixture.path}/lib/main.dart').writeAsStringSync('''
+import 'bootstrap.dart';
+Future<void> main() => startApp();
+''');
+    });
+
+    test('the compositions of today pass', () async {
+      expect(
+        await inspect('composition_root', locator, policyPath: locatorPath),
+        isEmpty,
+      );
+      expect(
+        await inspect('composition_init', foreground, policyPath: initPath),
+        isEmpty,
+      );
+      expect(
+        await inspect(
+          'composition_handler',
+          background,
+          policyPath: handlerPath,
+        ),
+        isEmpty,
+      );
+      expect(
+        await inspect('composition_false_elsewhere', background),
+        isEmpty,
+        reason: 'false hands out nothing, wherever it is passed',
+      );
+    });
+
+    test('true is refused outside Bull.init of lib/init.dart', () async {
+      for (final (name, source, path) in [
+        ('composition_true_handler', foreground, handlerPath),
+        ('composition_true_locator', foreground, locatorPath),
+        (
+          'composition_true_other_class',
+          foreground.replaceAll('class Bull', 'class Other'),
+          initPath,
+        ),
+        (
+          'composition_true_other_method',
+          foreground.replaceAll('init()', 'start()'),
+          initPath,
+        ),
+        (
+          'composition_true_top_level',
+          background.replaceAll('false', 'true'),
+          initPath,
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: path), [
+          '$path: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ], reason: name);
+      }
+      // An alias of the class is the class.
+      expect(
+        await inspect('composition_true_alias', '''
+import 'lib/locator.dart';
+typedef Composition = AppLocator;
+Future<void> compose() =>
+    Composition.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+'''),
+        [
+          'lib/composition_true_alias.dart: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ],
+      );
+    });
+
+    test('the flag is a boolean literal, and is passed', () async {
+      for (final (name, flag) in [
+        ('composition_constant', 'on'),
+        ('composition_parenthesized', '(true)'),
+        ('composition_negated', '!false'),
+        ('composition_environment', "const bool.fromEnvironment('garage')"),
+      ]) {
+        expect(
+          await inspect(
+            name,
+            '${foreground.replaceAll('withGarageKeys: true', 'withGarageKeys: $flag')}const on = true;\n',
+            policyPath: initPath,
+          ),
+          ['$initPath: AppLocator.setup#withGarageKeys not a literal'],
+          reason: name,
+        );
+      }
+      expect(
+        await inspect('composition_default', '''
+class AppLocator {
+  static Future<void> setup(Object locator, {bool withGarageKeys = true}) async {}
+}
+class Shell {
+  static Future<void> compose() => AppLocator.setup(0);
+}
+''', policyPath: locatorPath),
+        ['$locatorPath: AppLocator.setup#withGarageKeys not a literal'],
+      );
+    });
+
+    test(
+      'setupP2p is called by AppLocator.setup alone, with its own flag',
+      () async {
+        for (final (name, source, path, reason) in [
+          (
+            'composition_p2p_handler',
+            '''
+import 'lib/locator.dart';
+Future<bool> tasksHandler(String task) async {
+  AppLocator.setupP2p(0, withGarageKeys: false);
+  return true;
+}
+''',
+            handlerPath,
+            'outside AppLocator.setup',
+          ),
+          (
+            'composition_p2p_other_method',
+            locator.replaceAll(
+              'static void setupP2p',
+              'static void other(Object locator) =>\n'
+                  '      setupP2p(locator, withGarageKeys: true);\n'
+                  '  static void setupP2p',
+            ),
+            locatorPath,
+            'outside AppLocator.setup',
+          ),
+          // Another file with the same names: the composition is the class of lib/locator.dart.
+          (
+            'composition_p2p_other_file',
+            '''
+import 'lib/locator.dart' as shell;
+class AppLocator {
+  static Future<void> setup(Object locator, {required bool withGarageKeys}) async {
+    shell.AppLocator.setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+}
+''',
+            'lib/core/core_locator.dart',
+            'outside AppLocator.setup',
+          ),
+          (
+            'composition_p2p_true',
+            locator.replaceAll(
+              'withGarageKeys: withGarageKeys',
+              'withGarageKeys: true',
+            ),
+            locatorPath,
+            'withGarageKeys not forwarded',
+          ),
+          (
+            'composition_p2p_shadowed',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'void register(bool withGarageKeys) =>\n'
+                  '        setupP2p(locator, withGarageKeys: withGarageKeys);\n'
+                  '    register(true);',
+            ),
+            locatorPath,
+            'outside AppLocator.setup',
+          ),
+        ]) {
+          expect(await inspect(name, source, policyPath: path), [
+            '$path: AppLocator.setupP2p#$reason',
+          ], reason: name);
+        }
+      },
+    );
+
+    test('the flag of AppLocator.setup is never reassigned', () async {
+      for (final (name, statement) in [
+        ('composition_assigned', 'withGarageKeys = true;'),
+        ('composition_compound', 'withGarageKeys |= true;'),
+        ('composition_pattern', '(withGarageKeys,) = (true,);'),
+      ]) {
+        expect(
+          await inspect(
+            name,
+            locator.replaceAll(
+              '    setupP2p(locator',
+              '    $statement\n    setupP2p(locator',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator#withGarageKeys reassigned'],
+          reason: name,
+        );
+      }
+    });
+
+    test(
+      'a reference that is not a call fails closed, an alias and reflection included',
+      () async {
+        for (final (name, source, member) in [
+          // The bypass a review of #50 found: an alias and `Function.apply`, with the name of the flag built at run time.
+          (
+            'composition_reflection',
+            '''
+import 'lib/locator.dart';
+typedef Composition = AppLocator;
+class Bull {
+  static Future<void> init() =>
+      Function.apply(Composition.setup, [0], {
+            #payjoinDatabasePath: '',
+            Symbol('withGarage' 'Keys'): true,
+          })
+          as Future<void>;
+}
+''',
+            'setup',
+          ),
+          (
+            'composition_tear_off',
+            '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> init() async {
+    final compose = AppLocator.setup;
+    await compose(0, payjoinDatabasePath: '', withGarageKeys: false);
+  }
+}
+''',
+            'setup',
+          ),
+          (
+            'composition_call',
+            foreground.replaceAll(
+              'AppLocator.setup(',
+              'AppLocator.setup.call(',
+            ),
+            'setup',
+          ),
+          (
+            'composition_parenthesized_call',
+            foreground.replaceAll('AppLocator.setup(', '(AppLocator.setup)('),
+            'setup',
+          ),
+          (
+            'composition_prefixed',
+            '''
+import 'lib/locator.dart' as shell;
+class Bull {
+  static Future<void> init() async {
+    final register = shell.AppLocator.setupP2p;
+    register(0, withGarageKeys: false);
+  }
+}
+''',
+            'setupP2p',
+          ),
+        ]) {
+          expect(
+            await inspect(name, source, policyPath: initPath),
+            contains('$initPath: AppLocator.$member#not a direct call'),
+            reason: name,
+          );
+        }
+        // Even inside AppLocator.setup.
+        expect(
+          await inspect(
+            'composition_p2p_tear_off',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'final register = setupP2p;\n'
+                  '    register(locator, withGarageKeys: withGarageKeys);',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator.setupP2p#not a direct call'],
+        );
+        // The review of #58 (A7): `call` on the method, the method being the target of the invocation.
+        expect(
+          await inspect(
+            'composition_p2p_call',
+            locator.replaceAll(
+              'setupP2p(locator, withGarageKeys: withGarageKeys);',
+              'setupP2p.call(locator, withGarageKeys: withGarageKeys);',
+            ),
+            policyPath: locatorPath,
+          ),
+          ['$locatorPath: AppLocator.setupP2p#not a direct call'],
+        );
+      },
+    );
+
+    test('a dynamic call of setupP2p fails closed', () async {
+      expect(
+        await inspect('composition_dynamic', '''
+Object call(dynamic shell) => shell.setupP2p(0, withGarageKeys: true);
+'''),
+        ['lib/composition_dynamic.dart: unresolved sensitive member setupP2p'],
+      );
+    });
+
+    test('Bull.init is called by startApp of lib/bootstrap.dart alone', () async {
+      const bootstrap = '''
+import 'dart:async';
+import 'lib/init.dart';
+Future<void> startApp() async {
+  await runZonedGuarded(() async {
+    await Bull.init();
+  }, (error, trace) {});
+}
+''';
+      expect(
+        await inspect(
+          'composition_bootstrap',
+          bootstrap,
+          policyPath: 'lib/bootstrap.dart',
+        ),
+        isEmpty,
+      );
+      for (final (name, source, path, reason) in [
+        // The review of #50 (N11) and of #58: the background handler runs the foreground composition.
+        (
+          'composition_init_handler',
+          '''
+import 'lib/init.dart';
+Future<bool> tasksHandler(String task) async {
+  await Bull.init();
+  return true;
+}
+''',
+          handlerPath,
+          'outside startApp of lib/bootstrap.dart',
+        ),
+        (
+          'composition_init_other_function',
+          bootstrap.replaceAll('startApp', 'startAgain'),
+          'lib/bootstrap.dart',
+          'outside startApp of lib/bootstrap.dart',
+        ),
+        (
+          'composition_init_tear_off',
+          '''
+import 'lib/init.dart';
+Future<bool> tasksHandler(String task) async {
+  final compose = Bull.init;
+  await Function.apply(compose, const []);
+  return true;
+}
+''',
+          handlerPath,
+          'not a direct call',
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: path), [
+          '$path: Bull.init#$reason',
+        ], reason: name);
+      }
+    });
+
+    test(
+      'startApp is called by main of lib/main.dart alone, which nothing names',
+      () async {
+        expect(
+          await inspect('composition_main', '''
+import 'lib/bootstrap.dart';
+Future<void> main() => startApp();
+''', policyPath: 'lib/main.dart'),
+          isEmpty,
+        );
+        for (final (name, source, reason) in [
+          // The second review of #58 (H5): the background handler starts the whole foreground app.
+          (
+            'composition_start_handler',
+            '''
+import 'lib/bootstrap.dart';
+Future<bool> tasksHandler(String task) async {
+  if (task.isEmpty) await startApp();
+  return true;
+}
+''',
+            'startApp#outside main of lib/main.dart',
+          ),
+          (
+            'composition_start_tear_off',
+            '''
+import 'lib/bootstrap.dart';
+Future<bool> tasksHandler(String task) async {
+  final start = startApp;
+  await start();
+  return true;
+}
+''',
+            'startApp#not a direct call',
+          ),
+          (
+            'composition_main_called',
+            '''
+import 'lib/main.dart' as app;
+Future<bool> tasksHandler(String task) async {
+  await app.main();
+  return true;
+}
+''',
+            'main of lib/main.dart#referenced',
+          ),
+        ]) {
+          expect(await inspect(name, source, policyPath: handlerPath), [
+            '$handlerPath: $reason',
+          ], reason: name);
+        }
+        expect(
+          await inspect('composition_main_closure', '''
+import 'lib/bootstrap.dart';
+Future<void> main() async {
+  Future<void> later() => startApp();
+  await later();
+}
+''', policyPath: 'lib/main.dart'),
+          ['lib/main.dart: startApp#outside main of lib/main.dart'],
+        );
+      },
+    );
+
+    test('true is passed by a statement of Bull.init itself', () async {
+      for (final (name, source) in [
+        // The review of #58: `Bull.init` returns a closure that composes with true, for any caller to run.
+        (
+          'composition_init_closure',
+          '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> Function() init() =>
+      () => AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+}
+''',
+        ),
+        (
+          'composition_init_local_function',
+          '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> init() async {
+    Future<void> compose() =>
+        AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+    await compose();
+  }
+}
+''',
+        ),
+        (
+          'composition_init_condition',
+          foreground.replaceAll(
+            '    await AppLocator.setup(',
+            '    if (DateTime.now().year > 0) await AppLocator.setup(',
+          ),
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: initPath), [
+          '$initPath: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ], reason: name);
+      }
+    });
+
+    test('a class named AppLocator elsewhere is not the composition', () async {
+      // The review of #58 found an unrelated `AppLocator.setup()` refused when the class was matched by its name alone.
+      expect(
+        await inspect('composition_lookalike', '''
+class AppLocator {
+  static void setup() {}
+  static void setupP2p() {}
+}
+void use() {
+  AppLocator.setup();
+  final later = AppLocator.setupP2p;
+  later();
+}
+'''),
+        isEmpty,
+      );
+    });
+  });
+
+  group('the handle is asked for once, in AppLocator.setupP2p (#47)', () {
+    const locatorPath = 'lib/locator.dart';
+    const head = '''
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart' show P2pFeature;
+import 'package:secrets/secrets.dart';
+''';
+    // `lib/locator.dart` of today: `setupP2p` asks for the handle only when its own flag is true, and hands it to `P2pFeature.setup` alone.
+    const allowed =
+        '''
+${head}class AppLocator {
+  static Future<void> setup(GetIt locator, {required bool withGarageKeys}) async {
+    setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );
+}
+''';
+    const handle = '#Secrets.garageKeys';
+    String withSetupP2p(String body) => allowed.replaceAll(
+      '''  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );''',
+      body,
+    );
+
+    test('lib/locator.dart of today passes', () async {
+      expect(
+        await inspect('handle_allowed', allowed, policyPath: locatorPath),
+        isEmpty,
+      );
+    });
+
+    test('any other call of Secrets.garageKeys in AppLocator is refused', () async {
+      for (final (name, source) in [
+        // The review of #58 (A1): another static method of AppLocator, which the background handler then calls.
+        (
+          'handle_other_method',
+          allowed.replaceAll(
+            '  static void setupP2p(',
+            '  static GarageKeys handle(GetIt locator) =>\n'
+                '      locator<Secrets>().garageKeys();\n\n'
+                '  static void setupP2p(',
+          ),
+        ),
+        // A1b: a static field.
+        (
+          'handle_static_field',
+          allowed.replaceAll(
+            '  static void setupP2p(',
+            '  static final GarageKeys handle = GetIt.instance<Secrets>().garageKeys();\n\n'
+                '  static void setupP2p(',
+          ),
+        ),
+        (
+          'handle_unconditional',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>\n'
+            '      const P2pFeature().setup(\n'
+            '        locator,\n'
+            '        garageKeys: locator<Secrets>().garageKeys(),\n'
+            '      );',
+          ),
+        ),
+        // The review of #50 (M15): the condition is not the flag.
+        (
+          'handle_other_condition',
+          allowed.replaceAll(
+            'garageKeys: withGarageKeys ?',
+            'garageKeys: locator.isRegistered<Secrets>() ?',
+          ),
+        ),
+        // A condition that is another boolean, and a choice whose other branch is not null.
+        (
+          'handle_other_flag',
+          allowed
+              .replaceAll(
+                'garageKeys: withGarageKeys ?',
+                'garageKeys: always ?',
+              )
+              .replaceAll(
+                '  static void setupP2p(',
+                '  static bool always = true;\n\n  static void setupP2p(',
+              ),
+        ),
+        (
+          'handle_other_branch',
+          allowed
+              .replaceAll('garageKeys() : null', 'garageKeys() : kept')
+              .replaceAll(
+                '  static void setupP2p(',
+                '  static GarageKeys? kept;\n\n  static void setupP2p(',
+              ),
+        ),
+        (
+          'handle_inverted',
+          allowed.replaceAll(
+            'withGarageKeys ? locator<Secrets>().garageKeys() : null',
+            '!withGarageKeys ? null : locator<Secrets>().garageKeys()',
+          ),
+        ),
+        (
+          'handle_through_a_variable',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    final keys = withGarageKeys ? locator<Secrets>().garageKeys() : null;\n'
+            '    const P2pFeature().setup(locator, garageKeys: keys);\n'
+            '  }',
+          ),
+        ),
+        (
+          'handle_to_another_callee',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>\n'
+            '      keep(garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null);\n\n'
+            '  static void keep({GarageKeys? garageKeys}) {}',
+          ),
+        ),
+        (
+          'handle_in_a_closure',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    void later() => const P2pFeature().setup(\n'
+            '      locator,\n'
+            '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '    );\n'
+            '    later();\n'
+            '  }',
+          ),
+        ),
+        // A2: setupP2p as an instance method; A3: setupP2p renamed.
+        (
+          'handle_instance_method',
+          allowed
+              .replaceAll('static void setupP2p(GetIt', 'void setupP2p(GetIt')
+              .replaceAll(
+                '    setupP2p(locator, withGarageKeys: withGarageKeys);\n',
+                '',
+              ),
+        ),
+        ('handle_renamed', allowed.replaceAll('setupP2p', 'registerP2p')),
+      ]) {
+        expect(
+          await inspect(name, source, policyPath: locatorPath),
+          contains(
+            allOf(
+              startsWith('$locatorPath: package:secrets/'),
+              endsWith(handle),
+            ),
+          ),
+          reason: name,
+        );
+      }
+    });
+
+    test('the flag of setupP2p is never reassigned', () async {
+      expect(
+        await inspect(
+          'handle_flag_reassigned',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    withGarageKeys = true;\n'
+            '    const P2pFeature().setup(\n'
+            '      locator,\n'
+            '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '    );\n'
+            '  }',
+          ),
+          policyPath: locatorPath,
+        ),
+        ['$locatorPath: AppLocator#withGarageKeys reassigned'],
+      );
+    });
+
+    test(
+      'the composition root asks for the handle exactly once',
+      () async {
+        for (final (name, source, expected) in [
+          ('once', allowed, <String>[]),
+          (
+            'never',
+            allowed.replaceAll(
+              'withGarageKeys ? locator<Secrets>().garageKeys() : null',
+              'null',
+            ),
+            [
+              'lib/locator.dart: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
+            ],
+          ),
+          (
+            'twice',
+            withSetupP2p(
+              '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+              '    const P2pFeature().setup(\n'
+              '      locator,\n'
+              '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '    );\n'
+              '    const P2pFeature().setup(\n'
+              '      locator,\n'
+              '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '    );\n'
+              '  }',
+            ),
+            [
+              'lib/locator.dart: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
+            ],
+          ),
+        ]) {
+          final root = Directory('${fixture.path}/handle_$name')..createSync();
+          File('${root.path}/lib/locator.dart')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(source);
+          final report = await checkKeyMaterial(root.path);
+          expect(report.violations, expected, reason: name);
+        }
+        // Each root resolves the P2P feature again.
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test('no GetIt container holds or hands out the handle', () async {
+      for (final (name, statement) in [
+        // The review of #58 (A1c): `setup` registers the handle for every isolate, whatever the flag.
+        ('handle_registered', 'locator.registerSingleton<GarageKeys>(keys);'),
+        (
+          'handle_registered_inferred',
+          'locator.registerLazySingleton(() => keys);',
+        ),
+        ('handle_looked_up', 'locator<GarageKeys>();'),
+        ('handle_got', 'locator.get<GarageKeys>();'),
+        ('handle_by_type', 'locator.get<Object>(type: GarageKeys);'),
+        (
+          'handle_looked_up_inferred',
+          'const P2pFeature().setup(locator, garageKeys: locator());',
+        ),
+      ]) {
+        expect(
+          await inspect('container_$name', '''
+$head
+void wire(GetIt locator, GarageKeys keys) {
+  $statement
+}
+'''),
+          [
+            'lib/container_$name.dart: package:get_it#GarageKeys in a container',
+          ],
+          reason: name,
+        );
+      }
+      expect(
+        await inspect('container_other_types', '''
+$head
+void wire(GetIt locator) {
+  locator.registerSingleton<Object>(0);
+  locator<Secrets>();
+  locator.isRegistered<Secrets>();
+}
+'''),
+        isEmpty,
+      );
+    });
+  });
+
+  group('no production library re-exports the vault (#47)', () {
+    test('a re-export of a declaration of the vault is refused', () async {
+      for (final (name, directive, path) in [
+        // The bypass a review of #50 found: `package:robosats` re-exporting `Secrets`, which a file of the P2P feature then imported without naming the vault.
+        (
+          'vault_reexport_shown',
+          "export 'package:secrets/secrets.dart' show Secrets;",
+          'packages/robosats/lib/robosats.dart',
+        ),
+        (
+          'vault_reexport_whole',
+          "export 'package:secrets/secrets.dart';",
+          'lib/core/core.dart',
+        ),
+        (
+          'vault_reexport_hide',
+          "export 'package:secrets/secrets.dart' hide Secrets;",
+          'features/p2p/lib/p2p.dart',
+        ),
+      ]) {
+        expect(
+          keyReads(await inspect(name, '$directive\n', policyPath: path)),
+          ['$path: package:secrets/secrets.dart#re-exports the vault'],
+          reason: name,
+        );
+      }
+      // A library that re-exports another one that re-exports the vault.
+      expect(
+        await inspect(
+          'vault_reexport_chain',
+          "export 'garage_bridge.dart' show GarageKeyMaterial;\n",
+        ),
+        [
+          allOf(
+            startsWith('lib/vault_reexport_chain.dart: '),
+            endsWith('/garage_bridge.dart#re-exports the vault'),
+          ),
+        ],
+      );
+    });
+
+    test(
+      'what an export does not bring from the vault is not refused',
+      () async {
+        for (final (name, directive) in [
+          (
+            'vault_export_shown_away',
+            "export 'garage_bridge.dart' show GarageKey;",
+          ),
+          (
+            'vault_export_hidden',
+            "export 'garage_bridge.dart' hide GarageKeyMaterial;",
+          ),
+          ('vault_export_other', "export 'package:robosats/robosats.dart';"),
+          (
+            'vault_import',
+            "import 'package:secrets/secrets.dart' show GarageKeys;\n"
+                'Object? take(GarageKeys? keys) => keys;',
+          ),
+        ]) {
+          expect(await inspect(name, '$directive\n'), isEmpty, reason: name);
+        }
+      },
+    );
+
+    test('production code does not import or export the P2P test seam', () async {
+      // The second review of #58: the feature's seam test reads the text of the directives, which an escape hides.
+      for (final (name, directive) in [
+        ('seam_import', "import 'package:p2p/testing.dart';"),
+        ('seam_escaped', "import 'package:p2p/\\x74esting.dart';"),
+        (
+          'seam_export',
+          "export 'package:p2p/testing.dart' show setUpP2pForTesting;",
+        ),
+        (
+          'seam_inactive',
+          "import 'dart:core' if (dart.library.html) 'package:p2p/testing.dart';",
+        ),
+      ]) {
+        expect(
+          keyReads(await inspect(name, '$directive\n')),
+          contains(
+            'lib/$name.dart: package:p2p/testing.dart#test seam in production code',
+          ),
+          reason: name,
+        );
+      }
+    });
+
+    test('a conditional export fails closed', () async {
+      expect(
+        await inspect('vault_conditional_export', '''
+export 'dart:core' if (dart.library.io) 'dart:async';
+'''),
+        ['lib/vault_conditional_export.dart: dart:core#conditional export'],
+      );
+    });
+  });
+
+  group('outside three P2P files, no workspace package uses the vault (#47)', () {
+    const facadePath = 'features/p2p/lib/public/p2p_facade.dart';
+    const locatorPath = 'features/p2p/lib/src/p2p_locator.dart';
+    const repositoryPath =
+        'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+    const otherPath =
+        'features/p2p/lib/src/domain/usecases/find_garage_robot_usecase.dart';
+    const handle = '''
+import 'package:secrets/secrets.dart' show GarageKeys;
+Object? take({required GarageKeys? garageKeys}) => garageKeys;
+''';
+    String outside(String path, String declaration) =>
+        '$path: package:secrets#$declaration outside the files that may use the vault';
+
+    setUpAll(() {
+      File('${fixture.path}/vault_alias.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+typedef Vault = Secrets;
+''');
+      File('${fixture.path}/vault_source.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+Secrets vault() => throw UnimplementedError();
+''');
+      File('${fixture.path}/vault_part_library.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart' show GarageKeys;
+part 'vault_part.dart';
+final class Holder {
+  final GarageKeys _garageKeys;
+  const Holder(this._garageKeys);
+}
+''');
+    });
+
+    test('the files of today pass, with their declarations', () async {
+      expect(
+        await inspect('vault_use_facade', handle, policyPath: facadePath),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_locator', handle, policyPath: locatorPath),
+        isEmpty,
+      );
+      // The test seam of #54, which registers the Garage over a handle a test made.
+      expect(
+        await inspect(
+          'vault_use_seam',
+          handle,
+          policyPath: 'features/p2p/lib/testing.dart',
+        ),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_repository', '''
+import 'package:primitives/primitives.dart';
+import 'package:secrets/secrets.dart';
+final class GarageKeyRepositoryImpl {
+  final GarageKeys _garageKeys;
+  const GarageKeyRepositoryImpl(this._garageKeys);
+  Future<bool> _exists() async =>
+      switch (await _garageKeys.read(slot: GarageKeySlot.mainnet)) {
+        Ok(value: final GarageKeyMaterial material) => material.bytes.isNotEmpty,
+        Err(failure: SecretNotFoundFailure()) => false,
+        Err(failure: KeystoreLockedFailure() || GarageKeyCorruptFailure()) => false,
+        Err(failure: GarageKeyAlreadyExistsFailure()) => false,
+        Err(failure: SecretFailure()) => false,
+      };
+}
+''', policyPath: repositoryPath),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_app', '''
+import 'package:secrets/secrets.dart';
+Object listing(Secrets secrets) => secrets.list();
+'''),
+        isEmpty,
+        reason: 'the app itself uses the vault',
+      );
+    });
+
+    test(
+      'another file, another package or another declaration is refused',
+      () async {
+        for (final (name, source, path, declaration) in [
+          ('vault_use_other_file', handle, otherPath, 'GarageKeys'),
+          (
+            'vault_use_package',
+            handle,
+            'packages/robosats/lib/src/vault_user.dart',
+            'GarageKeys',
+          ),
+          (
+            'vault_use_other_feature',
+            handle,
+            'features/other/lib/src/vault_user.dart',
+            'GarageKeys',
+          ),
+          (
+            'vault_use_other_declaration',
+            '''
+import 'package:secrets/secrets.dart' show Secrets;
+Object listing(Secrets secrets) => secrets.list();
+''',
+            facadePath,
+            'Secrets',
+          ),
+          (
+            'vault_use_slot',
+            '''
+import 'package:secrets/secrets.dart' show GarageKeySlot;
+Object slot() => GarageKeySlot.mainnet;
+''',
+            locatorPath,
+            'GarageKeySlot',
+          ),
+        ]) {
+          expect(await inspect(name, source, policyPath: path), [
+            outside(path, declaration),
+          ], reason: name);
+        }
+      },
+    );
+
+    test('a type alias, a value or a part of the repository is seen', () async {
+      // The review of #58 (B1): `typedef Vault = Secrets;` in `package:robosats`, used by a file of the feature that never names `package:secrets`.
+      expect(
+        await inspect('vault_use_alias', '''
+import 'vault_alias.dart';
+Future<Object> reach(Vault vault) => vault.list();
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      // The alias alone, with no member of the vault called.
+      expect(
+        await inspect('vault_use_alias_only', '''
+import 'vault_alias.dart';
+Object? keep(Vault? vault) => vault;
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      expect(
+        await inspect(
+          'vault_use_alias_declaration',
+          '''
+import 'package:secrets/secrets.dart';
+typedef Vault = Secrets;
+''',
+          policyPath: 'packages/robosats/lib/src/vault_alias.dart',
+        ),
+        [outside('packages/robosats/lib/src/vault_alias.dart', 'Secrets')],
+      );
+      // The second review of #58 (H2): a handle handed out by a function of another library, used through an extension declared there, never naming a vault type.
+      File('${fixture.path}/vault_holder.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+GarageKeys? handleOf(Object holder) => null;
+extension Wipe on GarageKeys {
+  Object wipe() => 0;
+}
+''');
+      expect(
+        await inspect('vault_use_inferred', '''
+import 'vault_holder.dart';
+Object? use(Object holder) => handleOf(holder)?.wipe();
+''', policyPath: otherPath),
+        [outside(otherPath, 'GarageKeys')],
+      );
+      // A value of the vault reached without naming one of its types.
+      expect(
+        await inspect('vault_use_value', '''
+import 'vault_source.dart';
+Future<Object> reach() => vault().list();
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      // The review of #50 (N08): a part of the repository is another file, and an extension there that hands out the handle is refused.
+      const partPath =
+          'features/p2p/lib/src/data/garage_key_repository_extras.dart';
+      expect(
+        await inspect('vault_part', '''
+part of 'vault_part_library.dart';
+extension Extras on Holder {
+  GarageKeys get handle => _garageKeys;
+}
+''', policyPath: partPath),
+        [outside(partPath, 'GarageKeys')],
+      );
+    });
+  });
+
+  group('a class that may read a Garage Key declares the table, nothing more (#47)', () {
+    const repositoryPath =
+        'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+    const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
+    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54.
+    const repository = '''
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+import 'package:secrets/secrets.dart';
+final class GarageKeyRepositoryImpl {
+  final GarageKeys _garageKeys;
+
+  const GarageKeyRepositoryImpl(this._garageKeys);
+
+  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>
+      const Ok(null);
+
+  Future<Result<void, P2pFailure>> import(
+    RobosatsNetwork network,
+    GarageKey key,
+  ) async {
+    final bytes = key.revealBytes();
+    bytes.fillRange(0, bytes.length, 0);
+    return const Ok(null);
+  }
+
+  Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network) async =>
+      const Ok(false);
+
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) async =>
+      const Ok(null);
+
+  Uint8List _copyOf(GarageKeyMaterial material) => material.bytes;
+
+  GarageKeys get _handle => _garageKeys;
+}
+''';
+    String withMember(String member) => repository.replaceAll(
+      '  const GarageKeyRepositoryImpl(this._garageKeys);',
+      '  const GarageKeyRepositoryImpl(this._garageKeys);\n\n  $member',
+    );
+    String notInTable(String member, String signature) =>
+        '$repositoryPath: GarageKeyRepositoryImpl.$member#$signature, not in the table of readers';
+
+    test('a repository with the members of the table passes', () async {
+      expect(
+        await inspect('reader_today', repository, policyPath: repositoryPath),
+        isEmpty,
+      );
+    });
+
+    test('a public member not in the table, or with another signature, fails', () async {
+      for (final (name, member, signature) in [
+        // The ways out reviews of #45, #50 and #58 found: a method returning the bytes, a static one, a static closure, a public field.
+        (
+          'bytesOf',
+          'Uint8List bytesOf(GarageKeyMaterial m) => m.bytes;',
+          'Uint8List Function(GarageKeyMaterial)',
+        ),
+        (
+          'relay',
+          'static Uint8List relay(GarageKeyMaterial m) => m.bytes;',
+          'Uint8List Function(GarageKeyMaterial)',
+        ),
+        (
+          'reveal',
+          'static final Object Function(GarageKeyMaterial) reveal = (m) => m.bytes;',
+          'Object Function(GarageKeyMaterial)',
+        ),
+        ('lastKey', 'final Uint8List? lastKey = null;', 'Uint8List?'),
+        // Covert channels the type list missed (review of #58).
+        (
+          'bits',
+          'Stream<int> bits() => Stream.empty();',
+          'Stream<int> Function()',
+        ),
+        (
+          'table',
+          'Map<int, int> table() => const {};',
+          'Map<int, int> Function()',
+        ),
+        ('numbers', 'List<num> numbers() => const [];', 'List<num> Function()'),
+        ('pair', '(int, int) pair() => (0, 0);', '(int, int) Function()'),
+        ('handle', 'GarageKeys get handle => _garageKeys;', 'GarageKeys'),
+        (
+          'drain',
+          'void drain(Sink<List<int>> sink) {}',
+          'void Function(Sink<List<int>>)',
+        ),
+        (
+          'complete',
+          'void complete(Completer<Uint8List> done) {}',
+          'void Function(Completer<Uint8List>)',
+        ),
+        (
+          'perByte',
+          'void perByte(void Function(int byte) onByte) {}',
+          'void Function(void Function(int))',
+        ),
+        (
+          'toString',
+          "@override\n  String toString() => '';",
+          'String Function()',
+        ),
+        (
+          '==',
+          '@override\n  bool operator ==(Object other) => false;',
+          'bool Function(Object)',
+        ),
+        (
+          'sink=',
+          'set sink(void Function(Uint8List) callback) {}',
+          'void Function(void Function(Uint8List))',
+        ),
+        // A member of the table with another signature: `exists` returning the bytes.
+        ('exists', '', ''),
+      ]) {
+        final source = name == 'exists'
+            ? repository.replaceAll(
+                'Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network) async =>\n      const Ok(false);',
+                'Future<Result<Uint8List, P2pFailure>> exists(RobosatsNetwork network) async =>\n      Ok(Uint8List(0));',
+              )
+            : withMember(member);
+        final expected = name == 'exists'
+            ? 'Future<Result<Uint8List, P2pFailure>> Function(RobosatsNetwork)'
+            : signature;
+        expect(
+          await inspect(
+            'reader_${name.replaceAll(RegExp(r'\W'), '_')}',
+            source,
+            policyPath: repositoryPath,
+          ),
+          [notInTable(name, expected)],
+          reason: name,
+        );
+      }
+      // The repository of main, before #54: `firstUsableRobot` returns a `GarageRobot`, which the table no longer lists.
+      expect(
+        await inspect(
+          'reader_main_robot',
+          withMember(
+            'Future<Result<GarageRobot, P2pFailure>> firstUsableRobot(RobosatsNetwork network) async =>\n'
+            '      throw UnimplementedError();',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          notInTable(
+            'firstUsableRobot',
+            'Future<Result<GarageRobot, P2pFailure>> Function(RobosatsNetwork)',
+          ),
+        ],
+      );
+      // The review of #50 (N07): a constructor that takes a callback, here a sink, for what the class reads.
+      expect(
+        await inspect(
+          'reader_constructor',
+          repository.replaceAll(
+            '  const GarageKeyRepositoryImpl(this._garageKeys);',
+            '  final Sink<List<int>>? _tap;\n\n'
+                '  const GarageKeyRepositoryImpl(this._garageKeys, [this._tap]);',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          notInTable(
+            'new',
+            'GarageKeyRepositoryImpl Function(GarageKeys, [Sink<List<int>>?])',
+          ),
+        ],
+      );
+    });
+
+    test('a type of the same name from another library fails', () async {
+      expect(
+        await inspect(
+          'reader_shadow',
+          '${repository.replaceAll("import 'package:p2p/src/domain/p2p_failure.dart';\n", '')}'
+              'final class P2pFailure extends Failure {\n'
+              '  final List<int> bytes;\n'
+              '  const P2pFailure(this.bytes);\n'
+              '}\n',
+          policyPath: repositoryPath,
+        ),
+        containsAll([
+          contains('GarageKeyRepositoryImpl.create#P2pFailure of file:'),
+          contains('GarageKeyRepositoryImpl.exists#P2pFailure of file:'),
+        ]),
+      );
+    });
+
+    test('only the supertypes of the table, and no mixin', () async {
+      // The review of #58 (C1): a public field inherited from a mixin, or from a base class.
+      expect(
+        await inspect(
+          'reader_mixin',
+          '${repository.replaceAll('final class GarageKeyRepositoryImpl {', 'final class GarageKeyRepositoryImpl with KeyCache {').replaceAll('  const GarageKeyRepositoryImpl(', '  GarageKeyRepositoryImpl(')}'
+              'mixin KeyCache {\n  Uint8List? lastKey;\n}\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeyRepositoryImpl#mixin KeyCache, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache declares the field lastKey, not in the table of readers',
+          '$repositoryPath: KeyCache#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+      expect(
+        await inspect(
+          'reader_base',
+          '${repository.replaceAll('final class GarageKeyRepositoryImpl {', 'final class GarageKeyRepositoryImpl extends KeyCache {').replaceAll('  const GarageKeyRepositoryImpl(', '  GarageKeyRepositoryImpl(')}'
+              'class KeyCache {\n  Uint8List? lastKey;\n}\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache declares the field lastKey, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype KeyCache, not in the table of readers',
+          '$repositoryPath: KeyCache#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+    });
+
+    test('no part, no extension and no use of its private members from outside', () async {
+      // The review of #50 (N08): a part of the repository with an extension that hands out the handle and the bytes.
+      File('${fixture.path}/reader_extras.dart').writeAsStringSync('''
+part of 'reader_with_part.dart';
+''');
+      expect(
+        await inspect(
+          'reader_with_part',
+          repository.replaceAll(
+            "import 'package:secrets/secrets.dart';\n",
+            "import 'package:secrets/secrets.dart';\npart 'reader_extras.dart';\n",
+          ),
+          policyPath: repositoryPath,
+        ),
+        ['$repositoryPath: part directive in the file of a reader'],
+      );
+      expect(
+        await inspect(
+          'reader_extension',
+          '${repository}extension Extras on GarageKeyRepositoryImpl {\n'
+              '  GarageKeys get handle => _handle;\n'
+              '  Uint8List copyOf(GarageKeyMaterial material) => _copyOf(material);\n'
+              '}\n'
+              'Uint8List leak(GarageKeyRepositoryImpl repository, GarageKeyMaterial material) =>\n'
+              '    repository._copyOf(material);\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: Extras#declaration in the file of a reader, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl._copyOf#private member used outside its class',
+          '$repositoryPath: GarageKeyRepositoryImpl._handle#private member used outside its class',
+          '$repositoryPath: extension on GarageKeyRepositoryImpl',
+          '$repositoryPath: leak#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+      // An extension elsewhere, on the class of the table's file.
+      File(
+          '${fixture.path}/features/p2p/lib/src/data/garage_key_repository_impl.dart',
+        )
+        ..createSync(recursive: true)
+        ..writeAsStringSync(repository);
+      expect(
+        await inspect(
+          'reader_extension_elsewhere',
+          '''
+import 'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+extension Elsewhere on GarageKeyRepositoryImpl {
+  bool get known => true;
+}
+''',
+          policyPath: 'features/p2p/lib/src/ui/garage/garage_view.dart',
+        ),
+        [
+          'features/p2p/lib/src/ui/garage/garage_view.dart: extension on GarageKeyRepositoryImpl',
+        ],
+      );
+    });
+
+    test('the view declares the members of the table only', () async {
+      const view = '''
+import 'package:robosats/robosats.dart';
+class GarageKeyView {
+  final GarageKey garageKey;
+  const GarageKeyView._(this.garageKey);
+  String _text() => garageKey.revealBech32();
+}
+''';
+      expect(await inspect('reader_view', view, policyPath: viewPath), isEmpty);
+      expect(
+        await inspect(
+          'reader_view_text',
+          view.replaceAll('String _text()', 'String text()'),
+          policyPath: viewPath,
+        ),
+        [
+          '$viewPath: GarageKeyView.text#String Function(), not in the table of readers',
+        ],
+      );
+      expect(
+        await inspect(
+          'reader_view_constructor',
+          view.replaceAll('GarageKeyView._(', 'GarageKeyView('),
+          policyPath: viewPath,
+        ),
+        [
+          '$viewPath: GarageKeyView.new#GarageKeyView Function(GarageKey), not in the table of readers',
+        ],
+      );
+    });
+
+    test('a supertype from the workspace declares abstract members only', () async {
+      // The second review of #58 (H4): the repository's interface turned into a class with a public field that the repository fills.
+      File('${fixture.path}/reader_interface.dart').writeAsStringSync('''
+abstract class GarageKeyRepository {
+  List<int>? lastKey;
+  bool get ready => true;
+}
+''');
+      final violations = await inspect(
+        'reader_filled_interface',
+        repository
+            .replaceAll(
+              "import 'package:secrets/secrets.dart';\n",
+              "import 'package:secrets/secrets.dart';\nimport 'reader_interface.dart';\n",
+            )
+            .replaceAll(
+              'final class GarageKeyRepositoryImpl {',
+              'final class GarageKeyRepositoryImpl implements GarageKeyRepository {\n'
+                  '  @override\n  List<int>? lastKey;\n\n'
+                  '  @override\n  bool get ready => true;\n',
+            )
+            .replaceAll(
+              '  const GarageKeyRepositoryImpl(',
+              '  GarageKeyRepositoryImpl(',
+            ),
+        policyPath: repositoryPath,
+      );
+      expect(
+        violations,
+        containsAll([
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype GarageKeyRepository declares the field lastKey, not in the table of readers',
+          '$repositoryPath: GarageKeyRepositoryImpl#supertype GarageKeyRepository declares the concrete member ready, not in the table of readers',
+        ]),
+      );
+    });
+
+    test('a reader\'s file declares the table and has no dynamic access', () async {
+      // The second review of #58 (H1): a top-level function of the reader's file reaches a private member dynamically.
+      expect(
+        await inspect(
+          'reader_dynamic_private',
+          '${repository}Object? peek(Object repository, GarageKeyMaterial material) =>\n'
+              '    (repository as dynamic)._copyOf(material);\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: _copyOf#dynamic access in the file of a reader',
+          '$repositoryPath: peek#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+      // H2: an extension on the handle, declared in the reader's file.
+      expect(
+        await inspect(
+          'reader_handle_extension',
+          '${repository}extension GarageKeysWipe on GarageKeys {\n'
+              '  Future<Object> wipe() => delete(slot: GarageKeySlot.mainnet);\n'
+              '}\n',
+          policyPath: repositoryPath,
+        ),
+        [
+          '$repositoryPath: GarageKeysWipe#declaration in the file of a reader, not in the table of readers',
+        ],
+      );
+    });
+
+    test('a P2P failure the reader uses carries no data but the table allows', () async {
+      const failures = '''
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show GarageKeyFailure;
+import 'failure_payload.dart';
+sealed class P2pFailure extends Failure {
+  const P2pFailure();
+}
+final class GarageKeyMissingFailure extends P2pFailure {
+  const GarageKeyMissingFailure();
+}
+final class GarageKeyInvalidFailure extends P2pFailure {
+  final GarageKeyFailure reason;
+  const GarageKeyInvalidFailure(this.reason);
+}
+final class GarageKeyEchoFailure extends P2pFailure {
+  final List<int> bytes;
+  const GarageKeyEchoFailure(this.bytes);
+}
+final class GarageKeyMixedFailure extends P2pFailure with FailurePayload {
+  GarageKeyMixedFailure(Object data) {
+    payload = data;
+  }
+}
+// A failure of another use, with a field, that no reader names.
+final class OrderStatusFailure extends P2pFailure {
+  final int status;
+  const OrderStatusFailure(this.status);
+}
+''';
+      String reader(String failure) =>
+          '''
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show GarageKeyFailure;
+import '../domain/p2p_failure.dart';
+final class GarageKeyRepositoryImpl {
+  Result<void, P2pFailure> _fail(GarageKeyFailure reason) => Err($failure);
+}
+''';
+      Future<List<String>> run(
+        String name,
+        String failure, {
+        String base = failures,
+      }) async {
+        final root = Directory('${fixture.path}/failures_$name')..createSync();
+        for (final (path, text) in [
+          ('lib/app.dart', 'const app = 0;\n'),
+          ('features/p2p/lib/src/domain/p2p_failure.dart', base),
+          (
+            'features/p2p/lib/src/domain/failure_payload.dart',
+            'mixin FailurePayload {\n  Object? payload;\n}\n',
+          ),
+          (
+            'features/p2p/lib/src/data/garage_key_repository_impl.dart',
+            reader(failure),
+          ),
+        ]) {
+          File('${root.path}/$path')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(text);
+        }
+        return (await checkKeyMaterial(root.path)).violations;
+      }
+
+      const readerFile =
+          'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+      expect(await run('missing', 'const GarageKeyMissingFailure()'), isEmpty);
+      expect(await run('invalid', 'GarageKeyInvalidFailure(reason)'), isEmpty);
+      // The review of #58 (N06): a failure that carries the bytes of an import.
+      expect(await run('echo', 'const GarageKeyEchoFailure([])'), [
+        '$readerFile: GarageKeyEchoFailure.bytes#field of a P2P failure the reader uses',
+      ]);
+      // The second review of #58 (H3): the field comes from a mixin declared in another file.
+      expect(await run('mixed', 'GarageKeyMixedFailure(0)'), [
+        '$readerFile: FailurePayload.payload#field of a P2P failure the reader uses',
+        '$readerFile: GarageKeyMixedFailure#mixin FailurePayload in a P2P failure the reader uses',
+      ]);
+      // A message passed to `Failure.logMessage` through the base class.
+      expect(
+        await run(
+          'message',
+          'const GarageKeyMissingFailure()',
+          base: failures.replaceAll(
+            'const P2pFailure();',
+            'const P2pFailure([super.logMessage]);',
+          ),
+        ),
+        ['$readerFile: P2pFailure.new#constructor with parameters'],
+      );
+      expect(
+        await run(
+          'static',
+          'const GarageKeyMissingFailure()',
+          base: failures.replaceAll(
+            '  const GarageKeyMissingFailure();',
+            '  static List<int> last = [];\n  const GarageKeyMissingFailure();',
+          ),
+        ),
+        [
+          '$readerFile: GarageKeyMissingFailure.last#field of a P2P failure the reader uses',
+        ],
       );
     });
   });
