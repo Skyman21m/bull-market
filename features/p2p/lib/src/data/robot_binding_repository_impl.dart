@@ -162,18 +162,6 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
     );
   }
 
-  @override
-  Future<Result<bool, P2pFailure>> hasAnyBinding() async {
-    try {
-      final any = await (_database.select(
-        _database.robotBindings,
-      )..limit(1)).getSingleOrNull();
-      return Ok(any != null);
-    } on Exception {
-      return const Err(P2pStorageFailure());
-    }
-  }
-
   static RobotBinding? _bindingOf(RobotBindingRow row) {
     final network = _networkFrom(row.network);
     if (network == null) return null;

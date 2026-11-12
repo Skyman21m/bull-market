@@ -50,10 +50,4 @@ abstract interface class RobotBindingRepository {
     RobosatsNetwork network,
     GarageKeyFingerprint key,
   );
-
-  /// Whether any robot index of any key is bound to a coordinator, on either network: all that can be said about a key that cannot be read, whose fingerprint is unknown.
-  ///
-  /// It reads only: a database that cannot be read is a [P2pStorageFailure].
-  @useResult
-  Future<Result<bool, P2pFailure>> hasAnyBinding();
 }

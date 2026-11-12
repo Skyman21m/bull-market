@@ -533,37 +533,11 @@ void main() {
       );
     });
 
-    test('any binding of any key is seen when the key is unknown', () async {
-      final none = isA<Ok<bool, P2pFailure>>().having(
-        (ok) => ok.value,
-        'value',
-        isFalse,
-      );
-      expect(await bindings.hasAnyBinding(), none);
-      // A history alone binds nothing.
-      expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), passes);
-      expect(await bindings.hasAnyBinding(), none);
-
-      expect(
-        await bindings.bind(
-          RobotSlot(mainnet, fingerprintB, 2),
-          identityOf('temple', mainnet),
-        ),
-        passes,
-      );
-      expect(
-        await bindings.hasAnyBinding(),
-        isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'value', isTrue),
-      );
-    });
-
     test('reading writes nothing', () async {
       expect(
         await bindings.exposureOf(testnet, fingerprintA),
         isA<Ok<GarageKeyExposure, P2pFailure>>(),
       );
-      expect(await bindings.hasAnyBinding(), isA<Ok<bool, P2pFailure>>());
 
       expect(await rows(), isEmpty);
       expect(await database.select(database.garageKeyHistories).get(), isEmpty);
@@ -836,14 +810,6 @@ void main() {
           isA<P2pStorageFailure>(),
         ),
       );
-      expect(
-        await repository.hasAnyBinding(),
-        isA<Err<bool, P2pFailure>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<P2pStorageFailure>(),
-        ),
-      );
       await broken.close();
     });
 
@@ -865,7 +831,6 @@ void main() {
         await repository.exposureOf(mainnet, fingerprintA),
         isA<Err<GarageKeyExposure, P2pFailure>>(),
       );
-      expect(await repository.hasAnyBinding(), isA<Err<bool, P2pFailure>>());
     });
   });
 

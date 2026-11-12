@@ -13,18 +13,13 @@ final class NeedsPinToDeleteGarageKeyUsecase {
 
   const NeedsPinToDeleteGarageKeyUsecase(this._bindings);
 
-  /// Whether the PIN is asked before the key of [key] is deleted, or, when [key] is `null` because the slot could not be read, before its entry is.
+  /// Whether the PIN is asked before the key of [key] is deleted, or, when [key] is `null` because the slot could not be read or gives no robot, before its entry is.
   ///
   /// A key needs it when a robot index of it is bound, on either network, or when it is not recorded as drawn on this device for the network of its slot.
-  /// A slot that cannot be read has no fingerprint to look up: it needs it when any robot of any key is bound.
+  /// A slot that cannot be read always needs it, without a read: the keystore may give its key back later, intact and possibly with robots on coordinators, and nothing tells which key it holds.
   /// A key whose fingerprint cannot be computed, and a database that cannot be read, need it too.
   Future<bool> execute(NetworkGarageKey? key) async {
-    if (key == null) {
-      return switch (await _bindings.hasAnyBinding()) {
-        Ok(:final value) => value,
-        Err() => true,
-      };
-    }
+    if (key == null) return true;
     return switch (key.fingerprint) {
       Ok(value: final fingerprint) => switch (await _bindings.exposureOf(
         key.network,

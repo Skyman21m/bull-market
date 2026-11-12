@@ -130,9 +130,9 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
   );
 }
 
-/// The vault could not say whether a key is stored: why, then « Retry », and, unless the keystore is only locked, the way out of a key that cannot be read, with the warning of « Delete Garage Key? », then the PIN when the cubit says the delete needs it.
+/// The vault could not say whether a key is stored: why, then « Retry », and, unless the keystore is only locked, the way out of a key that cannot be read, with the warning of « Delete Garage Key? », then the PIN, which such a delete always asks.
 ///
-/// Without [reauthenticate], a delete that needs the PIN is disabled.
+/// Without [reauthenticate], that delete is disabled.
 class _GarageUnavailable extends StatelessWidget {
   final GarageUnknown state;
   final P2pReauthentication? reauthenticate;

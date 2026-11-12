@@ -97,17 +97,12 @@ final class GarageUnknown extends GarageState {
   /// Why the last action of the user failed, when it did: a key that could not be deleted, for one.
   final P2pFailure? actionFailure;
 
-  /// Whether deleting the entry asks the wallet's PIN after « Delete Garage Key? », as for a key that can be read: here, when any robot of any key is bound, or the feature's database cannot be read.
-  ///
-  /// The cubit reads the database again when the user deletes; this only greys the button, and is `true` unless the database said otherwise.
-  final bool deletionNeedsPin;
+  const GarageUnknown(super.network, this.failure, {this.actionFailure});
 
-  const GarageUnknown(
-    super.network,
-    this.failure, {
-    this.actionFailure,
-    this.deletionNeedsPin = true,
-  });
+  /// Deleting the entry always asks the wallet's PIN after « Delete Garage Key? »: the keystore may give its key back later, intact and possibly with robots on coordinators, and nothing tells which key it holds; so without the shell's re-authentication the delete is disabled.
+  ///
+  /// This covers a key that can be read but gives no robot, and so no fingerprint either.
+  bool get deletionNeedsPin => true;
 }
 
 /// What the screens show of a robot: its number, nickname and hash id, all public, and never its token.

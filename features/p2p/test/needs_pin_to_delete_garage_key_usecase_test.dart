@@ -133,28 +133,21 @@ void main() {
     });
   });
 
-  group('a slot that cannot be read', () {
-    test('with no robot bound at all: no PIN', () async {
-      // Histories bind nothing.
-      expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), passes);
+  test(
+    'a slot that cannot be read: always the PIN, without reading the database',
+    () async {
+      // Nothing bound at all, and its database unreadable: neither matters.
+      final recording = RecordingBindings()
+        ..readFailure = const P2pStorageFailure();
 
-      expect(await needsPin.execute(null), isFalse);
-    });
-
-    test('with a robot of any key bound, on any network: the PIN', () async {
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), passes);
       expect(
-        await bindings.bind(
-          RobotSlot(mainnet, fingerprintB, 3),
-          identityOf('temple', mainnet),
-        ),
-        passes,
+        await NeedsPinToDeleteGarageKeyUsecase(recording).execute(null),
+        isTrue,
       );
-
       expect(await needsPin.execute(null), isTrue);
-    });
-  });
+      expect(recording.calls, isEmpty);
+    },
+  );
 
   group('a database that cannot be read asks the PIN', () {
     test('that cannot be opened', () async {
@@ -183,16 +176,13 @@ void main() {
   });
 
   test('reads the bindings of its key only, and writes nothing', () async {
-    final recording = RecordingBindings();
+    final recording = RecordingBindings(drawnHere: [(testnet, fingerprintA)]);
     final reader = NeedsPinToDeleteGarageKeyUsecase(recording);
 
     expect(await reader.execute(slotKey), isFalse);
-    expect(await reader.execute(null), isFalse);
+    expect(await reader.execute(null), isTrue);
 
-    expect(recording.calls, [
-      ('exposureOf', testnet, fingerprintA),
-      ('hasAnyBinding', null, null),
-    ]);
+    expect(recording.calls, [('exposureOf', testnet, fingerprintA)]);
   });
 
   test('follows the rule of the exposure it reads', () async {
@@ -214,7 +204,5 @@ void main() {
         reason: '$history, $hasBinding',
       );
     }
-    recording.anyBinding = true;
-    expect(await reader.execute(null), isTrue);
   });
 }
