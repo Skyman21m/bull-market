@@ -12,7 +12,7 @@ import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/offer_row.dart';
-import 'widgets/robot_avatar.dart';
+import 'widgets/maker_avatar.dart';
 
 /// The « Chart » view of the book: the depth chart of the official client (`components/Charts/DepthChart/index.tsx`), drawn by the app.
 ///
@@ -703,7 +703,7 @@ class OrderTooltip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          RobotAvatar(seed: order.maker.hex, size: 32),
+          MakerAvatar(order: order, size: 32),
           const Gap(BullSpacing.sm),
           Flexible(
             child: Column(
