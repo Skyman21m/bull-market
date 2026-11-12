@@ -363,7 +363,7 @@ void main() {
     });
   }
 
-  // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery ».
+  // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery », then a key drawn in memory, never shown: its backup alert, and the robot step and profile of a draw whose history could not be recorded.
   for (final locale in const [Locale('fr'), Locale('en')]) {
     testWidgets(
       'captures of the Garage in ${locale.languageCode}',
@@ -477,6 +477,9 @@ void main() {
         await capture('garage-supprimer');
         await tester.tap(find.text(l10n.p2pDeleteKeyConfirm));
         await settle();
+        // The pasted key may have robots on a coordinator: the PIN comes after the confirmation.
+        await tester.tap(find.text('PIN'));
+        await settle();
         await tester.tap(find.text(l10n.p2pGarageWelcomeRecovery));
         await settle();
         await tester.enterText(find.byType(EditableText), example);
@@ -506,6 +509,64 @@ void main() {
           throw StateError('the backup step does not hide the key');
         }
         await capture('garage-alerte-sauvegarde');
+
+        // A draw whose history the feature's database could not record: the robot step and the profile say so.
+        // The key is drawn in memory and never captured: hidden by a trip to the background, then shown behind the PIN only to reach « Continue », and captured only on the steps that do not show it.
+        FakeSecureStoragePlatform().install();
+        final unrecorded = GetIt.asNewInstance();
+        addTearDown(unrecorded.reset);
+        setUpP2pForTesting(
+          unrecorded,
+          transport: const _RecordedTransport(RobosatsNetwork.testnet),
+          torStates: () => tor.stream,
+          clock: () => _now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          databaseUnavailable: true,
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: unrecorded,
+            network: RobosatsNetwork.testnet,
+          ),
+        );
+        // The first Garage is gone: its database is closed before the second one opens.
+        await locator.reset();
+        tor.add(P2pTorState.ready);
+        await settle();
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await vault();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await vault();
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageKeyReveal));
+        await settle();
+        await tester.tap(find.text('PIN'));
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        if (find.text(l10n.p2pGarageKeyHistoryNotRecorded).evaluate().isEmpty) {
+          throw StateError('the robot step does not say the history');
+        }
+        await capture('garage-etape2-historique-non-enregistre');
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageSeeProfile));
+        await settle();
+        await capture('garage-profil-historique-non-enregistre');
       },
     );
   }

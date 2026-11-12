@@ -28,13 +28,44 @@ RobotBindingRepositoryImpl bindingsInMemory({
 /// One call made to [RecordingBindings].
 typedef BindingCall = (String method, Object? first, Object? second);
 
-/// Bindings that keep the calls made to them and give [failure] to every call, or to the first [failures] calls when it is set, or success without it.
+/// Bindings that keep the calls made to them and give [failure] to every write, or to the first [failures] writes when it is set, or success without it; the reads give [readFailure] when it is set.
+///
+/// Its reads follow its writes, as the database's do: a key is drawn here once a record of its draw succeeded, or when [drawnHere] names it, until a record of its import succeeds; a key is bound once a binding of one of its robots succeeded; [exposure], when set, answers instead.
 final class RecordingBindings implements RobotBindingRepository {
   final List<BindingCall> calls = [];
   P2pFailure? failure;
   int? failures;
 
-  RecordingBindings({this.failure, this.failures});
+  /// What [exposureOf] answers when it succeeds, instead of what the writes made.
+  GarageKeyExposure? exposure;
+
+  /// What the reads give instead, when it is set: the writes follow [failure].
+  P2pFailure? readFailure;
+
+  /// Called when a read starts; then, when [readsWait] is set, the read waits for it, as a slow database would.
+  void Function()? onRead;
+  Future<void>? readsWait;
+
+  /// The history recorded for each network and key fingerprint.
+  final Map<(RobosatsNetwork, GarageKeyFingerprint), GarageKeyHistory>
+  _histories;
+
+  /// The fingerprints of the keys with a robot bound, whatever the network.
+  final Set<GarageKeyFingerprint> _bound = {};
+
+  /// [drawnHere] are the networks and keys recorded as drawn here from the start, as for a key the test stored in the keystore.
+  RecordingBindings({
+    this.failure,
+    this.failures,
+    Iterable<(RobosatsNetwork, GarageKeyFingerprint)> drawnHere = const [],
+  }) : _histories = {
+         for (final slot in drawnHere) slot: GarageKeyHistory.drawnHere,
+       };
+
+  Future<void> _slowRead() async {
+    onRead?.call();
+    if (readsWait case final wait?) await wait;
+  }
 
   Result<void, P2pFailure> get _result {
     final failure = this.failure;
@@ -52,7 +83,12 @@ final class RecordingBindings implements RobotBindingRepository {
     GarageKeyFingerprint key,
   ) async {
     calls.add(('recordGeneratedKey', network, key));
-    return _result;
+    final result = _result;
+    // It never overrides a key recorded as imported.
+    if (result case Ok()) {
+      _histories.putIfAbsent((network, key), () => GarageKeyHistory.drawnHere);
+    }
+    return result;
   }
 
   @override
@@ -61,7 +97,9 @@ final class RecordingBindings implements RobotBindingRepository {
     GarageKeyFingerprint key,
   ) async {
     calls.add(('recordImportedKey', network, key));
-    return _result;
+    final result = _result;
+    if (result case Ok()) _histories[(network, key)] = GarageKeyHistory.unknown;
+    return result;
   }
 
   @override
@@ -70,6 +108,27 @@ final class RecordingBindings implements RobotBindingRepository {
     CoordinatorIdentity coordinator,
   ) async {
     calls.add(('bind', robot, coordinator));
-    return _result;
+    final result = _result;
+    if (result case Ok()) _bound.add(robot.keyFingerprint);
+    return result;
+  }
+
+  @override
+  Future<Result<GarageKeyExposure, P2pFailure>> exposureOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) async {
+    calls.add(('exposureOf', network, key));
+    await _slowRead();
+    return switch (readFailure) {
+      final failure? => Err(failure),
+      null => Ok(
+        exposure ??
+            GarageKeyExposure(
+              history: _histories[(network, key)] ?? GarageKeyHistory.unknown,
+              hasBinding: _bound.contains(key),
+            ),
+      ),
+    };
   }
 }
