@@ -1116,6 +1116,7 @@ void main() {
         expect(await one.recordImportedKey(testnet, fingerprintA), passes);
 
         // The binds of one connection run in order; the record of the other lands somewhere among them.
+        // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections above: such a bind is a P2pStorageFailure that refuses the request, and a record that gave up is tried again.
         Future<List<Result<void, P2pFailure>>> bindDuring(
           Iterable<int> indexes,
           Future<Result<void, P2pFailure>> Function() record,
@@ -1124,15 +1125,24 @@ void main() {
             for (final index in indexes)
               one.bind(RobotSlot(testnet, fingerprintA, index), temple),
           ];
-          final recorded = record();
+          Future<Result<void, P2pFailure>> recordUntilDone() async {
+            var result = await record();
+            for (var attempt = 0; attempt < 10 && result is! Ok; attempt++) {
+              result = await record();
+            }
+            return result;
+          }
+
+          final recorded = recordUntilDone();
           final results = await Future.wait(binds);
           expect(await recorded, passes);
           return results;
         }
 
-        bool bound(Result<void, P2pFailure> result) => switch (result) {
-          Ok() => true,
-          Err(failure: RobotHistoryUnknownFailure()) => false,
+        bool bound(Result<void, P2pFailure> result) => result is Ok;
+        bool refused(Result<void, P2pFailure> result) => switch (result) {
+          Err(failure: RobotHistoryUnknownFailure()) => true,
+          Ok() || Err(failure: P2pStorageFailure()) => false,
           Err(:final failure) => fail('$failure'),
         };
 
@@ -1140,18 +1150,18 @@ void main() {
           List.generate(20, (i) => i),
           () => other.recordAcknowledgedKey(testnet, fingerprintA),
         );
-        // Refused until the acknowledgement, bound after it.
+        // Refused until the acknowledgement, never once it is recorded.
         final firstBound = acknowledging.indexWhere(bound);
         expect(
-          acknowledging.skip(firstBound < 0 ? 20 : firstBound).every(bound),
-          isTrue,
+          acknowledging.skip(firstBound < 0 ? 20 : firstBound).any(refused),
+          isFalse,
         );
         final importing = await bindDuring(
           List.generate(20, (i) => 20 + i),
           () => other.recordImportedKey(testnet, fingerprintA),
         );
-        // Bound until the import, refused after it.
-        final firstRefused = importing.indexWhere((r) => !bound(r));
+        // Bound until the import, never once it is recorded.
+        final firstRefused = importing.indexWhere(refused);
         expect(
           importing.skip(firstRefused < 0 ? 20 : firstRefused).any(bound),
           isFalse,
@@ -1163,13 +1173,11 @@ void main() {
         );
 
         final stored = await first.select(first.robotBindings).get();
-        expect(
-          {for (final row in stored) row.robotIndex},
-          {
-            for (final (i, result) in [...acknowledging, ...importing].indexed)
-              if (bound(result)) i,
-          },
-        );
+        final storedIndexes = {for (final row in stored) row.robotIndex};
+        for (final (i, result) in [...acknowledging, ...importing].indexed) {
+          if (bound(result)) expect(storedIndexes, contains(i));
+          if (refused(result)) expect(storedIndexes, isNot(contains(i)));
+        }
         expect(
           stored.map((row) => row.provenance),
           everyElement('acknowledged'),
