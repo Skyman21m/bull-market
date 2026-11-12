@@ -97,7 +97,7 @@ void main() {
     });
 
     test(
-      'keeps a share within 0 and 1, and drops one that is not a number',
+      'keeps a share within 0 and 1, and reads one that is not a number as 0',
       () {
         double? share(double progress) =>
             P2pTorReport(P2pTorState.connecting, progress: progress).progress;
@@ -105,7 +105,7 @@ void main() {
         expect(share(1.5), 1);
         expect(share(-0.2), 0);
         expect(share(double.infinity), 1);
-        expect(share(double.nan), isNull);
+        expect(share(double.nan), 0);
         expect(share(0.42), 0.42);
       },
     );
@@ -209,6 +209,14 @@ void main() {
         ]),
         [60, 60, 60, 65],
       );
+    });
+
+    test('a share that is not a number keeps the percentage shown', () {
+      expect(
+        percents([connecting(0.5), connecting(double.nan), connecting(0.3)]),
+        [50, 50, 50],
+      );
+      expect(percents([connecting(double.nan)]), [0]);
     });
 
     test('a jump is shown as it comes', () {

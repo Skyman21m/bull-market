@@ -36,7 +36,9 @@ final class P2pTorReport {
 
   const P2pTorReport._(this.state, this.progress);
 
-  /// A report of [state]; [progress] is kept only while Tor connects, within 0 and 1, and dropped when it is not a number.
+  /// A report of [state]; [progress] is kept only while Tor connects, within 0 and 1.
+  ///
+  /// A share that is not a number reads as 0, never as none: none means a new attempt, and the percentage shown would start over and go back.
   factory P2pTorReport(P2pTorState state, {double? progress}) => P2pTorReport._(
     state,
     state == P2pTorState.connecting ? _share(progress) : null,
@@ -51,8 +53,11 @@ final class P2pTorReport {
     _ => P2pTorReport(P2pTorState.of(state)),
   };
 
-  static double? _share(double? progress) =>
-      progress == null || progress.isNaN ? null : progress.clamp(0.0, 1.0);
+  static double? _share(double? progress) => switch (progress) {
+    null => null,
+    final share when share.isNaN => 0.0,
+    final share => share.clamp(0.0, 1.0),
+  };
 
   @override
   bool operator ==(Object other) =>
