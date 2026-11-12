@@ -69,6 +69,20 @@ void main() {
     ]);
   });
 
+  test('no other analysis options lie under the feature', () {
+    // The analyzer reads the nearest `analysis_options.yaml` of each file: a nested one could switch a diagnostic off for its folder without a sign (second security pass on step 3, #69).
+    // The tool caches of `.dart_tool` and the build output are not sources, and Git ignores them.
+    final found = [
+      for (final entity in Directory('.').listSync(recursive: true))
+        if (entity is File &&
+            entity.uri.pathSegments.last == 'analysis_options.yaml' &&
+            !entity.path.startsWith('./.dart_tool/') &&
+            !entity.path.startsWith('./build/'))
+          entity.path,
+    ];
+    expect(found, ['./analysis_options.yaml']);
+  });
+
   test('an ignore followed by a comment of its own is read whole', () {
     // `// ignore: unused_import // a reason` silences the analyzer all the same: read up to the slash, it passed for the form gen-l10n writes (#69).
     expect(
