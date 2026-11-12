@@ -234,6 +234,16 @@ void main() {
     );
 
     test(
+      'only the release of a robot closes its sessions, once its requests have ended',
+      () {
+        // Closing the sessions of a robot is not a lock: a call still running may open a new session after it, which the release waits for (`CoordinatorSessionsPort.closeRobotSessions`).
+        expect(referring((r) => r == 'CloseRobotSessionsUsecase.execute'), {
+          'lib/src/domain/usecases/release_robot_usecase.dart',
+        });
+      },
+    );
+
+    test(
       'the feature never names a robot\'s token: the proof is the package\'s',
       () {
         expect(
@@ -626,6 +636,7 @@ const _watched = {
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
+  'CloseRobotSessionsUsecase': ('package:p2p/', {'execute'}),
   'UnprovenCoordinatorRobot': ('package:robosats/', {'prove', 'parse'}),
   'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
   'RobotPgpKey': (

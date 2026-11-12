@@ -209,6 +209,26 @@ final class _Coordinators implements CoordinatorTransport {
       );
 }
 
+/// [coordinator] as a later list could give it, with no instance on testnet.
+Coordinator _withoutTestnet(Coordinator coordinator) => Coordinator(
+  shortAlias: coordinator.shortAlias,
+  longAlias: coordinator.longAlias,
+  identifier: coordinator.identifier,
+  description: coordinator.description,
+  motto: coordinator.motto,
+  color: coordinator.color,
+  established: coordinator.established,
+  nostrHexPubkey: coordinator.nostrHexPubkey,
+  contact: coordinator.contact,
+  badges: coordinator.badges,
+  policies: coordinator.policies,
+  mainnet: coordinator.mainnet,
+  testnet: const CoordinatorOrigins(),
+  mainnetNodesPubkeys: coordinator.mainnetNodesPubkeys,
+  testnetNodesPubkeys: coordinator.testnetNodesPubkeys,
+  federated: coordinator.federated,
+);
+
 /// The armored public key a first contact sent, from its header.
 String? _sentPublicKey(CoordinatorRequest request) {
   final parts = (request.headers['Authorization'] ?? '').split(' | ');
@@ -1260,9 +1280,15 @@ void main() {
           final sent = coordinators.requests.length;
 
           for (final federation in [
+            // Removed from the list.
             Federation([
               for (final known in Federation.robosats.coordinators)
                 if (known.shortAlias != 'temple') known,
+            ]),
+            // Still listed, without its testnet instance.
+            Federation([
+              for (final known in Federation.robosats.coordinators)
+                known.shortAlias == 'temple' ? _withoutTestnet(known) : known,
             ]),
           ]) {
             expect(
