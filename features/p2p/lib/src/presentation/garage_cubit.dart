@@ -146,10 +146,24 @@ class GarageCubit extends Cubit<GarageState> {
     return await reauthenticate() && !isClosed;
   }
 
-  /// Shows on the state whether the delete needs the PIN, as the database just said, when it differs from what the state shows.
+  /// Shows on the state whether the delete needs the PIN, as the database just said, when it differs from what the state shows; the rest of the state is kept as it is.
   void _showDeletionNeedsPin(bool needsPin) {
-    final shown = _withDeletionNeedsPin(state, needsPin);
-    if (!identical(shown, state)) emit(shown);
+    final current = state;
+    if (current is GarageWithKey && current.deletionNeedsPin != needsPin) {
+      emit(
+        current.copyWith(deletionNeedsPin: needsPin, failure: current.failure),
+      );
+    } else if (current is GarageUnknown &&
+        current.deletionNeedsPin != needsPin) {
+      emit(
+        GarageUnknown(
+          current.network,
+          current.failure,
+          actionFailure: current.actionFailure,
+          deletionNeedsPin: needsPin,
+        ),
+      );
+    }
   }
 
   Future<void> _deleteKey() async {
@@ -215,7 +229,16 @@ class GarageCubit extends Cubit<GarageState> {
     emit(GarageWorking(_network));
     final read = await _read.execute(_network);
     if (isClosed) return;
-    final settled = switch (read) {
+    // Read before the state is built, so that nothing awaited lies between the state and its emit: a hide of the app during this read keeps a key just drawn behind the PIN.
+    final needsPin = switch (read) {
+      Ok(value: final key) => await _needsPin.execute(key),
+      // No key, or a locked keystore: no delete is offered.
+      Err(failure: GarageKeyMissingFailure() || GarageKeyLockedFailure()) =>
+        true,
+      Err() => await _needsPin.execute(null),
+    };
+    if (isClosed) return;
+    emit(switch (read) {
       Ok(value: final key) => switch (key.firstUsableRobot(0)) {
         Ok(value: final robot) => switch (_unacknowledged.waits(_network)) {
           final awaitsBackup => GarageWithKey(
@@ -227,12 +250,14 @@ class GarageCubit extends Cubit<GarageState> {
             showWithoutPin: justDrawn && awaitsBackup && !_concealedSinceAsked,
             failure: failure,
             historyNotRecorded: _drawUnrecorded,
+            deletionNeedsPin: needsPin,
           ),
         },
         Err(failure: final robotFailure) => GarageUnknown(
           _network,
           robotFailure,
           actionFailure: failure,
+          deletionNeedsPin: needsPin,
         ),
       },
       Err(failure: GarageKeyMissingFailure()) => GarageWithoutKey(
@@ -243,33 +268,10 @@ class GarageCubit extends Cubit<GarageState> {
         _network,
         readFailure,
         actionFailure: failure,
+        deletionNeedsPin: needsPin,
       ),
-    };
-    final needsPin = switch (settled) {
-      GarageWithKey(:final key) => await _needsPin.execute(key),
-      // A locked keystore offers no delete.
-      GarageUnknown(failure: GarageKeyLockedFailure()) => true,
-      GarageUnknown() => await _needsPin.execute(null),
-      GarageWithoutKey() || GarageWorking() => true,
-    };
-    if (isClosed) return;
-    emit(_withDeletionNeedsPin(settled, needsPin));
+    });
   }
-
-  /// [state] showing [needsPin] as whether a delete asks the PIN, or [state] itself when it offers no delete or already shows it.
-  static GarageState _withDeletionNeedsPin(GarageState state, bool needsPin) =>
-      switch (state) {
-        GarageWithKey() when state.deletionNeedsPin != needsPin =>
-          state.copyWith(deletionNeedsPin: needsPin, failure: state.failure),
-        GarageUnknown() when state.deletionNeedsPin != needsPin =>
-          GarageUnknown(
-            state.network,
-            state.failure,
-            actionFailure: state.actionFailure,
-            deletionNeedsPin: needsPin,
-          ),
-        _ => state,
-      };
 }
 
 /// The networks whose Garage Key was drawn in this run of the app and not acknowledged yet: in memory only, one object for the feature, which the locator creates.

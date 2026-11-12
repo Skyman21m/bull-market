@@ -46,7 +46,16 @@ final class RecordingBindings implements RobotBindingRepository {
   /// What the reads, [exposureOf] and [hasAnyBinding], give instead, when it is set: the writes follow [failure].
   P2pFailure? readFailure;
 
+  /// Called when a read starts; then, when [readsWait] is set, the read waits for it, as a slow database would.
+  void Function()? onRead;
+  Future<void>? readsWait;
+
   RecordingBindings({this.failure, this.failures});
+
+  Future<void> _slowRead() async {
+    onRead?.call();
+    if (readsWait case final wait?) await wait;
+  }
 
   Result<void, P2pFailure> get _result {
     final failure = this.failure;
@@ -91,6 +100,7 @@ final class RecordingBindings implements RobotBindingRepository {
     GarageKeyFingerprint key,
   ) async {
     calls.add(('exposureOf', network, key));
+    await _slowRead();
     return switch (readFailure) {
       final failure? => Err(failure),
       null => Ok(exposure),
@@ -100,6 +110,7 @@ final class RecordingBindings implements RobotBindingRepository {
   @override
   Future<Result<bool, P2pFailure>> hasAnyBinding() async {
     calls.add(('hasAnyBinding', null, null));
+    await _slowRead();
     return switch (readFailure) {
       final failure? => Err(failure),
       null => Ok(anyBinding),

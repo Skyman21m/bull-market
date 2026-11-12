@@ -544,6 +544,42 @@ void main() {
       timeout: slow,
     );
 
+    test(
+      'hidden while the database is read after the draw, arrives behind the PIN',
+      () async {
+        final bindings = RecordingBindings();
+        final cubit = cubitOver(FakeSecureStoragePlatform(), bindings: bindings);
+        await cubit.load();
+        final reading = Completer<void>();
+        final started = Completer<void>();
+        bindings
+          ..readsWait = reading.future
+          ..onRead = () {
+            if (!started.isCompleted) started.complete();
+          };
+
+        final drawing = cubit.generate();
+        // The key is drawn and read back; the database is read for the delete before the state is built.
+        await started.future;
+        cubit.conceal();
+        reading.complete();
+        await drawing;
+
+        expect(
+          cubit.state,
+          isA<GarageWithKey>()
+              .having((state) => state.awaitsBackup, 'awaitsBackup', isTrue)
+              .having(
+                (state) => state.showWithoutPin,
+                'showWithoutPin',
+                isFalse,
+              ),
+        );
+        await cubit.close();
+      },
+      timeout: slow,
+    );
+
     test('pasted, is never shown without the PIN', () async {
       final cubit = cubitOver(FakeSecureStoragePlatform());
       await cubit.load();
