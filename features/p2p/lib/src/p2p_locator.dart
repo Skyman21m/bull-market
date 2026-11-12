@@ -110,14 +110,15 @@ final class P2pLocator {
         locator(),
       ),
     );
-    // The places, retries and memory of the robot requests to each coordinator: one for the whole feature, in memory, for the run of the app.
-    locator.registerLazySingleton<RobotRequestLimiter>(
-      () => RobotRequestLimiter(
-        clock: clock,
+    // The places, retries and memory of the robot requests to each coordinator: one for the whole feature, in memory, for the run of the app, its busy window on a time that only moves forward.
+    locator.registerLazySingleton<RobotRequestLimiter>(() {
+      final running = Stopwatch()..start();
+      return RobotRequestLimiter(
+        elapsed: () => running.elapsed,
         delay: Future<void>.delayed,
         random: Random().nextDouble,
-      ),
-    );
+      );
+    });
     // A robot put on a coordinator, read back from it, and let go: their only callers will be the Garage's robot panel, and nothing outside the feature reaches them.
     locator.registerFactory<PutRobotOnCoordinatorUsecase>(
       () => PutRobotOnCoordinatorUsecase(locator(), locator()),
