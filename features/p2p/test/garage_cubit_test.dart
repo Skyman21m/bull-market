@@ -548,7 +548,10 @@ void main() {
       'hidden while the database is read after the draw, arrives behind the PIN',
       () async {
         final bindings = RecordingBindings();
-        final cubit = cubitOver(FakeSecureStoragePlatform(), bindings: bindings);
+        final cubit = cubitOver(
+          FakeSecureStoragePlatform(),
+          bindings: bindings,
+        );
         await cubit.load();
         final reading = Completer<void>();
         final started = Completer<void>();
