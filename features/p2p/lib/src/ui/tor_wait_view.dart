@@ -135,9 +135,12 @@ class TorWaitView extends StatelessWidget {
 /// The bar under the steps.
 ///
 /// It runs for as long as Tor starts, as the official Android client's spinner turns until Tor is ready, and fades out once Tor is ready or has failed.
-/// With a [percent], the bar is filled to it, and the run goes on over the fill in a lighter tint, so that the bar never stands still while Tor is not ready, even at 0 % or during the seconds `bull_tor` holds readiness at a full share.
+/// With a [percent], the part done is filled and the run goes on over the whole bar: dimmed where the start is not done yet, so that it does not read as done, and in a lighter tint over the fill, so that the bar never stands still while Tor is not ready, even at 0 % or during the seconds `bull_tor` holds readiness at a full share.
 class _TorBar extends StatelessWidget {
   static const height = 4.0;
+
+  /// The run that goes on for the whole wait: keeping it when a percentage comes or goes keeps its pace and its fade.
+  static const _runKey = ValueKey('run');
 
   final bool running;
   final int? percent;
@@ -148,39 +151,58 @@ class _TorBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final percent = this.percent;
+    BullFadingLinearProgress run(Color color, Color track, {Key? key}) =>
+        BullFadingLinearProgress(
+          key: key,
+          trigger: running,
+          height: height,
+          foregroundColor: color,
+          backgroundColor: track,
+        );
     return ClipRRect(
       borderRadius: BorderRadius.circular(BullRadius.xxs),
       child: SizedBox(
         height: height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (percent != null)
-              ColoredBox(
-                color: colors.surfaceContainer,
-                child: AnimatedFractionallySizedBox(
+        child: LayoutBuilder(
+          builder: (context, constraints) => Stack(
+            fit: StackFit.expand,
+            children: [
+              if (percent != null) ColoredBox(color: colors.surfaceContainer),
+              percent == null
+                  ? run(colors.primary, colors.surfaceContainer, key: _runKey)
+                  : run(
+                      colors.primary.withValues(alpha: 0.4),
+                      colors.transparent,
+                      key: _runKey,
+                    ),
+              if (percent != null)
+                AnimatedFractionallySizedBox(
                   duration: MediaQuery.disableAnimationsOf(context)
                       ? Duration.zero
                       : const Duration(milliseconds: 300),
                   alignment: AlignmentDirectional.centerStart,
                   widthFactor: percent / 100,
-                  child: ColoredBox(color: colors.primary),
-                ),
-              ),
-            BullFadingLinearProgress(
-              trigger: running,
-              height: height,
-              foregroundColor: percent == null
-                  ? colors.primary
-                  : Color.alphaBlend(
-                      colors.onPrimary.withValues(alpha: 0.45),
-                      colors.primary,
+                  child: ColoredBox(
+                    color: colors.primary,
+                    // The run laid out over the whole bar, and cut to the part done.
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: AlignmentDirectional.centerStart,
+                        minWidth: constraints.maxWidth,
+                        maxWidth: constraints.maxWidth,
+                        child: run(
+                          Color.alphaBlend(
+                            colors.onPrimary.withValues(alpha: 0.45),
+                            colors.primary,
+                          ),
+                          colors.transparent,
+                        ),
+                      ),
                     ),
-              backgroundColor: percent == null
-                  ? colors.surfaceContainer
-                  : colors.transparent,
-            ),
-          ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

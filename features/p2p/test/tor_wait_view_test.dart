@@ -139,8 +139,11 @@ double phraseOpacity(WidgetTester tester) => tester
     .opacity
     .value;
 
-BullFadingLinearProgress bar(WidgetTester tester) => tester
-    .widget<BullFadingLinearProgress>(find.byType(BullFadingLinearProgress));
+/// The run of the bar for the whole wait, dimmed once a percentage is shown.
+BullFadingLinearProgress bar(WidgetTester tester) =>
+    tester.widget<BullFadingLinearProgress>(
+      find.byType(BullFadingLinearProgress).first,
+    );
 
 /// The fill of the bar, drawn only with a percentage.
 final fill = find.byType(AnimatedFractionallySizedBox);
@@ -148,9 +151,17 @@ final fill = find.byType(AnimatedFractionallySizedBox);
 /// The share of the bar the fill covers.
 double filled(WidgetTester tester) =>
     tester
-        .getSize(find.descendant(of: fill, matching: find.byType(ColoredBox)))
+        .getSize(
+          find.descendant(of: fill, matching: find.byType(ColoredBox)).first,
+        )
         .width /
     tester.getSize(fill).width;
+
+/// The run drawn over the fill, in a lighter tint.
+final lightRun = find.descendant(
+  of: fill,
+  matching: find.byType(BullFadingLinearProgress),
+);
 
 /// Lets a bar that stopped fade out: once it has, nothing on the screen moves any more.
 Future<void> fadeOut(WidgetTester tester) async {
@@ -187,12 +198,26 @@ void main() {
           tester.getTopLeft(find.text('42%')).dx,
           greaterThan(tester.getTopRight(fill).dx),
         );
-        // The run goes on over the fill, in a lighter tint, on no track of its own.
+        // The run goes on over the whole bar: dimmed where the start is not done yet, with no track of its own.
+        expect(find.byType(BullFadingLinearProgress), findsNWidgets(2));
         expect(bar(tester).trigger, isTrue);
         expect(bar(tester).backgroundColor, testBullTheme.transparent);
         expect(
           bar(tester).foregroundColor,
+          testBullTheme.primary.withValues(alpha: 0.4),
+        );
+        // And in a lighter tint over the fill, laid out over the whole bar and cut to the part done.
+        final light = tester.widget<BullFadingLinearProgress>(lightRun);
+        expect(light.trigger, isTrue);
+        expect(light.backgroundColor, testBullTheme.transparent);
+        expect(
+          light.foregroundColor,
           isNot(anyOf(testBullTheme.primary, testBullTheme.surfaceContainer)),
+        );
+        expect(tester.getSize(lightRun).width, tester.getSize(fill).width);
+        expect(
+          find.ancestor(of: lightRun, matching: find.byType(ClipRect)),
+          findsWidgets,
         );
         expect(tester.hasRunningAnimations, isTrue);
       },
@@ -268,6 +293,36 @@ void main() {
       expect(find.bySemanticsLabel('42%'), findsOneWidget);
       semantics.dispose();
     });
+
+    testWidgets(
+      'Tor fails after a percentage: the run fades out, as it does without one',
+      (tester) async {
+        await tester.pumpWidget(wait(TorWait.connecting, percent: 42));
+        await tester.pump(const Duration(milliseconds: 100));
+        final run = tester.element(find.byType(BullFadingLinearProgress).first);
+
+        await tester.pumpWidget(wait(TorWait.failed, percent: 42));
+        expect(find.byType(BullFadingLinearProgress), findsOneWidget);
+        // The same run, so its fade goes on from where it was.
+        expect(tester.element(find.byType(BullFadingLinearProgress)), run);
+        expect(bar(tester).trigger, isFalse);
+        await tester.pump(const Duration(milliseconds: 500));
+        final fading = tester
+            .widget<FadeTransition>(
+              find
+                  .descendant(
+                    of: find.byType(BullFadingLinearProgress),
+                    matching: find.byType(FadeTransition),
+                  )
+                  .first,
+            )
+            .opacity
+            .value;
+        expect(fading, allOf(greaterThan(0), lessThan(1)));
+        await fadeOut(tester);
+        expect(tester.hasRunningAnimations, isFalse);
+      },
+    );
 
     testWidgets('in French, the percent sign as French writes it', (
       tester,
