@@ -130,7 +130,7 @@ final class RobotCoordinatorTooManyRefusalsFailure extends P2pFailure {
 
 /// This robot was released, its screen left, before the request could leave: nothing more was sent for it.
 ///
-/// A request already sent when the robot was released ran to its end, and its answer was dropped.
+/// A request already in flight when the robot was released runs to its end, and its answer is returned to the call that sent it, like any other: the screen that is gone drops it.
 final class RobotReleasedFailure extends P2pFailure {
   const RobotReleasedFailure();
 }

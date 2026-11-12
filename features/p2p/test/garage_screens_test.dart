@@ -2525,7 +2525,7 @@ void main() {
       );
       // Every wait of the limiter ends at once.
       limiter = RobotRequestLimiter(
-        clock: () => testNow,
+        elapsed: () => Duration.zero,
         delay: (_) => Future<void>.value(),
         random: () => 0.5,
       );
@@ -2573,7 +2573,7 @@ void main() {
         NetworkGarageKey(network, fixedKey),
         index,
         ReadRobotStandingUsecase(bindings),
-        PutRobotOnCoordinatorUsecase(fetch, limiter),
+        PutRobotOnCoordinatorUsecase(fetch, bindings, limiter),
         ReadRobotOnCoordinatorUsecase(
           fetch,
           bindings,
@@ -2662,11 +2662,14 @@ void main() {
     testWidgets(
       'Select Host: the hosts of the network in order, offline or closed, and their dialog',
       (tester) async {
+        // Three first contacts LibreBazaar refused with a nickname taken, in this run.
         for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++) {
-          limiter.noteNicknameRefused(
-            RobosatsNetwork.mainnet,
-            coordinator('bazaar'),
-          );
+          limiter
+              .holdFirstContactSlot(
+                RobosatsNetwork.mainnet,
+                coordinator('bazaar'),
+              )
+              ?.end(refused: true);
         }
         final semantics = tester.ensureSemantics();
         await showPanel(

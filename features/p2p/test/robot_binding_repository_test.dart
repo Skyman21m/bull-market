@@ -1190,6 +1190,15 @@ void main() {
 
     tearDown(() => directory.delete(recursive: true));
 
+    /// Opens [databases] one after the other, before anything runs on them at once.
+    ///
+    /// drift keeps the error of an open that gave up on SQLite's busy timeout, so a connection opened inside the part at once could fail for good, where a busy statement fails once and may be asked again (second review of #72).
+    Future<void> openInTurn(Iterable<P2pDatabase> databases) async {
+      for (final database in databases) {
+        await database.customSelect('SELECT 1').get();
+      }
+    }
+
     test(
       'the file is p2p.sqlite in the directory given, made at the first query only',
       () async {
@@ -1239,6 +1248,7 @@ void main() {
       () async {
         final first = P2pDatabase.open(() async => directory);
         final second = P2pDatabase.open(() async => directory);
+        await openInTurn([first, second]);
         final one = bindingsInMemory(database: first);
         final other = bindingsInMemory(database: second);
         expect(await one.recordGeneratedKey(testnet, fingerprintA), passes);
@@ -1294,6 +1304,7 @@ void main() {
       () async {
         final first = P2pDatabase.open(() async => directory);
         final second = P2pDatabase.open(() async => directory);
+        await openInTurn([first, second]);
         final one = bindingsInMemory(database: first);
         final other = bindingsInMemory(database: second);
         expect(await one.recordImportedKey(testnet, fingerprintA), passes);
@@ -1415,6 +1426,7 @@ void main() {
         final databases = [
           for (var i = 0; i < 3; i++) P2pDatabase.open(() async => directory),
         ];
+        await openInTurn(databases);
         final repositories = [
           for (final database in databases)
             bindingsInMemory(database: database),

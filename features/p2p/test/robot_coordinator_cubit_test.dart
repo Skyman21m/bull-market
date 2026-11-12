@@ -86,7 +86,7 @@ void main() {
     // Every wait of the limiter ends at once, but, when a test holds them, the waits of 10 s, the bound of a release among them, which then lasts until the requests of the robot end.
     holdTenSeconds = false;
     limiter = RobotRequestLimiter(
-      clock: () => testNow,
+      elapsed: () => Duration.zero,
       delay: (wait) => holdTenSeconds && wait == RobotRequestLimiter.releaseWait
           ? Completer<void>().future
           : Future<void>.value(),
@@ -117,7 +117,7 @@ void main() {
       NetworkGarageKey(network, fixedKey),
       index,
       ReadRobotStandingUsecase(bindings),
-      PutRobotOnCoordinatorUsecase(fetch, limiter),
+      PutRobotOnCoordinatorUsecase(fetch, bindings, limiter),
       ReadRobotOnCoordinatorUsecase(
         fetch,
         bindings,
@@ -417,7 +417,13 @@ void main() {
       expect(problemOf(cubit.state).wayOut, RobotWayOut.firstContact);
       await cubit.retry();
       await until(cubit, known);
-      expect(paths(), ['temple create', 'temple read', 'temple create']);
+      // The put reads the bound robot back first, then makes its first contact.
+      expect(paths(), [
+        'temple create',
+        'temple read',
+        'temple read',
+        'temple create',
+      ]);
     });
 
     test(
@@ -451,7 +457,7 @@ void main() {
 
         await cubit.retry();
         await until(cubit, known);
-        expect(paths(), ['temple create', 'temple create']);
+        expect(paths(), ['temple create', 'temple read', 'temple create']);
       },
     );
 
@@ -531,8 +537,9 @@ void main() {
     test(
       'a coordinator that refused too many robots: listed so, nothing bound or sent',
       () async {
+        // Three first contacts the coordinator refused with a nickname taken, in this run.
         for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++) {
-          limiter.noteNicknameRefused(_testnet, temple);
+          limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
         }
         final cubit = cubitAt(0);
         await cubit.load();
@@ -675,7 +682,8 @@ void main() {
         await cubit.retry();
         await until(cubit, known);
 
-        expect(paths(), ['temple read', 'temple create']);
+        // The put reads it back first, then makes the first contact the coordinator needs.
+        expect(paths(), ['temple read', 'temple read', 'temple create']);
         expect((cubit.state as RobotOnCoordinator).coordinator, temple);
       },
     );

@@ -46,6 +46,29 @@ void main() {
     }
   });
 
+  test('the feature\'s analysis options switch no diagnostic off', () {
+    // An `ignore` severity, a lint set to false or an excluded file there would silence the analyzer as an `ignore` comment does (review of step 3): the options are pinned, comments aside, as main has them.
+    final options = File('analysis_options.yaml')
+        .readAsLinesSync()
+        .map((line) => line.split('#').first.trim())
+        .where((line) => line.isNotEmpty);
+    expect(options, [
+      'include: package:lints/recommended.yaml',
+      'linter:',
+      'rules:',
+      '- avoid_print',
+      '- avoid_dynamic_calls',
+      '- implementation_imports',
+      '- prefer_final_locals',
+      '- require_trailing_commas',
+      '- use_super_parameters',
+      'analyzer:',
+      'errors:',
+      'implementation_imports: error',
+      'avoid_dynamic_calls: error',
+    ]);
+  });
+
   test('an ignore followed by a comment of its own is read whole', () {
     // `// ignore: unused_import // a reason` silences the analyzer all the same: read up to the slash, it passed for the form gen-l10n writes (#69).
     expect(
@@ -209,6 +232,8 @@ void main() {
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
             'fetchByUseCaseTearOff': {'FetchRobotUsecase.execute'},
+            'closeByPort': {'CoordinatorSessionsPort.closeRobotSessions'},
+            'firstContactOutsidePut': {'RobotContact.firstContact'},
           },
         );
       },
@@ -240,8 +265,20 @@ void main() {
         expect(referring((r) => r == 'CloseRobotSessionsUsecase.execute'), {
           'lib/src/domain/usecases/release_robot_usecase.dart',
         });
+        // Nor does any other file reach the port's own close of a robot's sessions (review of step 3).
+        expect(
+          referring((r) => r == 'CoordinatorSessionsPort.closeRobotSessions'),
+          {'lib/src/domain/usecases/close_robot_sessions_usecase.dart'},
+        );
       },
     );
+
+    test('only the use case that puts a robot makes a first contact', () {
+      // A first contact sends a key pair and may create the robot: it is made only on the user's request, with the read before it and the cap of 7004 refusals of that use case.
+      expect(referring((r) => r == 'RobotContact.firstContact'), {
+        'lib/src/domain/usecases/put_robot_on_coordinator_usecase.dart',
+      });
+    });
 
     test(
       'the feature never names a robot\'s token: the proof is the package\'s',
@@ -561,6 +598,37 @@ void main() {
       hasLength(1),
     );
     expect(bind.where((call) => call.startsWith('customSelect(')), isEmpty);
+    // Across the whole file too: a helper that read the history and wrote the binding, the pinned insert left unused in `bind`, passed a check of `bind` alone (second review of #72).
+    expect(
+      repository.calls.where((call) => call.startsWith('customInsert(')),
+      hasLength(1),
+    );
+    expect(
+      repository.calls.where(
+        (call) => call.startsWith('customInsert(_bindIfFreshSql,'),
+      ),
+      hasLength(1),
+    );
+    // The table of the bindings is handed to its reads and to that insert only: no typed insert, batch or other write.
+    expect(
+      repository.calls.where(
+        (call) =>
+            call.contains('robotBindings') &&
+            !RegExp(r'^(select|customSelect|customInsert)\(').hasMatch(call),
+      ),
+      isEmpty,
+    );
+    // And no SQL text inserts but the pinned one.
+    final pinned =
+        repository.constants['_bindIfFreshSql'] ?? fail('no _bindIfFreshSql');
+    expect(
+      repository.strings.where(
+        (text) =>
+            RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
+            !pinned.contains(text),
+      ),
+      isEmpty,
+    );
     expect(
       repository.namesByMethod['bind'],
       isNot(contains('garageKeyHistories')),
@@ -765,6 +833,8 @@ const _watched = {
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
   'CloseRobotSessionsUsecase': ('package:p2p/', {'execute'}),
+  'CoordinatorSessionsPort': ('package:p2p/', {'closeRobotSessions'}),
+  'RobotContact': ('package:p2p/', {'firstContact'}),
   // The robot use cases of the Garage's panel, and what its cubit and widgets must not reach but through them (#29, step 5).
   'PutRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
   'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),

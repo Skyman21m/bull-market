@@ -60,9 +60,9 @@ Future<void> _until(bool Function() condition) async {
   expect(condition(), isTrue);
 }
 
-/// The time of the limiter: a clock the test sets, every wait recorded, and the draws of the spread in turn.
+/// The time of the limiter: an elapsed time the test moves, every wait recorded, and the draws of the spread in turn.
 final class _Time {
-  DateTime now = testNow;
+  Duration elapsed = Duration.zero;
   final List<Duration> waits = [];
   final List<double> draws;
   int _drawn = 0;
@@ -84,7 +84,7 @@ final class _Time {
   double random() => draws[_drawn++ % draws.length];
 
   RobotRequestLimiter limiter() =>
-      RobotRequestLimiter(clock: () => now, delay: delay, random: random);
+      RobotRequestLimiter(elapsed: () => elapsed, delay: delay, random: random);
 }
 
 /// What the coordinator of the tests does with one request.
@@ -97,6 +97,18 @@ enum _Reply {
 
   /// The deadline of the transport passed.
   timedOut,
+
+  /// The coordinator stores the robot of a first contact, and its answer is lost: the deadline of the transport passes.
+  storedThenTimedOut,
+
+  /// The coordinator could not be reached.
+  unreachable,
+
+  /// Any other failure of the transport.
+  failed,
+
+  /// Error 7004 for a first contact, 7001 for the short header (from the review of step 3).
+  takenOrUnknown,
 
   /// Error 7004: the nickname is taken.
   nicknameTaken,
@@ -181,6 +193,17 @@ final class _Coordinators implements CoordinatorTransport {
         return const Err(CoordinatorTransportBusy());
       case _Reply.timedOut:
         return const Err(CoordinatorTimedOut());
+      case _Reply.storedThenTimedOut:
+        store();
+        return const Err(CoordinatorTimedOut());
+      case _Reply.unreachable:
+        return const Err(CoordinatorUnreachable());
+      case _Reply.failed:
+        return const Err(CoordinatorTransportFailed());
+      case _Reply.takenOrUnknown:
+        return parts.length == 4
+            ? Ok(_json(409, {'error_code': 7004, 'bad_request': 'taken'}))
+            : Ok(_json(400, {'error_code': 7001, 'bad_request': 'unknown'}));
       case _Reply.nicknameTaken:
         return Ok(_json(409, {'error_code': 7004, 'bad_request': 'taken'}));
       case _Reply.unknown:
@@ -228,6 +251,27 @@ Coordinator _withoutTestnet(Coordinator coordinator) => Coordinator(
   testnetNodesPubkeys: coordinator.testnetNodesPubkeys,
   federated: coordinator.federated,
 );
+
+/// [coordinator] as a later list could give it, with another Nostr key.
+Coordinator _withNostrKey(Coordinator coordinator, String nostrHexPubkey) =>
+    Coordinator(
+      shortAlias: coordinator.shortAlias,
+      longAlias: coordinator.longAlias,
+      identifier: coordinator.identifier,
+      description: coordinator.description,
+      motto: coordinator.motto,
+      color: coordinator.color,
+      established: coordinator.established,
+      nostrHexPubkey: nostrHexPubkey,
+      contact: coordinator.contact,
+      badges: coordinator.badges,
+      policies: coordinator.policies,
+      mainnet: coordinator.mainnet,
+      testnet: coordinator.testnet,
+      mainnetNodesPubkeys: coordinator.mainnetNodesPubkeys,
+      testnetNodesPubkeys: coordinator.testnetNodesPubkeys,
+      federated: coordinator.federated,
+    );
 
 /// The armored public key a first contact sent, from its header.
 String? _sentPublicKey(CoordinatorRequest request) {
@@ -718,14 +762,13 @@ void main() {
         expect(await ask(_mainnet, temple, answer: 'answer'), _sent('answer'));
         expect(attempts, 15);
         // Until the 13 answers are ten minutes old.
-        time.now = testNow.add(
-          RobotRequestLimiter.busyWindow - const Duration(microseconds: 1),
-        );
+        time.elapsed =
+            RobotRequestLimiter.busyWindow - const Duration(microseconds: 1);
         expect(
           await ask(_testnet, temple, answer: 'answer'),
           _failed<String, RobotCoordinatorBusyFailure>(),
         );
-        time.now = testNow.add(RobotRequestLimiter.busyWindow);
+        time.elapsed = RobotRequestLimiter.busyWindow;
         expect(await ask(_testnet, temple, answer: 'answer'), _sent('answer'));
         expect(attempts, 16);
       },
@@ -798,37 +841,141 @@ void main() {
       },
     );
 
-    test('a clock set back does not keep a coordinator refused', () async {
-      var attempts = 0;
-      for (var i = 0; i < 4; i++) {
-        await limiter.open(keyOf[0]).send(_testnet, temple, () async {
-          attempts++;
-          return 'busy';
-        }, isBusy: busyAnswer);
-      }
-      expect(attempts, 13);
-
-      time.now = testNow.subtract(const Duration(hours: 1));
-
-      expect(
-        await limiter
-            .open(keyOf[0])
-            .send(_testnet, temple, () async => 'answer', isBusy: busyAnswer),
-        _sent('answer'),
-      );
-    });
-
     test(
       'first contacts are refused once a coordinator refused three nicknames, there only',
       () {
         for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++) {
           expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
-          limiter.noteNicknameRefused(_testnet, temple);
+          limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
         }
 
         expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        expect(limiter.holdFirstContactSlot(_testnet, temple), isNull);
         expect(limiter.refusesFirstContacts(_testnet, lake), isFalse);
         expect(limiter.refusesFirstContacts(_mainnet, temple), isFalse);
+      },
+    );
+
+    test('the caps of the two networks are apart, mainnet\'s included', () {
+      for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++) {
+        limiter.holdFirstContactSlot(_mainnet, temple)?.end(refused: true);
+      }
+
+      expect(limiter.refusesFirstContacts(_mainnet, temple), isTrue);
+      expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+      limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+      expect(limiter.refusesFirstContacts(_mainnet, lake), isFalse);
+    });
+
+    test(
+      'a first contact still running holds its slot of the cap, given back unless refused',
+      () {
+        final slots = [
+          for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++)
+            limiter.holdFirstContactSlot(_testnet, temple),
+        ];
+        expect(slots, everyElement(isNotNull));
+        // Three first contacts running take the three slots.
+        expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        expect(limiter.holdFirstContactSlot(_testnet, temple), isNull);
+        slots[0]?.end(refused: false);
+        // Ending a slot twice changes nothing.
+        slots[0]?.end(refused: true);
+        expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+        slots[1]?.end(refused: true);
+        slots[2]?.end(refused: true);
+        limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+        expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+      },
+    );
+
+    test(
+      'a released call stops waiting at once, a busy wait or the wait before its request',
+      () async {
+        time.holding = true;
+        var attempts = 0;
+        final retried = limiter.open(keyOf[0]).send(_testnet, temple, () async {
+          attempts++;
+          return 'busy';
+        }, isBusy: busyAnswer);
+        final later = limiter
+            .open(keyOf[0])
+            .send(
+              _testnet,
+              temple,
+              () async => 'answer',
+              isBusy: busyAnswer,
+              after: RobotRequestLimiter.nicknameRecheckWait,
+            );
+        await _until(() => time.held.length == 2);
+
+        limiter.release(keyOf[0]);
+
+        // Neither held wait is over: the release ends them.
+        expect(await retried, _failed<String, RobotReleasedFailure>());
+        expect(await later, _failed<String, RobotReleasedFailure>());
+        expect(attempts, 1);
+      },
+    );
+
+    test(
+      'a busy answer to a call released while in flight counts for its coordinator',
+      () async {
+        // Twelve busy answers already.
+        for (var i = 0; i < 3; i++) {
+          await limiter
+              .open(keyOf[3])
+              .send(_testnet, temple, () async => 'busy', isBusy: busyAnswer);
+        }
+        final gate = Completer<String>();
+        final inFlight = limiter
+            .open(keyOf[0])
+            .send(_testnet, temple, () => gate.future, isBusy: busyAnswer);
+        await _settle();
+        final release = limiter.release(keyOf[0]);
+
+        gate.complete('busy');
+
+        expect(await inFlight, _failed<String, RobotCoordinatorBusyFailure>());
+        await release.ended;
+        // The 13th answer was counted: nothing more is sent there.
+        var sent = false;
+        expect(
+          await limiter.open(keyOf[1]).send(_testnet, temple, () async {
+            sent = true;
+            return 'answer';
+          }, isBusy: busyAnswer),
+          _failed<String, RobotCoordinatorBusyFailure>(),
+        );
+        expect(sent, isFalse);
+      },
+    );
+
+    test(
+      'a second release waits for the requests the first one let run',
+      () async {
+        time.holding = true;
+        final gate = Completer<String>();
+        final inFlight = limiter
+            .open(keyOf[0])
+            .send(_testnet, temple, () => gate.future, isBusy: never);
+        await _settle();
+
+        final first = limiter.release(keyOf[0]);
+        final second = limiter.release(keyOf[0]);
+        var ended = false;
+        unawaited(second.ended.then((_) => ended = true));
+        await _settle();
+        expect(ended, isFalse);
+        gate.complete('answer');
+
+        expect(await inFlight, _sent('answer'));
+        expect(await first.endedInTime, isTrue);
+        expect(await second.endedInTime, isTrue);
+        // Once it has ended, a third release has nothing to wait for.
+        final third = limiter.release(keyOf[0]);
+        expect(await third.endedInTime, isTrue);
+        expect(time.waits, hasLength(2));
       },
     );
   });
@@ -868,7 +1015,7 @@ void main() {
         bindings,
         keys,
       );
-      put = PutRobotOnCoordinatorUsecase(fetch, limiter);
+      put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
       read = ReadRobotOnCoordinatorUsecase(
         fetch,
         bindings,
@@ -1008,6 +1155,7 @@ void main() {
                 bindings,
                 keys,
               ),
+              bindings,
               time.limiter(),
             );
 
@@ -1150,7 +1298,7 @@ void main() {
       );
 
       test(
-        'a read after 7004 that does not answer is reported as such, and is no refusal',
+        'a read after 7004 that does not answer is reported as such, and the refusal counts',
         () async {
           coordinators.script.addAll([
             _Reply.nicknameTaken,
@@ -1162,10 +1310,12 @@ void main() {
             await put.execute(robots[0], temple),
             _answered<CoordinatorTimedOut>(),
           );
+          // Only a robot found clears a refusal: a coordinator that answered 7004 and then held the read would escape the cap otherwise.
           for (var i = 0; i < 2; i++) {
-            limiter.noteNicknameRefused(_testnet, temple);
+            expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+            limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
           }
-          expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+          expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
         },
       );
 
@@ -1253,6 +1403,283 @@ void main() {
           );
         },
       );
+
+      test(
+        'a robot bound there and known is read back, and sent no first contact',
+        () async {
+          // The coordinator stored the first contact, and its answer was lost.
+          coordinators.script.add(_Reply.storedThenTimedOut);
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<CoordinatorTimedOut>(),
+          );
+
+          final face = _face(await put.execute(robots[0], temple));
+
+          // Found by the read: a pair this call did not send.
+          expect(face.alreadyExisted, isTrue);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+          ]);
+          expect(keys.generated, [robots[0].identity.hashId]);
+          expect(keys.proved, [robots[0].identity.hashId]);
+        },
+      );
+
+      test(
+        'a robot bound there and unknown is read, then sent one first contact',
+        () async {
+          coordinators.script.add(_Reply.timedOut);
+          await put.execute(robots[0], temple);
+
+          final face = _face(await put.execute(robots[0], temple));
+
+          expect(face.alreadyExisted, isFalse);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+            secondPair.publicKey.armored,
+          ]);
+          expect(keys.proved, isEmpty);
+        },
+      );
+
+      test(
+        'the busy and 7004 rules hold on both requests of a robot bound there',
+        () async {
+          coordinators.script.add(_Reply.timedOut);
+          await put.execute(robots[0], temple);
+          coordinators.script.addAll([
+            _Reply.busy,
+            _Reply.unknown,
+            _Reply.busy,
+            _Reply.nicknameTaken,
+            _Reply.unknown,
+            _Reply.unknown,
+          ]);
+
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<RobotNicknameTaken>(),
+          );
+          expect(time.waits, [
+            const Duration(seconds: 2),
+            const Duration(seconds: 2),
+            RobotRequestLimiter.nicknameRecheckWait,
+          ]);
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+            null,
+            secondPair.publicKey.armored,
+            secondPair.publicKey.armored,
+            null,
+            null,
+          ]);
+          // The refusal counted.
+          for (var i = 0; i < 2; i++) {
+            limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+          }
+          expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        },
+      );
+
+      test(
+        'a robot bound there whose read fails is sent no first contact',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          coordinators.script.add(_Reply.timedOut);
+
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<CoordinatorTimedOut>(),
+          );
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+          ]);
+          expect(keys.generated, hasLength(1));
+        },
+      );
+
+      test(
+        'a robot bound elsewhere is refused before its binding is asked again',
+        () async {
+          final recording = RecordingBindings(
+            drawnHere: [
+              for (final network in RobosatsNetwork.values)
+                (network, robots[0].keyFingerprint),
+            ],
+          );
+          expect(
+            await recording.bind(
+              robots[0].slot,
+              CoordinatorIdentity.of(temple, _testnet) ??
+                  fail('temple is not on testnet'),
+            ),
+            isA<Ok<void, P2pFailure>>(),
+          );
+
+          expect(
+            await PutRobotOnCoordinatorUsecase(
+              FetchRobotUsecase(
+                CoordinatorClient(coordinators),
+                recording,
+                keys,
+              ),
+              recording,
+              limiter,
+            ).execute(robots[0], lake),
+            _refused<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(
+            recording.calls.where((call) => call.$1 == 'bind'),
+            hasLength(1),
+          );
+          expect(coordinators.requests, isEmpty);
+        },
+      );
+
+      test(
+        'a robot bound to a coordinator that changed since is sent nothing',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          final sent = coordinators.requests.length;
+          final changed = _withNostrKey(temple, '1' * 64);
+
+          expect(
+            await put.execute(robots[0], changed),
+            _refused<RobotCoordinatorChangedFailure>(),
+          );
+          expect(
+            await put.execute(robots[0], lake),
+            _refused<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(coordinators.requests, hasLength(sent));
+        },
+      );
+
+      test('a database that cannot be read sends nothing', () async {
+        final failing = RecordingBindings()
+          ..readFailure = const P2pStorageFailure();
+
+        expect(
+          await PutRobotOnCoordinatorUsecase(
+            fetch,
+            failing,
+            limiter,
+          ).execute(robots[0], temple),
+          _refused<P2pStorageFailure>(),
+        );
+        expect(coordinators.requests, isEmpty);
+        expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+      });
+
+      test(
+        'first contacts running at once never pass the cap of 7004 refusals',
+        () async {
+          for (var i = 0; i < 2; i++) {
+            limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+          }
+          coordinators.script.addAll(List.filled(6, _Reply.takenOrUnknown));
+
+          final results = await Future.wait([
+            put.execute(robots[0], temple),
+            put.execute(robots[1], temple),
+          ]);
+
+          expect(
+            results.where(
+              (result) => _answered<RobotNicknameTaken>().matches(result, {}),
+            ),
+            hasLength(1),
+          );
+          expect(
+            results.where(
+              (result) => _refused<RobotCoordinatorTooManyRefusalsFailure>()
+                  .matches(result, {}),
+            ),
+            hasLength(1),
+          );
+          // The one refused at once was neither bound nor sent.
+          final refused =
+              _refused<RobotCoordinatorTooManyRefusalsFailure>().matches(
+                results[0],
+                {},
+              )
+              ? robots[0]
+              : robots[1];
+          expect(await bindingOf(refused), isNull);
+          expect(coordinators.of(refused), isEmpty);
+          expect(coordinators.requests, hasLength(3));
+          expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        },
+      );
+
+      test(
+        'a refusal received counts though the robot is released during the wait, which ends at once',
+        () async {
+          time.holding = true;
+          coordinators.script.addAll(List.filled(2, _Reply.takenOrUnknown));
+          final call = put.execute(robots[0], temple);
+          await _until(() => time.held.length == 1);
+          expect(time.waits, [RobotRequestLimiter.nicknameRecheckWait]);
+
+          limiter.release(keyOf[0]);
+
+          // The wait of 10 s is not over: the release ends it.
+          expect(await call, _refused<RobotReleasedFailure>());
+          expect(coordinators.requests, hasLength(2));
+          expect(await bindingOf(robots[0]), isNotNull);
+          for (var i = 0; i < 2; i++) {
+            expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+            limiter.holdFirstContactSlot(_testnet, temple)?.end(refused: true);
+          }
+          expect(limiter.refusesFirstContacts(_testnet, temple), isTrue);
+        },
+      );
+
+      test(
+        'a coordinator of mainnet that refused three robots refuses there only',
+        () async {
+          for (var i = 0; i < 3; i++) {
+            coordinators.script.addAll(List.filled(3, _Reply.takenOrUnknown));
+            expect(
+              await put.execute(mainnetRobots[i], temple),
+              _answered<RobotNicknameTaken>(),
+            );
+          }
+
+          expect(
+            await put.execute(mainnetRobots[3], temple),
+            _refused<RobotCoordinatorTooManyRefusalsFailure>(),
+          );
+          expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+          expect(
+            _face(await put.execute(robots[4], temple)).alreadyExisted,
+            isFalse,
+          );
+        },
+      );
+
+      for (final (reply, failure) in [
+        (_Reply.unreachable, 'unreachable'),
+        (_Reply.failed, 'failed'),
+      ]) {
+        test('a transport that $failure is not sent again', () async {
+          coordinators.script.add(reply);
+
+          expect(
+            await put.execute(robots[0], temple),
+            reply == _Reply.unreachable
+                ? _answered<CoordinatorUnreachable>()
+                : _answered<CoordinatorTransportFailed>(),
+          );
+          expect(coordinators.requests, hasLength(1));
+          expect(time.waits, isEmpty);
+        });
+      }
     });
 
     group('ReadRobotOnCoordinatorUsecase', () {
@@ -1461,6 +1888,58 @@ void main() {
           );
         },
       );
+
+      test(
+        'reads a robot from the coordinator its binding names, wherever the list puts it',
+        () async {
+          _face(await put.execute(robots[1], lake));
+          _face(await put.execute(mainnetRobots[2], lake));
+          final reversed = Federation([
+            ...Federation.robosats.coordinators.reversed,
+          ]);
+
+          for (final federation in [Federation.robosats, reversed]) {
+            final reading = ReadRobotOnCoordinatorUsecase(
+              fetch,
+              bindings,
+              limiter,
+              federation,
+            );
+            for (final (robot, network) in [
+              (robots[1], _testnet),
+              (mainnetRobots[2], _mainnet),
+            ]) {
+              _face(await reading.execute(robot));
+              final request = coordinators.requests.last;
+              expect(request.url.host, hostOf('lake', network));
+              expect(
+                request.headers['Authorization'],
+                robot.identity.authorizationHeader(),
+              );
+            }
+          }
+          expect(coordinators.requests, hasLength(6));
+        },
+      );
+
+      for (final (reply, failure) in [
+        (_Reply.unreachable, 'unreachable'),
+        (_Reply.failed, 'failed'),
+      ]) {
+        test('a transport that $failure is not sent again', () async {
+          _face(await put.execute(robots[0], temple));
+          coordinators.script.add(reply);
+
+          expect(
+            await read.execute(robots[0]),
+            reply == _Reply.unreachable
+                ? _answered<CoordinatorUnreachable>()
+                : _answered<CoordinatorTransportFailed>(),
+          );
+          expect(coordinators.requests, hasLength(2));
+          expect(time.waits, isEmpty);
+        });
+      }
     });
 
     group('ReleaseRobotUsecase', () {
@@ -1595,6 +2074,34 @@ void main() {
         await release.execute(robots[0]);
         expect(sessions.closed, [keyOf[0]]);
       });
+
+      test(
+        'a second release waits too for the request the first one let run',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          time.holding = true;
+          final answer = Completer<void>();
+          coordinators.onSend = (request) async {
+            events.add('sent');
+            await answer.future;
+            events.add('answered');
+          };
+          final reading = read.execute(robots[0]);
+          await _until(() => events.contains('sent'));
+
+          final first = release.execute(robots[0]);
+          final second = release.execute(robots[0]);
+          await _settle();
+          expect(events, ['sent']);
+          answer.complete();
+          await first;
+          await second;
+
+          // No close came before the answer: a first contact's answer is never cut off by a second release.
+          expect(events, ['sent', 'answered', 'close', 'close']);
+          expect(_face(await reading).alreadyExisted, isFalse);
+        },
+      );
     });
 
     test(

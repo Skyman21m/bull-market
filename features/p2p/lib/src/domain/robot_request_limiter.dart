@@ -13,7 +13,7 @@ import 'p2p_failure.dart';
 /// A coordinator is one instance of the federation list on one network: the same alias on testnet and on mainnet is two coordinators here, with places and memories of their own.
 /// What it remembers, the busy answers and the nicknames refused of each coordinator, is in memory only and ends with the run of the app.
 /// It holds no token and no key: a robot is named by its [RobotSessionKey], made from its public hash id, and a request is a function it runs.
-/// Its waits use the clock, the delay and the randomness it is given, so that tests control them.
+/// Its waits use the elapsed time, the delay and the randomness it is given, never the wall clock, so that a clock set forward or back changes nothing and tests control them.
 final class RobotRequestLimiter {
   /// Robot requests in flight at once to one coordinator, whatever their robot: the others wait in the order they were asked.
   ///
@@ -42,13 +42,13 @@ final class RobotRequestLimiter {
   /// The wait before the read that follows a first contact answered with a nickname already taken (error 7004) after the client's own read: the coordinator may still be creating the robot for another copy of the same request.
   static const nicknameRecheckWait = Duration(seconds: 10);
 
-  /// First contacts one coordinator may refuse with a nickname taken, still taken at the read that follows, in one run of the app: from then on, first contacts to it fail at once.
+  /// First contacts one coordinator may refuse with a nickname taken in one run of the app, counting those still running: from then on, first contacts to it fail at once.
   static const maxNicknameRefusals = 3;
 
   /// How long a release waits for the requests of its robot in flight before the sessions of the robot are closed all the same.
   static const releaseWait = Duration(seconds: 10);
 
-  final DateTime Function() _clock;
+  final Duration Function() _elapsed;
   final Future<void> Function(Duration) _delay;
   final double Function() _random;
 
@@ -58,15 +58,21 @@ final class RobotRequestLimiter {
   /// The calls opened for each robot and not closed or released yet.
   final Map<RobotSessionKey, Set<RobotRequests>> _open = {};
 
-  /// The times of the busy answers of each coordinator, within [busyWindow].
-  final Map<_Lane, List<DateTime>> _busyAnswers = {};
+  /// The calls of each robot released while a request of theirs was in flight, until it has ended.
+  final Map<RobotSessionKey, Set<RobotRequests>> _releasedInFlight = {};
+
+  /// When each coordinator gave its busy answers, on the elapsed time, within [busyWindow].
+  final Map<_Lane, List<Duration>> _busyAnswers = {};
 
   /// The first contacts each coordinator refused with a nickname taken, in this run.
   final Map<_Lane, int> _nicknameRefusals = {};
 
-  /// `clock` gives the time of the busy answers, `delay` waits, and `random` draws a number from 0 (included) to 1 (excluded) for each spread wait.
+  /// The first contacts to each coordinator that hold a slot of its cap, still running.
+  final Map<_Lane, int> _heldSlots = {};
+
+  /// `elapsed` gives a time that only moves forward, such as a running `Stopwatch`'s, for the busy answers; `delay` waits; `random` draws a number from 0 (included) to 1 (excluded) for each spread wait.
   RobotRequestLimiter({
-    required this._clock,
+    required this._elapsed,
     required this._delay,
     required this._random,
   });
@@ -83,14 +89,15 @@ final class RobotRequestLimiter {
   /// Whether a call opened for [robot] is still running: one opened after its last release counts.
   bool isInUse(RobotSessionKey robot) => _open[robot]?.isNotEmpty ?? false;
 
-  /// Releases [robot], whose screen is gone: its requests waiting for a place are dropped, the calls opened for it so far send nothing more, and what it returns tells when its requests in flight have ended.
+  /// Releases [robot], whose screen is gone: its requests waiting for a place are dropped, the calls opened for it so far send nothing more and stop waiting, and what it returns tells when its requests in flight have ended.
   ///
   /// A request in flight is not stopped: it runs to its end, and the call that sent it sends nothing after it.
+  /// The requests in flight of calls an earlier release stopped are waited for too, so that a second release does not close the robot's sessions under them.
   /// A call opened for the robot after this release is not affected.
   RobotRelease release(RobotSessionKey robot) {
     final released = _open.remove(robot) ?? const <RobotRequests>{};
     for (final requests in released) {
-      requests._released = true;
+      requests._release();
     }
     for (final lane in [..._places.keys]) {
       final places = _places[lane];
@@ -105,9 +112,15 @@ final class RobotRequestLimiter {
       }
       _forgetIfIdle(lane);
     }
+    for (final requests in released) {
+      if (requests._inFlight > 0) {
+        (_releasedInFlight[robot] ??= {}).add(requests);
+      }
+    }
     final running = [
-      for (final requests in released)
-        if (requests._inFlight > 0) requests._ended(),
+      for (final requests
+          in _releasedInFlight[robot] ?? const <RobotRequests>{})
+        requests._ended(),
     ];
     if (running.isEmpty) {
       return RobotRelease._(Future.value(), Future.value(true));
@@ -122,31 +135,37 @@ final class RobotRequestLimiter {
     );
   }
 
-  /// Whether first contacts to [coordinator] on [network] fail at once: it refused [maxNicknameRefusals] robots with a nickname taken in this run.
-  bool refusesFirstContacts(RobosatsNetwork network, Coordinator coordinator) =>
-      (_nicknameRefusals[(network, coordinator.shortAlias)] ?? 0) >=
-      maxNicknameRefusals;
-
-  /// Notes that [coordinator] on [network] refused a first contact with a nickname taken, still taken at the read that follows.
-  void noteNicknameRefused(RobosatsNetwork network, Coordinator coordinator) {
+  /// Whether first contacts to [coordinator] on [network] fail at once: it refused [maxNicknameRefusals] robots with a nickname taken in this run, those still running counted as refusals.
+  bool refusesFirstContacts(RobosatsNetwork network, Coordinator coordinator) {
     final lane = (network, coordinator.shortAlias);
-    _nicknameRefusals[lane] = (_nicknameRefusals[lane] ?? 0) + 1;
+    return (_nicknameRefusals[lane] ?? 0) + (_heldSlots[lane] ?? 0) >=
+        maxNicknameRefusals;
+  }
+
+  /// A slot of the cap of [coordinator] on [network] for one first contact, or `null` when [refusesFirstContacts]: the first contact counts as a refusal while it runs, so that first contacts running at once never pass the cap together.
+  ///
+  /// End it with [FirstContactSlot.end] once the outcome is known, whatever it is.
+  FirstContactSlot? holdFirstContactSlot(
+    RobosatsNetwork network,
+    Coordinator coordinator,
+  ) {
+    if (refusesFirstContacts(network, coordinator)) return null;
+    final lane = (network, coordinator.shortAlias);
+    _heldSlots[lane] = (_heldSlots[lane] ?? 0) + 1;
+    return FirstContactSlot._(this, lane);
   }
 
   /// Whether the requests to [lane] fail at once: it gave more than [maxBusyAnswers] busy answers within [busyWindow].
-  ///
-  /// An answer dated after the clock, which went back since, no longer counts: a clock set back never keeps a coordinator refused longer than the window.
   bool _refuses(_Lane lane) {
     final answers = _busyAnswers[lane];
     if (answers == null) return false;
-    final now = _clock();
-    final since = now.subtract(busyWindow);
-    answers.removeWhere((at) => !at.isAfter(since) || at.isAfter(now));
+    final now = _elapsed();
+    answers.removeWhere((at) => now - at >= busyWindow);
     if (answers.isEmpty) _busyAnswers.remove(lane);
     return answers.length > maxBusyAnswers;
   }
 
-  void _noteBusy(_Lane lane) => (_busyAnswers[lane] ??= []).add(_clock());
+  void _noteBusy(_Lane lane) => (_busyAnswers[lane] ??= []).add(_elapsed());
 
   /// [wait] spread by up to [jitter] either way, from a number [_random] draws.
   Duration _spread(Duration wait) {
@@ -187,6 +206,14 @@ final class RobotRequestLimiter {
       _places.remove(lane);
     }
   }
+
+  /// Forgets [requests] among the released calls in flight of its robot, once its last request has ended.
+  void _forgetReleased(RobotRequests requests) {
+    final released = _releasedInFlight[requests._robot];
+    if (released == null) return;
+    released.remove(requests);
+    if (released.isEmpty) _releasedInFlight.remove(requests._robot);
+  }
 }
 
 /// The requests of one call made for one robot, such as one use of a use case, opened by [RobotRequestLimiter.open].
@@ -196,6 +223,9 @@ final class RobotRequests {
 
   /// Whether the robot was released since this call was opened: nothing more is sent.
   bool _released = false;
+
+  /// Completes when the robot is released, to end the waits of this call at once.
+  final Completer<void> _releasedSignal = Completer();
 
   bool _closed = false;
 
@@ -211,9 +241,10 @@ final class RobotRequests {
   ///
   /// [after] is waited first, holding no place.
   /// The answer is that of the last attempt, in an [Ok], whatever it says, unless every attempt was answered busy.
-  /// A busy answer is waited out, holding no place, for the wait of [RobotRequestLimiter.busyWaits] that follows that attempt, spread by [RobotRequestLimiter.jitter]; the request then waits for a place again, behind the requests asked meanwhile.
+  /// A busy answer is counted for its coordinator before its place goes to the next request, then waited out, holding no place, for the wait of [RobotRequestLimiter.busyWaits] that follows that attempt, spread by [RobotRequestLimiter.jitter]; the request then waits for a place again, behind the requests asked meanwhile.
   /// It fails with [RobotCoordinatorBusyFailure], the request not sent again, after [RobotRequestLimiter.maxAttempts] busy answers, or at once when the coordinator gave more than [RobotRequestLimiter.maxBusyAnswers] busy answers within [RobotRequestLimiter.busyWindow], that request's included.
-  /// It fails with [RobotReleasedFailure] once the robot is released: a request still waiting for its place, for [after] or after a busy answer is not sent.
+  /// It fails with [RobotReleasedFailure] once the robot is released: a request still waiting for its place, for [after] or after a busy answer is not sent, and those waits end at the release.
+  /// A request already in flight at the release runs to its end, and its answer is returned, in an [Ok], like any other: a busy one still counts for its coordinator.
   /// An exception or an error that [request] throws reaches the caller, and its place is given back.
   Future<Result<T, P2pFailure>> send<T>(
     RobosatsNetwork network,
@@ -224,7 +255,7 @@ final class RobotRequests {
   }) async {
     if (_closed) throw StateError('these robot requests are closed');
     final lane = (network, coordinator.shortAlias);
-    if (after > Duration.zero) await _limiter._delay(after);
+    if (after > Duration.zero) await _wait(after);
     for (var attempt = 1; ; attempt++) {
       if (_released) return const Err(RobotReleasedFailure());
       if (_limiter._refuses(lane)) {
@@ -242,9 +273,7 @@ final class RobotRequests {
           _limiter._refuses(lane)) {
         return const Err(RobotCoordinatorBusyFailure());
       }
-      await _limiter._delay(
-        _limiter._spread(RobotRequestLimiter.busyWaits[attempt - 1]),
-      );
+      await _wait(_limiter._spread(RobotRequestLimiter.busyWaits[attempt - 1]));
     }
   }
 
@@ -255,6 +284,15 @@ final class RobotRequests {
     if (open == null) return;
     open.remove(this);
     if (open.isEmpty) _limiter._open.remove(_robot);
+  }
+
+  /// Waits [wait], or less when the robot is released meanwhile.
+  Future<void> _wait(Duration wait) =>
+      Future.any([_limiter._delay(wait), _releasedSignal.future]);
+
+  void _release() {
+    _released = true;
+    if (!_releasedSignal.isCompleted) _releasedSignal.complete();
   }
 
   /// [request] run in a place of [lane], or why it was not run.
@@ -285,11 +323,39 @@ final class RobotRequests {
         final idle = _idle;
         _idle = null;
         idle?.complete();
+        if (_released) _limiter._forgetReleased(this);
       }
     }
   }
 
   Future<void> _ended() => (_idle ??= Completer<void>()).future;
+}
+
+/// A first contact's slot in the cap of nicknames refused of one coordinator, held from before its request until its outcome is known: see [RobotRequestLimiter.holdFirstContactSlot].
+final class FirstContactSlot {
+  final RobotRequestLimiter _limiter;
+  final _Lane _lane;
+  bool _ended = false;
+
+  FirstContactSlot._(this._limiter, this._lane);
+
+  /// Ends the first contact: [refused], a nickname taken that the read after it did not resolve, makes the slot one of the coordinator's refusals for the run; otherwise the slot is given back.
+  ///
+  /// A second call does nothing.
+  void end({required bool refused}) {
+    if (_ended) return;
+    _ended = true;
+    final held = (_limiter._heldSlots[_lane] ?? 1) - 1;
+    if (held > 0) {
+      _limiter._heldSlots[_lane] = held;
+    } else {
+      _limiter._heldSlots.remove(_lane);
+    }
+    if (refused) {
+      _limiter._nicknameRefusals[_lane] =
+          (_limiter._nicknameRefusals[_lane] ?? 0) + 1;
+    }
+  }
 }
 
 /// What a release of a robot waits for: the requests it had in flight.
