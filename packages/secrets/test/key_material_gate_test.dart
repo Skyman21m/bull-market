@@ -2272,10 +2272,11 @@ extension Extras on Holder {
     const repositoryPath =
         'features/p2p/lib/src/data/garage_key_repository_impl.dart';
     const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
-    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54.
+    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54; `create` returns the key it drew since the review of #60.
     const repository = '''
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -2285,8 +2286,9 @@ final class GarageKeyRepositoryImpl {
 
   const GarageKeyRepositoryImpl(this._garageKeys);
 
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>
-      const Ok(null);
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async => const Err(GarageKeyNotSavedFailure());
 
   Future<Result<void, P2pFailure>> import(
     RobosatsNetwork network,
@@ -2407,6 +2409,26 @@ final class GarageKeyRepositoryImpl {
           reason: name,
         );
       }
+      // The repository before the review of #60: `create` returned nothing, and the draw read the slot back to record a key, maybe not the one it drew.
+      expect(
+        await inspect(
+          'reader_create_void',
+          repository.replaceAll(
+            '  Future<Result<NetworkGarageKey, P2pFailure>> create(\n'
+                '    RobosatsNetwork network,\n'
+                '  ) async => const Err(GarageKeyNotSavedFailure());',
+            '  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>\n'
+                '      const Ok(null);',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          notInTable(
+            'create',
+            'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+          ),
+        ],
+      );
       // The repository of main, before #54: `firstUsableRobot` returns a `GarageRobot`, which the table no longer lists.
       expect(
         await inspect(

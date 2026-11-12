@@ -7,17 +7,18 @@ import '../p2p_failure.dart';
 
 /// The RoboSats Garage Key of each network, kept by the vault of the wallet, and the robots derived from it.
 ///
-/// What leaves it is deliberately narrow: whether a key is stored, robots derived from it, each with the network of its key, and, for the screens of the Garage only, the key of a network as a [NetworkGarageKey].
+/// What leaves it is deliberately narrow: whether a key is stored, robots derived from it, each with the network of its key, the key a draw has just made, for the record of its history, and, for the screens of the Garage only, the key of a network as a [NetworkGarageKey].
 /// The bytes of the key never leave it, and its text form is made by `GarageKeyView` alone, the only class the custody gate allows to reveal it.
 ///
 /// The rules of the vault hold for every caller: create or import a key only on an explicit action of the user, never at startup or in the background; only after [exists] said that no key is stored, never after a failure; a stored key is never replaced; after a key that cannot be read, the only way out is [delete].
 abstract interface class GarageKeyRepository {
-  /// Draws a new key in the vault and stores it for [network], whose slot must be empty.
+  /// Draws a new key in the vault, stores it for [network], whose slot must be empty, and returns it with that network.
   ///
   /// A slot that holds anything, readable or not, is a [GarageKeyAlreadyStoredFailure], and nothing is written.
-  /// The key is not returned: the screen that shows it for backup, right after, reads it again.
+  /// The key returned is built from the bytes the vault drew, not read back from the slot, so that the draw records the history of that very key; only `GenerateGarageKeyUsecase` calls this, and it hands the key to no one (`test/robot_bindings_architecture_test.dart`).
+  /// The screen that shows the key for backup, right after, reads it again.
   @useResult
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network);
+  Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network);
 
   /// Stores [key], a key the user restores, for [network], whose slot must be empty.
   ///

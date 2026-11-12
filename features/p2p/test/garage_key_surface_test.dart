@@ -14,10 +14,10 @@ void main() {
   CompilationUnit unitOf(String path) =>
       parseString(content: File(path).readAsStringSync()).unit;
 
-  // The methods of the interface, each with its full signature: nothing, whether a key is stored, the key of a network for the screens of the Garage, or a robot derived from it, each with its network.
+  // The methods of the interface, each with its full signature: nothing, whether a key is stored, the key a draw made, the key of a network for the screens of the Garage, or a robot derived from it, each with its network.
   const allowed = {
     'create':
-        'Future<Result<void, P2pFailure>> create(RobosatsNetwork network)',
+        'Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network)',
     'import':
         'Future<Result<void, P2pFailure>> import(RobosatsNetwork network, GarageKey key)',
     'exists':

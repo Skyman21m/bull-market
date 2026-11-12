@@ -139,7 +139,11 @@ void main() {
       );
       expect(
         await locator<GenerateGarageKeyUsecase>().execute(network),
-        isA<Ok<void, P2pFailure>>(),
+        isA<Ok<GarageKeyHistory, P2pFailure>>().having(
+          (ok) => ok.value,
+          'history',
+          GarageKeyHistory.drawnHere,
+        ),
       );
       expect(
         await locator<HasGarageKeyUsecase>().execute(network),

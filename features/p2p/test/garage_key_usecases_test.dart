@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
@@ -33,9 +35,11 @@ final class _RecordingRepository implements GarageKeyRepository {
   };
 
   @override
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async {
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async {
     calls.add('create ${network.name}');
-    return _answer(null);
+    return _answer(NetworkGarageKey(network, key.key));
   }
 
   @override
@@ -77,16 +81,18 @@ final class _RecordingRepository implements GarageKeyRepository {
   }
 }
 
-/// A repository whose key can be created but not read back.
-final class _UnreadableAfterCreate extends _RecordingRepository {
-  _UnreadableAfterCreate(super.key, super.robot);
+/// A repository that draws one key and would read back another: a draw must record the key it drew, never the one in the slot afterwards.
+final class _DrawsOneReadsAnother extends _RecordingRepository {
+  final GarageKey drawn;
+
+  _DrawsOneReadsAnother(super.key, super.robot, this.drawn);
 
   @override
-  Future<Result<NetworkGarageKey, P2pFailure>> read(
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
     RobosatsNetwork network,
   ) async {
-    calls.add('read ${network.name}');
-    return const Err(GarageKeyUnreadableFailure());
+    calls.add('create ${network.name}');
+    return Ok(NetworkGarageKey(network, drawn));
   }
 }
 
@@ -246,23 +252,66 @@ void main() {
   });
 
   group('generating a Garage Key', () {
-    test(
-      'draws it, reads it back and records it as drawn on this device',
-      () async {
-        final result = await GenerateGarageKeyUsecase(
-          repository,
-          bindings,
-        ).execute(RobosatsNetwork.testnet);
+    Matcher drawnWith(GarageKeyHistory history) =>
+        isA<Ok<GarageKeyHistory, P2pFailure>>().having(
+          (ok) => ok.value,
+          'history',
+          history,
+        );
 
-        expect(result, isA<Ok<void, P2pFailure>>());
-        expect(repository.calls, ['create testnet', 'read testnet']);
-        expect(bindings.calls, [
-          ('recordGeneratedKey', RobosatsNetwork.testnet, exampleFingerprint),
-        ]);
+    for (final network in RobosatsNetwork.values) {
+      test(
+        'on ${network.name}: draws it and records the key it drew as drawn on this device, for that network',
+        () async {
+          final result = await GenerateGarageKeyUsecase(
+            repository,
+            bindings,
+          ).execute(network);
+
+          expect(result, drawnWith(GarageKeyHistory.drawnHere));
+          // No read of the slot between the draw and the record.
+          expect(repository.calls, ['create ${network.name}']);
+          expect(bindings.calls, [
+            ('recordGeneratedKey', network, exampleFingerprint),
+          ]);
+        },
+      );
+    }
+
+    test(
+      'records the key the vault drew, not the one the slot holds afterwards',
+      () async {
+        // Fixed test bytes, 0x07 to 0x26: not a key anyone uses.
+        final drawn = switch (GarageKey.fromBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => 7 + i)),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final drawingAnother = _DrawsOneReadsAnother(
+          networkKey,
+          exampleRobot,
+          drawn,
+        );
+
+        expect(
+          await GenerateGarageKeyUsecase(
+            drawingAnother,
+            bindings,
+          ).execute(RobosatsNetwork.testnet),
+          drawnWith(GarageKeyHistory.drawnHere),
+        );
+        expect(drawingAnother.calls, ['create testnet']);
+        final recorded = bindings.calls.single.$3;
+        expect(recorded, isNot(exampleFingerprint));
+        expect(recorded, switch (GarageKeyFingerprint.of(drawn)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        });
       },
     );
 
-    test('a key not drawn is neither read back nor recorded', () async {
+    test('a key not drawn is not recorded', () async {
       repository.failure = const GarageKeyAlreadyStoredFailure();
 
       final result = await GenerateGarageKeyUsecase(
@@ -272,7 +321,7 @@ void main() {
 
       expect(
         result,
-        isA<Err<void, P2pFailure>>().having(
+        isA<Err<GarageKeyHistory, P2pFailure>>().having(
           (err) => err.failure,
           'failure',
           isA<GarageKeyAlreadyStoredFailure>(),
@@ -283,7 +332,7 @@ void main() {
     });
 
     test(
-      'a key drawn but not recorded is still reported drawn: its history is then unknown',
+      'a key drawn whose record cannot be written is stored, and its history is reported unknown',
       () async {
         bindings.failure = const P2pStorageFailure();
 
@@ -292,26 +341,10 @@ void main() {
             repository,
             bindings,
           ).execute(RobosatsNetwork.testnet),
-          isA<Ok<void, P2pFailure>>(),
+          drawnWith(GarageKeyHistory.unknown),
         );
+        expect(repository.calls, ['create testnet']);
         expect(bindings.calls, hasLength(1));
-      },
-    );
-
-    test(
-      'a key drawn that cannot be read back is reported drawn, unrecorded',
-      () async {
-        final unreadable = _UnreadableAfterCreate(networkKey, exampleRobot);
-
-        expect(
-          await GenerateGarageKeyUsecase(
-            unreadable,
-            bindings,
-          ).execute(RobosatsNetwork.testnet),
-          isA<Ok<void, P2pFailure>>(),
-        );
-        expect(unreadable.calls, ['create testnet', 'read testnet']);
-        expect(bindings.calls, isEmpty);
       },
     );
   });

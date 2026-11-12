@@ -32,6 +32,15 @@ final class RobotSlot {
   String toString() => 'RobotSlot(${network.name}, $accountIndex)';
 }
 
+/// What this device knows of the history of a Garage Key: where its robots may already have gone.
+enum GarageKeyHistory {
+  /// The key was drawn on this device and recorded so: a robot of it without a binding has been sent to no coordinator, and may be bound for the first time.
+  drawnHere,
+
+  /// The key was imported, or this device has no record of drawing it (the record could not be written, or the database was lost): a robot of it without a binding may already live on a coordinator, so it is never bound.
+  unknown,
+}
+
 /// A coordinator as a binding records it: its short alias, the onion address of its instance on one network, and the keys the federation list publishes for it there.
 ///
 /// Its alias alone would not do: the federation list of a later version of the app could give that alias another server, node or Nostr key, which must not receive the robot without a review.

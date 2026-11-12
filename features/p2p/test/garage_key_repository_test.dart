@@ -114,9 +114,12 @@ void main() {
       final storage = FakeSecureStoragePlatform();
       final repository = repositoryOver(storage);
 
-      ok(await repository.create(RobosatsNetwork.testnet));
+      final drawn = ok(await repository.create(RobosatsNetwork.testnet));
 
       expect(storage.entries.keys, [testnetEntry]);
+      // The key the vault drew, with the network of its slot: the one stored.
+      expect(drawn.network, RobosatsNetwork.testnet);
+      expect(ok(await repository.read(RobosatsNetwork.testnet)), drawn);
       expect(storage.readKeys.toSet(), {testnetEntry});
       expect(ok(await repository.exists(RobosatsNetwork.testnet)), isTrue);
       final robot = ok(

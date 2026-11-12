@@ -2,9 +2,11 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
+import '../network_garage_key.dart';
 import '../p2p_failure.dart';
 import '../repositories/garage_key_repository.dart';
 import '../repositories/robot_binding_repository.dart';
+import '../robot_binding.dart';
 
 /// Draws a new Garage Key for a network that has none, on the user's explicit request, and records that this device drew it.
 ///
@@ -16,27 +18,26 @@ final class GenerateGarageKeyUsecase {
 
   const GenerateGarageKeyUsecase(this._repository, this._bindings);
 
-  /// Draws the key, then reads it back to record its fingerprint as drawn on this device: only such a key lets its robots be bound to a coordinator for the first time.
+  /// Draws the key, then records the fingerprint of the key the vault drew, as the repository hands it back, as drawn on this device: only such a key lets its robots be bound to a coordinator for the first time.
   ///
-  /// The record comes after the key, whose bytes the vault draws: if it cannot be read back or recorded, the key stays stored with an unknown history, which only restricts its robots, and the result is still [Ok], since the key exists.
+  /// Nothing is read back from the slot in between, so the record is about the key this draw made and no other.
+  /// The record comes after the key, whose bytes the vault draws: when it cannot be written, the key is stored all the same and the result is `Ok(GarageKeyHistory.unknown)`, so the caller learns that the robots of this key will be refused until a later step offers a way out; `Ok(GarageKeyHistory.drawnHere)` otherwise.
+  /// The key itself is not handed out: the screen that shows it for backup reads it.
   @useResult
-  Future<Result<void, P2pFailure>> execute(RobosatsNetwork network) async {
-    if (await _repository.create(network) case Err(:final failure)) {
-      return Err(failure);
-    }
-    await _recordDrawn(network);
-    return const Ok(null);
-  }
+  Future<Result<GarageKeyHistory, P2pFailure>> execute(
+    RobosatsNetwork network,
+  ) async => switch (await _repository.create(network)) {
+    Ok(value: final key) => Ok(await _record(key)),
+    Err(:final failure) => Err(failure),
+  };
 
-  Future<void> _recordDrawn(RobosatsNetwork network) async {
-    if (await _repository.read(network) case Ok(value: final key)) {
-      if (key.fingerprint case Ok(value: final fingerprint)) {
-        switch (await _bindings.recordGeneratedKey(network, fingerprint)) {
-          case Ok():
-          // Left unrecorded: an unknown history, which only restricts.
-          case Err():
-        }
+  Future<GarageKeyHistory> _record(NetworkGarageKey key) async {
+    if (key.fingerprint case Ok(value: final fingerprint)) {
+      if (await _bindings.recordGeneratedKey(key.network, fingerprint)
+          case Ok()) {
+        return GarageKeyHistory.drawnHere;
       }
     }
+    return GarageKeyHistory.unknown;
   }
 }
