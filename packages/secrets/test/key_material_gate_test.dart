@@ -2288,7 +2288,7 @@ final class GarageKeyRepositoryImpl {
 
   Future<Result<NetworkGarageKey, P2pFailure>> create(
     RobosatsNetwork network,
-  ) async => const Err(GarageKeyNotSavedFailure());
+  ) async => throw UnimplementedError();
 
   Future<Result<void, P2pFailure>> import(
     RobosatsNetwork network,
@@ -2416,7 +2416,7 @@ final class GarageKeyRepositoryImpl {
           repository.replaceAll(
             '  Future<Result<NetworkGarageKey, P2pFailure>> create(\n'
                 '    RobosatsNetwork network,\n'
-                '  ) async => const Err(GarageKeyNotSavedFailure());',
+                '  ) async => throw UnimplementedError();',
             '  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>\n'
                 '      const Ok(null);',
           ),
