@@ -12,6 +12,7 @@ import '../presentation/coordinator_text.dart';
 import '../presentation/order_details_cubit.dart';
 import '../presentation/p2p_formats.dart';
 import 'coordinator_details_dialog.dart';
+import 'widgets/coordinator_mark.dart';
 import 'widgets/offer_row.dart';
 import 'widgets/reversible_payments_dialog.dart';
 import 'widgets/robot_avatar.dart';
@@ -136,7 +137,7 @@ class _HostRow extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final row = Row(
       children: [
-        RobotAvatar(seed: order.coordinator.shortAlias, size: 44),
+        CoordinatorMark(coordinator: order.coordinator, size: 44),
         const Gap(BullSpacing.sm),
         Expanded(
           child: Column(

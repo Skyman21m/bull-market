@@ -28,6 +28,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
+/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still loading over orders shown, after a pull to refresh or a retry too.
 /// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
@@ -77,25 +78,53 @@ class _BookViewState extends State<BookView> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     final cubit = context.read<BookCubit>();
     final state = context.watch<BookCubit>().state;
+    final shown = switch (_view) {
+      BookViewChoice.list => state.orders.isNotEmpty,
+      BookViewChoice.chart => state.receivedOrders.isNotEmpty,
+    };
     return Column(
       children: [
         Expanded(
-          child: BullRefreshIndicator(
-            onRefresh: cubit.refresh,
-            child: switch (_view) {
-              BookViewChoice.list => CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: BookFilterSentence(state: state)),
-                  SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
-                  ..._content(context, state),
-                ],
+          child: Stack(
+            children: [
+              BullRefreshIndicator(
+                onRefresh: cubit.refresh,
+                child: switch (_view) {
+                  BookViewChoice.list => CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: BookFilterSentence(state: state),
+                      ),
+                      SliverToBoxAdapter(
+                        child: CoordinatorsStatus(state: state),
+                      ),
+                      ..._content(context, state),
+                    ],
+                  ),
+                  BookViewChoice.chart => _chart(context, state),
+                },
               ),
-              BookViewChoice.chart => _chart(context, state),
-            },
+              // While a coordinator is still loading over orders already shown, a bar runs over the top of the book, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner is the wait.
+              // It lies over the book rather than above it, so that the book does not move when it comes and goes, and it lets touches through.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: BullFadingLinearProgress(
+                    trigger: shown && state.loadingCoordinators.isNotEmpty,
+                    height: 3,
+                    foregroundColor: colors.primary,
+                    backgroundColor: colors.transparent,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         Padding(
@@ -205,10 +234,16 @@ class _BookViewState extends State<BookView> {
     }
     if (state.isWaitingForFirstBook || state.loadingCoordinators.isNotEmpty) {
       return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: CircularProgressIndicator(color: colors.primary),
+        SliverLayoutBuilder(
+          builder: (context, constraints) => SliverToBoxAdapter(
+            child: SizedBox(
+              height: math.max(
+                constraints.viewportMainAxisExtent -
+                    constraints.precedingScrollExtent,
+                BookSkeleton.rowExtent,
+              ),
+              child: BookSkeleton(state: state),
+            ),
           ),
         ),
       ];
@@ -452,6 +487,115 @@ class CoordinatorsStatus extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The list while no order is shown and a coordinator is still loading: rows of grey shapes, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
+///
+/// Each row has the shape of an offer: the robot, three lines, the amount and the expiry ring; the first line shimmers.
+/// The shapes are hidden from the accessibility tree; before the first book, when the line of the coordinators still loading is not shown, the skeleton says it instead.
+class BookSkeleton extends StatelessWidget {
+  final BookState state;
+
+  /// The height of one row and its divider.
+  static const rowExtent = 89.0;
+
+  const BookSkeleton({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final loading = state.loadingCoordinators.length;
+    final label = state.isWaitingForFirstBook && loading > 0
+        ? P2pLocalizations.of(context).p2pBookCoordinatorsLoading(loading)
+        : null;
+    return Semantics(
+      container: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final rows = math.max(
+              1,
+              (constraints.maxHeight / rowExtent).ceil(),
+            );
+            return ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.topCenter,
+                maxHeight: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var row = 0; row < rows; row++) ...[
+                      const _SkeletonRow(),
+                      Divider(height: 1, color: colors.outlineVariant),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of [BookSkeleton], in the shape of an offer row, where only the nickname's line shimmers.
+///
+/// Each `BullShimmerLine` runs an animation and a mask layer of its own, so a row has one: the other shapes stay still, in the shimmer's base colour.
+/// A shimmer of `bull_ui` that wraps a child would let a whole row, or the whole skeleton, share one sweep.
+class _SkeletonRow extends StatelessWidget {
+  const _SkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final base = context.bull.shimmerBase;
+    Widget line(double width, double height) =>
+        Container(width: width, height: height, color: base);
+    Widget disc(double size) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: base, shape: BoxShape.circle),
+    );
+    return SizedBox(
+      height: BookSkeleton.rowExtent - 1,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: BullSpacing.md,
+          vertical: BullSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            disc(40),
+            const Gap(BullSpacing.sm),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const BullShimmerLine(
+                    width: 120,
+                    height: 14,
+                    padding: EdgeInsets.zero,
+                  ),
+                  const Gap(BullSpacing.xs),
+                  line(170, 10),
+                  const Gap(BullSpacing.xs),
+                  line(110, 10),
+                ],
+              ),
+            ),
+            const Gap(BullSpacing.xs),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [line(64, 14), const Gap(BullSpacing.xs), disc(36)],
+            ),
+          ],
+        ),
       ),
     );
   }
