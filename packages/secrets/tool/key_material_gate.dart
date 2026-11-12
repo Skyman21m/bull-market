@@ -312,6 +312,31 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
+  /// Outside the files of [_vaultUsers], no file of `features/*/lib` or `packages/*/lib` refers to a declaration of `package:secrets`, and those files refer only to the declarations the table gives each of them (issue #47).
+  ///
+  /// A member counts as its class, and a type alias declared anywhere counts as the declaration of the vault it names, so `typedef Vault = Secrets;` in another package hands nothing on.
+  /// The app's own `lib/` is not concerned: it uses the vault.
+  void checkVaultUse(Element? element) {
+    if (element == null ||
+        !(path.startsWith('features/') || path.startsWith('packages/'))) {
+      return;
+    }
+    final declaration = _vaultDeclarationOf(element);
+    if (declaration == null ||
+        (_vaultUsers[path]?.contains(declaration) ?? false)) {
+      return;
+    }
+    violations.add(
+      '$path: package:secrets#$declaration outside the files that may use the vault',
+    );
+  }
+
+  @override
+  void visitNamedType(NamedType node) {
+    checkVaultUse(node.element);
+    super.visitNamedType(node);
+  }
+
   @override
   void visitImportDirective(ImportDirective node) {
     checkTestingLibrary(node.libraryImport?.importedLibrary?.uri.toString());
@@ -463,6 +488,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     if (!node.inDeclarationContext()) {
       check(node.element, node);
       checkComposition(node);
+      checkVaultUse(node.element);
     }
     super.visitSimpleIdentifier(node);
   }
@@ -494,6 +520,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPatternField(PatternField node) {
     check(node.element, node);
+    checkVaultUse(node.element);
     super.visitPatternField(node);
   }
 
@@ -502,6 +529,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     DotShorthandConstructorInvocation node,
   ) {
     check(node.element, node);
+    checkVaultUse(node.element);
     super.visitDotShorthandConstructorInvocation(node);
   }
 }
@@ -680,6 +708,59 @@ bool _canReceive(DartType type) => switch (type) {
 /// A declaration of `package:secrets`.
 bool _isVaultDeclaration(Element element) =>
     element.library?.uri.toString().startsWith('package:secrets/') ?? false;
+
+/// The files of the workspace's packages and features that may refer to the vault, `package:secrets`, and the declarations each one may refer to (issue #47).
+///
+/// Only the P2P feature does: its facade receives the Garage Key handle from the shell, its locator registers it, and its repository uses it.
+/// `features/p2p/test/secrets_imports_test.dart` pins the names these files import; a declaration here may be used without being imported, as the repository uses `GarageKeyMaterial` through the result of a read.
+const _vaultUsers = {
+  'features/p2p/lib/public/p2p_facade.dart': {'GarageKeys'},
+  'features/p2p/lib/src/p2p_locator.dart': {'GarageKeys'},
+  'features/p2p/lib/src/data/garage_key_repository_impl.dart': {
+    'GarageKeyAlreadyExistsFailure',
+    'GarageKeyCorruptFailure',
+    'GarageKeyMaterial',
+    'GarageKeySlot',
+    'GarageKeys',
+    'KeystoreLockedFailure',
+    'SecretFailure',
+    'SecretNotFoundFailure',
+  },
+};
+
+/// The top-level declaration of `package:secrets` that [element] is, or belongs to, or that it names when it is a type alias declared elsewhere; `null` for anything else.
+String? _vaultDeclarationOf(Element element) {
+  if (element is TypeAliasElement && !_isVaultDeclaration(element)) {
+    return _vaultTypeIn(element.aliasedType);
+  }
+  if (!_isVaultDeclaration(element)) return null;
+  var declaration = element;
+  for (
+    var enclosing = element.enclosingElement;
+    enclosing != null && enclosing is! LibraryElement;
+    enclosing = enclosing.enclosingElement
+  ) {
+    declaration = enclosing;
+  }
+  return declaration.name;
+}
+
+/// The name of a declaration of the vault that [type] mentions, if any.
+String? _vaultTypeIn(DartType type) => switch (type) {
+  InterfaceType(:final element, :final typeArguments) =>
+    _isVaultDeclaration(element)
+        ? element.name
+        : typeArguments.map(_vaultTypeIn).nonNulls.firstOrNull,
+  FunctionType(:final returnType, :final formalParameters) => [
+    returnType,
+    for (final parameter in formalParameters) parameter.type,
+  ].map(_vaultTypeIn).nonNulls.firstOrNull,
+  RecordType(:final positionalFields, :final namedFields) => [
+    for (final field in positionalFields) field.type,
+    for (final field in namedFields) field.type,
+  ].map(_vaultTypeIn).nonNulls.firstOrNull,
+  _ => null,
+};
 
 /// The names that a directive with [combinators] brings from [library], each with the declaration it stands for.
 Map<String, Element> _namesThrough(

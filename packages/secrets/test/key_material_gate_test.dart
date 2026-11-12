@@ -77,6 +77,13 @@ export 'package:secrets/secrets.dart' show GarageKeyMaterial;
     return checkUnit(resolved.unit, policyPath ?? 'lib/$name.dart');
   }
 
+  // The violations other than the use of the vault by a workspace package outside the files allowed to (#47), for tests about another rule that place their fixtures in a package.
+  List<String> keyReads(List<String> violations) => [
+    for (final violation in violations)
+      if (!violation.endsWith('outside the files that may use the vault'))
+        violation,
+  ];
+
   test(
     'aliases and getter access resolve to the private seed declaration',
     () async {
@@ -501,7 +508,7 @@ analyzer:
             reason: path,
           );
         }
-        expect(report.violations, hasLength(written.length));
+        expect(keyReads(report.violations), hasLength(written.length));
       },
     );
 
@@ -723,10 +730,12 @@ Object leak(GarageKeyMaterial material) => material.bytes;
         );
         // The repository's reads are not the widget's, and the other way round.
         expect(
-          await inspect(
-            'garage_repository_in_view_file',
-            repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyView'),
-            policyPath: viewPath,
+          keyReads(
+            await inspect(
+              'garage_repository_in_view_file',
+              repository.replaceAll('GarageKeyRepositoryImpl', 'GarageKeyView'),
+              policyPath: viewPath,
+            ),
           ),
           hasLength(2),
         );
@@ -740,10 +749,13 @@ Object leak(GarageKeyMaterial material) => material.bytes;
         );
         // The same class name in another file of the feature.
         expect(
-          await inspect(
-            'garage_repository_other_file',
-            repository,
-            policyPath: 'features/p2p/lib/src/data/robot_repository_impl.dart',
+          keyReads(
+            await inspect(
+              'garage_repository_other_file',
+              repository,
+              policyPath:
+                  'features/p2p/lib/src/data/robot_repository_impl.dart',
+            ),
           ),
           hasLength(2),
         );
@@ -889,7 +901,7 @@ class GarageKeyRepositoryImpl {
             ),
           );
         }
-        expect(report.violations, hasLength(refused.length));
+        expect(keyReads(report.violations), hasLength(refused.length));
       },
     );
   });
@@ -968,7 +980,7 @@ Object handle(Secrets secrets) => secrets.garageKeys();
         ),
       ]) {
         expect(
-          (await inspect(name, source, policyPath: path)).single,
+          keyReads(await inspect(name, source, policyPath: path)).single,
           allOf(contains('package:secrets/'), endsWith('#Secrets.garageKeys')),
           reason: name,
         );
@@ -1739,9 +1751,11 @@ void wire(GetIt locator) {
           'features/p2p/lib/p2p.dart',
         ),
       ]) {
-        expect(await inspect(name, '$directive\n', policyPath: path), [
-          '$path: package:secrets/secrets.dart#re-exports the vault',
-        ], reason: name);
+        expect(
+          keyReads(await inspect(name, '$directive\n', policyPath: path)),
+          ['$path: package:secrets/secrets.dart#re-exports the vault'],
+          reason: name,
+        );
       }
       // A library that re-exports another one that re-exports the vault.
       expect(
@@ -1788,6 +1802,163 @@ void wire(GetIt locator) {
 export 'dart:core' if (dart.library.io) 'dart:async';
 '''),
         ['lib/vault_conditional_export.dart: dart:core#conditional export'],
+      );
+    });
+  });
+
+  group('outside three P2P files, no workspace package uses the vault (#47)', () {
+    const facadePath = 'features/p2p/lib/public/p2p_facade.dart';
+    const locatorPath = 'features/p2p/lib/src/p2p_locator.dart';
+    const repositoryPath =
+        'features/p2p/lib/src/data/garage_key_repository_impl.dart';
+    const otherPath =
+        'features/p2p/lib/src/domain/usecases/find_garage_robot_usecase.dart';
+    const handle = '''
+import 'package:secrets/secrets.dart' show GarageKeys;
+Object? take({required GarageKeys? garageKeys}) => garageKeys;
+''';
+    String outside(String path, String declaration) =>
+        '$path: package:secrets#$declaration outside the files that may use the vault';
+
+    setUpAll(() {
+      File('${fixture.path}/vault_alias.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+typedef Vault = Secrets;
+''');
+      File('${fixture.path}/vault_source.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart';
+Secrets vault() => throw UnimplementedError();
+''');
+      File('${fixture.path}/vault_part_library.dart').writeAsStringSync('''
+import 'package:secrets/secrets.dart' show GarageKeys;
+part 'vault_part.dart';
+final class Holder {
+  final GarageKeys _garageKeys;
+  const Holder(this._garageKeys);
+}
+''');
+    });
+
+    test('the three files of today pass, with their declarations', () async {
+      expect(
+        await inspect('vault_use_facade', handle, policyPath: facadePath),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_locator', handle, policyPath: locatorPath),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_repository', '''
+import 'package:primitives/primitives.dart';
+import 'package:secrets/secrets.dart';
+final class GarageKeyRepositoryImpl {
+  final GarageKeys _garageKeys;
+  const GarageKeyRepositoryImpl(this._garageKeys);
+  Future<bool> _exists() async =>
+      switch (await _garageKeys.read(slot: GarageKeySlot.mainnet)) {
+        Ok(value: final GarageKeyMaterial material) => material.bytes.isNotEmpty,
+        Err(failure: SecretNotFoundFailure()) => false,
+        Err(failure: KeystoreLockedFailure() || GarageKeyCorruptFailure()) => false,
+        Err(failure: GarageKeyAlreadyExistsFailure()) => false,
+        Err(failure: SecretFailure()) => false,
+      };
+}
+''', policyPath: repositoryPath),
+        isEmpty,
+      );
+      expect(
+        await inspect('vault_use_app', '''
+import 'package:secrets/secrets.dart';
+Object listing(Secrets secrets) => secrets.list();
+'''),
+        isEmpty,
+        reason: 'the app itself uses the vault',
+      );
+    });
+
+    test(
+      'another file, another package or another declaration is refused',
+      () async {
+        for (final (name, source, path, declaration) in [
+          ('vault_use_other_file', handle, otherPath, 'GarageKeys'),
+          (
+            'vault_use_package',
+            handle,
+            'packages/robosats/lib/src/vault_user.dart',
+            'GarageKeys',
+          ),
+          (
+            'vault_use_other_feature',
+            handle,
+            'features/other/lib/src/vault_user.dart',
+            'GarageKeys',
+          ),
+          (
+            'vault_use_other_declaration',
+            '''
+import 'package:secrets/secrets.dart' show Secrets;
+Object listing(Secrets secrets) => secrets.list();
+''',
+            facadePath,
+            'Secrets',
+          ),
+          (
+            'vault_use_slot',
+            '''
+import 'package:secrets/secrets.dart' show GarageKeySlot;
+Object slot() => GarageKeySlot.mainnet;
+''',
+            locatorPath,
+            'GarageKeySlot',
+          ),
+        ]) {
+          expect(await inspect(name, source, policyPath: path), [
+            outside(path, declaration),
+          ], reason: name);
+        }
+      },
+    );
+
+    test('a type alias, a value or a part of the repository is seen', () async {
+      // The review of #58 (B1): `typedef Vault = Secrets;` in `package:robosats`, used by a file of the feature that never names `package:secrets`.
+      expect(
+        await inspect('vault_use_alias', '''
+import 'vault_alias.dart';
+Future<Object> reach(Vault vault) => vault.list();
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      expect(
+        await inspect(
+          'vault_use_alias_declaration',
+          '''
+import 'package:secrets/secrets.dart';
+typedef Vault = Secrets;
+''',
+          policyPath: 'packages/robosats/lib/src/vault_alias.dart',
+        ),
+        [outside('packages/robosats/lib/src/vault_alias.dart', 'Secrets')],
+      );
+      // A value of the vault reached without naming one of its types.
+      expect(
+        await inspect('vault_use_value', '''
+import 'vault_source.dart';
+Future<Object> reach() => vault().list();
+''', policyPath: otherPath),
+        [outside(otherPath, 'Secrets')],
+      );
+      // The review of #50 (N08): a part of the repository is another file, and an extension there that hands out the handle is refused.
+      const partPath =
+          'features/p2p/lib/src/data/garage_key_repository_extras.dart';
+      expect(
+        await inspect('vault_part', '''
+part of 'vault_part_library.dart';
+extension Extras on Holder {
+  GarageKeys get handle => _garageKeys;
+}
+''', policyPath: partPath),
+        [outside(partPath, 'GarageKeys')],
       );
     });
   });
