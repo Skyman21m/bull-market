@@ -16,7 +16,7 @@ const _federation = 'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6';
 ///
 /// Each image is the coordinator operator's own artwork, distributed in the RoboSats repository under its AGPL-3.0 notice, and bundled by the decision of the owner of 2026-11-12 (`NOTICE.md`): it is removed on request.
 /// The asset paths are these constants, keyed by the aliases of the embedded list: nothing a coordinator sends, and no other text, can name an asset.
-/// `test/coordinator_images_test.dart` pins every (commit, blob) pair; `test/features/p2p/p2p_coordinator_images_test.dart`, in the app, recomputes the blob of each asset its bundle serves.
+/// `test/coordinator_images_test.dart` pins every (commit, blob) pair and checks each asset file against its blob; `test/features/p2p/p2p_coordinator_images_test.dart`, in the app, does the same for the bytes the app's bundle serves.
 /// A coordinator added to the list with an image needs its row here, its blob checked against RoboSats, and its pin.
 const coordinatorImages = <String, CoordinatorImage>{
   'temple': (

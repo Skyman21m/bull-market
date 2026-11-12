@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bull_ui/testing.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,6 +54,12 @@ final class _BrokenImagesBundle extends CachingAssetBundle {
   }
 }
 
+/// The Git blob id of [bytes], which `git rev-parse <commit>:<path>` prints for a file of a commit.
+String gitBlobId(List<int> bytes) => sha1.convert([
+  ...ascii.encode('blob ${bytes.length}\x00'),
+  ...bytes,
+]).toString();
+
 /// The width and height of the image in [bytes], once the engine decoded it.
 Future<(int, int)?> decodedSize(WidgetTester tester, Uint8List bytes) =>
     tester.runAsync(() async {
@@ -75,7 +83,7 @@ void main() {
     test('each image is the avatar of its coordinator, at a pinned source', () {
       // Five come from the protocol reference, Gumpellite's from the commit of the federation list, which added it.
       // Each blob was checked against RoboSats when it was added: `git rev-parse ff1998c:<path>` in the reference clone, and the `sha` of `gh api 'repos/RoboSats/robosats/contents/<path>?ref=e56f9cf7c…'` for Gumpellite.
-      // `test/features/p2p/p2p_coordinator_images_test.dart` checks each bundled asset against its blob.
+      // The files are checked against these blobs below, and `test/features/p2p/p2p_coordinator_images_test.dart` checks the bytes the app's bundle serves.
       expect(coordinatorImages, {
         for (final (alias, commit, blob) in [
           ('temple', reference, '01172a3738529ee58d554d92f57fd0e9085a22ee'),
@@ -98,19 +106,21 @@ void main() {
       });
     });
 
-    testWidgets('each asset is on disk, decodes, and is 200 by 200 pixels', (
-      tester,
-    ) async {
-      for (final MapEntry(key: alias, value: image)
-          in coordinatorImages.entries) {
-        final file = File(image.asset);
-        expect(file.existsSync(), isTrue, reason: alias);
-        expect(await decodedSize(tester, file.readAsBytesSync()), (
-          200,
-          200,
-        ), reason: alias);
-      }
-    });
+    testWidgets(
+      'each asset is on disk, is its pinned RoboSats file, decodes, and is 200 by 200 pixels',
+      (tester) async {
+        for (final MapEntry(key: alias, value: image)
+            in coordinatorImages.entries) {
+          final file = File(image.asset);
+          expect(file.existsSync(), isTrue, reason: alias);
+          expect(gitBlobId(file.readAsBytesSync()), image.blob, reason: alias);
+          expect(await decodedSize(tester, file.readAsBytesSync()), (
+            200,
+            200,
+          ), reason: alias);
+        }
+      },
+    );
 
     test('the folder holds the images of the table and nothing else', () {
       expect(
