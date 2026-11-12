@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
+import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/ui/book_view.dart';
@@ -33,7 +34,7 @@ const englishPhrases = [
   'Loading with low time preference',
 ];
 
-/// The same phrases in French, with the typographic apostrophe of the feature's French texts.
+/// The same phrases in French, with the typographic apostrophe, as some of the Garage's French texts write it; most other French texts of the feature, taken from the phase-1 catalogue, use the straight one.
 const frenchPhrases = [
   'Des sats à la vitesse de la lumière',
   'On épluche l’oignon, couche par couche',
@@ -336,6 +337,18 @@ void main() {
   });
 
   group('phrases', () {
+    test('the list is the twelve phrases approved, in English and French', () {
+      expect(TorWaitPhrases.count, englishPhrases.length);
+      expect(
+        TorWaitPhrases.phrasesOf(lookupP2pLocalizations(const Locale('en'))),
+        englishPhrases,
+      );
+      expect(
+        TorWaitPhrases.phrasesOf(lookupP2pLocalizations(const Locale('fr'))),
+        frenchPhrases,
+      );
+    });
+
     testWidgets(
       'each of the twelve, in the order of the shuffle, one every 2 seconds',
       (tester) async {
