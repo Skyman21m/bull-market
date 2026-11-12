@@ -679,7 +679,7 @@ final class _DepthChartPainter extends CustomPainter {
 
 /// What the official client shows of an order on the chart (`Charts/helpers/OrderTooltip`): the maker's robot, the amount and its currency, the payment methods, and the coordinator.
 ///
-/// The official client marks the coordinator with a badge on the robot; here its name is written below, cleaned and bounded as every P2P screen shows it.
+/// The coordinator is both the badge on the robot, as in the official client, and its name written below, cleaned and bounded as every P2P screen shows it; since the name is written, the badge says nothing to a screen reader.
 /// The payment methods are maker text, shown as plain text.
 class OrderTooltip extends StatelessWidget {
   final PublicOrder order;
@@ -703,7 +703,7 @@ class OrderTooltip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          MakerAvatar(order: order, size: 32),
+          MakerAvatar(order: order, size: 32, namesCoordinator: false),
           const Gap(BullSpacing.sm),
           Flexible(
             child: Column(

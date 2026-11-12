@@ -11,7 +11,7 @@ import 'coordinator_mark.dart';
 /// It is asked at the size it is drawn, in device pixels (`cacheWidth`, `cacheHeight`), so the 200-pixel file of a 16-point badge is decoded at 48 pixels on a screen of density 3; Flutter's `ResizeImage` never enlarges, so a larger size decodes at the file's own 200 pixels.
 /// It is never read from the network or from what a coordinator sends.
 /// A coordinator without a row in that table, or whose image cannot be loaded or decoded, is drawn with its [CoordinatorMark], so the place is never blank; while the image is decoded, a plain disc stands in.
-/// The avatar is decorative: the name of the coordinator is always written beside it.
+/// The avatar itself says nothing to a screen reader: on the order page and in the coordinator dialog the name is written beside it, and as the badge of a maker in the book, `MakerAvatar` gives it the name.
 class CoordinatorAvatar extends StatelessWidget {
   final Coordinator coordinator;
   final double size;
