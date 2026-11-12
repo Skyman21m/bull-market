@@ -164,7 +164,7 @@ class RobotBindings extends Table with TableInfo {
   String get actualTableName => $name;
   static const String $name = 'robot_bindings';
   @override
-  Set<GeneratedColumn> get $primaryKey => {network, keyFingerprint, robotIndex};
+  Set<GeneratedColumn> get $primaryKey => {keyFingerprint, robotIndex};
   @override
   Never map(Map<String, dynamic> data, {String? tablePrefix}) {
     throw UnsupportedError('TableInfo.map in schema verification code');
@@ -177,7 +177,7 @@ class RobotBindings extends Table with TableInfo {
 
   @override
   List<String> get customConstraints => const [
-    'PRIMARY KEY(network, key_fingerprint, robot_index)',
+    'PRIMARY KEY(key_fingerprint, robot_index)',
     'CHECK(network IN (\'mainnet\', \'testnet\'))',
     'CHECK(length(key_fingerprint) = 64)',
     'CHECK(robot_index BETWEEN 0 AND 2147483647)',

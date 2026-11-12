@@ -8,6 +8,7 @@ import 'p2p_failure.dart';
 /// A robot as its binding knows it: the network of its Garage Key, the fingerprint of that key and its index.
 ///
 /// It holds no token, so it is what the feature's database is handed; a `NetworkRobot` gives it as `slot`.
+/// Its binding is looked up by fingerprint and index alone, since the robot's credential is the same on both networks; its network decides which history of the key applies and must match the network of the coordinator it is bound to.
 @immutable
 final class RobotSlot {
   final RobosatsNetwork network;
@@ -41,11 +42,15 @@ enum GarageKeyHistory {
   unknown,
 }
 
-/// A coordinator as a binding records it: its short alias, the onion address of its instance on one network, and the keys the federation list publishes for it there.
+/// A coordinator as a binding records it: the network of its instance, its short alias, the onion address of that instance, and the keys the federation list publishes for it there.
 ///
 /// Its alias alone would not do: the federation list of a later version of the app could give that alias another server, node or Nostr key, which must not receive the robot without a review.
+/// Its network is part of it: a robot index has one credential on both networks, so its binding to a coordinator of one network refuses every coordinator of the other.
 @immutable
 final class CoordinatorIdentity {
+  /// The network of the instance the binding names.
+  final RobosatsNetwork network;
+
   /// The short alias of the coordinator in the federation list, such as `temple`.
   final String alias;
 
@@ -59,6 +64,7 @@ final class CoordinatorIdentity {
   final String nostrKey;
 
   CoordinatorIdentity({
+    required this.network,
     required this.alias,
     required this.onion,
     required Iterable<String> nodeKeys,
@@ -73,6 +79,7 @@ final class CoordinatorIdentity {
     final onion = coordinator.origins(network).onion;
     if (onion == null) return null;
     return CoordinatorIdentity(
+      network: network,
       alias: coordinator.shortAlias,
       onion: onion,
       nodeKeys: coordinator.nodesPubkeys(network),
@@ -83,6 +90,7 @@ final class CoordinatorIdentity {
   @override
   bool operator ==(Object other) =>
       other is CoordinatorIdentity &&
+      other.network == network &&
       other.alias == alias &&
       other.onion == onion &&
       _sameList(other.nodeKeys, nodeKeys) &&
@@ -90,10 +98,10 @@ final class CoordinatorIdentity {
 
   @override
   int get hashCode =>
-      Object.hash(alias, onion, Object.hashAll(nodeKeys), nostrKey);
+      Object.hash(network, alias, onion, Object.hashAll(nodeKeys), nostrKey);
 
   @override
-  String toString() => 'CoordinatorIdentity($alias)';
+  String toString() => 'CoordinatorIdentity(${network.name}, $alias)';
 
   static bool _sameList(List<String> a, List<String> b) {
     if (a.length != b.length) return false;
@@ -116,11 +124,14 @@ final class RobotBinding {
 
   const RobotBinding(this.coordinator, this.boundAt);
 
-  /// Whether a request of the robot may go to [requested]: only to the coordinator it is bound to, with the onion address and the keys it had then.
+  /// Whether a request of the robot may go to [requested]: only to the coordinator it is bound to, on the same network, with the onion address and the keys it had then.
   ///
-  /// The same alias or onion address with anything else changed is a [RobotCoordinatorChangedFailure]; any other coordinator is a [RobotBoundToAnotherCoordinatorFailure].
+  /// A coordinator of the other network, whatever its alias, and any other coordinator are a [RobotBoundToAnotherCoordinatorFailure]; the same alias or onion address on the same network, with anything else changed, is a [RobotCoordinatorChangedFailure].
   Result<void, P2pFailure> admits(CoordinatorIdentity requested) {
     if (requested == coordinator) return const Ok(null);
+    if (requested.network != coordinator.network) {
+      return const Err(RobotBoundToAnotherCoordinatorFailure());
+    }
     if (requested.alias == coordinator.alias ||
         requested.onion == coordinator.onion) {
       return const Err(RobotCoordinatorChangedFailure());

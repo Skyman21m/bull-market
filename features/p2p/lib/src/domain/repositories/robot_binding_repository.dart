@@ -28,11 +28,13 @@ abstract interface class RobotBindingRepository {
     GarageKeyFingerprint key,
   );
 
-  /// Binds [robot] to [coordinator] if it has no binding and its key was drawn on this device, then checks the binding of [robot] against [coordinator].
+  /// Binds [robot] to [coordinator] if its index has no binding, on either network, and its key was drawn on this device for the robot's network, then checks the binding of [robot] against [coordinator].
+  ///
+  /// A robot index has one binding whatever the network: its token, so its token hash, does not depend on the network.
   ///
   /// It returns only once the binding is on disk.
   /// Two calls for one robot and two coordinators, at once, from any number of connections, bind it to one coordinator only, and the other call fails.
-  /// A robot bound to another coordinator is a [RobotBoundToAnotherCoordinatorFailure], one bound to a coordinator whose onion address or keys changed since is a [RobotCoordinatorChangedFailure], and one without a binding whose key's history is unknown is a [RobotHistoryUnknownFailure], with nothing written.
+  /// A robot bound to another coordinator, a coordinator of the other network included, is a [RobotBoundToAnotherCoordinatorFailure], one bound to a coordinator whose onion address or keys changed since is a [RobotCoordinatorChangedFailure], and one without a binding whose key's history is unknown is a [RobotHistoryUnknownFailure], with nothing written.
   @useResult
   Future<Result<void, P2pFailure>> bind(
     RobotSlot robot,

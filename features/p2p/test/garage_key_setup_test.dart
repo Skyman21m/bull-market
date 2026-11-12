@@ -15,6 +15,7 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/testing.dart'
     show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
 import 'package:robosats/robosats.dart' show Federation;
@@ -189,6 +190,84 @@ void main() {
       // The binding outlives the key: if the key comes back, its robot 0 is still bound to temple.
       expect(
         await locator<RobotBindingRepository>().bind(robot.slot, temple),
+        isA<Ok<void, P2pFailure>>(),
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 90)),
+  );
+
+  test(
+    'a key drawn on testnet and pasted into mainnet: its robots have one credential, so one binding, on both networks',
+    () async {
+      setUpWithGarage();
+      const testnet = RobosatsNetwork.testnet;
+      const mainnet = RobosatsNetwork.mainnet;
+      T value<T>(Result<T, P2pFailure> result) => switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      CoordinatorIdentity identityOf(String alias, RobosatsNetwork network) =>
+          CoordinatorIdentity.of(
+            Federation.robosats.byAlias(alias) ?? fail('no $alias'),
+            network,
+          ) ??
+          fail('$alias is not on $network');
+
+      value(await locator<GenerateGarageKeyUsecase>().execute(testnet));
+      final testnetKey = value(
+        await locator<ReadGarageKeyUsecase>().execute(testnet),
+      );
+      // The text of a key the in-memory keystore drew for this test, kept in memory only.
+      expect(
+        await locator<ImportGarageKeyUsecase>().execute(
+          mainnet,
+          text: testnetKey.key.revealBech32(),
+        ),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      final mainnetKey = value(
+        await locator<ReadGarageKeyUsecase>().execute(mainnet),
+      );
+      expect(value(mainnetKey.fingerprint), value(testnetKey.fingerprint));
+
+      final bindings = locator<RobotBindingRepository>();
+      final testnet0 = value(testnetKey.firstUsableRobot(0));
+      final mainnet0 = value(mainnetKey.firstUsableRobot(0));
+      expect(
+        mainnet0.identity.tokenSha256Base91,
+        testnet0.identity.tokenSha256Base91,
+      );
+      expect(
+        await bindings.bind(testnet0.slot, identityOf('temple', testnet)),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      // Robot 0's token hash went to temple on testnet: no mainnet coordinator gets it.
+      expect(
+        await bindings.bind(mainnet0.slot, identityOf('lake', mainnet)),
+        isA<Err<void, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<RobotBoundToAnotherCoordinatorFailure>(),
+        ),
+      );
+      // On mainnet the key was pasted: a robot without a binding there may live anywhere.
+      expect(
+        await bindings.bind(
+          value(mainnetKey.firstUsableRobot(1)).slot,
+          identityOf('lake', mainnet),
+        ),
+        isA<Err<void, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<RobotHistoryUnknownFailure>(),
+        ),
+      );
+      // On testnet it was drawn here: robot 1 is still new there.
+      expect(
+        await bindings.bind(
+          value(testnetKey.firstUsableRobot(1)).slot,
+          identityOf('temple', testnet),
+        ),
         isA<Ok<void, P2pFailure>>(),
       );
     },

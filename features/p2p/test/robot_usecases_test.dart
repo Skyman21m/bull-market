@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
@@ -325,6 +326,32 @@ void main() {
               refusedWith<RobotHistoryUnknownFailure>(),
             );
           }
+          expect(transport.requests, isEmpty);
+        },
+      );
+
+      test(
+        'a database whose directory throws an Error: the call throws, and nothing is sent',
+        () async {
+          // An Error is a bug (AGENTS.md, rule 11): it is not turned into a failure, and the request never leaves.
+          final broken = FetchRobotUsecase(
+            CoordinatorClient(transport),
+            bindingsInMemory(
+              database: P2pDatabase.open(
+                () async => throw StateError('no directory'),
+              ),
+            ),
+          );
+
+          await expectLater(
+            broken.execute(
+              temple,
+              networkRobot,
+              pgpKey: pgpKey,
+              createIfUnknown: true,
+            ),
+            throwsA(isA<StateError>()),
+          );
           expect(transport.requests, isEmpty);
         },
       );

@@ -169,7 +169,6 @@
           "CHECK (length(coordinator_nostr_key) > 0)"
         ],
         "explicit_pk": [
-          "network",
           "key_fingerprint",
           "robot_index"
         ]
@@ -191,7 +190,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"robot_bindings\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"coordinator_onion\" TEXT NOT NULL, \"coordinator_node_keys\" TEXT NOT NULL, \"coordinator_nostr_key\" TEXT NOT NULL, \"bound_at\" INTEGER NOT NULL, PRIMARY KEY (\"network\", \"key_fingerprint\", \"robot_index\"), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (length(coordinator_nostr_key) > 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"robot_bindings\" (\"network\" TEXT NOT NULL, \"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"coordinator_onion\" TEXT NOT NULL, \"coordinator_node_keys\" TEXT NOT NULL, \"coordinator_nostr_key\" TEXT NOT NULL, \"bound_at\" INTEGER NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (length(coordinator_nostr_key) > 0));"
         }
       ]
     }

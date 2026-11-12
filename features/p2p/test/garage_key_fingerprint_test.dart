@@ -87,6 +87,85 @@ void main() {
       }
     });
 
+    test('is the same on both networks, as the tokens of its robots are', () {
+      final testnet = NetworkGarageKey(RobosatsNetwork.testnet, keyA);
+      final mainnet = NetworkGarageKey(RobosatsNetwork.mainnet, keyA);
+
+      expect(ok(testnet.fingerprint), ok(mainnet.fingerprint));
+      for (final index in [0, 1, 5]) {
+        // One credential on both networks: hence one binding per index, whatever the network.
+        expect(
+          ok(mainnet.firstUsableRobot(index)).identity.tokenSha256Base91,
+          ok(testnet.firstUsableRobot(index)).identity.tokenSha256Base91,
+        );
+      }
+    });
+
+    test(
+      'skips a robot 0 whose token fails the entropy rule, and stops on any other failure',
+      () {
+        final token1 = ok(keyA.deriveToken(1));
+        final asked = <int>[];
+        final fingerprint = GarageKeyFingerprint.fromTokens((index) {
+          asked.add(index);
+          return index == 0
+              ? const Err(
+                  TokenEntropyTooLow(
+                    TokenEntropy(bitsEntropy: 1, shannonEntropy: 1),
+                  ),
+                )
+              : Ok(token1);
+        });
+
+        expect(asked, [0, 1]);
+        expect(
+          ok(fingerprint).hex,
+          Hmac(sha256, utf8.encode(token1.reveal()))
+              .convert(utf8.encode('troc/p2p/garage-key-fingerprint/v1'))
+              .toString(),
+        );
+        asked.clear();
+        expect(
+          GarageKeyFingerprint.fromTokens((index) {
+            asked.add(index);
+            return const Err(AccountIndexOutOfRange());
+          }),
+          isA<Err<GarageKeyFingerprint, P2pFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<GarageRobotUnavailableFailure>(),
+          ),
+        );
+        expect(asked, [0]);
+        asked.clear();
+        expect(
+          GarageKeyFingerprint.fromTokens((index) {
+            asked.add(index);
+            return const Err(
+              TokenEntropyTooLow(
+                TokenEntropy(bitsEntropy: 1, shannonEntropy: 1),
+              ),
+            );
+          }),
+          isA<Err<GarageKeyFingerprint, P2pFailure>>(),
+        );
+        expect(asked, hasLength(GarageKey.maxAccountSearch));
+      },
+    );
+
+    test('never prints its value', () {
+      final fingerprint = ok(GarageKeyFingerprint.of(keyA));
+
+      expect('$fingerprint', 'GarageKeyFingerprint(<redacted>)');
+      expect('$fingerprint'.contains(fingerprint.hex), isFalse);
+      final robot = ok(
+        NetworkGarageKey(RobosatsNetwork.testnet, keyA).firstUsableRobot(0),
+      );
+      for (final printed in ['$robot', '${robot.slot}']) {
+        expect(printed.contains(fingerprint.hex), isFalse, reason: printed);
+      }
+    });
+
     test('tells the robots of two keys apart, index by index', () {
       final robotA = ok(
         NetworkGarageKey(RobosatsNetwork.testnet, keyA).firstUsableRobot(0),
@@ -110,6 +189,7 @@ void main() {
       for (final network in RobosatsNetwork.values) {
         final identity = CoordinatorIdentity.of(temple, network);
 
+        expect(identity?.network, network);
         expect(identity?.alias, 'temple');
         expect(identity?.onion, temple.origins(network).onion);
         expect(identity?.nodeKeys, [...temple.nodesPubkeys(network)]..sort());
@@ -131,6 +211,7 @@ void main() {
 
   group('a binding', () {
     final temple = CoordinatorIdentity(
+      network: RobosatsNetwork.testnet,
       alias: 'temple',
       onion: 'http://temple.onion',
       nodeKeys: const ['02aa', '03bb'],
@@ -149,6 +230,7 @@ void main() {
       expect(
         binding.admits(
           CoordinatorIdentity(
+            network: RobosatsNetwork.testnet,
             alias: 'temple',
             onion: 'http://temple.onion',
             nodeKeys: const ['03bb', '02aa'],
@@ -159,10 +241,39 @@ void main() {
       );
     });
 
+    test(
+      'refuses the instance of the other network, whatever its alias or address',
+      () {
+        for (final other in [
+          CoordinatorIdentity(
+            network: RobosatsNetwork.mainnet,
+            alias: 'temple',
+            onion: 'http://temple.onion',
+            nodeKeys: const ['02aa', '03bb'],
+            nostrKey: 'nostr-temple',
+          ),
+          CoordinatorIdentity(
+            network: RobosatsNetwork.mainnet,
+            alias: 'temple',
+            onion: 'http://temple-mainnet.onion',
+            nodeKeys: const ['02cc'],
+            nostrKey: 'nostr-temple',
+          ),
+        ]) {
+          expect(
+            binding.admits(other),
+            refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+            reason: '$other',
+          );
+        }
+      },
+    );
+
     test('refuses another coordinator', () {
       expect(
         binding.admits(
           CoordinatorIdentity(
+            network: RobosatsNetwork.testnet,
             alias: 'lake',
             onion: 'http://lake.onion',
             nodeKeys: const ['02aa', '03bb'],
@@ -176,24 +287,28 @@ void main() {
     test('refuses its coordinator once anything recorded changed', () {
       for (final changed in [
         CoordinatorIdentity(
+          network: RobosatsNetwork.testnet,
           alias: 'temple',
           onion: 'http://elsewhere.onion',
           nodeKeys: const ['02aa', '03bb'],
           nostrKey: 'nostr-temple',
         ),
         CoordinatorIdentity(
+          network: RobosatsNetwork.testnet,
           alias: 'temple',
           onion: 'http://temple.onion',
           nodeKeys: const ['02aa'],
           nostrKey: 'nostr-temple',
         ),
         CoordinatorIdentity(
+          network: RobosatsNetwork.testnet,
           alias: 'temple',
           onion: 'http://temple.onion',
           nodeKeys: const ['02aa', '03bb'],
           nostrKey: 'nostr-other',
         ),
         CoordinatorIdentity(
+          network: RobosatsNetwork.testnet,
           alias: 'renamed',
           onion: 'http://temple.onion',
           nodeKeys: const ['02aa', '03bb'],

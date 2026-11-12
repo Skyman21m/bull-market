@@ -11,14 +11,16 @@ import 'p2p_database.dart';
 /// The bindings of the robots and the history of the Garage Keys in the feature's database.
 ///
 /// [bind] holds without a transaction around its two statements: the insert is one statement, so SQLite runs it atomically, it writes only when no binding exists and the key is recorded as drawn on this device, and a binding is never changed or deleted, so the read that follows sees the binding that won.
-/// The primary key (network, key fingerprint, robot index) keeps it so across connections and isolates as well.
+/// The primary key (key fingerprint, robot index), whatever the network, keeps it so across connections and isolates as well: a robot's credential is the same on both networks, so an index bound on one is bound on the other.
 /// Every statement commits on its own, synced to disk, before its future completes.
-/// It returns no row of the database: the domain types only, and a [P2pStorageFailure] for anything the database throws.
+/// It returns no row of the database: the domain types only, and a [P2pStorageFailure] for any [Exception] the database or the directory the shell gave throws.
+/// An [Error] is a bug (AGENTS.md, rule 11) and is not caught: the call throws, and the caller sends nothing.
+/// Several connections writing at once can make SQLite give up after its busy timeout, a [P2pStorageFailure] that refuses the request; the app opens one connection, in the foreground only, and drift runs its statements one at a time, so it is not exposed to that.
 final class RobotBindingRepositoryImpl implements RobotBindingRepository {
   static const String _generated = 'generated';
   static const String _imported = 'imported';
 
-  /// Writes the binding only when the robot has none and its key was drawn on this device; an existing binding wins over any later one.
+  /// Writes the binding only when the robot has none, on either network, and its key was drawn on this device for the robot's network; an existing binding wins over any later one.
   static const String _bindIfFreshSql =
       'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, coordinator_node_keys, '
@@ -26,7 +28,7 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
       'SELECT ?, ?, ?, ?, ?, ?, ?, ? '
       'WHERE EXISTS (SELECT 1 FROM garage_key_histories '
       'WHERE network = ? AND key_fingerprint = ? AND origin = ?) '
-      'ON CONFLICT (network, key_fingerprint, robot_index) DO NOTHING';
+      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING';
 
   final P2pDatabase _database;
   final DateTime Function() _clock;
@@ -104,7 +106,6 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
       row =
           await (_database.select(_database.robotBindings)..where(
                 (binding) =>
-                    binding.network.equals(network) &
                     binding.keyFingerprint.equals(fingerprint) &
                     binding.robotIndex.equals(robot.accountIndex),
               ))
@@ -115,21 +116,38 @@ final class RobotBindingRepositoryImpl implements RobotBindingRepository {
     return switch (row) {
       // Not written: the key was not drawn on this device, so the robot may live on a coordinator already.
       null => const Err(RobotHistoryUnknownFailure()),
-      final stored => _bindingOf(stored).admits(coordinator),
+      final stored => switch (_bindingOf(stored)) {
+        final binding? => binding.admits(coordinator),
+        // A network the constraints of the table forbid: a row this code did not write.
+        null => const Err(P2pStorageFailure()),
+      },
     };
   }
 
-  static RobotBinding _bindingOf(RobotBindingRow row) => RobotBinding(
-    CoordinatorIdentity(
-      alias: row.coordinatorAlias,
-      onion: row.coordinatorOnion,
-      nodeKeys: row.coordinatorNodeKeys
-          .split(',')
-          .where((key) => key.isNotEmpty),
-      nostrKey: row.coordinatorNostrKey,
-    ),
-    DateTime.fromMillisecondsSinceEpoch(row.boundAt, isUtc: true),
-  );
+  static RobotBinding? _bindingOf(RobotBindingRow row) {
+    final network = _networkFrom(row.network);
+    if (network == null) return null;
+    return RobotBinding(
+      CoordinatorIdentity(
+        network: network,
+        alias: row.coordinatorAlias,
+        onion: row.coordinatorOnion,
+        nodeKeys: row.coordinatorNodeKeys
+            .split(',')
+            .where((key) => key.isNotEmpty),
+        nostrKey: row.coordinatorNostrKey,
+      ),
+      DateTime.fromMillisecondsSinceEpoch(row.boundAt, isUtc: true),
+    );
+  }
+
+  /// The network a row stores, or `null` for a value this code never writes.
+  static RobosatsNetwork? _networkFrom(String value) {
+    for (final network in RobosatsNetwork.values) {
+      if (_networkValue(network) == value) return network;
+    }
+    return null;
+  }
 
   /// The network as the database stores it; a new network does not compile without a decision.
   static String _networkValue(RobosatsNetwork network) => switch (network) {

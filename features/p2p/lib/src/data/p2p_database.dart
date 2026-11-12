@@ -31,12 +31,14 @@ class GarageKeyHistories extends Table {
   ];
 }
 
-/// The coordinator each robot index of each Garage Key is bound to, per network, as the federation list gave it at binding time.
+/// The coordinator each robot index of each Garage Key is bound to, as the federation list gave it at binding time.
 ///
+/// One row per key fingerprint and robot index, whatever the network: a robot's token does not depend on the network (`GarageKey.deriveToken` takes none), so the same key in both slots gives the same credential on testnet and mainnet, and an index bound on one network is bound on the other too.
+/// The network of the coordinator is a column of the row, recorded and checked like the rest.
 /// A row is never changed or deleted.
 @DataClassName('RobotBindingRow')
 class RobotBindings extends Table {
-  /// `mainnet` or `testnet`.
+  /// The network of the coordinator, `mainnet` or `testnet`.
   TextColumn get network => text()();
 
   /// The `GarageKeyFingerprint` of the key, 64 hexadecimal characters.
@@ -61,7 +63,7 @@ class RobotBindings extends Table {
   IntColumn get boundAt => integer()();
 
   @override
-  Set<Column<Object>> get primaryKey => {network, keyFingerprint, robotIndex};
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
 
   @override
   List<String> get customConstraints => const [

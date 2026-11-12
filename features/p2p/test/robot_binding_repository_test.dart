@@ -117,24 +117,28 @@ void main() {
 
         for (final changed in [
           CoordinatorIdentity(
+            network: testnet,
             alias: temple.alias,
             onion: lake.onion,
             nodeKeys: temple.nodeKeys,
             nostrKey: temple.nostrKey,
           ),
           CoordinatorIdentity(
+            network: testnet,
             alias: temple.alias,
             onion: temple.onion,
             nodeKeys: [...temple.nodeKeys, lake.nodeKeys.first],
             nostrKey: temple.nostrKey,
           ),
           CoordinatorIdentity(
+            network: testnet,
             alias: temple.alias,
             onion: temple.onion,
             nodeKeys: const [],
             nostrKey: temple.nostrKey,
           ),
           CoordinatorIdentity(
+            network: testnet,
             alias: temple.alias,
             onion: temple.onion,
             nodeKeys: temple.nodeKeys,
@@ -142,6 +146,7 @@ void main() {
           ),
           // Another alias on the same onion address: renamed, or another entry pointing at that server.
           CoordinatorIdentity(
+            network: testnet,
             alias: 'renamed',
             onion: temple.onion,
             nodeKeys: temple.nodeKeys,
@@ -159,6 +164,7 @@ void main() {
           await bindings.bind(
             robot,
             CoordinatorIdentity(
+              network: testnet,
               alias: temple.alias,
               onion: temple.onion,
               nodeKeys: temple.nodeKeys.reversed,
@@ -171,36 +177,79 @@ void main() {
       },
     );
 
-    test('is bound on its own network, under its own key', () async {
-      expect(
-        await bindings.bind(RobotSlot(testnet, fingerprintA, 0), temple),
-        passes,
-      );
+    test(
+      'is bound once for both networks, since its credential is the same on both, and under its own key only',
+      () async {
+        expect(
+          await bindings.bind(RobotSlot(testnet, fingerprintA, 0), temple),
+          passes,
+        );
+        // The key in the mainnet slot too, as if this device had drawn it there.
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintA),
+          passes,
+        );
 
-      // Robot 0 of another key drawn here goes elsewhere.
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintB), passes);
-      expect(
-        await bindings.bind(RobotSlot(testnet, fingerprintB, 0), lake),
-        passes,
-      );
-      // The same key on mainnet was never recorded as drawn there.
-      expect(
-        await bindings.bind(
-          RobotSlot(mainnet, fingerprintA, 0),
-          identityOf('temple', mainnet),
-        ),
-        refusedWith<RobotHistoryUnknownFailure>(),
-      );
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintA), passes);
-      expect(
-        await bindings.bind(
-          RobotSlot(mainnet, fingerprintA, 0),
-          identityOf('lake', mainnet),
-        ),
-        passes,
-      );
-      expect(await rows(), hasLength(3));
-    });
+        // Robot 0 has the same token hash on mainnet: no mainnet coordinator gets it, not even temple's mainnet instance.
+        for (final alias in ['temple', 'lake']) {
+          expect(
+            await bindings.bind(
+              RobotSlot(mainnet, fingerprintA, 0),
+              identityOf(alias, mainnet),
+            ),
+            refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+            reason: alias,
+          );
+        }
+        // Robot 1 is free on either network, and once bound on mainnet it is refused on testnet.
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintA, 1),
+            identityOf('lake', mainnet),
+          ),
+          passes,
+        );
+        expect(
+          await bindings.bind(RobotSlot(testnet, fingerprintA, 1), lake),
+          refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+        // Robot 0 of another key drawn here goes elsewhere.
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintB),
+          passes,
+        );
+        expect(
+          await bindings.bind(RobotSlot(testnet, fingerprintB, 0), lake),
+          passes,
+        );
+        expect(
+          {
+            for (final row in await rows())
+              (row.network, row.keyFingerprint, row.robotIndex),
+          },
+          {
+            ('testnet', fingerprintA.hex, 0),
+            ('mainnet', fingerprintA.hex, 1),
+            ('testnet', fingerprintB.hex, 0),
+          },
+        );
+      },
+    );
+
+    test(
+      'a robot without a binding follows the history of its key on its own network',
+      () async {
+        // Drawn on testnet only: on mainnet the same key has an unknown history.
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintA, 0),
+            identityOf('temple', mainnet),
+          ),
+          refusedWith<RobotHistoryUnknownFailure>(),
+        );
+        expect(await rows(), isEmpty);
+      },
+    );
 
     test(
       'two first requests at once to two coordinators: one is bound, the other refused',
@@ -389,6 +438,102 @@ void main() {
           hasLength(5),
         );
         await reopened.close();
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test('a lost database never frees a robot', () async {
+      final first = P2pDatabase.open(() async => directory);
+      final one = bindingsInMemory(database: first);
+      expect(await one.recordGeneratedKey(testnet, fingerprintA), passes);
+      expect(
+        await one.bind(RobotSlot(testnet, fingerprintA, 0), temple),
+        passes,
+      );
+      await first.close();
+      for (final name in ['p2p.sqlite', 'p2p.sqlite-wal', 'p2p.sqlite-shm']) {
+        final file = File('${directory.path}/$name');
+        if (file.existsSync()) file.deleteSync();
+      }
+
+      // The record of the key went with the file: its history is unknown, and no index is bound again.
+      final reopened = P2pDatabase.open(() async => directory);
+      final again = bindingsInMemory(database: reopened);
+      for (final index in [0, 1]) {
+        expect(
+          await again.bind(RobotSlot(testnet, fingerprintA, index), lake),
+          refusedWith<RobotHistoryUnknownFailure>(),
+        );
+      }
+      await reopened.close();
+    });
+
+    test(
+      'three connections, 30 indexes and three coordinators at once: each index is bound to one coordinator',
+      () async {
+        // The app opens one connection, in the foreground only, and drift runs its statements one at a time, so none of this contention happens there.
+        // Several connections writing at once can make SQLite give up after its busy timeout: the call fails with a P2pStorageFailure, which refuses the request, and binds nothing.
+        final databases = [
+          for (var i = 0; i < 3; i++) P2pDatabase.open(() async => directory),
+        ];
+        final repositories = [
+          for (final database in databases)
+            bindingsInMemory(database: database),
+        ];
+        expect(
+          await repositories.first.recordGeneratedKey(mainnet, fingerprintA),
+          passes,
+        );
+        // freeport has no testnet instance.
+        const aliases = ['temple', 'lake', 'freeport'];
+        final calls = [
+          for (var index = 0; index < 30; index++)
+            for (var c = 0; c < 3; c++)
+              (
+                index: index,
+                alias: aliases[c],
+                result: repositories[c].bind(
+                  RobotSlot(mainnet, fingerprintA, index),
+                  identityOf(aliases[c], mainnet),
+                ),
+              ),
+        ];
+        final results = [
+          for (final call in calls)
+            (index: call.index, alias: call.alias, result: await call.result),
+        ];
+        for (final database in databases) {
+          await database.close();
+        }
+
+        final reopened = P2pDatabase.open(() async => directory);
+        final stored = await reopened.select(reopened.robotBindings).get();
+        await reopened.close();
+        final boundTo = {
+          for (final row in stored) row.robotIndex: row.coordinatorAlias,
+        };
+        for (var index = 0; index < 30; index++) {
+          final passed = {
+            for (final r in results)
+              if (r.index == index && r.result is Ok) r.alias,
+          };
+          // At most one coordinator passed, and it is the one on disk.
+          expect(passed.length, lessThanOrEqualTo(1), reason: 'index $index');
+          if (passed.isNotEmpty) {
+            expect(boundTo[index], passed.single, reason: 'index $index');
+          }
+          for (final r in results.where((r) => r.index == index)) {
+            if (r.result case Err(:final failure)) {
+              expect(
+                failure,
+                anyOf(
+                  isA<RobotBoundToAnotherCoordinatorFailure>(),
+                  isA<P2pStorageFailure>(),
+                ),
+              );
+            }
+          }
+        }
       },
       timeout: const Timeout(Duration(minutes: 2)),
     );
