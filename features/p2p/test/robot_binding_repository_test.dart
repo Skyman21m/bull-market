@@ -1077,11 +1077,28 @@ void main() {
         final other = bindingsInMemory(database: second);
         expect(await one.recordGeneratedKey(testnet, fingerprintA), passes);
 
+        // A connection can give up after SQLite's busy timeout while the other commits, when the suite's other files write to disk too: a P2pStorageFailure that refuses the request and binds nothing, which a user's « Retry » asks again.
+        Future<Result<void, P2pFailure>> retried(
+          Future<Result<void, P2pFailure>> Function() bind,
+        ) async {
+          var result = await bind();
+          for (
+            var attempt = 0;
+            attempt < 10 &&
+                result is Err<void, P2pFailure> &&
+                result.failure is P2pStorageFailure;
+            attempt++
+          ) {
+            result = await bind();
+          }
+          return result;
+        }
+
         for (var index = 0; index < 5; index++) {
           final robot = RobotSlot(testnet, fingerprintA, index);
           final results = await Future.wait([
-            one.bind(robot, temple),
-            other.bind(robot, lake),
+            retried(() => one.bind(robot, temple)),
+            retried(() => other.bind(robot, lake)),
           ]);
           expect(
             results.whereType<Ok<void, P2pFailure>>(),
