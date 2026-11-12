@@ -213,15 +213,19 @@ class AppLocator {
     BitBoxLocator.setup(locator);
   }
 
-  /// Registers the P2P feature, with the vault's Garage Key handle when [withGarageKeys] is true.
+  /// Registers the P2P feature, with the vault's Garage Key handle and the directory of its database when [withGarageKeys] is true.
   ///
-  /// The handle creates and imports Garage Keys under the vault's write lock, which is per isolate: only the foreground composition may ask for it, and the WorkManager isolate, which runs [setup] too, passes false.
-  /// Asking for the handle reads and writes nothing.
+  /// The handle creates and imports Garage Keys under the vault's write lock, which is per isolate, and the database must be opened and migrated by the foreground app alone: only the foreground composition may pass them, and the WorkManager isolate, which runs [setup] too, passes false.
+  /// The documents directory is kept out of cloud backups on both platforms, as the wallet's databases are there.
+  /// Asking for the handle reads and writes nothing, and the directory is asked for only at the first query of the database.
   @visibleForTesting
   static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
       const P2pFeature().setup(
         locator,
         garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        databaseDirectory: withGarageKeys
+            ? getApplicationDocumentsDirectory
+            : null,
       );
 }
 

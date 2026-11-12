@@ -1,7 +1,10 @@
 import 'dart:convert';
 
+import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:primitives/primitives.dart';
@@ -9,11 +12,14 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/fakes.dart';
+import 'support/robot_bindings.dart';
 
-/// A coordinator that answers every request with [answer], and keeps what it received.
+/// A coordinator that answers every request with [answer], or the transport [failure], and keeps what it received; [onSend] runs as each request leaves.
 final class _RobotTransport implements CoordinatorTransport {
   final List<CoordinatorRequest> requests = [];
   CoordinatorResponse answer;
+  CoordinatorTransportFailure? failure;
+  Future<void> Function()? onSend;
 
   _RobotTransport(this.answer);
 
@@ -21,8 +27,12 @@ final class _RobotTransport implements CoordinatorTransport {
   Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
     CoordinatorRequest request,
   ) async {
+    await onSend?.call();
     requests.add(request);
-    return Ok(answer);
+    return switch (failure) {
+      final failure? => Err(failure),
+      null => Ok(answer),
+    };
   }
 }
 
@@ -83,26 +93,53 @@ void main() {
 
   group('FetchRobotUsecase', () {
     late _RobotTransport transport;
+    late RobotBindingRepositoryImpl bindings;
     late FetchRobotUsecase usecase;
 
-    setUp(() {
+    setUp(() async {
       transport = _RobotTransport(_json(200, robot()));
-      usecase = FetchRobotUsecase(CoordinatorClient(transport));
+      bindings = bindingsInMemory();
+      usecase = FetchRobotUsecase(CoordinatorClient(transport), bindings);
+      // The test key, as if this device had drawn it for both networks.
+      for (final network in RobosatsNetwork.values) {
+        expect(
+          await bindings.recordGeneratedKey(
+            network,
+            networkRobot.keyFingerprint,
+          ),
+          isA<Ok<void, P2pFailure>>(),
+        );
+      }
     });
 
-    Future<Result<CoordinatorRobot, CoordinatorFailure>> execute({
+    Future<Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>
+    execute({
       required bool createIfUnknown,
+      Coordinator? to,
+      NetworkRobot? as,
     }) => usecase.execute(
-      temple,
-      networkRobot,
+      to ?? temple,
+      as ?? networkRobot,
       pgpKey: pgpKey,
       createIfUnknown: createIfUnknown,
     );
 
+    /// The answer of the coordinator, once the binding let the request leave.
+    Result<CoordinatorRobot, CoordinatorFailure> answered(
+      Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure> result,
+    ) => switch (result) {
+      Ok(:final value) => value,
+      Err(:final failure) => fail('refused before any request: $failure'),
+    };
+
+    Matcher refusedWith<T>() =>
+        isA<Err<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>()
+            .having((err) => err.failure, 'failure', isA<T>());
+
     test(
       'makes a first contact, with the Nostr key of the official client',
       () async {
-        final result = await execute(createIfUnknown: true);
+        final result = answered(await execute(createIfUnknown: true));
 
         expect(
           result,
@@ -131,7 +168,7 @@ void main() {
         'bad_request': 'On the first request…',
       });
 
-      final result = await execute(createIfUnknown: false);
+      final result = answered(await execute(createIfUnknown: false));
 
       expect(
         result,
@@ -152,11 +189,8 @@ void main() {
       expect(mainnetRobot.identity, identity);
 
       for (final createIfUnknown in [true, false]) {
-        await usecase.execute(
-          temple,
-          mainnetRobot,
-          pgpKey: pgpKey,
-          createIfUnknown: createIfUnknown,
+        answered(
+          await execute(createIfUnknown: createIfUnknown, as: mainnetRobot),
         );
       }
 
@@ -171,7 +205,7 @@ void main() {
     });
 
     test('reads a known robot without creating it', () async {
-      final result = await execute(createIfUnknown: false);
+      final result = answered(await execute(createIfUnknown: false));
 
       expect(result, isA<Ok<CoordinatorRobot, CoordinatorFailure>>());
     });
@@ -186,7 +220,7 @@ void main() {
 
       for (final createIfUnknown in [true, false]) {
         expect(
-          await execute(createIfUnknown: createIfUnknown),
+          answered(await execute(createIfUnknown: createIfUnknown)),
           isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
             (err) => err.failure,
             'failure',
@@ -194,6 +228,192 @@ void main() {
           ),
         );
       }
+    });
+
+    group('one robot, one coordinator:', () {
+      final lake = coordinator('lake');
+
+      test(
+        'the binding is on disk before the request leaves, and for every kind of request',
+        () async {
+          for (final (index, createIfUnknown) in [(0, true), (1, false)]) {
+            final robot = _robotAt(index, network);
+            transport.onSend = () async {
+              // A second coordinator is refused from inside the first request: the binding is already written.
+              expect(
+                await bindings.bind(
+                  robot.slot,
+                  CoordinatorIdentity.of(lake, network) ??
+                      fail('lake is not on testnet'),
+                ),
+                isA<Err<void, P2pFailure>>().having(
+                  (err) => err.failure,
+                  'failure',
+                  isA<RobotBoundToAnotherCoordinatorFailure>(),
+                ),
+              );
+            };
+            await execute(createIfUnknown: createIfUnknown, as: robot);
+          }
+
+          expect(transport.requests, hasLength(2));
+        },
+      );
+
+      test(
+        'a robot bound to a coordinator never reaches another one',
+        () async {
+          answered(await execute(createIfUnknown: true));
+          transport.requests.clear();
+
+          for (final createIfUnknown in [true, false]) {
+            expect(
+              await execute(createIfUnknown: createIfUnknown, to: lake),
+              refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+            );
+          }
+          expect(transport.requests, isEmpty);
+          // Its coordinator still gets it, and the next robot is free.
+          answered(await execute(createIfUnknown: false));
+          answered(
+            await execute(
+              createIfUnknown: true,
+              to: lake,
+              as: _robotAt(1, network),
+            ),
+          );
+          expect(transport.requests.map((request) => request.url.host), [
+            hostOf('temple', network),
+            hostOf('lake', network),
+          ]);
+        },
+      );
+
+      test(
+        'two first contacts at once to two coordinators: one request leaves',
+        () async {
+          final results = await Future.wait([
+            execute(createIfUnknown: true),
+            execute(createIfUnknown: true, to: lake),
+          ]);
+
+          expect(transport.requests, hasLength(1));
+          expect(
+            results.whereType<Err<Object, P2pFailure>>().single.failure,
+            isA<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+        },
+      );
+
+      test(
+        'a robot of a key whose history is unknown is neither bound nor sent',
+        () async {
+          final unknown = bindingsInMemory();
+          final refusing = FetchRobotUsecase(
+            CoordinatorClient(transport),
+            unknown,
+          );
+
+          for (final createIfUnknown in [true, false]) {
+            expect(
+              await refusing.execute(
+                temple,
+                networkRobot,
+                pgpKey: pgpKey,
+                createIfUnknown: createIfUnknown,
+              ),
+              refusedWith<RobotHistoryUnknownFailure>(),
+            );
+          }
+          expect(transport.requests, isEmpty);
+        },
+      );
+
+      test('a database that fails sends nothing', () async {
+        final failing = FetchRobotUsecase(
+          CoordinatorClient(transport),
+          RecordingBindings(failure: const P2pStorageFailure()),
+        );
+
+        expect(
+          await failing.execute(
+            temple,
+            networkRobot,
+            pgpKey: pgpKey,
+            createIfUnknown: true,
+          ),
+          refusedWith<P2pStorageFailure>(),
+        );
+        expect(transport.requests, isEmpty);
+      });
+
+      test(
+        'a coordinator that is not on the network gets nothing, binding included',
+        () async {
+          final recording = RecordingBindings();
+          final checked = FetchRobotUsecase(
+            CoordinatorClient(transport),
+            recording,
+          );
+
+          final result = await checked.execute(
+            coordinator('bazaar'),
+            networkRobot,
+            pgpKey: pgpKey,
+            createIfUnknown: true,
+          );
+
+          expect(
+            answered(result),
+            isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              isA<CoordinatorNotOnNetwork>(),
+            ),
+          );
+          expect(recording.calls, isEmpty);
+          expect(transport.requests, isEmpty);
+        },
+      );
+
+      test(
+        'a nickname taken (7004) leaves the robot bound to that coordinator',
+        () async {
+          transport.answer = _json(409, {
+            'error_code': 7004,
+            'bad_request': 'This nickname is already taken',
+          });
+
+          expect(
+            answered(await execute(createIfUnknown: true)),
+            isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              isA<RobotNicknameTaken>(),
+            ),
+          );
+          final sent = transport.requests.length;
+
+          expect(
+            await execute(createIfUnknown: true, to: lake),
+            refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(transport.requests, hasLength(sent));
+        },
+      );
+
+      test('a request that failed leaves the binding as well', () async {
+        transport.failure = const CoordinatorUnreachable();
+
+        expect(
+          answered(await execute(createIfUnknown: true)),
+          isA<Err<CoordinatorRobot, CoordinatorFailure>>(),
+        );
+        expect(
+          await execute(createIfUnknown: true, to: lake),
+          refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+      });
     });
   });
 

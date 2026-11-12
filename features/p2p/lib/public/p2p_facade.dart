@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -24,10 +26,25 @@ final class P2pFeature {
   /// Registers the services of the feature; nothing starts until the first request, which starts Tor if needed.
   ///
   /// [garageKeys] is the vault's handle on the RoboSats Garage Keys, which only the foreground composition of the shell asks `Secrets` for and passes here.
-  /// With `null`, as in the WorkManager isolate, whose keystore lock does not reach the foreground's, the feature has no Garage Key ability at all: nothing that reads or writes one is registered.
-  /// Registering reads and writes no key either way.
-  void setup(GetIt locator, {required GarageKeys? garageKeys}) {
-    P2pLocator.setup(locator, garageKeys: garageKeys);
+  /// [databaseDirectory] gives the directory of the feature's own database, `p2p.sqlite`, where the coordinator each robot is bound to is kept: a directory kept out of cloud backups, which only the foreground composition passes too.
+  /// Give both or neither: the Garage records in that database how each key came to the device.
+  /// With `null` for both, as in the WorkManager isolate, whose keystore lock does not reach the foreground's and which must never open or migrate the database while the app may, the feature has no Garage Key ability at all: nothing that reads or writes a key, a binding or the database is registered.
+  /// Registering reads and writes no key and opens no file either way: the directory is asked for at the first query of the database.
+  void setup(
+    GetIt locator, {
+    required GarageKeys? garageKeys,
+    required Future<Directory> Function()? databaseDirectory,
+  }) {
+    if ((garageKeys == null) != (databaseDirectory == null)) {
+      throw ArgumentError(
+        'Give P2P both the Garage Key handle and the database directory, or neither',
+      );
+    }
+    P2pLocator.setup(
+      locator,
+      garageKeys: garageKeys,
+      databaseDirectory: databaseDirectory,
+    );
     locator.registerLazySingleton<P2pFacade>(
       () => P2pFacade._(locator(), locator(), locator(), locator()),
     );
