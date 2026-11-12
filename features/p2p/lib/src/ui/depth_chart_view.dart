@@ -12,7 +12,7 @@ import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/offer_row.dart';
-import 'widgets/robot_avatar.dart';
+import 'widgets/maker_avatar.dart';
 
 /// The « Chart » view of the book: the depth chart of the official client (`components/Charts/DepthChart/index.tsx`), drawn by the app.
 ///
@@ -679,7 +679,7 @@ final class _DepthChartPainter extends CustomPainter {
 
 /// What the official client shows of an order on the chart (`Charts/helpers/OrderTooltip`): the maker's robot, the amount and its currency, the payment methods, and the coordinator.
 ///
-/// The official client marks the coordinator with a badge on the robot; here its name is written below, cleaned and bounded as every P2P screen shows it.
+/// The coordinator is both the badge on the robot, as in the official client, and its name written below, cleaned and bounded as every P2P screen shows it; since the name is written, the badge says nothing to a screen reader.
 /// The payment methods are maker text, shown as plain text.
 class OrderTooltip extends StatelessWidget {
   final PublicOrder order;
@@ -703,7 +703,7 @@ class OrderTooltip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          RobotAvatar(seed: order.maker.hex, size: 32),
+          MakerAvatar(order: order, size: 32, namesCoordinator: false),
           const Gap(BullSpacing.sm),
           Flexible(
             child: Column(

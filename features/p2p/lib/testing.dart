@@ -41,6 +41,9 @@ export 'package:robosats/robosats.dart'
         UnprovenCoordinatorRobot;
 
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
+// The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
+export 'src/ui/widgets/coordinator_images.dart'
+    show CoordinatorImage, coordinatorImages;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///

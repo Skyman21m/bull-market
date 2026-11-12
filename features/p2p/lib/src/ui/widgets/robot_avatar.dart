@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'seed_hash.dart';
 
-/// A provisional robot avatar, drawn from a seed such as the hash id of a robot; a coordinator has a mark of its own, `CoordinatorMark`.
+/// A provisional robot avatar, drawn from a seed such as the hash id of a robot; a coordinator has an avatar of its own, `CoordinatorAvatar`.
 ///
 /// The same seed always gives the same robot, so a maker is recognisable from one screen to the next.
 /// Robots differ by colour, head, eyes, antennas and mouth, all chosen from the seed; the colours are those of the theme.
