@@ -1210,6 +1210,30 @@ void main() {
       timeout: slow,
     );
 
+    test(
+      'is not said of another key found in the slot once it was deleted',
+      () async {
+        final bindings = RecordingBindings(failure: const P2pStorageFailure());
+        final storage = FakeSecureStoragePlatform();
+        final cubit = cubitOver(storage, bindings: bindings);
+        await cubit.load();
+        await cubit.generate();
+        expect((cubit.state as GarageWithKey).historyNotRecorded, isTrue);
+        await cubit.delete(reauthenticate: neverAsked);
+        expect(cubit.state, isA<GarageWithoutKey>());
+
+        // Another key appears in the slot before « Generate Garage Key »: the vault refuses the draw, and the slot is read again.
+        storage.entries[testnetEntry] = storedFixedKeys[testnetEntry] ?? '';
+        await cubit.generate();
+
+        final state = cubit.state as GarageWithKey;
+        expect(state.key.key, fixedKey);
+        expect(state.historyNotRecorded, isFalse);
+        await cubit.close();
+      },
+      timeout: slow,
+    );
+
     test('is not said of a key recorded, pasted or read at a visit', () async {
       final bindings = RecordingBindings();
       final storage = FakeSecureStoragePlatform();
