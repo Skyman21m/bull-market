@@ -22,23 +22,28 @@ class TorWaitPhrases extends StatefulWidget {
   const TorWaitPhrases({super.key, required this.shuffle});
 
   /// The phrases, in the order of the list the owner approved.
-  static List<String> phrasesOf(P2pLocalizations l10n) => [
-    l10n.p2pTorWaitPhrase1,
-    l10n.p2pTorWaitPhrase2,
-    l10n.p2pTorWaitPhrase3,
-    l10n.p2pTorWaitPhrase4,
-    l10n.p2pTorWaitPhrase5,
-    l10n.p2pTorWaitPhrase6,
-    l10n.p2pTorWaitPhrase7,
-    l10n.p2pTorWaitPhrase8,
-    l10n.p2pTorWaitPhrase9,
-    l10n.p2pTorWaitPhrase10,
-    l10n.p2pTorWaitPhrase11,
-    l10n.p2pTorWaitPhrase12,
+  static final List<String Function(P2pLocalizations)> _phrases = [
+    (l10n) => l10n.p2pTorWaitPhrase1,
+    (l10n) => l10n.p2pTorWaitPhrase2,
+    (l10n) => l10n.p2pTorWaitPhrase3,
+    (l10n) => l10n.p2pTorWaitPhrase4,
+    (l10n) => l10n.p2pTorWaitPhrase5,
+    (l10n) => l10n.p2pTorWaitPhrase6,
+    (l10n) => l10n.p2pTorWaitPhrase7,
+    (l10n) => l10n.p2pTorWaitPhrase8,
+    (l10n) => l10n.p2pTorWaitPhrase9,
+    (l10n) => l10n.p2pTorWaitPhrase10,
+    (l10n) => l10n.p2pTorWaitPhrase11,
+    (l10n) => l10n.p2pTorWaitPhrase12,
   ];
 
-  /// How many phrases there are.
-  static const count = 12;
+  /// The phrases in the language of [l10n], in the order of the list the owner approved.
+  static List<String> phrasesOf(P2pLocalizations l10n) => [
+    for (final phrase in _phrases) phrase(l10n),
+  ];
+
+  /// How many phrases there are, read from the list itself, so that a phrase added to it is shuffled and shown with the others.
+  static int get count => _phrases.length;
 
   @override
   State<TorWaitPhrases> createState() => _TorWaitPhrasesState();
