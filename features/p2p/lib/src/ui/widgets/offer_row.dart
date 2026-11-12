@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
@@ -52,19 +54,34 @@ class OfferRow extends StatelessWidget {
                     style: text.headlineLarge?.copyWith(color: colors.text),
                   ),
                   const Gap(BullSpacing.xxs),
-                  Row(
-                    children: [
-                      RolePill(type: order.type),
-                      const Gap(BullSpacing.xs),
-                      Expanded(
-                        child: Text(
-                          paymentMethodsLine(order.paymentMethods, l10n),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: muted,
+                  // On a narrow screen with a large text size the pill alone can be wider than the line: it shrinks to fit, and the payment methods give way first.
+                  LayoutBuilder(
+                    builder: (context, constraints) => Row(
+                      children: [
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: math.max(
+                              0,
+                              constraints.maxWidth - BullSpacing.xs,
+                            ),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: AlignmentDirectional.centerStart,
+                            child: RolePill(type: order.type),
+                          ),
                         ),
-                      ),
-                    ],
+                        const Gap(BullSpacing.xs),
+                        Expanded(
+                          child: Text(
+                            paymentMethodsLine(order.paymentMethods, l10n),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: muted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const Gap(BullSpacing.xxs),
                   _PremiumAndBond(order: order, style: muted),
