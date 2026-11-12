@@ -732,6 +732,35 @@ void main() {
     );
 
     test(
+      'a robot released in the instant its request got a place sends nothing',
+      () async {
+        var sent = false;
+        final asked = limiter.open(keyOf[0]).send(_testnet, temple, () async {
+          sent = true;
+          return 'answer';
+        }, isBusy: never);
+        // The same turn of the event loop: the place is taken, the request not run yet.
+        final release = limiter.release(keyOf[0]);
+
+        expect(await asked, _failed<String, RobotReleasedFailure>());
+        expect(sent, isFalse);
+        expect(await release.endedInTime, isTrue);
+        // Its place was given back.
+        final started = <int>[];
+        for (var i = 1; i < 3; i++) {
+          unawaited(
+            limiter.open(keyOf[i]).send(_testnet, temple, () {
+              started.add(i);
+              return Completer<String>().future;
+            }, isBusy: never),
+          );
+        }
+        await _settle();
+        expect(started, [1, 2]);
+      },
+    );
+
+    test(
       'a request that waited while its coordinator turned busy is not sent',
       () async {
         // Twelve busy answers already.
@@ -1340,6 +1369,45 @@ void main() {
             );
           }
           expect(coordinators.requests, hasLength(sent));
+        },
+      );
+
+      test(
+        'a robot bound on the other network is refused before its binding is asked again',
+        () async {
+          final recording = RecordingBindings(
+            drawnHere: [
+              for (final network in RobosatsNetwork.values)
+                (network, robots[0].keyFingerprint),
+            ],
+          );
+          expect(
+            await recording.bind(
+              robots[0].slot,
+              CoordinatorIdentity.of(temple, _testnet) ??
+                  fail('temple is not on testnet'),
+            ),
+            isA<Ok<void, P2pFailure>>(),
+          );
+
+          expect(
+            await ReadRobotOnCoordinatorUsecase(
+              FetchRobotUsecase(
+                CoordinatorClient(coordinators),
+                recording,
+                keys,
+              ),
+              recording,
+              limiter,
+              Federation.robosats,
+            ).execute(mainnetRobots[0]),
+            _refused<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(
+            recording.calls.where((call) => call.$1 == 'bind'),
+            hasLength(1),
+          );
+          expect(coordinators.requests, isEmpty);
         },
       );
 
