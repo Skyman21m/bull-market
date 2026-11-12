@@ -111,11 +111,14 @@ final class CoordinatorClient {
   /// - it does not know the token hash: it checks the two OpenPGP keys, creates the robot with them and with the Nostr public key, and answers with what it stored;
   /// - it knows the token hash: it ignores the three keys of the header and answers with the ones it stored at the first contact, whoever made it.
   ///
-  /// Nothing in a `200` answer tells the two cases apart but [CoordinatorRobot.found], so the answer is always checked against this device: see [CoordinatorRobot.parse].
-  /// A robot first created by another device, with another key pair, is therefore a [RobotPgpKeyMismatch], never a silent change of key.
+  /// Nothing in a `200` answer tells the two cases apart but [CoordinatorRobot.found] and the key pair, so the answer is always checked against this device: see [CoordinatorRobotAnswer.parse].
+  /// The answer is a [CoordinatorRobot] that carries [pgpKey] when the coordinator returned that very pair: it created the robot with it.
+  /// It is an [UnprovenCoordinatorRobot] when the coordinator returned another pair, as it does for a robot first created by another device or client: only [UnprovenCoordinatorRobot.prove] takes that pair, once the robot's token has proved it, and never silently.
   /// Fails with a [CoordinatorRobotFailure] when the coordinator refuses the robot or returns another one, and with any other [CoordinatorFailure] as the public reads do.
   ///
-  /// Error 7004, [RobotNicknameTaken], is followed by one request with the short header, which reads the robot back when the coordinator created it for another copy of this very request, as when the transport retries a request whose connection broke after it was sent.
+  /// Send a pair made for [identity] by `RobotPgpKey.generate` for this very request: the coordinator keeps the pair of the first contact for good, and a pair returned equal to [pgpKey] is taken without any proof, so this device must know that [pgpKey] is locked by the token of [identity].
+  ///
+  /// Error 7004, [RobotNicknameTaken], is followed by one request with the short header, which reads the robot back when the coordinator created it for another copy of this very request, as when the transport retries a request whose connection broke after it was sent; its answer is checked against [pgpKey] too.
   /// That check has a blind window: the reference coordinator creates the user (`robosats/middleware.py:152`) before the token (`:163`), so a follow-up that lands between the two is answered 7001, and [RobotNicknameTaken] is reported although the robot is being created for this device.
   /// A coordinator can also answer 7004 for ever, to every robot.
   /// So a caller must not give up a Garage Key index on one [RobotNicknameTaken]: it asks again with [fetchKnownRobot] a little later before it moves to the next index, and it bounds how many indexes a single coordinator can make it give up.
@@ -124,7 +127,7 @@ final class CoordinatorClient {
   /// The coordinator keeps the key of the first contact for good.
   ///
   /// A robot costs nothing and commits to nothing, but it is an account on a third-party server: create one only when the user asks for it.
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> fetchRobot(
+  Future<Result<CoordinatorRobotAnswer, CoordinatorFailure>> fetchRobot(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
@@ -135,7 +138,6 @@ final class CoordinatorClient {
       coordinator,
       network,
       identity,
-      pgpKey,
       identity.firstContactAuthorizationHeader(
         pgpPublicKey: pgpKey.publicKey.armored,
         pgpEncryptedPrivateKey: pgpKey.encryptedPrivateKeyArmored,
@@ -146,40 +148,63 @@ final class CoordinatorClient {
     if (contact case Err(failure: RobotNicknameTaken())) {
       // The nickname may be taken by this very robot: a coordinator that receives the first contact twice at once, as when the transport retries a request whose connection broke after it was sent, creates the robot for one and refuses the other.
       // The short header tells, unless it lands before the coordinator has stored the token: it reads the robot if the coordinator knows this token, and creates nothing.
-      final known = await fetchKnownRobot(
+      final known = await _fetchRobot(
         coordinator,
         network,
-        identity: identity,
-        pgpKey: pgpKey,
+        identity,
+        identity.authorizationHeader(),
+        firstContact: false,
       );
-      if (known case Ok()) return known;
+      if (known case Ok(value: final body)) {
+        final read = CoordinatorRobotAnswer.parse(
+          body,
+          coordinator,
+          identity: identity,
+          sentKey: pgpKey,
+        );
+        if (read case Ok()) return read;
+      }
     }
-    return contact;
+    return switch (contact) {
+      Err(:final failure) => Err(failure),
+      Ok(value: final body) => CoordinatorRobotAnswer.parse(
+        body,
+        coordinator,
+        identity: identity,
+        sentKey: pgpKey,
+      ),
+    };
   }
 
   /// `GET /api/robot/` with the short `Authorization` header, which sends no key: reads the robot [identity] on a [coordinator] that already knows it, and never creates it.
   ///
   /// Fails with [RobotUnknown] when the coordinator has no robot for this token.
-  /// The answer is checked against this device exactly as [fetchRobot] checks it, [pgpKey] being the key pair this device holds for the robot.
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> fetchKnownRobot(
+  /// The answer is checked against this device as [fetchRobot] checks it, but nothing was sent to compare its key pair with: it is always an [UnprovenCoordinatorRobot], whose [UnprovenCoordinatorRobot.prove] gives the robot once the robot's token has proved the pair.
+  /// So nothing has to be stored on this device to read a robot back: its token is enough.
+  Future<Result<UnprovenCoordinatorRobot, CoordinatorFailure>> fetchKnownRobot(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
-    required RobotPgpKey pgpKey,
-  }) => _fetchRobot(
+  }) async => switch (await _fetchRobot(
     coordinator,
     network,
     identity,
-    pgpKey,
     identity.authorizationHeader(),
     firstContact: false,
-  );
+  )) {
+    Err(:final failure) => Err(failure),
+    Ok(value: final body) => UnprovenCoordinatorRobot.parse(
+      body,
+      coordinator,
+      identity: identity,
+    ),
+  };
 
-  Future<Result<CoordinatorRobot, CoordinatorFailure>> _fetchRobot(
+  /// The decoded body of a `200` answer of `GET /api/robot/` for the robot [identity], sent with [authorization], or why there is none.
+  Future<Result<Object?, CoordinatorFailure>> _fetchRobot(
     Coordinator coordinator,
     RobosatsNetwork network,
     RobotIdentity identity,
-    RobotPgpKey pgpKey,
     String authorization, {
     required bool firstContact,
   }) async {
@@ -201,15 +226,7 @@ final class CoordinatorClient {
     if (answer.statusCode != 200) {
       return Err(_robotRefusal(answer, firstContact: firstContact));
     }
-    return switch (_decode(response)) {
-      Err(:final failure) => Err(failure),
-      Ok(:final value) => CoordinatorRobot.parse(
-        value,
-        coordinator,
-        identity: identity,
-        pgpKey: pgpKey,
-      ),
-    };
+    return _decode(response);
   }
 
   /// The code of the key error inside the message of error 7002, which is the text of a Python dictionary: `{'error_code': 1056, …`.

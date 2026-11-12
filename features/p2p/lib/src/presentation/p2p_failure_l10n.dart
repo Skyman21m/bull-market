@@ -48,7 +48,8 @@ extension P2pFailureL10n on P2pFailure {
       // No screen sends a robot to a coordinator yet: their own texts come with the screens that do.
       RobotBoundToAnotherCoordinatorFailure() ||
       RobotCoordinatorChangedFailure() ||
-      RobotHistoryUnknownFailure() => l10n.p2pBookError,
+      RobotHistoryUnknownFailure() ||
+      RobotKeyComputeFailure() => l10n.p2pBookError,
     };
   }
 }

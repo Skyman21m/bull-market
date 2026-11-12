@@ -6,6 +6,7 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
 import 'data/garage_key_repository_impl.dart';
+import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
@@ -14,6 +15,7 @@ import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/robot_key_compute_port.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
 import 'domain/usecases/delete_garage_key_usecase.dart';
@@ -89,10 +91,15 @@ final class P2pLocator {
     locator.registerLazySingleton<RobotBindingRepository>(
       () => RobotBindingRepositoryImpl(locator(), clock: clock),
     );
+    // The hashing of a robot's key pair, away from the UI isolate.
+    locator.registerLazySingleton<RobotKeyComputePort>(
+      () => const IsolateRobotKeyCompute(),
+    );
     // The request of a robot: its only caller will be the Garage of this feature, and nothing outside the feature reaches it.
     locator.registerFactory<FetchRobotUsecase>(
       () => FetchRobotUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
       ),
     );

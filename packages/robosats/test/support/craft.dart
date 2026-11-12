@@ -257,25 +257,28 @@ final class CraftedKey {
   );
 }
 
-/// The secret part of a key packet: [secret] locked by [passphrase] as OpenPGP.js locks it, but for the iteration count.
+/// The secret part of a key packet: [secret] locked by [passphrase] as OpenPGP.js locks it, but for the iteration count, and for the S2K hash and the cipher when given.
 Uint8List protectSecret(
   Uint8List secret,
   String passphrase, {
   int usage = 254,
   int cipherId = CipherId.aes256,
+  int s2kHashId = HashId.sha256,
   int codedCount = 96,
   int? ciphertextLength,
 }) {
   final salt = Uint8List.fromList(List.generate(8, (i) => i + 1));
   final iv = Uint8List.fromList(List.generate(16, (i) => 0x10 + i));
+  final s2kHash = _hashes[s2kHashId];
+  if (s2kHash == null) throw ArgumentError.value(s2kHashId, 's2kHashId');
   final ciphertext = aesCfb(
     encrypt: true,
     key: s2kIteratedSalted(
-      hash: crypto.sha256,
+      hash: s2kHash,
       passphrase: utf8.encode(passphrase),
       salt: salt,
       codedCount: codedCount,
-      keyLength: 32,
+      keyLength: aesKeyLength(cipherId) ?? 32,
     ),
     iv: iv,
     data: Uint8List.fromList([...secret, ...sha1(secret)]),
@@ -284,12 +287,45 @@ Uint8List protectSecret(
     usage,
     cipherId,
     3,
-    HashId.sha256,
+    s2kHashId,
     ...salt,
     codedCount,
     ...iv,
     ...ciphertext.sublist(0, ciphertextLength ?? ciphertext.length),
   ]);
+}
+
+/// A secret part locked under [aesKey] as given, behind an S2K specifier of [s2kType]: 0 (simple) or 1 (salted, with an 8-byte salt), which an S2K over a passphrase alone would derive.
+///
+/// For hostile keys: a coordinator that holds the SHA-256 of a token can lock a part this way, with that hash as the key.
+Uint8List protectSecretWithKey(
+  Uint8List secret,
+  Uint8List aesKey, {
+  int s2kType = 0,
+  int s2kHashId = HashId.sha256,
+  int cipherId = CipherId.aes256,
+}) {
+  final iv = Uint8List.fromList(List.generate(16, (i) => 0x20 + i));
+  return Uint8List.fromList([
+    254,
+    cipherId,
+    s2kType,
+    s2kHashId,
+    if (s2kType == 1) ...List.filled(8, 7),
+    ...iv,
+    ...aesCfb(
+      encrypt: true,
+      key: aesKey,
+      iv: iv,
+      data: Uint8List.fromList([...secret, ...sha1(secret)]),
+    ),
+  ]);
+}
+
+/// An unprotected secret part (S2K usage 0): the integer and its two-byte checksum.
+Uint8List unprotectedSecret(Uint8List secret) {
+  final sum = secret.fold<int>(0, (sum, byte) => sum + byte) & 0xffff;
+  return Uint8List.fromList([0, ...secret, sum >> 8, sum & 0xff]);
 }
 
 String armorPackets(ArmorBlock block, List<RawPacket> packets) => armorEncode(

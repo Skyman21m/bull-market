@@ -31,6 +31,7 @@ export 'package:robosats/robosats.dart'
         CoordinatorRequest,
         CoordinatorResponse,
         CoordinatorRobot,
+        CoordinatorRobotAnswer,
         CoordinatorTransport,
         Federation,
         GarageKey,
@@ -38,9 +39,12 @@ export 'package:robosats/robosats.dart'
         RobotIdentity,
         RobotKeysRefused,
         RobotPgpKey,
-        RobotPgpKeyMismatch,
-        RobotUnknown;
+        RobotPgpKeyNotProven,
+        RobotUnknown,
+        UnprovenCoordinatorRobot;
 
+// The port that makes and proves a robot's key pair in isolates of their own, for the live test to prove what a coordinator returns on the path of the app.
+export 'src/data/isolate_robot_key_compute.dart' show IsolateRobotKeyCompute;
 export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
 export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
