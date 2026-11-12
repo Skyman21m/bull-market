@@ -49,7 +49,11 @@ extension P2pFailureL10n on P2pFailure {
       RobotBoundToAnotherCoordinatorFailure() ||
       RobotCoordinatorChangedFailure() ||
       RobotHistoryUnknownFailure() ||
-      RobotKeyComputeFailure() => l10n.p2pBookError,
+      RobotKeyComputeFailure() ||
+      RobotNotBoundFailure() ||
+      RobotCoordinatorBusyFailure() ||
+      RobotCoordinatorTooManyRefusalsFailure() ||
+      RobotReleasedFailure() => l10n.p2pBookError,
     };
   }
 }
