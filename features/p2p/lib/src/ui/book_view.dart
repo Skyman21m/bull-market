@@ -492,9 +492,9 @@ class CoordinatorsStatus extends StatelessWidget {
   }
 }
 
-/// The list while no order is shown and a coordinator is still loading: rows of grey shapes that shimmer, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
+/// The list while no order is shown and a coordinator is still loading: rows of grey shapes, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
 ///
-/// Each row has the shape of an offer: the robot, three lines, the amount and the expiry ring.
+/// Each row has the shape of an offer: the robot, three lines, the amount and the expiry ring; the first line shimmers.
 /// The shapes are hidden from the accessibility tree; before the first book, when the line of the coordinators still loading is not shown, the skeleton says it instead.
 class BookSkeleton extends StatelessWidget {
   final BookState state;
@@ -543,15 +543,23 @@ class BookSkeleton extends StatelessWidget {
   }
 }
 
-/// One row of [BookSkeleton], in the shape of an offer row.
+/// One row of [BookSkeleton], in the shape of an offer row, where only the nickname's line shimmers.
+///
+/// Each `BullShimmerLine` runs an animation and a mask layer of its own, so a row has one: the other shapes stay still, in the shimmer's base colour.
+/// A shimmer of `bull_ui` that wraps a child would let a whole row, or the whole skeleton, share one sweep.
 class _SkeletonRow extends StatelessWidget {
   const _SkeletonRow();
 
   @override
   Widget build(BuildContext context) {
+    final base = context.bull.shimmerBase;
     Widget line(double width, double height) =>
-        BullShimmerLine(width: width, height: height, padding: EdgeInsets.zero);
-    Widget disc(double size) => ClipOval(child: line(size, size));
+        Container(width: width, height: height, color: base);
+    Widget disc(double size) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: base, shape: BoxShape.circle),
+    );
     return SizedBox(
       height: BookSkeleton.rowExtent - 1,
       child: Padding(
@@ -568,7 +576,11 @@ class _SkeletonRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  line(120, 14),
+                  const BullShimmerLine(
+                    width: 120,
+                    height: 14,
+                    padding: EdgeInsets.zero,
+                  ),
                   const Gap(BullSpacing.xs),
                   line(170, 10),
                   const Gap(BullSpacing.xs),
