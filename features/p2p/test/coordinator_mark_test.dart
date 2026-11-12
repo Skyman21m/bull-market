@@ -1,3 +1,4 @@
+import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/ui/widgets/coordinator_mark.dart';
@@ -111,6 +112,12 @@ void main() {
           matches(RegExp(r'^[A-Z0-9]{1,2}$')),
           reason: coordinator.shortAlias,
         );
+        // Neither the red of errors and « Seller » nor the grey of what is disabled.
+        expect(
+          frameColor(tester),
+          isNot(anyOf(testBullTheme.primary, testBullTheme.onSurfaceVariant)),
+          reason: coordinator.shortAlias,
+        );
         marks.add((initials(tester), frameColor(tester)));
       }
 
@@ -137,6 +144,8 @@ void main() {
         ('Ammanaya', 'A'),
         ('\u202eTemple\u200d of Sats\u0301', 'TS'),
         ('\u00e9lan sans capitale', 'T'),
+        // A capital outside A to Z is not taken.
+        ('\u00c9lan Sats', 'S'),
         ('', 'T'),
       ]) {
         await show(tester, renamed(alias));
@@ -146,28 +155,38 @@ void main() {
     },
   );
 
-  testWidgets('keeps its size with a large text and stays out of semantics', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(
-      harness(
-        MediaQuery.withClampedTextScaling(
-          minScaleFactor: 3,
-          maxScaleFactor: 3,
-          child: Center(
-            child: CoordinatorMark(
-              coordinator: coordinator('temple'),
-              size: 44,
+  testWidgets(
+    'keeps its size and its letters with a large text, and stays out of semantics',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      Future<void> showScaled(double scale) => tester.pumpWidget(
+        harness(
+          MediaQuery.withClampedTextScaling(
+            minScaleFactor: scale,
+            maxScaleFactor: scale,
+            child: Center(
+              child: CoordinatorMark(
+                coordinator: coordinator('temple'),
+                size: 44,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(tester.getSize(find.byType(CoordinatorMark)), const Size.square(44));
-    expect(tester.takeException(), isNull);
-    expect(find.bySemanticsLabel('TS'), findsNothing);
-    semantics.dispose();
-  });
+      await showScaled(1);
+      final letters = tester.getSize(find.text('TS'));
+      await showScaled(3);
+
+      expect(
+        tester.getSize(find.byType(CoordinatorMark)),
+        const Size.square(44),
+      );
+      // The letters are laid out at the same size, not three times larger and then shrunk to fit.
+      expect(tester.getSize(find.text('TS')), letters);
+      expect(tester.takeException(), isNull);
+      expect(find.bySemanticsLabel('TS'), findsNothing);
+      semantics.dispose();
+    },
+  );
 }
