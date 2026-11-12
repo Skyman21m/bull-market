@@ -30,7 +30,7 @@ typedef BindingCall = (String method, Object? first, Object? second);
 
 /// Bindings that keep the calls made to them and give [failure] to every write, or to the first [failures] writes when it is set, or success without it; the reads give [readFailure] when it is set.
 ///
-/// Its reads follow its writes, as the database's do: a key is drawn here once a record of its draw succeeded, or when [drawnHere] names it, until a record of its import succeeds; an imported or unrecorded key is acknowledged once a record of its acknowledgement succeeded; a key is bound once a binding of one of its robots succeeded, with the provenance its history gives; [exposure], when set, answers instead.
+/// Its reads follow its writes, as the database's do: a key is drawn here once a record of its draw succeeded, or when [drawnHere] names it, until a record of its import succeeds; an imported or unrecorded key is acknowledged once a record of its acknowledgement succeeded; a robot is bound, with the provenance its key's history gives, only when that history on its network is drawn here or acknowledged, and is refused otherwise, as by the database; a robot bound admits its coordinator only; [exposure], when set, answers instead.
 final class RecordingBindings implements RobotBindingRepository {
   final List<BindingCall> calls = [];
   P2pFailure? failure;
@@ -131,22 +131,24 @@ final class RecordingBindings implements RobotBindingRepository {
     CoordinatorIdentity coordinator,
   ) async {
     calls.add(('bind', robot, coordinator));
-    final result = _result;
-    if (result case Ok()) {
-      _bound.add(robot.keyFingerprint);
-      _bindings.putIfAbsent(
-        (robot.keyFingerprint, robot.accountIndex),
-        () => RobotBinding(
-          coordinator,
-          testNow,
-          _histories[(robot.network, robot.keyFingerprint)] ==
-                  GarageKeyHistory.acknowledged
-              ? BindingProvenance.acknowledged
-              : BindingProvenance.drawnHere,
-        ),
-      );
+    if (_result case Err(:final failure)) return Err(failure);
+    // As the database: a binding made admits its coordinator only, and a robot without one is bound only under a key drawn here or acknowledged on its network, with that provenance.
+    final slot = (robot.keyFingerprint, robot.accountIndex);
+    if (_bindings[slot] case final existing?) {
+      return existing.admits(coordinator);
     }
-    return result;
+    final provenance = switch (_histories[(
+      robot.network,
+      robot.keyFingerprint,
+    )]) {
+      GarageKeyHistory.drawnHere => BindingProvenance.drawnHere,
+      GarageKeyHistory.acknowledged => BindingProvenance.acknowledged,
+      GarageKeyHistory.unknown || null => null,
+    };
+    if (provenance == null) return const Err(RobotHistoryUnknownFailure());
+    _bound.add(robot.keyFingerprint);
+    _bindings[slot] = RobotBinding(coordinator, testNow, provenance);
+    return const Ok(null);
   }
 
   @override
