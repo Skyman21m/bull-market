@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/derive_first_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
@@ -13,6 +16,8 @@ import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
+
+import 'support/robot_bindings.dart';
 
 /// A repository that records each call and answers with [failure] when one is set.
 final class _RecordingRepository implements GarageKeyRepository {
@@ -30,9 +35,11 @@ final class _RecordingRepository implements GarageKeyRepository {
   };
 
   @override
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async {
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async {
     calls.add('create ${network.name}');
-    return _answer(null);
+    return _answer(NetworkGarageKey(network, key.key));
   }
 
   @override
@@ -74,6 +81,21 @@ final class _RecordingRepository implements GarageKeyRepository {
   }
 }
 
+/// A repository that draws one key and would read back another: a draw must record the key it drew, never the one in the slot afterwards.
+final class _DrawsOneReadsAnother extends _RecordingRepository {
+  final GarageKey drawn;
+
+  _DrawsOneReadsAnother(super.key, super.robot, this.drawn);
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async {
+    calls.add('create ${network.name}');
+    return Ok(NetworkGarageKey(network, drawn));
+  }
+}
+
 void main() {
   // The example key of the RoboSats frontend tests, as `packages/robosats` records it (tests run in the package directory).
   final exampleText =
@@ -95,20 +117,58 @@ void main() {
     Err(:final failure) => throw StateError('$failure'),
   };
 
-  late _RecordingRepository repository;
+  final exampleFingerprint = switch (GarageKeyFingerprint.of(exampleKey)) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
 
-  setUp(() => repository = _RecordingRepository(networkKey, exampleRobot));
+  late _RecordingRepository repository;
+  late RecordingBindings bindings;
+
+  setUp(() {
+    repository = _RecordingRepository(networkKey, exampleRobot);
+    bindings = RecordingBindings();
+  });
 
   group('importing a Garage Key', () {
     test('stores the key the text names, for the network given', () async {
       final result = await ImportGarageKeyUsecase(
         repository,
+        bindings,
       ).execute(RobosatsNetwork.testnet, text: exampleText);
 
       expect(result, isA<Ok<void, P2pFailure>>());
       expect(repository.calls, ['import testnet']);
       expect(repository.imported, [exampleKey]);
+      expect(bindings.calls, [
+        ('recordImportedKey', RobosatsNetwork.testnet, exampleFingerprint),
+      ]);
     });
+
+    test(
+      'records the key as imported first, and stores nothing when it cannot',
+      () async {
+        bindings.failure = const P2pStorageFailure();
+
+        final result = await ImportGarageKeyUsecase(
+          repository,
+          bindings,
+        ).execute(RobosatsNetwork.mainnet, text: exampleText);
+
+        expect(
+          result,
+          isA<Err<void, P2pFailure>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<P2pStorageFailure>(),
+          ),
+        );
+        expect(bindings.calls, [
+          ('recordImportedKey', RobosatsNetwork.mainnet, exampleFingerprint),
+        ]);
+        expect(repository.calls, isEmpty);
+      },
+    );
 
     test('refuses text that is not a key before anything is stored', () async {
       for (final (text, reason) in [
@@ -122,6 +182,7 @@ void main() {
       ]) {
         final result = await ImportGarageKeyUsecase(
           repository,
+          bindings,
         ).execute(RobosatsNetwork.mainnet, text: text);
 
         expect(
@@ -138,6 +199,7 @@ void main() {
         );
       }
       expect(repository.calls, isEmpty);
+      expect(bindings.calls, isEmpty);
     });
 
     test('a failure for a rejected text carries none of it', () async {
@@ -150,6 +212,7 @@ void main() {
       ]) {
         final failure = switch (await ImportGarageKeyUsecase(
           repository,
+          bindings,
         ).execute(RobosatsNetwork.mainnet, text: text)) {
           Err(:final failure) => failure,
           Ok() => fail('a text that is not a key was accepted'),
@@ -173,6 +236,7 @@ void main() {
 
       final result = await ImportGarageKeyUsecase(
         repository,
+        bindings,
       ).execute(RobosatsNetwork.mainnet, text: exampleText);
 
       expect(
@@ -187,6 +251,126 @@ void main() {
     });
   });
 
+  group('generating a Garage Key', () {
+    Matcher drawnWith(GarageKeyHistory history) =>
+        isA<Ok<GarageKeyHistory, P2pFailure>>().having(
+          (ok) => ok.value,
+          'history',
+          history,
+        );
+
+    for (final network in RobosatsNetwork.values) {
+      test(
+        'on ${network.name}: draws it and records the key it drew as drawn on this device, for that network',
+        () async {
+          final result = await GenerateGarageKeyUsecase(
+            repository,
+            bindings,
+          ).execute(network);
+
+          expect(result, drawnWith(GarageKeyHistory.drawnHere));
+          // No read of the slot between the draw and the record.
+          expect(repository.calls, ['create ${network.name}']);
+          expect(bindings.calls, [
+            ('recordGeneratedKey', network, exampleFingerprint),
+          ]);
+        },
+      );
+    }
+
+    test(
+      'records the key the vault drew, not the one the slot holds afterwards',
+      () async {
+        // Fixed test bytes, 0x07 to 0x26: not a key anyone uses.
+        final drawn = switch (GarageKey.fromBytes(
+          Uint8List.fromList(List<int>.generate(32, (i) => 7 + i)),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final drawingAnother = _DrawsOneReadsAnother(
+          networkKey,
+          exampleRobot,
+          drawn,
+        );
+
+        expect(
+          await GenerateGarageKeyUsecase(
+            drawingAnother,
+            bindings,
+          ).execute(RobosatsNetwork.testnet),
+          drawnWith(GarageKeyHistory.drawnHere),
+        );
+        expect(drawingAnother.calls, ['create testnet']);
+        final recorded = bindings.calls.single.$3;
+        expect(recorded, isNot(exampleFingerprint));
+        expect(recorded, switch (GarageKeyFingerprint.of(drawn)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        });
+      },
+    );
+
+    test('a key not drawn is not recorded', () async {
+      repository.failure = const GarageKeyAlreadyStoredFailure();
+
+      final result = await GenerateGarageKeyUsecase(
+        repository,
+        bindings,
+      ).execute(RobosatsNetwork.mainnet);
+
+      expect(
+        result,
+        isA<Err<GarageKeyHistory, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<GarageKeyAlreadyStoredFailure>(),
+        ),
+      );
+      expect(repository.calls, ['create mainnet']);
+      expect(bindings.calls, isEmpty);
+    });
+
+    test(
+      'a record that fails once is tried again while the drawn key is in hand',
+      () async {
+        bindings
+          ..failure = const P2pStorageFailure()
+          ..failures = 1;
+
+        expect(
+          await GenerateGarageKeyUsecase(
+            repository,
+            bindings,
+          ).execute(RobosatsNetwork.testnet),
+          drawnWith(GarageKeyHistory.drawnHere),
+        );
+        expect(bindings.calls, [
+          ('recordGeneratedKey', RobosatsNetwork.testnet, exampleFingerprint),
+          ('recordGeneratedKey', RobosatsNetwork.testnet, exampleFingerprint),
+        ]);
+      },
+    );
+
+    test(
+      'a key drawn whose record cannot be written is stored, and its history is reported unknown',
+      () async {
+        bindings.failure = const P2pStorageFailure();
+
+        expect(
+          await GenerateGarageKeyUsecase(
+            repository,
+            bindings,
+          ).execute(RobosatsNetwork.testnet),
+          drawnWith(GarageKeyHistory.unknown),
+        );
+        expect(repository.calls, ['create testnet']);
+        // Tried twice, never more.
+        expect(bindings.calls, hasLength(2));
+      },
+    );
+  });
+
   group('each other use-case asks the repository once, for its network', () {
     final cases =
         <
@@ -196,10 +380,6 @@ void main() {
             Object?,
           )
         >{
-          'create testnet': (
-            (r) => GenerateGarageKeyUsecase(r).execute(RobosatsNetwork.testnet),
-            null,
-          ),
           'exists mainnet': (
             (r) => HasGarageKeyUsecase(r).execute(RobosatsNetwork.mainnet),
             true,

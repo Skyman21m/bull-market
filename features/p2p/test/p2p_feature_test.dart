@@ -5,12 +5,16 @@ import 'dart:typed_data';
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:robosats/robosats.dart'
-    show CoordinatorRobot, GarageKey, RobotPgpKey;
+    show CoordinatorClient, CoordinatorRobot, GarageKey, RobotPgpKey;
 import 'package:test/test.dart';
+
+import 'support/robot_bindings.dart';
 
 /// A Tor that never gives a session, with the states the test chooses.
 final class _FakeTor implements Tor {
@@ -77,8 +81,12 @@ void main() {
     locator
       ..registerSingleton<Tor>(_FakeTor(tor))
       ..registerSingleton<TorHttpClientFactory>(const TorHttpClientFactory());
-    // Without the Garage Key handle, as the WorkManager isolate composes it: `garage_key_setup_test.dart` covers both compositions.
-    const P2pFeature().setup(locator, garageKeys: null);
+    // Without the Garage Key handle and the database, as the WorkManager isolate composes it: `garage_key_setup_test.dart` covers both compositions.
+    const P2pFeature().setup(
+      locator,
+      garageKeys: null,
+      databaseDirectory: null,
+    );
   });
 
   tearDown(() => locator.reset());
@@ -146,7 +154,7 @@ void main() {
     await locator<P2pFacade>().closeSessions();
   });
 
-  group('a robot, through the use-cases the feature keeps to itself,', () {
+  group('a robot, through the transport of the feature,', () {
     // Fixed test bytes, 0x01 to 0x20: not a key anyone uses.
     final garageKey = switch (GarageKey.fromBytes(
       Uint8List.fromList(List<int>.generate(32, (i) => i + 1)),
@@ -166,6 +174,36 @@ void main() {
       Err(:final failure) => throw StateError('$failure'),
     };
 
+    // The request of a robot is registered with the Garage only (`garage_key_setup_test.dart`): here it is made over the transport this setup registered, with bindings in memory where the test key is recorded as drawn on this device.
+    late FetchRobotUsecase fetchRobot;
+
+    setUp(() async {
+      final bindings = bindingsInMemory();
+      expect(
+        await bindings.recordGeneratedKey(
+          RobosatsNetwork.testnet,
+          testnetRobot.keyFingerprint,
+        ),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      fetchRobot = FetchRobotUsecase(
+        CoordinatorClient(locator<TorCoordinatorTransport>()),
+        bindings,
+      );
+    });
+
+    Matcher answeredWith<T>() =>
+        isA<Ok<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>()
+            .having(
+              (ok) => ok.value,
+              'answer',
+              isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
+                (err) => err.failure,
+                'failure',
+                isA<T>(),
+              ),
+            );
+
     test('request fails as a value when Tor gives no session', () async {
       final temple = locator<P2pFacade>()
           .requestBooks(RobosatsNetwork.testnet)
@@ -173,21 +211,14 @@ void main() {
           .first;
 
       for (final createIfUnknown in [true, false]) {
-        final result = await locator<FetchRobotUsecase>().execute(
+        final result = await fetchRobot.execute(
           temple,
           testnetRobot,
           pgpKey: pgpKey,
           createIfUnknown: createIfUnknown,
         );
 
-        expect(
-          result,
-          isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
-            (err) => err.failure,
-            'failure',
-            isA<CoordinatorUnreachable>(),
-          ),
-        );
+        expect(result, answeredWith<CoordinatorUnreachable>());
       }
     });
 
@@ -197,7 +228,7 @@ void main() {
       await facade.fetchInfo(temple, RobosatsNetwork.testnet);
       final afterAnonymous = tor.openedSessions;
 
-      await locator<FetchRobotUsecase>().execute(
+      await fetchRobot.execute(
         temple,
         testnetRobot,
         pgpKey: pgpKey,
@@ -217,21 +248,14 @@ void main() {
             .firstWhere((coordinator) => coordinator.shortAlias == 'bazaar');
         final before = tor.openedSessions;
 
-        final result = await locator<FetchRobotUsecase>().execute(
+        final result = await fetchRobot.execute(
           bazaar,
           testnetRobot,
           pgpKey: pgpKey,
           createIfUnknown: true,
         );
 
-        expect(
-          result,
-          isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
-            (err) => err.failure,
-            'failure',
-            isA<CoordinatorNotOnNetwork>(),
-          ),
-        );
+        expect(result, answeredWith<CoordinatorNotOnNetwork>());
         expect(tor.openedSessions, before);
       },
     );
@@ -266,6 +290,13 @@ void main() {
         'CoordinatorTransport',
         'CoordinatorRequest',
         'RobotSessionKey',
+        // The bindings of the robots: the shell gives the directory of their database, and nothing else.
+        'GarageKeyFingerprint',
+        'RobotSlot',
+        'RobotBinding',
+        'CoordinatorIdentity',
+        'RobotBindingRepository',
+        'P2pDatabase',
       ]) {
         expect(identifiers(library), isNot(contains(name)), reason: name);
         expect(identifiers(facade), isNot(contains(name)), reason: name);

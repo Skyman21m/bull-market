@@ -1046,12 +1046,14 @@ class GarageKeyRepositoryImpl {
     const shell = '''
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart' show P2pFeature;
+import 'package:path_provider/path_provider.dart';
 import 'package:secrets/secrets.dart';
 class AppLocator {
   static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
       const P2pFeature().setup(
         locator,
         garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,
       );
 }
 ''';
@@ -1706,6 +1708,7 @@ void use() {
     const head = '''
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart' show P2pFeature;
+import 'package:path_provider/path_provider.dart';
 import 'package:secrets/secrets.dart';
 ''';
     // `lib/locator.dart` of today: `setupP2p` asks for the handle only when its own flag is true, and hands it to `P2pFeature.setup` alone.
@@ -1720,6 +1723,7 @@ ${head}class AppLocator {
       const P2pFeature().setup(
         locator,
         garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,
       );
 }
 ''';
@@ -1729,6 +1733,7 @@ ${head}class AppLocator {
       const P2pFeature().setup(
         locator,
         garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+        databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,
       );''',
       body,
     );
@@ -1768,6 +1773,7 @@ ${head}class AppLocator {
             '      const P2pFeature().setup(\n'
             '        locator,\n'
             '        garageKeys: locator<Secrets>().garageKeys(),\n'
+            '        databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,\n'
             '      );',
           ),
         ),
@@ -1813,7 +1819,7 @@ ${head}class AppLocator {
           withSetupP2p(
             '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
             '    final keys = withGarageKeys ? locator<Secrets>().garageKeys() : null;\n'
-            '    const P2pFeature().setup(locator, garageKeys: keys);\n'
+            '    const P2pFeature().setup(locator, garageKeys: keys, databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null);\n'
             '  }',
           ),
         ),
@@ -1832,6 +1838,7 @@ ${head}class AppLocator {
             '    void later() => const P2pFeature().setup(\n'
             '      locator,\n'
             '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '      databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,\n'
             '    );\n'
             '    later();\n'
             '  }',
@@ -1872,6 +1879,7 @@ ${head}class AppLocator {
             '    const P2pFeature().setup(\n'
             '      locator,\n'
             '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '      databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,\n'
             '    );\n'
             '  }',
           ),
@@ -1903,10 +1911,12 @@ ${head}class AppLocator {
               '    const P2pFeature().setup(\n'
               '      locator,\n'
               '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '      databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,\n'
               '    );\n'
               '    const P2pFeature().setup(\n'
               '      locator,\n'
               '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '      databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null,\n'
               '    );\n'
               '  }',
             ),
@@ -1940,7 +1950,7 @@ ${head}class AppLocator {
         ('handle_by_type', 'locator.get<Object>(type: GarageKeys);'),
         (
           'handle_looked_up_inferred',
-          'const P2pFeature().setup(locator, garageKeys: locator());',
+          'const P2pFeature().setup(locator, garageKeys: locator(), databaseDirectory: null);',
         ),
       ]) {
         expect(
@@ -2262,10 +2272,11 @@ extension Extras on Holder {
     const repositoryPath =
         'features/p2p/lib/src/data/garage_key_repository_impl.dart';
     const viewPath = 'features/p2p/lib/src/ui/widgets/garage_key_view.dart';
-    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54.
+    // The members of the table whose types exist on main; `read` and `firstUsableRobot` return types of #54; `create` returns the key it drew since the review of #60.
     const repository = '''
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -2275,8 +2286,9 @@ final class GarageKeyRepositoryImpl {
 
   const GarageKeyRepositoryImpl(this._garageKeys);
 
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>
-      const Ok(null);
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async => throw UnimplementedError();
 
   Future<Result<void, P2pFailure>> import(
     RobosatsNetwork network,
@@ -2397,6 +2409,26 @@ final class GarageKeyRepositoryImpl {
           reason: name,
         );
       }
+      // The repository before the review of #60: `create` returned nothing, and the draw read the slot back to record a key, maybe not the one it drew.
+      expect(
+        await inspect(
+          'reader_create_void',
+          repository.replaceAll(
+            '  Future<Result<NetworkGarageKey, P2pFailure>> create(\n'
+                '    RobosatsNetwork network,\n'
+                '  ) async => throw UnimplementedError();',
+            '  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>\n'
+                '      const Ok(null);',
+          ),
+          policyPath: repositoryPath,
+        ),
+        [
+          notInTable(
+            'create',
+            'Future<Result<void, P2pFailure>> Function(RobosatsNetwork)',
+          ),
+        ],
+      );
       // The repository of main, before #54: `firstUsableRobot` returns a `GarageRobot`, which the table no longer lists.
       expect(
         await inspect(

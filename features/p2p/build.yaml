@@ -1,0 +1,9 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          databases:
+            p2p_database: lib/src/data/p2p_database.dart
+          schema_dir: lib/src/data/schemas/
+          test_dir: test/migrations_test/

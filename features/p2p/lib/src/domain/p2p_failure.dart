@@ -68,3 +68,31 @@ final class GarageKeyInvalidFailure extends P2pFailure {
 final class GarageRobotUnavailableFailure extends P2pFailure {
   const GarageRobotUnavailableFailure();
 }
+
+/// The feature's database could not be read or written: nothing was sent to a coordinator, and no key was stored.
+///
+/// Try again; the database holds no secret, and a failure of it never loosens a binding.
+final class P2pStorageFailure extends P2pFailure {
+  const P2pStorageFailure();
+}
+
+/// This robot is bound to another coordinator, which received its token hash first: nothing was sent.
+///
+/// The token hash is the whole credential of a robot and the same on every coordinator, so a robot never goes to a second coordinator (AGENTS.md, « One robot, one coordinator »).
+final class RobotBoundToAnotherCoordinatorFailure extends P2pFailure {
+  const RobotBoundToAnotherCoordinatorFailure();
+}
+
+/// The coordinator this robot is bound to no longer has the onion address or the keys it had when the robot was bound: nothing was sent.
+///
+/// The federation list of the app changed that coordinator since: a change to assess before the robot goes there again, as the refresh of the RoboSats reference in AGENTS.md requires.
+final class RobotCoordinatorChangedFailure extends P2pFailure {
+  const RobotCoordinatorChangedFailure();
+}
+
+/// This robot has no binding, and the history of its Garage Key is unknown: nothing was written or sent.
+///
+/// The key was imported, or this device has no record of drawing it, so the robot may already live on another coordinator, and sending it here could hand its token hash to a second one.
+final class RobotHistoryUnknownFailure extends P2pFailure {
+  const RobotHistoryUnknownFailure();
+}

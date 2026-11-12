@@ -5,12 +5,12 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../p2p_failure.dart';
 import '../repositories/garage_key_repository.dart';
 
-/// Deletes everything the feature stores for a network: today, its Garage Key, whatever the entry holds.
+/// Deletes the Garage Key of a network, whatever the entry holds.
 ///
 /// Destructive: the robots of the key are lost unless the user kept a copy of it, so call it only on the user's explicit confirmation.
 /// It is also the only way out of a key that cannot be read.
-/// The feature stores no state of its robots yet, such as the coordinator each robot index is bound to (the rule "one robot, one coordinator" of AGENTS.md).
-/// When it does, that state is tied to a fingerprint of its key and is not erased here: the keystore's delete reaches the disk asynchronously on Android, so a key can come back after the app dies, and its robot 0 must not look new then.
+/// It leaves the bindings of the robots of the key, and the record of its history, in the feature's database, tied to the key's fingerprint, for good (the rule « one robot, one coordinator » of AGENTS.md): the keystore's delete reaches the disk asynchronously on Android, so a key can come back after the app dies, and its robot 0 must not look new then; and a deleted key can be pasted back later from the user's copy, whose robots are still bound where they were.
+/// They hold no secret, and they only restrict the robots of that key.
 final class DeleteGarageKeyUsecase {
   final GarageKeyRepository _repository;
 

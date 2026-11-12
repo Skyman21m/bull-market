@@ -27,11 +27,15 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
   const GarageKeyRepositoryImpl(this._garageKeys);
 
   @override
-  Future<Result<void, P2pFailure>> create(RobosatsNetwork network) async =>
-      switch (await _garageKeys.create(slot: _slotOf(network))) {
-        Ok() => const Ok(null),
-        Err(:final failure) => Err(_writeFailureOf(failure)),
-      };
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) async => switch (await _garageKeys.create(slot: _slotOf(network))) {
+    // The bytes the vault drew, not a read of the slot: the draw records the history of this very key.
+    Ok(value: final material) => Ok(
+      _keyOf(network, GarageKey.fromBytes(material.bytes)),
+    ),
+    Err(:final failure) => Err(_writeFailureOf(failure)),
+  };
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -66,14 +70,9 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
     RobosatsNetwork network,
   ) async => switch (await _garageKeys.read(slot: _slotOf(network))) {
     Err(:final failure) => Err(_readFailureOf(failure)),
-    Ok(value: final material) => switch (GarageKey.fromBytes(material.bytes)) {
-      Ok(:final value) => Ok(NetworkGarageKey(network, value)),
-      // The vault hands out exactly 32 bytes, which `fromBytes` accepts, so a refusal is a bug between the two packages (AGENTS.md, rule 11).
-      // It is never reported as a failure of the stored key, which would advise the user to delete a key that may be good.
-      Err() => throw StateError(
-        'GarageKey.fromBytes refused the bytes the vault handed out',
-      ),
-    },
+    Ok(value: final material) => Ok(
+      _keyOf(network, GarageKey.fromBytes(material.bytes)),
+    ),
   };
 
   @override
@@ -93,6 +92,20 @@ final class GarageKeyRepositoryImpl implements GarageKeyRepository {
         ),
         Err() => const Err(GarageKeyNotDeletedFailure()),
       };
+
+  /// The key [parsed] from the bytes the vault handed out for the slot of [network], tagged with that network.
+  ///
+  /// The vault hands out exactly 32 bytes, which `fromBytes` accepts, so a refusal is a bug between the two packages (AGENTS.md, rule 11).
+  /// It is never reported as a failure of the stored key, which would advise the user to delete a key that may be good.
+  static NetworkGarageKey _keyOf(
+    RobosatsNetwork network,
+    Result<GarageKey, Failure> parsed,
+  ) => switch (parsed) {
+    Ok(:final value) => NetworkGarageKey(network, value),
+    Err() => throw StateError(
+      'GarageKey.fromBytes refused the bytes the vault handed out',
+    ),
+  };
 
   /// Each network has its own slot, and an operation never reaches the slot of another network.
   static GarageKeySlot _slotOf(RobosatsNetwork network) => switch (network) {

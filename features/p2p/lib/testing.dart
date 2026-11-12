@@ -4,15 +4,18 @@
 library;
 
 import 'package:bull_tor/tor.dart';
+import 'package:drift/native.dart';
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
+import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
+import 'src/domain/repositories/robot_binding_repository.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
@@ -39,7 +42,7 @@ export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
-/// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it; without it, the Garage is disabled, as in a feature set up without the vault's handle.
+/// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 @visibleForTesting
 void setUpP2pForTesting(
   GetIt locator, {
@@ -56,13 +59,27 @@ void setUpP2pForTesting(
     tor: () => tor,
     clock: clock,
   );
-  if (garageKeys != null) P2pLocator.registerGarageKeys(locator, garageKeys);
+  if (garageKeys != null) {
+    P2pLocator.registerGarageKeys(
+      locator,
+      garageKeys,
+      database: () => P2pDatabase.forTesting(NativeDatabase.memory()),
+      transport: () => transport,
+      clock: clock,
+    );
+  }
 }
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
 @visibleForTesting
 bool hasGarageKeysForTesting(GetIt locator) =>
     locator.isRegistered<GarageKeyRepository>();
+
+/// Whether the feature registered in [locator] has its database and the bindings of the robots, which it gets with the directory `P2pFeature.setup` receives from the foreground composition of the shell only.
+@visibleForTesting
+bool hasP2pDatabaseForTesting(GetIt locator) =>
+    locator.isRegistered<P2pDatabase>() &&
+    locator.isRegistered<RobotBindingRepository>();
 
 /// The transport of the app, over the embedded Tor, once the feature is registered with `P2pFeature.setup`.
 ///
