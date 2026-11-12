@@ -9,20 +9,22 @@ import '../domain/usecases/generate_garage_key_usecase.dart';
 import '../domain/usecases/import_garage_key_usecase.dart';
 import '../domain/usecases/read_garage_key_usecase.dart';
 import 'garage_state.dart';
-import 'unshown_garage_keys.dart';
 
 /// The Garage of one network: the Garage Key of that network in the vault, the robot shown, and the actions of the user on them.
 ///
 /// It touches the vault only when a method is called: [load] when the user opens the Garage, the others on an explicit action of the user.
 /// It follows the rules of the vault: a key is generated or imported only in [GarageWithoutKey], so only after a read found no key or a delete the vault confirmed; a stored key is never replaced, and « Generate new » deletes it first, after the user confirmed; after a failed write the slot is read again before anything is offered.
 /// An action started while another is running is ignored.
-/// An action the user started finishes in the vault even when the user leaves the Garage, but a closed cubit never reads the vault again: a key drawn then is shown at the next visit, through [UnshownGarageKeys].
+/// An action the user started finishes in the vault even when the user leaves the Garage, but a closed cubit never reads the vault again.
+///
+/// A key is shown without the PIN only right after the vault drew it, while the user stays in the Garage with the app in the foreground ([GarageWithKey.showWithoutPin]); [conceal] ends that when the app is hidden or paused, and leaving the Garage closes the cubit.
+/// From then on, until the user saw the key and pressed « Continue » or deleted it, [UnacknowledgedGarageKeys] makes each visit show the backup alert, with the key behind the PIN.
 class GarageCubit extends Cubit<GarageState> {
   final ReadGarageKeyUsecase _read;
   final GenerateGarageKeyUsecase _generate;
   final ImportGarageKeyUsecase _import;
   final DeleteGarageKeyUsecase _delete;
-  final UnshownGarageKeys _unshown;
+  final UnacknowledgedGarageKeys _unacknowledged;
 
   GarageCubit(
     RobosatsNetwork network,
@@ -30,7 +32,7 @@ class GarageCubit extends Cubit<GarageState> {
     this._generate,
     this._import,
     this._delete,
-    this._unshown,
+    this._unacknowledged,
   ) : super(GarageWorking(network));
 
   RobosatsNetwork get _network => state.network;
@@ -44,9 +46,9 @@ class GarageCubit extends Cubit<GarageState> {
     emit(GarageWorking(_network));
     switch (await _generate.execute(_network)) {
       case Ok():
-        // Remembered before anything else, so that a user who left meanwhile sees it at the next visit.
-        _unshown.add(_network);
-        await _settle(failure: null, isNew: true);
+        // Remembered before anything else, so that a user who left meanwhile gets the backup alert at the next visit.
+        _unacknowledged._networks.add(_network);
+        await _settle(failure: null, isNew: true, justDrawn: true);
       case Err(:final failure):
         await _settle(failure: failure, isNew: false);
     }
@@ -76,7 +78,7 @@ class GarageCubit extends Cubit<GarageState> {
     emit(GarageWorking(_network));
     switch (await _delete.execute(_network)) {
       case Ok():
-        _unshown.take(_network);
+        _unacknowledged._networks.remove(_network);
         if (!isClosed) emit(GarageWithoutKey(_network));
       case Err(:final failure):
         await _settle(failure: failure, isNew: false);
@@ -90,18 +92,19 @@ class GarageCubit extends Cubit<GarageState> {
     await generate();
   }
 
-  /// The user moved on from the key shown for backup: from now on it is shown only behind the PIN, on the profile.
+  /// The app was hidden or paused: a key shown without the PIN is hidden, and from now on shown only behind it.
+  void conceal() {
+    final current = state;
+    if (current is! GarageWithKey || !current.showWithoutPin) return;
+    emit(current.copyWith(showWithoutPin: false));
+  }
+
+  /// The user saw the key shown for backup and pressed « Continue »: it no longer waits, and from now on it is shown only behind the PIN, on the profile.
   void acknowledgeBackup() {
     final current = state;
-    if (current is! GarageWithKey || !current.showForBackup) return;
-    emit(
-      GarageWithKey(
-        _network,
-        key: current.key,
-        robot: current.robot,
-        isNew: current.isNew,
-      ),
-    );
+    if (current is! GarageWithKey || !current.awaitsBackup) return;
+    _unacknowledged._networks.remove(_network);
+    emit(current.copyWith(awaitsBackup: false, showWithoutPin: false));
   }
 
   /// Shows the next robot of the key: the first usable one after the robot shown.
@@ -117,30 +120,21 @@ class GarageCubit extends Cubit<GarageState> {
     final current = state;
     if (current is! GarageWithKey) return;
     emit(switch (step(current.key, current.robot.index)) {
-      Ok(value: final robot) => GarageWithKey(
-        _network,
-        key: current.key,
+      Ok(value: final robot) => current.copyWith(
         robot: GarageRobotFace.of(robot),
-        isNew: current.isNew,
-        showForBackup: current.showForBackup,
+        failure: null,
       ),
-      Err(:final failure) => GarageWithKey(
-        _network,
-        key: current.key,
-        robot: current.robot,
-        isNew: current.isNew,
-        showForBackup: current.showForBackup,
-        failure: failure,
-      ),
+      Err(:final failure) => current.copyWith(failure: failure),
     });
   }
 
   /// Reads the slot again and settles on what it holds, with [failure] as the outcome of the action that led here; a closed cubit reads nothing.
   ///
-  /// A key drawn and not shown yet is shown now, for backup, and no longer waits.
+  /// A key drawn and not acknowledged yet awaits its backup; it is shown without the PIN only when this cubit has [justDrawn] it.
   Future<void> _settle({
     required P2pFailure? failure,
     required bool isNew,
+    bool justDrawn = false,
   }) async {
     if (isClosed) return;
     emit(GarageWorking(_network));
@@ -148,13 +142,14 @@ class GarageCubit extends Cubit<GarageState> {
     if (isClosed) return;
     emit(switch (read) {
       Ok(value: final key) => switch (key.firstUsableRobot(0)) {
-        Ok(value: final robot) => switch (_unshown.take(_network)) {
-          final showForBackup => GarageWithKey(
+        Ok(value: final robot) => switch (_unacknowledged.waits(_network)) {
+          final awaitsBackup => GarageWithKey(
             _network,
             key: key,
             robot: GarageRobotFace.of(robot),
-            isNew: isNew || showForBackup,
-            showForBackup: showForBackup,
+            isNew: isNew || awaitsBackup,
+            awaitsBackup: awaitsBackup,
+            showWithoutPin: justDrawn && awaitsBackup,
             failure: failure,
           ),
         },
@@ -175,4 +170,17 @@ class GarageCubit extends Cubit<GarageState> {
       ),
     });
   }
+}
+
+/// The networks whose Garage Key was drawn in this run of the app and not acknowledged yet: in memory only, one object for the feature, which the locator creates.
+///
+/// The vault stores a key as soon as it draws it, and the key is never part of the wallet backup, so the Garage keeps asking the user to store it, with the backup alert and the key behind the PIN, until the user saw it and pressed « Continue », or deleted it.
+/// It reveals nothing by itself: only the cubit that has just drawn the key shows it without the PIN.
+/// Only [GarageCubit] writes it: its set is private to this library, and the cubit adds a network only when the vault drew its key.
+/// If the app dies before the user acknowledged the key, nothing remembers it: the key is then the one of the profile, behind the PIN.
+final class UnacknowledgedGarageKeys {
+  final Set<RobosatsNetwork> _networks = {};
+
+  /// Whether the key of [network] waits to be acknowledged.
+  bool waits(RobosatsNetwork network) => _networks.contains(network);
 }

@@ -26,7 +26,6 @@ import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
-import 'presentation/unshown_garage_keys.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -77,8 +76,10 @@ final class P2pLocator {
       () => DeleteGarageKeyUsecase(locator()),
     );
     // The Garage of a network, created when the user opens it.
-    // What was drawn and not shown yet, in memory, for the whole run of the app.
-    locator.registerLazySingleton<UnshownGarageKeys>(UnshownGarageKeys.new);
+    // The keys drawn and not acknowledged yet, in memory, for the whole run of the app.
+    locator.registerLazySingleton<UnacknowledgedGarageKeys>(
+      UnacknowledgedGarageKeys.new,
+    );
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,

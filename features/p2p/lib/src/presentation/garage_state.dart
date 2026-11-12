@@ -38,8 +38,11 @@ final class GarageWithKey extends GarageState {
   /// Whether the key was generated or imported by the user during this visit of the Garage, which then stays in the wizard rather than going to the profile.
   final bool isNew;
 
-  /// Whether the key was drawn in this run of the app and not shown yet: the only key shown, for backup, without asking the user to authenticate again.
-  final bool showForBackup;
+  /// Whether the key was drawn in this run of the app and the user has not yet seen it and pressed « Continue »: the Garage shows the backup alert.
+  final bool awaitsBackup;
+
+  /// Whether the key may be shown without asking for the PIN: only right after the vault drew it, while the user stays in the Garage with the app in the foreground.
+  final bool showWithoutPin;
 
   /// Why the last action of the user failed, when it did: a robot that could not be derived, or a key that could not be deleted.
   final P2pFailure? failure;
@@ -49,9 +52,26 @@ final class GarageWithKey extends GarageState {
     required this.key,
     required this.robot,
     required this.isNew,
-    this.showForBackup = false,
+    this.awaitsBackup = false,
+    this.showWithoutPin = false,
     this.failure,
   });
+
+  /// This state with the fields given changed; [failure] is the outcome of the action that leads to the copy, so it is replaced, by nothing when it is not given.
+  GarageWithKey copyWith({
+    GarageRobotFace? robot,
+    bool? awaitsBackup,
+    bool? showWithoutPin,
+    P2pFailure? failure,
+  }) => GarageWithKey(
+    network,
+    key: key,
+    robot: robot ?? this.robot,
+    isNew: isNew,
+    awaitsBackup: awaitsBackup ?? this.awaitsBackup,
+    showWithoutPin: showWithoutPin ?? this.showWithoutPin,
+    failure: failure,
+  );
 }
 
 /// The vault could not say whether a key is stored: a locked keystore, or an entry that cannot be read or is damaged.

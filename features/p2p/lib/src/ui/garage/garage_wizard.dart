@@ -14,6 +14,7 @@ import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
 import 'account_navigator.dart';
 import 'delete_garage_key_dialog.dart';
+import 'garage_reauthentication.dart';
 
 /// The address of the RoboSats documentation, which the official client opens from the third step.
 const learnRoboSatsUrl = 'https://learn.robosats.org';
@@ -24,7 +25,8 @@ const simplexGroupUrl =
 
 /// The three steps of the Garage Key wizard of the official client (`basic/GaragePage/GarageKeyOnboarding.tsx` at commit ff1998c), one below the other, the title of the step shown in full and the others greyed.
 ///
-/// 1. The Garage Key: « Generate Garage Key » draws it in the vault, which stores it at once, and it is shown right after for backup, with the official client's alert, without asking the user to authenticate again.
+/// 1. The Garage Key: « Generate Garage Key » draws it in the vault, which stores it at once, and it is shown right after for backup, with the official client's alert, without asking the user to authenticate again, as long as the user stays and the app stays in the foreground.
+/// Once the app was hidden or paused, or at a later visit while the user has not pressed « Continue », the alert stays and the key is behind the PIN, as on the profile.
 /// The official client keeps a generated key in memory until « Continue », so pasting over it or « Generate new » replace it silently; here the key is stored as soon as it is drawn, so the field where a key is pasted comes before it is generated, and « Generate new » asks « Delete Garage Key? » first.
 /// 2. The robot of the key, derived on the device, and the robot navigator; the official client also asks the coordinators about it, which Troc does not do yet.
 /// 3. Browse or create: « Search » shows the offers, « Create » is disabled, and the help links are shown for copy, never opened.
@@ -34,6 +36,10 @@ class GarageWizard extends StatefulWidget {
 
   final GarageState state;
   final GarageKeyClipboard clipboard;
+
+  /// What step 1 asks before it shows a key drawn earlier, or one hidden when the app went to the background: the PIN, as on the profile.
+  final P2pReauthentication? reauthenticate;
+
   final ValueChanged<int> onStep;
   final VoidCallback onSearch;
   final VoidCallback onSeeProfile;
@@ -43,6 +49,7 @@ class GarageWizard extends StatefulWidget {
     required this.step,
     required this.state,
     required this.clipboard,
+    required this.reauthenticate,
     required this.onStep,
     required this.onSearch,
     required this.onSeeProfile,
@@ -64,20 +71,45 @@ class _GarageWizardState extends State<GarageWizard> {
       value: simplexGroupUrl,
     );
 
+  /// Whether step 1 shows the key because the user passed the PIN for it; dropped with the wizard and when the app goes to the background.
+  bool _revealed = false;
+
+  /// Hides the key of step 1 when the app is hidden or paused, whether it was shown right after it was drawn or after the PIN.
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onHide: _conceal, onPause: _conceal);
+  }
+
   @override
   void dispose() {
+    _lifecycle.dispose();
     _pasted.dispose();
     _simplexLink.dispose();
     super.dispose();
+  }
+
+  void _conceal() {
+    if (!mounted) return;
+    context.read<GarageCubit>().conceal();
+    if (_revealed) setState(() => _revealed = false);
+  }
+
+  Future<void> _reveal(P2pReauthentication reauthenticate) async {
+    if (await askReauthentication(context, reauthenticate) && mounted) {
+      setState(() => _revealed = true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final state = widget.state;
-    // Steps 2 and 3 need a key; without one the wizard is on its first step, and the first step shows a key only when it waits to be shown for backup.
+    // Steps 2 and 3 need a key; without one the wizard is on its first step, and the first step shows a key only when it awaits its backup.
     final step = switch (state) {
-      GarageWithKey(showForBackup: true) => widget.step,
+      GarageWithKey(awaitsBackup: true) => widget.step,
       GarageWithKey() => widget.step < 2 ? 2 : widget.step,
       _ => 1,
     };
@@ -119,7 +151,14 @@ class _GarageWizardState extends State<GarageWizard> {
       l10n.p2pGarageOnboardingStep1Text,
       style: text.bodyMedium?.copyWith(color: colors.text),
     );
-    if (state case GarageWithKey(:final key, :final failure)) {
+    if (state case GarageWithKey(
+      :final key,
+      :final failure,
+      :final showWithoutPin,
+    )) {
+      // Without the PIN only right after the draw, in the foreground; otherwise behind the PIN, as on the profile.
+      final visible = showWithoutPin || _revealed;
+      final reauthenticate = widget.reauthenticate;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -130,7 +169,22 @@ class _GarageWizardState extends State<GarageWizard> {
             text: l10n.p2pGarageOnboardingStoreItText,
           ),
           const Gap(BullSpacing.md),
-          GarageKeyView(garageKey: key.key, clipboard: widget.clipboard),
+          if (visible)
+            GarageKeyView(garageKey: key.key, clipboard: widget.clipboard)
+          else
+            BullButton.big(
+              label: l10n.p2pGarageKeyReveal,
+              iconData: Icons.visibility,
+              iconFirst: true,
+              disabled: reauthenticate == null,
+              onPressed: () {
+                if (reauthenticate != null) _reveal(reauthenticate);
+              },
+              outlined: true,
+              bgColor: colors.transparent,
+              textColor: colors.primary,
+              borderColor: colors.primary,
+            ),
           const Gap(BullSpacing.xs),
           Text(
             l10n.p2pGarageKeyHelper,
@@ -152,18 +206,22 @@ class _GarageWizardState extends State<GarageWizard> {
               ),
             ),
           ),
-          const Gap(BullSpacing.sm),
-          BullButton.big(
-            label: l10n.p2pCommonContinue,
-            iconData: Icons.check,
-            iconFirst: true,
-            onPressed: () {
-              cubit.acknowledgeBackup();
-              widget.onStep(2);
-            },
-            bgColor: colors.primary,
-            textColor: colors.onPrimary,
-          ),
+          // « Continue » acknowledges the backup: only once the key was seen.
+          if (visible) ...[
+            const Gap(BullSpacing.sm),
+            BullButton.big(
+              label: l10n.p2pCommonContinue,
+              iconData: Icons.check,
+              iconFirst: true,
+              onPressed: () {
+                cubit.acknowledgeBackup();
+                setState(() => _revealed = false);
+                widget.onStep(2);
+              },
+              bgColor: colors.primary,
+              textColor: colors.onPrimary,
+            ),
+          ],
         ],
       );
     }
