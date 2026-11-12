@@ -783,6 +783,7 @@ void main() {
         expect(await bindings.recordImportedKey(testnet, fingerprintA), passes);
 
         // drift runs the statements of one connection in the order they are sent.
+        // This checks the order of the results only: that the history is read by the very statement that binds is pinned by `robot_bindings_architecture_test.dart` (review of #72).
         final bindFirst = await Future.wait([
           bindings.bind(RobotSlot(testnet, fingerprintA, 0), temple),
           bindings.recordAcknowledgedKey(testnet, fingerprintA),
@@ -1133,6 +1134,7 @@ void main() {
         expect(await one.recordImportedKey(testnet, fingerprintA), passes);
 
         // The binds of one connection run in order; the record of the other lands somewhere among them.
+        // It checks the order of the results, not that a bind is atomic: a bind that read the history, then wrote, passes it most of the time; `robot_bindings_architecture_test.dart` pins the one statement (review of #72).
         // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections above: such a bind is a P2pStorageFailure that refuses the request, and a record that gave up is tried again.
         Future<List<Result<void, P2pFailure>>> bindDuring(
           Iterable<int> indexes,
