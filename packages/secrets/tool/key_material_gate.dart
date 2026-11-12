@@ -218,6 +218,9 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   int handleCalls = 0;
   bool declaresAppLocator = false;
 
+  /// The P2P failures that a reader's file names, constructs or returns, checked once the unit is read (see [checkFailure]).
+  final Set<InterfaceElement> readerFailures = {};
+
   _KeyMaterialVisitor(this.path, CompilationUnit unit)
     : unitSource = unit.declaredFragment?.source.fullName,
       analysisRoot = unit
@@ -261,6 +264,13 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       element.enclosingElement?.name == 'Bull' &&
       element.name == 'init' &&
       declarationPath(element) == 'lib/init.dart';
+
+  /// The top-level function [name] of the file [file]: `startApp` of `lib/bootstrap.dart`, which calls `Bull.init`, and `main` of `lib/main.dart`, which calls `startApp`.
+  bool isTopLevel(Element? element, String name, String file) =>
+      element is ExecutableElement &&
+      element.enclosingElement is LibraryElement &&
+      element.name == name &&
+      declarationPath(element) == file;
 
   /// Whether [node] is the one call of `Secrets.garageKeys` the composition makes (issue #47).
   ///
@@ -368,6 +378,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitNamedType(NamedType node) {
     checkVaultUse(node.element);
+    noteReaderFailure(node.element);
     super.visitNamedType(node);
   }
 
@@ -412,7 +423,6 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
         }
       }
     }
-    if (element != null) checkFailureFields(element);
     super.visitClassDeclaration(node);
   }
 
@@ -462,35 +472,75 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     }
   }
 
-  /// The P2P failures carry no data but the reason of an invalid Garage Key, and their base class passes no message (issue #47).
-  void checkFailureFields(InterfaceElement element) {
-    final isFailure =
-        [element, ...element.allSupertypes.map((type) => type.element)].any(
-          (type) =>
-              type.name == 'P2pFailure' &&
-              declarationPath(type) == _p2pFailurePath,
-        );
-    if (!isFailure) return;
-    for (final field in element.fields) {
-      if (!field.isOriginDeclaration) continue;
-      final type = field.type;
-      final described = type is InterfaceType
-          ? '${type.element.library.uri}#${type.getDisplayString()}'
-          : type.getDisplayString();
-      if (_failureFields[element.name]?[field.name] != described) {
-        violations.add(
-          '$path: ${element.name}.${field.name}#field of a P2P failure',
-        );
-      }
+  /// Whether [element] is `P2pFailure` of `features/p2p/lib/src/domain/p2p_failure.dart`, or a class that extends it.
+  bool isP2pFailure(InterfaceElement element) =>
+      [element, ...element.allSupertypes.map((type) => type.element)].any(
+        (type) =>
+            type.name == 'P2pFailure' &&
+            declarationPath(type) == _p2pFailurePath,
+      );
+
+  /// Records a P2P failure that the file of a reader names, constructs or returns: [element] is the class, one of its constructors or members, or anything else.
+  void noteReaderFailure(Element? element) {
+    if (!_garageKeyReaders.containsKey(path)) return;
+    final type = element is InterfaceElement
+        ? element
+        : element?.enclosingElement;
+    if (type is InterfaceElement && isP2pFailure(type)) {
+      readerFailures.add(type);
     }
-    if (element.name == 'P2pFailure') {
-      for (final constructor in element.constructors) {
-        if (constructor.formalParameters.isNotEmpty) {
+  }
+
+  /// A P2P failure that a reader uses carries no data but what [_failureFields] allows (issue #47).
+  ///
+  /// It mixes nothing in, it and its supertypes outside the SDK declare no field but those of the table (`Failure.logMessage` of `package:primitives` excepted), and the constructors of `P2pFailure` take no parameter, so no failure passes a message to `Failure.logMessage`.
+  /// A failure that no reader names is not concerned: it cannot carry what a reader reads unless the reader hands the bytes to code outside it, which the gate does not follow.
+  void checkFailure(InterfaceElement failure) {
+    for (final mixin in failure.mixins) {
+      violations.add(
+        '$path: ${failure.name}#mixin ${mixin.element.name} in a P2P failure the reader uses',
+      );
+    }
+    for (final type in [
+      failure,
+      ...failure.allSupertypes.map((t) => t.element),
+    ]) {
+      final library = type.library.uri.toString();
+      if (library.startsWith('dart:') ||
+          (type.name == 'Failure' &&
+              library == 'package:primitives/src/failure.dart')) {
+        continue;
+      }
+      for (final field in type.fields) {
+        if (!field.isOriginDeclaration) continue;
+        final fieldType = field.type;
+        final described = fieldType is InterfaceType
+            ? '${fieldType.element.library.uri}#${fieldType.getDisplayString()}'
+            : fieldType.getDisplayString();
+        if (_failureFields[type.name]?[field.name] != described) {
           violations.add(
-            '$path: P2pFailure.${constructor.name}#constructor with parameters',
+            '$path: ${type.name}.${field.name}#field of a P2P failure the reader uses',
           );
         }
       }
+      if (type.name == 'P2pFailure' &&
+          declarationPath(type) == _p2pFailurePath) {
+        for (final constructor in type.constructors) {
+          if (constructor.formalParameters.isNotEmpty) {
+            violations.add(
+              '$path: P2pFailure.${constructor.name}#constructor with parameters',
+            );
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  void visitCompilationUnit(CompilationUnit node) {
+    super.visitCompilationUnit(node);
+    for (final failure in readerFailures) {
+      checkFailure(failure);
     }
   }
 
@@ -541,7 +591,8 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
 
   /// Which composition of the app hands P2P the Garage Key handle (issue #47).
   ///
-  /// `Bull.init` of `lib/init.dart`, the foreground composition, is called only by `startApp` of `lib/bootstrap.dart`.
+  /// `startApp` of `lib/bootstrap.dart` is called only as the body or a statement of `main` of `lib/main.dart`, the app's entry point, to which nothing refers.
+  /// `Bull.init` of `lib/init.dart`, the foreground composition, is called only by `startApp`.
   /// `AppLocator.setup` is called with a boolean literal for `withGarageKeys`, and `true` only as a statement of `Bull.init` itself, not in a closure or a local function.
   /// `AppLocator.setupP2p`, which asks the vault for the handle when its flag is true, is called only as a statement of `AppLocator.setup` of `lib/locator.dart`, with the flag that method received.
   /// Any other reference to these methods (a tear-off, which `Function.apply` or a dynamic call needs) fails closed: Dart cannot reach a static method dynamically without one.
@@ -552,6 +603,11 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       member = 'AppLocator.${element?.name}';
     } else if (isForegroundInit(element)) {
       member = 'Bull.init';
+    } else if (isTopLevel(element, 'startApp', 'lib/bootstrap.dart')) {
+      member = 'startApp';
+    } else if (isTopLevel(element, 'main', 'lib/main.dart')) {
+      violations.add('$path: main of lib/main.dart#referenced');
+      return;
     } else {
       return;
     }
@@ -561,6 +617,14 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       return;
     }
     final (:owner, :function) = _enclosingDeclaration(node);
+    if (member == 'startApp') {
+      if (path != 'lib/main.dart' ||
+          owner != null ||
+          !_isDirectStatementOf(invocation, 'main')) {
+        violations.add('$path: startApp#outside main of lib/main.dart');
+      }
+      return;
+    }
     if (member == 'Bull.init') {
       if (path != 'lib/bootstrap.dart' ||
           owner != null ||
@@ -604,6 +668,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       checkComposition(node);
       checkVaultUse(node.element);
       checkPrivateUse(node.element, node);
+      noteReaderFailure(node.element);
     }
     super.visitSimpleIdentifier(node);
   }
@@ -1011,7 +1076,7 @@ bool _isP2pSetup(Element? element) =>
     element.enclosingElement?.name == 'P2pFeature' &&
     element.library.uri.toString().startsWith('package:p2p/');
 
-/// Whether [call] stands on its own, as the body of the static method named [method] or as a statement directly in that body: not in a closure, a local function, a condition or a loop.
+/// Whether [call] stands on its own, as the body of the static method or top-level function named [method], or as a statement directly in that body: not in a closure, a local function, a condition or a loop.
 bool _isDirectStatementOf(Expression call, String method) {
   final parent = call.parent;
   final wrapper = parent is AwaitExpression ? parent.parent : parent;
@@ -1023,9 +1088,15 @@ bool _isDirectStatementOf(Expression call, String method) {
     _ => null,
   };
   final declaration = body?.parent;
-  return declaration is MethodDeclaration &&
-      declaration.isStatic &&
-      declaration.name.lexeme == method;
+  final function = declaration is FunctionExpression
+      ? declaration.parent
+      : null;
+  return (declaration is MethodDeclaration &&
+          declaration.isStatic &&
+          declaration.name.lexeme == method) ||
+      (function is FunctionDeclaration &&
+          function.parent is CompilationUnit &&
+          function.name.lexeme == method);
 }
 
 bool _isException(String path, AstNode node, String symbol) {
