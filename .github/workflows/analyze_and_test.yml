@@ -122,7 +122,7 @@ jobs:
     if: ${{ !cancelled() && needs.classification.result == 'success' && needs.action-pins.result == 'success' && needs.classification.outputs.run_app_checks == 'true' }}
     name: Static checks and unit tests
     runs-on: ubuntu-24.04
-    # A normal run takes 34-40 min in this fork (set-up 10-16 min, unit tests 22-26 min), more than upstream's 22-29 min: Troc adds the robosats and p2p test suites.
+    # A normal run takes 34-44 min in this fork (set-up 9-16 min, unit tests 18-26 min), more than upstream's 22-29 min: Troc adds the robosats and p2p test suites.
     # At 45 min a slow set-up cut a run during the unit tests with no test failing, so the limit leaves room for that.
     timeout-minutes: 60
     steps:
