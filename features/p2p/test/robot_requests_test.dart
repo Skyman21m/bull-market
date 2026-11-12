@@ -1486,6 +1486,62 @@ void main() {
       );
 
       test(
+        'a robot bound there whose read fails is sent no first contact',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          coordinators.script.add(_Reply.timedOut);
+
+          expect(
+            await put.execute(robots[0], temple),
+            _answered<CoordinatorTimedOut>(),
+          );
+          expect(coordinators.requests.map(_sentPublicKey), [
+            firstPair.publicKey.armored,
+            null,
+          ]);
+          expect(keys.generated, hasLength(1));
+        },
+      );
+
+      test(
+        'a robot bound elsewhere is refused before its binding is asked again',
+        () async {
+          final recording = RecordingBindings(
+            drawnHere: [
+              for (final network in RobosatsNetwork.values)
+                (network, robots[0].keyFingerprint),
+            ],
+          );
+          expect(
+            await recording.bind(
+              robots[0].slot,
+              CoordinatorIdentity.of(temple, _testnet) ??
+                  fail('temple is not on testnet'),
+            ),
+            isA<Ok<void, P2pFailure>>(),
+          );
+
+          expect(
+            await PutRobotOnCoordinatorUsecase(
+              FetchRobotUsecase(
+                CoordinatorClient(coordinators),
+                recording,
+                keys,
+              ),
+              recording,
+              limiter,
+            ).execute(robots[0], lake),
+            _refused<RobotBoundToAnotherCoordinatorFailure>(),
+          );
+          expect(
+            recording.calls.where((call) => call.$1 == 'bind'),
+            hasLength(1),
+          );
+          expect(coordinators.requests, isEmpty);
+        },
+      );
+
+      test(
         'a robot bound to a coordinator that changed since is sent nothing',
         () async {
           _face(await put.execute(robots[0], temple));
