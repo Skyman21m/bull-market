@@ -11,8 +11,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
+import 'package:p2p/src/presentation/garage_cubit.dart';
+import 'package:p2p/src/presentation/garage_state.dart';
 import 'package:p2p/src/ui/garage/delete_garage_key_dialog.dart';
 import 'package:p2p/src/ui/garage/garage_view.dart';
+import 'package:p2p/src/ui/garage/garage_wizard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_field.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
@@ -1217,6 +1226,23 @@ void main() {
       );
       expect(find.text('Copy'), findsNothing);
       expect(find.text('Translate'), findsNothing);
+
+      // The keyboard's own selection, through the input connection, is not Flutter's to refuse: with it the text actions do appear, which shows the check above has teeth; and no menu shows them.
+      tester.testTextInput.updateEditingValue(
+        TextEditingValue(
+          text: exampleText,
+          selection: TextSelection(
+            baseOffset: 0,
+            extentOffset: exampleText.length,
+          ),
+        ),
+      );
+      await settle(tester);
+      expect(
+        state.contextMenuButtonItems.map((item) => item.label),
+        contains('Translate'),
+      );
+      expect(find.text('Translate'), findsNothing);
     });
 
     testWidgets('Paste reads the clipboard once, cleans and checks it', (
@@ -1268,6 +1294,51 @@ void main() {
       expect(controller.text, isEmpty);
       expect(clipboardReads, 2);
       semantics.dispose();
+    });
+
+    testWidgets('a pasted key is never sent to the keyboard', (tester) async {
+      await openWizard(tester);
+      await tester.tap(pasteInput());
+      await settle(tester);
+      expect(
+        tester.state<EditableTextState>(pasteInput()).widget.focusNode.hasFocus,
+        isTrue,
+      );
+      tester.testTextInput.log.clear();
+
+      clipboard = exampleText;
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+
+      expect(
+        tester.widget<EditableText>(pasteInput()).controller.text ==
+            exampleText,
+        isTrue,
+      );
+      expect(
+        tester.state<EditableTextState>(pasteInput()).widget.focusNode.hasFocus,
+        isFalse,
+      );
+      // A boolean, so that a failure does not print the key it found.
+      expect(
+        tester.testTextInput.log.any(
+          (call) => '${call.arguments}'.contains(exampleText.substring(5, 30)),
+        ),
+        isFalse,
+      );
+    });
+
+    testWidgets('a pasted text is bounded as a typed one', (tester) async {
+      await openWizard(tester);
+
+      clipboard = 'a' * 300;
+      await tester.tap(find.byTooltip('Paste'));
+      await settle(tester);
+
+      expect(
+        tester.widget<EditableText>(pasteInput()).controller.text,
+        'a' * GarageKeyField.maxLength,
+      );
     });
 
     testWidgets('an empty or unreadable clipboard changes nothing', (
@@ -1445,81 +1516,153 @@ void main() {
     );
   });
 
-  group('a key generated while the user leaves the Garage', () {
+  /// The app goes to the background and comes back.
+  Future<void> backgroundAndBack(WidgetTester tester) async {
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+      await tester.pump();
+    }
+    await settle(tester);
+  }
+
+  Finder backupAlert() =>
+      find.textContaining('Store it somewhere safe!', findRichText: true);
+
+  group('a key shown for backup', () {
     testWidgets(
-      'is shown once at the next visit, for backup, without the PIN',
+      'right after the draw, is hidden when the app goes to the background',
       (tester) async {
-        await openWizard(tester, slowWrites: true);
+        await openWizard(tester);
         await tester.tap(find.text('Generate Garage Key'));
-        await settle(tester);
-        // The key is being written: the user leaves before the vault answers.
-        expect(storage.entries, isEmpty);
-        await tester.tap(find.text('Offers'));
-        // The Garage is gone before the vault answers.
-        await tester.pump();
         await letTheVaultSettle(tester);
-        expect(storage.entries.keys, [_testnetEntry]);
-
-        await tester.tap(find.text('Garage'));
-        await settle(tester);
-        await letTheVaultSettle(tester);
-
-        expect(reauthentications, 0);
-        expect(
-          find.textContaining('Store it somewhere safe!', findRichText: true),
-          findsOneWidget,
-        );
         expect(find.byType(GarageKeyView), findsOneWidget);
-        final stored = switch (GarageKey.parse(shownKey(tester))) {
-          Ok(:final value) => value,
-          Err() => fail('not a key'),
-        };
-        expect(stored, isNot(fixedKey));
+        expect(reauthentications, 0);
 
-        await tester.tap(find.text('Continue'));
-        await settle(tester);
-        expect(find.text('Robot #0'), findsOneWidget);
+        await backgroundAndBack(tester);
 
-        // Shown once: the next visit is the profile, the key behind the PIN.
+        // Still the backup step, the key now behind the PIN as on the profile.
+        expect(backupAlert(), findsOneWidget);
+        expect(find.byType(GarageKeyView), findsNothing);
+        expect(find.text('Continue'), findsNothing);
+        await tester.tap(find.text('Show Garage Key'));
+        await afterRoute(tester);
+        await tester.tap(find.text('PIN back'));
+        await afterRoute(tester);
+        expect(find.byType(GarageKeyView), findsNothing);
+        await tester.tap(find.text('Show Garage Key'));
+        await afterRoute(tester);
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        expect(find.byType(GarageKeyView), findsOneWidget);
+
+        // Shown after the PIN, and hidden again in the background.
+        await backgroundAndBack(tester);
+        expect(find.byType(GarageKeyView), findsNothing);
+        expect(backupAlert(), findsOneWidget);
+      },
+    );
+
+    testWidgets('drawn while the user left, is behind the PIN hours later', (
+      tester,
+    ) async {
+      await openWizard(tester, slowWrites: true);
+      await tester.tap(find.text('Generate Garage Key'));
+      await settle(tester);
+      // The key is being written: the user leaves before the vault answers.
+      expect(storage.entries, isEmpty);
+      await tester.tap(find.text('Offers'));
+      // The Garage is gone before the vault answers.
+      await tester.pump();
+      await letTheVaultSettle(tester);
+      expect(storage.entries.keys, [_testnetEntry]);
+      // Two hours, and a trip to the background.
+      for (var i = 0; i < 120; i++) {
+        await tester.pump(const Duration(minutes: 1));
+      }
+      await backgroundAndBack(tester);
+
+      await tester.tap(find.text('Garage'));
+      await settle(tester);
+      await letTheVaultSettle(tester);
+
+      expect(backupAlert(), findsOneWidget);
+      expect(find.byType(GarageKeyView, skipOffstage: false), findsNothing);
+      expect(reauthentications, 0);
+      await tester.tap(find.text('Show Garage Key'));
+      await afterRoute(tester);
+      await tester.tap(find.text('PIN ok'));
+      await afterRoute(tester);
+      expect(find.byType(GarageKeyView), findsOneWidget);
+      final stored = switch (GarageKey.parse(shownKey(tester))) {
+        Ok(:final value) => value,
+        Err() => fail('not a key'),
+      };
+      expect(stored, isNot(fixedKey));
+
+      await tester.tap(find.text('Continue'));
+      await settle(tester);
+      expect(find.text('Robot #0'), findsOneWidget);
+
+      // Acknowledged: the next visit is the profile, without the alert.
+      await tester.tap(find.text('Offers'));
+      await settle(tester);
+      await tester.tap(find.text('Garage'));
+      await settle(tester);
+      await letTheVaultSettle(tester);
+      expect(backupAlert(), findsNothing);
+      expect(find.byType(GarageKeyView), findsNothing);
+      expect(find.text('Show Garage Key'), findsOneWidget);
+    });
+
+    testWidgets(
+      'seen but not acknowledged, keeps its alert at the next visit',
+      (tester) async {
+        await openWizard(tester);
+        await tester.tap(find.text('Generate Garage Key'));
+        await letTheVaultSettle(tester);
+        expect(find.byType(GarageKeyView), findsOneWidget);
+
         await tester.tap(find.text('Offers'));
         await settle(tester);
         await tester.tap(find.text('Garage'));
         await settle(tester);
         await letTheVaultSettle(tester);
+
+        expect(backupAlert(), findsOneWidget);
         expect(find.byType(GarageKeyView), findsNothing);
         expect(find.text('Show Garage Key'), findsOneWidget);
       },
     );
 
-    testWidgets('is not shown again once the user saw it and left', (
-      tester,
-    ) async {
-      await openWizard(tester);
+    testWidgets('of one network, gives no alert on the other', (tester) async {
+      await openWizard(tester, held: {_mainnetEntry: null});
       await tester.tap(find.text('Generate Garage Key'));
       await letTheVaultSettle(tester);
       expect(find.byType(GarageKeyView), findsOneWidget);
 
-      await tester.tap(find.text('Offers'));
-      await settle(tester);
-      await tester.tap(find.text('Garage'));
+      network.switchTo(RobosatsNetwork.mainnet);
       await settle(tester);
       await letTheVaultSettle(tester);
+      expect(backupAlert(), findsNothing);
+      expect(find.text(fixedNickname), findsOneWidget);
 
+      network.switchTo(RobosatsNetwork.testnet);
+      await settle(tester);
+      await letTheVaultSettle(tester);
+      expect(backupAlert(), findsOneWidget);
       expect(find.byType(GarageKeyView), findsNothing);
-      expect(find.text('Show Garage Key'), findsOneWidget);
     });
 
-    testWidgets('a deleted key is not shown at the next visit', (tester) async {
-      await openWizard(tester, slowWrites: true);
+    testWidgets('deleted, gives no alert any more', (tester) async {
+      await openWizard(tester);
       await tester.tap(find.text('Generate Garage Key'));
-      await settle(tester);
-      await tester.tap(find.text('Offers'));
-      // The Garage is gone before the vault answers.
-      await tester.pump();
-      await letTheVaultSettle(tester);
-      // Deleted elsewhere in this run: here through the cubit of a visit, as « Delete All » does.
-      await tester.tap(find.text('Garage'));
-      await settle(tester);
       await letTheVaultSettle(tester);
       await tester.tap(find.text('Continue'));
       await settle(tester);
@@ -1531,11 +1674,74 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('Delete Garage Key'));
       await settle(tester);
-
       expect(find.text('Start'), findsOneWidget);
       expect(storage.entries, isEmpty);
+
+      // A key generated anew is the one of a new draw, shown without the PIN, and a key generated elsewhere gives no alert.
+      storage.entries[_testnetEntry] = storedFixedKeys[_testnetEntry] ?? '';
+      await tester.tap(find.text('Offers'));
+      await settle(tester);
+      await tester.tap(find.text('Garage'));
+      await settle(tester);
+      await letTheVaultSettle(tester);
+      expect(backupAlert(), findsNothing);
+      expect(find.text('Show Garage Key'), findsOneWidget);
     });
   });
+
+  testWidgets(
+    'Continue on a key that does not await its backup goes to the robot',
+    (tester) async {
+      // The wizard with a key that was pasted: its first step never shows it, whatever step it was asked for.
+      final key = NetworkGarageKey(RobosatsNetwork.testnet, fixedKey);
+      final robot = switch (key.firstUsableRobot(0)) {
+        Ok(:final value) => value,
+        Err() => fail('no robot'),
+      };
+      FakeSecureStoragePlatform().install();
+      final repository = GarageKeyRepositoryImpl(
+        Secrets(scratchDirectory: () async => '.').garageKeys(),
+      );
+      final cubit = GarageCubit(
+        RobosatsNetwork.testnet,
+        ReadGarageKeyUsecase(repository),
+        GenerateGarageKeyUsecase(repository),
+        ImportGarageKeyUsecase(repository),
+        DeleteGarageKeyUsecase(repository),
+        UnacknowledgedGarageKeys(),
+      );
+      addTearDown(cubit.close);
+      final clipboardHelper = GarageKeyClipboard();
+      addTearDown(clipboardHelper.dispose);
+      await tester.pumpWidget(
+        harness(
+          BlocProvider.value(
+            value: cubit,
+            child: GarageWizard(
+              step: 1,
+              state: GarageWithKey(
+                RobosatsNetwork.testnet,
+                key: key,
+                robot: GarageRobotFace.of(robot),
+                isNew: true,
+              ),
+              clipboard: clipboardHelper,
+              reauthenticate: reauthenticate,
+              onStep: (_) {},
+              onSearch: () {},
+              onSeeProfile: () {},
+            ),
+          ),
+        ),
+      );
+      await settle(tester);
+
+      expect(find.text('Hi! My name is'), findsOneWidget);
+      expect(find.text(fixedNickname), findsOneWidget);
+      expect(backupAlert(), findsNothing);
+      expect(find.byType(GarageKeyView), findsNothing);
+    },
+  );
 
   testWidgets('nothing printed or logged through the screens holds a key', (
     tester,
