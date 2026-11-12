@@ -37,6 +37,11 @@ String _exampleGarageKey() =>
             as Map<String, dynamic>)['garage_key']
         as String;
 
+/// The phrases of the Tor wait in a fixed order, from the second one, « Peeling the onion, layer by layer », so that the captures do not change from one run to the next.
+final _phrasesFromTheSecond = P2pShuffle(
+  (count) => [for (var i = 0; i < count; i++) (i + 1) % count],
+);
+
 /// The `no_screenshot` plugin behind the capture protection of the Garage answers on this channel.
 const _privacyChannel = MethodChannel('com.flutterplaza.no_screenshot_methods');
 
@@ -158,10 +163,12 @@ void main() {
         });
       }
 
+      /// The tab on [network]; Tor reports the states added to the controller returned, or the reports added to [reports] when given.
       Future<StreamController<P2pTorState>> show(
         RobosatsNetwork network, {
         Set<String> offline = const {},
         Set<String> held = const {},
+        StreamController<P2pTorReport>? reports,
       }) async {
         final locator = GetIt.asNewInstance();
         final tor = StreamController<P2pTorState>.broadcast();
@@ -170,8 +177,10 @@ void main() {
         setUpP2pForTesting(
           locator,
           transport: _RecordedTransport(network, offline: offline, held: held),
-          torStates: () => tor.stream,
+          torStates: reports == null ? () => tor.stream : null,
+          torReports: reports == null ? null : () => reports.stream,
           clock: () => _now,
+          shuffle: _phrasesFromTheSecond,
         );
         await tester.pumpWidget(
           _App(locale: locale, locator: locator, network: network),
@@ -189,18 +198,22 @@ void main() {
         }
       }
 
-      // The wait for Tor, on testnet so that its banner shows as in the mock-up.
-      var tor = await show(RobosatsNetwork.testnet);
-      tor.add(P2pTorState.notStarted);
+      // The wait for Tor, on testnet so that its banner shows as in the mock-up: the first phrase of the fixed order, then Tor at 42 % of its start.
+      // Both are shown within the first 2 seconds of the wait, once the phrase has faded in.
+      final reports = StreamController<P2pTorReport>.broadcast();
+      addTearDown(reports.close);
+      var tor = await show(RobosatsNetwork.testnet, reports: reports);
+      reports.add(P2pTorReport(P2pTorState.notStarted));
       await settle();
+      await tester.pump(const Duration(milliseconds: 300));
       await capture('tor-initialisation');
-      tor.add(P2pTorState.connecting);
+      reports.add(P2pTorReport(P2pTorState.connecting, progress: 0.42));
       await settle();
       await capture('tor');
-      tor.add(P2pTorState.failed);
+      reports.add(P2pTorReport(P2pTorState.failed));
       await settle();
       await capture('tor-erreur');
-      tor.add(P2pTorState.ready);
+      reports.add(P2pTorReport(P2pTorState.ready));
       await settle();
       await capture('offres-testnet-vide');
 
