@@ -13,6 +13,7 @@ import 'package:p2p/src/domain/depth_chart.dart';
 import 'package:p2p/src/ui/depth_chart_view.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
+import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
 import 'package:p2p/testing.dart';
 
@@ -287,6 +288,16 @@ void main() {
         tester.widget<RobotAvatar>(find.byType(RobotAvatar)).seed,
         hashId(2),
       );
+      // The maker is badged with its coordinator, as in the official client's tooltip.
+      expect(
+        tester
+            .widget<CoordinatorAvatar>(
+              inTooltip(find.byType(CoordinatorAvatar)),
+            )
+            .coordinator
+            .shortAlias,
+        'temple',
+      );
       // Near the right edge, the tooltip opens on the left of the finger, inside the chart.
       expect(tester.getRect(tooltip).right, lessThanOrEqualTo(at.dx));
       expect(
@@ -301,6 +312,15 @@ void main() {
         hashId(3),
       );
       expect(inTooltip(find.text('TheBigLake')), findsOneWidget);
+      expect(
+        tester
+            .widget<CoordinatorAvatar>(
+              inTooltip(find.byType(CoordinatorAvatar)),
+            )
+            .coordinator
+            .shortAlias,
+        'lake',
+      );
 
       await gesture.up();
       await tester.pump();

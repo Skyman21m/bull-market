@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/bond_warning.dart';
 import 'package:p2p/src/presentation/p2p_failure_l10n.dart';
+import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/expiry_ring.dart';
 import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/src/ui/widgets/reversible_payments_dialog.dart';
+import 'package:p2p/src/ui/widgets/robot_avatar.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
@@ -113,6 +115,29 @@ void main() {
 
       expect(find.byType(Tooltip), findsNothing);
     });
+
+    testWidgets(
+      'the maker is badged with its coordinator at the robot\'s bottom left, without moving the row',
+      (tester) async {
+        await showRow(tester, 3);
+
+        final robot = tester.getRect(find.byType(RobotAvatar));
+        final badge = find.byType(CoordinatorAvatar);
+        expect(
+          tester.widget<CoordinatorAvatar>(badge).coordinator.shortAlias,
+          'temple',
+        );
+        // The robot keeps its size and its place, after the row's padding.
+        expect(robot.size, const Size.square(40));
+        expect(robot.left, tester.getRect(find.byType(OfferRow)).left + 16);
+        // The badge is two fifths of the robot, over its bottom-left corner.
+        final corner = tester.getRect(badge);
+        expect(corner.size, const Size.square(16));
+        expect(corner.center.dx, lessThan(robot.center.dx));
+        expect(corner.center.dy, greaterThan(robot.center.dy));
+        expect(corner.overlaps(robot), isTrue);
+      },
+    );
   });
 
   group('reversible payments', () {

@@ -750,7 +750,14 @@ void main() {
             of: find.byType(CoordinatorAvatar),
             matching: find.bySemanticsLabel(RegExp('.')),
           );
-          expect(find.byType(CoordinatorAvatar), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(OrderDetailsScreen),
+              matching: find.byType(CoordinatorAvatar),
+            ),
+            findsOneWidget,
+          );
+          // No avatar of a coordinator, the host's or a badge of the book below, says anything.
           expect(unlabelled(), findsNothing);
           expect(find.bySemanticsLabel(RegExp('Temple of Sats')), findsWidgets);
 
