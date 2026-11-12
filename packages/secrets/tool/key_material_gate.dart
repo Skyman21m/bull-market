@@ -64,7 +64,16 @@ Future<KeyMaterialReport> checkKeyMaterial(String rootPath) async {
         violations.add('$relative: ${diagnostic.diagnosticCode.lowerCaseName}');
       }
     }
-    violations.addAll(checkUnit(result.unit, relative));
+    final visitor = _check(result.unit, relative);
+    violations.addAll(visitor.violations);
+    // The composition root asks for the handle once, in the shape [_KeyMaterialVisitor.isHandleCall] allows.
+    if (relative == 'lib/locator.dart' &&
+        visitor.declaresAppLocator &&
+        visitor.handleCalls != 1) {
+      violations.add(
+        '$relative: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
+      );
+    }
     for (final target in directiveTargets(result.unit)) {
       final real = File(target).existsSync()
           ? File(target).resolveSymbolicLinksSync()
@@ -154,17 +163,105 @@ Iterable<String> directiveTargets(CompilationUnit unit) sync* {
   }
 }
 
-List<String> checkUnit(CompilationUnit unit, String relativePath) {
-  final visitor = _KeyMaterialVisitor(relativePath);
+List<String> checkUnit(CompilationUnit unit, String relativePath) =>
+    _check(unit, relativePath).violations.toList()..sort();
+
+_KeyMaterialVisitor _check(CompilationUnit unit, String relativePath) {
+  final visitor = _KeyMaterialVisitor(relativePath, unit);
   unit.accept(visitor);
-  return visitor.violations.toList()..sort();
+  return visitor;
 }
 
 class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   final String path;
   final Set<String> violations = {};
 
-  _KeyMaterialVisitor(this.path);
+  /// The file of the unit being checked, and the folder of its analysis context, which name where a declaration lives (see [declarationPath]).
+  final String? unitSource;
+  final String? analysisRoot;
+
+  /// How many calls of `Secrets.garageKeys` of the allowed shape the unit makes, and whether it declares the class `AppLocator` (see [checkKeyMaterial]).
+  int handleCalls = 0;
+  bool declaresAppLocator = false;
+
+  _KeyMaterialVisitor(this.path, CompilationUnit unit)
+    : unitSource = unit.declaredFragment?.source.fullName,
+      analysisRoot = unit
+          .declaredFragment
+          ?.element
+          .session
+          .analysisContext
+          .contextRoot
+          .root
+          .path;
+
+  /// Where [element] is declared, relative to the folder of the analysis context, the unit being checked standing at [path].
+  String? declarationPath(Element? element) {
+    final source = element?.firstFragment.libraryFragment?.source.fullName;
+    final root = analysisRoot;
+    if (source == null) return null;
+    if (source == unitSource) return path;
+    return root != null && source.startsWith('$root/')
+        ? source.substring(root.length + 1)
+        : null;
+  }
+
+  /// `AppLocator.setup` or `AppLocator.setupP2p` of `lib/locator.dart`, the static methods that compose the app and hand P2P the Garage Key handle (issue #47).
+  bool isCompositionMethod(Element? element) =>
+      element is MethodElement &&
+      element.isStatic &&
+      element.enclosingElement?.name == 'AppLocator' &&
+      {'setup', 'setupP2p'}.contains(element.name) &&
+      declarationPath(element) == 'lib/locator.dart';
+
+  /// The `withGarageKeys` parameter of `AppLocator.setup` or of `AppLocator.setupP2p`.
+  bool isCompositionFlag(Element? element) =>
+      element is FormalParameterElement &&
+      element.name == 'withGarageKeys' &&
+      isCompositionMethod(element.enclosingElement);
+
+  /// `Bull.init` of `lib/init.dart`, the foreground composition.
+  bool isForegroundInit(Element? element) =>
+      element is MethodElement &&
+      element.isStatic &&
+      element.enclosingElement?.name == 'Bull' &&
+      element.name == 'init' &&
+      declarationPath(element) == 'lib/init.dart';
+
+  /// Whether [node] is the one call of `Secrets.garageKeys` the composition makes (issue #47).
+  ///
+  /// In the static `AppLocator.setupP2p` of `lib/locator.dart`, `<vault>.garageKeys()` is the value of `withGarageKeys ? … : null`, whose condition is that method's own flag, and that choice is the `garageKeys:` argument of `P2pFeature.setup`, called as the method's body or as a statement of it.
+  bool isHandleCall(AstNode node) {
+    final call = node.parent;
+    if (path != 'lib/locator.dart' ||
+        node is! SimpleIdentifier ||
+        call is! MethodInvocation ||
+        call.methodName != node) {
+      return false;
+    }
+    final choice = call.parent;
+    if (choice is! ConditionalExpression ||
+        choice.thenExpression != call ||
+        choice.elseExpression is! NullLiteral) {
+      return false;
+    }
+    final condition = choice.condition;
+    final argument = choice.parent;
+    final arguments = argument?.parent;
+    final setup = arguments?.parent;
+    if (condition is! SimpleIdentifier ||
+        argument is! NamedExpression ||
+        argument.name.label.name != 'garageKeys' ||
+        arguments is! ArgumentList ||
+        setup is! MethodInvocation ||
+        !_isP2pSetup(setup.methodName.element) ||
+        !_isDirectStatementOf(setup, 'setupP2p')) {
+      return false;
+    }
+    final flag = condition.element;
+    return isCompositionFlag(flag) &&
+        flag?.enclosingElement?.name == 'setupP2p';
+  }
 
   void check(Element? element, AstNode node) {
     if (element == null) {
@@ -179,7 +276,14 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
       return;
     }
     final symbol = materialSymbol(element);
-    if (symbol == null || _isException(path, node, symbol)) return;
+    if (symbol == null) return;
+    if (symbol.startsWith('package:secrets/') &&
+        symbol.endsWith('#Secrets.garageKeys') &&
+        isHandleCall(node)) {
+      handleCalls++;
+      return;
+    }
+    if (_isException(path, node, symbol)) return;
     violations.add('$path: $symbol');
   }
 
@@ -237,6 +341,7 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
   void visitClassDeclaration(ClassDeclaration node) {
     final reader = _garageKeyReaders[path];
     final name = node.namePart.typeName.lexeme;
+    if (name == 'AppLocator') declaresAppLocator = true;
     if (reader != null && name == reader.owner) {
       final element = node.declaredFragment?.element;
       if (element == null) {
@@ -262,7 +367,34 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
         node.argumentList.arguments.isNotEmpty) {
       violations.add('$path: $_bridgeLibrary#BullSdk.init with arguments');
     }
+    checkContainer(node, element);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    checkContainer(node, node.element);
+    super.visitFunctionExpressionInvocation(node);
+  }
+
+  /// No Garage Key handle goes into a GetIt container or comes out of one (issue #47).
+  ///
+  /// A call of `package:get_it` fails when one of its type arguments, written or inferred, or a `Type` it is passed, mentions `GarageKeys`: the composition hands the handle to `P2pFeature.setup` alone, and the feature keeps it in its repository, so a container would hand it to any isolate that reads it.
+  void checkContainer(InvocationExpression node, Element? element) {
+    if (!(element?.library?.uri.toString().startsWith('package:get_it/') ??
+        false)) {
+      return;
+    }
+    final types = [
+      ...?node.typeArgumentTypes,
+      for (final argument in node.argumentList.arguments)
+        if ((argument is NamedExpression ? argument.expression : argument)
+            case TypeLiteral(:final type))
+          type.type,
+    ];
+    if (types.any(_mentionsGarageKeys)) {
+      violations.add('$path: package:get_it#GarageKeys in a container');
+    }
   }
 
   @override
@@ -270,38 +402,58 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
 
   /// Which composition of the app hands P2P the Garage Key handle (issue #47).
   ///
-  /// `AppLocator.setup` is called with a boolean literal for `withGarageKeys`, `true` only in `Bull.init` of `lib/init.dart`, the foreground composition.
-  /// `AppLocator.setupP2p`, which asks the vault for the handle when its flag is true, is called only by `AppLocator.setup` of `lib/locator.dart`, with the flag that method received.
-  /// Any other reference to either method (a tear-off, which `Function.apply` or a dynamic call needs) fails closed: Dart cannot reach a static method dynamically without one.
+  /// `Bull.init` of `lib/init.dart`, the foreground composition, is called only by `startApp` of `lib/bootstrap.dart`.
+  /// `AppLocator.setup` is called with a boolean literal for `withGarageKeys`, and `true` only as a statement of `Bull.init` itself, not in a closure or a local function.
+  /// `AppLocator.setupP2p`, which asks the vault for the handle when its flag is true, is called only as a statement of `AppLocator.setup` of `lib/locator.dart`, with the flag that method received.
+  /// Any other reference to these methods (a tear-off, which `Function.apply` or a dynamic call needs) fails closed: Dart cannot reach a static method dynamically without one.
   void checkComposition(SimpleIdentifier node) {
     final element = node.element;
-    if (!_isCompositionMethod(element)) return;
-    final member = 'AppLocator.${element?.name}';
+    final String member;
+    if (isCompositionMethod(element)) {
+      member = 'AppLocator.${element?.name}';
+    } else if (isForegroundInit(element)) {
+      member = 'Bull.init';
+    } else {
+      return;
+    }
     final invocation = node.parent;
     if (invocation is! MethodInvocation || invocation.methodName != node) {
       violations.add('$path: $member#not a direct call');
       return;
     }
     final (:owner, :function) = _enclosingDeclaration(node);
+    if (member == 'Bull.init') {
+      if (path != 'lib/bootstrap.dart' ||
+          owner != null ||
+          function != 'startApp') {
+        violations.add(
+          '$path: Bull.init#outside startApp of lib/bootstrap.dart',
+        );
+      }
+      return;
+    }
     final flag = [
       for (final argument in invocation.argumentList.arguments)
         if (argument is NamedExpression &&
             argument.name.label.name == 'withGarageKeys')
           argument.expression,
     ].firstOrNull;
-    if (element?.name == 'setupP2p') {
+    if (member == 'AppLocator.setupP2p') {
       if (path != 'lib/locator.dart' ||
           owner != 'AppLocator' ||
-          function != 'setup') {
+          !_isDirectStatementOf(invocation, 'setup')) {
         violations.add('$path: $member#outside AppLocator.setup');
       } else if (flag is! SimpleIdentifier ||
-          !_isCompositionFlag(flag.element)) {
+          !isCompositionFlag(flag.element) ||
+          flag.element?.enclosingElement?.name != 'setup') {
         violations.add('$path: $member#withGarageKeys not forwarded');
       }
     } else if (flag is! BooleanLiteral) {
       violations.add('$path: $member#withGarageKeys not a literal');
     } else if (flag.value &&
-        (path != 'lib/init.dart' || owner != 'Bull' || function != 'init')) {
+        (path != 'lib/init.dart' ||
+            owner != 'Bull' ||
+            !_isDirectStatementOf(invocation, 'init'))) {
       violations.add('$path: $member#withGarageKeys: true outside Bull.init');
     }
   }
@@ -315,19 +467,19 @@ class _KeyMaterialVisitor extends RecursiveAstVisitor<void> {
     super.visitSimpleIdentifier(node);
   }
 
-  // The flag that `AppLocator.setup` forwards to `setupP2p` keeps the value its caller passed.
+  // The flags of `AppLocator.setup` and `setupP2p` keep the value their caller passed.
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
-    if (_isCompositionFlag(node.writeElement)) {
-      violations.add('$path: AppLocator.setup#withGarageKeys reassigned');
+    if (isCompositionFlag(node.writeElement)) {
+      violations.add('$path: AppLocator#withGarageKeys reassigned');
     }
     super.visitAssignmentExpression(node);
   }
 
   @override
   void visitAssignedVariablePattern(AssignedVariablePattern node) {
-    if (_isCompositionFlag(node.element)) {
-      violations.add('$path: AppLocator.setup#withGarageKeys reassigned');
+    if (isCompositionFlag(node.element)) {
+      violations.add('$path: AppLocator#withGarageKeys reassigned');
     }
     super.visitAssignedVariablePattern(node);
   }
@@ -441,7 +593,7 @@ String? materialSymbol(Element element) {
       symbol == 'RecoverBull.restoreBackup' ||
           symbol == 'EncryptionService.decrypt',
     // The bytes of a stored RoboSats Garage Key, and its two clear forms: whoever holds one controls every robot derived from it.
-    // The handle that reads and writes Garage Keys is asked for by the composition root alone (see [_isException]).
+    // The handle that reads and writes Garage Keys is asked for by the composition root alone (see [_KeyMaterialVisitor.isHandleCall]).
     _ when uri.startsWith('package:secrets/') =>
       symbol == 'GarageKeyMaterial.bytes' || symbol == 'Secrets.garageKeys',
     _ when uri.startsWith('package:robosats/') =>
@@ -565,21 +717,47 @@ Map<String, Element> _namesThrough(
   return (owner: owner, function: function);
 }
 
-/// `AppLocator.setup` or `AppLocator.setupP2p`, the static methods that compose the app and hand P2P the Garage Key handle (issue #47).
-///
-/// They are matched by the name of their class in any library, so that a class of that name elsewhere is held to the same rules; renaming the class of `lib/locator.dart` already fails the gate, whose exception for `Secrets.garageKeys` names it.
-bool _isCompositionMethod(Element? element) =>
-    element is MethodElement &&
-    element.isStatic &&
-    element.enclosingElement?.name == 'AppLocator' &&
-    {'setup', 'setupP2p'}.contains(element.name);
+/// Whether [type] is or contains `GarageKeys` of `package:secrets`.
+bool _mentionsGarageKeys(DartType? type) => switch (type) {
+  InterfaceType(:final element, :final typeArguments) =>
+    (element.name == 'GarageKeys' &&
+            element.library.uri.toString().startsWith('package:secrets/')) ||
+        typeArguments.any(_mentionsGarageKeys),
+  FunctionType(:final returnType, :final formalParameters) =>
+    _mentionsGarageKeys(returnType) ||
+        formalParameters.any(
+          (parameter) => _mentionsGarageKeys(parameter.type),
+        ),
+  RecordType(:final positionalFields, :final namedFields) => [
+    for (final field in positionalFields) field.type,
+    for (final field in namedFields) field.type,
+  ].any(_mentionsGarageKeys),
+  _ => false,
+};
 
-/// The `withGarageKeys` parameter of `AppLocator.setup`.
-bool _isCompositionFlag(Element? element) =>
-    element is FormalParameterElement &&
-    element.name == 'withGarageKeys' &&
-    _isCompositionMethod(element.enclosingElement) &&
-    element.enclosingElement?.name == 'setup';
+/// `P2pFeature.setup`, which receives the Garage Key handle.
+bool _isP2pSetup(Element? element) =>
+    element is MethodElement &&
+    element.name == 'setup' &&
+    element.enclosingElement?.name == 'P2pFeature' &&
+    element.library.uri.toString().startsWith('package:p2p/');
+
+/// Whether [call] stands on its own, as the body of the static method named [method] or as a statement directly in that body: not in a closure, a local function, a condition or a loop.
+bool _isDirectStatementOf(Expression call, String method) {
+  final parent = call.parent;
+  final wrapper = parent is AwaitExpression ? parent.parent : parent;
+  final statementBlock = wrapper is ExpressionStatement ? wrapper.parent : null;
+  final body = switch (wrapper) {
+    ExpressionFunctionBody() => wrapper,
+    ExpressionStatement() when statementBlock is Block =>
+      statementBlock.parent is BlockFunctionBody ? statementBlock.parent : null,
+    _ => null,
+  };
+  final declaration = body?.parent;
+  return declaration is MethodDeclaration &&
+      declaration.isStatic &&
+      declaration.name.lexeme == method;
+}
 
 bool _isException(String path, AstNode node, String symbol) {
   final (:owner, :function) = _enclosingDeclaration(node);
@@ -613,12 +791,6 @@ bool _isException(String path, AstNode node, String symbol) {
               'SwapMasterKey.mnemonic',
             }.contains(member)) ||
         (function == 'toBoltz' && member == 'SwapMasterKey.new');
-  }
-  // The Garage Key handle is asked for in the composition root, which passes it to the P2P feature alone.
-  // That file is also the composition of the WorkManager isolate (`AppLocator.setup` runs there too), so where the call sits inside it still decides which isolates hold the handle.
-  if (path == 'lib/locator.dart' && owner == 'AppLocator') {
-    return member == 'Secrets.garageKeys' &&
-        symbol.startsWith('package:secrets/');
   }
   // A Garage Key is read in one class of one file per use, and nowhere else.
   final garageKeyReader = _garageKeyReaders[path];

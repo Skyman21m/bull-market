@@ -896,10 +896,17 @@ class GarageKeyRepositoryImpl {
 
   group('only the composition root asks for the Garage Key handle', () {
     const locatorPath = 'lib/locator.dart';
+    // The one shape the composition root may ask for the handle in (#47): see the group below.
     const shell = '''
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart' show P2pFeature;
 import 'package:secrets/secrets.dart';
 class AppLocator {
-  static GarageKeys setup(Secrets secrets) => secrets.garageKeys();
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );
 }
 ''';
 
@@ -1047,7 +1054,7 @@ class AppLocator {
 ''';
     // The shape of `lib/init.dart` and of the background handler.
     const foreground = '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 class Bull {
   static Future<void> init() async {
     await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
@@ -1055,18 +1062,21 @@ class Bull {
 }
 ''';
     const background = '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 Future<bool> tasksHandler(String task) async {
   await AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: false);
   return true;
 }
 ''';
 
+    // The composition is bound to its files: the class `AppLocator` of `lib/locator.dart` and `Bull` of `lib/init.dart`, here under the fixture's root.
     setUpAll(() {
-      File('${fixture.path}/app_locator.dart').writeAsStringSync(locator);
-      File('${fixture.path}/app_locator_default.dart').writeAsStringSync('''
-class AppLocator {
-  static Future<void> setup(Object locator, {bool withGarageKeys = true}) async {}
+      File('${fixture.path}/lib/locator.dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync(locator);
+      File('${fixture.path}/lib/init.dart').writeAsStringSync('''
+class Bull {
+  static Future<void> init() async {}
 }
 ''');
     });
@@ -1122,7 +1132,7 @@ class AppLocator {
       // An alias of the class is the class.
       expect(
         await inspect('composition_true_alias', '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 typedef Composition = AppLocator;
 Future<void> compose() =>
     Composition.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
@@ -1152,12 +1162,14 @@ Future<void> compose() =>
       }
       expect(
         await inspect('composition_default', '''
-import 'app_locator_default.dart';
-class Bull {
-  static Future<void> init() => AppLocator.setup(0);
+class AppLocator {
+  static Future<void> setup(Object locator, {bool withGarageKeys = true}) async {}
 }
-''', policyPath: initPath),
-        ['$initPath: AppLocator.setup#withGarageKeys not a literal'],
+class Shell {
+  static Future<void> compose() => AppLocator.setup(0);
+}
+''', policyPath: locatorPath),
+        ['$locatorPath: AppLocator.setup#withGarageKeys not a literal'],
       );
     });
 
@@ -1168,7 +1180,7 @@ class Bull {
           (
             'composition_p2p_handler',
             '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 Future<bool> tasksHandler(String task) async {
   AppLocator.setupP2p(0, withGarageKeys: false);
   return true;
@@ -1188,9 +1200,17 @@ Future<bool> tasksHandler(String task) async {
             locatorPath,
             'outside AppLocator.setup',
           ),
+          // Another file with the same names: the composition is the class of lib/locator.dart.
           (
             'composition_p2p_other_file',
-            locator,
+            '''
+import 'lib/locator.dart' as shell;
+class AppLocator {
+  static Future<void> setup(Object locator, {required bool withGarageKeys}) async {
+    shell.AppLocator.setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+}
+''',
             'lib/core/core_locator.dart',
             'outside AppLocator.setup',
           ),
@@ -1212,7 +1232,7 @@ Future<bool> tasksHandler(String task) async {
                   '    register(true);',
             ),
             locatorPath,
-            'withGarageKeys not forwarded',
+            'outside AppLocator.setup',
           ),
         ]) {
           expect(await inspect(name, source, policyPath: path), [
@@ -1237,7 +1257,7 @@ Future<bool> tasksHandler(String task) async {
             ),
             policyPath: locatorPath,
           ),
-          ['$locatorPath: AppLocator.setup#withGarageKeys reassigned'],
+          ['$locatorPath: AppLocator#withGarageKeys reassigned'],
           reason: name,
         );
       }
@@ -1251,7 +1271,7 @@ Future<bool> tasksHandler(String task) async {
           (
             'composition_reflection',
             '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 typedef Composition = AppLocator;
 class Bull {
   static Future<void> init() =>
@@ -1267,7 +1287,7 @@ class Bull {
           (
             'composition_tear_off',
             '''
-import 'app_locator.dart';
+import 'lib/locator.dart';
 class Bull {
   static Future<void> init() async {
     final compose = AppLocator.setup;
@@ -1293,7 +1313,7 @@ class Bull {
           (
             'composition_prefixed',
             '''
-import 'app_locator.dart' as shell;
+import 'lib/locator.dart' as shell;
 class Bull {
   static Future<void> init() async {
     final register = shell.AppLocator.setupP2p;
@@ -1332,6 +1352,369 @@ class Bull {
 Object call(dynamic shell) => shell.setupP2p(0, withGarageKeys: true);
 '''),
         ['lib/composition_dynamic.dart: unresolved sensitive member setupP2p'],
+      );
+    });
+
+    test('Bull.init is called by startApp of lib/bootstrap.dart alone', () async {
+      const bootstrap = '''
+import 'dart:async';
+import 'lib/init.dart';
+Future<void> startApp() async {
+  await runZonedGuarded(() async {
+    await Bull.init();
+  }, (error, trace) {});
+}
+''';
+      expect(
+        await inspect(
+          'composition_bootstrap',
+          bootstrap,
+          policyPath: 'lib/bootstrap.dart',
+        ),
+        isEmpty,
+      );
+      for (final (name, source, path, reason) in [
+        // The review of #50 (N11) and of #58: the background handler runs the foreground composition.
+        (
+          'composition_init_handler',
+          '''
+import 'lib/init.dart';
+Future<bool> tasksHandler(String task) async {
+  await Bull.init();
+  return true;
+}
+''',
+          handlerPath,
+          'outside startApp of lib/bootstrap.dart',
+        ),
+        (
+          'composition_init_other_function',
+          bootstrap.replaceAll('startApp', 'startAgain'),
+          'lib/bootstrap.dart',
+          'outside startApp of lib/bootstrap.dart',
+        ),
+        (
+          'composition_init_tear_off',
+          '''
+import 'lib/init.dart';
+Future<bool> tasksHandler(String task) async {
+  final compose = Bull.init;
+  await Function.apply(compose, const []);
+  return true;
+}
+''',
+          handlerPath,
+          'not a direct call',
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: path), [
+          '$path: Bull.init#$reason',
+        ], reason: name);
+      }
+    });
+
+    test('true is passed by a statement of Bull.init itself', () async {
+      for (final (name, source) in [
+        // The review of #58: `Bull.init` returns a closure that composes with true, for any caller to run.
+        (
+          'composition_init_closure',
+          '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> Function() init() =>
+      () => AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+}
+''',
+        ),
+        (
+          'composition_init_local_function',
+          '''
+import 'lib/locator.dart';
+class Bull {
+  static Future<void> init() async {
+    Future<void> compose() =>
+        AppLocator.setup(0, payjoinDatabasePath: '', withGarageKeys: true);
+    await compose();
+  }
+}
+''',
+        ),
+        (
+          'composition_init_condition',
+          foreground.replaceAll(
+            '    await AppLocator.setup(',
+            '    if (DateTime.now().year > 0) await AppLocator.setup(',
+          ),
+        ),
+      ]) {
+        expect(await inspect(name, source, policyPath: initPath), [
+          '$initPath: AppLocator.setup#withGarageKeys: true outside Bull.init',
+        ], reason: name);
+      }
+    });
+
+    test('a class named AppLocator elsewhere is not the composition', () async {
+      // The review of #58 found an unrelated `AppLocator.setup()` refused when the class was matched by its name alone.
+      expect(
+        await inspect('composition_lookalike', '''
+class AppLocator {
+  static void setup() {}
+  static void setupP2p() {}
+}
+void use() {
+  AppLocator.setup();
+  final later = AppLocator.setupP2p;
+  later();
+}
+'''),
+        isEmpty,
+      );
+    });
+  });
+
+  group('the handle is asked for once, in AppLocator.setupP2p (#47)', () {
+    const locatorPath = 'lib/locator.dart';
+    const head = '''
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart' show P2pFeature;
+import 'package:secrets/secrets.dart';
+''';
+    // `lib/locator.dart` of today: `setupP2p` asks for the handle only when its own flag is true, and hands it to `P2pFeature.setup` alone.
+    const allowed =
+        '''
+${head}class AppLocator {
+  static Future<void> setup(GetIt locator, {required bool withGarageKeys}) async {
+    setupP2p(locator, withGarageKeys: withGarageKeys);
+  }
+
+  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );
+}
+''';
+    const handle = '#Secrets.garageKeys';
+    String withSetupP2p(String body) => allowed.replaceAll(
+      '''  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
+      const P2pFeature().setup(
+        locator,
+        garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,
+      );''',
+      body,
+    );
+
+    test('lib/locator.dart of today passes', () async {
+      expect(
+        await inspect('handle_allowed', allowed, policyPath: locatorPath),
+        isEmpty,
+      );
+    });
+
+    test('any other call of Secrets.garageKeys in AppLocator is refused', () async {
+      for (final (name, source) in [
+        // The review of #58 (A1): another static method of AppLocator, which the background handler then calls.
+        (
+          'handle_other_method',
+          allowed.replaceAll(
+            '  static void setupP2p(',
+            '  static GarageKeys handle(GetIt locator) =>\n'
+                '      locator<Secrets>().garageKeys();\n\n'
+                '  static void setupP2p(',
+          ),
+        ),
+        // A1b: a static field.
+        (
+          'handle_static_field',
+          allowed.replaceAll(
+            '  static void setupP2p(',
+            '  static final GarageKeys handle = GetIt.instance<Secrets>().garageKeys();\n\n'
+                '  static void setupP2p(',
+          ),
+        ),
+        (
+          'handle_unconditional',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>\n'
+            '      const P2pFeature().setup(\n'
+            '        locator,\n'
+            '        garageKeys: locator<Secrets>().garageKeys(),\n'
+            '      );',
+          ),
+        ),
+        // The review of #50 (M15): the condition is not the flag.
+        (
+          'handle_other_condition',
+          allowed.replaceAll(
+            'garageKeys: withGarageKeys ?',
+            'garageKeys: locator.isRegistered<Secrets>() ?',
+          ),
+        ),
+        (
+          'handle_inverted',
+          allowed.replaceAll(
+            'withGarageKeys ? locator<Secrets>().garageKeys() : null',
+            '!withGarageKeys ? null : locator<Secrets>().garageKeys()',
+          ),
+        ),
+        (
+          'handle_through_a_variable',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    final keys = withGarageKeys ? locator<Secrets>().garageKeys() : null;\n'
+            '    const P2pFeature().setup(locator, garageKeys: keys);\n'
+            '  }',
+          ),
+        ),
+        (
+          'handle_to_another_callee',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>\n'
+            '      keep(garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null);\n\n'
+            '  static void keep({GarageKeys? garageKeys}) {}',
+          ),
+        ),
+        (
+          'handle_in_a_closure',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    void later() => const P2pFeature().setup(\n'
+            '      locator,\n'
+            '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '    );\n'
+            '    later();\n'
+            '  }',
+          ),
+        ),
+        // A2: setupP2p as an instance method; A3: setupP2p renamed.
+        (
+          'handle_instance_method',
+          allowed
+              .replaceAll('static void setupP2p(GetIt', 'void setupP2p(GetIt')
+              .replaceAll(
+                '    setupP2p(locator, withGarageKeys: withGarageKeys);\n',
+                '',
+              ),
+        ),
+        ('handle_renamed', allowed.replaceAll('setupP2p', 'registerP2p')),
+      ]) {
+        expect(
+          await inspect(name, source, policyPath: locatorPath),
+          contains(
+            allOf(
+              startsWith('$locatorPath: package:secrets/'),
+              endsWith(handle),
+            ),
+          ),
+          reason: name,
+        );
+      }
+    });
+
+    test('the flag of setupP2p is never reassigned', () async {
+      expect(
+        await inspect(
+          'handle_flag_reassigned',
+          withSetupP2p(
+            '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+            '    withGarageKeys = true;\n'
+            '    const P2pFeature().setup(\n'
+            '      locator,\n'
+            '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+            '    );\n'
+            '  }',
+          ),
+          policyPath: locatorPath,
+        ),
+        ['$locatorPath: AppLocator#withGarageKeys reassigned'],
+      );
+    });
+
+    test(
+      'the composition root asks for the handle exactly once',
+      () async {
+        for (final (name, source, expected) in [
+          ('once', allowed, <String>[]),
+          (
+            'never',
+            allowed.replaceAll(
+              'withGarageKeys ? locator<Secrets>().garageKeys() : null',
+              'null',
+            ),
+            [
+              'lib/locator.dart: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
+            ],
+          ),
+          (
+            'twice',
+            withSetupP2p(
+              '  static void setupP2p(GetIt locator, {required bool withGarageKeys}) {\n'
+              '    const P2pFeature().setup(\n'
+              '      locator,\n'
+              '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '    );\n'
+              '    const P2pFeature().setup(\n'
+              '      locator,\n'
+              '      garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null,\n'
+              '    );\n'
+              '  }',
+            ),
+            [
+              'lib/locator.dart: AppLocator.setupP2p#not one call of Secrets.garageKeys of the allowed shape',
+            ],
+          ),
+        ]) {
+          final root = Directory('${fixture.path}/handle_$name')..createSync();
+          File('${root.path}/lib/locator.dart')
+            ..createSync(recursive: true)
+            ..writeAsStringSync(source);
+          final report = await checkKeyMaterial(root.path);
+          expect(report.violations, expected, reason: name);
+        }
+        // Each root resolves the P2P feature again.
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test('no GetIt container holds or hands out the handle', () async {
+      for (final (name, statement) in [
+        // The review of #58 (A1c): `setup` registers the handle for every isolate, whatever the flag.
+        ('handle_registered', 'locator.registerSingleton<GarageKeys>(keys);'),
+        (
+          'handle_registered_inferred',
+          'locator.registerLazySingleton(() => keys);',
+        ),
+        ('handle_looked_up', 'locator<GarageKeys>();'),
+        ('handle_got', 'locator.get<GarageKeys>();'),
+        ('handle_by_type', 'locator.get<Object>(type: GarageKeys);'),
+        (
+          'handle_looked_up_inferred',
+          'const P2pFeature().setup(locator, garageKeys: locator());',
+        ),
+      ]) {
+        expect(
+          await inspect('container_$name', '''
+$head
+void wire(GetIt locator, GarageKeys keys) {
+  $statement
+}
+'''),
+          [
+            'lib/container_$name.dart: package:get_it#GarageKeys in a container',
+          ],
+          reason: name,
+        );
+      }
+      expect(
+        await inspect('container_other_types', '''
+$head
+void wire(GetIt locator) {
+  locator.registerSingleton<Object>(0);
+  locator<Secrets>();
+  locator.isRegistered<Secrets>();
+}
+'''),
+        isEmpty,
       );
     });
   });
