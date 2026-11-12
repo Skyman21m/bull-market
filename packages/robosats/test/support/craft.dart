@@ -295,6 +295,39 @@ Uint8List protectSecret(
   ]);
 }
 
+/// A secret part locked under [aesKey] as given, behind an S2K specifier of [s2kType]: 0 (simple) or 1 (salted, with an 8-byte salt), which an S2K over a passphrase alone would derive.
+///
+/// For hostile keys: a coordinator that holds the SHA-256 of a token can lock a part this way, with that hash as the key.
+Uint8List protectSecretWithKey(
+  Uint8List secret,
+  Uint8List aesKey, {
+  int s2kType = 0,
+  int s2kHashId = HashId.sha256,
+  int cipherId = CipherId.aes256,
+}) {
+  final iv = Uint8List.fromList(List.generate(16, (i) => 0x20 + i));
+  return Uint8List.fromList([
+    254,
+    cipherId,
+    s2kType,
+    s2kHashId,
+    if (s2kType == 1) ...List.filled(8, 7),
+    ...iv,
+    ...aesCfb(
+      encrypt: true,
+      key: aesKey,
+      iv: iv,
+      data: Uint8List.fromList([...secret, ...sha1(secret)]),
+    ),
+  ]);
+}
+
+/// An unprotected secret part (S2K usage 0): the integer and its two-byte checksum.
+Uint8List unprotectedSecret(Uint8List secret) {
+  final sum = secret.fold<int>(0, (sum, byte) => sum + byte) & 0xffff;
+  return Uint8List.fromList([0, ...secret, sum >> 8, sum & 0xff]);
+}
+
 String armorPackets(ArmorBlock block, List<RawPacket> packets) => armorEncode(
   block,
   [for (final packet in packets) ...encodePacket(packet.tag, packet.body)],

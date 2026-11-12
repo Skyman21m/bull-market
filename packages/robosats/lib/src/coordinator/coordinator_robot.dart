@@ -8,6 +8,7 @@ import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_hash_id.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
+import 'package:robosats/src/robot_token.dart';
 
 /// What a coordinator answered about a robot of this device, once the hash id and the nickname it returned are the ones this device computed (`RobotView.get`, `api/views.py:697-743`, commit ff1998c).
 ///
@@ -79,14 +80,16 @@ final class CoordinatorRobot extends CoordinatorRobotAnswer {
   /// Which Nostr key of the robot [nostrPublicKeyHex] is, or `null` when it is none of them: this device cannot read what is sent to that key.
   final NostrKeyDerivation? nostrKeyDerivation;
 
-  /// The OpenPGP key pair the coordinator holds for this robot, still locked by the token: the one this device sent in the same call, or one the token proved.
+  /// An OpenPGP key pair of this robot, still locked by the token: the one this device sent in the same call, or one the coordinator returned and the token proved, re-encoded from the packets the proof checked.
   ///
+  /// A proven pair was made by a holder of the token, and that is all the proof says: a coordinator can return any genuine pair of the robot it ever received, a different one at each read, so it is not necessarily the pair the coordinator stored first, nor the one it will check signatures with.
   /// Its private key is only as secret as the token, and the coordinator holds a copy: never log it all the same.
   final RobotPgpKey pgpKey;
 
-  /// Whether [pgpKey] is not a pair this device sent in the call that read the robot, and was taken because the robot's token proved it.
+  /// Whether [pgpKey] is not, byte for byte, the pair this device sent in the call that read the robot, and was taken because the robot's token proved it.
   ///
-  /// Always true after a read with the short header, which sends no pair; after a first contact, it means the robot existed on the coordinator before, with that pair.
+  /// It is the coordinator's word, like [found]: it is always true after a read with the short header, which sends no pair, and after a first contact a coordinator makes it true by returning another genuine pair of the robot, or the very pair sent in other packet framing.
+  /// No screen may rely on it alone to say that the robot existed before.
   final bool pgpKeyProven;
 
   CoordinatorRobot._(_Facts facts, this.pgpKey, {required this.pgpKeyProven})
@@ -110,15 +113,15 @@ final class CoordinatorRobot extends CoordinatorRobotAnswer {
 /// What a coordinator answered about a robot of this device whose key pair is not one this device has just sent: the hash id and the nickname are this robot's, the key pair is still to be proven.
 ///
 /// Only [prove] gives the robot, and nothing else of the answer can be read before: an answer whose pair the token does not prove is dropped whole.
-/// It holds the identity of the robot, its token included, for [prove]: keep it no longer than the call that proves it.
+/// It holds the robot's token for [prove], and no other secret of the robot (not its token hash, nor its Nostr keys), so that what crosses to the isolate that proves it is the token, the two blocks of the answer and public facts: keep it no longer than the call that proves it.
 /// It prints the coordinator and the nickname only.
 @immutable
 final class UnprovenCoordinatorRobot extends CoordinatorRobotAnswer {
   final _Facts _facts;
-  final RobotIdentity _identity;
+  final RobotToken _token;
   final RobotPgpKey _pgpKey;
 
-  const UnprovenCoordinatorRobot._(this._facts, this._identity, this._pgpKey);
+  const UnprovenCoordinatorRobot._(this._facts, this._token, this._pgpKey);
 
   static final RegExp _nostrKey = RegExp(r'^[0-9a-f]{64}$');
   static const _maxOrderId = 1 << 53;
@@ -225,7 +228,7 @@ final class UnprovenCoordinatorRobot extends CoordinatorRobotAnswer {
           nostrPublicKeyHex: storedNostrKey,
           nostrKeyDerivation: nostrKeyDerivation,
         ),
-        identity,
+        identity.token,
         pgpKey,
       ),
     );
@@ -239,14 +242,17 @@ final class UnprovenCoordinatorRobot extends CoordinatorRobotAnswer {
 
   /// Proves the key pair with the robot's token, and gives the robot, which carries the pair still locked; anything else is a [RobotPgpKeyNotProven].
   ///
-  /// The pair is proven when its private key unlocks with the token and holds the secret values of its public key: see [RobotPgpKeyNotProven] for why that proves a holder of the token made it.
+  /// The pair is proven when its private key, locked by an iterated and salted S2K, unlocks with the token and holds the secret values of its public key: see [RobotPgpKeyNotProven] for why that proves a holder of the token made it, and [CoordinatorRobot.pgpKey] for what it does not prove.
+  /// The robot carries the pair re-encoded from the packets the proof checked: anything else the coordinator put in the two blocks is dropped.
   /// It hashes what unlocking the private key hashes, synchronously: 32 MiB of SHA-256 for a key of the official client or of Troc, and at most `PgpLimits.proofHashedBytes` (62 MiB), a pair that would ask for more being refused before anything is hashed.
   /// Call it off the UI isolate.
   /// The passphrase and the secret values unlocked are wiped before it returns, and the robot keeps only the locked pair.
   /// Calling it again gives the same result.
   Result<CoordinatorRobot, RobotPgpKeyNotProven> prove() =>
-      switch (_pgpKey.proveMadeBy(_identity)) {
-        Ok() => Ok(CoordinatorRobot._(_facts, _pgpKey, pgpKeyProven: true)),
+      switch (_pgpKey.proveMadeBy(_token)) {
+        Ok(value: final proven) => Ok(
+          CoordinatorRobot._(_facts, proven, pgpKeyProven: true),
+        ),
         Err() => const Err(RobotPgpKeyNotProven()),
       };
 

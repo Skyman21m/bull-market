@@ -291,8 +291,9 @@ final class RobotNicknameMismatch extends RobotMismatchFailure {
 /// The OpenPGP key pair the coordinator returned for this robot is not the one this device has just sent, and the robot's token does not prove it.
 ///
 /// A coordinator keeps the first key pair it received for a token and ignores every later one, so a robot first created by another device or client comes back with that pair.
-/// Such a pair is taken only when its private key unlocks with the robot's token and holds the secret values of its public key: a coordinator receives the SHA-256 of the token, never the token, and the S2K that locks the private key is salted and iterated over the token itself, so only a holder of the token can have made it.
-/// This pair was not proven: the token does not unlock it, its two blocks are not the same key, it is a kind of key this package does not read, or unlocking it would hash more than `PgpLimits.proofHashedBytes`.
+/// Such a pair is taken only when its private key unlocks with the robot's token and holds the secret values of its public key, each of its two parts locked by an iterated and salted S2K: a coordinator receives the SHA-256 of the token, never the token, and such an S2K is salted and iterated over the token itself, so only a holder of the token can have made it.
+/// A simple S2K over SHA-256 would derive exactly the token hash the coordinator holds, which is why only that S2K counts.
+/// This pair was not proven: the token does not unlock both its parts, its two blocks are not the same key, a part is locked another way, it is a kind of key this package does not read, or unlocking it would hash more than `PgpLimits.proofHashedBytes`.
 /// So the coordinator is not honest, or the robot was made by a client that locked its key some other way: do not use this robot there.
 /// The official client silently adopts whatever pair the coordinator returns; this package does not.
 final class RobotPgpKeyNotProven extends RobotMismatchFailure {

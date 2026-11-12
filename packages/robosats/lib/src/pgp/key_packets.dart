@@ -165,6 +165,9 @@ final class ProtectedSecret {
   static const openPgpJsCodedCount = 224;
 
   final int cipherId;
+
+  /// The S2K specifier type: [read] accepts the iterated and salted S2K (3) only.
+  final int s2kType;
   final int s2kHashId;
   final Uint8List salt;
   final int codedCount;
@@ -173,6 +176,7 @@ final class ProtectedSecret {
 
   const ProtectedSecret._(
     this.cipherId,
+    this.s2kType,
     this.s2kHashId,
     this.salt,
     this.codedCount,
@@ -188,9 +192,8 @@ final class ProtectedSecret {
     if (reader.u8() != _sha1CheckUsage) throw const UnsupportedPgpException();
     final cipherId = reader.u8();
     if (aesKeyLength(cipherId) == null) throw const UnsupportedPgpException();
-    if (reader.u8() != _iteratedSaltedS2k) {
-      throw const UnsupportedPgpException();
-    }
+    final s2kType = reader.u8();
+    if (s2kType != _iteratedSaltedS2k) throw const UnsupportedPgpException();
     final s2kHashId = reader.u8();
     if (_s2kHash(s2kHashId) == null) throw const UnsupportedPgpException();
     final salt = reader.take(8);
@@ -201,6 +204,7 @@ final class ProtectedSecret {
     if (ciphertext.length < 23) throw const UnsupportedPgpException();
     return ProtectedSecret._(
       cipherId,
+      s2kType,
       s2kHashId,
       salt,
       codedCount,
@@ -229,6 +233,7 @@ final class ProtectedSecret {
     wipe(plain);
     return ProtectedSecret._(
       CipherId.aes256,
+      _iteratedSaltedS2k,
       HashId.sha256,
       salt,
       openPgpJsCodedCount,
@@ -236,6 +241,35 @@ final class ProtectedSecret {
       ciphertext,
     );
   }
+
+  /// Whether the key that locks this part is derived from the passphrase in a way only a holder of the passphrase can reproduce, as the proof of a robot's key pair requires: see [provesPassphraseWith].
+  bool get provesPassphrase => provesPassphraseWith(
+    s2kType: s2kType,
+    s2kHashId: s2kHashId,
+    saltLength: salt.length,
+    codedCount: codedCount,
+    cipherId: cipherId,
+  );
+
+  /// Whether a part locked with these parameters can prove that its locker held the passphrase: an iterated and salted S2K (type 3) with its 8-byte salt, over SHA-1 or SHA-2, a coded count of 0 to 255 (1 024 bytes hashed at least), and AES.
+  ///
+  /// The proof of a robot's key pair rests on this: a simple S2K (type 0) over SHA-256 derives the SHA-256 of the passphrase itself, which a RoboSats coordinator receives as the token hash in every request, so a coordinator could lock a key of its own under it.
+  /// A salted S2K (type 1) and any other specifier are refused too, so that no proof rests on a single hash of the passphrase.
+  /// [read] already refuses every S2K but type 3: the proof checks this again, so that it does not depend on the parser alone.
+  /// The cost of the iterations is bounded apart, by `PgpLimits.proofHashedBytes`.
+  static bool provesPassphraseWith({
+    required int s2kType,
+    required int s2kHashId,
+    required int saltLength,
+    required int codedCount,
+    required int cipherId,
+  }) =>
+      s2kType == _iteratedSaltedS2k &&
+      saltLength == 8 &&
+      _s2kDigestLength(s2kHashId) != null &&
+      codedCount >= 0 &&
+      codedCount <= 255 &&
+      aesKeyLength(cipherId) != null;
 
   /// The bytes [unlock] feeds its hash with a passphrase of [passphraseLength] bytes, computed without hashing anything.
   ///
@@ -281,7 +315,7 @@ final class ProtectedSecret {
   Uint8List encode() => Uint8List.fromList([
     _sha1CheckUsage,
     cipherId,
-    _iteratedSaltedS2k,
+    s2kType,
     s2kHashId,
     ...salt,
     codedCount,

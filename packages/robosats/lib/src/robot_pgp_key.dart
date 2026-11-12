@@ -16,6 +16,7 @@ import 'package:robosats/src/pgp/transferable_key.dart';
 import 'package:robosats/src/pgp_wire.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
+import 'package:robosats/src/robot_token.dart';
 
 /// The official client dates keys and chat signatures one day in the past (`frontend/src/pgp/index.ts:29` and `:58`).
 ///
@@ -286,20 +287,25 @@ final class RobotPgpKey {
     }
   }
 
-  /// Checks that a holder of the token of [identity] made this pair: the proof that lets a robot take a key pair it did not send, from a coordinator that holds it.
+  /// Checks that a holder of [token] made this pair, and gives the pair re-encoded from what was checked: the proof that lets a robot take a key pair it did not send, from a coordinator that holds it.
   ///
-  /// The private key must unlock with the token and hold the secret values of the public key: its primary key and its encryption subkey must be, packet body for packet body, the ones of the public block, which [parse] compared by fingerprint only.
-  /// It proves who made the pair because each secret part is locked by an S2K salted and iterated over the token itself, and a coordinator never receives the token, only its SHA-256.
-  /// Nothing is hashed when the two blocks are not the same key, or when unlocking would hash more than [PgpLimits.proofHashedBytes]; otherwise it costs what [unlock] costs, 32 MiB of SHA-256 for a key of the official client or of Troc: call it off the UI isolate.
-  /// The passphrase and the secret values it unlocked are wiped before it returns, and it keeps nothing it unlocked; copies made by the code it calls, as the reversed scalar, are left to the garbage collector.
-  /// Fails with [PgpKeyPairMismatch], [PgpInputTooLarge], [PgpWrongPassphrase], or [PgpKeyUnsupported] when the secret values are not those of the public key.
+  /// "Proven" means made by a holder of the token, nothing more: not the pair a coordinator stored first, nor the one it will check signatures with.
+  /// The private key must unlock with the token and hold the secret values of the public key: its primary key and its encryption subkey must be, packet body for packet body, the ones of the public block, which [parse] compared by fingerprint only, and both secret parts must be locked by an iterated and salted S2K (`ProtectedSecret.provesPassphraseWith`), which [parse] already requires and which is checked again here.
+  /// It proves who made the pair because such an S2K is salted and iterated over the token itself, and a coordinator never receives the token, only its SHA-256: a simple S2K over SHA-256 would derive exactly that hash, so a coordinator could lock a key of its own under it.
+  /// Nothing is hashed when the two blocks are not the same key, when a part is locked any other way, or when unlocking would hash more than [PgpLimits.proofHashedBytes]; otherwise it costs what [unlock] costs, 32 MiB of SHA-256 for a key of the official client or of Troc: call it off the UI isolate.
+  /// The pair it gives holds only the packets the proof rests on (`TransferableKey.verifiedPackets`): any other packet of the two blocks, another user ID, subkey or key, and the unhashed areas of the signatures, is dropped.
+  /// The passphrase and the secret values it unlocked are wiped before it returns, and it keeps nothing it unlocked; copies made by the code it calls are left to the garbage collector (see `docs/spikes/robot-coordinator.md`).
+  /// Fails with [PgpKeyPairMismatch], [PgpKeyUnsupported] for a part not locked as required or secret values that are not those of the public key, [PgpInputTooLarge] or [PgpWrongPassphrase].
   @internal
-  Result<void, PgpFailure> proveMadeBy(RobotIdentity identity) {
+  Result<RobotPgpKey, PgpFailure> proveMadeBy(RobotToken token) {
     if (!bytesEqual(_secretKey.primary.bytes, publicKey._key.primary.bytes) ||
         !bytesEqual(_secretKey.subkey.bytes, publicKey._key.subkey.bytes)) {
       return const Err(PgpKeyPairMismatch());
     }
-    final passphrase = utf8.encode(identity.token.reveal());
+    if (!_secretKey.secretsProvePassphrase) {
+      return const Err(PgpKeyUnsupported());
+    }
+    final passphrase = utf8.encode(token.reveal());
     try {
       if (_secretKey.unlockHashedBytes(passphrase.length) >
           PgpLimits.proofHashedBytes) {
@@ -309,12 +315,28 @@ final class RobotPgpKey {
       if (secretKeys == null) return const Err(PgpWrongPassphrase());
       wipe(secretKeys.ed25519Seed);
       wipe(secretKeys.x25519Scalar);
-      return const Ok(null);
+      return Ok(_verifiedOnly());
     } on UnsupportedPgpException {
+      return const Err(PgpKeyUnsupported());
+    } on FormatException {
       return const Err(PgpKeyUnsupported());
     } finally {
       wipe(passphrase);
     }
+  }
+
+  /// This pair re-encoded from the packets [parse] verified, and read again, as [generateWith] reads what it made.
+  RobotPgpKey _verifiedOnly() {
+    final public = _secretKey.verifiedPackets(secret: false);
+    final private = _secretKey.verifiedPackets(secret: true);
+    return RobotPgpKey._(
+      PgpPublicKey._(
+        armorEncode(ArmorBlock.publicKey, public),
+        TransferableKey.parse(public, secret: false),
+      ),
+      armorEncode(ArmorBlock.privateKey, private),
+      TransferableKey.parse(private, secret: true),
+    );
   }
 
   /// The private keys are compared without stopping at the first difference.

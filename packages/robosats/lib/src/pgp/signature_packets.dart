@@ -155,6 +155,18 @@ final class SignatureBody {
     );
   }
 
+  /// The body of this signature as [parse] read it, without its unhashed area: the parts the signature covers or is, re-encoded.
+  ///
+  /// Nothing signs the unhashed area, so whoever passes a key along can fill it: a key re-encoded from these bytes keeps only what its owner signed.
+  Uint8List get coveredBytes => Uint8List.fromList([
+    ..._hashedPortion,
+    0,
+    0,
+    ..._digestPrefix,
+    ...mpiEncode(_signature.sublist(0, 32)),
+    ...mpiEncode(_signature.sublist(32)),
+  ]);
+
   /// Whether this signature states when it was made, was not made after [time] and has not expired by [time], in seconds since the Unix epoch.
   ///
   /// OpenPGP.js 5 applies the same two rules, without tolerance: "Signature creation time is in the future" and "Signature is expired".
