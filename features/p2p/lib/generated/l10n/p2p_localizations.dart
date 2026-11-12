@@ -1391,6 +1391,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Clear'**
   String get p2pCommonClear;
+
+  /// Warning on the robot step of the wizard and on the profile, right after « Generate Garage Key » or « Generate new » when the feature's database could not record that the key was drawn on this device: the key is stored, but its history is unknown. Not in the phase-1 catalogue (design note of #29, § 2.4).
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.'**
+  String get p2pGarageKeyHistoryNotRecorded;
 }
 
 class _P2pLocalizationsDelegate

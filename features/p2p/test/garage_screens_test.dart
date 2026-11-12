@@ -12,14 +12,20 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/data/garage_key_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/garage_cubit.dart';
 import 'package:p2p/src/presentation/garage_state.dart';
 import 'package:p2p/src/ui/garage/delete_garage_key_dialog.dart';
+import 'package:p2p/src/ui/garage/garage_key_history_notice.dart';
 import 'package:p2p/src/ui/garage/garage_view.dart';
 import 'package:p2p/src/ui/garage/garage_wizard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
@@ -229,6 +235,7 @@ void main() {
     Locale locale = const Locale('en'),
     bool withGarage = true,
     bool withReauthentication = true,
+    bool databaseUnavailable = false,
   }) async {
     usePhoneScreen(tester);
     storage.install();
@@ -241,6 +248,7 @@ void main() {
       garageKeys: withGarage
           ? Secrets(scratchDirectory: () async => '.').garageKeys()
           : null,
+      databaseUnavailable: databaseUnavailable,
     );
     final router = GoRouter(
       initialLocation: P2pFeature.path,
@@ -601,6 +609,8 @@ void main() {
       };
       expect(find.text(nickname), findsOneWidget);
       expect(find.text('Robot #0'), findsOneWidget);
+      // Its draw was recorded: nothing to say about its history.
+      expect(find.byType(GarageKeyHistoryNotRecorded), findsNothing);
       expectKeyOnlyInView(tester);
       semantics.dispose();
     });
@@ -730,6 +740,8 @@ void main() {
       expect(find.byType(GarageKeyView), findsOneWidget);
       expect(shownKey(tester) == first, isFalse);
       expect(storage.entries[_testnetEntry], isNot(stored));
+      // Drawn here and recorded so: no PIN, as in RoboSats.
+      expect(reauthentications, 0);
     });
 
     testWidgets('takes a pasted key, cleaned, refused until it is one', (
@@ -962,7 +974,7 @@ void main() {
       ),
     ]) {
       testWidgets(
-        'in ${locale.languageCode}: Delete All asks, then deletes this network only',
+        'in ${locale.languageCode}: Delete All asks, then the PIN, then deletes this network only',
         (tester) async {
           keystoreHolding({_testnetEntry: null, _mainnetEntry: null});
           await openGarage(tester, locale: locale);
@@ -975,14 +987,24 @@ void main() {
           for (final text in texts) {
             expect(find.text(text), findsOneWidget, reason: text);
           }
+          // No PIN before the confirmation, nor after « Cancel ».
+          expect(reauthentications, 0);
           await tester.tap(find.text(texts.last));
           await settle(tester);
+          expect(reauthentications, 0);
           expect(storage.entries.keys.toSet(), {_testnetEntry, _mainnetEntry});
 
           await tester.tap(find.text(deleteAll));
           await settle(tester);
           await tester.tap(find.text(texts[texts.length - 2]));
-          await settle(tester);
+          await afterRoute(tester);
+
+          // The fixed key has no record of being drawn here: a robot of it may live on a coordinator, so the PIN comes after the confirmation, before anything is deleted.
+          expect(find.byType(DeleteGarageKeyDialog), findsNothing);
+          expect(reauthentications, 1);
+          expect(storage.entries.keys.toSet(), {_testnetEntry, _mainnetEntry});
+          await tester.tap(find.text('PIN ok'));
+          await afterRoute(tester);
 
           expect(storage.entries, {
             _mainnetEntry: storedFixedKeys[_mainnetEntry],
@@ -1007,7 +1029,9 @@ void main() {
       await tester.tap(find.text('Delete All'));
       await settle(tester);
       await tester.tap(find.text('Delete Garage Key'));
-      await settle(tester);
+      await afterRoute(tester);
+      await tester.tap(find.text('PIN ok'));
+      await afterRoute(tester);
 
       expect(
         find.text('The Garage Key could not be deleted. Try again.'),
@@ -1820,6 +1844,8 @@ void main() {
       await settle(tester);
       expect(find.text('Start'), findsOneWidget);
       expect(storage.entries, isEmpty);
+      // Drawn here and recorded so, with no robot bound: the confirmation alone, as in RoboSats.
+      expect(reauthentications, 0);
 
       // A key generated anew is the one of a new draw, shown without the PIN, and a key generated elsewhere gives no alert.
       storage.entries[_testnetEntry] = storedFixedKeys[_testnetEntry] ?? '';
@@ -1831,6 +1857,354 @@ void main() {
       expect(backupAlert(), findsNothing);
       expect(find.text('Show Garage Key'), findsOneWidget);
     });
+  });
+
+  /// Records the fixed key as drawn here on [network] and binds its robot [index] to temple there, in the database of the tab: what a screen that sends a robot will write.
+  Future<void> bindFixedRobot({
+    RobosatsNetwork network = RobosatsNetwork.testnet,
+    int index = 0,
+  }) async {
+    final bindings = locator<RobotBindingRepository>();
+    final fingerprint = switch (GarageKeyFingerprint.of(fixedKey)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    final temple = switch (CoordinatorIdentity.of(
+      coordinator('temple'),
+      network,
+    )) {
+      final identity? => identity,
+      null => throw StateError('no temple'),
+    };
+    expect(
+      await bindings.recordGeneratedKey(network, fingerprint),
+      isA<Ok<void, P2pFailure>>(),
+    );
+    expect(
+      await bindings.bind(RobotSlot(network, fingerprint, index), temple),
+      isA<Ok<void, P2pFailure>>(),
+    );
+  }
+
+  /// Opens the Garage of the testnet slot, which holds the fixed key, once [prepare] wrote what it needs in the database of the tab.
+  Future<void> openGarageAfter(
+    WidgetTester tester,
+    Future<void> Function() prepare, {
+    Locale locale = const Locale('en'),
+    bool withReauthentication = true,
+    Map<String, String?>? held,
+  }) async {
+    keystoreHolding(held ?? {_testnetEntry: null});
+    await openTab(
+      tester,
+      locale: locale,
+      withReauthentication: withReauthentication,
+    );
+    await prepare();
+    await tester.tap(find.text('Garage'));
+    await settle(tester);
+    await letTheVaultSettle(tester);
+  }
+
+  /// The « Delete All » button of the profile.
+  TextButton deleteAllButton(WidgetTester tester) => tester.widget<TextButton>(
+    find.ancestor(
+      of: find.text('Delete All'),
+      matching: find.byWidgetPredicate((widget) => widget is TextButton),
+    ),
+  );
+
+  group('the PIN before a delete', () {
+    testWidgets(
+      'a key with a robot bound: the PIN after the confirmation, before anything is deleted',
+      (tester) async {
+        await openGarageAfter(tester, bindFixedRobot);
+
+        await tester.tap(find.text('Delete All'));
+        await settle(tester);
+        expect(find.byType(DeleteGarageKeyDialog), findsOneWidget);
+        expect(reauthentications, 0);
+        await tester.tap(find.text('Delete Garage Key'));
+        await afterRoute(tester);
+
+        expect(find.text('PIN ok'), findsOneWidget);
+        expect(find.byType(DeleteGarageKeyDialog), findsNothing);
+        expect(reauthentications, 1);
+        expect(storage.entries.keys, [_testnetEntry]);
+
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+
+        expect(storage.entries, isEmpty);
+        expect(find.text('Start'), findsOneWidget);
+        expect(reauthentications, 1);
+      },
+    );
+
+    testWidgets(
+      'a robot bound on the other network asks the PIN as well, in French',
+      (tester) async {
+        await openGarageAfter(
+          tester,
+          () => bindFixedRobot(network: RobosatsNetwork.mainnet),
+          locale: const Locale('fr'),
+        );
+
+        await tester.tap(find.text('Tout supprimer'));
+        await settle(tester);
+        await tester.tap(find.text('Supprimer la clé de garage'));
+        await afterRoute(tester);
+
+        expect(reauthentications, 1);
+        expect(storage.entries.keys, [_testnetEntry]);
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        expect(storage.entries, isEmpty);
+        expect(find.text('Commencer'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'leaving the PIN deletes nothing and leaves the profile as it was',
+      (tester) async {
+        await openGarageAfter(tester, bindFixedRobot);
+        await tester.tap(find.byTooltip('Next account'));
+        await settle(tester);
+        expect(find.text('Robot #1'), findsOneWidget);
+
+        await tester.tap(find.text('Delete All'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await afterRoute(tester);
+        await tester.tap(find.text('PIN back'));
+        await afterRoute(tester);
+
+        expect(storage.entries.keys, [_testnetEntry]);
+        expect(find.text('Robot #1'), findsOneWidget);
+        expect(find.text('Show Garage Key'), findsOneWidget);
+        expect(find.byType(DeleteGarageKeyDialog), findsNothing);
+
+        // A system back from the PIN deletes nothing either.
+        await tester.tap(find.text('Delete All'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await afterRoute(tester);
+        await tester
+            .state<NavigatorState>(find.byType(Navigator).first)
+            .maybePop();
+        await afterRoute(tester);
+
+        expect(reauthentications, 2);
+        expect(storage.entries.keys, [_testnetEntry]);
+        expect(find.text('Robot #1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the app in the background while the PIN is open: still asked, then deleted',
+      (tester) async {
+        await openGarageAfter(tester, bindFixedRobot);
+        await tester.tap(find.text('Delete All'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await afterRoute(tester);
+
+        await backgroundAndBack(tester);
+
+        expect(find.text('PIN ok'), findsOneWidget);
+        expect(storage.entries.keys, [_testnetEntry]);
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        expect(storage.entries, isEmpty);
+        expect(reauthentications, 1);
+      },
+    );
+
+    testWidgets(
+      'without the shell\'s re-authentication, a key that may have robots cannot be deleted',
+      (tester) async {
+        await openGarageAfter(
+          tester,
+          bindFixedRobot,
+          withReauthentication: false,
+        );
+
+        expect(deleteAllButton(tester).onPressed, isNull);
+        await tester.tap(find.text('Delete All'), warnIfMissed: false);
+        await settle(tester);
+
+        expect(find.byType(DeleteGarageKeyDialog), findsNothing);
+        expect(storage.entries.keys, [_testnetEntry]);
+      },
+    );
+
+    testWidgets(
+      'without the shell\'s re-authentication, a key drawn here is deleted and replaced as in RoboSats',
+      (tester) async {
+        keystoreHolding({});
+        await openTab(tester, withReauthentication: false);
+        await tester.tap(find.text('Garage'));
+        await settle(tester);
+        await letTheVaultSettle(tester);
+        await tester.tap(find.text('Start'));
+        await settle(tester);
+        await tester.tap(find.text('Generate Garage Key'));
+        await letTheVaultSettle(tester);
+        final first = storage.entries[_testnetEntry];
+
+        await tester.tap(find.text('Generate new'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await letTheVaultSettle(tester);
+        expect(storage.entries[_testnetEntry], isNot(first));
+
+        await tester.tap(find.text('Continue'));
+        await settle(tester);
+        await tester.tap(find.text('Continue'));
+        await settle(tester);
+        await tester.tap(find.text('See profile'));
+        await settle(tester);
+        expect(deleteAllButton(tester).onPressed, isNotNull);
+        await tester.tap(find.text('Delete All'));
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await settle(tester);
+
+        expect(storage.entries, isEmpty);
+        expect(reauthentications, 0);
+      },
+    );
+
+    testWidgets('a damaged key: the PIN once a robot of any key is bound', (
+      tester,
+    ) async {
+      await openGarageAfter(
+        tester,
+        // Its fingerprint cannot be computed: any robot bound counts, here one of the fixed key on mainnet.
+        () => bindFixedRobot(network: RobosatsNetwork.mainnet),
+        held: {_testnetEntry: 'not json at all'},
+      );
+      expect(
+        find.text('The Garage Key stored on this device is damaged.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Delete Garage Key'));
+      await settle(tester);
+      await tester.tap(find.text('Delete Garage Key').last);
+      await afterRoute(tester);
+      expect(reauthentications, 1);
+      expect(storage.entries.keys, [_testnetEntry]);
+      await tester.tap(find.text('PIN ok'));
+      await afterRoute(tester);
+
+      expect(storage.entries, isEmpty);
+      expect(find.text('Start'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a damaged key, robots bound and no re-authentication: its delete is disabled',
+      (tester) async {
+        await openGarageAfter(
+          tester,
+          () => bindFixedRobot(network: RobosatsNetwork.mainnet),
+          held: {_testnetEntry: 'not json at all'},
+          withReauthentication: false,
+        );
+
+        await tester.tap(find.text('Delete Garage Key'), warnIfMissed: false);
+        await settle(tester);
+
+        expect(find.byType(DeleteGarageKeyDialog), findsNothing);
+        expect(storage.entries.keys, [_testnetEntry]);
+      },
+    );
+  });
+
+  group('a draw whose history could not be recorded', () {
+    for (final (locale, notice, labels) in [
+      (
+        const Locale('en'),
+        'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.',
+        (
+          start: 'Start',
+          generate: 'Generate Garage Key',
+          generateNew: 'Generate new',
+          confirm: 'Delete Garage Key',
+          next: 'Continue',
+          profile: 'See profile',
+        ),
+      ),
+      (
+        const Locale('fr'),
+        'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots vous demanderont une confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.',
+        (
+          start: 'Commencer',
+          generate: 'Générer une clé de garage',
+          generateNew: 'Générer une nouvelle',
+          confirm: 'Supprimer la clé de garage',
+          next: 'Continuer',
+          profile: 'Voir le profil',
+        ),
+      ),
+    ]) {
+      testWidgets(
+        'in ${locale.languageCode}: said on the robot step and the profile, and « Generate new » asks the PIN once',
+        (tester) async {
+          keystoreHolding({});
+          await openTab(tester, locale: locale, databaseUnavailable: true);
+          await tester.tap(find.text('Garage'));
+          await settle(tester);
+          await letTheVaultSettle(tester);
+          await tester.tap(find.text(labels.start));
+          await settle(tester);
+          await tester.tap(find.text(labels.generate));
+          await letTheVaultSettle(tester);
+
+          // Stored all the same, and shown for backup without the PIN, right after its draw.
+          expect(storage.entries.keys, [_testnetEntry]);
+          expect(find.byType(GarageKeyView), findsOneWidget);
+          expect(find.text(notice), findsNothing);
+          final first = shownKey(tester);
+
+          // Its delete asks the PIN: its history is unknown, and the database cannot say more.
+          await tester.tap(find.text(labels.generateNew));
+          await settle(tester);
+          await tester.tap(find.text(labels.confirm));
+          await afterRoute(tester);
+          expect(reauthentications, 1);
+          expect(storage.entries.keys, [_testnetEntry]);
+          await tester.tap(find.text('PIN ok'));
+          await letTheVaultSettle(tester);
+
+          expect(reauthentications, 1);
+          expect(find.byType(GarageKeyView), findsOneWidget);
+          expect(shownKey(tester) == first, isFalse);
+
+          await tester.tap(find.text(labels.next));
+          await settle(tester);
+          expect(find.text(notice), findsOneWidget);
+          expect(find.text('Robot #0'), findsOneWidget);
+
+          await tester.tap(find.text(labels.next));
+          await settle(tester);
+          await tester.tap(find.text(labels.profile));
+          await settle(tester);
+          expect(find.text(notice), findsOneWidget);
+          expectKeyOnlyInView(tester);
+
+          // At a later visit, the key is the profile's, of unknown history like any key without a record: nothing more is said.
+          await tester.tap(
+            find.text(locale.languageCode == 'fr' ? 'Offres' : 'Offers'),
+          );
+          await settle(tester);
+          await tester.tap(find.text('Garage'));
+          await settle(tester);
+          await letTheVaultSettle(tester);
+          expect(find.text(notice), findsNothing);
+        },
+      );
+    }
   });
 
   testWidgets(
@@ -1853,6 +2227,7 @@ void main() {
         GenerateGarageKeyUsecase(repository, bindings),
         ImportGarageKeyUsecase(repository, bindings),
         DeleteGarageKeyUsecase(repository),
+        NeedsPinToDeleteGarageKeyUsecase(bindings),
         UnacknowledgedGarageKeys(),
       );
       addTearDown(cubit.close);

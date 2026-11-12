@@ -92,7 +92,10 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
     final cubit = context.read<GarageCubit>();
     final step = _step;
     return switch (state) {
-      GarageUnknown() => _GarageUnavailable(state: state),
+      GarageUnknown() => _GarageUnavailable(
+        state: state,
+        reauthenticate: widget.reauthenticate,
+      ),
       // A key drawn and not acknowledged yet, in this visit or an earlier one: the wizard's backup step, the key behind the PIN unless it was just drawn.
       GarageWithKey(awaitsBackup: true) => _wizard(state, step ?? 1),
       // A key read from the vault rather than made in this visit goes to the profile, whatever the wizard showed.
@@ -127,11 +130,14 @@ class _GarageViewState extends State<GarageView> with PrivacyScreen {
   );
 }
 
-/// The vault could not say whether a key is stored: why, then « Retry », and, unless the keystore is only locked, the way out of a key that cannot be read, with the warning of « Delete Garage Key? ».
+/// The vault could not say whether a key is stored: why, then « Retry », and, unless the keystore is only locked, the way out of a key that cannot be read, with the warning of « Delete Garage Key? », then the PIN when the cubit says the delete needs it.
+///
+/// Without [reauthenticate], a delete that needs the PIN is disabled.
 class _GarageUnavailable extends StatelessWidget {
   final GarageUnknown state;
+  final P2pReauthentication? reauthenticate;
 
-  const _GarageUnavailable({required this.state});
+  const _GarageUnavailable({required this.state, required this.reauthenticate});
 
   @override
   Widget build(BuildContext context) {
@@ -181,10 +187,15 @@ class _GarageUnavailable extends StatelessWidget {
               label: l10n.p2pDeleteKeyConfirm,
               iconData: Icons.delete_sweep,
               iconFirst: true,
+              disabled: state.deletionNeedsPin && reauthenticate == null,
               onPressed: () async {
-                if (await DeleteGarageKeyDialog.show(context)) {
-                  await cubit.delete();
+                if (!await DeleteGarageKeyDialog.show(context) ||
+                    !context.mounted) {
+                  return;
                 }
+                await cubit.delete(
+                  reauthenticate: reauthenticationFrom(context, reauthenticate),
+                );
               },
               outlined: true,
               bgColor: colors.transparent,

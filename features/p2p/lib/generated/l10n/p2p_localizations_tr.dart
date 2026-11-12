@@ -736,4 +736,8 @@ class P2pLocalizationsTr extends P2pLocalizations {
 
   @override
   String get p2pCommonClear => 'Clear';
+
+  @override
+  String get p2pGarageKeyHistoryNotRecorded =>
+      'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.';
 }

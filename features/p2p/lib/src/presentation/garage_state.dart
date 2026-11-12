@@ -47,6 +47,14 @@ final class GarageWithKey extends GarageState {
   /// Why the last action of the user failed, when it did: a robot that could not be derived, or a key that could not be deleted.
   final P2pFailure? failure;
 
+  /// Whether this cubit drew the key and this device could not record that it did: its history is unknown, and the robot step and the profile say so.
+  final bool historyNotRecorded;
+
+  /// Whether deleting the key, by « Delete All » or « Generate new », asks the wallet's PIN after « Delete Garage Key? », as the feature's database said when the key was read: without the shell's re-authentication, the delete is then disabled.
+  ///
+  /// The cubit reads the database again when the user deletes, and decides from that read; this only greys the buttons, and is `true` unless the database said otherwise.
+  final bool deletionNeedsPin;
+
   const GarageWithKey(
     super.network, {
     required this.key,
@@ -55,6 +63,8 @@ final class GarageWithKey extends GarageState {
     this.awaitsBackup = false,
     this.showWithoutPin = false,
     this.failure,
+    this.historyNotRecorded = false,
+    this.deletionNeedsPin = true,
   });
 
   /// This state with the fields given changed; [failure] is the outcome of the action that leads to the copy, so it is replaced, by nothing when it is not given.
@@ -62,6 +72,7 @@ final class GarageWithKey extends GarageState {
     GarageRobotFace? robot,
     bool? awaitsBackup,
     bool? showWithoutPin,
+    bool? deletionNeedsPin,
     P2pFailure? failure,
   }) => GarageWithKey(
     network,
@@ -71,6 +82,8 @@ final class GarageWithKey extends GarageState {
     awaitsBackup: awaitsBackup ?? this.awaitsBackup,
     showWithoutPin: showWithoutPin ?? this.showWithoutPin,
     failure: failure,
+    historyNotRecorded: historyNotRecorded,
+    deletionNeedsPin: deletionNeedsPin ?? this.deletionNeedsPin,
   );
 }
 
@@ -84,7 +97,17 @@ final class GarageUnknown extends GarageState {
   /// Why the last action of the user failed, when it did: a key that could not be deleted, for one.
   final P2pFailure? actionFailure;
 
-  const GarageUnknown(super.network, this.failure, {this.actionFailure});
+  /// Whether deleting the entry asks the wallet's PIN after « Delete Garage Key? », as for a key that can be read: here, when any robot of any key is bound, or the feature's database cannot be read.
+  ///
+  /// The cubit reads the database again when the user deletes; this only greys the button, and is `true` unless the database said otherwise.
+  final bool deletionNeedsPin;
+
+  const GarageUnknown(
+    super.network,
+    this.failure, {
+    this.actionFailure,
+    this.deletionNeedsPin = true,
+  });
 }
 
 /// What the screens show of a robot: its number, nickname and hash id, all public, and never its token.
