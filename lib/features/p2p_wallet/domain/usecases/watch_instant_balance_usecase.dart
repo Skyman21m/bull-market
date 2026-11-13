@@ -39,16 +39,11 @@ class WatchInstantBalanceUsecase {
       }
       var last = wallet.balance;
       controller.add(Ok(last));
-      syncs = _wallets
-          .watchSyncs(wallet.id)
-          .listen(
-            (synced) {
-              if (synced.balance == last) return;
-              last = synced.balance;
-              controller.add(Ok(last));
-            },
-            onError: (Object _) {},
-          );
+      syncs = _wallets.watchSyncs(wallet.id).listen((synced) {
+        if (synced.balance == last) return;
+        last = synced.balance;
+        controller.add(Ok(last));
+      }, onError: (Object _) {});
     }
 
     controller = StreamController(
