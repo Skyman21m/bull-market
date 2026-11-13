@@ -12,7 +12,7 @@ import 'closes_with_panel.dart';
 
 /// « Select Host »: the coordinators a robot may be put on, with the label of the official client's coordinator choice (`components/BookTable/BookControl.tsx` and `components/MakerForm/SelectCoordinator.tsx` at commit ff1998c), as a sheet of the wallet's design.
 ///
-/// It lists the coordinators of the federation list with an onion address on the robot's network, in the order of the federation, each with its avatar and long alias, « Coordinator offline » when the book of the tab could not reach it, and an info button that opens the coordinator dialog.
+/// It lists the coordinators of the federation list with an onion address on the robot's network, in the order of the federation, each with its avatar and long alias, « Coordinator offline » when the book of the tab could not reach it, and an info button that opens the coordinator dialog, which closes with the sheet when the panel goes away.
 /// A coordinator that refused too many robots in this run of the app is shown, disabled, with why.
 /// Choosing one sends nothing: the screen asks for a confirmation first.
 class SelectHostSheet extends StatelessWidget {
@@ -25,17 +25,21 @@ class SelectHostSheet extends StatelessWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// Completes when the panel that opened the sheet is gone: the coordinator dialog opened from the sheet closes then too.
+  final Future<void> closeWhen;
+
   const SelectHostSheet({
     super.key,
     required this.hosts,
     required this.offline,
     required this.network,
     required this.coordinatorDetails,
+    required this.closeWhen,
   });
 
   /// Opens the sheet; completes with the coordinator chosen, or `null` when it is closed without a choice.
   ///
-  /// It closes, without a choice, when [closeWhen] completes: when the panel that opened it is gone (security review of step 6).
+  /// It closes, without a choice, when [closeWhen] completes: when the panel that opened it is gone (security review of step 6); so does the coordinator dialog it opened (second security pass on #77).
   static Future<Coordinator?> show(
     BuildContext context, {
     required List<RobotHost> hosts,
@@ -53,6 +57,7 @@ class SelectHostSheet extends StatelessWidget {
         offline: offline,
         network: network,
         coordinatorDetails: coordinatorDetails,
+        closeWhen: closeWhen,
       ),
     ),
   );
@@ -109,6 +114,7 @@ class SelectHostSheet extends StatelessWidget {
                       () => coordinatorDetails(
                         CoordinatorDetailsRequest(host.coordinator, network),
                       ),
+                      closeWhen: closeWhen,
                     ),
                   ),
               ],

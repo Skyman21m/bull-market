@@ -2627,6 +2627,48 @@ void main() {
       }
     }
 
+    // Second security pass on #77: the coordinator dialog that an info button of « Select Host » opens sits above the sheet; the sheet's own route goes, not the one on top, and the dialog goes too.
+    for (final change in ['the network', 'the next robot']) {
+      testWidgets(
+        '$change while the coordinator dialog of « Select Host » is open: the dialog and the sheet close, and nothing is sent',
+        (tester) async {
+          keystoreHolding({_testnetEntry: null, _mainnetEntry: null});
+          await openGarage(tester);
+          tor.add(P2pTorState.ready);
+          await letTheVaultSettle(tester);
+          await tester.ensureVisible(find.text('Select Host'));
+          await settle(tester);
+          await tester.tap(find.text('Select Host'));
+          await afterRoute(tester);
+          await tester.ensureVisible(find.text('I understand'));
+          await settle(tester);
+          await tester.tap(find.text('I understand'));
+          await afterRoute(tester);
+          await tester.tap(find.byTooltip('Details of Temple of Sats'));
+          await afterRoute(tester);
+          expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+
+          final garage = tester
+              .element(find.byType(GarageView))
+              .read<GarageCubit>();
+          switch (change) {
+            case 'the network':
+              network.switchTo(RobosatsNetwork.mainnet);
+            default:
+              garage.next();
+          }
+          await settle(tester);
+          await letTheVaultSettle(tester);
+
+          expect(find.byType(CoordinatorDetailsDialog), findsNothing);
+          expect(find.byType(SelectHostSheet), findsNothing);
+          expect(find.byType(GarageView), findsOneWidget);
+          expect(robotRequestsMade(), isFalse);
+        },
+      );
+    }
+
     testWidgets(
       'a key drawn here: Select Host once Tor is ready, then the sheet and the confirmation, and Cancel sends nothing',
       (tester) async {
