@@ -2490,6 +2490,7 @@ void main() {
   group('the robot panel', () {
     final temple = coordinator('temple');
     late Map<RobotHashId, RobotPgpKey> pairs;
+    late RobotPgpKey otherPair;
     late FakeRobotCoordinators robotCoordinators;
     late RecordingBindings bindings;
     late RobotRequestLimiter limiter;
@@ -2508,6 +2509,8 @@ void main() {
         for (var i = 0; i < 2; i++)
           robotAt(i).identity.hashId: pairOf(robotAt(i).identity),
       };
+      // A second pair of robot 1, as another device would make it.
+      otherPair = pairOf(robotAt(1).identity);
     });
 
     setUp(() {
@@ -2855,6 +2858,41 @@ void main() {
           await settle(tester);
           expect(
             find.text(_text(tester).p2pRobotAlreadyExisted('Temple of Sats')),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'a first contact at Retry answered with another pair: « already existed », in ${locale.languageCode}',
+        (tester) async {
+          await boundTo(1, 'temple');
+          robotCoordinators.kept.clear();
+          await showPanel(tester, index: 1, locale: locale);
+          final l10n = _text(tester);
+          expect(
+            find.text(l10n.p2pRobotNotCreated('Temple of Sats')),
+            findsOneWidget,
+          );
+          // Another device creates the robot there with its own pair, just before this first contact arrives.
+          final other = otherPair;
+          robotCoordinators.onSend = (request) {
+            if (robotCoordinators.firstContacts.contains(request)) {
+              robotCoordinators.keepFor(
+                robotAt(1).identity,
+                'temple',
+                RobosatsNetwork.testnet,
+                other,
+              );
+            }
+          };
+
+          await tester.tap(find.text(l10n.p2pCommonRetry));
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(
+            find.text(l10n.p2pRobotAlreadyExisted('Temple of Sats')),
             findsOneWidget,
           );
         },

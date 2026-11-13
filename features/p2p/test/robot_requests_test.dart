@@ -1477,8 +1477,8 @@ void main() {
 
           final face = _face(await put.execute(robots[0], temple));
 
-          // Found by the read: a pair this call did not send.
-          expect(face.alreadyExisted, isTrue);
+          // Found by the read, with no first contact sent: this device put it there before (security review of step 5).
+          expect(face.alreadyExisted, isFalse);
           expect(coordinators.requests.map(_sentPublicKey), [
             firstPair.publicKey.armored,
             null,

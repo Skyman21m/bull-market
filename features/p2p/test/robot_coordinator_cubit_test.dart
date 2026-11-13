@@ -281,11 +281,6 @@ void main() {
         expect(face.nostrKey, RobotNostrKeyStatus.current);
         expect(face.alreadyExisted, isFalse);
         expect(
-          ((cubit.state as RobotOnCoordinator).activity as RobotKnown)
-              .afterSelectHost,
-          isTrue,
-        );
-        expect(
           seen.whereType<RobotOnCoordinator>().map((state) => state.activity),
           [
             isA<RobotContacting>()
@@ -694,16 +689,41 @@ void main() {
         // The put reads it back first, then makes the first contact the coordinator needs.
         expect(paths(), ['temple read', 'temple read', 'temple create']);
         expect((cubit.state as RobotOnCoordinator).coordinator, temple);
+        // The first contact got back the pair it sent.
         expect(
-          (cubit.state as RobotOnCoordinator).activity,
-          isA<RobotKnown>().having(
-            (a) => a.afterSelectHost,
-            'afterSelectHost',
-            isFalse,
-          ),
+          ((cubit.state as RobotOnCoordinator).activity as RobotKnown)
+              .face
+              .alreadyExisted,
+          isFalse,
         );
       },
     );
+
+    test(
+      'unknown, then a first contact at « Retry » answered with another pair: it already existed',
+      () async {
+        await bound(robots[0], temple);
+        coordinators.kept.clear();
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await until(cubit, failed);
+        // Another device creates the robot there with its own pair, just before this first contact arrives.
+        final other = pairOf(robots[0].identity);
+        coordinators.onSend = (request) {
+          if (coordinators.firstContacts.contains(request)) {
+            coordinators.keepFor(robots[0].identity, 'temple', _testnet, other);
+          }
+        };
+
+        await cubit.retry();
+        final state = await until(cubit, known) as RobotOnCoordinator;
+
+        expect(paths(), ['temple read', 'temple read', 'temple create']);
+        expect((state.activity as RobotKnown).face.alreadyExisted, isTrue);
+      },
+    );
+
 
     test(
       'unknown, then known at « Retry »: no first contact, and no « already existed »',
@@ -722,10 +742,8 @@ void main() {
         final state = await until(cubit, known) as RobotOnCoordinator;
 
         expect(paths(), ['temple read', 'temple read']);
-        final activity = state.activity as RobotKnown;
-        // The use case says it was there already, which this device made it: the card does not say so.
-        expect(activity.face.alreadyExisted, isTrue);
-        expect(activity.afterSelectHost, isFalse);
+        // Found by the read, with no first contact sent: this device put it there before.
+        expect((state.activity as RobotKnown).face.alreadyExisted, isFalse);
       },
     );
 

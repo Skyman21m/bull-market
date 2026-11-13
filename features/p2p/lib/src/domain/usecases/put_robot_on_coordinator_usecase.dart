@@ -38,7 +38,7 @@ final class PutRobotOnCoordinatorUsecase {
   /// A first contact holds a slot of the coordinator's cap of [RobotRequestLimiter.maxNicknameRefusals] refusals from before its request until its outcome is known, and a nickname taken that the read after it does not resolve (still unknown, unanswered, or never sent because the robot was released) uses the slot up for the run; with no slot left, a first contact fails at once with [RobotCoordinatorTooManyRefusalsFailure], before anything is written or sent for it.
   ///
   /// The outer [Err] is a [P2pFailure]: a refusal of the binding, of [FetchRobotUsecase] or of the limiter, or [RobotReleasedFailure] once the robot was released, from the start of the call, the read of the binding included: nothing is then bound or sent.
-  /// The inner result is what the coordinator answered, checked, its robot shown as a [RobotOnCoordinatorFace] whose [RobotOnCoordinatorFace.alreadyExisted] says that the coordinator returned a key pair this call did not send: found by the first read of a robot already bound there, or another pair answered to the first contact.
+  /// The inner result is what the coordinator answered, checked, its robot shown as a [RobotOnCoordinatorFace] whose [RobotOnCoordinatorFace.alreadyExisted] says that the first contact this call sent was answered with another key pair, proven: false for a robot already bound there that the first read finds, since no first contact was sent.
   Future<Result<Result<RobotOnCoordinatorFace, CoordinatorFailure>, P2pFailure>>
   execute(NetworkRobot robot, Coordinator coordinator) async {
     // Opened before the binding is read, so that a release of the robot during that read stops the call before it binds or sends anything (security review of step 5).
@@ -63,7 +63,8 @@ final class PutRobotOnCoordinatorUsecase {
           () => _fetch.execute(coordinator, RobotContact.readBack(robot)),
           isBusy: FetchRobotUsecase.answeredBusy,
         );
-        if (!_isUnknown(known)) return _shown(known, (_) => true);
+        // Found by the read, with no first contact sent: this device put it there before, so it did not « already exist » for this call.
+        if (!_isUnknown(known)) return _shown(known, (_) => false);
       }
       return await _firstContact(requests, robot, coordinator);
     } finally {

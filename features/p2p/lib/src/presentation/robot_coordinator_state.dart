@@ -142,13 +142,7 @@ final class RobotContacting extends RobotActivity {
 final class RobotKnown extends RobotActivity {
   final RobotOnCoordinatorFace face;
 
-  /// Whether this answer is that of « Select Host » for a robot no coordinator had received from this device.
-  ///
-  /// Only then does [RobotOnCoordinatorFace.alreadyExisted] tell the user something new: the robot was there before the user sent it, made elsewhere.
-  /// After « Retry » the robot is bound there already, and the use case reads it back before any first contact: a robot found so « already existed » because this device put it there earlier.
-  final bool afterSelectHost;
-
-  const RobotKnown(this.face, {this.afterSelectHost = false});
+  const RobotKnown(this.face);
 }
 
 /// The last request failed: why, and the way out the panel offers.

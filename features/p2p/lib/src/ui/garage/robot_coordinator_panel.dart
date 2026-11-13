@@ -264,9 +264,7 @@ class _OnCoordinator extends StatelessWidget {
               ),
             ],
           ],
-          RobotKnown(:final face, :final afterSelectHost) => [
-            _Known(face: face, name: name, afterSelectHost: afterSelectHost),
-          ],
+          RobotKnown(:final face) => [_Known(face: face, name: name)],
           RobotFailed(:final problem) => [
             _Failure(
               message: problem.toRobotText(context, coordinator: name),
@@ -286,14 +284,7 @@ class _Known extends StatelessWidget {
   final RobotOnCoordinatorFace face;
   final String name;
 
-  /// Whether this is the answer to « Select Host », the only one after which « already existed » is said: see `RobotKnown.afterSelectHost`.
-  final bool afterSelectHost;
-
-  const _Known({
-    required this.face,
-    required this.name,
-    required this.afterSelectHost,
-  });
+  const _Known({required this.face, required this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -351,7 +342,8 @@ class _Known extends StatelessWidget {
             ],
           ),
         ],
-        if (afterSelectHost && face.alreadyExisted) ...[
+        // Only when the first contact this panel asked for came back with another pair, after « Select Host » or « Retry » alike: see `RobotOnCoordinatorFace.alreadyExisted`.
+        if (face.alreadyExisted) ...[
           const Gap(BullSpacing.sm),
           _Line(l10n.p2pRobotAlreadyExisted(name), color: colors.textMuted),
         ],
