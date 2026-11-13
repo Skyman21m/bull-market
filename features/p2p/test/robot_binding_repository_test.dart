@@ -1190,6 +1190,9 @@ void main() {
 
     tearDown(() => directory.delete(recursive: true));
 
+    /// How long a write of the tests of two connections may keep giving up on SQLite's busy timeout: far more than the slowest commit seen under load (603 ms, #65), and short enough that the tests below end before their timeout if a write never succeeded.
+    const busyBudget = Duration(seconds: 20);
+
     /// Opens [databases] one after the other, before anything runs on them at once.
     ///
     /// drift keeps the error of an open that gave up on SQLite's busy timeout, so a connection opened inside the part at once could fail for good, where a busy statement fails once and may be asked again (second review of #72).
@@ -1197,6 +1200,28 @@ void main() {
       for (final database in databases) {
         await database.customSelect('SELECT 1').get();
       }
+    }
+
+    /// Asks [write] again while it gives up with a [P2pStorageFailure], for at most [busyBudget] of real time, counting time rather than attempts (#65).
+    ///
+    /// Two connections of one file wait for each other's write lock through SQLite's busy timeout of 2 s, but in the test runner that timeout gives up after about 30 ms of real time: each sleep of SQLite's busy handler ends at the next sample of the VM's profiler, every millisecond (measured for #65: 2 s in a plain `dart` run, about 40 ms with `--profiler`, about 150 ms and 500 ms with a sample every 5 and 20 ms).
+    /// Under the load of the whole suite, a commit synced to disk (`synchronous = FULL`) can hold the lock for hundreds of milliseconds, longer than eleven such attempts together.
+    /// A write that gave up is asked again as a user's « Retry » would: a bind writes only when the robot has no binding, then reads the binding that won, so asking again never makes a second one.
+    /// The app opens one connection, whose statements drift runs one at a time, so it never waits for another connection.
+    Future<Result<void, P2pFailure>> untilNotBusy(
+      Future<Result<void, P2pFailure>> Function() write,
+    ) async {
+      bool gaveUp(Result<void, P2pFailure> result) => switch (result) {
+        Err(failure: P2pStorageFailure()) => true,
+        _ => false,
+      };
+      final elapsed = Stopwatch()..start();
+      var result = await write();
+      while (gaveUp(result) && elapsed.elapsed < busyBudget) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        result = await write();
+      }
+      return result;
     }
 
     test(
@@ -1253,28 +1278,12 @@ void main() {
         final other = bindingsInMemory(database: second);
         expect(await one.recordGeneratedKey(testnet, fingerprintA), passes);
 
-        // A connection can give up after SQLite's busy timeout while the other commits, when the suite's other files write to disk too: a P2pStorageFailure that refuses the request and binds nothing, which a user's « Retry » asks again.
-        Future<Result<void, P2pFailure>> retried(
-          Future<Result<void, P2pFailure>> Function() bind,
-        ) async {
-          var result = await bind();
-          for (
-            var attempt = 0;
-            attempt < 10 &&
-                result is Err<void, P2pFailure> &&
-                result.failure is P2pStorageFailure;
-            attempt++
-          ) {
-            result = await bind();
-          }
-          return result;
-        }
-
+        // Both binds of an index start together, and the one that gives up while the other commits is asked again until it gets its real answer: the winner's binding, or the refusal of the loser.
         for (var index = 0; index < 5; index++) {
           final robot = RobotSlot(testnet, fingerprintA, index);
           final results = await Future.wait([
-            retried(() => one.bind(robot, temple)),
-            retried(() => other.bind(robot, lake)),
+            untilNotBusy(() => one.bind(robot, temple)),
+            untilNotBusy(() => other.bind(robot, lake)),
           ]);
           expect(
             results.whereType<Ok<void, P2pFailure>>(),
@@ -1311,24 +1320,19 @@ void main() {
 
         // The binds of one connection run in order; the record of the other lands somewhere among them.
         // It checks the order of the results, not that a bind is atomic: a bind that read the history, then wrote, passes it most of the time; `robot_bindings_architecture_test.dart` pins the one statement (review of #72).
-        // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections above: such a bind is a P2pStorageFailure that refuses the request, and a record that gave up is tried again.
+        // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections below: such a write is a P2pStorageFailure that refuses the request, and it is asked again until it is answered (`untilNotBusy`).
+        // A bind gives up only while the record holds the write lock, and is asked again behind the binds already queued on its connection, so it is answered once the record is written, as the binds after it are: the order still follows the record, and under the load of the whole suite every bind of a phase could give up otherwise (#65).
         Future<List<Result<void, P2pFailure>>> bindDuring(
           Iterable<int> indexes,
           Future<Result<void, P2pFailure>> Function() record,
         ) async {
           final binds = [
             for (final index in indexes)
-              one.bind(RobotSlot(testnet, fingerprintA, index), temple),
+              untilNotBusy(
+                () => one.bind(RobotSlot(testnet, fingerprintA, index), temple),
+              ),
           ];
-          Future<Result<void, P2pFailure>> recordUntilDone() async {
-            var result = await record();
-            for (var attempt = 0; attempt < 10 && result is! Ok; attempt++) {
-              result = await record();
-            }
-            return result;
-          }
-
-          final recorded = recordUntilDone();
+          final recorded = untilNotBusy(record);
           final results = await Future.wait(binds);
           expect(await recorded, passes);
           return results;

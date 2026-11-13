@@ -8,6 +8,7 @@ import '../domain/coordinator_size_limit.dart';
 import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
+import 'garage/closes_with_panel.dart';
 import 'widgets/coordinator_link_sheet.dart';
 import 'widgets/coordinator_avatar.dart';
 
@@ -22,16 +23,25 @@ class CoordinatorDetailsDialog extends StatefulWidget {
   const CoordinatorDetailsDialog({super.key});
 
   /// Opens the dialog over the current page, with the cubit [create] builds, which asks the coordinator for its info if needed.
+  ///
+  /// Opened from « Select Host », it closes when [closeWhen] completes, as the sheet under it does: when the robot panel that opened them is gone ([ClosesWithPanel]).
   static Future<void> show(
     BuildContext context,
-    CoordinatorDetailsCubit Function() create,
-  ) => BullDialog.show<void>(
+    CoordinatorDetailsCubit Function() create, {
+    Future<void>? closeWhen,
+  }) => BullDialog.show<void>(
     context: context,
     padding: EdgeInsets.zero,
-    builder: (_) => BlocProvider(
-      create: (_) => create()..load(),
-      child: const CoordinatorDetailsDialog(),
-    ),
+    builder: (_) {
+      final dialog = BlocProvider(
+        create: (_) => create()..load(),
+        child: const CoordinatorDetailsDialog(),
+      );
+      return switch (closeWhen) {
+        final until? => ClosesWithPanel(until: until, child: dialog),
+        null => dialog,
+      };
+    },
   );
 
   @override
