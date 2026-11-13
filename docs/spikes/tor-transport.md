@@ -82,7 +82,7 @@ On the service side (`request_federation_books_usecase_test.dart`, `p2p_feature_
 
 ## What is not verified
 
-- **Android**: this report's live test was not run on a phone, and all its measurements come from a PC. Since then, the P2P tab, which goes through this transport, has been used on one Android phone with debug builds (from 2026-11-11, see « Project status » in the README), with nothing measured there.
+- **Android**: this report's live test was not run on a phone, and all its measurements come from a PC. Since then, the P2P tab, which goes through this transport, has been used on one Android phone with debug builds (from 2026-11-11, see the [README](../../README.md#project-status), section "Project status"), with nothing measured there.
 - **Background and Tor sleep**: the behavior of sessions when Tor goes to sleep and then wakes up is not tested. A dead session should be detected as a connection failure (`proxyUnreachable`) and replaced, but this is only demonstrated with a fake Tor.
 - **One session per robot** for authenticated calls: outside this issue (#28).
 - **Snowflake, Orbot, network without VPN**: not tried.
