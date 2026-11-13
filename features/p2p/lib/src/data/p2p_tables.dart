@@ -85,7 +85,7 @@ class RobotBindings extends Table {
 ///
 /// A row is written before the take's request leaves, as a pending take, or on the user's take-over of a trade that recovery found; it is never deleted.
 /// Its only changes are the times of its state, each set once: `confirmed_at` when the coordinator showed the robot as the taker, `closed_at` when the trade ended or the pending take turned out not to have happened.
-/// The triggers of `trades.drift` refuse any other change and any delete, whatever the code that writes.
+/// The triggers of `trades.drift` refuse any other update, any delete and a second insert of a robot (`INSERT OR REPLACE` included), whatever the code that writes.
 /// Its robot is bound, on the trade's network, to the coordinator it records (a foreign key to `robot_bindings`), and its network and coordinator are copied from that binding by the statement that writes it.
 @DataClassName('TradeRow')
 class Trades extends Table {
@@ -138,10 +138,10 @@ class Trades extends Table {
     "CHECK (origin IN ('takenHere', 'recovered'))",
     // A recovered trade is held by its robot when it is recorded: it is never a pending take.
     "CHECK (origin = 'takenHere' OR confirmed_at IS NOT NULL)",
-    // Times of the records this code writes: never before the epoch.
-    'CHECK (taken_at >= 0)',
-    'CHECK (confirmed_at IS NULL OR confirmed_at >= 0)',
-    'CHECK (closed_at IS NULL OR closed_at >= 0)',
+    // Times of the records this code writes: from the epoch to the last a `DateTime` holds.
+    'CHECK (taken_at BETWEEN 0 AND 8640000000000000)',
+    'CHECK (confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000)',
+    'CHECK (closed_at IS NULL OR closed_at BETWEEN 0 AND 8640000000000000)',
     // The robot's binding, on the trade's network: the unique index `robot_bindings_network` (trades.drift) is its parent key.
     'FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network)',
   ];

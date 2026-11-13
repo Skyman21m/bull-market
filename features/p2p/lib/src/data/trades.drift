@@ -28,3 +28,10 @@ WHEN OLD.closed_at IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'a trade record only gains its times');
 END;
+
+-- A trade record is written once: a second insert of the same robot, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
+CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades
+WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;

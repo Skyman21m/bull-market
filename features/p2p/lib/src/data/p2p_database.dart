@@ -74,12 +74,13 @@ final class P2pDatabase extends _$P2pDatabase {
         }
       },
       from2To3: (m, schema) async {
-        // A new table, the unique index its foreign key needs on the bindings, and the triggers that keep its rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // A new table, the unique index its foreign key needs on the bindings, and the three triggers that keep its rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
         // The index adds no rule to the bindings, which the primary key (key fingerprint, robot index) already makes unique; no binding and no history is copied, changed or dropped.
         await m.createTable(schema.trades);
         await m.createIndex(schema.robotBindingsNetwork);
         await m.createTrigger(schema.tradesNeverDeleted);
         await m.createTrigger(schema.tradesSetOnce);
+        await m.createTrigger(schema.tradesInsertedOnce);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

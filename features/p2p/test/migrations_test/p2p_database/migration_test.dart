@@ -703,27 +703,78 @@ void main() {
       await database.close();
     });
 
-    test(
-      'a step that stopped after the table was made runs again over the file it left',
-      () async {
-        await writeSchema2();
-        // Stopped after the table was created, before the version was written.
-        final half = v2.DatabaseAtV2(NativeDatabase(file));
-        await half.customStatement(
-          'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (taken_at >= 0), CHECK (confirmed_at IS NULL OR confirmed_at >= 0), CHECK (closed_at IS NULL OR closed_at >= 0), FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network))',
-        );
-        // And after the index of the bindings was made, before the triggers.
-        await half.customStatement(
-          'CREATE UNIQUE INDEX robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
-        );
-        expect(await versionOf(half), 2);
-        await half.close();
+    /// The schema 3 objects of [database] as SQLite stores them, by name: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
+    Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
+      for (final row in await database
+          .customSelect(
+            "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network')",
+          )
+          .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
 
-        final database = P2pDatabase.open(() async => directory);
-        await expectRowsKept(database);
-        expect(await versionOf(database), 3);
-        await database.validateDatabaseSchema();
-        await database.close();
+    test(
+      'a file migrated holds the same objects as a new file of schema 3',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await objectsOf(fresh);
+        await fresh.close();
+        expect(expected.keys, unorderedEquals(_schema3Objects));
+
+        await writeSchema2();
+        final migrated = P2pDatabase.open(() async => directory);
+        expect(await objectsOf(migrated), expected);
+        await migrated.close();
+      },
+    );
+
+    test(
+      'a step that stopped after any of its parts runs again over the file it left',
+      () async {
+        // The statements of each part as a new file of schema 3 holds them, in the order of the step.
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final statements = {
+          for (final row in await fresh
+              .customSelect('SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL')
+              .get())
+            row.read<String>('name'): row.read<String>('sql'),
+        };
+        await fresh.close();
+
+        for (var parts = 1; parts <= _schema3Objects.length; parts++) {
+          await writeSchema2();
+          // Stopped after [parts] of the step, before the version was written.
+          final half = v2.DatabaseAtV2(NativeDatabase(file));
+          for (final name in _schema3Objects.take(parts)) {
+            await half.customStatement(
+              statements[name] ?? fail('no $name in a new file'),
+            );
+          }
+          expect(await versionOf(half), 2, reason: '$parts');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => directory);
+          await expectRowsKept(database);
+          expect(await versionOf(database), 3, reason: '$parts');
+          await database.validateDatabaseSchema();
+          expect(
+            (await objectsOf(database)).keys,
+            unorderedEquals(_schema3Objects),
+            reason: '$parts',
+          );
+          await database.close();
+        }
       },
     );
   });
@@ -734,3 +785,12 @@ Future<int> versionOf(GeneratedDatabase database) async =>
     (await database.customSelect('PRAGMA user_version').getSingle()).read<int>(
       'user_version',
     );
+
+/// The objects schema 3 adds, in the order of its step from 2: the table of the trades, the parent key of its foreign key, and its three triggers.
+const _schema3Objects = [
+  'trades',
+  'robot_bindings_network',
+  'trades_never_deleted',
+  'trades_set_once',
+  'trades_inserted_once',
+];

@@ -831,6 +831,7 @@ class RobotCoordinatorCubit {
       'm.createIndex(schema.robotBindingsNetwork)',
       'm.createTrigger(schema.tradesNeverDeleted)',
       'm.createTrigger(schema.tradesSetOnce)',
+      'm.createTrigger(schema.tradesInsertedOnce)',
     ]);
     // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
     expect(
@@ -865,14 +866,20 @@ class RobotCoordinatorCubit {
 
   test('nothing in the feature opens a database transaction', () {
     // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
-    expect(
-      where(
-        (facts) =>
-            facts.invoked.contains('transaction') ||
-            facts.names.contains('TransactionExecutor'),
-      ),
-      isEmpty,
+    // By name, so that a torn-off `transaction` counts as a call (second review of #102).
+    bool opensOne(_Facts facts) => facts.names.any(
+      {'transaction', 'beginTransaction', 'TransactionExecutor'}.contains,
     );
+    expect(where(opensOne), isEmpty);
+    // The check sees a call, a tear-off and the lower-level way in.
+    for (final source in [
+      'Future<void> f(GeneratedDatabase d) => d.transaction(() async {});',
+      'Future<void> f(GeneratedDatabase d) { final run = d.transaction; return run(() async {}); }',
+      'Object f(QueryExecutor e) => e.beginTransaction();',
+      'Object f(TransactionExecutor e) => e;',
+    ]) {
+      expect(opensOne(_Facts.of(source)), isTrue, reason: source);
+    }
   });
 
   test('a trade record is changed only by its two changes, and never deleted', () {
@@ -1703,6 +1710,7 @@ final _tradeTriggers = {
 const _tradeTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
 ];
 
 /// The statements of `trades.drift`, in order.

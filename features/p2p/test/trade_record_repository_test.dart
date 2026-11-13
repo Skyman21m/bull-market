@@ -1114,6 +1114,22 @@ void main() {
             "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, -1)",
             [key, onion],
           ),
+          // One past the last time a `DateTime` holds (second review of #102).
+          (
+            'a take after the last time',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 8640000000000001, NULL, NULL)",
+            [key, onion],
+          ),
+          (
+            'a confirmation after the last time',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, 8640000000000001, NULL)",
+            [key, onion],
+          ),
+          (
+            'a close after the last time',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, 8640000000000001)",
+            [key, onion],
+          ),
         ]) {
           await expectLater(
             insertTrade(values, variables),
@@ -1121,11 +1137,57 @@ void main() {
             reason: label,
           );
         }
+        // The bounds themselves pass.
         await insertTrade(
-          "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, NULL)",
+          "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, 8640000000000000, 8640000000000000)",
           [key, onion],
         );
         expect(await tradeRows(), hasLength(1));
+      },
+    );
+
+    test(
+      'a record is written once: a replacing insert changes nothing, and the repository keeps its answers (second review of #102)',
+      () async {
+        // `INSERT OR REPLACE` deletes the old row without firing a delete trigger while recursive triggers are off: the insert trigger ignores it.
+        final pending = await pendingTake(await reserved(0), orderId: 7);
+        now = testNow.add(const Duration(minutes: 1));
+        expect(await trades.closeTrade(pending), isA<Ok>());
+        final before = await tradeRows();
+        final key = Variable.withString(fingerprintA.hex);
+        final onion = Variable.withString(temple.onion);
+        for (final verb in ['INSERT OR REPLACE INTO', 'REPLACE INTO']) {
+          await database.customInsert(
+            "$verb trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('testnet', ?, 0, 'temple', ?, 99, 'seller', 'takenHere', 0, NULL, NULL)",
+            variables: [key, onion],
+          );
+          expect(await tradeRows(), before, reason: verb);
+        }
+        // The repository's answers stay: a second pending take or a recovered trade of a recorded robot is refused, a fresh robot still records.
+        expect(
+          await trades.recordPendingTake(
+            TradeReservation(pending.robot, temple),
+            orderId: 8,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<TradeAlreadyRecordedFailure>(),
+        );
+        expect(
+          await trades.recordRecoveredTrade(
+            pending.robot,
+            temple,
+            orderId: 8,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<TradeAlreadyRecordedFailure>(),
+        );
+        final fresh = await pendingTake(await reserved(1), orderId: 9);
+        expect(fresh.isPendingTake, isTrue);
+        expect(await tradeRows(), hasLength(2));
+        expect(
+          (await tradeRows()).firstWhere((row) => row.robotIndex == 0),
+          before.single,
+        );
       },
     );
   });
