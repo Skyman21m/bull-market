@@ -20,6 +20,7 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
+import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
@@ -2670,6 +2671,7 @@ void main() {
         ),
         WatchP2pTorStateUsecase(() => robotTor),
         ListRobotHostsUsecase(Federation.robosats, limiter),
+        AcknowledgeGarageKeyHistoryUsecase(bindings),
       );
       final bookTransport = FakeTransport(
         network: network,

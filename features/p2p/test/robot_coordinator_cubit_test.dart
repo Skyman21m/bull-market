@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_on_coordinator_face.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
@@ -127,6 +128,7 @@ void main() {
       ReleaseRobotUsecase(limiter, CloseRobotSessionsUsecase(sessions)),
       WatchP2pTorStateUsecase(() => tor),
       ListRobotHostsUsecase(Federation.robosats, limiter),
+      AcknowledgeGarageKeyHistoryUsecase(bindings),
       stillWaitingAfter: stillWaitingAfter,
     );
     cubits.add(cubit);
@@ -237,7 +239,7 @@ void main() {
     );
 
     test(
-      'of a key whose history must be acknowledged: disabled, nothing sent',
+      'of a key whose history must be acknowledged: putOn refuses it by itself, before any use case',
       () async {
         bindings = RecordingBindings();
         final cubit = cubitAt(0);
@@ -246,14 +248,19 @@ void main() {
         await _settle();
         final state = cubit.state as RobotWithoutCoordinator;
         expect(state.needsAcknowledgement, isTrue);
+        // « Select Host » may be pressed, to ask the acknowledgement; no coordinator may be chosen.
+        expect(state.maySelectHost, isTrue);
         expect(state.mayChooseHost, isFalse);
+        final reads = bindings.calls.length;
 
         await cubit.putOn(temple);
         await _settle();
 
-        expect(cubit.state, isA<RobotWithoutCoordinator>());
+        expect(identical(cubit.state, state), isTrue);
+        // Not even a read of the database: the use case was never called.
+        expect(bindings.calls, hasLength(reads));
         expect(coordinators.requests, isEmpty);
-        expect(bindings.calls.where((call) => call.$1 == 'bind'), isEmpty);
+        expect(keys.generated, isEmpty);
       },
     );
 
@@ -372,6 +379,229 @@ void main() {
       expect(face.activeOrderId, isNull);
       expect(face.earnedRewards, Sats.fromInt(3500));
       expect(face.nostrKey, RobotNostrKeyStatus.old);
+    });
+  });
+
+  // #29, step 6: « Select Host » asks the acknowledgement of a key of unknown history first, and only « I understand » records it, through the cubit.
+  group('the acknowledgement of a key of unknown history', () {
+    List<BindingCall> acknowledgements() => [
+      for (final call in bindings.calls)
+        if (call.$1 == 'recordAcknowledgedKey') call,
+    ];
+
+    /// A cubit of robot [index] of the key, pasted or of unknown history, with Tor ready.
+    Future<RobotCoordinatorCubit> unknownKeyAt(
+      int index, {
+      RobosatsNetwork network = _testnet,
+    }) async {
+      final cubit = cubitAt(index, network: network);
+      await cubit.load();
+      tor.embedded.ready();
+      await _settle();
+      return cubit;
+    }
+
+    setUp(() => bindings = RecordingBindings());
+
+    test(
+      'recorded once on a double tap, then the robot may go to a host, and is bound as acknowledged',
+      () async {
+        final cubit = await unknownKeyAt(0);
+        expect(
+          cubit.state,
+          isA<RobotWithoutCoordinator>()
+              .having((s) => s.needsAcknowledgement, 'needs', isTrue)
+              .having((s) => s.mayChooseHost, 'may choose', isFalse),
+        );
+
+        await Future.wait([cubit.acknowledge(), cubit.acknowledge()]);
+        await cubit.acknowledge();
+
+        expect(acknowledgements(), [
+          ('recordAcknowledgedKey', _testnet, fingerprint),
+        ]);
+        expect(
+          cubit.state,
+          isA<RobotWithoutCoordinator>()
+              .having((s) => s.needsAcknowledgement, 'needs', isFalse)
+              .having((s) => s.mayChooseHost, 'may choose', isTrue)
+              .having((s) => s.acknowledgementFailure, 'failure', isNull),
+        );
+        // Recorded, nothing sent.
+        expect(coordinators.requests, isEmpty);
+
+        await cubit.putOn(temple);
+        await until(cubit, known);
+        final standing =
+            (await bindings.standingOf(robots[0].slot))
+                as Ok<RobotStanding, P2pFailure>;
+        expect(standing.value.binding?.coordinator.alias, 'temple');
+        expect(
+          standing.value.binding?.provenance,
+          BindingProvenance.acknowledged,
+        );
+      },
+    );
+
+    test(
+      'once per key and network: the other robots go on, the other network still asks',
+      () async {
+        final first = await unknownKeyAt(0);
+        await first.acknowledge();
+        await first.close();
+
+        final other = await unknownKeyAt(1);
+        expect(
+          (other.state as RobotWithoutCoordinator).needsAcknowledgement,
+          isFalse,
+        );
+        await other.acknowledge();
+        // The same key in the mainnet slot: its history there is its own.
+        final mainnet = await unknownKeyAt(0, network: _mainnet);
+        expect(
+          (mainnet.state as RobotWithoutCoordinator).needsAcknowledgement,
+          isTrue,
+        );
+        expect(acknowledgements(), [
+          ('recordAcknowledgedKey', _testnet, fingerprint),
+        ]);
+        await mainnet.putOn(temple);
+        await _settle();
+        expect(coordinators.requests, isEmpty);
+      },
+    );
+
+    test('asked again after the key is pasted again', () async {
+      final first = await unknownKeyAt(0);
+      await first.acknowledge();
+      await first.close();
+      expect(
+        await bindings.recordImportedKey(_testnet, fingerprint),
+        isA<Ok<void, P2pFailure>>(),
+      );
+
+      final again = await unknownKeyAt(0);
+
+      expect(
+        (again.state as RobotWithoutCoordinator).needsAcknowledgement,
+        isTrue,
+      );
+    });
+
+    test('nothing to record for a key drawn here', () async {
+      bindings = RecordingBindings(
+        drawnHere: [
+          for (final network in RobosatsNetwork.values) (network, fingerprint),
+        ],
+      );
+      final cubit = await unknownKeyAt(0);
+      final shown = cubit.state;
+
+      await cubit.acknowledge();
+
+      expect(acknowledgements(), isEmpty);
+      expect(identical(cubit.state, shown), isTrue);
+    });
+
+    test('nothing recorded before Tor is ready', () async {
+      final cubit = cubitAt(0);
+      await cubit.load();
+      tor.embedded.connecting();
+      await _settle();
+      final shown = cubit.state as RobotWithoutCoordinator;
+      expect(shown.maySelectHost, isFalse);
+
+      await cubit.acknowledge();
+
+      expect(acknowledgements(), isEmpty);
+      expect(identical(cubit.state, shown), isTrue);
+    });
+
+    test('nothing recorded for a robot bound to a coordinator', () async {
+      // Bound under an acknowledged key, which was pasted again since: its history is unknown, its robot bound.
+      expect(
+        await bindings.recordAcknowledgedKey(_testnet, fingerprint),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      await bound(robots[0], temple);
+      expect(
+        await bindings.recordImportedKey(_testnet, fingerprint),
+        isA<Ok<void, P2pFailure>>(),
+      );
+      final cubit = await unknownKeyAt(0);
+      await until(cubit, known);
+      final recorded = acknowledgements().length;
+
+      await cubit.acknowledge();
+
+      expect(acknowledgements(), hasLength(recorded));
+      expect(paths(), ['temple read']);
+    });
+
+    test(
+      'a record that fails: said, nothing recorded or sent, and asked again',
+      () async {
+        final cubit = await unknownKeyAt(0);
+        bindings
+          ..failure = const P2pStorageFailure()
+          ..failures = 1;
+
+        await cubit.acknowledge();
+
+        final state = cubit.state as RobotWithoutCoordinator;
+        expect(state.acknowledgementFailure, isA<P2pStorageFailure>());
+        expect(state.needsAcknowledgement, isTrue);
+        expect(state.mayChooseHost, isFalse);
+        // It stays through a change of Tor's state.
+        tor.embedded.connecting();
+        await _settle();
+        await cubit.putOn(temple);
+        await _settle();
+        expect(coordinators.requests, isEmpty);
+        expect(bindings.calls.where((call) => call.$1 == 'bind'), isEmpty);
+
+        // Asked again, it is recorded, and the failure is gone.
+        await cubit.acknowledge();
+        expect(acknowledgements(), hasLength(2));
+        expect(
+          cubit.state,
+          isA<RobotWithoutCoordinator>()
+              .having((s) => s.mayChooseHost, 'may choose', isTrue)
+              .having((s) => s.acknowledgementFailure, 'failure', isNull),
+        );
+      },
+    );
+
+    test(
+      'recorded, then the records cannot be read: said, and nothing opens',
+      () async {
+        final cubit = await unknownKeyAt(0);
+        bindings.onRead = () =>
+            bindings.readFailure = const P2pStorageFailure();
+
+        await cubit.acknowledge();
+
+        expect(acknowledgements(), hasLength(1));
+        expect(
+          cubit.state,
+          isA<RobotStandingUnreadable>().having(
+            (s) => s.lastAttempt,
+            'attempt',
+            isNull,
+          ),
+        );
+        expect(coordinators.requests, isEmpty);
+      },
+    );
+
+    test('closed while it records: nothing shown after', () async {
+      final cubit = await unknownKeyAt(0);
+      final shown = cubit.state;
+      final acknowledging = cubit.acknowledge();
+      await cubit.close();
+      await acknowledging;
+
+      expect(identical(cubit.state, shown), isTrue);
     });
   });
 
@@ -1276,6 +1506,19 @@ void main() {
         await _settle();
         await cubit.close();
       }
+      // The acknowledgement of a key of unknown history, refused once by the database, then recorded, and the robot put on a coordinator (#29, step 6).
+      bindings = RecordingBindings()
+        ..failure = const P2pStorageFailure()
+        ..failures = 1;
+      final unknown = cubitAt(2);
+      await unknown.load();
+      tor.embedded.ready();
+      await _settle();
+      await unknown.acknowledge();
+      await unknown.acknowledge();
+      await unknown.putOn(temple);
+      await _settle();
+      await unknown.close();
     });
     expectNoKeyIn(output, [fixedKey]);
     for (final robot in robots) {
