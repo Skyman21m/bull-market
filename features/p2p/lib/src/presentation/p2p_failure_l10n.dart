@@ -26,7 +26,9 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
       RobotKeysRefused(reason: RobotKeysRefusal.keyTooRecent) =>
         l10n.p2pRobotKeyTooRecent(coordinator),
       RobotKeysRefused() ||
-      RobotCredentialsRejected() => l10n.p2pRobotRefused(coordinator),
+      RobotCredentialsRejected() ||
+      // Only the calls on an order give it, which no robot request of the panel makes.
+      CoordinatorOrderFailure() => l10n.p2pRobotRefused(coordinator),
       RobotNicknameTaken() => l10n.p2pRobotNicknameTaken(coordinator),
       RobotMismatchFailure() => l10n.p2pRobotMismatch(coordinator),
     };
