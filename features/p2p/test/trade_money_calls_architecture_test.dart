@@ -44,9 +44,12 @@ void main() {
     });
   });
 
-  test('only the trade use cases name a money member of the coordinator client', () {
-    expect(_offences(sources), isEmpty);
-  });
+  test(
+    'only the trade use cases name a money member of the coordinator client',
+    () {
+      expect(_offences(sources), isEmpty);
+    },
+  );
 
   group('the rule bites:', () {
     const tradeUseCase =
@@ -114,7 +117,10 @@ void main() {
         ('dynamic call', 'void f() => (client as dynamic).takeOrder(1);'),
         ('symbol', 'final s = #takeOrder;'),
         ('interpolation', r'''final s = '${client.takeOrder}';'''),
-        ('Function.apply', 'void f() => Function.apply(client.takeOrder, [1]);'),
+        (
+          'Function.apply',
+          'void f() => Function.apply(client.takeOrder, [1]);',
+        ),
       ]) {
         expect(offencesOf(cubit, source), [
           '$cubit names takeOrder but is not a trade use case',
@@ -122,9 +128,11 @@ void main() {
       }
     });
 
-    test('a comment, a doc comment or a string that names a member is no use', () {
-      expect(
-        offencesOf(cubit, '''
+    test(
+      'a comment, a doc comment or a string that names a member is no use',
+      () {
+        expect(
+          offencesOf(cubit, '''
 // The trade use case calls takeOrder.
 /* takeOrder */
 /// See [CoordinatorClient.takeOrder] and [takeOrder].
@@ -134,9 +142,10 @@ final class TradeCubit {
   final String raw = r'openDispute';
 }
 '''),
-        isEmpty,
-      );
-    });
+          isEmpty,
+        );
+      },
+    );
 
     test('a declaration of a member with a watched name is no use', () {
       expect(
