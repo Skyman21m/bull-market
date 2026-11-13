@@ -15,6 +15,7 @@ import '../src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import '../src/p2p_locator.dart';
 import '../src/p2p_router.dart';
 import '../src/ui/garage/garage_reauthentication.dart';
+import 'p2p_wallet_port.dart';
 
 /// Public application-shell composition for the P2P feature.
 final class P2pFeature {
@@ -30,10 +31,14 @@ final class P2pFeature {
   /// Give both or neither: the Garage records in that database how each key came to the device.
   /// With `null` for both, as in the WorkManager isolate, whose keystore lock does not reach the foreground's and which must never open or migrate the database while the app may, the feature has no Garage Key ability at all: nothing that reads or writes a key, a binding or the database is registered.
   /// Registering reads and writes no key and opens no file either way: the directory is asked for at the first query of the database.
+  ///
+  /// [wallet] gives the wallet's port, which only the foreground composition passes too, as a function so that the shell's wallet need not be registered yet: it is called at the first use of the port, and nothing calls the port yet (#100).
+  /// With `null`, the feature has no wallet: the trade screen will offer only « Pay with another wallet ».
   void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
     required Future<Directory> Function()? databaseDirectory,
+    required P2pWalletPort Function()? wallet,
   }) {
     if ((garageKeys == null) != (databaseDirectory == null)) {
       throw ArgumentError(
@@ -44,6 +49,7 @@ final class P2pFeature {
       locator,
       garageKeys: garageKeys,
       databaseDirectory: databaseDirectory,
+      wallet: wallet,
     );
     locator.registerLazySingleton<P2pFacade>(
       () => P2pFacade._(locator(), locator(), locator(), locator()),

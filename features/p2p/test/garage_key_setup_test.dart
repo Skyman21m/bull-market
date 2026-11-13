@@ -62,6 +62,7 @@ void main() {
     locator,
     garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
     databaseDirectory: databaseDirectory,
+    wallet: null,
   );
 
   /// Whether each type of the Garage Key is registered in [locator].
@@ -99,6 +100,7 @@ void main() {
         locator,
         garageKeys: null,
         databaseDirectory: null,
+        wallet: null,
       );
 
       expect(garageKeyRegistrations(), everyElement(isFalse));
@@ -114,6 +116,7 @@ void main() {
         locator,
         garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
         databaseDirectory: null,
+        wallet: null,
       ),
       throwsArgumentError,
     );
@@ -122,6 +125,7 @@ void main() {
         locator,
         garageKeys: null,
         databaseDirectory: databaseDirectory,
+        wallet: null,
       ),
       throwsArgumentError,
     );
