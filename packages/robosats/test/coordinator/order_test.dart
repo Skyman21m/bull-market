@@ -1159,6 +1159,27 @@ void main() {
       },
     );
 
+    test('a pre-taker\'s read always carries its bond', () async {
+      // The view gives the bond with status 3, or answers an error (`api/views.py:381-396`).
+      expect(
+        await refuse(_answer(1, role: _Role.preTaker, changes: {'bond_invoice': null, 'bond_satoshis': null})),
+        malformed('bond_invoice'),
+      );
+    });
+
+    test('a taker is named from the first status after the take', () async {
+      // `finalize_contract` sets the taker and status 6 together (`api/logics.py:1320-1380`).
+      for (final role in [_Role.maker, _Role.taker]) {
+        expect(
+          await refuse(_answer(6, role: role, changes: {'taker_hash_id': null, 'taker_nick': 'None', 'taker_nostr_pubkey': null})),
+          malformed('taker_hash_id'),
+          reason: role.name,
+        );
+      }
+      // An order that expired before its take has no taker.
+      expect((await read(_answer(5, role: _Role.maker))).taker, isNull);
+    });
+
     test(
       'a hold invoice only at the step that asks for it, to the robot that pays it',
       () async {
