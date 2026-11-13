@@ -837,7 +837,7 @@ class RobotCoordinatorCubit {
       ['customStatement(_foreignKeysOn)'],
     );
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
-    // Its one `customSelect`, the step's look at a column: no other statement, and no other pragma, could turn the foreign keys off (review of #102).
+    // Its one `customSelect`, the step's look at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
     expect(
       database.calls.where((call) => call.startsWith('customSelect(')),
       [startsWith("customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',")],
@@ -846,7 +846,13 @@ class RobotCoordinatorCubit {
       database.strings.where(
         (text) => RegExp(r'\bpragma\b', caseSensitive: false).hasMatch(text),
       ),
-      ['PRAGMA foreign_keys = ON'],
+      [
+        'PRAGMA foreign_keys = ON',
+        // The setup of the app's connection, before any statement.
+        'PRAGMA busy_timeout = 2000;',
+        'PRAGMA journal_mode = WAL;',
+        'PRAGMA synchronous = FULL;',
+      ],
     );
     // The database's own rules on the trades, as written in `trades.drift`: the parent key of their foreign key, and the triggers that refuse a delete and any change but the two times set once.
     expect(
