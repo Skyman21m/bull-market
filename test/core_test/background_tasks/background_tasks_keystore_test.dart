@@ -99,7 +99,7 @@ void main() {
     );
 
     test(
-      'setupP2p gives P2P the handle and the directory of its database under that one flag',
+      'setupP2p gives P2P the handle, the directory of its database and the wallet\'s port under that one flag',
       () {
         expect(
           _calls(
@@ -111,6 +111,7 @@ void main() {
               'locator',
               'garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null',
               'databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null',
+              'wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null',
             ],
           ],
         );
@@ -126,8 +127,8 @@ void main() {
       expect(_occurrences(code, RegExp(r'\bwithGarageKeys\b')), {
         'lib/init.dart': 1,
         'lib/core/background_tasks/handler.dart': 1,
-        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its two uses.
-        'lib/locator.dart': 6,
+        // The parameter of `setup`, both sides of the argument it passes to `setupP2p`, the parameter of `setupP2p` and its three uses.
+        'lib/locator.dart': 7,
       });
     });
 
