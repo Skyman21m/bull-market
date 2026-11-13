@@ -5,6 +5,7 @@ import 'package:robosats/robosats.dart'
         CoordinatorNotJson,
         CoordinatorNotOnNetwork,
         CoordinatorResponseMalformed,
+        CoordinatorOrderFailure,
         CoordinatorUnexpectedStatus,
         CoordinatorIdentityFailure,
         CoordinatorTransportFailure,
@@ -251,7 +252,9 @@ final class RobotRequestAnswered extends RobotRequestProblem {
     RobotKeysRefused() ||
     RobotCredentialsRejected() ||
     RobotNicknameTaken() ||
-    RobotMismatchFailure() => RobotWayOut.none,
+    RobotMismatchFailure() ||
+    // Only the calls on an order give it, which no robot request of the panel makes.
+    CoordinatorOrderFailure() => RobotWayOut.none,
     CoordinatorTransportFailure() ||
     CoordinatorNotOnNetwork() ||
     CoordinatorUnexpectedStatus() ||
