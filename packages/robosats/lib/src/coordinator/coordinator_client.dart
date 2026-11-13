@@ -20,10 +20,11 @@ import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
-/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport].
+/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order.
 ///
-/// Every method returns a [CoordinatorFailure] instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception].
-/// Only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
+/// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
+/// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
+/// For an action on an order, an `Error` is caught too and read as an outcome unknown, since the request may have left.
 /// Methods are independent: call them concurrently, one future per coordinator.
 final class CoordinatorClient {
   final CoordinatorTransport _transport;
@@ -205,16 +206,18 @@ final class CoordinatorClient {
 
   /// `GET /api/order/?order_id=`, the order [orderId] as [coordinator] describes it to the robot [identity], sent with the robot's short `Authorization` header, which sends no key.
   ///
-  /// The answer depends on who asks and on the status (`api/views.py:226-528`, commit ff1998c): see [CoordinatorOrder] for what is read and checked.
-  /// A coordinator that does not know the robot answers [RobotUnknown]; an order cancelled is [OrderCancelled], one this robot may not see is [OrderNotAvailable], and an unknown number is [OrderNotFound].
+  /// The answer depends on who asks and on the status (`api/views.py:226-528`, commit ff1998c): see [CoordinatorOrder] for what is read and checked, against [identity] too.
+  /// A coordinator that does not know the robot answers [RobotUnknown]; an order cancelled is [OrderCancelled], one this robot may not see is [OrderNotAvailable], and an unknown number is [OrderNotFound], as is a number out of range, which is not sent.
   /// A `GET`, so the transport may send it again after a connection failure.
+  ///
+  /// Known limit: the short header carries no Nostr key, so a read never replaces the all-zero placeholder key a coordinator may hold for the robot; only a request with the first-contact header does (`robosats/middleware.py:98-107`).
   Future<Result<CoordinatorOrder, CoordinatorFailure>> fetchOrder(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
     required int orderId,
   }) async {
-    _checkOrderId(orderId);
+    if (!_isOrderId(orderId)) return const Err(OrderNotFound());
     final response = await _exchange(
       coordinator,
       network,
@@ -231,7 +234,9 @@ final class CoordinatorClient {
       Ok(:final value) => CoordinatorOrder.parse(
         value,
         coordinator,
+        network,
         orderId: orderId,
+        identity: identity,
       ),
     };
   }
@@ -243,11 +248,11 @@ final class CoordinatorClient {
   /// The coordinator refuses more than 8 decimals with an empty `400`, read as [OrderRequestRefused].
   /// [password] is the text the user typed for a protected order: the SHA-256 of its UTF-8 bytes is sent, in lowercase hexadecimal, as the reference client sends it; an empty one is not sent.
   ///
-  /// A `200` answer is the order as the coordinator then describes it, and is an [OrderTakeStarted] only when it shows this robot as the pre-taker: the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error (`api/views.py:595-596`).
-  /// A refusal is a [CoordinatorOrderFailure], such as [RobotHasActiveOrder], [OrderAmountOutOfRange], [OrderTakePenalty] or [OrderWrongPassword].
+  /// A `200` answer is the order as the coordinator then describes it, read as a [TakeOrderOutcome]: [OrderTakeStarted] only when it shows this robot as the pre-taker with its bond, [OrderAlreadyTakenByThisRobot] when this robot was already the taker, [OrderNotTaken] otherwise (the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error, `api/views.py:595-596`).
+  /// A failure is an [OrderActionRefused] when nothing was done, and an [OrderActionOutcomeUnknown] when the take may have happened.
   ///
-  /// Sent once and never again by this client, whatever the outcome, a timeout included: the coordinator may have taken the order for this robot all the same, which the next [fetchOrder] tells.
-  Future<Result<TakeOrderOutcome, CoordinatorFailure>> takeOrder(
+  /// Sent once and never again by this client, whatever the outcome, a timeout included: the next [fetchOrder] tells what happened.
+  Future<Result<TakeOrderOutcome, OrderActionFailure>> takeOrder(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
@@ -255,7 +260,9 @@ final class CoordinatorClient {
     FiatAmount? amount,
     String? password,
   }) async {
-    _checkOrderId(orderId);
+    if (!_isOrderId(orderId)) {
+      return const Err(OrderActionRefused(OrderNotFound()));
+    }
     final response = await _postOrderAction(
       coordinator,
       network,
@@ -269,58 +276,76 @@ final class CoordinatorClient {
       },
     );
     return switch (_orderAnswer(response)) {
-      Err(:final failure) => Err(failure),
-      Ok(:final value) => parseTakeAnswer(value, coordinator, orderId: orderId),
+      Err(:final failure) => Err(_afterAction(failure)),
+      Ok(:final value) => parseTakeAnswer(
+        value,
+        coordinator,
+        network,
+        orderId: orderId,
+        identity: identity,
+      ).mapErr(_afterAction),
     };
   }
 
-  /// `POST /api/order/?order_id=` with the action `cancel`: asks [coordinator] to cancel the order [orderId] for the robot [identity].
+  /// `POST /api/order/?order_id=` with the action `cancel`: asks the coordinator of [lastRead] to cancel that order for the robot [identity], which read it.
   ///
-  /// With [onlyIfStatus], `cancel_status` is sent and the coordinator cancels only if it has the order in that status, and refuses with [OrderStatusChanged] otherwise (`api/logics.py:1010-1015`).
-  /// It compares the status it stores, and a pre-take is stored as [CoordinatorOrderStatus.public]: a pre-taker sends [CoordinatorOrderStatus.public], so that a cancel that arrives after its bond locked is refused rather than cost the bond; [CoordinatorOrderStatus.waitingForTakerBond] is never stored, so it is refused here with an [ArgumentError].
-  /// The reference client sends `cancel_status` only for a maker of an order not yet taken (`frontend/src/components/TradeBox/index.tsx:245-254`); the body is otherwise its own, `{"action":"cancel"}`.
+  /// The cancel is always guarded: `cancel_status` is the status of [lastRead], and the coordinator cancels only if it still has the order in that status, refusing with [OrderStatusChanged] otherwise (`api/logics.py:1010-1015`).
+  /// Without the guard, a cancel that lands after the taker's bond locked settles that bond (`api/logics.py:1108-1130`); with it, it is refused.
+  /// The coordinator compares the status it stores, and a pre-take shown as [CoordinatorOrderStatus.waitingForTakerBond] is stored as [CoordinatorOrderStatus.public]: that is what is sent then.
+  /// The body is `{"action":"cancel","cancel_status":N}`: the reference client's, plus a guard its taker never sends (`frontend/src/components/TradeBox/index.tsx:245-254`), a deviation.
+  /// An order read from another coordinator, network or robot is refused with [OrderReadElsewhere], and nothing is sent.
   ///
-  /// What a cancel does depends on the status (`Logics.cancel_order`, `api/logics.py:1005-1181`): a taker whose bond is locked and the escrow not yet loses the bond.
-  /// The answer is [OrderCancelEnded] when the order is over, and otherwise [OrderCancelAccepted] with the order as it then is; a refusal is a [CoordinatorOrderFailure], such as [OrderNotCancellable].
+  /// The answer is [OrderCancelEnded] when the order is over, and otherwise [OrderCancelAccepted] with the order as it then is; a failure is an [OrderActionRefused] when nothing was done, and an [OrderActionOutcomeUnknown] when the cancel may have happened.
   ///
-  /// Sent once and never again by this client, whatever the outcome, a timeout included: the coordinator may have cancelled all the same, which the next [fetchOrder] tells.
-  Future<Result<CancelOrderOutcome, CoordinatorFailure>> cancelOrder(
-    Coordinator coordinator,
-    RobosatsNetwork network, {
+  /// Sent once and never again by this client, whatever the outcome, a timeout included: the next [fetchOrder] tells what happened.
+  Future<Result<CancelOrderOutcome, OrderActionFailure>> cancelOrder({
     required RobotIdentity identity,
-    required int orderId,
-    CoordinatorOrderStatus? onlyIfStatus,
+    required CoordinatorOrder lastRead,
   }) async {
-    _checkOrderId(orderId);
-    if (onlyIfStatus == CoordinatorOrderStatus.waitingForTakerBond) {
-      throw ArgumentError.value(
-        onlyIfStatus,
-        'onlyIfStatus',
-        'never stored by a coordinator: a pre-take is stored as public',
-      );
+    if (!lastRead.wasReadBy(identity)) {
+      return const Err(OrderActionRefused(OrderReadElsewhere()));
     }
+    final coordinator = lastRead.coordinator;
+    final network = lastRead.network;
+    final orderId = lastRead.id;
     final response = await _postOrderAction(
       coordinator,
       network,
       identity: identity,
       orderId: orderId,
-      body: {'action': 'cancel', 'cancel_status': ?onlyIfStatus?.wire},
+      body: {'action': 'cancel', 'cancel_status': storedStatusOf(lastRead).wire},
     );
     return switch (_orderAnswer(response)) {
-      Err(:final failure) => Err(failure),
+      Err(:final failure) => Err(_afterAction(failure)),
       Ok(:final value) => parseCancelAnswer(
         value,
         coordinator,
+        network,
         orderId: orderId,
-      ),
+        identity: identity,
+      ).mapErr(_afterAction),
     };
   }
 
-  static void _checkOrderId(int orderId) {
-    if (orderId < 1 || orderId > 1 << 53) {
-      throw ArgumentError.value(orderId, 'orderId', 'not an order number');
-    }
-  }
+  static bool _isOrderId(int orderId) => orderId >= 1 && orderId <= 1 << 53;
+
+  /// Whether [failure] of a take or a cancel comes before the action, so that nothing was done: see [OrderActionRefused] for the list and why.
+  static OrderActionFailure _afterAction(CoordinatorFailure failure) =>
+      switch (failure) {
+        RobotHasActiveOrder() ||
+        OrderAmountOutOfRange() ||
+        OrderTakePenalty() ||
+        OrderStatusChanged() ||
+        OrderNotFound() ||
+        OrderWrongPassword() ||
+        OrderRequestRefused(errorCode: null) ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        OrderReadElsewhere() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
 
   /// [value] as JavaScript writes a number: an integral value without a fractional part, as the reference client sends `Number(...)`.
   static num _jsonNumber(double value) =>
@@ -331,6 +356,7 @@ final class CoordinatorClient {
   /// One `POST /api/order/?order_id=` with a JSON [body], for the robot [identity] only: an action on an order is never sent without the robot's credential and session.
   ///
   /// Sent once: this client never sends it again, and the transport never retries a request that is not a `GET`.
+  /// Whatever the transport throws, an `Error` included, becomes [CoordinatorTransportFailed], since the request may have left: a deviation from rule 11 of `AGENTS.md` for this one call, so that a caller always learns that the outcome is unknown.
   Future<Result<CoordinatorResponse, CoordinatorFailure>> _postOrderAction(
     Coordinator coordinator,
     RobosatsNetwork network, {
@@ -356,6 +382,7 @@ final class CoordinatorClient {
         maxResponseBytes: CoordinatorReadBounds.orderBytes,
         robot: identity.sessionKey,
       ),
+      catchErrors: true,
     );
   }
 
@@ -376,9 +403,11 @@ final class CoordinatorClient {
   /// Why a coordinator answered a request about an order with a status other than `200`.
   ///
   /// Its errors are `{"error_code": …, "bad_request": …}` (`api/errors.py:120-138`): only the code is read, and the seconds of 1012; the message is never kept.
+  /// A code is read on a `4xx` answer only, as for the robot's requests ([_robotRefusal]): the reference sends its codes with `400`, `403`, `404` and `409`, and a `5xx` or anything else is the HTTP status alone, whatever its body.
   /// With no code, `401` and `403` are the authentication's refusal, an empty `400` is the form check of the `POST` (`api/views.py:539-540`), and anything else is the HTTP status alone.
   static CoordinatorFailure _orderRefusal(CoordinatorResponse answer) {
     final status = answer.statusCode;
+    if (status < 400 || status > 499) return CoordinatorUnexpectedStatus(status);
     final fields = switch (_decode(Ok(answer))) {
       Ok(value: final Map<String, Object?> object) => JsonFields(object),
       _ => null,
@@ -530,15 +559,21 @@ final class CoordinatorClient {
   }
 
   /// Hands [request] to the transport, once.
+  ///
+  /// With [catchErrors], an `Error` the transport throws is a [CoordinatorTransportFailed] too, instead of propagating.
   Future<Result<CoordinatorResponse, CoordinatorFailure>> _send(
-    CoordinatorRequest request,
-  ) async {
+    CoordinatorRequest request, {
+    bool catchErrors = false,
+  }) async {
     final maxResponseBytes = request.maxResponseBytes;
     final Result<CoordinatorResponse, CoordinatorTransportFailure> result;
     try {
       result = await _transport.send(request);
     } on Exception {
       // The adapter should map every failure itself; one it lets through stays confined to this coordinator.
+      return const Err(CoordinatorTransportFailed());
+    } on Object {
+      if (!catchErrors) rethrow;
       return const Err(CoordinatorTransportFailed());
     }
     return switch (result) {

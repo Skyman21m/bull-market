@@ -21,6 +21,7 @@ export 'src/coordinator/coordinator_order.dart'
         CoordinatorOrderStatus,
         HoldInvoice,
         OnchainPayout,
+        OrderAlreadyTakenByThisRobot,
         OrderCancelAccepted,
         OrderCancelEnded,
         OrderExpiryReason,

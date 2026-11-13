@@ -276,7 +276,7 @@ final class RobotNicknameTaken extends CoordinatorRobotFailure {
 /// The coordinator refused a request about an order with one of its error codes (`api/errors.py`, commit ff1998c).
 ///
 /// Only the code is read, and for 1012 the number of seconds the coordinator writes in its message: the message itself is never kept.
-/// Most codes come before the coordinator changed anything, but the answer to a take or a cancel is the read of the order that follows the action, so 1023, 1025 and 1026 can come after the action happened: read the order again before concluding.
+/// After a take or a cancel, the client wraps it in an [OrderActionFailure], which says whether the action was done or may have been.
 sealed class CoordinatorOrderFailure extends CoordinatorFailure {
   const CoordinatorOrderFailure();
 }
@@ -371,6 +371,11 @@ final class OrderNotPublic extends CoordinatorOrderFailure {
   const OrderNotPublic();
 }
 
+/// The order given to a cancel as its last read was read from another coordinator, network or robot: nothing was sent.
+final class OrderReadElsewhere extends CoordinatorOrderFailure {
+  const OrderReadElsewhere();
+}
+
 /// The coordinator refused the request about the order with a code this package does not map, or with no code at all, as when its form check refuses the body with an empty `400`.
 final class OrderRequestRefused extends CoordinatorOrderFailure {
   /// The code the coordinator gave, a number it chose, or `null`.
@@ -404,4 +409,35 @@ final class RobotNicknameMismatch extends RobotMismatchFailure {
 /// The official client silently adopts whatever pair the coordinator returns; this package does not.
 final class RobotPgpKeyNotProven extends RobotMismatchFailure {
   const RobotPgpKeyNotProven();
+}
+
+/// Why an action on an order, a take or a cancel, gave no outcome: refused before anything was done, or ended in a way that does not say whether it was done.
+///
+/// The answer to a take or a cancel is the read of the order that follows the action (`api/views.py:593`, `:695`), so a refusal of that read, a malformed answer, a server error or a lost connection can come after the action happened: 1043 when the maker cancelled meanwhile, 1044 when another robot's bond locked between the take and the read, or when a pre-taker cancels a paused order, `kick_taker` succeeding before the read refuses (`api/views.py:270-275`).
+/// Only the failures known to come before the action are an [OrderActionRefused]; every other one is an [OrderActionOutcomeUnknown].
+sealed class OrderActionFailure extends RobosatsFailure {
+  /// What went wrong, without any text of the coordinator.
+  CoordinatorFailure get cause;
+
+  const OrderActionFailure();
+}
+
+/// Nothing was done: the coordinator refused before the action, or the request was never sent.
+///
+/// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] (1042, or an order number out of range, not sent), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
+final class OrderActionRefused extends OrderActionFailure {
+  @override
+  final CoordinatorFailure cause;
+
+  const OrderActionRefused(this.cause);
+}
+
+/// The action may have happened: read the order again before telling the user anything, and never send the action again blindly.
+///
+/// 1021 is here too: the reference coordinator answers it after side effects on some paths, as when settling a bond fails after the on-chain payout was cancelled (`api/logics.py:1108-1130`, `:1178-1181`).
+final class OrderActionOutcomeUnknown extends OrderActionFailure {
+  @override
+  final CoordinatorFailure cause;
+
+  const OrderActionOutcomeUnknown(this.cause);
 }

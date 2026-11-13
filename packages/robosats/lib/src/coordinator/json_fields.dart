@@ -86,11 +86,14 @@ final class JsonFields {
     _ => _reject(key, null),
   };
 
-  Map<String, Object?>? optionalObject(String key) => switch (_object[key]) {
-    null => null,
+  /// A JSON object, or `null` for anything else, without rejecting: for a part of an answer that is dropped alone when it is invalid.
+  Map<String, Object?>? objectOrNull(String key) => switch (_object[key]) {
     final Map<String, Object?> value => value,
-    _ => _reject(key, null),
+    _ => null,
   };
+
+  /// Whether the field is present with a value other than `null`.
+  bool has(String key) => _object[key] != null;
 
   /// An ISO 8601 date and time with a time zone, as the coordinator serializes it, between 2020 and 2100.
   ///
@@ -122,6 +125,16 @@ final class JsonFields {
       _ => _reject(key, null),
     },
     _ => _reject(key, null),
+  };
+
+  /// A decimal number sent either as a string, as a serializer's `DecimalField`, or as a JSON number, as Django REST framework's encoder writes a raw `Decimal` a view puts in its answer.
+  double? optionalDecimalOrNumber(
+    String key, {
+    required double min,
+    required double max,
+  }) => switch (_object[key]) {
+    String() => optionalDecimal(key, min: min, max: max),
+    _ => optionalDouble(key, min: min, max: max),
   };
 
   double requiredDecimal(

@@ -9,6 +9,7 @@ import 'package:robosats/src/coordinator/robosats_currency.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_hash_id.dart';
+import 'package:robosats/src/robot_identity.dart';
 
 /// The status of an order on its coordinator, the `status` field, 0 to 18 (`api/models/order.py:35-54`, commit ff1998c).
 enum CoordinatorOrderStatus {
@@ -254,8 +255,8 @@ final class TradeSummary {
   final DateTime? contractTimestamp;
   final Duration? contractTotalTime;
 
-  /// The routing budget the buyer allowed for a Lightning payout.
-  final Sats? routingBudgetSats;
+  /// The routing budget the buyer allowed for a Lightning payout, in sats with millisat decimals (a `DecimalField` of 3 places, `api/models/ln_payment.py:95`).
+  final double? routingBudgetSats;
 
   const TradeSummary._({
     required this.isBuyer,
@@ -283,16 +284,22 @@ final class TradeSummary {
 
 /// An order as its coordinator describes it to one robot, the answer of `GET /api/order/` (`OrderView.get`, `api/views.py:226-528`, commit ff1998c), to its maker, its taker, the robot that holds a pre-take of it, or any robot while it is public.
 ///
-/// Every field is checked for its type and bounds, as `PublicOrder` checks the book, and nothing more: the status, the roles, the amounts and the invoices are what the coordinator says, for the caller to check against what it knows.
-/// Fields that the coordinator sends only in some statuses or to some robots are `null` when absent; an absent field never rejects the answer, an invalid one always does.
+/// Every field is checked for its JSON type, as the view writes it for that robot, and its bounds, as `PublicOrder` checks the book.
+/// The roles are checked against each other and against the robot that asked: maker and taker not both, `is_participant` agreeing with them, the maker's or taker's hash id this robot's exactly when the answer says this robot is the maker or the taker, buyer and seller each the one the order's type and the role give, `ur_nick` this robot's nickname, status 3 only for a pre-taker with its bond, a taker named past a pre-take, a robot that is no participant shown a public order without any participant's field, a bond invoice only at the step that asks for it and an escrow invoice only to a seller at the escrow step.
+/// Nothing else is checked: the amounts and the invoices are what the coordinator says, for the caller to check against what it knows.
+/// Fields that the coordinator sends only in some statuses or to some robots are `null` when absent; an absent field never rejects the answer, an invalid one always does, but for this robot's trade summary, which is display only and is dropped alone.
 /// Free text of the maker goes through [displayText]; the coordinator's own labels are read as enums, never kept.
 @immutable
 final class CoordinatorOrder {
   /// The longest invoice kept: a BOLT11 hold invoice of a coordinator is about 400 characters.
   static const maxInvoiceLength = 2000;
 
-  /// The coordinator that answered.
+  /// The coordinator that answered, and the network of its instance.
   final Coordinator coordinator;
+  final RobosatsNetwork network;
+
+  /// The hash id of the robot the answer was given to, which every role of the answer was checked against.
+  final String _readBy;
 
   final int id;
   final CoordinatorOrderStatus status;
@@ -416,6 +423,8 @@ final class CoordinatorOrder {
 
   const CoordinatorOrder._({
     required this.coordinator,
+    required this.network,
+    required String readBy,
     required this.id,
     required this.status,
     required this.createdAt,
@@ -474,7 +483,11 @@ final class CoordinatorOrder {
     required this.expiryReason,
     required this.summary,
     required this.onchainPayout,
-  });
+  }) : _readBy = readBy;
+
+  /// Whether this answer was given to the robot [identity].
+  @internal
+  bool wasReadBy(RobotIdentity identity) => _readBy == identity.hashId.hex;
 
   static final RegExp _nostrKey = RegExp(r'^[0-9a-f]{64}$');
   static final RegExp _txid = RegExp(r'^[0-9a-f]{64}$');
@@ -493,12 +506,60 @@ final class CoordinatorOrder {
   /// The longest `public_duration`: 24 hours (`robosats/settings.py:298`), doubled for margin.
   static const _maxPublicSeconds = 48 * 3600;
 
-  /// Reads the decoded body of a `200` answer about the order [orderId]: any invalid field rejects the whole answer with [CoordinatorResponseMalformed], as does an answer about another order.
+  /// The fields the coordinator gives to the maker and the taker only (`api/views.py:312-526`): an answer that gives one of them to a robot that is no participant is refused.
+  static const _participantFields = [
+    'is_buyer',
+    'is_seller',
+    'taker_nick',
+    'taker_hash_id',
+    'taker_nostr_pubkey',
+    'ur_nick',
+    'is_fiat_sent',
+    'is_disputed',
+    'maker_locked',
+    'taker_locked',
+    'escrow_locked',
+    'trade_satoshis',
+    'bond_invoice',
+    'bond_satoshis',
+    'escrow_invoice',
+    'escrow_satoshis',
+    'invoice_amount',
+    'swap_allowed',
+    'swap_failure_reason',
+    'suggested_mining_fee_rate',
+    'swap_fee_rate',
+    'pending_cancel',
+    'asked_for_cancel',
+    'chat_last_index',
+    'statement_submitted',
+    'retries',
+    'next_retry_time',
+    'failure_reason',
+    'invoice_expired',
+    'public_duration',
+    'maker_summary',
+    'taker_summary',
+    'platform_summary',
+    'expiry_reason',
+    'num_satoshis',
+    'sent_satoshis',
+    'txid',
+    'tx_queued',
+    'address',
+  ];
+
+  /// Reads the decoded body of a `200` answer about the order [orderId] that [coordinator] gave on [network] to the robot [identity].
+  ///
+  /// Any invalid field rejects the whole answer with [CoordinatorResponseMalformed], as does an answer about another order, but for this robot's trade summary, which is dropped alone.
+  /// So does an answer whose roles contradict each other or the robot that asked: see the checks below, each with the view's lines it follows.
   @internal
   static Result<CoordinatorOrder, CoordinatorFailure> parse(
     Object? body,
-    Coordinator coordinator, {
+    Coordinator coordinator,
+    RobosatsNetwork network, {
     required int orderId,
+    required RobotIdentity identity,
   }) {
     if (body is! Map<String, Object?>) {
       return const Err(CoordinatorResponseMalformed('order'));
@@ -543,8 +604,17 @@ final class CoordinatorOrder {
       min: BondSize.minPercent,
       max: BondSize.maxPercent,
     );
-    final latitude = fields.optionalDecimal('latitude', min: -90, max: 90);
-    final longitude = fields.optionalDecimal('longitude', min: -180, max: 180);
+    // The serializer's string for a robot that is no participant, the raw `Decimal` as a JSON number for a participant (`api/views.py:320-321`).
+    final latitude = fields.optionalDecimalOrNumber(
+      'latitude',
+      min: -90,
+      max: 90,
+    );
+    final longitude = fields.optionalDecimalOrNumber(
+      'longitude',
+      min: -180,
+      max: 180,
+    );
     final publicSeconds = fields.optionalInt(
       'public_duration',
       min: 0,
@@ -560,6 +630,7 @@ final class CoordinatorOrder {
     final makerNick = fields.optionalString('maker_nick', maxLength: 64);
     final takerHashId = fields.optionalString('taker_hash_id', maxLength: 64);
     final takerNick = fields.optionalString('taker_nick', maxLength: 64);
+    final ownNick = fields.optionalString('ur_nick', maxLength: 64);
     final makerNostrKey = _nostrKeyOf(fields, 'maker_nostr_pubkey');
     final takerNostrKey = _nostrKeyOf(fields, 'taker_nostr_pubkey');
     // Any label is read, so that an unknown one becomes `null` rather than rejecting the order.
@@ -730,6 +801,55 @@ final class CoordinatorOrder {
       return Err(reject('taker_nick'));
     }
 
+    // The roles must agree with each other and with the robot that asked (`api/views.py:253-255`, `:270-275`, `:312-323`, `:381-396`).
+    final ownHash = identity.hashId.hex;
+    if (isMaker && isTaker) return Err(reject('is_taker'));
+    if (isParticipant != (isMaker || isTaker)) {
+      return Err(reject('is_participant'));
+    }
+    if (isMaker != (maker.value.hex == ownHash)) {
+      return Err(reject('maker_hash_id'));
+    }
+    if (taker != null && isTaker != (taker.hex == ownHash)) {
+      return Err(reject('taker_hash_id'));
+    }
+    if (status == CoordinatorOrderStatus.waitingForTakerBond) {
+      // Only the robot that holds a live pre-take is shown status 3, with its bond, and it is not the taker yet.
+      if (!isTaker || taker != null) return Err(reject('status'));
+      if (bondInvoice == null) return Err(reject('bond_invoice'));
+    } else if (isTaker && taker == null) {
+      // Past a pre-take, a robot is the taker only as `order.taker`, which the answer names.
+      return Err(reject('taker_hash_id'));
+    }
+    if (!isParticipant) {
+      // A robot that is no participant sees a public order only, and none of the participants' fields.
+      if (status != CoordinatorOrderStatus.public) return Err(reject('status'));
+      for (final key in _participantFields) {
+        if (fields.has(key)) return Err(reject(key));
+      }
+    } else {
+      if (status.wire >= 6 && taker == null) {
+        return Err(reject('taker_hash_id'));
+      }
+      // The maker of a buy order and the taker of a sell order buy (`Logics.is_buyer`).
+      final buys = isMaker == (type == OrderType.buy);
+      if (isBuyer != buys) return Err(reject('is_buyer'));
+      if (isSeller != !buys) return Err(reject('is_seller'));
+      if (ownNick != identity.nickname) return Err(reject('ur_nick'));
+      if (bondInvoice != null &&
+          !(isMaker && status == CoordinatorOrderStatus.waitingForMakerBond) &&
+          !(isTaker && status == CoordinatorOrderStatus.waitingForTakerBond)) {
+        return Err(reject('bond_invoice'));
+      }
+      if (escrowInvoice != null &&
+          !(!buys &&
+              (status == CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
+                  status == CoordinatorOrderStatus.waitingForCollateral))) {
+        return Err(reject('escrow_invoice'));
+      }
+      if (invoiceAmount != null && !buys) return Err(reject('invoice_amount'));
+    }
+
     final premiumNowValue = premiumNow == null
         ? null
         : Premium.tryCreate(premiumNow);
@@ -740,6 +860,8 @@ final class CoordinatorOrder {
     return Ok(
       CoordinatorOrder._(
         coordinator: coordinator,
+        network: network,
+        readBy: ownHash,
         id: id,
         status: status,
         createdAt: createdAt,
@@ -895,9 +1017,7 @@ final class CoordinatorOrder {
     );
   }
 
-  /// This robot's own summary and the contract's figures, or `null` when the coordinator sent no summary for this robot's side.
-  ///
-  /// A rejected field is named with its object, as `taker_summary.sent_sats`.
+  /// This robot's own summary and the contract's figures, or `null` when the coordinator sent no valid summary for this robot's side.
   static TradeSummary? _summaryOf(
     JsonFields fields, {
     required bool isMaker,
@@ -909,8 +1029,9 @@ final class CoordinatorOrder {
         ? 'maker_summary'
         : null;
     if (side == null) return null;
-    final ownObject = fields.optionalObject(side);
-    final platformObject = fields.optionalObject('platform_summary');
+    final ownObject = fields.objectOrNull(side);
+    final platformObject =
+        fields.objectOrNull('platform_summary') ?? const <String, Object?>{};
     if (ownObject == null) return null;
     final own = JsonFields(ownObject);
     final isBuyer = own.requiredBool('is_buyer');
@@ -955,7 +1076,7 @@ final class CoordinatorOrder {
       min: 0,
       max: 100,
     );
-    final platform = JsonFields(platformObject ?? const {});
+    final platform = JsonFields(platformObject);
     final exchangeRate = platform.optionalDouble(
       'contract_exchange_rate',
       min: 0,
@@ -967,19 +1088,14 @@ final class CoordinatorOrder {
       min: 0,
       max: _maxStepSeconds.toDouble(),
     );
-    final routingBudget = platform.optionalInt(
+    // A raw `Decimal` of the payout, written as a JSON number such as `0.0` or `164.126` (`api/logics.py:2128`).
+    final routingBudget = platform.optionalDouble(
       'routing_budget_sats',
       min: 0,
-      max: _maxSats,
+      max: _maxSats.toDouble(),
     );
-    if (own.rejected case final field?) {
-      fields.rejected ??= '$side.$field';
-      return null;
-    }
-    if (platform.rejected case final field?) {
-      fields.rejected ??= 'platform_summary.$field';
-      return null;
-    }
+    // The summary is for display only, and comes with what a buyer must act on (a failed payout's retries, an expired invoice): an invalid one is dropped, never the order with it.
+    if (own.rejected != null || platform.rejected != null) return null;
     return TradeSummary._(
       isBuyer: isBuyer,
       fiatAmount: isBuyer ? sentFiat : receivedFiat,
@@ -999,7 +1115,7 @@ final class CoordinatorOrder {
       contractTotalTime: totalTime == null
           ? null
           : Duration(microseconds: (totalTime * 1e6).round()),
-      routingBudgetSats: _sats(routingBudget),
+      routingBudgetSats: routingBudget,
     );
   }
 
@@ -1009,9 +1125,9 @@ final class CoordinatorOrder {
       'CoordinatorOrder(${coordinator.shortAlias}#$id, ${status.name}, maker: $isMaker, taker: $isTaker)';
 }
 
-/// What a coordinator answered to a take: the take happened, or it did not and the order is as the coordinator describes it.
+/// What a coordinator answered to a take, once read and checked: the take started, this robot already had the order, or the take did not happen.
 ///
-/// The reference coordinator answers a take on an order that is not public with the order as it is, `200` and no error (`api/views.py:595-596`, the error is built and not returned): so a `200` alone never says the take happened, and only [OrderTakeStarted] does.
+/// The reference coordinator answers a take on an order that is no longer public with the order as it is, `200` and no error (`api/views.py:595-596`, the error is built and not returned): so a `200` alone never says the take happened.
 sealed class TakeOrderOutcome {
   /// The order as the coordinator described it in its answer.
   CoordinatorOrder get order;
@@ -1019,20 +1135,34 @@ sealed class TakeOrderOutcome {
   const TakeOrderOutcome();
 }
 
-/// The coordinator answered with the order at [CoordinatorOrderStatus.waitingForTakerBond] and this robot as its taker: this robot now holds the pre-take, and [CoordinatorOrder.bondInvoice] is the bond to lock before [CoordinatorOrder.expiresAt].
+/// This robot now holds the pre-take: the order at [CoordinatorOrderStatus.waitingForTakerBond], this robot its taker and not its maker, and [CoordinatorOrder.bondInvoice] the bond to lock before [CoordinatorOrder.expiresAt].
 final class OrderTakeStarted extends TakeOrderOutcome {
   @override
   final CoordinatorOrder order;
 
-  const OrderTakeStarted._(this.order);
+  /// The bond to lock, which an order at this step always carries.
+  final HoldInvoice bondInvoice;
+
+  const OrderTakeStarted._(this.order, this.bondInvoice);
 
   @override
   String toString() => 'OrderTakeStarted($order)';
 }
 
-/// The coordinator answered with the order in any other state: this take did not happen.
+/// This take did not happen, but the order was already this robot's from an earlier take: its bond is locked and the trade goes on at [CoordinatorOrder.status].
 ///
-/// The order's [CoordinatorOrder.status] tells why, taken by another robot, paused or expired; when [CoordinatorOrder.isTaker] is true, this robot was already its taker from an earlier take.
+/// Do not drop the trade: a step left undone lets it time out, and a taker who lets its step time out loses its bond (`api/logics.py:404-458`).
+final class OrderAlreadyTakenByThisRobot extends TakeOrderOutcome {
+  @override
+  final CoordinatorOrder order;
+
+  const OrderAlreadyTakenByThisRobot._(this.order);
+
+  @override
+  String toString() => 'OrderAlreadyTakenByThisRobot($order)';
+}
+
+/// This take did not happen and the order is not this robot's: taken by another robot, paused, expired, or this robot's own order as maker.
 final class OrderNotTaken extends TakeOrderOutcome {
   @override
   final CoordinatorOrder order;
@@ -1073,27 +1203,51 @@ final class OrderCancelAccepted extends CancelOrderOutcome {
   String toString() => 'OrderCancelAccepted($order)';
 }
 
-/// Reads the decoded body of a `200` answer to a take of the order [orderId].
+/// The status a cancel sends as `cancel_status` after the read [lastRead]: the status the coordinator stores, which is [CoordinatorOrderStatus.public] for a pre-take shown as [CoordinatorOrderStatus.waitingForTakerBond] (`api/views.py:381-396`).
+@internal
+CoordinatorOrderStatus storedStatusOf(CoordinatorOrder lastRead) =>
+    lastRead.status == CoordinatorOrderStatus.waitingForTakerBond
+    ? CoordinatorOrderStatus.public
+    : lastRead.status;
+
+/// Reads the decoded body of a `200` answer to a take of the order [orderId] by the robot [identity].
 @internal
 Result<TakeOrderOutcome, CoordinatorFailure> parseTakeAnswer(
   Object? body,
-  Coordinator coordinator, {
+  Coordinator coordinator,
+  RobosatsNetwork network, {
   required int orderId,
-}) => switch (CoordinatorOrder.parse(body, coordinator, orderId: orderId)) {
+  required RobotIdentity identity,
+}) => switch (CoordinatorOrder.parse(
+  body,
+  coordinator,
+  network,
+  orderId: orderId,
+  identity: identity,
+)) {
   Err(:final failure) => Err(failure),
   Ok(value: final order)
       when order.status == CoordinatorOrderStatus.waitingForTakerBond &&
-          order.isTaker =>
-    Ok(OrderTakeStarted._(order)),
+          order.isTaker &&
+          !order.isMaker =>
+    switch (order.bondInvoice) {
+      final bond? => Ok(OrderTakeStarted._(order, bond)),
+      null => const Err(CoordinatorResponseMalformed('bond_invoice')),
+    },
+  Ok(value: final order) when order.isTaker => Ok(
+    OrderAlreadyTakenByThisRobot._(order),
+  ),
   Ok(value: final order) => Ok(OrderNotTaken._(order)),
 };
 
-/// Reads the decoded body of a `200` answer to a cancel of the order [orderId]: the short body of an order that the cancel ended, told by its `bad_request` key, or the order.
+/// Reads the decoded body of a `200` answer to a cancel of the order [orderId] by the robot [identity]: the short body of an order that the cancel ended, told by its `bad_request` key, or the order.
 @internal
 Result<CancelOrderOutcome, CoordinatorFailure> parseCancelAnswer(
   Object? body,
-  Coordinator coordinator, {
+  Coordinator coordinator,
+  RobosatsNetwork network, {
   required int orderId,
+  required RobotIdentity identity,
 }) {
   if (body case final Map<String, Object?> object
       when object.containsKey('bad_request')) {
@@ -1115,6 +1269,8 @@ Result<CancelOrderOutcome, CoordinatorFailure> parseCancelAnswer(
   return CoordinatorOrder.parse(
     body,
     coordinator,
+    network,
     orderId: orderId,
+    identity: identity,
   ).map(OrderCancelAccepted._);
 }
