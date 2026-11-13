@@ -299,39 +299,6 @@ void main() {
     });
   });
 
-  group('the text of a coordinator failure', () {
-    Future<void> show(WidgetTester tester, CoordinatorFailure failure) =>
-        tester.pumpWidget(
-          harness(
-            Builder(builder: (context) => Text(failure.toTranslated(context))),
-          ),
-        );
-
-    testWidgets('says offline for a coordinator that could not be reached', (
-      tester,
-    ) async {
-      for (final failure in const <CoordinatorFailure>[
-        CoordinatorUnreachable(),
-        CoordinatorTimedOut(),
-        CoordinatorTransportFailed(),
-        CoordinatorNotOnNetwork(),
-      ]) {
-        await show(tester, failure);
-
-        expect(find.text('Coordinator offline'), findsOneWidget);
-      }
-    });
-
-    testWidgets('does not say offline when the transport was busy', (
-      tester,
-    ) async {
-      await show(tester, const CoordinatorTransportBusy());
-
-      expect(find.text('Coordinator offline'), findsNothing);
-      expect(find.text('An error occurred.'), findsOneWidget);
-    });
-  });
-
   // The texts of the design note of #29, § 2.3, and their way out: each robot failure the panel can show, in English, naming the coordinator.
   group('the text of a robot failure', () {
     const name = 'Temple of Sats';

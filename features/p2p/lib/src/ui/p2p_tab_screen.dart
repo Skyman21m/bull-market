@@ -8,6 +8,7 @@ import '../domain/p2p_shuffle.dart';
 import '../domain/tor_wait.dart';
 import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
+import '../presentation/coordinator_details_cubit.dart';
 import 'book_view.dart';
 import 'tor_wait_view.dart';
 import 'widgets/testnet_banner.dart';
@@ -25,6 +26,10 @@ class P2pTabScreen extends StatelessWidget {
   /// The order of the phrases of the Tor wait.
   final P2pShuffle shuffle;
   final ValueChanged<PublicOrder> onOpenOrder;
+
+  /// The cubit of the dialog of a coordinator, which a tap on its image above the book opens.
+  final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
+  coordinatorDetails;
   final P2pDestination destination;
   final ValueChanged<P2pDestination> onDestination;
   final WidgetBuilder? garage;
@@ -34,6 +39,7 @@ class P2pTabScreen extends StatelessWidget {
     required this.now,
     required this.shuffle,
     required this.onOpenOrder,
+    required this.coordinatorDetails,
     required this.destination,
     required this.onDestination,
     required this.garage,
@@ -91,6 +97,7 @@ class P2pTabScreen extends StatelessWidget {
                         TorWait.ready => BookView(
                           now: now,
                           onOpenOrder: onOpenOrder,
+                          coordinatorDetails: coordinatorDetails,
                           onOpenGarage: garage == null
                               ? null
                               : () => onDestination(P2pDestination.garage),

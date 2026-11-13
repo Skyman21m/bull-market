@@ -28,6 +28,8 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
+import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
@@ -61,6 +63,7 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeySlot, Secrets;
 import 'package:secrets/testing.dart';
 
+import 'support/book_attempts.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/key_output.dart';
@@ -2790,6 +2793,9 @@ void main() {
     late FakeTor robotTor;
     late PairsByRobot keys;
 
+    /// The timers of the book of the tab under the panel, which the test fires.
+    late FakeWaits bookWaits;
+
     NetworkRobot robotAt(
       int index, [
       RobosatsNetwork net = RobosatsNetwork.testnet,
@@ -2845,7 +2851,15 @@ void main() {
       }
     }
 
-    /// The panel of robot [index] of the fixed key on [network], [width] points wide at [textScale], in [locale], with Tor ready unless [torReady] is false; the book of the tab could not reach the coordinators of [offline].
+    /// Lets the book of the tab ask again, after its waits, the coordinators it could not reach, until they are shown offline.
+    Future<void> settleBook(WidgetTester tester) async {
+      for (var i = 0; i < 2; i++) {
+        bookWaits.fireAll();
+        await settle(tester);
+      }
+    }
+
+    /// The panel of robot [index] of the fixed key on [network], [width] points wide at [textScale], in [locale], with Tor ready unless [torReady] is false; the book of the tab could not reach the coordinators of [offline], and shows them offline once its attempts are over, unless [bookSettled] is false.
     Future<RobotCoordinatorCubit> showPanel(
       WidgetTester tester, {
       int index = 0,
@@ -2855,6 +2869,7 @@ void main() {
       double textScale = 1,
       bool torReady = true,
       Set<String> offline = const {},
+      bool bookSettled = true,
     }) async {
       // A panel shown before is gone first, with its cubit.
       await tester.pumpWidget(const SizedBox.shrink());
@@ -2892,14 +2907,19 @@ void main() {
           for (final alias in offline) alias: const CoordinatorUnreachable(),
         },
       );
+      bookWaits = FakeWaits();
       final book = BookCubit(
         network,
         WatchP2pTorStateUsecase(() => robotTor),
         StartP2pTorUsecase(() => robotTor),
         RetryP2pTorUsecase(() => robotTor),
-        RequestFederationBooksUsecase(
-          FederationBookReader(bookTransport, clock: () => testNow),
-          Federation.robosats,
+        LoadFederationBooksUsecase(
+          RequestFederationBooksUsecase(
+            FederationBookReader(bookTransport, clock: () => testNow),
+            Federation.robosats,
+          ),
+          BookRequestsInFlight(),
+          bookWaits.waits,
         ),
       )..start();
       addTearDown(book.close);
@@ -2944,6 +2964,7 @@ void main() {
       if (torReady) {
         robotTor.embedded.ready();
         await settle(tester);
+        if (bookSettled) await settleBook(tester);
       }
       return cubit;
     }
@@ -2957,6 +2978,45 @@ void main() {
       await tester.tap(find.text(_text(tester).p2pCommonContinue));
       await afterRoute(tester);
     }
+
+    testWidgets(
+      'Select Host says « Coordinator offline » only of a coordinator the book shows offline, not of one it still awaits',
+      (tester) async {
+        await showPanel(
+          tester,
+          network: RobosatsNetwork.mainnet,
+          offline: {'gumpellite', 'lake'},
+          bookSettled: false,
+        );
+        Future<void> openHosts() async {
+          await tester.tap(find.text('Select Host'));
+          await afterRoute(tester);
+        }
+
+        Future<void> closeHosts() async {
+          await tester.tapAt(const Offset(4, 4));
+          await afterRoute(tester);
+        }
+
+        // Asked again by the book: awaited, and not said offline.
+        await openHosts();
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        expect(find.text('Coordinator offline'), findsNothing);
+        await closeHosts();
+
+        // Lake still has no answer 80 seconds after it was asked: the book shows it offline while its attempts go on, and so does the sheet.
+        bookWaits.fireAwaitedBounds();
+        await settle(tester);
+        await openHosts();
+        expect(find.text('Coordinator offline'), findsNWidgets(2));
+        await closeHosts();
+
+        // The last attempts fail: still offline.
+        await settleBook(tester);
+        await openHosts();
+        expect(find.text('Coordinator offline'), findsNWidgets(2));
+      },
+    );
 
     testWidgets(
       'Select Host: the hosts of the network in order, offline or closed, and their dialog',
@@ -3500,6 +3560,7 @@ void main() {
             expect(tester.takeException(), isNull);
             robotTor.embedded.ready();
             await settle(tester);
+            await settleBook(tester);
             final selectHost = find.text(_text(tester).p2pRobotSelectHost);
             await tester.ensureVisible(selectHost);
             await settle(tester);

@@ -114,6 +114,8 @@ class _P2pPageState extends State<_P2pPage> {
           P2pRouter.orderName,
           extra: P2pOrderRouteArgs(order, current),
         ),
+        coordinatorDetails: (request) =>
+            locator<CoordinatorDetailsCubit>(param1: request),
         destination: _destination,
         onDestination: _show,
         garage: hasGarage

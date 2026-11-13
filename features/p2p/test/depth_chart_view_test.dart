@@ -14,6 +14,7 @@ import 'package:p2p/src/ui/depth_chart_view.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
+import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
 import 'package:p2p/testing.dart';
 
@@ -112,6 +113,17 @@ void main() {
   }
 
   final chart = find.byType(DepthChartView);
+
+  /// A text of the screen that is shown, not one of the forms the line of the row keeps the room of.
+  Finder shown(String text) => find.text(text).hitTestable();
+
+  /// How the row above the chart draws each coordinator, by short alias.
+  Map<String, CoordinatorRowState> rowStates(WidgetTester tester) => {
+    for (final place in tester.widgetList<CoordinatorRowPlace>(
+      find.byType(CoordinatorRowPlace),
+    ))
+      place.coordinator.shortAlias: place.state,
+  };
 
   /// The box the chart is painted in, axes and labels included.
   final plot = find.byWidgetPredicate(
@@ -581,12 +593,16 @@ void main() {
         },
       );
       await openChart(tester);
+      // Each is asked again by itself first: the spinner, not yet the row's « Retry ».
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(shown('Retry'), findsNothing);
+      await settleAttempts(tester);
 
       expect(chart, findsNothing);
-      // As above the list: a failure is not an empty book, and with no answer at all the lines and « Retry » are the whole message.
-      expect(find.text('Temple of Sats · Coordinator offline'), findsOneWidget);
-      expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      // As above the list: a failure is not an empty book, and with no answer at all the row and « Retry » are the whole message.
+      expect(rowStates(tester).values.toSet(), {CoordinatorRowState.offline});
+      expect(shown('6 coordinators offline'), findsOneWidget);
+      expect(shown('Retry'), findsOneWidget);
       expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
       expect(find.text('Be the first one to create an order'), findsNothing);
 
@@ -595,12 +611,12 @@ void main() {
         ..failures.clear()
         ..requested.clear()
         ..books.addAll(books());
-      await tester.tap(find.text('Retry'));
+      await tester.tap(shown('Retry'));
       await settle(tester);
       expect(transport.requested.toSet(), {
         for (final alias in everyCoordinator) '$alias/api/book/',
       });
-      expect(find.text('Retry'), findsNothing);
+      expect(shown('Retry'), findsNothing);
       expect(chart, findsOneWidget);
     },
   );
@@ -615,8 +631,9 @@ void main() {
       },
     );
     await openChart(tester, showChart: false);
-    expect(find.text('Temple of Sats · Coordinator offline'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    await settleAttempts(tester);
+    expect(rowStates(tester).values.toSet(), {CoordinatorRowState.offline});
+    expect(shown('Retry'), findsOneWidget);
     expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
     expect(find.text('Be the first one to create an order'), findsNothing);
   });
@@ -631,12 +648,14 @@ void main() {
         },
       );
       await openChart(tester, showChart: false);
-      expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
+      await settleAttempts(tester);
+      expect(rowStates(tester)['lake'], CoordinatorRowState.offline);
+      expect(rowStates(tester)['temple'], CoordinatorRowState.answered);
       expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
 
       await tester.tap(find.text('Chart'));
       await settle(tester);
-      expect(find.text('TheBigLake · Coordinator offline'), findsOneWidget);
+      expect(rowStates(tester)['lake'], CoordinatorRowState.offline);
       expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
       expect(find.text('Be the first one to create an order'), findsOneWidget);
     },
@@ -658,9 +677,16 @@ void main() {
           },
         );
         await openChart(tester, screen: screen, textScale: textScale);
+        await settleAttempts(tester);
 
-        // An overflow would have failed the test already; the five lines are there, and the chart below them, at least 320 tall, comes into view by scrolling.
-        expect(find.textContaining('Coordinator offline'), findsNWidgets(5));
+        // An overflow would have failed the test already; the row and its line are there, and the chart below them, at least 320 tall, comes into view by scrolling.
+        expect(
+          rowStates(
+            tester,
+          ).values.where((state) => state == CoordinatorRowState.offline),
+          hasLength(5),
+        );
+        expect(shown('5 coordinators offline'), findsOneWidget);
         await tester.scrollUntilVisible(
           plot,
           100,
@@ -687,16 +713,20 @@ void main() {
       failures: {'bazaar': const CoordinatorTimedOut()},
     );
     await openChart(tester);
+    expect(chart, findsOneWidget);
+    expect(rowStates(tester)['bazaar'], CoordinatorRowState.awaited);
+    await settleAttempts(tester);
 
     expect(chart, findsOneWidget);
-    expect(find.text('LibreBazaar · Coordinator offline'), findsOneWidget);
+    expect(rowStates(tester)['bazaar'], CoordinatorRowState.offline);
+    expect(shown('1 coordinator offline'), findsOneWidget);
     transport
       ..failures.clear()
       ..requested.clear();
-    await tester.tap(find.text('Retry'));
+    await tester.tap(shown('Retry'));
     await settle(tester);
     expect(transport.requested, ['bazaar/api/book/']);
-    expect(find.text('LibreBazaar · Coordinator offline'), findsNothing);
+    expect(rowStates(tester)['bazaar'], CoordinatorRowState.answered);
     expect(chart, findsOneWidget);
   });
 
@@ -716,16 +746,14 @@ void main() {
     expect(chart, findsNothing);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    // A coordinator with an empty book answers: the others are still loading, as the line above says, so the book is not said empty.
+    // A coordinator with an empty book answers: the others are still awaited, as the line above says, so the book is not said empty.
     transport.release('bazaar');
     await settle(tester);
     expect(
-      find.text(
-        '${everyCoordinator.length - 1} coordinators are still loading',
-      ),
+      shown('1 of ${everyCoordinator.length} coordinators answered'),
       findsOneWidget,
     );
-    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
 
     transport.release('temple');

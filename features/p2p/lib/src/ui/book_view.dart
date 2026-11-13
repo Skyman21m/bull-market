@@ -11,10 +11,12 @@ import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../presentation/book_cubit.dart';
 import '../presentation/book_state.dart';
+import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/coordinator_text.dart';
-import '../presentation/p2p_failure_l10n.dart';
+import 'coordinator_details_dialog.dart';
 import 'depth_chart_view.dart';
 import 'search_order_dialog.dart';
+import 'widgets/coordinators_row.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
@@ -25,14 +27,19 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
   maxCodePoints: CoordinatorText.name,
 );
 
-/// The book of the P2P tab: the filter sentence, the state of each coordinator, one row per offer, and the choice of view.
+/// The book of the P2P tab: the filter sentence, the row of the coordinators (`CoordinatorsRow`), one row per offer, and the choice of view.
 ///
 /// The list is built lazily, so a book of thousands of orders only builds the rows on screen.
-/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still loading over orders shown, after a pull to refresh or a retry too.
-/// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the state of the coordinators.
+/// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still awaited over orders shown, after a pull to refresh or a retry too.
+/// The row of the coordinators above it is Troc's own (#73): it shows who answered, who is awaited and who is offline, and stays once the offers are shown.
+/// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the row of the coordinators.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
+
+  /// The cubit of the dialog of a coordinator, which a tap on its image in the row opens.
+  final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
+  coordinatorDetails;
 
   /// Opens the Garage from « You do not have a Garage Key », when the tab has one.
   final VoidCallback? onOpenGarage;
@@ -41,6 +48,7 @@ class BookView extends StatefulWidget {
     super.key,
     required this.now,
     required this.onOpenOrder,
+    required this.coordinatorDetails,
     this.onOpenGarage,
   });
 
@@ -100,16 +108,14 @@ class _BookViewState extends State<BookView> {
                       SliverToBoxAdapter(
                         child: BookFilterSentence(state: state),
                       ),
-                      SliverToBoxAdapter(
-                        child: CoordinatorsStatus(state: state),
-                      ),
+                      SliverToBoxAdapter(child: _coordinators(state)),
                       ..._content(context, state),
                     ],
                   ),
                   BookViewChoice.chart => _chart(context, state),
                 },
               ),
-              // While a coordinator is still loading over orders already shown, a bar runs over the top of the book, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner is the wait.
+              // While a coordinator is still awaited over orders already shown, a bar runs over the top of the book, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner is the wait.
               // It lies over the book rather than above it, so that the book does not move when it comes and goes, and it lets touches through.
               Positioned(
                 top: 0,
@@ -176,13 +182,25 @@ class _BookViewState extends State<BookView> {
     }
   }
 
+  /// The row of the coordinators, above the list and above the chart alike; a tap on an image opens the dialog of its coordinator, which asks it for its info.
+  Widget _coordinators(BookState state) => CoordinatorsRow(
+    state: state,
+    onOpenCoordinator: (coordinator) => CoordinatorDetailsDialog.show(
+      context,
+      () => widget.coordinatorDetails(
+        CoordinatorDetailsRequest(coordinator, state.network),
+      ),
+    ),
+    onRetry: context.read<BookCubit>().retryFailed,
+  );
+
   /// The least height of the depth chart: on a short screen it scrolls rather than shrinks.
   static const _chartMinHeight = 320.0;
 
-  /// The state of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still loading and one has answered.
+  /// The row of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still awaited and one has answered.
   ///
-  /// The state of the coordinators scrolls with the chart, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text.
-  /// A coordinator that failed is shown above with « Retry », whether the others gave orders or not: a failure is not an empty book.
+  /// The row scrolls with the chart, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text.
+  /// A coordinator offline is shown in the row, with « Retry » under it, whether the others gave orders or not: a failure is not an empty book.
   Widget _chart(BuildContext context, BookState state) {
     final colors = context.bull;
     final Widget content = state.receivedOrders.isNotEmpty
@@ -195,7 +213,7 @@ class _BookViewState extends State<BookView> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        SliverToBoxAdapter(child: CoordinatorsStatus(state: state)),
+        SliverToBoxAdapter(child: _coordinators(state)),
         SliverLayoutBuilder(
           builder: (context, constraints) => SliverToBoxAdapter(
             child: SizedBox(
@@ -242,13 +260,13 @@ class _BookViewState extends State<BookView> {
                     constraints.precedingScrollExtent,
                 BookSkeleton.rowExtent,
               ),
-              child: BookSkeleton(state: state),
+              child: const BookSkeleton(),
             ),
           ),
         ),
       ];
     }
-    // When every coordinator failed, their lines above and « Retry » say so: the book is not empty, it is unknown.
+    // When every coordinator is offline, the row above and « Retry » say so: the book is not empty, it is unknown.
     if (!state.hasAnswer) return const [];
     return [
       SliverFillRemaining(hasScrollBody: false, child: EmptyBook(state: state)),
@@ -401,143 +419,39 @@ final class _Choice<T extends Object> {
   const _Choice(this.value);
 }
 
-/// The coordinators still loading, and those whose book failed with a way to ask them again: a failed coordinator never hides the others.
-class CoordinatorsStatus extends StatelessWidget {
-  final BookState state;
-
-  const CoordinatorsStatus({super.key, required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final l10n = P2pLocalizations.of(context);
-    final loading = state.loadingCoordinators;
-    final failed = state.failedCoordinators;
-    if (loading.isEmpty && failed.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        BullSpacing.md,
-        0,
-        BullSpacing.md,
-        BullSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (loading.isNotEmpty && !state.isWaitingForFirstBook)
-            Row(
-              children: [
-                SizedBox.square(
-                  dimension: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.textMuted,
-                  ),
-                ),
-                const Gap(BullSpacing.xs),
-                // A long line, or a large text size, wraps rather than overflows.
-                Flexible(
-                  child: Text(
-                    l10n.p2pBookCoordinatorsLoading(loading.length),
-                    style: text.labelMedium?.copyWith(color: colors.textMuted),
-                  ),
-                ),
-              ],
-            ),
-          if (failed.isNotEmpty) ...[
-            if (loading.isNotEmpty) const Gap(BullSpacing.xs),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(BullSpacing.sm),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                border: Border(
-                  left: BorderSide(color: colors.warning, width: 3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final coordinator in failed)
-                          Text(
-                            '${_coordinatorName(coordinator)} · ${switch (state.coordinators[coordinator]) {
-                              CoordinatorBookFailed(:final failure) => failure.toTranslated(context),
-                              _ => '',
-                            }}',
-                            style: text.labelMedium?.copyWith(
-                              color: colors.text,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: context.read<BookCubit>().retryFailed,
-                    child: Text(
-                      l10n.p2pCommonRetry,
-                      style: text.labelLarge?.copyWith(color: colors.primary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// The list while no order is shown and a coordinator is still loading: rows of grey shapes, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
+/// The list while no order is shown and a coordinator is still awaited: rows of grey shapes, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
 ///
 /// Each row has the shape of an offer: the robot, three lines, the amount and the expiry ring; the first line shimmers.
-/// The shapes are hidden from the accessibility tree; before the first book, when the line of the coordinators still loading is not shown, the skeleton says it instead.
+/// The shapes are hidden from the accessibility tree: the line of the row of the coordinators above says what the book waits for.
 class BookSkeleton extends StatelessWidget {
-  final BookState state;
-
   /// The height of one row and its divider.
   static const rowExtent = 89.0;
 
-  const BookSkeleton({super.key, required this.state});
+  const BookSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
-    final loading = state.loadingCoordinators.length;
-    final label = state.isWaitingForFirstBook && loading > 0
-        ? P2pLocalizations.of(context).p2pBookCoordinatorsLoading(loading)
-        : null;
-    return Semantics(
-      container: true,
-      label: label,
-      child: ExcludeSemantics(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final rows = math.max(
-              1,
-              (constraints.maxHeight / rowExtent).ceil(),
-            );
-            return ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.topCenter,
-                maxHeight: double.infinity,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var row = 0; row < rows; row++) ...[
-                      const _SkeletonRow(),
-                      Divider(height: 1, color: colors.outlineVariant),
-                    ],
+    return ExcludeSemantics(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final rows = math.max(1, (constraints.maxHeight / rowExtent).ceil());
+          return ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              maxHeight: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var row = 0; row < rows; row++) ...[
+                    const _SkeletonRow(),
+                    Divider(height: 1, color: colors.outlineVariant),
                   ],
-                ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }

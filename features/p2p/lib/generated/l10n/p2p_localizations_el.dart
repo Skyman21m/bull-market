@@ -264,14 +264,40 @@ class P2pLocalizationsEl extends P2pLocalizations {
   String get p2pCommonRetry => 'Retry';
 
   @override
-  String p2pBookCoordinatorsLoading(int count) {
+  String p2pBookCoordinatorsAnswered(int answered, int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      total,
+      locale: localeName,
+      other: '$answered of $total coordinators answered',
+      one: '$answered of 1 coordinator answered',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pBookCoordinatorsOffline(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count coordinators are still loading',
-      one: '1 coordinator is still loading',
+      other: '$count coordinators offline',
+      one: '1 coordinator offline',
     );
     return '$_temp0';
+  }
+
+  @override
+  String p2pBookCoordinatorAnswered(String name) {
+    return '$name, answered';
+  }
+
+  @override
+  String p2pBookCoordinatorAwaited(String name) {
+    return '$name, awaited';
+  }
+
+  @override
+  String p2pBookCoordinatorOffline(String name) {
+    return '$name, offline';
   }
 
   @override

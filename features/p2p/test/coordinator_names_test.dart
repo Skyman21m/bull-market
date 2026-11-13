@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
+import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
 import 'package:p2p/src/domain/usecases/start_p2p_tor_usecase.dart';
@@ -14,9 +16,11 @@ import 'package:p2p/src/presentation/book_state.dart';
 import 'package:p2p/src/presentation/order_details_cubit.dart';
 import 'package:p2p/src/ui/book_view.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/book_attempts.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 
@@ -68,15 +72,20 @@ void main() {
   testWidgets('in the book: a coordinator still failing, and the host chosen', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final tor = FakeTor();
     final book = BookCubit(
       RobosatsNetwork.mainnet,
       WatchP2pTorStateUsecase(() => tor),
       StartP2pTorUsecase(() => tor),
       RetryP2pTorUsecase(() => tor),
-      RequestFederationBooksUsecase(
-        FederationBookReader(FakeTransport(), clock: () => testNow),
-        Federation.robosats,
+      LoadFederationBooksUsecase(
+        RequestFederationBooksUsecase(
+          FederationBookReader(FakeTransport(), clock: () => testNow),
+          Federation.robosats,
+        ),
+        BookRequestsInFlight(),
+        FakeWaits().waits,
       ),
     );
     addTearDown(book.close);
@@ -96,7 +105,11 @@ void main() {
           child: Column(
             children: [
               BookFilterSentence(state: state),
-              CoordinatorsStatus(state: state),
+              CoordinatorsRow(
+                state: state,
+                onOpenCoordinator: (_) {},
+                onRetry: () {},
+              ),
             ],
           ),
         ),
@@ -104,7 +117,8 @@ void main() {
     );
 
     expect(find.text(shown), findsOneWidget);
-    expect(find.text('$shown · Coordinator offline'), findsOneWidget);
+    // The row says the name to a screen reader, cleaned the same way.
+    expect(find.bySemanticsLabel('$shown, offline'), findsOneWidget);
 
     // The list of hosts the filter opens.
     await tester.tap(find.text(shown));
@@ -118,6 +132,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    semantics.dispose();
   });
 
   testWidgets('on the page of an order: its host', (tester) async {

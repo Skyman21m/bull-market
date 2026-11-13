@@ -266,14 +266,41 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pCommonRetry => 'Réessayer';
 
   @override
-  String p2pBookCoordinatorsLoading(int count) {
+  String p2pBookCoordinatorsAnswered(int answered, int total) {
+    String _temp0 = intl.Intl.pluralLogic(
+      answered,
+      locale: localeName,
+      other: '$answered coordinateurs sur $total ont répondu',
+      one: '1 coordinateur sur $total a répondu',
+      zero: '0 coordinateur sur $total a répondu',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pBookCoordinatorsOffline(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count coordinateurs en cours de chargement',
-      one: '1 coordinateur en cours de chargement',
+      other: '$count coordinateurs hors ligne',
+      one: '1 coordinateur hors ligne',
     );
     return '$_temp0';
+  }
+
+  @override
+  String p2pBookCoordinatorAnswered(String name) {
+    return '$name, a répondu';
+  }
+
+  @override
+  String p2pBookCoordinatorAwaited(String name) {
+    return '$name, en attente';
+  }
+
+  @override
+  String p2pBookCoordinatorOffline(String name) {
+    return '$name, hors ligne';
   }
 
   @override

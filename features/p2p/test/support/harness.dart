@@ -64,3 +64,11 @@ Widget routerHarness(GoRouter router, {Locale locale = const Locale('en')}) =>
         child: child ?? const SizedBox.shrink(),
       ),
     );
+
+/// Pumps the 20 seconds and more that the book waits before it asks again a coordinator that gave no answer (`BookRetry.firstContact`, without the spread in tests), so that every coordinator has given its book or is shown offline.
+Future<void> settleAttempts(WidgetTester tester) async {
+  for (var i = 0; i < 22; i++) {
+    await tester.pump(const Duration(seconds: 1));
+  }
+  await settle(tester);
+}

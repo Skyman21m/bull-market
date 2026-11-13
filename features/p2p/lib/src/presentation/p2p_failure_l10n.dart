@@ -6,25 +6,8 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/p2p_failure.dart';
 import 'robot_coordinator_state.dart';
 
-/// What the book says about a coordinator whose book could not be read.
+/// What the screens say about a failure of a coordinator: the book shows such a coordinator offline in its row, with no text of its own (`CoordinatorsRow`).
 extension CoordinatorFailureL10n on CoordinatorFailure {
-  /// « Coordinator offline » when it could not be reached, a generic error when it answered something unusable or when the transport was busy.
-  String toTranslated(BuildContext context) {
-    final l10n = P2pLocalizations.of(context);
-    return switch (this) {
-      // No book read gives it, since only the sessions of the robots are bounded: the robot panel says it with [toRobotText].
-      CoordinatorTransportBusy() => l10n.p2pBookError,
-      CoordinatorTransportFailure() ||
-      CoordinatorNotOnNetwork() => l10n.p2pCoordinatorOffline,
-      CoordinatorUnexpectedStatus() ||
-      CoordinatorNotJson() ||
-      CoordinatorResponseMalformed() ||
-      CoordinatorIdentityFailure() ||
-      // No book read gives a robot failure: the robot panel says it with [toRobotText].
-      CoordinatorRobotFailure() => l10n.p2pBookError,
-    };
-  }
-
   /// What the robot panel of the Garage says when a request of a robot to [coordinator], the long alias it shows, ended with this failure: the texts of the design note of #29, § 2.3.
   ///
   /// None quotes the coordinator's answer; « Coordinator offline » when it could not be reached.

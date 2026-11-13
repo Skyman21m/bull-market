@@ -17,6 +17,7 @@ import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/coordinator_mark.dart';
+import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
@@ -228,6 +229,31 @@ void main() {
       await settle(tester);
     }
 
+    /// A text of the screen that is shown, not one of the forms the line of the row keeps the room of.
+    Finder shown(String text) => find.text(text).hitTestable();
+
+    /// « Retry » under the row, once it is shown.
+    final retry = find.text('Retry').hitTestable();
+
+    /// The place of the image of [alias] in the row above the book.
+    Finder rowPlace(String alias) => find.byWidgetPredicate(
+      (widget) =>
+          widget is CoordinatorRowPlace &&
+          widget.coordinator.shortAlias == alias,
+    );
+
+    /// How the row draws [alias].
+    CoordinatorRowState rowState(WidgetTester tester, String alias) =>
+        tester.widget<CoordinatorRowPlace>(rowPlace(alias)).state;
+
+    /// The coordinators of the row, in its order.
+    List<String> rowAliases(WidgetTester tester) => [
+      for (final place in tester.widgetList<CoordinatorRowPlace>(
+        find.byType(CoordinatorRowPlace),
+      ))
+        place.coordinator.shortAlias,
+    ];
+
     testWidgets('waits for Tor, then lists every offer received', (
       tester,
     ) async {
@@ -251,25 +277,77 @@ void main() {
       expect(find.text('Chart'), findsOneWidget);
     });
 
-    testWidgets('a failed coordinator is shown, and retry asks it again', (
-      tester,
-    ) async {
-      await open(tester);
-      tor.add(P2pTorState.ready);
-      await settle(tester);
+    testWidgets(
+      'a coordinator that gives no answer is awaited while it is asked again, then offline with « Retry », which asks it again',
+      (tester) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settle(tester);
 
-      expect(find.text('LibreBazaar · Coordinator offline'), findsOneWidget);
-      expect(find.text('Seller'), findsNWidgets(2));
+        // Asked again by itself: awaited, not offline yet, the others shown.
+        expect(shown('5 of 6 coordinators answered'), findsOneWidget);
+        expect(retry, findsNothing);
+        expect(find.text('Seller'), findsNWidgets(2));
+        expect(rowState(tester, 'bazaar'), CoordinatorRowState.awaited);
 
-      transport
-        ..failures.clear()
-        ..requested.clear();
-      await tester.tap(find.text('Retry'));
-      await settle(tester);
+        await settleAttempts(tester);
+        expect(
+          transport.requested.where((request) => request == 'bazaar/api/book/'),
+          hasLength(3),
+        );
+        expect(rowState(tester, 'bazaar'), CoordinatorRowState.offline);
+        expect(shown('1 coordinator offline'), findsOneWidget);
 
-      expect(transport.requested, ['bazaar/api/book/']);
-      expect(find.text('Retry'), findsNothing);
-    });
+        transport
+          ..failures.clear()
+          ..requested.clear();
+        await tester.tap(retry);
+        await settle(tester);
+
+        expect(transport.requested, ['bazaar/api/book/']);
+        expect(retry, findsNothing);
+        expect(shown('6 of 6 coordinators answered'), findsOneWidget);
+        expect(rowState(tester, 'bazaar'), CoordinatorRowState.answered);
+      },
+    );
+
+    testWidgets(
+      'the row stays above the offers, whatever the host chosen, and an image opens the dialog of its coordinator',
+      (tester) async {
+        await open(tester);
+        tor.add(P2pTorState.ready);
+        await settleAttempts(tester);
+        expect(find.text('Seller'), findsNWidgets(2));
+        expect(rowAliases(tester), [
+          for (final coordinator in Federation.robosats.on(
+            RobosatsNetwork.mainnet,
+          ))
+            coordinator.shortAlias,
+        ]);
+
+        // « hosted by » Temple of Sats: the row still shows every coordinator, the offline one included.
+        await tester.tap(find.text('ANY').last);
+        await settle(tester);
+        await tester.tap(find.text('Temple of Sats').last);
+        await settle(tester);
+        expect(rowAliases(tester), hasLength(6));
+        expect(rowState(tester, 'bazaar'), CoordinatorRowState.offline);
+
+        transport.requested.clear();
+        await tester.tap(rowPlace('lake'));
+        await settle(tester);
+        expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(CoordinatorDetailsDialog),
+            matching: find.text('TheBigLake'),
+          ),
+          findsOneWidget,
+        );
+        // The dialog asks the coordinator for its info, as from an order; the book asks nothing.
+        expect(transport.requested, ['lake/api/info/']);
+      },
+    );
 
     group('the wait for the book', () {
       /// The bar above the book.
@@ -327,20 +405,24 @@ void main() {
               tester.getRect(skeletonRows.at(row)).bottom,
           ].reduce(math.max);
           expect(bottom, greaterThanOrEqualTo(bookViewport(tester).bottom));
-          // Before the first book the line of the coordinators still loading is hidden: the skeleton says it.
+          // The skeleton says nothing: the line under the row says what the book waits for.
           expect(
             find.descendant(
               of: find.byType(BookSkeleton),
-              matching: find.bySemanticsLabel(
-                '${mainnet.length} coordinators are still loading',
-              ),
+              matching: find.bySemanticsLabel(RegExp('.')),
             ),
+            findsNothing,
+          );
+          expect(shown('0 of 6 coordinators answered'), findsOneWidget);
+          expect(
+            find.bySemanticsLabel('0 of 6 coordinators answered'),
             findsOneWidget,
           );
           // Nothing is shown yet: the skeleton is the wait, without the bar.
           expect(bar(tester).trigger, isFalse);
           expect(tester.hasRunningAnimations, isTrue);
 
+          transport.failures.clear();
           for (final alias in mainnet) {
             transport.release(alias);
           }
@@ -356,9 +438,11 @@ void main() {
       );
 
       testWidgets(
-        'offers shown while a coordinator still loads: a bar runs over them, in the chart too, until it answers, and the book does not move',
+        'offers shown while a coordinator is still awaited: a bar runs over them, in the chart too, until it answers, and the book does not move',
         (tester) async {
-          transport.held.add('lake');
+          transport
+            ..failures.clear()
+            ..held.add('lake');
           await open(tester);
           tor.add(P2pTorState.ready);
           await settle(tester);
@@ -366,7 +450,7 @@ void main() {
           expect(find.text('Seller'), findsNWidgets(2));
           expect(find.text('Buyer'), findsNothing);
           expect(find.byType(BookSkeleton), findsNothing);
-          expect(find.text('1 coordinator is still loading'), findsOneWidget);
+          expect(shown('5 of 6 coordinators answered'), findsOneWidget);
           expect(bar(tester).trigger, isTrue);
           // The bar lies over the top of the book and takes no room: the book starts where the view starts.
           final top = tester.getRect(find.byType(BookView)).top;
@@ -394,7 +478,7 @@ void main() {
           await settle(tester);
 
           expect(find.text('Buyer'), findsOneWidget);
-          expect(find.text('1 coordinator is still loading'), findsNothing);
+          expect(shown('6 of 6 coordinators answered'), findsOneWidget);
           expect(bar(tester).trigger, isFalse);
           await fadeOut(tester);
           expect(tester.hasRunningAnimations, isFalse);
@@ -451,7 +535,7 @@ void main() {
       });
 
       testWidgets(
-        'when the first answer is an empty book, the line says what still loads and the skeleton does not repeat it',
+        'when the first answer is an empty book, the line says what still loads and the skeleton says nothing',
         (tester) async {
           final semantics = tester.ensureSemantics();
           // Gumpellite answers an empty book; the others are held.
@@ -462,14 +546,14 @@ void main() {
           tor.add(P2pTorState.ready);
           await settle(tester);
 
-          final loading =
-              '${mainnet.length - 1} coordinators are still loading';
           expect(find.byType(BookSkeleton), findsOneWidget);
-          expect(find.text(loading), findsOneWidget);
+          expect(shown('1 of 6 coordinators answered'), findsOneWidget);
+          expect(rowState(tester, 'gumpellite'), CoordinatorRowState.answered);
+          expect(rowState(tester, 'temple'), CoordinatorRowState.awaited);
           expect(
             find.descendant(
               of: find.byType(BookSkeleton),
-              matching: find.bySemanticsLabel(RegExp('loading')),
+              matching: find.bySemanticsLabel(RegExp('.')),
             ),
             findsNothing,
           );
@@ -524,6 +608,7 @@ void main() {
       testWidgets(
         'a pull to refresh keeps the offers and runs the bar until every coordinator answered again',
         (tester) async {
+          transport.failures.clear();
           await open(tester);
           tor.add(P2pTorState.ready);
           await settle(tester);
@@ -551,27 +636,130 @@ void main() {
         },
       );
 
+      testWidgets(
+        'the indicator of a pull closes when every coordinator has answered',
+        (tester) async {
+          transport.failures.clear();
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          transport
+            ..held.addAll({'temple', 'lake'})
+            ..requested.clear();
+
+          // The future of `show` completes when the refresh it started is over, which is when the indicator closes.
+          var closed = false;
+          tester
+              .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+              .show()
+              .then((_) => closed = true)
+              .ignore();
+          // The indicator moves into place, then the refresh starts.
+          await settle(tester);
+          await tester.pump(const Duration(milliseconds: 1500));
+          expect(transport.requested, hasLength(6));
+          expect(closed, isFalse);
+
+          transport
+            ..release('temple')
+            ..release('lake');
+          await settle(tester);
+          expect(closed, isTrue);
+          expect(shown('6 of 6 coordinators answered'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'the indicator of a pull closes at 10 seconds while the row still shows a silent coordinator awaited',
+        (tester) async {
+          transport.failures.clear();
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          transport
+            ..held.add('temple')
+            ..requested.clear();
+
+          var closed = false;
+          tester
+              .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+              .show()
+              .then((_) => closed = true)
+              .ignore();
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 9));
+          expect(transport.requested, hasLength(6));
+          expect(closed, isFalse);
+
+          await tester.pump(const Duration(seconds: 1));
+          await settle(tester);
+          expect(closed, isTrue);
+          expect(rowState(tester, 'temple'), CoordinatorRowState.awaited);
+          expect(shown('5 of 6 coordinators answered'), findsOneWidget);
+          // Its orders stay shown while it is awaited.
+          expect(find.text('Seller'), findsNWidgets(2));
+        },
+      );
+
+      testWidgets(
+        'a coordinator still silent 80 seconds after the load began is shown offline, a late answer lights it, and « Retry » meanwhile sends nothing',
+        (tester) async {
+          transport
+            ..failures.clear()
+            ..held.add('lake');
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+
+          await tester.pump(const Duration(seconds: 79));
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+          await tester.pump(const Duration(seconds: 1));
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.offline);
+          expect(shown('1 coordinator offline'), findsOneWidget);
+
+          await tester.tap(retry);
+          await settle(tester);
+          expect(
+            transport.requested.where((request) => request == 'lake/api/book/'),
+            hasLength(1),
+          );
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+
+          transport.release('lake');
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.answered);
+          expect(find.text('Buyer'), findsOneWidget);
+          expect(shown('6 of 6 coordinators answered'), findsOneWidget);
+        },
+      );
+
       testWidgets('a retry runs the bar until the coordinator answers', (
         tester,
       ) async {
         await open(tester);
         tor.add(P2pTorState.ready);
         await settle(tester);
+        // While the offline coordinator is asked again by itself, the bar runs too.
+        expect(bar(tester).trigger, isTrue);
+        await settleAttempts(tester);
         expect(bar(tester).trigger, isFalse);
 
         transport.failures.clear();
         transport.held.add('bazaar');
-        await tester.tap(find.text('Retry'));
+        await tester.tap(retry);
         await settle(tester);
         expect(bar(tester).trigger, isTrue);
+        expect(rowState(tester, 'bazaar'), CoordinatorRowState.awaited);
 
         transport.release('bazaar');
         await settle(tester);
         expect(bar(tester).trigger, isFalse);
-        expect(find.text('Retry'), findsNothing);
+        expect(retry, findsNothing);
       });
 
-      testWidgets('the skeleton says what it waits for in French', (
+      testWidgets('the line says what the book waits for in French', (
         tester,
       ) async {
         final semantics = tester.ensureSemantics();
@@ -581,10 +769,9 @@ void main() {
         await settle(tester);
 
         expect(find.byType(BookSkeleton), findsOneWidget);
+        expect(shown('0 coordinateur sur 6 a répondu'), findsOneWidget);
         expect(
-          find.bySemanticsLabel(
-            '${mainnet.length} coordinateurs en cours de chargement',
-          ),
+          find.bySemanticsLabel('Temple of Sats, en attente'),
           findsOneWidget,
         );
         semantics.dispose();

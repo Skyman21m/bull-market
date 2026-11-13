@@ -13,7 +13,7 @@ sealed class CoordinatorBookStatus {
   List<PublicOrder> get orders;
 }
 
-/// The book is being requested; [previous] is the book read before, kept on screen while it reloads.
+/// The book is awaited: it is being requested, or the coordinator gave no answer and is about to be asked again; [previous] is the book read before, kept on screen while it reloads.
 final class CoordinatorBookLoading extends CoordinatorBookStatus {
   final OrderBook? previous;
 
@@ -32,7 +32,7 @@ final class CoordinatorBookLoaded extends CoordinatorBookStatus {
   List<PublicOrder> get orders => book.orders;
 }
 
-/// The coordinator could not give its book: it is shown as offline, and its orders are not.
+/// The coordinator gave no book after its last attempt, or none yet after `BookRetry.awaitedAtMost`, its attempts going on: it is shown offline, and its orders are not.
 final class CoordinatorBookFailed extends CoordinatorBookStatus {
   final CoordinatorFailure failure;
 
@@ -80,6 +80,10 @@ final class BookState {
     for (final MapEntry(:key, :value) in coordinators.entries)
       if (value is CoordinatorBookFailed) key,
   ];
+
+  /// How many coordinators have given their book, an empty one included.
+  int get answeredCount =>
+      coordinators.values.whereType<CoordinatorBookLoaded>().length;
 
   /// Whether a coordinator gave its book, even an empty one: until one does, an empty book is not known to be empty.
   bool get hasAnswer =>

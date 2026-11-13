@@ -55,6 +55,9 @@ final class _RecordedTransport implements CoordinatorTransport {
   /// Coordinators that do not answer during the captures, so that their book is still loading.
   final Set<String> held;
 
+  /// Coordinators that answer an empty book (`not_found`, status 404) when nothing was recorded for them.
+  final Set<String> empty;
+
   /// The coordinators of the robot captures, which answer the requests of the robots: none without them.
   final _Robots? robots;
 
@@ -62,6 +65,7 @@ final class _RecordedTransport implements CoordinatorTransport {
     this.network, {
     this.offline = const {},
     this.held = const {},
+    this.empty = const {},
     this.robots,
   });
 
@@ -92,6 +96,15 @@ final class _RecordedTransport implements CoordinatorTransport {
     }
     final endpoint = request.url.path.contains('info') ? 'info' : 'book';
     final file = File('$_fixtures/$alias-${network.name}-$endpoint.json');
+    if (!file.existsSync() && endpoint == 'book' && empty.contains(alias)) {
+      return Ok(
+        CoordinatorResponse(
+          statusCode: 404,
+          headers: const {'content-type': 'application/json'},
+          body: utf8.encode('{"not_found": "No orders found"}'),
+        ),
+      );
+    }
     if (!file.existsSync()) return const Err(CoordinatorUnreachable());
     final body = file.readAsBytesSync();
     final notFound = utf8.decode(body).contains('not_found');
@@ -276,6 +289,7 @@ void main() {
         RobosatsNetwork network, {
         Set<String> offline = const {},
         Set<String> held = const {},
+        Set<String> empty = const {},
         StreamController<P2pTorReport>? reports,
       }) async {
         final locator = GetIt.asNewInstance();
@@ -284,7 +298,12 @@ void main() {
         addTearDown(locator.reset);
         setUpP2pForTesting(
           locator,
-          transport: _RecordedTransport(network, offline: offline, held: held),
+          transport: _RecordedTransport(
+            network,
+            offline: offline,
+            held: held,
+            empty: empty,
+          ),
           torStates: reports == null ? () => tor.stream : null,
           torReports: reports == null ? null : () => reports.stream,
           clock: () => _now,
@@ -306,6 +325,14 @@ void main() {
         }
       }
 
+      /// Lets the book ask again, after 5 then 15 seconds, the coordinators that gave no answer, until they are shown offline.
+      Future<void> settleAttempts() async {
+        for (var i = 0; i < 22; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          await settle();
+        }
+      }
+
       // The wait for Tor, on testnet so that its banner shows as in the mock-up: the first phrase of the fixed order, then Tor at 42 % of its start.
       // Both are shown within the first 2 seconds of the wait, once the phrase has faded in.
       final reports = StreamController<P2pTorReport>.broadcast();
@@ -323,6 +350,8 @@ void main() {
       await capture('tor-erreur');
       reports.add(P2pTorReport(P2pTorState.ready));
       await settle();
+      // Lake on testnet, which answers nothing recorded, is shown offline after its attempts.
+      await settleAttempts();
       await capture('offres-testnet-vide');
 
       // The wait for the book: no coordinator has answered yet, then only Temple of Sats has.
@@ -344,10 +373,25 @@ void main() {
       await settle();
       await capture('offres-attente-partielle');
 
-      // The recorded mainnet books.
+      // The row of the coordinators: TheBigLake and LibreBazaar do not answer, and Gumpellite has nothing recorded; first they are asked again, then shown offline with « Retry ».
+      tor = await show(RobosatsNetwork.mainnet, offline: {'lake', 'bazaar'});
+      tor.add(P2pTorState.ready);
+      await settle();
+      await capture('offres-redemande');
+      await settleAttempts();
+      await capture('offres-hors-ligne');
+
+      // Every coordinator answered: Gumpellite answers an empty book here.
+      tor = await show(RobosatsNetwork.mainnet, empty: {'gumpellite'});
+      tor.add(P2pTorState.ready);
+      await settle();
+      await capture('offres-tous-repondu');
+
+      // The recorded mainnet books, Gumpellite offline once asked again.
       tor = await show(RobosatsNetwork.mainnet);
       tor.add(P2pTorState.ready);
       await settle();
+      await settleAttempts();
       await capture('offres-tous');
 
       final l10n = lookupP2pLocalizations(locale);
@@ -462,7 +506,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await capture('sans-robot');
 
-      // The chart on a small phone, 320 by 568 points, with four coordinators offline above it (Gumpellite answers nothing recorded): their state scrolls with the chart.
+      // The chart on a small phone, 320 by 568 points, with five coordinators offline above it (Gumpellite answers nothing recorded): the row scrolls with the chart.
       tester.view.physicalSize = const Size(640, 1136);
       tor = await show(
         RobosatsNetwork.mainnet,
@@ -470,17 +514,42 @@ void main() {
       );
       tor.add(P2pTorState.ready);
       await settle();
+      await settleAttempts();
       await tester.tap(find.text(l10n.p2pBookViewChart));
       await settle();
       await tester.pump(const Duration(seconds: 1));
       await capture('graphique-hors-ligne-petit');
       await tester.drag(
-        find.textContaining('TheBigLake').first,
+        find.byType(CustomScrollView).first,
         const Offset(0, -600),
       );
       await settle();
       await tester.pump(const Duration(seconds: 1));
       await capture('graphique-hors-ligne-petit-bas');
+
+      // The row on that small phone with the text twice as large: asked again, then offline with « Retry ».
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      tor = await show(RobosatsNetwork.mainnet, offline: {'lake', 'bazaar'});
+      tor.add(P2pTorState.ready);
+      await settle();
+      // The filter sentence takes most of the screen at that size: the book is scrolled to put the row at its top.
+      final book = find.byType(CustomScrollView).first;
+      tester
+          .state<ScrollableState>(
+            find.descendant(of: book, matching: find.byType(Scrollable)).first,
+          )
+          .position
+          .jumpTo(
+            tester.getRect(find.text(l10n.p2pBookFilterHostedBy)).bottom -
+                tester.getRect(book).top +
+                8,
+          );
+      await settle();
+      await capture('offres-petit-texte2-redemande');
+      await settleAttempts();
+      await capture('offres-petit-texte2-hors-ligne');
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
   }
 
@@ -837,6 +906,12 @@ void main() {
         tor.add(P2pTorState.ready);
         await settle();
         await capture('robot-sans-coordinateur');
+
+        // The book of the tab asks Gumpellite again, after 5 then 15 seconds, before it shows it offline: the sheet says so once it does.
+        for (var i = 0; i < 22; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          await settle();
+        }
 
         // « Select Host »: « Robots from elsewhere » first, for this pasted key, then the sheet once « I understand » records the acknowledgement; then the confirmation, and the first contact with Temple of Sats, which takes its time.
         await tester.tap(find.text(l10n.p2pRobotSelectHost));

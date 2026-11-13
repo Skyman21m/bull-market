@@ -3,6 +3,7 @@
 /// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
+import 'dart:async' show Timer;
 import 'dart:io' show FileSystemException;
 
 import 'package:bull_tor/tor.dart';
@@ -17,6 +18,7 @@ import 'src/data/tor_coordinator_transport.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
+import 'src/domain/p2p_waits.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
 import 'src/p2p_locator.dart';
@@ -54,6 +56,7 @@ export 'src/ui/widgets/coordinator_images.dart'
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
 /// Tor reports either [torStates], or [torReports] when a test needs the share of its start too; [shuffle] orders what the screens show in no order of their own, as given by default.
+/// The book waits before it asks a coordinator again on the timers of the test's zone (those of `WidgetTester` in a widget test), each wait exactly as long as its rule says, without the random spread of the app.
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
@@ -83,6 +86,7 @@ void setUpP2pForTesting(
     sessions: () => const _NoSessions(),
     tor: () => tor,
     clock: clock,
+    waits: const P2pWaits(start: Timer.new, random: _middle),
     shuffle: shuffle,
   );
   if (garageKeys != null) {
@@ -103,6 +107,9 @@ void setUpP2pForTesting(
     );
   }
 }
+
+/// The draw in the middle of the range, which spreads no wait.
+double _middle() => 0.5;
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
 @visibleForTesting
