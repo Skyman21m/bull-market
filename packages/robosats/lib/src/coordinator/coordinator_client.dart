@@ -399,7 +399,7 @@ final class CoordinatorClient {
     Ok(value: final answer) => Err(_orderRefusal(answer)),
   };
 
-  /// The message of error 1012, the only place where the coordinator gives the seconds (`api/errors.py:13`).
+  /// The message of error 1012, the only place where the coordinator gives the seconds (`api/errors.py:15`).
   static final RegExp _penaltyMessage = RegExp(
     r'^You need to wait (\d{1,5}) seconds to take an order$',
   );
