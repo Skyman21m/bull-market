@@ -24,12 +24,6 @@ class RobotHistoryDialog extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    final route = ModalRoute.of(context);
-    // Closes the dialog once: a second tap while it closes pops nothing under it.
-    void answer(bool understood) {
-      if (route?.isCurrent ?? false) Navigator.of(context).pop(understood);
-    }
-
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -50,14 +44,14 @@ class RobotHistoryDialog extends StatelessWidget {
           const Gap(BullSpacing.lg),
           BullButton.big(
             label: l10n.p2pRobotHistoryConfirm,
-            onPressed: () => answer(true),
+            onPressed: () => Navigator.of(context).pop(true),
             bgColor: colors.primary,
             textColor: colors.onPrimary,
           ),
           const Gap(BullSpacing.sm),
           BullButton.big(
             label: l10n.p2pCommonCancel,
-            onPressed: () => answer(false),
+            onPressed: () => Navigator.of(context).pop(false),
             outlined: true,
             bgColor: colors.transparent,
             textColor: colors.primary,
