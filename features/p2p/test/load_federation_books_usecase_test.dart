@@ -529,6 +529,69 @@ void main() {
     });
   });
 
+  group('what a refresh waits for: 10 seconds at most', () {
+    test('every coordinator answers: done then, its bound ended', () async {
+      expect(BookRetry.refreshAtMost, const Duration(seconds: 10));
+      final all = usecase.execute(RobosatsNetwork.mainnet);
+      var done = false;
+      usecase.shown(all.values).then((_) => done = true).ignore();
+      await settle();
+
+      expect(done, isTrue);
+      expect(waits.running, isEmpty);
+    });
+
+    test(
+      'one silent coordinator: done at 10 seconds, while it is still awaited',
+      () async {
+        transport.held.add('temple');
+        final all = usecase.execute(RobosatsNetwork.mainnet);
+        var done = false;
+        usecase.shown(all.values).then((_) => done = true).ignore();
+        await settle();
+        expect(done, isFalse);
+        expect(waits.refreshBounds, hasLength(1));
+
+        waits.fireRefreshBounds();
+        await settle();
+        expect(done, isTrue);
+        expect(all[coordinator('temple')]?.isWaiting, isFalse);
+        transport.release('temple');
+        await settle();
+      },
+    );
+
+    test('one shown offline at 75 seconds counts as shown', () async {
+      transport.held.add('temple');
+      final all = usecase.execute(RobosatsNetwork.mainnet);
+      var done = false;
+      usecase.shown(all.values).then((_) => done = true).ignore();
+      await settle();
+
+      waits.fireAwaitedBounds();
+      await settle();
+      expect(done, isTrue);
+      expect(waits.refreshBounds, isEmpty);
+      transport.release('temple');
+      await settle();
+    });
+
+    test('attempts cancelled count as shown', () async {
+      transport.held.add('temple');
+      final all = usecase.execute(RobosatsNetwork.mainnet);
+      var done = false;
+      usecase.shown(all.values).then((_) => done = true).ignore();
+      await settle();
+
+      all[coordinator('temple')]?.cancel();
+      await settle();
+      expect(done, isTrue);
+      expect(waits.running, isEmpty);
+      transport.release('temple');
+      await settle();
+    });
+  });
+
   group('the federation', () {
     test(
       'every coordinator is asked at once, and one asked again delays no other',

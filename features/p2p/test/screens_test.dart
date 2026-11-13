@@ -637,6 +637,71 @@ void main() {
       );
 
       testWidgets(
+        'the indicator of a pull closes when every coordinator has answered',
+        (tester) async {
+          transport.failures.clear();
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          transport
+            ..held.addAll({'temple', 'lake'})
+            ..requested.clear();
+
+          // The future of `show` completes when the refresh it started is over, which is when the indicator closes.
+          var closed = false;
+          tester
+              .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+              .show()
+              .then((_) => closed = true)
+              .ignore();
+          // The indicator moves into place, then the refresh starts.
+          await settle(tester);
+          await tester.pump(const Duration(milliseconds: 1500));
+          expect(transport.requested, hasLength(6));
+          expect(closed, isFalse);
+
+          transport
+            ..release('temple')
+            ..release('lake');
+          await settle(tester);
+          expect(closed, isTrue);
+          expect(shown('6 of 6 coordinators answered'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'the indicator of a pull closes at 10 seconds while the row still shows a silent coordinator awaited',
+        (tester) async {
+          transport.failures.clear();
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          transport
+            ..held.add('temple')
+            ..requested.clear();
+
+          var closed = false;
+          tester
+              .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+              .show()
+              .then((_) => closed = true)
+              .ignore();
+          await settle(tester);
+          await tester.pump(const Duration(seconds: 9));
+          expect(transport.requested, hasLength(6));
+          expect(closed, isFalse);
+
+          await tester.pump(const Duration(seconds: 1));
+          await settle(tester);
+          expect(closed, isTrue);
+          expect(rowState(tester, 'temple'), CoordinatorRowState.awaited);
+          expect(shown('5 of 6 coordinators answered'), findsOneWidget);
+          // Its orders stay shown while it is awaited.
+          expect(find.text('Seller'), findsNWidgets(2));
+        },
+      );
+
+      testWidgets(
         'a coordinator still silent 75 seconds after the load began is shown offline, a late answer lights it, and « Retry » meanwhile sends nothing',
         (tester) async {
           transport

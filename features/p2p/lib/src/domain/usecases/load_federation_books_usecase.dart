@@ -46,6 +46,19 @@ final class LoadFederationBooksUsecase {
     };
   }
 
+  /// Completes once each of [attempts] has given its outcome, is shown offline or was cancelled, and in any case [BookRetry.refreshAtMost] after this call: what the indicator of a refresh waits for, while the row shows the rest.
+  Future<void> shown(Iterable<CoordinatorBookAttempts> attempts) {
+    final done = Completer<void>();
+    final bound = _waits.start(BookRetry.refreshAtMost, () {
+      if (!done.isCompleted) done.complete();
+    });
+    Future.wait([for (final attempt in attempts) attempt.shown]).then((_) {
+      bound.cancel();
+      if (!done.isCompleted) done.complete();
+    });
+    return done.future;
+  }
+
   /// The request in flight to [coordinator], or a new one when there is none.
   Future<CoordinatorBookOutcome> _request(
     Coordinator coordinator,

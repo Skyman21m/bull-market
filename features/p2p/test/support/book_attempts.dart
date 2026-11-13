@@ -10,7 +10,7 @@ import 'fakes.dart';
 
 /// The timers and the draw of the book's waits, which the test fires and sets itself.
 ///
-/// The waits before an attempt are told from the bound of [BookRetry.awaitedAtMost] (75 s) by their duration, which no spread wait can have.
+/// The waits before an attempt are told from the two bounds by their duration, which no spread wait can have: [BookRetry.awaitedAtMost] (75 s) and [BookRetry.refreshAtMost] (10 s).
 final class FakeWaits {
   /// Every timer started, in order, fired or cancelled ones included, the bounds included.
   final List<FakeTimer> all = [];
@@ -34,7 +34,8 @@ final class FakeWaits {
   );
 
   static bool _isBound(FakeTimer timer) =>
-      timer.duration == BookRetry.awaitedAtMost;
+      timer.duration == BookRetry.awaitedAtMost ||
+      timer.duration == BookRetry.refreshAtMost;
 
   /// The waits before an attempt started, in order, fired or cancelled ones included.
   List<FakeTimer> get started => [
@@ -54,6 +55,12 @@ final class FakeWaits {
       if (timer.isActive && timer.duration == BookRetry.awaitedAtMost) timer,
   ];
 
+  /// The bounds of [BookRetry.refreshAtMost] still running, one per refresh.
+  List<FakeTimer> get refreshBounds => [
+    for (final timer in all)
+      if (timer.isActive && timer.duration == BookRetry.refreshAtMost) timer,
+  ];
+
   /// Every timer still running, waits and bounds.
   List<FakeTimer> get running => [
     for (final timer in all)
@@ -70,6 +77,13 @@ final class FakeWaits {
   /// Lets [BookRetry.awaitedAtMost] pass for every coordinator asked so far.
   void fireAwaitedBounds() {
     for (final timer in awaitedBounds) {
+      timer.fire();
+    }
+  }
+
+  /// Lets [BookRetry.refreshAtMost] pass for every refresh so far.
+  void fireRefreshBounds() {
+    for (final timer in refreshBounds) {
       timer.fire();
     }
   }

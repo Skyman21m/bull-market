@@ -902,6 +902,61 @@ void main() {
       scripted.release('temple');
       await settle();
     });
+    test(
+      'a refresh where every coordinator answers is done then, its 10-second bound ended',
+      () async {
+        final book = await shown();
+        final refreshed = book.refresh();
+
+        expect(await isDone(refreshed), isTrue);
+        expect(waits.refreshBounds, isEmpty);
+        expect(waits.running, isEmpty);
+        await book.close();
+      },
+    );
+
+    test(
+      'a refresh with one silent coordinator is done at 10 seconds, the row still showing it awaited',
+      () async {
+        final book = await shown();
+        scripted.held.add('temple');
+        final refreshed = book.refresh();
+        expect(await isDone(refreshed), isFalse);
+
+        waits.fireRefreshBounds();
+        expect(await isDone(refreshed), isTrue);
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+        // Its orders stay shown while it is awaited.
+        expect(book.state.orders.map((o) => o.id), [1, 2]);
+        scripted.release('temple');
+        await settle();
+        await book.close();
+      },
+    );
+
+    test('« Retry » is waited for 10 seconds at most too', () async {
+      scripted.script['temple'] = [
+        for (var i = 0; i < 3; i++)
+          const ScriptedFailure(CoordinatorUnreachable()),
+      ];
+      final book = await shown();
+      waits.fireAll();
+      await settle();
+      waits.fireAll();
+      await settle();
+      expect(book.state.failedCoordinators, [coordinator('temple')]);
+
+      scripted.held.add('temple');
+      final retried = book.retryFailed();
+      expect(await isDone(retried), isFalse);
+      waits.fireRefreshBounds();
+      expect(await isDone(retried), isTrue);
+      expect(book.state.loadingCoordinators, [coordinator('temple')]);
+      scripted.release('temple');
+      await settle();
+      expect(book.state.failedCoordinators, isEmpty);
+      await book.close();
+    });
   });
 
   group('filters', () {

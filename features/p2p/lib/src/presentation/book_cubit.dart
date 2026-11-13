@@ -49,7 +49,7 @@ class BookCubit extends Cubit<BookState> {
     unawaited(_retryTor.execute());
   }
 
-  /// Asks every coordinator again, keeping their orders on screen meanwhile, each with all its attempts; completes once each has given its book or is shown offline.
+  /// Asks every coordinator again, keeping their orders on screen meanwhile, each with all its attempts; completes once each has given its book or is shown offline, and in any case after `BookRetry.refreshAtMost`, so that the indicator of a pull does not wait for the last coordinator.
   Future<void> refresh() => _request(state.coordinators.keys.toSet());
 
   /// Asks again, with all their attempts, only the coordinators shown offline; completes as [refresh] does.
@@ -109,7 +109,7 @@ class BookCubit extends Cubit<BookState> {
       unawaited(_await(coordinator, attempts));
       unawaited(_awaitOverdue(coordinator, attempts));
     }
-    await Future.wait([for (final attempts in started.values) attempts.shown]);
+    await _loadBooks.shown(started.values);
   }
 
   Future<void> _await(

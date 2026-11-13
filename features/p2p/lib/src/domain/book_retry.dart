@@ -33,6 +33,9 @@ final class BookRetry {
   /// It is a decision of the project (#73), not of the official client, which stops waiting for a coordinator after 15 seconds but has no second attempt to wait for.
   static const awaitedAtMost = Duration(seconds: 75);
 
+  /// How long a refresh, by a pull or by « Retry », is waited for at most: its indicator closes then, and the row of the coordinators shows those still awaited.
+  static const refreshAtMost = Duration(seconds: 10);
+
   /// How many attempts a coordinator gets in all: the first and one per wait.
   int get maxAttempts => waits.length + 1;
 
