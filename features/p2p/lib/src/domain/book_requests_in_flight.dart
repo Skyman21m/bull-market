@@ -22,10 +22,12 @@ final class BookRequestsInFlight {
     final key = (network, coordinator.shortAlias);
     final running = _requests[key];
     if (running != null) return running;
+    // Sent before it is recorded: a `send` that throws, which only a bug does, leaves no entry that no answer would ever end.
+    final request = send();
     // Synchronous, so that whoever joined is told in the same step as the request is forgotten.
     final ended = Completer<CoordinatorBookOutcome>.sync();
     _requests[key] = ended.future;
-    send().then(
+    request.then(
       (outcome) {
         _requests.remove(key);
         ended.complete(outcome);
