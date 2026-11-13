@@ -12,6 +12,7 @@ import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
+import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
@@ -229,9 +230,13 @@ final class P2pLocator {
         Federation.robosats,
       ),
     );
-    // A factory: each book gets its own, which remembers the coordinators it reached and its requests in flight.
+    // One for the feature: every book, of every visit to the tab, joins the book requests already in flight.
+    locator.registerLazySingleton<BookRequestsInFlight>(
+      BookRequestsInFlight.new,
+    );
+    // A factory: each book gets its own, which remembers the coordinators it reached.
     locator.registerFactory<LoadFederationBooksUsecase>(
-      () => LoadFederationBooksUsecase(locator(), locator()),
+      () => LoadFederationBooksUsecase(locator(), locator(), locator()),
     );
     locator.registerFactory<FetchCoordinatorInfoUsecase>(
       () => FetchCoordinatorInfoUsecase(

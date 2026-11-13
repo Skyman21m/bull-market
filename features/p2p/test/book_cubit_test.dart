@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/order_search.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
@@ -21,6 +22,9 @@ void main() {
   late FakeTransport transport;
   late FakeWaits waits;
 
+  /// The book requests in flight, which every book of a test shares, as the books of the app share the locator's.
+  late BookRequestsInFlight inFlight;
+
   /// The book over [transport], or over [scripted] when given.
   BookCubit cubit({
     RobosatsNetwork network = RobosatsNetwork.mainnet,
@@ -35,6 +39,7 @@ void main() {
         FederationBookReader(scripted ?? transport, clock: () => testNow),
         Federation.robosats,
       ),
+      inFlight,
       waits.waits,
     ),
   );
@@ -51,6 +56,7 @@ void main() {
     tor = FakeTor();
     transport = FakeTransport();
     waits = FakeWaits();
+    inFlight = BookRequestsInFlight();
   });
 
   group('Tor', () {
@@ -905,6 +911,50 @@ void main() {
         expect(waits.running, isEmpty);
         expect(scripted.requestsTo('temple'), 1);
         await book.close();
+      },
+    );
+
+    test(
+      'leaving the tab during a load and coming back: one request in flight, and the new book gets its answer',
+      () async {
+        scripted.held.add('temple');
+        final left = await shown();
+        expect(scripted.requestsTo('temple'), 1);
+        await left.close();
+
+        final back = await shown();
+        expect(scripted.requestsTo('temple'), 1);
+        expect(back.state.loadingCoordinators, [coordinator('temple')]);
+
+        scripted.release('temple');
+        await settle();
+        expect(back.state.loadingCoordinators, isEmpty);
+        expect(back.state.orders.map((o) => o.id), [1, 2]);
+        expect(scripted.mostAtOnce['temple'], 1);
+        // The book that was left emits nothing.
+        expect(left.state.loadingCoordinators, [coordinator('temple')]);
+        await back.close();
+      },
+    );
+
+    test(
+      'leaving the tab and coming back five times: still one request in flight',
+      () async {
+        scripted.held.add('temple');
+        for (var visit = 0; visit < 5; visit++) {
+          final book = await shown();
+          expect(book.state.loadingCoordinators, [coordinator('temple')]);
+          await book.close();
+        }
+        final last = await shown();
+        expect(scripted.requestsTo('temple'), 1);
+        expect(scripted.mostAtOnce['temple'], 1);
+
+        scripted.release('temple');
+        await settle();
+        expect(last.state.orders.map((o) => o.id), [1, 2]);
+        await last.close();
+        expect(waits.running, isEmpty);
       },
     );
 

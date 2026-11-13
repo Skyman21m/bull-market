@@ -1,4 +1,5 @@
 import 'package:p2p/src/domain/book_retry.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:primitives/primitives.dart';
@@ -11,6 +12,7 @@ import 'support/fakes.dart';
 void main() {
   late ScriptedTransport transport;
   late FakeWaits waits;
+  late BookRequestsInFlight inFlight;
   late LoadFederationBooksUsecase usecase;
 
   void build({RobosatsNetwork network = RobosatsNetwork.mainnet}) {
@@ -19,6 +21,7 @@ void main() {
         FederationBookReader(transport, clock: () => testNow),
         Federation.robosats,
       ),
+      inFlight,
       waits.waits,
     );
   }
@@ -31,6 +34,7 @@ void main() {
       },
     );
     waits = FakeWaits();
+    inFlight = BookRequestsInFlight();
     build();
   });
 
@@ -309,6 +313,107 @@ void main() {
         );
         transport.release('temple');
         await settle();
+      },
+    );
+  });
+
+  group('the requests in flight, shared by every book', () {
+    test(
+      'a book of a later visit joins the request an earlier book left in flight, and gets its answer',
+      () async {
+        transport.held.add('temple');
+        final left = ask('temple');
+        await settle();
+        left.cancel();
+
+        build();
+        final next = ask('temple');
+        await settle();
+        expect(transport.requestsTo('temple'), 1);
+        expect(
+          inFlight.isInFlight(RobosatsNetwork.mainnet, coordinator('temple')),
+          isTrue,
+        );
+
+        transport.release('temple');
+        expect(idsOf(await outcomeNow(next)), [1]);
+        expect(await left.outcome, isNull);
+        expect(transport.mostAtOnce['temple'], 1);
+      },
+    );
+
+    test(
+      'a book that cancels does not cancel the request another book joined',
+      () async {
+        transport.held.add('temple');
+        final first = ask('temple');
+        build();
+        final second = ask('temple');
+        await settle();
+
+        first.cancel();
+        transport.release('temple');
+        expect(idsOf(await outcomeNow(second)), [1]);
+        expect(transport.requestsTo('temple'), 1);
+      },
+    );
+
+    test(
+      'a request no book awaits runs to its end and is forgotten then: the next book sends a new one',
+      () async {
+        transport.held.add('temple');
+        ask('temple').cancel();
+        await settle();
+        transport.release('temple');
+        await settle();
+        expect(
+          inFlight.isInFlight(RobosatsNetwork.mainnet, coordinator('temple')),
+          isFalse,
+        );
+
+        build();
+        transport.books['temple'] = [bookOrder(id: 7)];
+        final next = ask('temple');
+        expect(idsOf(await outcomeNow(next)), [7]);
+        expect(transport.requestsTo('temple'), 2);
+        expect(transport.mostAtOnce['temple'], 1);
+      },
+    );
+
+    test(
+      'the same coordinator on the other network is another request',
+      () async {
+        transport.held.add('temple');
+        ask('temple');
+        await settle();
+        expect(
+          inFlight.isInFlight(RobosatsNetwork.mainnet, coordinator('temple')),
+          isTrue,
+        );
+        expect(
+          inFlight.isInFlight(RobosatsNetwork.testnet, coordinator('temple')),
+          isFalse,
+        );
+        transport.release('temple');
+        await settle();
+      },
+    );
+
+    test(
+      'what a book remembers of the coordinators it reached stays its own',
+      () async {
+        expect(idsOf(await outcomeNow(ask('temple'))), [1]);
+        build();
+        transport.script['temple'] = const [
+          ScriptedFailure(CoordinatorUnreachable()),
+          ScriptedFailure(CoordinatorUnreachable()),
+        ];
+        ask('temple');
+        await settle();
+        waits.fireAll();
+        await settle();
+        // Not reached by this book: the waits of a first contact.
+        expect(waits.pending.single.duration, const Duration(seconds: 15));
       },
     );
   });

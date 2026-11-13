@@ -27,6 +27,7 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
@@ -2700,6 +2701,7 @@ void main() {
             FederationBookReader(bookTransport, clock: () => testNow),
             Federation.robosats,
           ),
+          BookRequestsInFlight(),
           bookWaits.waits,
         ),
       )..start();

@@ -3,48 +3,36 @@ import 'dart:async';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import '../book_requests_in_flight.dart';
 import '../book_retry.dart';
 import '../p2p_waits.dart';
 import 'request_federation_books_usecase.dart';
 
 /// The books of the P2P book screen: every coordinator is asked, and one whose request got no answer is asked again by itself, a few times, before the screen shows it offline.
 ///
-/// One instance serves one book, so the locator gives each book its own: it remembers which coordinators gave their book, and which requests are still in flight.
+/// One instance serves one book, so the locator gives each book its own: it remembers which coordinators gave their book to it.
+/// The requests in flight are those of [BookRequestsInFlight], shared by every book of the app, so that no coordinator is sent a second book request while one runs.
 /// The rule of when to ask again is [BookRetry]; this use case runs it with the timers and draws of [P2pWaits].
 final class LoadFederationBooksUsecase {
   final RequestFederationBooksUsecase _requestBooks;
+  final BookRequestsInFlight _inFlight;
   final P2pWaits _waits;
-
-  /// The request in flight to each coordinator: a coordinator is never sent a second one while it runs, as in the official client, whose `loadBook` of a coordinator joins the request in flight (`frontend/src/models/Coordinator.model.ts` at commit ff1998c).
-  final Map<Coordinator, Future<CoordinatorBookOutcome>> _inFlight = {};
 
   /// The coordinators that gave their book to this instance at least once: they are asked again with [BookRetry.reached], the others with [BookRetry.firstContact].
   final Set<Coordinator> _reached = {};
 
-  LoadFederationBooksUsecase(this._requestBooks, this._waits);
+  LoadFederationBooksUsecase(this._requestBooks, this._inFlight, this._waits);
 
   /// Starts the attempts of each coordinator that has an onion address on [network], or only of those of [only], in the order of the federation, every request started without waiting for the others.
   ///
-  /// A coordinator whose request is still in flight is not sent another: its first attempt is that request.
+  /// A coordinator whose request is still in flight, sent by this book or by an earlier one, is not sent another: its first attempt is that request.
   Map<Coordinator, CoordinatorBookAttempts> execute(
     RobosatsNetwork network, {
     Set<Coordinator>? only,
-  }) {
-    final coordinators = _requestBooks.coordinatorsOn(network, only: only);
-    final idle = {
-      for (final coordinator in coordinators)
-        if (!_inFlight.containsKey(coordinator)) coordinator,
-    };
-    if (idle.isNotEmpty) {
-      _requestBooks
-          .execute(network, only: idle)
-          .forEach((coordinator, request) => _track(coordinator, request));
-    }
-    return {
-      for (final coordinator in coordinators)
-        coordinator: CoordinatorBookAttempts._(coordinator, network, this),
-    };
-  }
+  }) => {
+    for (final coordinator in _requestBooks.coordinatorsOn(network, only: only))
+      coordinator: CoordinatorBookAttempts._(coordinator, network, this),
+  };
 
   /// Completes once each of [attempts] has given its outcome, is shown offline or was cancelled, and in any case [BookRetry.refreshAtMost] after this call: what the indicator of a refresh waits for, while the row shows the rest.
   Future<void> shown(Iterable<CoordinatorBookAttempts> attempts) {
@@ -63,10 +51,10 @@ final class LoadFederationBooksUsecase {
   Future<CoordinatorBookOutcome> _request(
     Coordinator coordinator,
     RobosatsNetwork network,
-  ) {
-    final running = _inFlight[coordinator];
-    if (running != null) return running;
-    final request =
+  ) => _inFlight.join(
+    network,
+    coordinator,
+    () =>
         _requestBooks.execute(network, only: {coordinator})[coordinator] ??
         // Only a coordinator of the network is asked: none other reaches this.
         Future.value(
@@ -74,32 +62,8 @@ final class LoadFederationBooksUsecase {
             coordinator,
             const Err(CoordinatorNotOnNetwork()),
           ),
-        );
-    return _track(coordinator, request);
-  }
-
-  /// Keeps [request] as the one in flight to [coordinator] until it completes.
-  Future<CoordinatorBookOutcome> _track(
-    Coordinator coordinator,
-    Future<CoordinatorBookOutcome> request,
-  ) {
-    _inFlight[coordinator] = request;
-    void forget() {
-      if (identical(_inFlight[coordinator], request)) {
-        _inFlight.remove(coordinator);
-      }
-    }
-
-    request.then<void>(
-      (outcome) {
-        forget();
-        if (outcome.result is Ok) _reached.add(coordinator);
-      },
-      // A request never fails but on a bug, which reaches whoever awaits it: here it is only forgotten.
-      onError: (Object _) => forget(),
-    );
-    return request;
-  }
+        ),
+  );
 }
 
 /// The attempts to get the book of one coordinator: the first request, then, while it gets no answer, the extra attempts of [BookRetry].
@@ -159,7 +123,7 @@ final class CoordinatorBookAttempts {
 
   /// Stops at once: no other request is sent, the wait before one ends, and [outcome] and [overdue] complete with `null`.
   ///
-  /// A request in flight is not stopped, since the transport cannot take it back; its answer is dropped here, and a later call of [LoadFederationBooksUsecase.execute] joins it.
+  /// A request in flight is not stopped, since the transport cannot take it back: its answer is dropped here, the request stays in flight for any book that joins it, this book's next call or a book of a later visit to the tab, and it ends within the transport's limit of 132 seconds whether or not one does ([BookRequestsInFlight]).
   void cancel() {
     _wait?.cancel();
     _wait = null;
@@ -188,6 +152,7 @@ final class CoordinatorBookAttempts {
       if (_outcome.isCompleted) return;
       switch (outcome.result) {
         case Ok(:final value):
+          _usecase._reached.add(coordinator);
           _finish(Ok(value));
         case Err(:final failure):
           final wait = _stopped

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bull_tor/tor.dart' show TorHttpClientFactory;
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/p2p_waits.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/testing.dart';
@@ -41,25 +42,36 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 30));
   });
 
-  test('each book gets a use case of its own', () {
-    // Resolving the use case builds the transport, which takes the factory of Tor's HTTP clients at once and Tor itself only at its first request.
-    locator.registerSingleton<TorHttpClientFactory>(
-      const TorHttpClientFactory(),
-    );
-    const P2pFeature().setup(
-      locator,
-      garageKeys: null,
-      databaseDirectory: null,
-    );
+  test(
+    'each book gets a use case of its own, and all share the requests in flight',
+    () {
+      // Resolving the use case builds the transport, which takes the factory of Tor's HTTP clients at once and Tor itself only at its first request.
+      locator.registerSingleton<TorHttpClientFactory>(
+        const TorHttpClientFactory(),
+      );
+      const P2pFeature().setup(
+        locator,
+        garageKeys: null,
+        databaseDirectory: null,
+      );
 
-    expect(
-      identical(
-        locator<LoadFederationBooksUsecase>(),
-        locator<LoadFederationBooksUsecase>(),
-      ),
-      isFalse,
-    );
-  });
+      expect(
+        identical(
+          locator<LoadFederationBooksUsecase>(),
+          locator<LoadFederationBooksUsecase>(),
+        ),
+        isFalse,
+      );
+      // And every book shares the requests in flight.
+      expect(
+        identical(
+          locator<BookRequestsInFlight>(),
+          locator<BookRequestsInFlight>(),
+        ),
+        isTrue,
+      );
+    },
+  );
 
   test('the test seam: the timers of the zone, and no spread', () async {
     setUpP2pForTesting(

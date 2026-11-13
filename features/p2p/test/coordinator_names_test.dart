@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'package:p2p/src/domain/book_requests_in_flight.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
@@ -83,6 +84,7 @@ void main() {
           FederationBookReader(FakeTransport(), clock: () => testNow),
           Federation.robosats,
         ),
+        BookRequestsInFlight(),
         FakeWaits().waits,
       ),
     );
