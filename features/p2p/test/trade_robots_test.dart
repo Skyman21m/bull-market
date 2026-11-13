@@ -9,7 +9,6 @@ import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/interim_trade_robots.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
-import 'package:p2p/src/domain/new_trade_permit.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
@@ -88,7 +87,6 @@ void main() {
   final temple = coordinator('temple');
   final lake = coordinator('lake');
   final templeTestnet = identityOf('temple', testnet);
-  final permit = NewTradePermit.ask(testnet) ?? (throw StateError('closed'));
 
   Matcher refusedWith<T>() => isA<Err<Object?, P2pFailure>>().having(
     (err) => err.failure,
@@ -178,7 +176,6 @@ void main() {
         if (i.isEven) {
           final record = recordOf(
             await trades.recordPendingTake(
-              permit,
               robot.slot,
               templeTestnet,
               orderId: 100 + i,
@@ -281,8 +278,7 @@ void main() {
       );
       expect(
         await trades.recordPendingTake(
-          permit,
-          RobotSlot(testnet, fingerprintA, 0),
+              RobotSlot(testnet, fingerprintA, 0),
           templeTestnet,
           orderId: 1,
           role: TradeRole.buyer,
@@ -327,8 +323,7 @@ void main() {
         expect(next.accountIndex, orphan.accountIndex + 1);
         final record = recordOf(
           await records.recordPendingTake(
-            permit,
-            next.slot,
+              next.slot,
             identityOf('lake', testnet),
             orderId: 5,
             role: TradeRole.buyer,
@@ -430,8 +425,7 @@ void main() {
       expect(robot.accountIndex, 0);
       record = recordOf(
         await trades.recordPendingTake(
-          permit,
-          second.slot,
+              second.slot,
           templeTestnet,
           orderId: 9,
           role: TradeRole.buyer,
@@ -483,8 +477,7 @@ void main() {
       robot = robotOf(await robots.robotForNewTrade(testnet, temple));
       final record = recordOf(
         await trades.recordPendingTake(
-          permit,
-          robot.slot,
+              robot.slot,
           templeTestnet,
           orderId: 9,
           role: TradeRole.buyer,

@@ -3,7 +3,6 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../garage_key_fingerprint.dart';
-import '../new_trade_permit.dart';
 import '../p2p_failure.dart';
 import '../robot_binding.dart';
 import '../trade_record.dart';
@@ -38,12 +37,11 @@ abstract interface class TradeRecordRepository {
 
   /// Records a pending take of order [orderId] on [coordinator] by [robot], as [role], of origin `takenHere`: written before the take's request leaves, so that a lost answer is recoverable.
   ///
-  /// It is the only write of a trade taken here, and needs [permit], which only the money gate's yes for the network gives.
-  /// It writes only when [robot] has no trade record and is bound to [coordinator], under a key drawn here (provenance `generated`), on [permit]'s network, which is also the robot's: the record's network and coordinator are copied from that binding by the same statement.
+  /// It is the only write of a trade taken here, and only the take use case is to call it (#87), with the robot the robot layer has just reserved.
+  /// It writes only when [robot] has no trade record and is bound to [coordinator], under a key drawn here (provenance `generated`), on the robot's network: the record's network and coordinator are copied from that binding by the same statement.
   /// A robot that already has a record is a [TradeAlreadyRecordedFailure]; a robot bound to another coordinator, or to one that changed, the failure of `RobotBinding.admits`; any other robot a [RobotNotForNewTradeFailure].
   @useResult
   Future<Result<TradeRecord, P2pFailure>> recordPendingTake(
-    NewTradePermit permit,
     RobotSlot robot,
     CoordinatorIdentity coordinator, {
     required int orderId,

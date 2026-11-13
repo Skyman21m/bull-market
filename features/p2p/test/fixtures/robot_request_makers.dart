@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
-import 'package:p2p/src/domain/new_trade_permit.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
@@ -146,12 +145,10 @@ Object reserveByTearOff(TradeRecordRepository records) =>
 /// A pending take, of origin `takenHere`, written in a cascade elsewhere than in the take use case.
 Object pendingTakeInCascade(
   TradeRecordRepository records,
-  NewTradePermit permit,
   RobotSlot robot,
   CoordinatorIdentity coordinator,
 ) => records
   ..recordPendingTake(
-    permit,
     robot,
     coordinator,
     orderId: 1,

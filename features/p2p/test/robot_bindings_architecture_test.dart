@@ -343,7 +343,7 @@ void main() {
           referring((r) => r == 'TradeRecordRepository.reserveForNewTrade'),
           {'lib/src/domain/interim_trade_robots.dart'},
         );
-        // A record of origin `takenHere` comes only from the take use case, after the money gate's yes, and one of origin `recovered` only from the user's take-over: no file of this pull request writes either (#87, #79).
+        // A record of origin `takenHere` comes only from the take use case, and one of origin `recovered` only from the user's take-over: no file of this pull request writes either (#87, #79).
         expect(
           referring(
             (r) => r == 'TradeRecordRepository.recordPendingTake',
@@ -925,90 +925,6 @@ class RobotCoordinatorCubit {
     );
   });
 
-  test('the permit of a new trade is the money gate\'s yes, and nothing else makes one', () {
-    // `NewTradePermit` is what a record of origin `takenHere` requires: its file is pinned as it is, so that no other constructor, factory, subtype or unconditional answer gives one (#85).
-    expect(
-      _permitShape(File(_permit).readAsStringSync()),
-      _permitAsWritten,
-    );
-    // The check sees each way to make a permit without the gate's yes.
-    const gateImport = "import 'p2p_money_gate.dart';";
-    const networkImport =
-        "import 'package:robosats/robosats.dart' show RobosatsNetwork;";
-    String permitWith(String members, {String head = 'final class'}) =>
-        '$networkImport\n$gateImport\n$head NewTradePermit {\n'
-        'final RobosatsNetwork network;\n$members\n}\n';
-    const constructor = 'const NewTradePermit._(this.network);';
-    const ask =
-        'static NewTradePermit? ask(RobosatsNetwork network) => '
-        'P2pMoneyGate.allowsNewTrade(network) ? NewTradePermit._(network) : null;';
-    expect(_permitShape(permitWith('$constructor\n$ask')), _permitAsWritten);
-    for (final (label, source) in [
-      (
-        'a public constructor',
-        permitWith('const NewTradePermit(this.network);\n$ask'),
-      ),
-      (
-        'a second constructor',
-        permitWith(
-          '$constructor\nconst NewTradePermit.open(this.network);\n$ask',
-        ),
-      ),
-      (
-        'a factory',
-        permitWith(
-          '$constructor\nfactory NewTradePermit.of(RobosatsNetwork n) => NewTradePermit._(n);\n$ask',
-        ),
-      ),
-      (
-        'an answer without the gate',
-        permitWith(
-          '$constructor\nstatic NewTradePermit? ask(RobosatsNetwork network) => NewTradePermit._(network);',
-        ),
-      ),
-      (
-        'the other question',
-        permitWith(
-          '$constructor\nstatic NewTradePermit? ask(RobosatsNetwork network) => P2pMoneyGate.allowsActionOnRecordedTrade(network) ? NewTradePermit._(network) : null;',
-        ),
-      ),
-      (
-        'a class that can be extended',
-        permitWith('$constructor\n$ask', head: 'class'),
-      ),
-      (
-        'a base class',
-        permitWith('$constructor\n$ask', head: 'base class'),
-      ),
-      (
-        'a helper beside the class',
-        '${permitWith('$constructor\n$ask')}'
-            'NewTradePermit open() => NewTradePermit._(RobosatsNetwork.mainnet);\n',
-      ),
-      (
-        'an extension',
-        '${permitWith('$constructor\n$ask')}'
-            'extension Open on RobosatsNetwork { NewTradePermit get permit => NewTradePermit._(this); }\n',
-      ),
-      (
-        'another import',
-        "import 'open_gate.dart';\n${permitWith('$constructor\n$ask')}",
-      ),
-      (
-        'a gate under a prefix',
-        permitWith('$constructor\n$ask').replaceFirst(
-          gateImport,
-          "import 'open_gate.dart' as P2pMoneyGate;",
-        ),
-      ),
-    ]) {
-      expect(
-        _permitShape(source),
-        isNot(_permitAsWritten),
-        reason: label,
-      );
-    }
-  });
 
   test('a robot is reserved, and a trade written, by one statement each that reads what decides it', () {
     // Each write reads in the same statement the history of the key, the robot's binding and its record: a read followed by a write would let another connection's write land in between (#85).
@@ -1032,7 +948,7 @@ class RobotCoordinatorCubit {
         reason: method,
       );
     }
-    // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the permit's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+    // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the robot's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
     expect(
       trades.constants['_reserveSql'],
       'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
@@ -1100,9 +1016,6 @@ class RobotCoordinatorCubit {
       trades.strings.where((text) => text.contains("'recovered'")),
       everyElement(predicate<String>((text) => pinned[2].contains(text))),
     );
-    // A pending take is written only with the money gate's permit in hand: the method takes it, and binds the network to it.
-    expect(trades.namesByMethod['recordPendingTake'], contains('NewTradePermit'));
-    expect(trades.namesByMethod['recordPendingTake'], contains('permit'));
     // And no other file of the feature inserts into the bindings or the trades but the two repositories.
     expect(
       where(
@@ -1679,80 +1592,11 @@ String _dartSdkPath() {
 /// The file of the robot panel of the Garage.
 const _panel = 'lib/src/ui/garage/robot_coordinator_panel.dart';
 
-/// The folder of the trade use cases, as `p2p_money_gate_architecture_test.dart` names them, and the two that may write a trade record (#87, #79).
+/// The folder of the trade use cases, and the two that may write a trade record (#87, #79).
 const _tradeUseCases = 'lib/src/domain/usecases/trade/';
 const _takeOrderUseCase = '${_tradeUseCases}take_order_usecase.dart';
 const _recoverTradeUseCase = '${_tradeUseCases}recover_trade_usecase.dart';
 
-/// The file of the money gate's permit of a new trade, and its shape as written.
-const _permit = 'lib/src/domain/new_trade_permit.dart';
-const _permitAsWritten = [
-  "import 'package:robosats/robosats.dart' show RobosatsNetwork;",
-  "import 'p2p_money_gate.dart';",
-  'final class NewTradePermit',
-  'field final RobosatsNetwork network',
-  'constructor const NewTradePermit._(this.network)',
-  'method static NewTradePermit? ask(RobosatsNetwork network) => P2pMoneyGate.allowsNewTrade(network) ? NewTradePermit._(network) : null',
-];
-
-/// The directives and declarations of [source], each as one line: the permit's file is compared with [_permitAsWritten] whole.
-List<String> _permitShape(String source) {
-  final unit = parseString(content: source, throwIfDiagnostics: false).unit;
-  return [
-    for (final directive in unit.directives) directive.toSource(),
-    for (final declaration in unit.declarations)
-      ...switch (declaration) {
-        ClassDeclaration(:final namePart, :final body) => [
-          [
-            ?declaration.abstractKeyword?.lexeme,
-            ?declaration.baseKeyword?.lexeme,
-            ?declaration.finalKeyword?.lexeme,
-            ?declaration.interfaceKeyword?.lexeme,
-            ?declaration.sealedKeyword?.lexeme,
-            ?declaration.mixinKeyword?.lexeme,
-            'class',
-            namePart.toSource(),
-            ?declaration.extendsClause?.toSource(),
-            ?declaration.withClause?.toSource(),
-            ?declaration.implementsClause?.toSource(),
-          ].join(' '),
-          for (final member in switch (body) {
-            BlockClassBody(:final members) => members,
-            _ => const <ClassMember>[],
-          })
-            switch (member) {
-              FieldDeclaration(:final fields, :final isStatic) => [
-                'field',
-                if (isStatic) 'static',
-                ?fields.keyword?.lexeme,
-                ?fields.type?.toSource(),
-                for (final variable in fields.variables) variable.toSource(),
-              ].join(' '),
-              ConstructorDeclaration(:final name, :final parameters) => [
-                'constructor',
-                ?member.constKeyword?.lexeme,
-                ?member.factoryKeyword?.lexeme,
-                '${namePart.typeName.lexeme}${name == null ? '' : '.${name.lexeme}'}${parameters.toSource()}',
-                if (member.body is! EmptyFunctionBody) member.body.toSource(),
-              ].join(' '),
-              MethodDeclaration(:final body) => [
-                'method',
-                if (member.isStatic) 'static',
-                ?member.returnType?.toSource(),
-                '${member.name.lexeme}${member.parameters?.toSource()}',
-                switch (body) {
-                  ExpressionFunctionBody(:final expression) =>
-                    '=> ${expression.toSource()}',
-                  _ => body.toSource(),
-                },
-              ].join(' '),
-              _ => member.toSource(),
-            },
-        ],
-        _ => [declaration.toSource()],
-      },
-  ];
-}
 
 /// The public members of [declaration] (constructors, fields, methods, getters and setters whose names do not start with `_`), each as `<kind> <source without body>`.
 List<String> _publicSurface(ClassDeclaration declaration) => [

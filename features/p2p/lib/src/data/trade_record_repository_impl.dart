@@ -5,7 +5,6 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show RobosatsNetwork;
 
 import '../domain/garage_key_fingerprint.dart';
-import '../domain/new_trade_permit.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/repositories/trade_record_repository.dart';
 import '../domain/robot_binding.dart';
@@ -49,7 +48,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
-  /// Records a pending take of a robot bound to that very coordinator on the permit's network under a key drawn here, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
+  /// Records a pending take of a robot bound to that very coordinator on the robot's network under a key drawn here, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
   static const String _recordPendingTakeSql =
       'INSERT INTO trades (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, order_id, role, origin, '
@@ -204,15 +203,13 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
 
   @override
   Future<Result<TradeRecord, P2pFailure>> recordPendingTake(
-    NewTradePermit permit,
     RobotSlot robot,
     CoordinatorIdentity coordinator, {
     required int orderId,
     required TradeRole role,
   }) async {
-    // The permit, the robot and the coordinator name one network, which the binding must have too: a take is recorded on no network the gate did not allow.
-    if (permit.network != robot.network ||
-        coordinator.network != robot.network) {
+    // The robot and the coordinator name one network, which the binding must have too.
+    if (coordinator.network != robot.network) {
       return const Err(RobotNotForNewTradeFailure());
     }
     final fingerprint = robot.keyFingerprint.hex;
@@ -226,7 +223,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withInt(_clock().millisecondsSinceEpoch),
           Variable.withString(fingerprint),
           Variable.withInt(robot.accountIndex),
-          Variable.withString(_networkValue(permit.network)),
+          Variable.withString(_networkValue(robot.network)),
           Variable.withString(_generated),
           ..._coordinatorVariables(coordinator),
         ],

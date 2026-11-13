@@ -6,16 +6,17 @@ import 'robot_binding.dart';
 /// The side of a trade this device's robot is on, fixed at the take from the type of the public order: taking a sell order makes a buyer.
 enum TradeRole { buyer, seller }
 
-/// How a trade came to be recorded on this device, which the money gate's rule for actions on it will read (#87, design note `docs/design/phase-2-taking-an-order.md` § 3.7).
+/// How a trade came to be recorded on this device: taken here, or taken over after recovery found it (design note `docs/design/phase-2-taking-an-order.md` § 3.3, § 3.5).
 enum TradeOrigin {
-  /// Written as a pending take by the path of the take, before its request leaves, with the proof that `P2pMoneyGate.allowsNewTrade` said yes for the record's network (`NewTradePermit`).
+  /// Written as a pending take by the path of the take, before its request leaves, for a robot the robot layer reserved for a new trade.
   ///
-  /// Only `TradeRecordRepository.recordPendingTake` writes it.
+  /// Only `TradeRecordRepository.recordPendingTake` writes it, and only the take use case calls that (#87).
+  /// It is a fact about the trade: a robot of a pasted key may finish an order it already holds, as a `recovered` trade, but never starts one (#79).
   takenHere,
 
-  /// Written when the user explicitly took over a trade that recovery found holding an order: this device did not take it under its money gate.
+  /// Written when the user explicitly took over a trade that recovery found holding an order: this device did not take it.
   ///
-  /// Only `TradeRecordRepository.recordRecoveredTrade` writes it.
+  /// Only `TradeRecordRepository.recordRecoveredTrade` writes it, and only the recovery use case is to call that (#79).
   recovered,
 }
 

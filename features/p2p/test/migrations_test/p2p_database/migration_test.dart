@@ -7,7 +7,6 @@ import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
-import 'package:p2p/src/domain/new_trade_permit.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -579,8 +578,6 @@ void main() {
       await writeSchema2();
       final first = P2pDatabase.open(() async => directory);
       final trades = TradeRecordRepositoryImpl(first, clock: () => testNow);
-      final permit =
-          NewTradePermit.ask(testnet) ?? (throw StateError('closed'));
       expect(
         await trades.reserveForNewTrade(
           RobotSlot(testnet, drawn, 1),
@@ -589,7 +586,6 @@ void main() {
         isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isTrue),
       );
       final pending = await trades.recordPendingTake(
-        permit,
         RobotSlot(testnet, drawn, 1),
         templeTestnet,
         orderId: 42,
@@ -612,8 +608,6 @@ void main() {
       await writeSchema2();
       final database = P2pDatabase.open(() async => directory);
       final trades = TradeRecordRepositoryImpl(database, clock: () => testNow);
-      final permit =
-          NewTradePermit.ask(testnet) ?? (throw StateError('closed'));
       Matcher refusedWith<T>() => isA<Err<Object?, P2pFailure>>().having(
         (err) => err.failure,
         'failure',
@@ -650,8 +644,7 @@ void main() {
       // A binding of schema 2 under a key drawn here takes a pending take; one of an acknowledged key, only a recovered trade.
       expect(
         await trades.recordPendingTake(
-          permit,
-          RobotSlot(testnet, drawn, 0),
+        RobotSlot(testnet, drawn, 0),
           templeTestnet,
           orderId: 1,
           role: TradeRole.buyer,
@@ -660,8 +653,7 @@ void main() {
       );
       expect(
         await trades.recordPendingTake(
-          permit,
-          RobotSlot(testnet, pasted, 0),
+        RobotSlot(testnet, pasted, 0),
           templeTestnet,
           orderId: 2,
           role: TradeRole.buyer,

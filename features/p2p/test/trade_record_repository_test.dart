@@ -8,9 +8,7 @@ import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
-import 'package:p2p/src/domain/new_trade_permit.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/p2p_money_gate.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:primitives/primitives.dart';
@@ -47,11 +45,6 @@ void main() {
   final temple = identityOf('temple', testnet);
   final lake = identityOf('lake', testnet);
   final templeMainnet = identityOf('temple', mainnet);
-
-  final permit = switch (NewTradePermit.ask(testnet)) {
-    final permit? => permit,
-    null => throw StateError('testnet is always open'),
-  };
 
   Matcher refusedWith<T>() => isA<Err<Object?, P2pFailure>>().having(
     (err) => err.failure,
@@ -104,8 +97,7 @@ void main() {
   /// The pending take of order [orderId] by [robot] on temple.
   Future<TradeRecord> pendingTake(RobotSlot robot, {int orderId = 7}) async =>
       switch (await trades.recordPendingTake(
-        permit,
-        robot,
+          robot,
         temple,
         orderId: orderId,
         role: TradeRole.buyer,
@@ -384,7 +376,6 @@ void main() {
         now = testNow.add(const Duration(minutes: 1));
 
         final written = await trades.recordPendingTake(
-          permit,
           robot,
           temple,
           orderId: 1234,
@@ -445,8 +436,7 @@ void main() {
       for (final orderId in [7, 8]) {
         expect(
           await trades.recordPendingTake(
-            permit,
-            robot,
+          robot,
             temple,
             orderId: orderId,
             role: TradeRole.buyer,
@@ -458,7 +448,6 @@ void main() {
       expect(await trades.closeTrade(first), isA<Ok>());
       expect(
         await trades.recordPendingTake(
-          permit,
           robot,
           temple,
           orderId: 9,
@@ -552,12 +541,6 @@ void main() {
             refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
           ),
           (
-            'a robot of the other network than the permit\'s',
-            RobotSlot(mainnet, fingerprintA, 2),
-            templeMainnet,
-            refusedWith<RobotNotForNewTradeFailure>(),
-          ),
-          (
             'a coordinator of the other network',
             RobotSlot(testnet, fingerprintA, 1),
             templeMainnet,
@@ -578,8 +561,7 @@ void main() {
         ]) {
           expect(
             await trades.recordPendingTake(
-              permit,
-              robot,
+          robot,
               coordinator,
               orderId: 5,
               role: TradeRole.buyer,
@@ -592,15 +574,6 @@ void main() {
       },
     );
 
-    test('needs the gate\'s yes for its network, which mainnet does not give on this build', () {
-      // The permit follows the gate: the pull request of the owner's approval changes the gate, not this test.
-      expect(
-        NewTradePermit.ask(mainnet) != null,
-        P2pMoneyGate.allowsNewTrade(mainnet),
-      );
-      expect(NewTradePermit.ask(testnet)?.network, testnet);
-      expect(NewTradePermit.ask(mainnet)?.network, anyOf(isNull, mainnet));
-    });
   });
 
   group('a recovered trade', () {
@@ -1097,8 +1070,7 @@ void main() {
         reservedIs(true),
       );
       final written = await one.recordPendingTake(
-        permit,
-        RobotSlot(testnet, fingerprintA, 0),
+          RobotSlot(testnet, fingerprintA, 0),
         temple,
         orderId: 3,
         role: TradeRole.buyer,
@@ -1150,8 +1122,7 @@ void main() {
           final results = await Future.wait([
             untilNotBusy(
               () => one.recordPendingTake(
-                permit,
-                robot,
+          robot,
                 temple,
                 orderId: 10,
                 role: TradeRole.buyer,
@@ -1159,8 +1130,7 @@ void main() {
             ),
             untilNotBusy(
               () => other.recordPendingTake(
-                permit,
-                robot,
+          robot,
                 temple,
                 orderId: 11,
                 role: TradeRole.buyer,
