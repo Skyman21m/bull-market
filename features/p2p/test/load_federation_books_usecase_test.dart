@@ -384,7 +384,7 @@ void main() {
       'the same coordinator on the other network is another request',
       () async {
         transport.held.add('temple');
-        ask('temple');
+        final onMainnet = ask('temple');
         await settle();
         expect(
           inFlight.isInFlight(RobosatsNetwork.mainnet, coordinator('temple')),
@@ -394,8 +394,32 @@ void main() {
           inFlight.isInFlight(RobosatsNetwork.testnet, coordinator('temple')),
           isFalse,
         );
+
+        // A book on testnet, sharing the requests in flight, asks temple while mainnet's request runs: it sends its own.
+        final testnet = ScriptedTransport(
+          network: RobosatsNetwork.testnet,
+          books: {
+            'temple': [bookOrder(id: 9)],
+          },
+        );
+        final onTestnet =
+            LoadFederationBooksUsecase(
+              RequestFederationBooksUsecase(
+                FederationBookReader(testnet, clock: () => testNow),
+                Federation.robosats,
+              ),
+              inFlight,
+              waits.waits,
+            ).execute(
+              RobosatsNetwork.testnet,
+              only: {coordinator('temple')},
+            )[coordinator('temple')];
+        if (onTestnet == null) fail('no attempts for temple on testnet');
+        expect(idsOf(await outcomeNow(onTestnet)), [9]);
+        expect(testnet.requestsTo('temple'), 1);
+
         transport.release('temple');
-        await settle();
+        expect(idsOf(await outcomeNow(onMainnet)), [1]);
       },
     );
 
