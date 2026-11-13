@@ -99,6 +99,9 @@ final class FakeTransport implements CoordinatorTransport {
   final Map<String, Completer<void>> _releases = {};
   final List<String> requested = [];
 
+  /// Every request, whole, in order: a robot's names the robot it is made for.
+  final List<CoordinatorRequest> requests = [];
+
   /// Each `/api/info/` answer, by short alias.
   final Map<String, Map<String, Object?>> infos;
 
@@ -126,6 +129,7 @@ final class FakeTransport implements CoordinatorTransport {
     final alias = _aliasOf(request.url.host);
     final path = request.url.path;
     requested.add('$alias$path');
+    requests.add(request);
     if (held.contains(alias)) {
       await (_releases[alias] ??= Completer<void>()).future;
     }

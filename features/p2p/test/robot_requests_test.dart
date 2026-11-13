@@ -116,6 +116,9 @@ enum _Reply {
   /// Error 7001: the robot is unknown, whatever the header.
   unknown,
 
+  /// Error 7002 with no key error this client knows: the keys of a first contact are refused.
+  keysRefused,
+
   /// As the reference coordinator: a first contact creates the robot with its pair and its Nostr key unless the coordinator knows it, every request is answered with what it kept, and a short header for an unknown robot is error 7001.
   keep,
 }
@@ -208,6 +211,8 @@ final class _Coordinators implements CoordinatorTransport {
         return Ok(_json(409, {'error_code': 7004, 'bad_request': 'taken'}));
       case _Reply.unknown:
         return Ok(_json(400, {'error_code': 7001, 'bad_request': 'unknown'}));
+      case _Reply.keysRefused:
+        return Ok(_json(400, {'error_code': 7002, 'bad_request': 'refused'}));
       case _Reply.keep:
         store();
         final robot = kept[place];
@@ -1298,6 +1303,62 @@ void main() {
       );
 
       test(
+        'three robots found by the read 10 s after a 7004 leave the coordinator open to first contacts',
+        () async {
+          for (var i = 0; i < RobotRequestLimiter.maxNicknameRefusals; i++) {
+            final pair = switch (pairs[robots[i].identity.hashId]) {
+              [final first, ...] => first,
+              _ => fail('no pair for robot $i'),
+            };
+            final before = coordinators.requests.length;
+            coordinators.script.addAll([_Reply.nicknameTaken, _Reply.unknown]);
+            // The coordinator stores the robot after the client's own read: the read 10 s later finds it.
+            coordinators.onSend = (request) async {
+              if (coordinators.requests.length == before + 2) {
+                coordinators.keepFor(robots[i], 'temple', _testnet, pair);
+              }
+            };
+
+            _face(await put.execute(robots[i], temple));
+            expect(coordinators.requests, hasLength(before + 3));
+            // A robot found is no refusal: none of the three counts.
+            expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+          }
+          coordinators.onSend = null;
+
+          // A fourth robot still gets its first contact there.
+          expect(
+            _face(await put.execute(robots[3], temple)).alreadyExisted,
+            isFalse,
+          );
+          expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+        },
+      );
+
+      test(
+        'three first contacts that fail without a 7004 leave the coordinator open to first contacts',
+        () async {
+          // A deadline passed, a coordinator not reached, keys refused: none is a nickname taken.
+          final failures = [
+            (_Reply.timedOut, _answered<CoordinatorTimedOut>()),
+            (_Reply.unreachable, _answered<CoordinatorUnreachable>()),
+            (_Reply.keysRefused, _answered<RobotKeysRefused>()),
+          ];
+          for (final (i, (reply, outcome)) in failures.indexed) {
+            coordinators.script.add(reply);
+            expect(await put.execute(robots[i], temple), outcome);
+            expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+          }
+
+          expect(
+            _face(await put.execute(robots[3], temple)).alreadyExisted,
+            isFalse,
+          );
+          expect(limiter.refusesFirstContacts(_testnet, temple), isFalse);
+        },
+      );
+
+      test(
         'a read after 7004 that does not answer is reported as such, and the refusal counts',
         () async {
           coordinators.script.addAll([
@@ -1416,8 +1477,8 @@ void main() {
 
           final face = _face(await put.execute(robots[0], temple));
 
-          // Found by the read: a pair this call did not send.
-          expect(face.alreadyExisted, isTrue);
+          // Found by the read, with no first contact sent: this device put it there before (security review of step 5).
+          expect(face.alreadyExisted, isFalse);
           expect(coordinators.requests.map(_sentPublicKey), [
             firstPair.publicKey.armored,
             null,

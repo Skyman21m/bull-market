@@ -315,6 +315,15 @@ void main() {
         'ReleaseRobotUsecase',
         'RobotOnCoordinatorFace',
         'RobotNostrKeyStatus',
+        // The robot panel of the Garage.
+        'RobotHost',
+        'RobotHosts',
+        'ListRobotHostsUsecase',
+        'RobotCoordinatorCubit',
+        'RobotCoordinatorState',
+        'RobotCoordinatorPanel',
+        'SelectHostSheet',
+        'SendRobotDialog',
       ]) {
         expect(identifiers(library), isNot(contains(name)), reason: name);
         expect(identifiers(facade), isNot(contains(name)), reason: name);

@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/p2p_failure.dart';
+import 'robot_coordinator_state.dart';
 
 /// What the book says about a coordinator whose book could not be read.
 extension CoordinatorFailureL10n on CoordinatorFailure {
@@ -11,7 +12,7 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
   String toTranslated(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      // No book read gives it, since only the sessions of the robots are bounded: the text that asks to try again later comes with the Garage screens.
+      // No book read gives it, since only the sessions of the robots are bounded: the robot panel says it with [toRobotText].
       CoordinatorTransportBusy() => l10n.p2pBookError,
       CoordinatorTransportFailure() ||
       CoordinatorNotOnNetwork() => l10n.p2pCoordinatorOffline,
@@ -19,8 +20,32 @@ extension CoordinatorFailureL10n on CoordinatorFailure {
       CoordinatorNotJson() ||
       CoordinatorResponseMalformed() ||
       CoordinatorIdentityFailure() ||
-      // No book read gives a robot failure: its own texts come with the Garage screens.
+      // No book read gives a robot failure: the robot panel says it with [toRobotText].
       CoordinatorRobotFailure() => l10n.p2pBookError,
+    };
+  }
+
+  /// What the robot panel of the Garage says when a request of a robot to [coordinator], the long alias it shows, ended with this failure: the texts of the design note of #29, § 2.3.
+  ///
+  /// None quotes the coordinator's answer; « Coordinator offline » when it could not be reached.
+  String toRobotText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      CoordinatorTransportBusy() => l10n.p2pRobotBusy,
+      CoordinatorResponseTooLarge() => l10n.p2pRobotBadAnswer(coordinator),
+      CoordinatorTransportFailure() ||
+      CoordinatorNotOnNetwork() => l10n.p2pCoordinatorOffline,
+      CoordinatorUnexpectedStatus() ||
+      CoordinatorNotJson() ||
+      CoordinatorResponseMalformed() ||
+      CoordinatorIdentityFailure() => l10n.p2pRobotBadAnswer(coordinator),
+      RobotUnknown() => l10n.p2pRobotNotCreated(coordinator),
+      RobotKeysRefused(reason: RobotKeysRefusal.keyTooRecent) =>
+        l10n.p2pRobotKeyTooRecent(coordinator),
+      RobotKeysRefused() ||
+      RobotCredentialsRejected() => l10n.p2pRobotRefused(coordinator),
+      RobotNicknameTaken() => l10n.p2pRobotNicknameTaken(coordinator),
+      RobotMismatchFailure() => l10n.p2pRobotMismatch(coordinator),
     };
   }
 }
@@ -43,17 +68,52 @@ extension P2pFailureL10n on P2pFailure {
         l10n,
       ),
       GarageRobotUnavailableFailure() => l10n.p2pGarageRobotUnavailable,
-      // Today only an import gives it to a screen, when the record of the imported key could not be written and the key was not stored.
+      // An action on the Garage Key gives it when the record of an imported key could not be written and the key was not stored; the robot panel has its own text ([toRobotText]).
       P2pStorageFailure() => l10n.p2pGarageKeyNotSaved,
-      // No screen sends a robot to a coordinator yet: their own texts come with the screens that do.
-      RobotBoundToAnotherCoordinatorFailure() ||
-      RobotCoordinatorChangedFailure() ||
+      // Only the robot panel shows a robot failure, with [toRobotText], which names the coordinator; here, the texts that need no name.
+      RobotBoundToAnotherCoordinatorFailure() => l10n.p2pRobotBoundElsewhere,
       RobotHistoryUnknownFailure() ||
-      RobotKeyComputeFailure() ||
-      RobotNotBoundFailure() ||
+      RobotNotBoundFailure() => l10n.p2pRobotNoCoordinator,
+      RobotKeyComputeFailure() => l10n.p2pRobotKeyComputeFailed,
       RobotCoordinatorBusyFailure() ||
+      RobotReleasedFailure() => l10n.p2pRobotBusy,
+      RobotCoordinatorTooManyRefusalsFailure() =>
+        l10n.p2pRobotCoordinatorTooManyRefusals,
+      // Its text names the coordinator, which only the robot panel knows: there, [toRobotText].
+      RobotCoordinatorChangedFailure() => l10n.p2pBookError,
+    };
+  }
+
+  /// What the robot panel of the Garage says when a request of a robot to [coordinator], the long alias it shows, was refused with this failure: the texts of the design note of #29, § 2.3, and two the design left out.
+  ///
+  /// A failure that does not come from a robot request, which the panel never gets, has the text of [toTranslated].
+  String toRobotText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      P2pStorageFailure() => l10n.p2pRobotStorage,
+      RobotCoordinatorChangedFailure() => l10n.p2pRobotCoordinatorChanged(
+        coordinator,
+      ),
+      // A history unknown or no binding: the panel shows the robot without a coordinator, as it is.
+      RobotHistoryUnknownFailure() ||
+      RobotNotBoundFailure() ||
+      // The robot was bound elsewhere: the panel shows where it lives.
+      RobotBoundToAnotherCoordinatorFailure() ||
+      // The pair of the robot could not be made or proven on this device: no row of the design's table, a text of its own.
+      RobotKeyComputeFailure() ||
+      RobotCoordinatorBusyFailure() ||
+      // The panel is gone when its robot is released: never shown.
+      RobotReleasedFailure() ||
       RobotCoordinatorTooManyRefusalsFailure() ||
-      RobotReleasedFailure() => l10n.p2pBookError,
+      GarageKeyMissingFailure() ||
+      GarageKeyAlreadyStoredFailure() ||
+      GarageKeyLockedFailure() ||
+      GarageKeyUnreadableFailure() ||
+      GarageKeyUnusableFailure() ||
+      GarageKeyNotSavedFailure() ||
+      GarageKeyNotDeletedFailure() ||
+      GarageKeyInvalidFailure() ||
+      GarageRobotUnavailableFailure() => toTranslated(context),
     };
   }
 }
@@ -77,3 +137,18 @@ String garageKeyFailureText(GarageKeyFailure failure, P2pLocalizations l10n) =>
       GarageKeyMalformed() ||
       GarageKeyBadChecksum() => l10n.p2pGarageKeyInvalid,
     };
+
+/// What the robot panel of the Garage says about a failed robot request to [coordinator], the long alias it shows.
+extension RobotRequestProblemL10n on RobotRequestProblem {
+  String toRobotText(BuildContext context, {required String coordinator}) =>
+      switch (this) {
+        RobotRequestRefused(:final failure) => failure.toRobotText(
+          context,
+          coordinator: coordinator,
+        ),
+        RobotRequestAnswered(:final failure) => failure.toRobotText(
+          context,
+          coordinator: coordinator,
+        ),
+      };
+}

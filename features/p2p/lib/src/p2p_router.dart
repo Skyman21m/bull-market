@@ -10,6 +10,7 @@ import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'presentation/robot_coordinator_cubit.dart';
 import 'ui/garage/garage_reauthentication.dart';
 import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
@@ -124,6 +125,13 @@ class _P2pPageState extends State<_P2pPage> {
                   clipboard: locator<GarageKeyClipboard>(),
                   reauthenticate: widget.reauthenticate,
                   onBrowseOffers: () => _show(P2pDestination.offers),
+                  robotCoordinator: (key, index) =>
+                      locator<RobotCoordinatorCubit>(
+                        param1: key,
+                        param2: index,
+                      ),
+                  coordinatorDetails: (request) =>
+                      locator<CoordinatorDetailsCubit>(param1: request),
                 ),
               )
             : null,

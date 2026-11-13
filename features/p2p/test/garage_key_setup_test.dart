@@ -18,11 +18,13 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/generate_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/import_garage_key_usecase.dart';
+import 'package:p2p/src/domain/usecases/list_robot_hosts_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
+import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:p2p/testing.dart'
     show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
 import 'package:robosats/robosats.dart' show Federation;
@@ -85,6 +87,9 @@ void main() {
     locator.isRegistered<PutRobotOnCoordinatorUsecase>(),
     locator.isRegistered<ReadRobotOnCoordinatorUsecase>(),
     locator.isRegistered<ReleaseRobotUsecase>(),
+    // The robot panel of the Garage, and the coordinators it lists.
+    locator.isRegistered<ListRobotHostsUsecase>(),
+    locator.isRegistered<RobotCoordinatorCubit>(),
   ];
 
   test(
@@ -141,7 +146,8 @@ void main() {
         ..get<AcknowledgeGarageKeyHistoryUsecase>()
         ..get<PutRobotOnCoordinatorUsecase>()
         ..get<ReadRobotOnCoordinatorUsecase>()
-        ..get<ReleaseRobotUsecase>();
+        ..get<ReleaseRobotUsecase>()
+        ..get<ListRobotHostsUsecase>();
       // One limiter for the whole feature.
       expect(
         locator<RobotRequestLimiter>(),
