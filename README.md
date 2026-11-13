@@ -198,7 +198,7 @@ Left in phase 1: the pass over the texts ([#31](https://github.com/Skyman21m/tro
 
 Next, once the bond decision is made ([#9](https://github.com/Skyman21m/troc/issues/9)): taking an order (phase 2, [#12](https://github.com/Skyman21m/troc/issues/12)), which has not started.
 
-Not done yet: the map view of the order book ([#30](https://github.com/Skyman21m/troc/issues/30)), taking or creating an order, the chat, and any operation that involves money: nothing in the app moves money.
+Not done yet: the map view of the order book ([#30](https://github.com/Skyman21m/troc/issues/30)), taking or creating an order, the chat, and any operation that involves money: nothing in the P2P tab moves money.
 
 Android first. Nothing is released yet. At this stage, the app still shows Bull's name and logo in places: their removal is tracked in issue [#17](https://github.com/Skyman21m/troc/issues/17).
 
