@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:convert/convert.dart' show hex;
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/coordinator_info.dart';
+import 'package:robosats/src/coordinator/coordinator_order.dart';
 import 'package:robosats/src/coordinator/coordinator_robot.dart';
 import 'package:robosats/src/coordinator/coordinator_transport.dart';
 import 'package:robosats/src/coordinator/currency_limits.dart';
@@ -200,6 +203,228 @@ final class CoordinatorClient {
     ),
   };
 
+  /// `GET /api/order/?order_id=`, the order [orderId] as [coordinator] describes it to the robot [identity], sent with the robot's short `Authorization` header, which sends no key.
+  ///
+  /// The answer depends on who asks and on the status (`api/views.py:226-528`, commit ff1998c): see [CoordinatorOrder] for what is read and checked.
+  /// A coordinator that does not know the robot answers [RobotUnknown]; an order cancelled is [OrderCancelled], one this robot may not see is [OrderNotAvailable], and an unknown number is [OrderNotFound].
+  /// A `GET`, so the transport may send it again after a connection failure.
+  Future<Result<CoordinatorOrder, CoordinatorFailure>> fetchOrder(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required int orderId,
+  }) async {
+    _checkOrderId(orderId);
+    final response = await _exchange(
+      coordinator,
+      network,
+      '/api/order/',
+      {'order_id': '$orderId'},
+      CoordinatorReadBounds.orderBytes,
+      robot: (
+        identity: identity,
+        authorization: identity.authorizationHeader(),
+      ),
+    );
+    return switch (_orderAnswer(response)) {
+      Err(:final failure) => Err(failure),
+      Ok(:final value) => CoordinatorOrder.parse(
+        value,
+        coordinator,
+        orderId: orderId,
+      ),
+    };
+  }
+
+  /// `POST /api/order/?order_id=` with the action `take`: asks [coordinator] for the order [orderId] for the robot [identity], which then has a while to lock its bond.
+  ///
+  /// The body is the reference client's (`frontend/src/models/Order.model.ts:233-243`, commit ff1998c): `{"action":"take","amount":…}`, with `"password"` before `"amount"` when there is one.
+  /// [amount] is the amount chosen in a range order, in the order's currency, which for an order in bitcoin (currency 1000) is bitcoin, not sats; for a fixed order leave it `null`, and `0` is sent, as the reference client sends it and the coordinator ignores it.
+  /// The coordinator refuses more than 8 decimals with an empty `400`, read as [OrderRequestRefused].
+  /// [password] is the text the user typed for a protected order: the SHA-256 of its UTF-8 bytes is sent, in lowercase hexadecimal, as the reference client sends it; an empty one is not sent.
+  ///
+  /// A `200` answer is the order as the coordinator then describes it, and is a [OrderTakeStarted] only when it shows this robot as the pre-taker: the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error (`api/views.py:595-596`).
+  /// A refusal is a [CoordinatorOrderFailure], such as [RobotHasActiveOrder], [OrderAmountOutOfRange], [OrderTakePenalty] or [OrderWrongPassword].
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included: the coordinator may have taken the order for this robot all the same, which the next [fetchOrder] tells.
+  Future<Result<TakeOrderOutcome, CoordinatorFailure>> takeOrder(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required int orderId,
+    FiatAmount? amount,
+    String? password,
+  }) async {
+    _checkOrderId(orderId);
+    final response = await _postOrderAction(
+      coordinator,
+      network,
+      identity: identity,
+      orderId: orderId,
+      body: {
+        'action': 'take',
+        if (password != null && password.isNotEmpty)
+          'password': hex.encode(sha256.convert(utf8.encode(password)).bytes),
+        'amount': amount == null ? 0 : _jsonNumber(amount.value),
+      },
+    );
+    return switch (_orderAnswer(response)) {
+      Err(:final failure) => Err(failure),
+      Ok(:final value) => parseTakeAnswer(value, coordinator, orderId: orderId),
+    };
+  }
+
+  /// `POST /api/order/?order_id=` with the action `cancel`: asks [coordinator] to cancel the order [orderId] for the robot [identity].
+  ///
+  /// With [onlyIfStatus], `cancel_status` is sent and the coordinator cancels only if it has the order in that status, and refuses with [OrderStatusChanged] otherwise (`api/logics.py:1010-1015`).
+  /// It compares the status it stores, and a pre-take is stored as [CoordinatorOrderStatus.public]: a pre-taker sends [CoordinatorOrderStatus.public], so that a cancel that arrives after its bond locked is refused rather than cost the bond; [CoordinatorOrderStatus.waitingForTakerBond] is never stored, so it is refused here with an [ArgumentError].
+  /// The reference client sends `cancel_status` only for a maker of an order not yet taken (`frontend/src/components/TradeBox/index.tsx:245-254`); the body is otherwise its own, `{"action":"cancel"}`.
+  ///
+  /// What a cancel does depends on the status (`Logics.cancel_order`, `api/logics.py:1005-1181`): a taker whose bond is locked and the escrow not yet loses the bond.
+  /// The answer is [OrderCancelEnded] when the order is over, and otherwise [OrderCancelAccepted] with the order as it then is; a refusal is a [CoordinatorOrderFailure], such as [OrderNotCancellable].
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included: the coordinator may have cancelled all the same, which the next [fetchOrder] tells.
+  Future<Result<CancelOrderOutcome, CoordinatorFailure>> cancelOrder(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required int orderId,
+    CoordinatorOrderStatus? onlyIfStatus,
+  }) async {
+    _checkOrderId(orderId);
+    if (onlyIfStatus == CoordinatorOrderStatus.waitingForTakerBond) {
+      throw ArgumentError.value(
+        onlyIfStatus,
+        'onlyIfStatus',
+        'never stored by a coordinator: a pre-take is stored as public',
+      );
+    }
+    final response = await _postOrderAction(
+      coordinator,
+      network,
+      identity: identity,
+      orderId: orderId,
+      body: {'action': 'cancel', 'cancel_status': ?onlyIfStatus?.wire},
+    );
+    return switch (_orderAnswer(response)) {
+      Err(:final failure) => Err(failure),
+      Ok(:final value) => parseCancelAnswer(
+        value,
+        coordinator,
+        orderId: orderId,
+      ),
+    };
+  }
+
+  static void _checkOrderId(int orderId) {
+    if (orderId < 1 || orderId > 1 << 53) {
+      throw ArgumentError.value(orderId, 'orderId', 'not an order number');
+    }
+  }
+
+  /// [value] as JavaScript writes a number: an integral value without a fractional part, as the reference client sends `Number(...)`.
+  static num _jsonNumber(double value) =>
+      value == value.truncateToDouble() && value.abs() < 1e15
+      ? value.toInt()
+      : value;
+
+  /// One `POST /api/order/?order_id=` with a JSON [body], for the robot [identity] only: an action on an order is never sent without the robot's credential and session.
+  ///
+  /// Sent once: this client never sends it again, and the transport never retries a request that is not a `GET`.
+  Future<Result<CoordinatorResponse, CoordinatorFailure>> _postOrderAction(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required int orderId,
+    required Map<String, Object> body,
+  }) async {
+    final onion = coordinator.origins(network).onion;
+    if (onion == null) return const Err(CoordinatorNotOnNetwork());
+    return _send(
+      CoordinatorRequest(
+        method: CoordinatorHttpMethod.post,
+        url: Uri.parse(onion).replace(
+          path: '/api/order/',
+          queryParameters: {'order_id': '$orderId'},
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': identity.authorizationHeader(),
+        },
+        body: utf8.encode(jsonEncode(body)),
+        maxResponseBytes: CoordinatorReadBounds.orderBytes,
+        robot: identity.sessionKey,
+      ),
+    );
+  }
+
+  /// The decoded JSON of a `200` answer about an order, or why the coordinator refused.
+  static Result<Object?, CoordinatorFailure> _orderAnswer(
+    Result<CoordinatorResponse, CoordinatorFailure> response,
+  ) => switch (response) {
+    Err(:final failure) => Err(failure),
+    Ok(value: CoordinatorResponse(statusCode: 200)) => _decode(response),
+    Ok(value: final answer) => Err(_orderRefusal(answer)),
+  };
+
+  /// The message of error 1012, the only place where the coordinator gives the seconds (`api/errors.py:13`).
+  static final RegExp _penaltyMessage = RegExp(
+    r'^You need to wait (\d{1,5}) seconds to take an order$',
+  );
+
+  /// Why a coordinator answered a request about an order with a status other than `200`.
+  ///
+  /// Its errors are `{"error_code": …, "bad_request": …}` (`api/errors.py:120-138`): only the code is read, and the seconds of 1012; the message is never kept.
+  /// With no code, `401` and `403` are the authentication's refusal, an empty `400` is the form check of the `POST` (`api/views.py:539-540`), and anything else is the HTTP status alone.
+  static CoordinatorFailure _orderRefusal(CoordinatorResponse answer) {
+    final status = answer.statusCode;
+    final fields = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(object),
+      _ => null,
+    };
+    final code = fields?.optionalInt('error_code', min: 0, max: 99999);
+    if (code == null) {
+      if (status == 401 || status == 403) {
+        return const RobotCredentialsRejected();
+      }
+      if (status == 400 && answer.body.isEmpty) {
+        return const OrderRequestRefused(null);
+      }
+      return CoordinatorUnexpectedStatus(status);
+    }
+    return switch (code) {
+      1000 => const RobotAlreadyMaker(),
+      1001 => const RobotAlreadyTaker(),
+      1002 => const RobotAlreadyTaking(),
+      1003 => const RobotPayoutPending(),
+      1011 => const OrderAmountOutOfRange(),
+      1012 => OrderTakePenalty(
+        _penaltySeconds(fields?.optionalString('bad_request', maxLength: 100)),
+      ),
+      1020 => const OrderStatusChanged(),
+      1021 => const OrderNotCancellable(),
+      1023 || 1024 => const CoordinatorNodeUnavailable(),
+      1025 => const OrderTakeExpired(),
+      1026 => const OrderEscrowExpired(),
+      1042 => const OrderNotFound(),
+      1043 => const OrderCancelled(),
+      1044 => const OrderNotAvailable(),
+      1045 => const OrderWrongPassword(),
+      1046 => const OrderNotPublic(),
+      7001 => const RobotUnknown(),
+      7000 || 7003 => const RobotCredentialsRejected(),
+      _ => OrderRequestRefused(code),
+    };
+  }
+
+  static int? _penaltySeconds(String? message) {
+    final seconds = int.tryParse(
+      _penaltyMessage.firstMatch(message ?? '')?.group(1) ?? '',
+    );
+    return seconds != null && seconds < 86400 ? seconds : null;
+  }
+
   /// The decoded body of a `200` answer of `GET /api/robot/` for the robot [identity], sent with [authorization], or why there is none.
   Future<Result<Object?, CoordinatorFailure>> _fetchRobot(
     Coordinator coordinator,
@@ -287,19 +512,28 @@ final class CoordinatorClient {
   }) async {
     final onion = coordinator.origins(network).onion;
     if (onion == null) return const Err(CoordinatorNotOnNetwork());
-    final request = CoordinatorRequest(
-      method: CoordinatorHttpMethod.get,
-      url: Uri.parse(
-        onion,
-      ).replace(path: path, queryParameters: query.isEmpty ? null : query),
-      // A credential never travels without the name of its robot, which keeps it off the anonymous sessions of the transport.
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': ?robot?.authorization,
-      },
-      maxResponseBytes: maxResponseBytes,
-      robot: robot?.identity.sessionKey,
+    return _send(
+      CoordinatorRequest(
+        method: CoordinatorHttpMethod.get,
+        url: Uri.parse(
+          onion,
+        ).replace(path: path, queryParameters: query.isEmpty ? null : query),
+        // A credential never travels without the name of its robot, which keeps it off the anonymous sessions of the transport.
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': ?robot?.authorization,
+        },
+        maxResponseBytes: maxResponseBytes,
+        robot: robot?.identity.sessionKey,
+      ),
     );
+  }
+
+  /// Hands [request] to the transport, once.
+  Future<Result<CoordinatorResponse, CoordinatorFailure>> _send(
+    CoordinatorRequest request,
+  ) async {
+    final maxResponseBytes = request.maxResponseBytes;
     final Result<CoordinatorResponse, CoordinatorTransportFailure> result;
     try {
       result = await _transport.send(request);

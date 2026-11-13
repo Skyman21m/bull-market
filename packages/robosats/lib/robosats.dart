@@ -4,6 +4,7 @@
 /// A [RobotPgpKey] is the OpenPGP key pair of a robot, locked by its token: once unlocked it clear-signs invoices and payout addresses and encrypts, signs, decrypts and verifies chat messages, in the formats of the official client and of the coordinators.
 /// A [CoordinatorClient] reads what a coordinator of the embedded [Federation] publishes (`/api/info/`, `/api/book/`, `/api/limits/`) through a [CoordinatorTransport] that the app implements over Tor, and a [FederationBookReader] merges the books of every coordinator.
 /// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`), checked against what this device computed: a [CoordinatorRobot] when the coordinator returns the key pair this device has just sent, and otherwise an [UnprovenCoordinatorRobot], which gives the robot only once the robot's token has proved the pair it returned.
+/// For the robot of this device, the client also reads an order as the coordinator describes it to that robot (`/api/order/`, a [CoordinatorOrder]) and sends a taker's take and cancel of it; nothing in the app calls them yet.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 library;
@@ -13,6 +14,22 @@ export 'src/coordinator/coordinator.dart'
 export 'src/coordinator/coordinator_client.dart' show CoordinatorClient;
 export 'src/coordinator/coordinator_info.dart'
     show CoordinatorInfo, CoordinatorVersion, NoticeSeverity;
+export 'src/coordinator/coordinator_order.dart'
+    show
+        CancelOrderOutcome,
+        CoordinatorOrder,
+        CoordinatorOrderStatus,
+        HoldInvoice,
+        OnchainPayout,
+        OrderCancelAccepted,
+        OrderCancelEnded,
+        OrderExpiryReason,
+        OrderNotTaken,
+        OrderTakeStarted,
+        PayoutFailureReason,
+        SwapRefusal,
+        TakeOrderOutcome,
+        TradeSummary;
 export 'src/coordinator/coordinator_robot.dart'
     show CoordinatorRobot, CoordinatorRobotAnswer, UnprovenCoordinatorRobot;
 export 'src/coordinator/coordinator_transport.dart'

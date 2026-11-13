@@ -86,6 +86,12 @@ final class JsonFields {
     _ => _reject(key, null),
   };
 
+  Map<String, Object?>? optionalObject(String key) => switch (_object[key]) {
+    null => null,
+    final Map<String, Object?> value => value,
+    _ => _reject(key, null),
+  };
+
   /// An ISO 8601 date and time with a time zone, as the coordinator serializes it, between 2020 and 2100.
   ///
   /// Every part must be in range, so the text means the date it is read as: `DateTime.tryParse` alone would turn `25:61` into the next day.

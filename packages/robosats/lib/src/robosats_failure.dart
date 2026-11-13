@@ -273,6 +273,112 @@ final class RobotNicknameTaken extends CoordinatorRobotFailure {
   const RobotNicknameTaken();
 }
 
+/// The coordinator refused a request about an order with one of its error codes (`api/errors.py`, commit ff1998c).
+///
+/// Only the code is read, and for 1012 the number of seconds the coordinator writes in its message: the message itself is never kept.
+/// Most codes come before the coordinator changed anything, but the answer to a take or a cancel is the read of the order that follows the action, so 1023, 1025 and 1026 can come after the action happened: read the order again before concluding.
+sealed class CoordinatorOrderFailure extends CoordinatorFailure {
+  const CoordinatorOrderFailure();
+}
+
+/// The robot already has an order in progress on this coordinator, which RoboSats allows one at a time (`Logics.validate_already_maker_or_taker`, `api/logics.py:75-135`, HTTP 409).
+sealed class RobotHasActiveOrder extends CoordinatorOrderFailure {
+  const RobotHasActiveOrder();
+}
+
+/// The robot is the maker of an order not yet finished (error 1000).
+final class RobotAlreadyMaker extends RobotHasActiveOrder {
+  const RobotAlreadyMaker();
+}
+
+/// The robot is the taker of an order not yet finished (error 1001).
+final class RobotAlreadyTaker extends RobotHasActiveOrder {
+  const RobotAlreadyTaker();
+}
+
+/// The robot holds a live pre-take, of this order or another (error 1002): a second take of the same order while the first one waits for its bond gets this too.
+final class RobotAlreadyTaking extends RobotHasActiveOrder {
+  const RobotAlreadyTaking();
+}
+
+/// The robot is the buyer of an order whose payout is being sent or has failed (error 1003).
+final class RobotPayoutPending extends RobotHasActiveOrder {
+  const RobotPayoutPending();
+}
+
+/// The amount asked is outside the range of the order (error 1011).
+final class OrderAmountOutOfRange extends CoordinatorOrderFailure {
+  const OrderAmountOutOfRange();
+}
+
+/// The coordinator puts the robot on hold after it cancelled a pre-take, and refuses its takes until then (error 1012).
+final class OrderTakePenalty extends CoordinatorOrderFailure {
+  /// The seconds left, 0 to 86 399, read from the coordinator's message when it has the reference's exact wording, else `null`.
+  final int? secondsLeft;
+
+  const OrderTakePenalty(this.secondsLeft);
+}
+
+/// The cancel asked for the order in one status and the coordinator has it in another (error 1020): nothing was cancelled.
+final class OrderStatusChanged extends CoordinatorOrderFailure {
+  const OrderStatusChanged();
+}
+
+/// The order cannot be cancelled in its current status (error 1021).
+final class OrderNotCancellable extends CoordinatorOrderFailure {
+  const OrderNotCancellable();
+}
+
+/// The order ran out of time before the coordinator could give the taker's bond (error 1025).
+final class OrderTakeExpired extends CoordinatorOrderFailure {
+  const OrderTakeExpired();
+}
+
+/// The time to lock the escrow ran out before the coordinator could give the escrow (error 1026).
+final class OrderEscrowExpired extends CoordinatorOrderFailure {
+  const OrderEscrowExpired();
+}
+
+/// The coordinator's Lightning node cannot make the invoice now (errors 1023 and 1024).
+final class CoordinatorNodeUnavailable extends CoordinatorOrderFailure {
+  const CoordinatorNodeUnavailable();
+}
+
+/// The coordinator has no order with this number (error 1042).
+final class OrderNotFound extends CoordinatorOrderFailure {
+  const OrderNotFound();
+}
+
+/// The order has been cancelled, by one side or by both (error 1043): the coordinator shows it to nobody any more.
+final class OrderCancelled extends CoordinatorOrderFailure {
+  const OrderCancelled();
+}
+
+/// The order is not public and this robot is neither its maker nor its taker (error 1044): taken by another robot, paused, or not yet public.
+///
+/// A pre-taker whose order another robot took first gets this too.
+final class OrderNotAvailable extends CoordinatorOrderFailure {
+  const OrderNotAvailable();
+}
+
+/// The password sent does not open the order (error 1045).
+final class OrderWrongPassword extends CoordinatorOrderFailure {
+  const OrderWrongPassword();
+}
+
+/// The order is no longer public (error 1046), which the reference coordinator builds and never sends: see `TakeOrderOutcome`.
+final class OrderNotPublic extends CoordinatorOrderFailure {
+  const OrderNotPublic();
+}
+
+/// The coordinator refused the request about the order with a code this package does not map, or with no code at all, as when its form check refuses the body with an empty `400`.
+final class OrderRequestRefused extends CoordinatorOrderFailure {
+  /// The code the coordinator gave, a number it chose, or `null`.
+  final int? errorCode;
+
+  const OrderRequestRefused(this.errorCode);
+}
+
 /// The robot the coordinator describes is not the one computed on this device: a security warning, and a robot not to use on this coordinator.
 sealed class RobotMismatchFailure extends CoordinatorRobotFailure {
   const RobotMismatchFailure();
