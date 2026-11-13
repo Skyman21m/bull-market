@@ -183,6 +183,9 @@ final class PairsByRobot implements RobotKeyComputePort {
   /// What every pair asked for gives instead, when it is set.
   RobotKeyComputeFailure? generateFailure;
 
+  /// What every proof asked for gives instead, when it is set: the work could not run, after the coordinator answered.
+  RobotKeyComputeFailure? proveFailure;
+
   PairsByRobot(this._pairs);
 
   @override
@@ -205,6 +208,7 @@ final class PairsByRobot implements RobotKeyComputePort {
   >
   prove(UnprovenCoordinatorRobot robot) async {
     proved.add(robot.hashId);
+    if (proveFailure case final failure?) return Err(failure);
     return Ok(robot.prove());
   }
 }

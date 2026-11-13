@@ -1464,10 +1464,10 @@ abstract class P2pLocalizations {
   /// **'Clear'**
   String get p2pCommonClear;
 
-  /// Warning on the robot step of the wizard and on the profile, right after « Generate Garage Key » or « Generate new » when the feature's database could not record that the key was drawn on this device: the key is stored, but its history is unknown, as for a key from elsewhere, and its delete asks the PIN. Not in the phase-1 catalogue (design note of #29, § 2.4).
+  /// Warning on the robot step of the wizard and on the profile, right after « Generate Garage Key » or « Generate new » when the feature's database could not record that the key was drawn on this device: the key is stored, but its history is unknown, as for a key from elsewhere, so « Select Host » asks « Robots from elsewhere » (p2pRobotHistoryTitle) before its robots can reach a coordinator, and its delete asks the PIN. Not in the phase-1 catalogue (design note of #29, § 2.4).
   ///
   /// In en, this message translates to:
-  /// **'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.'**
+  /// **'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.'**
   String get p2pGarageKeyHistoryNotRecorded;
 
   /// Title of the panel under the robot navigator of the Garage profile. The RoboSats profile dialog says « Coordinators that know your robot: » (`components/Dialogs/Profile.tsx`); in Troc a robot lives on one coordinator only, hence the singular. French from the RoboSats French text, in the singular.
@@ -1661,6 +1661,24 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Troc could not read its records on this device.'**
   String get p2pRobotRecordsUnreadable;
+
+  /// Title of the dialog that « Select Host » opens first for a robot of a Garage Key of unknown history (pasted in, or whose draw this device could not record), once per key and network, and again after the key is pasted again. Not in the RoboSats texts (design note of #29, § 2.4): the official client sends every robot it shows to every coordinator, so it asks nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Robots from elsewhere'**
+  String get p2pRobotHistoryTitle;
+
+  /// Body of the dialog « Robots from elsewhere ». Not in the RoboSats texts (design note of #29, § 2.4). Factual: a key from the user's own backup is pasted in too, and nothing here says that a robot must be sent to a coordinator before trading.
+  ///
+  /// In en, this message translates to:
+  /// **'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.'**
+  String get p2pRobotHistoryBody;
+
+  /// Button of the dialog « Robots from elsewhere » that records the acknowledgement and goes on to the « Select Host » sheet; « Cancel » records nothing. Bull's own label (`settingsDevModeUnderstandButton` of the wallet), as the design note of #29 asks (§ 2.6).
+  ///
+  /// In en, this message translates to:
+  /// **'I understand'**
+  String get p2pRobotHistoryConfirm;
 }
 
 class _P2pLocalizationsDelegate

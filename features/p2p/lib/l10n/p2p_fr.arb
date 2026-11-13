@@ -219,7 +219,7 @@
   "p2pGarageRobotUnavailable": "Aucun robot ne peut être créé à partir de cette clé de garage.",
   "p2pCommonPaste": "Coller",
   "p2pCommonClear": "Effacer",
-  "p2pGarageKeyHistoryNotRecorded": "Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.",
+  "p2pGarageKeyHistoryNotRecorded": "Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots demanderont votre confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.",
   "p2pRobotCoordinatorTitle": "Coordinateur qui connaît votre robot :",
   "p2pRobotNoCoordinator": "Aucun coordinateur ne connaît encore ce robot.",
   "p2pRobotSelectHost": "Sélectionner l'hôte",
@@ -251,5 +251,8 @@
   "p2pRobotNostrUnknown": "{coordinator} détient une clé Nostr que cette application ne peut pas utiliser : les notifications concernant ce robot ne lui parviendront pas.",
   "p2pRobotKeyComputeFailed": "Ce téléphone n’a pas pu créer ou vérifier les clés de ce robot. Vérifiez sa date et son heure, puis réessayez.",
   "p2pRobotBoundElsewhere": "Ce robot vit chez un autre coordinateur. Rien n’a été envoyé.",
-  "p2pRobotRecordsUnreadable": "Troc n’a pas pu lire ses enregistrements sur cet appareil."
+  "p2pRobotRecordsUnreadable": "Troc n’a pas pu lire ses enregistrements sur cet appareil.",
+  "p2pRobotHistoryTitle": "Robots venus d’ailleurs",
+  "p2pRobotHistoryBody": "Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs : l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Troc, un robot ne vit que chez un seul coordinateur : si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.",
+  "p2pRobotHistoryConfirm": "Je comprends"
 }

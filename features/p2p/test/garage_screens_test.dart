@@ -20,6 +20,7 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
+import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/close_robot_sessions_usecase.dart';
 import 'package:p2p/src/domain/usecases/delete_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
@@ -48,6 +49,7 @@ import 'package:p2p/src/ui/garage/garage_key_history_notice.dart';
 import 'package:p2p/src/ui/garage/garage_view.dart';
 import 'package:p2p/src/ui/garage/garage_wizard.dart';
 import 'package:p2p/src/ui/garage/robot_coordinator_panel.dart';
+import 'package:p2p/src/ui/garage/robot_history_dialog.dart';
 import 'package:p2p/src/ui/garage/select_host_sheet.dart';
 import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
@@ -2235,7 +2237,7 @@ void main() {
     for (final (locale, notice, labels) in [
       (
         const Locale('en'),
-        'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.',
+        'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.',
         (
           start: 'Start',
           generate: 'Generate Garage Key',
@@ -2247,7 +2249,7 @@ void main() {
       ),
       (
         const Locale('fr'),
-        'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.',
+        'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots demanderont votre confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.',
         (
           start: 'Commencer',
           generate: 'Générer une clé de garage',
@@ -2378,7 +2380,7 @@ void main() {
         transport.requested.any((path) => path.contains('/api/robot'));
 
     testWidgets(
-      'shows under the navigator; a key from elsewhere cannot choose a host',
+      'shows under the navigator; a key from elsewhere asks « Robots from elsewhere » first, under the capture protection',
       (tester) async {
         keystoreHolding({_testnetEntry: null});
         await openGarage(tester);
@@ -2396,19 +2398,231 @@ void main() {
         );
         expect(_selectHost(tester).disabled, isTrue);
         expect(find.text('Connecting to Tor network'), findsOneWidget);
+        await tester.tap(find.text('Select Host'), warnIfMissed: false);
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsNothing);
 
         tor.add(P2pTorState.ready);
         await settle(tester);
 
-        // Its history is unknown: the acknowledgement comes in a later step, and nothing else is said here.
-        expect(_selectHost(tester).disabled, isTrue);
+        // A key stored with no record of its draw: its history is unknown, and « Select Host » asks first.
+        expect(_selectHost(tester).disabled, isFalse);
         expect(find.text('Connecting to Tor network'), findsNothing);
-        await tester.tap(find.text('Select Host'), warnIfMissed: false);
-        await settle(tester);
+        await tester.tap(find.text('Select Host'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsOneWidget);
+        expect(find.text('Robots from elsewhere'), findsOneWidget);
         expect(find.byType(SelectHostSheet), findsNothing);
+        // A modal route above the Garage, which stays built under it: the protection asked when the Garage opened holds, and nothing turned it off.
+        expect(find.byType(GarageView), findsOneWidget);
+        expect(privacyCalls, contains('screenshotOff'));
+        expect(privacyCalls, isNot(contains('screenshotOn')));
+
+        await tester.tap(find.text('Cancel'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsNothing);
+        expect(find.byType(SelectHostSheet), findsNothing);
+        expect(privacyCalls, isNot(contains('screenshotOn')));
         expect(robotRequestsMade(), isFalse);
       },
     );
+
+    testWidgets(
+      'a pasted key: asked once, bound as acknowledged, not for its next robot, and again once pasted again',
+      (tester) async {
+        keystoreHolding({});
+        await openGarage(tester);
+        Future<void> paste() async {
+          await tester.tap(find.text('Recovery'));
+          await settle(tester);
+          await tester.enterText(pasteInput(), exampleText);
+          await settle(tester);
+          await tester.tap(find.text('Recover'));
+          await letTheVaultSettle(tester);
+          expect(find.text(exampleNickname), findsOneWidget);
+        }
+
+        await paste();
+        tor.add(P2pTorState.ready);
+        await letTheVaultSettle(tester);
+        final bindings = locator<RobotBindingRepository>();
+        final example = switch (GarageKey.parse(exampleText)) {
+          Ok(:final value) => NetworkGarageKey(RobosatsNetwork.testnet, value),
+          Err() => fail('not a key'),
+        };
+        NetworkRobot exampleRobot(int index) =>
+            switch (example.firstUsableRobot(index)) {
+              Ok(:final value) when value.accountIndex == index => value,
+              _ => fail('no robot $index'),
+            };
+        Future<RobotStanding> standingOf(int index) async =>
+            switch (await bindings.standingOf(exampleRobot(index).slot)) {
+              Ok(:final value) => value,
+              Err() => fail('unreadable'),
+            };
+        expect((await standingOf(0)).history, GarageKeyHistory.unknown);
+
+        await tester.tap(find.text('Select Host'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsOneWidget);
+        await tester.tap(find.text('I understand'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsNothing);
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        expect((await standingOf(0)).history, GarageKeyHistory.acknowledged);
+        expect(robotRequestsMade(), isFalse);
+
+        // Temple of Sats, then « Continue »: the robot is bound with the provenance of an acknowledged key.
+        await tester.tap(find.text('Temple of Sats'));
+        await afterRoute(tester);
+        await tester.tap(find.text('Continue'));
+        bool sent() => transport.requests.any((r) => r.robot != null);
+        for (var i = 0; i < 400 && !sent(); i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 25)),
+          );
+          await tester.pump(const Duration(milliseconds: 25));
+        }
+        await settle(tester);
+        expect(
+          transport.requests.where((r) => r.robot != null).single.robot,
+          exampleRobot(0).identity.sessionKey,
+        );
+        expect(
+          (await standingOf(0)).binding?.provenance,
+          BindingProvenance.acknowledged,
+        );
+
+        // The next robot of the key goes straight to the sheet.
+        await tester.ensureVisible(find.byTooltip('Next account'));
+        await settle(tester);
+        await tester.tap(find.byTooltip('Next account'));
+        await settle(tester);
+        tor.add(P2pTorState.ready);
+        await letTheVaultSettle(tester);
+        await tester.ensureVisible(find.text('Select Host'));
+        await settle(tester);
+        await tester.tap(find.text('Select Host'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsNothing);
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        await tester.tap(find.byTooltip('Close'));
+        await afterRoute(tester);
+
+        // Deleted, then pasted again: a pasted copy may have travelled, and the acknowledgement is asked again.
+        await tapDeleteAll(tester);
+        await settle(tester);
+        await tester.tap(find.text('Delete Garage Key'));
+        await afterRoute(tester);
+        await tester.tap(find.text('PIN ok'));
+        await afterRoute(tester);
+        await paste();
+        expect((await standingOf(1)).history, GarageKeyHistory.unknown);
+        tor.add(P2pTorState.ready);
+        await letTheVaultSettle(tester);
+        // Robot #0 is bound already: robot #1 has none.
+        await tester.tap(find.byTooltip('Next account'));
+        await settle(tester);
+        tor.add(P2pTorState.ready);
+        await letTheVaultSettle(tester);
+        await tester.ensureVisible(find.text('Select Host'));
+        await settle(tester);
+        await tester.tap(find.text('Select Host'));
+        await afterRoute(tester);
+        expect(find.byType(RobotHistoryDialog), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await afterRoute(tester);
+        expect(find.byType(SelectHostSheet), findsNothing);
+        expect((await standingOf(1)).history, GarageKeyHistory.unknown);
+        expect((await standingOf(1)).binding, isNull);
+        expect(
+          transport.requests.where(
+            (r) => r.robot == exampleRobot(1).identity.sessionKey,
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    // Security review of step 6: what the panel opened closes with it when the Garage changes under it, and nothing is recorded or sent.
+    for (final opened in [
+      '« Robots from elsewhere »',
+      '« Select Host »',
+      'the confirmation',
+    ]) {
+      for (final change in [
+        'the network',
+        'the next robot',
+        'the key deleted',
+      ]) {
+        testWidgets(
+          '$change while $opened is open: it closes, and nothing is recorded or sent',
+          (tester) async {
+            keystoreHolding({_testnetEntry: null, _mainnetEntry: null});
+            await openGarage(tester);
+            tor.add(P2pTorState.ready);
+            await letTheVaultSettle(tester);
+            final fingerprint = switch (GarageKeyFingerprint.of(fixedKey)) {
+              Ok(:final value) => value,
+              Err() => throw StateError('no fingerprint'),
+            };
+            Future<GarageKeyHistory> testnetHistory() async =>
+                switch (await locator<RobotBindingRepository>().exposureOf(
+                  RobosatsNetwork.testnet,
+                  fingerprint,
+                )) {
+                  Ok(:final value) => value.history,
+                  Err() => throw StateError('unreadable'),
+                };
+            await tester.ensureVisible(find.text('Select Host'));
+            await settle(tester);
+            await tester.tap(find.text('Select Host'));
+            await afterRoute(tester);
+            expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            if (opened != '« Robots from elsewhere »') {
+              await tester.ensureVisible(find.text('I understand'));
+              await settle(tester);
+              await tester.tap(find.text('I understand'));
+              await afterRoute(tester);
+              expect(find.byType(SelectHostSheet), findsOneWidget);
+            }
+            if (opened == 'the confirmation') {
+              await tester.tap(find.text('Temple of Sats'));
+              await afterRoute(tester);
+              expect(find.byType(SendRobotDialog), findsOneWidget);
+            }
+            final history = await testnetHistory();
+            expect(
+              history,
+              opened == '« Robots from elsewhere »'
+                  ? GarageKeyHistory.unknown
+                  : GarageKeyHistory.acknowledged,
+            );
+
+            final garage = tester
+                .element(find.byType(GarageView))
+                .read<GarageCubit>();
+            switch (change) {
+              case 'the network':
+                network.switchTo(RobosatsNetwork.mainnet);
+              case 'the next robot':
+                garage.next();
+              default:
+                unawaited(garage.delete(reauthenticate: () async => true));
+            }
+            await settle(tester);
+            await letTheVaultSettle(tester);
+
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(SelectHostSheet), findsNothing);
+            expect(find.byType(SendRobotDialog), findsNothing);
+            expect(find.byType(GarageView), findsOneWidget);
+            expect(await testnetHistory(), history);
+            expect(robotRequestsMade(), isFalse);
+          },
+        );
+      }
+    }
 
     testWidgets(
       'a key drawn here: Select Host once Tor is ready, then the sheet and the confirmation, and Cancel sends nothing',
@@ -2574,6 +2788,7 @@ void main() {
     late RecordingBindings bindings;
     late RobotRequestLimiter limiter;
     late FakeTor robotTor;
+    late PairsByRobot keys;
 
     NetworkRobot robotAt(
       int index, [
@@ -2612,6 +2827,7 @@ void main() {
         random: () => 0.5,
       );
       robotTor = FakeTor();
+      keys = PairsByRobot(pairs);
     });
 
     /// Binds robot [index] to [alias] and has that coordinator keep it, as after a first contact in an earlier run.
@@ -2649,7 +2865,7 @@ void main() {
       final fetch = FetchRobotUsecase(
         CoordinatorClient(robotCoordinators, clock: () => testNow),
         bindings,
-        PairsByRobot(pairs),
+        keys,
       );
       final cubit = RobotCoordinatorCubit(
         NetworkGarageKey(network, fixedKey),
@@ -2668,6 +2884,7 @@ void main() {
         ),
         WatchP2pTorStateUsecase(() => robotTor),
         ListRobotHostsUsecase(Federation.robosats, limiter),
+        AcknowledgeGarageKeyHistoryUsecase(bindings),
       );
       final bookTransport = FakeTransport(
         network: network,
@@ -3323,6 +3540,461 @@ void main() {
       }
     }
 
+    // #29, step 6: « Select Host » of a robot of a key of unknown history asks « Robots from elsewhere » first, once per key and network; only « I understand » records it.
+    group('a key pasted, or whose draw could not be recorded', () {
+      setUp(() => bindings = RecordingBindings());
+
+      int acknowledgements() =>
+          bindings.calls.where((c) => c.$1 == 'recordAcknowledgedKey').length;
+
+      Future<void> openSelectHost(WidgetTester tester) async {
+        final selectHost = find.text(_text(tester).p2pRobotSelectHost);
+        await tester.ensureVisible(selectHost);
+        await settle(tester);
+        await tester.tap(selectHost);
+        await afterRoute(tester);
+      }
+
+      /// Taps [label] in the dialog, scrolled to first: the body is long, and in French the buttons are under the fold of a phone.
+      Future<void> tapInDialog(WidgetTester tester, String label) async {
+        final button = find.text(label);
+        await tester.ensureVisible(button);
+        await settle(tester);
+        await tester.tap(button);
+        await afterRoute(tester);
+      }
+
+      for (final (locale, title, body, confirm) in const [
+        (
+          Locale('en'),
+          'Robots from elsewhere',
+          'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.',
+          'I understand',
+        ),
+        (
+          Locale('fr'),
+          'Robots venus d’ailleurs',
+          'Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs\u00a0: l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Troc, un robot ne vit que chez un seul coordinateur\u00a0: si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.',
+          'Je comprends',
+        ),
+      ]) {
+        final language = locale.languageCode;
+
+        testWidgets('« Select Host » asks it first, in $language', (
+          tester,
+        ) async {
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          expect(find.text(l10n.p2pRobotNoCoordinator), findsOneWidget);
+          expect(_selectHost(tester).disabled, isFalse);
+
+          await openSelectHost(tester);
+
+          expect(find.byType(RobotHistoryDialog), findsOneWidget);
+          expect(find.text(title), findsOneWidget);
+          expect(find.text(body), findsOneWidget);
+          expect(find.text(confirm), findsOneWidget);
+          expect(find.text(l10n.p2pCommonCancel), findsOneWidget);
+          expect(find.byType(SelectHostSheet), findsNothing);
+          expect(acknowledgements(), 0);
+          expect(robotCoordinators.requests, isEmpty);
+        });
+
+        testWidgets(
+          '« Cancel », a back and a tap outside record nothing and open nothing, in $language',
+          (tester) async {
+            await showPanel(tester, locale: locale);
+            final l10n = _text(tester);
+            Future<void> open() async {
+              await openSelectHost(tester);
+              expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            }
+
+            await open();
+            await tapInDialog(tester, l10n.p2pCommonCancel);
+            await open();
+            // The system back.
+            await tester.binding.handlePopRoute();
+            await afterRoute(tester);
+            await open();
+            await tester.tapAt(const Offset(4, 4));
+            await afterRoute(tester);
+
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(SelectHostSheet), findsNothing);
+            expect(find.byType(RobotCoordinatorPanel), findsOneWidget);
+            expect(acknowledgements(), 0);
+            expect(robotCoordinators.requests, isEmpty);
+            // Nothing was recorded: it is asked again.
+            await open();
+          },
+        );
+
+        testWidgets(
+          '« I understand »: recorded once, then the sheet, and the robot is bound as acknowledged, in $language',
+          (tester) async {
+            await showPanel(tester, locale: locale);
+            final l10n = _text(tester);
+            await openSelectHost(tester);
+
+            await tapInDialog(tester, confirm);
+
+            expect(acknowledgements(), 1);
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(SelectHostSheet), findsOneWidget);
+            expect(robotCoordinators.requests, isEmpty);
+
+            await tester.tap(find.text('Temple of Sats'));
+            await afterRoute(tester);
+            await tester.tap(find.text(l10n.p2pCommonContinue));
+            await afterRoute(tester);
+            await settle(tester);
+
+            expect(robotCoordinators.firstContacts, hasLength(1));
+            expect(find.text(l10n.p2pRobotNoOrders), findsOneWidget);
+            expect(switch (await bindings.standingOf(robotAt(0).slot)) {
+              Ok(:final value) => value.binding?.provenance,
+              Err() => null,
+            }, BindingProvenance.acknowledged);
+          },
+        );
+
+        testWidgets(
+          'a record that fails: the storage text, no sheet, nothing sent, and asked again, in $language',
+          (tester) async {
+            await showPanel(tester, locale: locale);
+            final l10n = _text(tester);
+            bindings
+              ..failure = const P2pStorageFailure()
+              ..failures = 1;
+            await openSelectHost(tester);
+            await tapInDialog(tester, confirm);
+
+            expect(find.text(l10n.p2pRobotStorage), findsOneWidget);
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(SelectHostSheet), findsNothing);
+            expect(robotCoordinators.requests, isEmpty);
+            expect(bindings.calls.where((c) => c.$1 == 'bind'), isEmpty);
+
+            await openSelectHost(tester);
+            expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            await tapInDialog(tester, confirm);
+            expect(find.byType(SelectHostSheet), findsOneWidget);
+            expect(acknowledgements(), 2);
+            await tester.tap(
+              find.byTooltip(
+                MaterialLocalizations.of(
+                  tester.element(find.byType(SelectHostSheet)),
+                ).closeButtonTooltip,
+              ),
+            );
+            await afterRoute(tester);
+            expect(find.text(l10n.p2pRobotStorage), findsNothing);
+          },
+        );
+
+        for (final textScale in [1.0, 2.0, 3.0]) {
+          testWidgets(
+            'it fits at 320 points and text size $textScale, its failure too, in $language',
+            (tester) async {
+              await showPanel(
+                tester,
+                locale: locale,
+                width: 320,
+                textScale: textScale,
+              );
+              final l10n = _text(tester);
+              await openSelectHost(tester);
+              expect(tester.takeException(), isNull);
+              expect(find.byType(RobotHistoryDialog), findsOneWidget);
+              // The body scrolls inside the dialog: both buttons can be reached.
+              final cancel = find.text(l10n.p2pCommonCancel);
+              await tester.ensureVisible(cancel);
+              await settle(tester);
+              expect(tester.takeException(), isNull);
+              await tester.tap(cancel);
+              await afterRoute(tester);
+              expect(find.byType(RobotHistoryDialog), findsNothing);
+
+              bindings.failure = const P2pStorageFailure();
+              await openSelectHost(tester);
+              final understood = find.text(confirm);
+              await tester.ensureVisible(understood);
+              await settle(tester);
+              await tester.tap(understood);
+              await afterRoute(tester);
+              expect(tester.takeException(), isNull);
+              expect(find.text(l10n.p2pRobotStorage), findsOneWidget);
+            },
+          );
+        }
+      }
+
+      // A double tap as a finger makes it, 16, 50 or 120 ms apart, or within one frame (security review of step 6).
+      for (final gap in [0, 16, 50, 120]) {
+        testWidgets(
+          '« I understand » tapped twice, $gap ms apart: recorded once, nothing sent',
+          (tester) async {
+            await showPanel(tester);
+            await openSelectHost(tester);
+            final button = find.text('I understand');
+            await tester.ensureVisible(button);
+            await settle(tester);
+            final at = tester.getCenter(button);
+
+            await tester.tapAt(at);
+            if (gap > 0) await tester.pump(Duration(milliseconds: gap));
+            await tester.tapAt(at);
+            await afterRoute(tester);
+
+            expect(acknowledgements(), 1);
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(RobotCoordinatorPanel), findsOneWidget);
+            expect(robotCoordinators.requests, isEmpty);
+            // The tail of the double tap may land on the barrier of the sheet that just opened, and close it, as any tap outside it does: it never reaches the Garage under it. « Select Host » then goes straight to the sheet.
+            expect(
+              find.byType(SelectHostSheet).evaluate().length,
+              lessThanOrEqualTo(1),
+            );
+            if (find.byType(SelectHostSheet).evaluate().isEmpty) {
+              await openSelectHost(tester);
+              expect(find.byType(RobotHistoryDialog), findsNothing);
+              expect(find.byType(SelectHostSheet), findsOneWidget);
+            }
+            expect(acknowledgements(), 1);
+          },
+        );
+
+        testWidgets(
+          '« Select Host » tapped twice, $gap ms apart: one dialog, nothing recorded',
+          (tester) async {
+            await showPanel(tester);
+            final selectHost = find.text('Select Host');
+            await tester.ensureVisible(selectHost);
+            await settle(tester);
+            final at = tester.getCenter(selectHost);
+
+            await tester.tapAt(at);
+            if (gap > 0) await tester.pump(Duration(milliseconds: gap));
+            await tester.tapAt(at);
+            await afterRoute(tester);
+
+            expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            expect(acknowledgements(), 0);
+            expect(robotCoordinators.requests, isEmpty);
+          },
+        );
+      }
+
+      // Tor stays ready for the panel once it has been (`TorWait`, as for the book): « I understand » cannot meet a Tor that is not ready; asked before, it records nothing and the panel says that Tor connects (security review of step 6).
+      testWidgets(
+        'before Tor is ready, an acknowledgement records nothing and the panel says Tor connects',
+        (tester) async {
+          final cubit = await showPanel(tester, torReady: false);
+          final l10n = _text(tester);
+          expect(find.text(l10n.p2pTorConnecting), findsOneWidget);
+
+          await cubit.acknowledge();
+          await settle(tester);
+
+          expect(acknowledgements(), 0);
+          expect(find.text(l10n.p2pTorConnecting), findsOneWidget);
+          expect(_selectHost(tester).disabled, isTrue);
+        },
+      );
+
+      testWidgets(
+        'Tor failing while the dialog is open does not stop « I understand »',
+        (tester) async {
+          await showPanel(tester);
+          await openSelectHost(tester);
+          robotTor.embedded.failed();
+          await settle(tester);
+
+          await tapInDialog(tester, 'I understand');
+
+          expect(acknowledgements(), 1);
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'once per key and network: the next robot goes straight to the sheet, the other network asks',
+        (tester) async {
+          await showPanel(tester);
+          await openSelectHost(tester);
+          await tapInDialog(tester, 'I understand');
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+
+          await showPanel(tester, index: 1);
+          await openSelectHost(tester);
+          expect(find.byType(RobotHistoryDialog), findsNothing);
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+
+          // The same key in the mainnet slot has a history of its own there.
+          await showPanel(tester, network: RobosatsNetwork.mainnet);
+          await openSelectHost(tester);
+          expect(find.byType(RobotHistoryDialog), findsOneWidget);
+          expect(acknowledgements(), 1);
+          expect(robotCoordinators.requests, isEmpty);
+        },
+      );
+
+      testWidgets('a key drawn here asks nothing', (tester) async {
+        final fingerprint = switch (GarageKeyFingerprint.of(fixedKey)) {
+          Ok(:final value) => value,
+          Err() => throw StateError('no fingerprint'),
+        };
+        bindings = RecordingBindings(
+          drawnHere: [(RobosatsNetwork.testnet, fingerprint)],
+        );
+        await showPanel(tester);
+        await openSelectHost(tester);
+
+        expect(find.byType(RobotHistoryDialog), findsNothing);
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        expect(acknowledgements(), 0);
+      });
+
+      testWidgets(
+        'Tor not ready: « Select Host » disabled, and nothing asked',
+        (tester) async {
+          await showPanel(tester, torReady: false);
+          expect(_selectHost(tester).disabled, isTrue);
+          await tester.tap(find.text('Select Host'), warnIfMissed: false);
+          await afterRoute(tester);
+          expect(find.byType(RobotHistoryDialog), findsNothing);
+
+          robotTor.embedded.failed();
+          await settle(tester);
+          expect(_selectHost(tester).disabled, isTrue);
+          await tester.tap(find.text('Select Host'), warnIfMissed: false);
+          await afterRoute(tester);
+          expect(find.byType(RobotHistoryDialog), findsNothing);
+          expect(acknowledgements(), 0);
+        },
+      );
+
+      testWidgets(
+        'a screen reader hears its title as a header, and its buttons',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          await showPanel(tester);
+          await openSelectHost(tester);
+
+          expect(
+            tester.getSemantics(find.text('Robots from elsewhere')),
+            isSemantics(isHeader: true, label: 'Robots from elsewhere'),
+          );
+          expect(find.bySemanticsLabel(RegExp('I understand')), findsWidgets);
+          expect(find.bySemanticsLabel(RegExp('Cancel')), findsWidgets);
+          semantics.dispose();
+        },
+      );
+    });
+
+    // The notes of the second security pass on step 5: a text never says that nothing was sent when a request of the call may have left.
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      final language = locale.languageCode;
+      final nothingSent = language == 'fr'
+          ? 'Rien n’a été envoyé.'
+          : 'Nothing was sent.';
+
+      testWidgets(
+        'a first contact answered, whose proof could not run, then the records unreadable: never « Nothing was sent. », in $language',
+        (tester) async {
+          // Robot 1 already lives on Temple of Sats with a pair made elsewhere: the answer must be proven, and the proof cannot run.
+          robotCoordinators.keepFor(
+            robotAt(1).identity,
+            'temple',
+            RobosatsNetwork.testnet,
+            otherPair,
+          );
+          keys.proveFailure = const RobotKeyComputeFailure();
+          await showPanel(tester, index: 1, locale: locale);
+          final l10n = _text(tester);
+          robotCoordinators.onSend = (_) {
+            bindings.readFailure = const P2pStorageFailure();
+          };
+          await sendToTemple(tester);
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(keys.proved, [robotAt(1).identity.hashId]);
+          expect(find.text(l10n.p2pRobotKeyComputeFailed), findsOneWidget);
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a put on a bound robot whose read back left, then refused by the database: never « Nothing was sent. », in $language',
+        (tester) async {
+          await boundTo(0, 'temple');
+          robotCoordinators.kept.clear();
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          expect(
+            find.text(l10n.p2pRobotNotCreated('Temple of Sats')),
+            findsOneWidget,
+          );
+          // The binding of the first contact, after the put's own read back, cannot be written.
+          robotCoordinators.onSend = (_) {
+            bindings.failure = const P2pStorageFailure();
+          };
+
+          await tester.tap(find.text(l10n.p2pCommonRetry));
+          await settle(tester);
+
+          expect(robotCoordinators.requests, hasLength(2));
+          expect(robotCoordinators.firstContacts, isEmpty);
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          // « Retry » reads it back.
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a nickname taken, its read 10 s later refused by the database, the records unreadable: never « Nothing was sent. », in $language',
+        (tester) async {
+          robotCoordinators.script.add(RobotReply.nicknameTaken);
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          robotCoordinators.onSend = (_) {
+            bindings
+              ..failure = const P2pStorageFailure()
+              ..readFailure = const P2pStorageFailure();
+          };
+          await sendToTemple(tester);
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a read back refused by the database says that nothing was sent, which is so, in $language',
+        (tester) async {
+          await boundTo(0, 'temple');
+          var reads = 0;
+          bindings.onRead = () {
+            // The read of ReadRobotOnCoordinatorUsecase, after the panel's own.
+            if (++reads == 2) bindings.readFailure = const P2pStorageFailure();
+          };
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+
+          expect(find.text(l10n.p2pRobotStorage), findsOneWidget);
+          expect(robotCoordinators.requests, isEmpty);
+        },
+      );
+    }
+
     testWidgets(
       'a screen reader hears the panel, the hosts and their buttons',
       (tester) async {
@@ -3427,6 +4099,18 @@ void main() {
           await tester.tap(find.text('Recover'));
           await letTheVaultSettle(tester);
           expect(find.text(exampleNickname), findsOneWidget);
+          // The pasted key: « Select Host » asks « Robots from elsewhere », and « I understand » records it and opens the sheet (#29, step 6).
+          tor.add(P2pTorState.ready);
+          await letTheVaultSettle(tester);
+          await tester.ensureVisible(find.text('Select Host'));
+          await settle(tester);
+          await tester.tap(find.text('Select Host'));
+          await afterRoute(tester);
+          await tester.tap(find.text('I understand'));
+          await afterRoute(tester);
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+          await tester.tap(find.byTooltip('Close'));
+          await afterRoute(tester);
         },
         zoneSpecification: ZoneSpecification(
           print: (self, parent, zone, line) => printed.add(line),

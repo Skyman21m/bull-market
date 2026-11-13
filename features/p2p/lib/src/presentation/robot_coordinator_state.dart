@@ -48,7 +48,7 @@ final class RobotStandingUnreadable extends RobotCoordinatorState {
 
 /// No coordinator received the robot from this device: « Select Host » may put it on one, on the user's request.
 final class RobotWithoutCoordinator extends RobotCoordinatorState {
-  /// Whether the history of the robot's key must be acknowledged before the robot can go anywhere: « Select Host » is disabled until a later step asks it.
+  /// Whether the history of the robot's key must be acknowledged before the robot can go anywhere: « Select Host » asks it first, « Robots from elsewhere », once per key and network.
   final bool needsAcknowledgement;
 
   /// Where Tor stands: « Select Host » waits for it to be ready.
@@ -57,21 +57,38 @@ final class RobotWithoutCoordinator extends RobotCoordinatorState {
   /// The coordinator a first contact that failed before binding the robot was for, and why it failed, when one did.
   final RobotAttempt? lastAttempt;
 
+  /// Why the acknowledgement the user just gave could not be recorded, when it could not: nothing was recorded or sent, and « Select Host » asks it again.
+  final P2pFailure? acknowledgementFailure;
+
   const RobotWithoutCoordinator({
     required this.needsAcknowledgement,
     required this.tor,
     this.lastAttempt,
+    this.acknowledgementFailure,
   });
 
-  /// Whether « Select Host » may be used now: Tor is ready, and the key's history needs no acknowledgement.
-  bool get mayChooseHost => tor == TorWait.ready && !needsAcknowledgement;
+  /// Whether « Select Host » may be pressed now: Tor is ready; for a key whose history needs the acknowledgement, it asks that first.
+  bool get maySelectHost => tor == TorWait.ready;
+
+  /// Whether the robot may be given a coordinator now, from the sheet of « Select Host »: Tor is ready, and the key's history needs no acknowledgement.
+  bool get mayChooseHost => maySelectHost && !needsAcknowledgement;
 
   /// This state with Tor at [tor].
   RobotWithoutCoordinator withTor(TorWait tor) => RobotWithoutCoordinator(
     needsAcknowledgement: needsAcknowledgement,
     tor: tor,
     lastAttempt: lastAttempt,
+    acknowledgementFailure: acknowledgementFailure,
   );
+
+  /// This state with the acknowledgement refused by [failure]: still needed, nothing recorded.
+  RobotWithoutCoordinator withAcknowledgementFailure(P2pFailure failure) =>
+      RobotWithoutCoordinator(
+        needsAcknowledgement: needsAcknowledgement,
+        tor: tor,
+        lastAttempt: lastAttempt,
+        acknowledgementFailure: failure,
+      );
 }
 
 /// The robot is bound to [coordinator], on the robot's network, as the binding recorded it: the coordinator a screen never chooses again.
@@ -149,7 +166,12 @@ final class RobotKnown extends RobotActivity {
 final class RobotFailed extends RobotActivity {
   final RobotRequestProblem problem;
 
-  const RobotFailed(this.problem);
+  /// Which call failed: a put of the robot on its coordinator ([RobotContactKind.create]), whose read back or first contact may have left before a later step was refused, or a read back ([RobotContactKind.read]), which sends nothing when the feature refuses it.
+  ///
+  /// So a refusal of the database after a put never says that nothing was sent (second security pass on step 5).
+  final RobotContactKind kind;
+
+  const RobotFailed(this.problem, {required this.kind});
 }
 
 /// A first contact to [coordinator] that failed, and why.
