@@ -5,6 +5,7 @@ import 'package:robosats/robosats.dart'
         CoordinatorNotJson,
         CoordinatorNotOnNetwork,
         CoordinatorResponseMalformed,
+        CoordinatorOrderFailure,
         CoordinatorUnexpectedStatus,
         CoordinatorIdentityFailure,
         CoordinatorTransportFailure,
