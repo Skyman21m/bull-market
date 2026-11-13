@@ -1,5 +1,5 @@
--- The rules of the trade records that the database keeps itself (schema 3, #85): see `Trades` in `p2p_database.dart`.
-import 'p2p_database.dart';
+-- The rules of the trade records that the database keeps itself (schema 3, #85): see `Trades` in `p2p_tables.dart`.
+import 'p2p_tables.dart';
 
 -- The parent key of the foreign key of `trades`: a trade's robot is bound on the trade's network.
 -- It adds no rule to the bindings, whose primary key (key fingerprint, robot index) is already unique.

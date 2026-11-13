@@ -696,6 +696,8 @@ class RobotCoordinatorCubit {
       ),
       {
         'lib/src/data/p2p_database.dart',
+        // The tables of the database, apart so that `trades.drift` can import them.
+        'lib/src/data/p2p_tables.dart',
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
@@ -755,12 +757,15 @@ class RobotCoordinatorCubit {
     final steps =
         libraries['lib/src/data/p2p_database.steps.dart'] ??
         fail('no migration steps');
+    final tables =
+        libraries['lib/src/data/p2p_tables.dart'] ?? fail('no tables');
 
     for (final (facts, allowed) in [
       (repository, const <String>{}),
       // The database turns its foreign keys on at each opening, with the one statement pinned below.
       (database, const {'customStatement'}),
       (steps, const <String>{}),
+      (tables, const <String>{}),
     ]) {
       expect(
         facts.invoked.difference(allowed).intersection({
