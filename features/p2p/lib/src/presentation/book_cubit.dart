@@ -57,13 +57,17 @@ class BookCubit extends Cubit<BookState> {
 
   void selectSide(BookSide side) => _filter(state.filter.withSide(side));
 
-  void selectCurrency(RobosatsCurrency? currency) =>
-      _filter(state.filter.withCurrency(currency));
+  /// Keeps the orders in one of [currencies], or in any currency when it is empty; the filter works on the books already received and asks no coordinator.
+  void selectCurrencies(Iterable<RobosatsCurrency> currencies) =>
+      _filter(state.filter.withCurrencies(currencies));
 
-  void selectPaymentMethod(String? method) =>
-      _filter(state.filter.withPaymentMethod(method));
+  /// Keeps the orders whose text contains one of [methods], or every order when it is empty.
+  void selectPaymentMethods(Iterable<String> methods) =>
+      _filter(state.filter.withPaymentMethods(methods));
 
-  void selectHost(Coordinator? host) => _filter(state.filter.withHost(host));
+  /// Keeps the orders of one of [hosts], or of every coordinator when it is empty; every coordinator is still asked for its book, and the row of the coordinators still shows them all.
+  void selectHosts(Iterable<Coordinator> hosts) =>
+      _filter(state.filter.withHosts(hosts));
 
   /// « Search order »: what an order URL finds among every order received, whatever the filter.
   OrderSearchOutcome searchOrder(String url) =>
@@ -156,8 +160,9 @@ class BookCubit extends Cubit<BookState> {
     );
   }
 
+  /// A sheet of the filter applies each tap at once, so a tap may come after the tab was left: it is then dropped.
   void _filter(BookFilter filter) {
-    if (filter == state.filter) return;
+    if (isClosed || filter == state.filter) return;
     emit(
       state.copyWith(
         filter: filter,

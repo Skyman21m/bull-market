@@ -1066,7 +1066,7 @@ void main() {
     test('any side keeps the federation order and leaves swaps out', () async {
       final book = await loaded();
 
-      expect(book.state.filter, const BookFilter());
+      expect(book.state.filter, const BookFilter.any());
       expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
       await book.close();
     });
@@ -1090,23 +1090,73 @@ void main() {
     test('currency, payment method and host narrow the book', () async {
       final book = await loaded()
         ..selectSide(BookSide.buy)
-        ..selectCurrency(RobosatsCurrency.fromCode('EUR'));
+        ..selectCurrencies([_currency('EUR')]);
       expect(book.state.orders.map((o) => o.id), [2, 7, 1]);
 
-      book.selectPaymentMethod('Wise');
+      book.selectPaymentMethods(['Wise']);
       expect(book.state.orders.map((o) => o.id), [7]);
 
       book
-        ..selectPaymentMethod(null)
-        ..selectHost(coordinator('temple'));
+        ..selectPaymentMethods(const [])
+        ..selectHosts([coordinator('temple')]);
       expect(book.state.orders.map((o) => o.id), [2, 1]);
 
       book
-        ..selectHost(null)
-        ..selectCurrency(null)
+        ..selectHosts(const [])
+        ..selectCurrencies(const [])
         ..selectSide(BookSide.any);
       expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+      expect(book.state.filter, const BookFilter.any());
       await book.close();
+    });
+
+    test('several currencies, methods and hosts each keep any of theirs', () async {
+      final book = await loaded()
+        ..selectCurrencies([
+          _currency('USD'),
+          _currency('EUR'),
+        ]);
+      // Order 4 is in dollars, the others in euros; the swap, order 5, is never in the list.
+      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+      expect(book.state.filter.currencies.map((c) => c.code), ['USD', 'EUR']);
+
+      book.selectHosts([coordinator('lake'), coordinator('temple')]);
+      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+      book.selectHosts([coordinator('lake')]);
+      expect(book.state.orders.map((o) => o.id), [6, 7]);
+
+      book
+        ..selectHosts(const [])
+        ..selectPaymentMethods(['Wise', 'Instant SEPA']);
+      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+      book.selectPaymentMethods(['Wise', 'Paypal']);
+      expect(book.state.orders.map((o) => o.id), [7]);
+      await book.close();
+    });
+
+    test('the same choices in another order change nothing', () async {
+      final book = await loaded()
+        ..selectHosts([coordinator('lake'), coordinator('temple')]);
+      final states = <BookState>[];
+      final listening = book.stream.listen(states.add);
+
+      book.selectHosts([coordinator('temple'), coordinator('lake')]);
+      await settle();
+      expect(states, isEmpty);
+      expect(
+        book.state.filter.hosts.map((h) => h.shortAlias),
+        ['lake', 'temple'],
+      );
+      await listening.cancel();
+      await book.close();
+    });
+
+    test('a choice made after the tab was left is dropped', () async {
+      final book = await loaded();
+      await book.close();
+
+      book.selectCurrencies([_currency('EUR')]);
+      expect(book.state.filter, const BookFilter.any());
     });
 
     test(
@@ -1115,18 +1165,33 @@ void main() {
         final book = await loaded();
 
         expect(
-          const BookFilter(
+          BookFilter(
             side: BookSide.buy,
           ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
           ['Instant SEPA', 'Revolut', 'Wise'],
         );
         expect(
-          const BookFilter(
+          BookFilter(
             side: BookSide.buy,
-            host: null,
-            paymentMethod: 'Wise',
+            paymentMethods: ['Wise'],
           ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
           ['Instant SEPA', 'Revolut', 'Wise'],
+        );
+        // A method chosen that the other choices no longer show stays offered, so that it can be taken back.
+        expect(
+          BookFilter(
+            side: BookSide.buy,
+            hosts: [coordinator('temple')],
+            paymentMethods: ['Wise'],
+          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
+          ['Instant SEPA', 'Revolut', 'Wise'],
+        );
+        expect(
+          BookFilter(
+            side: BookSide.buy,
+            hosts: [coordinator('temple')],
+          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
+          ['Instant SEPA', 'Revolut'],
         );
         await book.close();
       },
@@ -1165,3 +1230,7 @@ void main() {
     });
   });
 }
+
+/// The currency of the RoboSats list with this code.
+RobosatsCurrency _currency(String code) =>
+    RobosatsCurrency.all.firstWhere((currency) => currency.code == code);

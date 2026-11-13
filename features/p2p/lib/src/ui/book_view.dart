@@ -10,23 +10,19 @@ import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../presentation/book_cubit.dart';
+import '../presentation/book_filter_text.dart';
 import '../presentation/book_state.dart';
 import '../presentation/coordinator_details_cubit.dart';
-import '../presentation/coordinator_text.dart';
 import 'coordinator_details_dialog.dart';
 import 'depth_chart_view.dart';
 import 'map_chart_view.dart';
 import 'search_order_dialog.dart';
+import 'widgets/coordinator_avatar.dart';
 import 'widgets/coordinators_row.dart';
 import 'widgets/filter_choice.dart';
+import 'widgets/filter_sheet.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
-
-/// The name of a coordinator, cleaned and bounded as every P2P screen shows it.
-String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
-  coordinator.longAlias,
-  maxCodePoints: CoordinatorText.name,
-);
 
 /// The book of the P2P tab: the filter sentence, the row of the coordinators (`CoordinatorsRow`), one row per offer, and the choice of view.
 ///
@@ -298,7 +294,10 @@ class _BookViewState extends State<BookView> {
 /// The views of the book the bar below it offers; « Search » opens a dialog.
 enum BookViewChoice { list, chart, map }
 
-/// « I want to [Buy] and use [EUR] pay with [ANY] hosted by [ANY] »: each choice opens a list.
+/// « I want to [Buy] and use [EUR] pay with [Any payment method] hosted by [Any host] »: each choice opens a list, its texts given by [BookFilterText].
+///
+/// The order type is one choice, in the wallet's picker; the currencies, the payment methods and the hosts take several (#101), in a [FilterSheet] that applies each tap at once.
+/// The choices are those of the book's cubit, so they last while the tab lives; none of them asks a coordinator anything.
 class BookFilterSentence extends StatelessWidget {
   final BookState state;
 
@@ -308,6 +307,7 @@ class BookFilterSentence extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
+    final texts = BookFilterText(l10n);
     final cubit = context.read<BookCubit>();
     final filter = state.filter;
     final words = Theme.of(
@@ -326,118 +326,78 @@ class BookFilterSentence extends StatelessWidget {
         runSpacing: BullSpacing.xs,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          word(l10n.p2pBookFilterIWantTo),
+          word(texts.start(filter.side)),
           FilterChoice(
-            label: _sideLabel(filter.side, l10n),
+            label: texts.side(filter.side),
+            semanticsLabel: texts.sideSemantics(filter.side),
             onTap: () async {
-              final side = await _pick(
-                context,
-                title: l10n.p2pBookFilterSelectOrderType,
-                options: BookSide.values,
-                selected: filter.side,
-                label: (side) => _sideLabel(side, l10n),
+              final side = await BullBottomSheet.show<BookSide>(
+                context: context,
+                child: BullPickerSheet<BookSide>(
+                  title: l10n.p2pBookFilterSelectOrderType,
+                  options: BookSide.values,
+                  isSelected: (side) => side == filter.side,
+                  label: texts.side,
+                ),
               );
-              if (side != null) cubit.selectSide(side.value ?? BookSide.any);
+              if (side != null) cubit.selectSide(side);
             },
           ),
           word(l10n.p2pBookFilterAndUse),
           FilterChoice(
-            label: filter.currency?.code ?? l10n.p2pBookFilterAny,
-            onTap: () async {
-              final currency = await _pick<RobosatsCurrency>(
-                context,
-                title: l10n.p2pBookFilterSelectCurrency,
-                options: [
-                  for (final currency in RobosatsCurrency.all)
-                    if (!currency.isBitcoin) currency,
-                ],
-                selected: filter.currency,
-                label: (currency) => currency.code,
-                any: l10n.p2pBookFilterAny,
-              );
-              if (currency != null) cubit.selectCurrency(currency.value);
-            },
+            label: texts.currencies(filter),
+            semanticsLabel: texts.currenciesSemantics(filter),
+            onTap: () => FilterSheet.show<RobosatsCurrency>(
+              context,
+              title: l10n.p2pBookFilterSelectCurrency,
+              anyLabel: l10n.p2pBookFilterAnyCurrency,
+              options: [
+                for (final currency in RobosatsCurrency.all)
+                  if (!currency.isBitcoin) currency,
+              ],
+              selected: filter.currencies,
+              label: (currency) => currency.code,
+              onChanged: cubit.selectCurrencies,
+            ),
           ),
           word(l10n.p2pBookFilterPayWith),
           FilterChoice(
-            label: filter.paymentMethod ?? l10n.p2pBookFilterAny,
-            onTap: () async {
-              final method = await _pick<String>(
-                context,
-                title: l10n.p2pBookFilterSelectMethod,
-                options: [
-                  for (final method in filter.paymentMethodsIn(
-                    state.receivedOrders,
-                  ))
-                    method.name,
-                ],
-                selected: filter.paymentMethod,
-                label: (method) => method,
-                any: l10n.p2pBookFilterAny,
-              );
-              if (method != null) cubit.selectPaymentMethod(method.value);
-            },
+            label: texts.paymentMethods(filter),
+            semanticsLabel: texts.paymentMethodsSemantics(filter),
+            onTap: () => FilterSheet.show<String>(
+              context,
+              title: l10n.p2pBookFilterSelectMethod,
+              anyLabel: l10n.p2pBookFilterAnyMethod,
+              options: [
+                for (final method in filter.paymentMethodsIn(
+                  state.receivedOrders,
+                ))
+                  method.name,
+              ],
+              selected: filter.paymentMethods,
+              label: (method) => method,
+              onChanged: cubit.selectPaymentMethods,
+            ),
           ),
           word(l10n.p2pBookFilterHostedBy),
           FilterChoice(
-            label: switch (filter.host) {
-              final host? => _coordinatorName(host),
-              null => l10n.p2pBookFilterAny,
-            },
-            onTap: () async {
-              final host = await _pick<Coordinator>(
-                context,
-                title: l10n.p2pBookFilterSelectHost,
-                options: state.coordinators.keys.toList(),
-                selected: filter.host,
-                label: _coordinatorName,
-                any: l10n.p2pBookFilterAny,
-              );
-              if (host != null) cubit.selectHost(host.value);
-            },
+            label: texts.hosts(filter),
+            semanticsLabel: texts.hostsSemantics(filter),
+            onTap: () => FilterSheet.show<Coordinator>(
+              context,
+              title: l10n.p2pBookFilterSelectHost,
+              anyLabel: l10n.p2pBookFilterAnyHost,
+              options: state.coordinators.keys.toList(),
+              selected: filter.hosts,
+              label: BookFilterText.hostName,
+              leading: (host) => CoordinatorAvatar(coordinator: host, size: 32),
+              onChanged: cubit.selectHosts,
+            ),
           ),
         ],
       ),
     );
   }
-
-  static String _sideLabel(BookSide side, P2pLocalizations l10n) =>
-      switch (side) {
-        BookSide.any => l10n.p2pBookFilterAny,
-        BookSide.buy => l10n.p2pBookFilterBuy,
-        BookSide.sell => l10n.p2pBookFilterSell,
-      };
-
-  /// Opens a list of [options], with [any] first when given; completes with the choice, or `null` when the list is closed without one.
-  static Future<_Choice<T>?> _pick<T extends Object>(
-    BuildContext context, {
-    required String title,
-    required List<T> options,
-    required T? selected,
-    required String Function(T) label,
-    String? any,
-  }) => BullBottomSheet.show<_Choice<T>>(
-    context: context,
-    child: BullPickerSheet<_Choice<T>>(
-      title: title,
-      options: [
-        if (any != null) _Choice<T>(null),
-        for (final option in options) _Choice(option),
-      ],
-      isSelected: (choice) => choice.value == selected,
-      label: (choice) => switch (choice.value) {
-        final value? => label(value),
-        null => any ?? '',
-      },
-    ),
-  );
-}
-
-/// One option of a filter list, `null` standing for « ANY ».
-final class _Choice<T extends Object> {
-  final T? value;
-
-  const _Choice(this.value);
 }
 
 /// The list while no order is shown and a coordinator is still awaited: rows of grey shapes, down to the bottom of the screen, as the official client's book shows skeleton rows (the loading overlay of its data grid).
@@ -536,7 +496,7 @@ class _SkeletonRow extends StatelessWidget {
   }
 }
 
-/// No order matches: « No orders found to buy BTC for EUR », then « Be the first one to create an order ».
+/// No order matches: « No orders found to buy BTC for EUR », then « Be the first one to create an order »; several currencies chosen read « EUR, USD or CHF », and none « any currency » (#101).
 class EmptyBook extends StatelessWidget {
   final BookState state;
 
@@ -547,16 +507,13 @@ class EmptyBook extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    final code = state.filter.currency?.code ?? l10n.p2pBookFilterAny;
     return Padding(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            state.filter.side == BookSide.sell
-                ? l10n.p2pBookEmptySell(code)
-                : l10n.p2pBookEmptyBuy(code),
+            BookFilterText(l10n).emptyBook(state.filter),
             textAlign: TextAlign.center,
             style: text.bodyLarge?.copyWith(color: colors.text),
           ),

@@ -489,8 +489,14 @@ void main() {
       await settle();
       await settleAttempts();
       await capture('offres-tous');
+      // The filter sentence with nothing chosen: each selector names its subject (#101).
+      await capture('filtres-rien');
 
       final l10n = lookupP2pLocalizations(locale);
+      // The close button of the filter's sheet.
+      final close = find.byIcon(Icons.close).last;
+      String host(String alias) =>
+          Federation.robosats.byAlias(alias)?.longAlias ?? alias;
       // The depth chart of every order received, then back to the list.
       await tester.tap(find.text(l10n.p2pBookViewChart));
       await settle();
@@ -501,15 +507,56 @@ void main() {
       await settle();
 
       // « I want to Buy and use EUR », the choices of the mock-up.
-      await tester.tap(find.text(l10n.p2pBookFilterAny).first);
+      await tester.tap(find.text(l10n.p2pBookFilterAnyType));
       await settle();
       await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
       await settle();
-      await tester.tap(find.text(l10n.p2pBookFilterAny).first);
+      await tester.tap(find.text(l10n.p2pBookFilterAnyCurrency));
       await settle();
       await tester.tap(find.text('EUR').last);
       await settle();
+      await tester.tap(close);
+      await settle();
       await capture('offres');
+
+      // Several payment methods: the sheet with two checked, then the sentence that names the first and counts the other.
+      await tester.tap(find.text(l10n.p2pBookFilterAnyMethod));
+      await settle();
+      await tester.tap(find.text('Revolut').last);
+      await settle();
+      await tester.tap(find.text('Wise').last);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-feuille-plusieurs');
+      await tester.tap(close);
+      await settle();
+      await capture('filtres-paiements');
+      // « Any payment method » at the top of the sheet clears the choice.
+      await tester.tap(find.text('Revolut +1'));
+      await settle();
+      await tester.tap(find.text(l10n.p2pBookFilterAnyMethod).last);
+      await settle();
+      await tester.tap(close);
+      await settle();
+
+      // Several hosts, then back to every host, so that the chart below shows every coordinator's euro orders as before.
+      await tester.tap(find.text(l10n.p2pBookFilterAnyHost));
+      await settle();
+      await tester.tap(find.text(host('temple')).last);
+      await settle();
+      await tester.tap(find.text(host('bazaar')).last);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-feuille-hotes');
+      await tester.tap(close);
+      await settle();
+      await capture('filtres-hotes');
+      await tester.tap(find.text('${host('temple')} +1'));
+      await settle();
+      await tester.tap(find.text(l10n.p2pBookFilterAnyHost).last);
+      await settle();
+      await tester.tap(close);
+      await settle();
 
       // The depth chart under the currency of the filter: on the premium axis, with an order under the finger, then on the price axis.
       await tester.tap(find.text(l10n.p2pBookViewChart));
@@ -645,6 +692,35 @@ void main() {
       await capture('offres-petit-texte2-redemande');
       await settleAttempts();
       await capture('offres-petit-texte2-hors-ligne');
+
+      // The filter sentence on that small phone with the text twice as large: nothing chosen, then two currencies and two hosts, each selector wrapping inside its box rather than being cut.
+      tester
+          .state<ScrollableState>(
+            find.descendant(of: book, matching: find.byType(Scrollable)).first,
+          )
+          .position
+          .jumpTo(0);
+      await settle();
+      await capture('filtres-petit-texte2-rien');
+      await tester.tap(find.text(l10n.p2pBookFilterAnyCurrency));
+      await settle();
+      await tester.tap(find.text('EUR').last);
+      await settle();
+      await tester.tap(find.text('USD').last);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-petit-texte2-feuille');
+      await tester.tap(close);
+      await settle();
+      await tester.tap(find.text(l10n.p2pBookFilterAnyHost));
+      await settle();
+      await tester.tap(find.text(host('temple')).last);
+      await settle();
+      await tester.tap(find.text(host('freeport')).last);
+      await settle();
+      await tester.tap(close);
+      await settle();
+      await capture('filtres-petit-texte2-plusieurs');
       tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
   }
