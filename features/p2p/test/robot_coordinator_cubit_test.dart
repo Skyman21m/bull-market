@@ -605,6 +605,46 @@ void main() {
     });
   });
 
+  // Security review of step 6: a closed cubit (its panel gone, the Garage maybe showing another key or network) records and sends nothing, whatever is asked of it.
+  group('a closed cubit', () {
+    test('acknowledge, putOn, retry and load call no use case', () async {
+      // The key is of unknown history on testnet, drawn here on mainnet.
+      bindings = RecordingBindings(drawnHere: [(_mainnet, fingerprint)]);
+      final unknown = cubitAt(0);
+      final drawn = cubitAt(1, network: _mainnet);
+      for (final cubit in [unknown, drawn]) {
+        await cubit.load();
+      }
+      tor.embedded.ready();
+      await _settle();
+      expect(
+        (unknown.state as RobotWithoutCoordinator).needsAcknowledgement,
+        isTrue,
+      );
+      expect((drawn.state as RobotWithoutCoordinator).mayChooseHost, isTrue);
+      final shown = [unknown.state, drawn.state];
+      await unknown.close();
+      await drawn.close();
+      final calls = bindings.calls.length;
+
+      for (final cubit in [unknown, drawn]) {
+        await cubit.acknowledge();
+        await cubit.putOn(temple);
+        await cubit.retry();
+        await cubit.load();
+      }
+      await _settle();
+
+      expect(bindings.calls, hasLength(calls));
+      expect(coordinators.requests, isEmpty);
+      expect(keys.generated, isEmpty);
+      expect(identical(unknown.state, shown[0]), isTrue);
+      expect(identical(drawn.state, shown[1]), isTrue);
+      // Nor does it follow Tor again: no subscription is left behind.
+      expect(tor.embedded.controller.hasListener, isFalse);
+    });
+  });
+
   // Second security pass on step 5: a refusal of the database after a put may follow a request that left, so the state says which call failed, and the panel words it.
   group('a refusal of the database', () {
     test(

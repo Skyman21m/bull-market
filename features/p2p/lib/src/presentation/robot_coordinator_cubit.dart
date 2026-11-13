@@ -28,7 +28,7 @@ import 'robot_coordinator_state.dart';
 /// A robot that no coordinator received from this device is put on one only by [putOn], which the screen calls once the user chose a coordinator in « Select Host » and confirmed it.
 /// For a key of unknown history (pasted, or whose draw this device could not record), « Select Host » first asks the user's acknowledgement, which only [acknowledge] records, on « I understand ».
 /// A robot bound to a coordinator of its network is read back from it at once when Tor is ready, as the official client reads its robots each time it shows them; the coordinator is always the one the binding names, never one a screen gives.
-/// Closing it releases the robot ([ReleaseRobotUsecase]): its requests still waiting are dropped, one already sent ends and its answer is ignored.
+/// Closing it releases the robot ([ReleaseRobotUsecase]): its requests still waiting are dropped, one already sent ends and its answer is ignored; a closed cubit records and sends nothing more, whatever is asked of it.
 /// The rules (binding, places, retries, refusal caps, proof of the key pair, which history needs the acknowledgement) are the use cases' and the domain's: this cubit only calls them and shows what they return.
 class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   final NetworkGarageKey _key;
@@ -69,8 +69,9 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
 
   /// Follows Tor and reads where the robot stands: when the panel is shown.
   ///
-  /// It starts nothing: the book of the tab starts Tor.
+  /// It starts nothing: the book of the tab starts Tor. A closed cubit does nothing.
   Future<void> load() async {
+    if (isClosed) return;
     _torReports ??= _watchTor.execute().listen(_onTor);
     await _settle();
   }
@@ -83,6 +84,7 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   /// Only for a robot that no coordinator received from this device, whose key needs no acknowledgement, once Tor is ready, and while nothing else runs; ignored otherwise.
   /// So a robot of a key whose history the user has not acknowledged is refused here too, before any use case, whatever the screen asks.
   Future<void> putOn(Coordinator coordinator) async {
+    if (isClosed) return;
     final current = state;
     if (_working || current is! RobotWithoutCoordinator) return;
     if (!current.mayChooseHost) return;
@@ -94,7 +96,9 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   /// Only for a robot that no coordinator received from this device, whose key needs it, once Tor is ready, and while nothing else runs; ignored otherwise, so a second tap records nothing more.
   /// It holds for the key on that network: its other robots go straight to the sheet, until an import of the key makes its history unknown again.
   /// A record that fails is shown on the robot ([RobotWithoutCoordinator.acknowledgementFailure]): nothing is recorded or sent, and « Select Host » asks again.
+  /// A closed cubit records nothing: its panel is gone, and the Garage may show another key or network (security review of step 6).
   Future<void> acknowledge() async {
+    if (isClosed) return;
     final current = state;
     if (_working || current is! RobotWithoutCoordinator) return;
     if (!current.maySelectHost || !current.needsAcknowledgement) return;
@@ -118,7 +122,7 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
 
   /// « Retry » after a failure: the database read again, or the robot read back from the coordinator of its binding, or the robot put on that same coordinator again when it said it does not know the robot or refused its key as too recent (`PutRobotOnCoordinatorUsecase` reads a bound robot back first, and makes a first contact only when the coordinator does not know it).
   Future<void> retry() async {
-    if (_working) return;
+    if (isClosed || _working) return;
     switch (state) {
       // The failed first contact, if any, stays with the robot until its standing can be read.
       case RobotStandingUnreadable(:final lastAttempt):
