@@ -279,6 +279,18 @@ void main() {
           identical(next(done, const TradeOrderCancelled()), done),
           isTrue,
         );
+        // Out of the order again says nothing new: the end stays as it was.
+        final bond = await preTake();
+        final ended = next(bond, await answer(orderJson(1)));
+        expect(
+          identical(next(ended, await answer(orderJson(1))), ended),
+          isTrue,
+        );
+        final taken = next(bond, const TradeOrderNotAvailable());
+        expect(
+          identical(next(taken, const TradeOrderNotAvailable()), taken),
+          isTrue,
+        );
       },
     );
   });
@@ -407,7 +419,7 @@ void main() {
           TradePosition.expired,
         ),
         (TradeRole.buyer, TradePosition.chatting, TradePosition.notAvailable),
-        (TradeRole.buyer, TradePosition.bondStep, TradePosition.expired),
+        (TradeRole.buyer, TradePosition.routingFailed, TradePosition.chatting),
       ];
       for (final (role, from, to) in forbidden) {
         expect(
@@ -1184,7 +1196,7 @@ void main() {
           ..add(escrow);
       }
       final changes = <String, Object?>{
-        if (wire == 0 || wire == 2) ...withTaker,
+        if (wire == 0 || wire == 2 || wire == 4) ...withTaker,
         if (random.nextInt(15) == 0) 'premium': '3.00',
         if (wire == 3 && random.nextInt(8) == 0) 'bond_satoshis': bondSats + 7,
         if (wire != 1 && random.nextInt(15) == 0) 'trade_satoshis': last,
@@ -1231,8 +1243,9 @@ void main() {
       if (!invoice.facts.network.belongsTo(terms.network)) return false;
       if (now.isAfter(
         invoice.expiresAt.subtract(TradeTolerances.walletPaymentMargin),
-      ))
+      )) {
         return false;
+      }
       if (firstHash != null && firstHash != invoice.paymentHash) return false;
       final payee = invoice.facts.payeeNodeKey;
       if (payee != null && !terms.nodeKeys.contains(payee)) return false;
@@ -1240,14 +1253,16 @@ void main() {
       switch (invoice.step) {
         case InvoiceStep.bond:
           if ((amount - terms.expectedBond).abs() >
-              terms.expectedBond * 0.02 + 1)
+              terms.expectedBond * 0.02 + 1) {
             return false;
+          }
         case InvoiceStep.escrow:
           final last = order.satoshisNow?.value.toInt();
           if (last == null ||
               (last - terms.expectedSatoshis).abs() >
-                  terms.expectedSatoshis * 0.02 + 1)
+                  terms.expectedSatoshis * 0.02 + 1) {
             return false;
+          }
           if (order.tradeSatoshis?.value.toInt() != amount) return false;
           final fee = amount - last;
           if (fee < 0 || fee > last * terms.takerFee + 1) return false;
@@ -1294,8 +1309,9 @@ void main() {
                   reason: 'seed $seed: $from → ${after.position}',
                 );
               }
-              if (after.warnings.any((warning) => warning.isBreachOfTrust))
+              if (after.warnings.any((warning) => warning.isBreachOfTrust)) {
                 breached = true;
+              }
               if (breached &&
                   !identical(after, before) &&
                   after.position != TradePosition.start) {

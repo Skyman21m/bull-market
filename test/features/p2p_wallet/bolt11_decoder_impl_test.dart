@@ -61,7 +61,10 @@ void main() {
         };
         expectSameFacts(decoded, same);
         // Upper case is the same invoice (bech32 allows one case).
-        expect(decoder.decode(made.text.toUpperCase()), isA<Ok<Bolt11Invoice, Bolt11Refusal>>());
+        expect(
+          decoder.decode(made.text.toUpperCase()),
+          isA<Ok<Bolt11Invoice, Bolt11Refusal>>(),
+        );
       }
     },
   );
@@ -85,7 +88,10 @@ void main() {
     // No amount, a fraction of a sat, zero.
     expect(refusalOf(made(amountText: '').text), isA<Bolt11AmountUnusable>());
     expect(refusalOf(made(amountText: '1p').text), isA<Bolt11AmountUnusable>());
-    expect(refusalOf(made(amountText: '15n').text), isA<Bolt11AmountUnusable>());
+    expect(
+      refusalOf(made(amountText: '15n').text),
+      isA<Bolt11AmountUnusable>(),
+    );
     expect(refusalOf(made(amountText: '0n').text), isA<Bolt11AmountUnusable>());
     // An unknown prefix or amount.
     expect(refusalOf(made(prefix: 'lnxx').text), isA<Bolt11Malformed>());
@@ -102,7 +108,9 @@ void main() {
     expect(refusalOf('not an invoice'), isA<Bolt11Malformed>());
     expect(refusalOf('lnbc1'), isA<Bolt11Malformed>());
     expect(
-      refusalOf('${valid.substring(0, 20).toUpperCase()}${valid.substring(20)}'),
+      refusalOf(
+        '${valid.substring(0, 20).toUpperCase()}${valid.substring(20)}',
+      ),
       isA<Bolt11Malformed>(),
     );
   });

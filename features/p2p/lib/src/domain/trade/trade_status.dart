@@ -104,7 +104,7 @@ sealed class TradeStatus {
 
   /// The status of the trade [terms] after [answer], read at [now], when the last status was [previous] (`null` before the first answer): a pure function, with no clock, no I/O and no randomness, which [reader] decodes invoices for.
   ///
-  /// - A terminal [previous] is never left: an answer at another position returns [previous] as it is; one at the same position refreshes it.
+  /// - A terminal [previous] is never left: any answer returns [previous] as it is, but an order of the same status (5, 14, 17, 18), which refreshes it.
   /// - An answer refused as a whole leaves [previous] in place with the reason added ([TradeOrderMismatch], [TradeRoleMismatch], [TradeStatusRegressed], or [TradeStatusUnexpected] for an unlisted edge into a terminal position), or gives a [StatusNotUnderstood] when there is none.
   /// - Any other answer gives its status, with [TradeStatusUnexpected] when its edge is not one of [TradeEdges], and the warnings of the order's checks and of its invoice.
   static TradeStatus from({
@@ -117,7 +117,14 @@ sealed class TradeStatus {
     final from = previous?.position ?? TradePosition.start;
     final trail = previous?.trail ?? TradeTrail.empty;
     final to = _positionOf(answer);
-    if (previous != null && previous.isTerminal && to != from) return previous;
+    // An end is refreshed only by an order of the same status, which may say more (a summary, a transaction): being out of the order again says nothing new.
+    if (previous != null &&
+        previous.isTerminal &&
+        (to != from ||
+            answer is! TradeOrderRead ||
+            to == TradePosition.publicAgain)) {
+      return previous;
+    }
 
     final refusal = _refusalOf(answer, terms, from, to);
     if (refusal != null || to == null) {

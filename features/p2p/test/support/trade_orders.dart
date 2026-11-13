@@ -277,9 +277,8 @@ Future<CoordinatorOrder> readOrder(
   ).fetchOrder(coordinator(alias), network, identity: us, orderId: orderId);
   return switch (read) {
     Ok(:final value) => value,
-    Err(failure: CoordinatorResponseMalformed(:final field)) => throw StateError(
-      'refused: $field, status ${json['status']}',
-    ),
+    Err(failure: CoordinatorResponseMalformed(:final field)) =>
+      throw StateError('refused: $field, status ${json['status']}'),
     Err(:final failure) => throw StateError('refused: $failure'),
   };
 }
