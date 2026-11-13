@@ -2761,6 +2761,45 @@ void main() {
     }
 
     testWidgets(
+      'Select Host says « Coordinator offline » only of a coordinator the book shows offline, not of one it still awaits',
+      (tester) async {
+        await showPanel(
+          tester,
+          network: RobosatsNetwork.mainnet,
+          offline: {'gumpellite', 'lake'},
+          bookSettled: false,
+        );
+        Future<void> openHosts() async {
+          await tester.tap(find.text('Select Host'));
+          await afterRoute(tester);
+        }
+
+        Future<void> closeHosts() async {
+          await tester.tapAt(const Offset(4, 4));
+          await afterRoute(tester);
+        }
+
+        // Asked again by the book: awaited, and not said offline.
+        await openHosts();
+        expect(find.byType(SelectHostSheet), findsOneWidget);
+        expect(find.text('Coordinator offline'), findsNothing);
+        await closeHosts();
+
+        // Lake still has no answer 75 seconds after it was asked: the book shows it offline while its attempts go on, and so does the sheet.
+        bookWaits.fireAwaitedBounds();
+        await settle(tester);
+        await openHosts();
+        expect(find.text('Coordinator offline'), findsNWidgets(2));
+        await closeHosts();
+
+        // The last attempts fail: still offline.
+        await settleBook(tester);
+        await openHosts();
+        expect(find.text('Coordinator offline'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
       'Select Host: the hosts of the network in order, offline or closed, and their dialog',
       (tester) async {
         // Three first contacts LibreBazaar refused with a nickname taken, in this run.
