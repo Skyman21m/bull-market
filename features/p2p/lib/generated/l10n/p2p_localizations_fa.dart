@@ -595,6 +595,35 @@ class P2pLocalizationsFa extends P2pLocalizations {
       'Depth chart: nothing to draw on this axis.';
 
   @override
+  String get p2pMapNoLocation => 'No order with a face to face location';
+
+  @override
+  String p2pMapSummary(String buyOrders, String sellOrders) {
+    return 'Map of the face to face locations: $buyOrders and $sellOrders. These orders are in the list too.';
+  }
+
+  @override
+  String p2pMapOrdersHere(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count orders here',
+      one: '1 order here',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pMapPin(
+    String role,
+    String amount,
+    String currencyCode,
+    String coordinator,
+  ) {
+    return '$role, $amount $currencyCode, $coordinator';
+  }
+
+  @override
   String get p2pCommonContinue => 'Continue';
 
   @override
