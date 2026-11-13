@@ -734,14 +734,16 @@ class RobotCoordinatorCubit {
       if (File('lib/src/data/p2p_database.g.dart').existsSync())
         'lib/src/data/p2p_database.g.dart',
     });
-    // No SQL text of another file reads or writes the trades.
+    // No SQL text of another file reads or writes the trades, but the triggers as drift copies them.
     expect(
       where(
         (facts) => facts.strings.any(
-          (text) => RegExp(
-            r'\b(from|into|update|join)\s+"?trades\b',
-            caseSensitive: false,
-          ).hasMatch(text),
+          (text) =>
+              RegExp(
+                r'\b(from|into|update|join)\s+"?trades\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !_tradeTriggers.contains(_squeezed(text)),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},

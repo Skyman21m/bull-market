@@ -944,25 +944,21 @@ void main() {
         final key = Variable.withString(fingerprintA.hex);
         final onion = Variable.withString(temple.onion);
 
-        // 787: a foreign key; 1555: the primary key; 275: a CHECK.
-        for (final (label, values, code) in [
-          (
-            'no binding',
+        // 787: a foreign key; 275: a CHECK.
+        await expectLater(
+          insertTrade(
             "('testnet', ?, 1, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, NULL)",
-            787,
+            [key, onion],
           ),
-          (
-            'second record',
-            "('testnet', ?, 0, 'temple', ?, 6, 'buyer', 'takenHere', 0, NULL, NULL)",
-            1555,
-          ),
-        ]) {
-          await expectLater(
-            insertTrade(values, [key, onion]),
-            sqliteError(code),
-            reason: label,
-          );
-        }
+          sqliteError(787),
+        );
+        // A second record of a robot is ignored by the insert trigger before the primary key sees it: nothing is written.
+        final before = await tradeRows();
+        await insertTrade(
+          "('testnet', ?, 0, 'temple', ?, 6, 'seller', 'takenHere', 0, NULL, NULL)",
+          [key, onion],
+        );
+        expect(await tradeRows(), before);
         // Each CHECK, on a robot bound and free of records, so that only the CHECK can refuse it.
         expect(
           await bindings.bind(RobotSlot(testnet, fingerprintA, 1), temple),
