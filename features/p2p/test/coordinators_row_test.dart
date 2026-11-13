@@ -527,6 +527,48 @@ void main() {
       },
     );
 
+    testWidgets(
+      'one container node per image, with its label, and nothing of the image inside it',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(row(waiting));
+
+        final states = {
+          'lake': 'awaited',
+          'freeport': 'awaited',
+          'gumpellite': 'offline',
+        };
+        final ids = <int>{};
+        for (final coordinator in mainnet) {
+          final label =
+              '${coordinator.longAlias}, ${states[coordinator.shortAlias] ?? 'answered'}';
+          final node = tester.getSemantics(find.bySemanticsLabel(label));
+          expect(node.label, label);
+          expect(node.childrenCount, 0, reason: label);
+          expect(node.isMergedIntoParent, isFalse, reason: label);
+          ids.add(node.id);
+        }
+        expect(ids, hasLength(mainnet.length));
+        // Made so by a container node that drops what its children would say, so that a mark or a badge added to an image later neither speaks on its own nor splits the node.
+        for (final place in tester.widgetList<CoordinatorRowPlace>(
+          find.byType(CoordinatorRowPlace),
+        )) {
+          final node = tester.widget<Semantics>(
+            find
+                .descendant(
+                  of: find.byWidget(place),
+                  matching: find.byType(Semantics),
+                )
+                .first,
+          );
+          expect(node.container, isTrue);
+          expect(node.excludeSemantics, isTrue);
+          expect(node.properties.label, isNotNull);
+        }
+        semantics.dispose();
+      },
+    );
+
     testWidgets('a tap through the semantics opens the coordinator', (
       tester,
     ) async {
