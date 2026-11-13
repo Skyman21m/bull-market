@@ -371,7 +371,7 @@ final class OrderNotPublic extends CoordinatorOrderFailure {
   const OrderNotPublic();
 }
 
-/// The order given to a cancel as its last read was read from another coordinator, network or robot: nothing was sent.
+/// The order given to a cancel as its last read was read by another robot: nothing was sent.
 final class OrderReadElsewhere extends CoordinatorOrderFailure {
   const OrderReadElsewhere();
 }

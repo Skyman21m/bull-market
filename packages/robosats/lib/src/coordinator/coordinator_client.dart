@@ -293,7 +293,7 @@ final class CoordinatorClient {
   /// Without the guard, a cancel that lands after the taker's bond locked settles that bond (`api/logics.py:1108-1130`); with it, it is refused.
   /// The coordinator compares the status it stores, and a pre-take shown as [CoordinatorOrderStatus.waitingForTakerBond] is stored as [CoordinatorOrderStatus.public]: that is what is sent then.
   /// The body is `{"action":"cancel","cancel_status":N}`: the reference client's, plus a guard its taker never sends (`frontend/src/components/TradeBox/index.tsx:245-254`), a deviation.
-  /// An order read from another coordinator, network or robot is refused with [OrderReadElsewhere], and nothing is sent.
+  /// The coordinator and the network are those of [lastRead]; an order read by another robot is refused with [OrderReadElsewhere], and nothing is sent.
   ///
   /// The answer is [OrderCancelEnded] when the order is over, and otherwise [OrderCancelAccepted] with the order as it then is; a failure is an [OrderActionRefused] when nothing was done, and an [OrderActionOutcomeUnknown] when the cancel may have happened.
   ///
