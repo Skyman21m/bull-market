@@ -705,11 +705,12 @@ void main() {
 
     /// The schema 3 objects of [database] as SQLite stores them, by name: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
     Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
-      for (final row in await database
-          .customSelect(
-            "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network')",
-          )
-          .get())
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network')",
+              )
+              .get())
         row.read<String>('name'): row
             .read<String>('sql')
             .replaceAll('"', '')
@@ -745,9 +746,12 @@ void main() {
         addTearDown(() => freshDirectory.delete(recursive: true));
         final fresh = P2pDatabase.open(() async => freshDirectory);
         final statements = {
-          for (final row in await fresh
-              .customSelect('SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL')
-              .get())
+          for (final row
+              in await fresh
+                  .customSelect(
+                    'SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL',
+                  )
+                  .get())
             row.read<String>('name'): row.read<String>('sql'),
         };
         await fresh.close();
