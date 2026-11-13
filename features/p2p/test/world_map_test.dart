@@ -124,7 +124,7 @@ void main() {
 
   group('the script', () {
     // It needs python3 only, no source: each of these is refused before anything is read or written.
-    final python = Process.runSync('python3', ['--version']).exitCode == 0;
+    final python = _hasPython();
     for (final (name, arguments, message) in [
       (
         'a path that does not exist',
@@ -244,4 +244,13 @@ void main() {
       );
     });
   });
+}
+
+/// Whether `python3` can be run here: a machine without it skips the script's tests rather than failing the file.
+bool _hasPython() {
+  try {
+    return Process.runSync('python3', ['--version']).exitCode == 0;
+  } on ProcessException {
+    return false;
+  }
 }

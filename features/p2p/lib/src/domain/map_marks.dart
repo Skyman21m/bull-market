@@ -99,7 +99,7 @@ final class MapGroup extends MapMark {
   int get count => pins.length;
 }
 
-/// The marks of every zoom level for the orders of the book that have a position, built once for a book and a filter.
+/// The marks of every zoom level for the orders of the book that have a position, built once for a book.
 ///
 /// The orders are grouped as the official client's `MarkerClusterGroup` groups them (`components/Map/index.tsx`, Leaflet.markercluster): marks closer than [radius] points at a level become one group, from level 0 to [lastGroupedLevel], and from zoom 14 every order has its own pin.
 /// The groups are built level by level from the deepest one, each level grouping the marks of the level below it, so that a group of one level is whole at every level above it, as Leaflet.markercluster's tree is; a mark takes every mark within [radius] of it that no earlier mark took, in the order of the orders given, where Leaflet.markercluster adds each marker to the nearest group in reach, so a pin between two groups can end in the other one.
