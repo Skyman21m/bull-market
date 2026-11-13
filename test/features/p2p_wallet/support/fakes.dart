@@ -19,12 +19,13 @@ import 'package:p2p/testing.dart' show checkedBolt11InvoiceForTesting;
 final testNow = DateTime.utc(2026, 11, 13, 12);
 
 /// An obviously fake invoice string of [amount] sats on [network], never a real invoice: the port's type checks its shape and amount, not its checksum nor its signature (`n` is a tenth of a satoshi).
-String fakeBolt11(RobosatsNetwork network, {int amount = 600}) =>
-    switch (network) {
-      RobosatsNetwork.mainnet => 'lnbc',
-      RobosatsNetwork.testnet => 'lntb',
-    } +
-    '${amount * 10}n1${'q' * 60}';
+String fakeBolt11(RobosatsNetwork network, {int amount = 600}) {
+  final prefix = switch (network) {
+    RobosatsNetwork.mainnet => 'lnbc',
+    RobosatsNetwork.testnet => 'lntb',
+  };
+  return '$prefix${amount * 10}n1${'q' * 60}';
+}
 
 /// A checked invoice of [amount] sats on [network], expiring [expiresIn] after [testNow].
 CheckedBolt11Invoice testInvoice({

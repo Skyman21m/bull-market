@@ -189,17 +189,20 @@ void main() {
       },
     );
 
-    test('says the wallet needs at least the amount, and more than it has', () async {
-      liquid.buildError = InsufficientFundsException('short');
-      expect(
-        refusalOf(
-          await repository.estimateNetworkFee(wallet, Sats.fromInt(20000)),
-        ),
-        isA<P2pWalletNotEnoughBalance>()
-            .having((r) => r.available, 'available', Sats.fromInt(10000))
-            .having((r) => r.needed, 'needed', Sats.fromInt(20000)),
-      );
-    });
+    test(
+      'says the wallet needs at least the amount, and more than it has',
+      () async {
+        liquid.buildError = InsufficientFundsException('short');
+        expect(
+          refusalOf(
+            await repository.estimateNetworkFee(wallet, Sats.fromInt(20000)),
+          ),
+          isA<P2pWalletNotEnoughBalance>()
+              .having((r) => r.available, 'available', Sats.fromInt(10000))
+              .having((r) => r.needed, 'needed', Sats.fromInt(20000)),
+        );
+      },
+    );
 
     test('maps the wallet\'s exceptions to refusals', () async {
       for (final (error, matcher) in [

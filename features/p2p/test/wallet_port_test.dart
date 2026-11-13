@@ -69,7 +69,14 @@ void main() {
     test('has only bech32 characters after its separator', () {
       expect(invoiceOf('lnbc6u1qpzry9x8gf2tvdw0s3jn54khce6mua7l'), isNotNull);
       // The reviewer's probe P3: visible ASCII outside the alphabet.
-      for (final data in ['bio!~qq', 'qqbqq', 'qqiqq', 'qqoqq', 'qq-qq', 'qq_q']) {
+      for (final data in [
+        'bio!~qq',
+        'qqbqq',
+        'qqiqq',
+        'qqoqq',
+        'qq-qq',
+        'qq_q',
+      ]) {
         expect(invoiceOf('lnbc6u1$data'), isNull, reason: data);
       }
     });

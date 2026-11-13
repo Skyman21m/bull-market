@@ -57,9 +57,7 @@ class InstantWalletRepositoryImpl implements InstantWalletRepository {
   }
 
   @override
-  Stream<Result<InstantWallet, P2pWalletRefusal>> watchSyncs(
-    String walletId,
-  ) =>
+  Stream<Result<InstantWallet, P2pWalletRefusal>> watchSyncs(String walletId) =>
       // Plain operators, not an `async*` body: a cancellation must reach the wallet's stream at once.
       _watchSyncs
           .execute(walletId: walletId)

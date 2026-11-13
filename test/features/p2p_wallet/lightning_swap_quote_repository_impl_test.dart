@@ -73,7 +73,10 @@ void main() {
     }
     // The rate the service lists is not the port's to check: the fee is the payin less the amount.
     for (final basisPoints in [0, -1, 1 << 40]) {
-      swaps.answer = FakeSwapFacade.quoteOf(payin: 600, basisPoints: basisPoints);
+      swaps.answer = FakeSwapFacade.quoteOf(
+        payin: 600,
+        basisPoints: basisPoints,
+      );
       expect(
         await ask(),
         isA<Ok<LightningSwapQuote, P2pWalletRefusal>>(),

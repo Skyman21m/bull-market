@@ -41,12 +41,14 @@ void main() {
     expect(
       used.difference(_shellVocabulary),
       isEmpty,
-      reason: 'not allowed: ${(used.difference(_shellVocabulary).toList()..sort()).join(', ')}',
+      reason:
+          'not allowed: ${(used.difference(_shellVocabulary).toList()..sort()).join(', ')}',
     );
     expect(
       _shellVocabulary.difference(used),
       isEmpty,
-      reason: 'allowed but unused: ${(_shellVocabulary.difference(used).toList()..sort()).join(', ')}',
+      reason:
+          'allowed but unused: ${(_shellVocabulary.difference(used).toList()..sort()).join(', ')}',
     );
   });
 
@@ -163,7 +165,11 @@ Future<void> leak(String pset) async {
         ('call', 'void f() => repository.signPset(pset: p);', 'signPset'),
         ('tear-off', 'final f = repository.signPset;', 'signPset'),
         ('cascade', 'void f() { repository..signPset(pset: p); }', 'signPset'),
-        ('property', 'final f = facade.isAppUpdateRequired;', 'isAppUpdateRequired'),
+        (
+          'property',
+          'final f = facade.isAppUpdateRequired;',
+          'isAppUpdateRequired',
+        ),
         ('static', 'final f = Broadcast.now;', 'now'),
         ('constructor', 'final f = SyncWalletUsecase(r);', 'SyncWalletUsecase'),
         ('const constructor', 'const f = SomeUsecase();', 'SomeUsecase'),
@@ -236,7 +242,141 @@ const _shellImports = {
 };
 
 /// Every member, constructor and type the feature's code names, its own included.
-const _shellVocabulary = <String>{};
+const _shellVocabulary = {
+  // Dart's own types and `dart:async`, and `GetIt` of the locator.
+  'BigInt',
+  'bool',
+  'DateTime',
+  'Duration',
+  'Future',
+  'GetIt',
+  'List',
+  'Object',
+  'Stream',
+  'StreamController',
+  'StreamSubscription',
+  'String',
+  'unawaited',
+  'void',
+  // The port's contract and its value types (`package:p2p`).
+  'CheckedBolt11Invoice',
+  'Err',
+  'Ok',
+  'P2pWalletFacade',
+  'P2pWalletInvoiceExpired',
+  'P2pWalletNeedsConsolidation',
+  'P2pWalletNoInstantWallet',
+  'P2pWalletNotEnoughBalance',
+  'P2pWalletOutsideServiceLimits',
+  'P2pWalletOverMaximum',
+  'P2pWalletPort',
+  'P2pWalletQuote',
+  'P2pWalletRefusal',
+  'P2pWalletServiceBusy',
+  'P2pWalletServiceRefused',
+  'P2pWalletServiceUnreachable',
+  'P2pWalletUnavailable',
+  'P2pWalletUnderMinimum',
+  'P2pWalletWrongNetwork',
+  'Result',
+  'RobosatsNetwork',
+  'Sats',
+  // Of the Swap feature's facade: its quote, the networks of a route, the amounts of a quote, and every failure it returns (mapped one by one).
+  'getQuote',
+  'inAmountSat',
+  'lightning',
+  'liquid',
+  'outAmountSat',
+  'SwapAmountOutOfBoundsFailure',
+  'SwapCreationUnknownFailure',
+  'SwapFacade',
+  'SwapFailure',
+  'SwapInvalidStateFailure',
+  'SwapNetworkFailure',
+  'SwapNoPaymentOptionFailure',
+  'SwapOrderExpiredFailure',
+  'SwapOrderMismatchFailure',
+  'SwapOrderNotFoundFailure',
+  'SwapPriceUnavailableFailure',
+  'SwapProviderFailure',
+  'SwapRateLimitedFailure',
+  'SwapStorageFailure',
+  'SwapTimeoutFailure',
+  'SwapUnexpectedFailure',
+  'SwapValidationFailure',
+  // Of the wallet's readers: the default Liquid wallet and its fields, the address at an index, the build and fee read of an unsigned transaction at a fee rate, and the exceptions and failures they give. `execute` is below, with the members.
+  'address',
+  'balanceSat',
+  'buildPset',
+  'ConsolidationRequiredException',
+  'GetAddressAtIndexUsecase',
+  'getPsetSizeAndAbsoluteFees',
+  'GetWalletsUsecase',
+  'id',
+  'InsufficientFundsException',
+  'isDefault',
+  'isHardwareWallet',
+  'isLiquid',
+  'isTestnet',
+  'LiquidWalletRepository',
+  'NoSpendableUtxoException',
+  'NoWalletsFoundFailure',
+  'RelativeFee',
+  'signsLocally',
+  'Wallet',
+  'WalletFailure',
+  'WatchFinishedWalletSyncsUsecase',
+  // The feature's own classes.
+  'InstantWallet',
+  'InstantWalletRepository',
+  'InstantWalletRepositoryImpl',
+  'LightningSwapQuote',
+  'LightningSwapQuoteRepository',
+  'LightningSwapQuoteRepositoryImpl',
+  'QuoteInvoicePaymentUsecase',
+  'WatchInstantBalanceUsecase',
+  // Members: the feature's own (`read`, `watchSyncs`, `estimateNetworkFee`, `quote`, `refusalFor`…), the readers' `execute`, the locator's registrations, and those of Dart's numbers, collections, streams and dates.
+  '_instant',
+  '_now',
+  '_sats',
+  '_short',
+  '_wait',
+  'add',
+  'amount',
+  'balance',
+  'cancel',
+  'cast',
+  'close',
+  'estimateNetworkFee',
+  'execute',
+  'firstOrNull',
+  'from',
+  'fromInt',
+  'isExpiredAt',
+  'isNegative',
+  'listen',
+  'locator',
+  'mainnet',
+  'map',
+  'network',
+  'now',
+  'one',
+  'payin',
+  'quote',
+  'read',
+  'refusalFor',
+  'refusalOf',
+  'refuse',
+  'registerFactory',
+  'registerLazySingleton',
+  'start',
+  'stream',
+  'testnet',
+  'toInt',
+  'value',
+  'watchSyncs',
+  'where',
+};
 
 CompilationUnit _parse(String source) =>
     parseString(content: source, throwIfDiagnostics: false).unit;
@@ -280,7 +420,8 @@ final class _Vocabulary extends RecursiveAstVisitor<void> {
   void visitMethodInvocation(MethodInvocation node) {
     names.add(node.methodName.name);
     // Unresolved, `Foo(...)` reads as a call of `Foo`.
-    if (node.target == null && node.methodName.name.startsWith(RegExp('[A-Z]'))) {
+    if (node.target == null &&
+        node.methodName.name.startsWith(RegExp('[A-Z]'))) {
       built.add(node.methodName.name);
     }
     super.visitMethodInvocation(node);

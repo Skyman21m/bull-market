@@ -218,19 +218,22 @@ void main() {
       await subscription.cancel();
     });
 
-    test('stops following the syncs when cancelled during the first read', () async {
-      final read = Completer<Result<InstantWallet, P2pWalletRefusal>>();
-      wallets.pendingRead = read;
-      final subscription = WatchInstantBalanceUsecase(
-        wallets,
-      ).execute(RobosatsNetwork.mainnet).listen((_) {});
-      await pumpEventQueue();
-      await subscription.cancel();
-      read.complete(Ok(_wallet()));
-      await pumpEventQueue();
-      expect(wallets.watched, isEmpty);
-      expect(wallets.syncs.hasListener, isFalse);
-    });
+    test(
+      'stops following the syncs when cancelled during the first read',
+      () async {
+        final read = Completer<Result<InstantWallet, P2pWalletRefusal>>();
+        wallets.pendingRead = read;
+        final subscription = WatchInstantBalanceUsecase(
+          wallets,
+        ).execute(RobosatsNetwork.mainnet).listen((_) {});
+        await pumpEventQueue();
+        await subscription.cancel();
+        read.complete(Ok(_wallet()));
+        await pumpEventQueue();
+        expect(wallets.watched, isEmpty);
+        expect(wallets.syncs.hasListener, isFalse);
+      },
+    );
 
     test('ends when the wallet\'s syncs end', () async {
       final done = Completer<void>();

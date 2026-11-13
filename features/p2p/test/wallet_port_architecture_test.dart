@@ -60,13 +60,16 @@ void main() {
   });
 
   group('who builds a checked invoice:', () {
-    test('the files that may call CheckedBolt11Invoice.of are these two, written out', () {
-      // The pull request that brings the BOLT11 check of the trade screen (#86) adds its one file here.
-      expect(_invoiceBuilders, {
-        'lib/src/domain/checked_bolt11_invoice.dart',
-        'lib/testing.dart',
-      });
-    });
+    test(
+      'the files that may call CheckedBolt11Invoice.of are these two, written out',
+      () {
+        // The pull request that brings the BOLT11 check of the trade screen (#86) adds its one file here.
+        expect(_invoiceBuilders, {
+          'lib/src/domain/checked_bolt11_invoice.dart',
+          'lib/testing.dart',
+        });
+      },
+    );
 
     test('only they call it', () {
       expect(_invoiceOffences(sources), isEmpty);
@@ -84,14 +87,14 @@ void main() {
           'import prefix',
           "final i = p2p.CheckedBolt11Invoice.of(bolt11: s, amount: a, network: n, expiresAt: e, now: t);",
         ),
+        ('prefixed tear-off', 'final f = p2p.CheckedBolt11Invoice.of;'),
         ('alias', 'typedef Invoice = CheckedBolt11Invoice;'),
-        ('alias of a function type', 'typedef Make = CheckedBolt11Invoice? Function();'),
+        (
+          'alias of a function type',
+          'typedef Make = CheckedBolt11Invoice? Function();',
+        ),
       ]) {
-        expect(
-          _invoiceOffences({cubit: source}),
-          isNotEmpty,
-          reason: label,
-        );
+        expect(_invoiceOffences({cubit: source}), isNotEmpty, reason: label);
       }
       // A trade use case is no exception: the check builds the invoice, the use cases receive it.
       expect(
