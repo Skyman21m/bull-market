@@ -18,7 +18,7 @@ import 'p2p_database.dart';
 /// A pending take needs the [TradeReservation] that only [reserveForNewTrade] gives, when it wrote the robot's binding.
 /// The primary key of `trades` (key fingerprint, robot index) refuses a second record of a robot, its foreign key a record of a robot without a binding on the record's network, and the triggers of `trades.drift` any change but the two times set once and any delete, whatever the code that writes.
 /// The only SQL that changes a row is [_confirmSql] and [_closeSql], on `trades`; nothing deletes a row, and nothing changes a binding (`robot_bindings_architecture_test.dart`).
-/// No write runs inside a transaction: each throws a [StateError] there, since a rollback would undo it after it answered success.
+/// No write may run inside a transaction, since a rollback would undo it after it answered success: nothing in the feature opens one (`robot_bindings_architecture_test.dart`).
 /// It returns no row of the database: the domain types only, and a [P2pStorageFailure] for any [Exception] the database or the directory the shell gave throws, and for a row this code never writes.
 /// An [Error] is a bug (AGENTS.md, rule 11) and is not caught.
 final class TradeRecordRepositoryImpl implements TradeRecordRepository {
@@ -172,7 +172,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     RobotSlot robot,
     CoordinatorIdentity coordinator,
   ) async {
-    _refuseInsideTransaction();
     if (coordinator.network != robot.network) {
       return const Err(RobotNotForNewTradeFailure());
     }
@@ -216,7 +215,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     required int orderId,
     required TradeRole role,
   }) async {
-    _refuseInsideTransaction();
     final robot = reservation.robot;
     final coordinator = reservation.coordinator;
     // The robot and the coordinator name one network, which the binding must have too.
@@ -256,7 +254,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     required int orderId,
     required TradeRole role,
   }) async {
-    _refuseInsideTransaction();
     if (coordinator.network != robot.network) {
       return const Err(RobotBoundToAnotherCoordinatorFailure());
     }
@@ -346,7 +343,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     String sql,
     TradeRecord record,
   ) async {
-    _refuseInsideTransaction();
     final fingerprint = record.robot.keyFingerprint.hex;
     try {
       await _database.customUpdate(
@@ -448,15 +444,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           readsFrom: {_database.trades, _database.robotBindings},
         )
         .getSingle();
-  }
-
-  /// Throws a [StateError] when called inside a transaction of the database: a write that answered success there could be rolled back afterwards, after its robot left for the coordinator (AGENTS.md, rule 11: a bug, not a failure).
-  ///
-  /// drift runs the statements of a `transaction(…)` block on another engine than the database itself.
-  void _refuseInsideTransaction() {
-    if (!identical(_database.resolvedEngine, _database)) {
-      throw StateError('The trade records are never written inside a transaction.');
-    }
   }
 
   /// The indexes of [joined], numbers joined with commas, or `null` for a text that is not.

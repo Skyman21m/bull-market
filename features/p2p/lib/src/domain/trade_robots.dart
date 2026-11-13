@@ -10,7 +10,7 @@ import 'trade_record.dart';
 ///
 /// `InterimTradeRobots` implements it until the robot layer of #79 and #81 lands.
 ///
-/// Never call it inside a database transaction: a robot reserved there is unbound again if the transaction rolls back, after it may have been sent to the coordinator, and could then go to a second one (`TradeRecordRepository` throws a `StateError` there).
+/// Never call it inside a database transaction: a robot reserved there is unbound again if the transaction rolls back, after it may have been sent to the coordinator, and could then go to a second one; nothing in the feature opens a transaction (`robot_bindings_architecture_test.dart`).
 /// `findTradesOfKey(NetworkGarageKey)`, which finds the trades a key's robots hold by reading them back from coordinators, is not declared yet: it needs the participant's order of #84 and the search of #79, and an implementation that could not read would have to lie or fail on every call.
 abstract interface class TradeRobots {
   /// A robot of the Garage Key of [network] that never had a trade and was never bound to a coordinator, of a key drawn on this device and never imported or acknowledged on any network, bound to [coordinator] before it is returned, by one statement that also reserves it: two calls at once never get the same robot, and a robot returned once is never returned again.

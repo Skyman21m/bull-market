@@ -851,13 +851,12 @@ class RobotCoordinatorCubit {
     // The database's own rules on the trades, as written in `trades.drift`: the parent key of their foreign key, and the triggers that refuse a delete and any change but the two times set once.
     expect(
       _drifted(File('lib/src/data/trades.drift').readAsStringSync()),
-      _tradeRules,
+      '${_tradeRules.join(';')};',
     );
   });
 
   test('nothing in the feature opens a database transaction', () {
     // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
-    // The repository of the trade records also refuses to run inside one, at run time.
     expect(
       where(
         (facts) =>
@@ -1673,29 +1672,35 @@ List<String> _publicSurface(ClassDeclaration declaration) => [
     },
 ];
 
-/// [text] with every run of white space made one space and trimmed, so that a statement compares the same however drift lays it out.
-String _squeezed(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+/// [text] without its white space, so that a statement compares the same however drift lays it out (drift writes `RAISE (ABORT, …);END` for `RAISE(ABORT, …); END`).
+String _squeezed(String text) => text.replaceAll(RegExp(r'\s+'), '');
 
-/// The statements of a `.drift` file, comments and the import left out, each squeezed.
-List<String> _drifted(String source) => [
-  for (final statement in source
+/// The statements of a `.drift` file, comments and the import left out, squeezed and joined, each ended by `;`.
+String _drifted(String source) => _squeezed(
+  source
       .split('\n')
-      .where((line) => !line.trimLeft().startsWith('--'))
-      .join('\n')
-      .split(RegExp(r';\s*(?=\n|$)')))
-    if (_squeezed(statement) case final squeezed
-        when squeezed.isNotEmpty && !squeezed.startsWith('import '))
-      squeezed,
-];
+      .where((line) {
+        final trimmed = line.trimLeft();
+        return !trimmed.startsWith('--') && !trimmed.startsWith('import ');
+      })
+      .join('\n'),
+);
 
 /// The two triggers of the trades, as `trades.drift` writes them.
-const _tradeTriggers = {
+final _tradeTriggers = {
+  for (final trigger in _tradeTriggersAsWritten) _squeezed(trigger),
+};
+
+/// The two triggers, as `trades.drift` writes them.
+const _tradeTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
-};
+];
 
 /// The statements of `trades.drift`, in order.
 final _tradeRules = [
-  'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  _squeezed(
+    'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  ),
   ..._tradeTriggers,
 ];

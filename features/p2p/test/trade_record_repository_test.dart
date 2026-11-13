@@ -1122,52 +1122,6 @@ void main() {
     );
   });
 
-  group('never inside a transaction (review of #102, R1)', () {
-    test(
-      'each write throws, so that the transaction rolls back with nothing reported as done',
-      () async {
-        final reservation = await reserved(0);
-        final record = await pendingTake(reservation);
-        final robot = RobotSlot(testnet, fingerprintA, 1);
-        for (final (label, write) in <(String, Future<Object?> Function())>[
-          ('reserve', () => trades.reserveForNewTrade(robot, temple)),
-          (
-            'pending take',
-            () => trades.recordPendingTake(
-              reservation,
-              orderId: 9,
-              role: TradeRole.buyer,
-            ),
-          ),
-          (
-            'recovered trade',
-            () => trades.recordRecoveredTrade(
-              robot,
-              temple,
-              orderId: 9,
-              role: TradeRole.buyer,
-            ),
-          ),
-          ('confirm', () => trades.confirmTake(record)),
-          ('close', () => trades.closeTrade(record)),
-        ]) {
-          await expectLater(
-            database.transaction(write),
-            throwsStateError,
-            reason: label,
-          );
-        }
-        // Nothing of it stayed: robot 1 is still free, and the record still pending.
-        expect(
-          await trades.reserveForNewTrade(robot, lake),
-          reservedIs(true),
-        );
-        expect(valueOf(await trades.closeTrade(record)).closedAt, isNotNull);
-        expect((await tradeRows()).single.confirmedAt, isNull);
-      },
-    );
-  });
-
   group('the review of #102', () {
     test(
       'a robot the Garage bound gets no reservation, so no pending take (R2)',

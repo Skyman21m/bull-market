@@ -190,26 +190,13 @@ final class Schema3 extends i0.VersionedSchema {
   Schema3({required super.database}) : super(version: 3);
   @override
   late final List<i1.DatabaseSchemaEntity> entities = [
-    garageKeyHistories,
     robotBindings,
+    robotBindingsNetwork,
     trades,
+    tradesNeverDeleted,
+    tradesSetOnce,
+    garageKeyHistories,
   ];
-  late final Shape0 garageKeyHistories = Shape0(
-    source: i0.VersionedTable(
-      entityName: 'garage_key_histories',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: [
-        'PRIMARY KEY(network, key_fingerprint)',
-        'CHECK(network IN (\'mainnet\', \'testnet\'))',
-        'CHECK(length(key_fingerprint) = 64)',
-        'CHECK(origin IN (\'generated\', \'imported\', \'acknowledged\'))',
-      ],
-      columns: [_column_0, _column_1, _column_2, _column_3],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
   late final Shape1 robotBindings = Shape1(
     source: i0.VersionedTable(
       entityName: 'robot_bindings',
@@ -239,6 +226,10 @@ final class Schema3 extends i0.VersionedSchema {
     ),
     alias: null,
   );
+  final i1.Index robotBindingsNetwork = i1.Index(
+    'robot_bindings_network',
+    'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  );
   late final Shape2 trades = Shape2(
     source: i0.VersionedTable(
       entityName: 'trades',
@@ -247,7 +238,7 @@ final class Schema3 extends i0.VersionedSchema {
       tableConstraints: [
         'PRIMARY KEY(key_fingerprint, robot_index)',
         'CHECK(network IN (\'mainnet\', \'testnet\'))',
-        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
         'CHECK(robot_index BETWEEN 0 AND 2147483647)',
         'CHECK(length(coordinator_alias) > 0)',
         'CHECK(length(coordinator_onion) > 0)',
@@ -255,10 +246,10 @@ final class Schema3 extends i0.VersionedSchema {
         'CHECK(role IN (\'buyer\', \'seller\'))',
         'CHECK(origin IN (\'takenHere\', \'recovered\'))',
         'CHECK(origin = \'takenHere\' OR confirmed_at IS NOT NULL)',
-        'CHECK(payment_hash IS NULL OR(length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\'))',
-        'CHECK((payment_hash IS NULL)=(payment_started_at IS NULL))',
-        'CHECK(payment_swap_id IS NULL OR(payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128))',
-        'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES robot_bindings(key_fingerprint, robot_index)',
+        'CHECK(taken_at >= 0)',
+        'CHECK(confirmed_at IS NULL OR confirmed_at >= 0)',
+        'CHECK(closed_at IS NULL OR closed_at >= 0)',
+        'FOREIGN KEY(key_fingerprint, robot_index, network)REFERENCES robot_bindings(key_fingerprint, robot_index, network)',
       ],
       columns: [
         _column_0,
@@ -272,10 +263,31 @@ final class Schema3 extends i0.VersionedSchema {
         _column_13,
         _column_14,
         _column_15,
-        _column_16,
-        _column_17,
-        _column_18,
       ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradesNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE (ABORT, \'a trade record is kept\');END',
+    'trades_never_deleted',
+  );
+  final i1.Trigger tradesSetOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR(OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE (ABORT, \'a trade record only gains its times\');END',
+    'trades_set_once',
+  );
+  late final Shape0 garageKeyHistories = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'garage_key_histories',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(network, key_fingerprint)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(origin IN (\'generated\', \'imported\', \'acknowledged\'))',
+      ],
+      columns: [_column_0, _column_1, _column_2, _column_3],
       attachedDatabase: database,
     ),
     alias: null,
@@ -306,12 +318,6 @@ class Shape2 extends i0.VersionedTable {
       columnsByName['confirmed_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get closedAt =>
       columnsByName['closed_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get paymentHash =>
-      columnsByName['payment_hash']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get paymentStartedAt =>
-      columnsByName['payment_started_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get paymentSwapId =>
-      columnsByName['payment_swap_id']! as i1.GeneratedColumn<String>;
 }
 
 i1.GeneratedColumn<int> _column_11(String aliasedName) =>
@@ -352,30 +358,6 @@ i1.GeneratedColumn<int> _column_15(String aliasedName) =>
       aliasedName,
       true,
       type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<String> _column_16(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'payment_hash',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_17(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'payment_started_at',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<String> _column_18(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'payment_swap_id',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
 i0.MigrationStepWithVersion migrationSteps({

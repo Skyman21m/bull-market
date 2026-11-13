@@ -684,9 +684,9 @@ void main() {
             templeTestnet,
           ),
           isA<Ok<TradeReservation?, P2pFailure>>().having(
-            (ok) => ok.value,
-            'reservation',
-            isNull,
+            (ok) => ok.value == null,
+            'no reservation',
+            isTrue,
           ),
         );
       }

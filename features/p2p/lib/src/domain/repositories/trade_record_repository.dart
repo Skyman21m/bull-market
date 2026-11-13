@@ -15,7 +15,7 @@ import '../trade_record.dart';
 /// It holds no secret: networks, key fingerprints, robot indexes, coordinators, order ids, sides, origins and times.
 ///
 /// Never call it inside a database transaction (`transaction(…)`): a reservation, a record or a change that answered success there is undone if the transaction rolls back, after its robot may have been sent to the coordinator, and a robot whose binding was undone could go to a second coordinator.
-/// Each method is one statement that commits on its own; `robot_bindings_architecture_test.dart` pins that nothing in the feature opens a transaction.
+/// Each method is one statement that commits on its own; `robot_bindings_architecture_test.dart` pins that nothing in the feature opens a transaction (drift gives no public way to tell, at run time, that a call runs inside one).
 abstract interface class TradeRecordRepository {
   /// What a new trade on [network] may use of the key of [key]: whether the key's history lets its robots start a trade, and its robot indexes already bound, on either network, or recorded with a trade.
   ///
