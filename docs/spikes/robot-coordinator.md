@@ -206,7 +206,7 @@ So this is a loss of funds for a robot that trades on one coordinator and was al
 
 **What this client cannot fix by itself.** A coordinator cannot tell a replayed bearer from the robot. Troc could apply the reverted scheme on its own, but the hash id and the nickname come from the token hash: a robot made so would be a different robot on each coordinator, and no longer the one the official client derives from the same Garage Key index. That is a product decision, not taken here.
 
-**The rule, to enforce before any robot goes to more than one coordinator and before any order: one robot index is bound to one coordinator.** The coordinator is recorded at the first contact of that index, and every later request for that robot is checked against it in code, not left to the screens. A robot that has no other coordinator has given its bearer to nobody who could replay it. The record needs storage, so the rule comes with the second half of #28, which wrote it: the feature's own database `p2p.sqlite` and the check in `FetchRobotUsecase` (AGENTS.md, « One robot, one coordinator »); still no screen and no app-facing method reaches the robot calls, so nothing in the app makes a first contact yet. The cost is that Troc does not offer what the official client does, one robot visible on the whole federation: an order on another coordinator takes the next index.
+**The rule, to enforce before any robot goes to more than one coordinator and before any order: one robot index is bound to one coordinator.** The coordinator is recorded at the first contact of that index, and every later request for that robot is checked against it in code, not left to the screens. A robot that has no other coordinator has given its bearer to nobody who could replay it. The record needs storage, so the rule comes with the second half of #28, which wrote it: the feature's own database `p2p.sqlite` and the check in `FetchRobotUsecase` (AGENTS.md, « One robot, one coordinator »); no app-facing method reaches the robot calls, and since #75 the only screen that does is the robot panel of the Garage, which makes a first contact only for the coordinator the user chose and confirmed. The cost is that Troc does not offer what the official client does, one robot visible on the whole federation: an order on another coordinator takes the next index.
 
 ## Also found in the public RoboSats history
 
@@ -219,7 +219,7 @@ So this is a loss of funds for a robot that trades on one coordinator and was al
 - A new robot only: no order, no invoice, no chat, no reward, so the signature and chat paths of [pgp.md](pgp.md) are still unverified against a coordinator.
 - Errors 7000, 7002 and 7004 were not provoked on a live coordinator; their handling is tested offline from the coordinator's source.
 - `found: true` was seen in runs 2 to 6, on robots five minutes old; nothing older was read.
-- Nothing in the code restricts an authenticated call to testnet: only the live test does. The use case inside the feature would create a robot on a mainnet coordinator if a screen asked; nothing outside the feature can reach it.
+- Nothing in the code restricts an authenticated call to testnet: only the live test does. Since #75 the robot panel of the Garage asks the use case inside the feature on either network, mainnet included (owner's decision of 2026-11-12: creating and reading a robot moves no money); nothing outside the feature can reach it.
 
 ## Taking the key pair back from a coordinator (#29)
 
