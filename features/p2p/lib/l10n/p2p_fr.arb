@@ -250,5 +250,6 @@
   "p2pRobotNostrOld": "{coordinator} détient une ancienne clé Nostr de ce robot, qu’il peut calculer : ses notifications ne sont pas privées. Préférez un autre robot pour échanger.",
   "p2pRobotNostrUnknown": "{coordinator} détient une clé Nostr que cette application ne peut pas utiliser : les notifications concernant ce robot ne lui parviendront pas.",
   "p2pRobotKeyComputeFailed": "Ce téléphone n’a pas pu créer ou vérifier les clés de ce robot. Vérifiez sa date et son heure, puis réessayez.",
-  "p2pRobotBoundElsewhere": "Ce robot vit chez un autre coordinateur. Rien n’a été envoyé."
+  "p2pRobotBoundElsewhere": "Ce robot vit chez un autre coordinateur. Rien n’a été envoyé.",
+  "p2pRobotRecordsUnreadable": "Troc n’a pas pu lire ses enregistrements sur cet appareil."
 }

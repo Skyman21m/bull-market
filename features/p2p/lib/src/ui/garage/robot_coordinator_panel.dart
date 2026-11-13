@@ -73,13 +73,38 @@ class RobotCoordinatorPanel extends StatelessWidget {
           BlocBuilder<RobotCoordinatorCubit, RobotCoordinatorState>(
             builder: (context, state) => switch (state) {
               RobotStandingReading() => const _Progress(),
-              RobotStandingUnreadable(:final failure) => _Failure(
-                message: switch (failure) {
-                  P2pStorageFailure() => l10n.p2pRobotStorage,
-                  _ => failure.toTranslated(context),
+              RobotStandingUnreadable(:final failure, :final lastAttempt) =>
+                switch (lastAttempt) {
+                  // No request was made, or the one that failed was refused by the database itself before anything left: nothing was sent.
+                  null ||
+                  RobotAttempt(
+                    problem: RobotRequestRefused(failure: P2pStorageFailure()),
+                  ) => _Failure(
+                    message: switch (failure) {
+                      P2pStorageFailure() => l10n.p2pRobotStorage,
+                      _ => failure.toTranslated(context),
+                    },
+                    onRetry: context.read<RobotCoordinatorCubit>().retry,
+                  ),
+                  // A first contact may have left: what it got, then that the records cannot be read, never that nothing was sent.
+                  final attempt => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Line(
+                        attempt.problem.toRobotText(
+                          context,
+                          coordinator: _nameOf(attempt.coordinator),
+                        ),
+                        color: context.bull.error,
+                      ),
+                      const Gap(BullSpacing.xs),
+                      _Failure(
+                        message: l10n.p2pRobotRecordsUnreadable,
+                        onRetry: context.read<RobotCoordinatorCubit>().retry,
+                      ),
+                    ],
+                  ),
                 },
-                onRetry: context.read<RobotCoordinatorCubit>().retry,
-              ),
               final RobotWithoutCoordinator state => _WithoutCoordinator(
                 state: state,
                 onSelectHost: () => _selectHost(context),

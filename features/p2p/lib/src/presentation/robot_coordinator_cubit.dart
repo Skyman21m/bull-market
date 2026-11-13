@@ -88,8 +88,9 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
   Future<void> retry() async {
     if (_working) return;
     switch (state) {
-      case RobotStandingUnreadable():
-        await _settle();
+      // The failed first contact, if any, stays with the robot until its standing can be read.
+      case RobotStandingUnreadable(:final lastAttempt):
+        await _settle(attempt: lastAttempt);
       case RobotOnCoordinator(
         :final coordinator,
         activity: RobotFailed(:final problem),
@@ -142,7 +143,9 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
         case Ok(:final value):
           standing = value;
         case Err(:final failure):
-          if (!isClosed) emit(RobotStandingUnreadable(failure));
+          if (!isClosed) {
+            emit(RobotStandingUnreadable(failure, lastAttempt: attempt));
+          }
           return;
       }
       if (isClosed) return;

@@ -1655,6 +1655,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This robot lives on another coordinator. Nothing was sent.'**
   String get p2pRobotBoundElsewhere;
+
+  /// Under the text of a first contact that failed, when the feature's database cannot be read right after it: the request may have left, so, unlike p2pRobotStorage, it does not say that nothing was sent. Not in the RoboSats texts (security review of step 5 of #29). With « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'Troc could not read its records on this device.'**
+  String get p2pRobotRecordsUnreadable;
 }
 
 class _P2pLocalizationsDelegate

@@ -40,7 +40,10 @@ final class RobotStandingReading extends RobotCoordinatorState {
 final class RobotStandingUnreadable extends RobotCoordinatorState {
   final P2pFailure failure;
 
-  const RobotStandingUnreadable(this.failure);
+  /// The first contact that failed just before this read, when one did: its request may have left, so the panel says what it got and does not say that nothing was sent (security review of step 5).
+  final RobotAttempt? lastAttempt;
+
+  const RobotStandingUnreadable(this.failure, {this.lastAttempt});
 }
 
 /// No coordinator received the robot from this device: « Select Host » may put it on one, on the user's request.

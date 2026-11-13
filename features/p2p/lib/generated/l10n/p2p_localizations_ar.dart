@@ -914,4 +914,8 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String get p2pRobotBoundElsewhere =>
       'This robot lives on another coordinator. Nothing was sent.';
+
+  @override
+  String get p2pRobotRecordsUnreadable =>
+      'Troc could not read its records on this device.';
 }

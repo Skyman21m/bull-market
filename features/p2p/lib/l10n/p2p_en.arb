@@ -1249,5 +1249,9 @@
   "p2pRobotBoundElsewhere": "This robot lives on another coordinator. Nothing was sent.",
   "@p2pRobotBoundElsewhere": {
     "description": "A request refused because the robot is bound to another coordinator. Not in the RoboSats texts, nor in the design note of #29: the panel never offers it, and shows where the robot lives instead."
+  },
+  "p2pRobotRecordsUnreadable": "Troc could not read its records on this device.",
+  "@p2pRobotRecordsUnreadable": {
+    "description": "Under the text of a first contact that failed, when the feature's database cannot be read right after it: the request may have left, so, unlike p2pRobotStorage, it does not say that nothing was sent. Not in the RoboSats texts (security review of step 5 of #29). With « Retry »."
   }
 }
