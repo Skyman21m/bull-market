@@ -1080,13 +1080,13 @@ abstract class P2pLocalizations {
   /// **'BTC'**
   String get p2pChartBtc;
 
-  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window.
+  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window, and of the « − » button of the map, which zooms out one level (the title of Leaflet's zoom control, in English only in the official client).
   ///
   /// In en, this message translates to:
   /// **'Zoom out'**
   String get p2pChartZoomOut;
 
-  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window.
+  /// Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window, and of the « + » button of the map, which zooms in one level (the title of Leaflet's zoom control, in English only in the official client).
   ///
   /// In en, this message translates to:
   /// **'Zoom in'**
@@ -1098,13 +1098,13 @@ abstract class P2pLocalizations {
   /// **'{price} {currencyCode}'**
   String p2pChartCenterPrice(String price, String currencyCode);
 
-  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who buy that the chart shows.
+  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart and of the map, the number of orders of makers who buy that the chart, or the map, shows.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 buy order} other{{count} buy orders}}'**
   String p2pChartBuyOrders(int count);
 
-  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who sell that the chart shows.
+  /// Not in the RoboSats texts: part of the screen-reader summary of the depth chart and of the map, the number of orders of makers who sell that the chart, or the map, shows.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 sell order} other{{count} sell orders}}'**
@@ -1121,6 +1121,35 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Depth chart: nothing to draw on this axis.'**
   String get p2pChartSummaryNoAxis;
+
+  /// Not in the RoboSats texts, whose map then shows no pin and says nothing: written over the map, and said by a screen reader, when no order it would show has a location. « Face to Face Location » is RoboSats' name for the position a maker sets (« Emplacement face à face »).
+  ///
+  /// In en, this message translates to:
+  /// **'No order with a face to face location'**
+  String get p2pMapNoLocation;
+
+  /// Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders: every order of the book received that has a location, whatever the filter of the list, as the map shows them.
+  ///
+  /// In en, this message translates to:
+  /// **'Map of the face to face locations of the order book: {buyOrders} and {sellOrders}.'**
+  String p2pMapSummary(String buyOrders, String sellOrders);
+
+  /// Not in the RoboSats texts, whose groups show their count only: what a screen reader says of a group of pins on the map, and the title of the list of its orders, which a tap on a group that zooming cannot part opens.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 order here} other{{count} orders here}}'**
+  String p2pMapOrdersHere(int count);
+
+  /// Not in the RoboSats texts: what a screen reader says of the pin of an order on the map. {role} is p2pBookRoleSeller or p2pBookRoleBuyer, {amount} the amount or range of the order written in the conventions of the language, {currencyCode} its currency code, {coordinator} the name of its coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'{role}, {amount} {currencyCode}, {coordinator}'**
+  String p2pMapPin(
+    String role,
+    String amount,
+    String currencyCode,
+    String coordinator,
+  );
 
   /// Button that moves on to the next step of the Garage wizard.
   ///

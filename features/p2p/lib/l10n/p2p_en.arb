@@ -774,11 +774,11 @@
   },
   "p2pChartZoomOut": "Zoom out",
   "@p2pChartZoomOut": {
-    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window."
+    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « − » button of the depth chart, which widens its window, and of the « − » button of the map, which zooms out one level (the title of Leaflet's zoom control, in English only in the official client)."
   },
   "p2pChartZoomIn": "Zoom in",
   "@p2pChartZoomIn": {
-    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window."
+    "description": "Not in the RoboSats texts, whose button is an icon only: tooltip and screen-reader label of the « + » button of the depth chart, which narrows its window, and of the « + » button of the map, which zooms in one level (the title of Leaflet's zoom control, in English only in the official client)."
   },
   "p2pChartCenterPrice": "{price} {currencyCode}",
   "@p2pChartCenterPrice": {
@@ -794,7 +794,7 @@
   },
   "p2pChartBuyOrders": "{count, plural, =1{1 buy order} other{{count} buy orders}}",
   "@p2pChartBuyOrders": {
-    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who buy that the chart shows.",
+    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart and of the map, the number of orders of makers who buy that the chart, or the map, shows.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -803,7 +803,7 @@
   },
   "p2pChartSellOrders": "{count, plural, =1{1 sell order} other{{count} sell orders}}",
   "@p2pChartSellOrders": {
-    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart, the number of orders of makers who sell that the chart shows.",
+    "description": "Not in the RoboSats texts: part of the screen-reader summary of the depth chart and of the map, the number of orders of makers who sell that the chart, or the map, shows.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -828,6 +828,49 @@
   "p2pChartSummaryNoAxis": "Depth chart: nothing to draw on this axis.",
   "@p2pChartSummaryNoAxis": {
     "description": "Not in the RoboSats texts: what a screen reader says of the depth chart when its axis cannot be drawn, such as the price axis when no order gives a market price in its currency."
+  },
+  "p2pMapNoLocation": "No order with a face to face location",
+  "@p2pMapNoLocation": {
+    "description": "Not in the RoboSats texts, whose map then shows no pin and says nothing: written over the map, and said by a screen reader, when no order it would show has a location. « Face to Face Location » is RoboSats' name for the position a maker sets (« Emplacement face à face »)."
+  },
+  "p2pMapSummary": "Map of the face to face locations of the order book: {buyOrders} and {sellOrders}.",
+  "@p2pMapSummary": {
+    "description": "Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders: every order of the book received that has a location, whatever the filter of the list, as the map shows them.",
+    "placeholders": {
+      "buyOrders": {
+        "type": "String"
+      },
+      "sellOrders": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMapOrdersHere": "{count, plural, =1{1 order here} other{{count} orders here}}",
+  "@p2pMapOrdersHere": {
+    "description": "Not in the RoboSats texts, whose groups show their count only: what a screen reader says of a group of pins on the map, and the title of the list of its orders, which a tap on a group that zooming cannot part opens.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pMapPin": "{role}, {amount} {currencyCode}, {coordinator}",
+  "@p2pMapPin": {
+    "description": "Not in the RoboSats texts: what a screen reader says of the pin of an order on the map. {role} is p2pBookRoleSeller or p2pBookRoleBuyer, {amount} the amount or range of the order written in the conventions of the language, {currencyCode} its currency code, {coordinator} the name of its coordinator.",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
   },
   "p2pCommonContinue": "Continue",
   "@p2pCommonContinue": {

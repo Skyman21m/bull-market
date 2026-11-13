@@ -299,7 +299,7 @@ class _DepthChartViewState extends State<DepthChartView> {
                   Positioned.fill(
                     child: IgnorePointer(
                       child: CustomSingleChildLayout(
-                        delegate: _TooltipPosition(layout.offsetOf(point)),
+                        delegate: OrderTooltipPosition(layout.offsetOf(point)),
                         child: OrderTooltip(order: order),
                       ),
                     ),
@@ -745,11 +745,11 @@ class OrderTooltip extends StatelessWidget {
   }
 }
 
-/// Puts the tooltip beside the point it shows, above it when there is room, and always inside the chart.
-final class _TooltipPosition extends SingleChildLayoutDelegate {
+/// Puts the tooltip beside the point it shows, above it when there is room, and always inside the chart or the map.
+final class OrderTooltipPosition extends SingleChildLayoutDelegate {
   final Offset anchor;
 
-  const _TooltipPosition(this.anchor);
+  const OrderTooltipPosition(this.anchor);
 
   static const _offset = 12.0;
 
@@ -772,5 +772,5 @@ final class _TooltipPosition extends SingleChildLayoutDelegate {
   }
 
   @override
-  bool shouldRelayout(_TooltipPosition old) => old.anchor != anchor;
+  bool shouldRelayout(OrderTooltipPosition old) => old.anchor != anchor;
 }
