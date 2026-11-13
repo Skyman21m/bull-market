@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -26,7 +28,7 @@ import 'send_robot_dialog.dart';
 /// In Troc a robot lives on one coordinator only, so the panel shows one: none yet, with « Select Host », the user's choice and never a requirement; or the coordinator of its binding, read back as soon as Tor is ready.
 /// A robot reaches a coordinator from here only through « Select Host », the choice and « Continue » on the confirmation; for a key of unknown history, « Select Host » first asks « Robots from elsewhere » ([RobotHistoryDialog]), once per key and network, which the reference has no need of since it sends every robot everywhere.
 /// The orders are plain text: Troc has no page for them yet.
-class RobotCoordinatorPanel extends StatelessWidget {
+class RobotCoordinatorPanel extends StatefulWidget {
   /// The nickname of the robot shown, for the confirmation.
   final String nickname;
 
@@ -43,6 +45,20 @@ class RobotCoordinatorPanel extends StatelessWidget {
     required this.network,
     required this.coordinatorDetails,
   });
+
+  @override
+  State<RobotCoordinatorPanel> createState() => _RobotCoordinatorPanelState();
+}
+
+class _RobotCoordinatorPanelState extends State<RobotCoordinatorPanel> {
+  /// Completes when this panel is gone (another robot, another key or network, the Garage left): the dialogs and the sheet it opened close with it ([ClosesWithPanel]).
+  final _gone = Completer<void>();
+
+  @override
+  void dispose() {
+    _gone.complete();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +129,7 @@ class RobotCoordinatorPanel extends StatelessWidget {
                 },
               final RobotWithoutCoordinator state => _WithoutCoordinator(
                 state: state,
-                onSelectHost: () => _selectHost(context),
+                onSelectHost: _selectHost,
               ),
               RobotOnCoordinator(:final coordinator, :final activity) =>
                 _OnCoordinator(coordinator: coordinator, activity: activity),
@@ -132,12 +148,16 @@ class RobotCoordinatorPanel extends StatelessWidget {
   }
 
   /// « Select Host »: for a key of unknown history, « Robots from elsewhere » first, recorded only on « I understand »; then the sheet, the confirmation, and the first contact: nothing leaves before « Continue ».
-  Future<void> _selectHost(BuildContext context) async {
+  /// What it opens closes when the panel goes away, and nothing more is done then: a closed cubit records and sends nothing either.
+  Future<void> _selectHost() async {
     final cubit = context.read<RobotCoordinatorCubit>();
     if (cubit.state case RobotWithoutCoordinator(needsAcknowledgement: true)) {
-      if (!await RobotHistoryDialog.show(context) || !context.mounted) return;
+      if (!await RobotHistoryDialog.show(context, closeWhen: _gone.future) ||
+          !mounted) {
+        return;
+      }
       await cubit.acknowledge();
-      if (!context.mounted) return;
+      if (!mounted) return;
     }
     // The sheet only for a robot that may be given a coordinator now: not when the acknowledgement could not be recorded.
     final mayChooseHost = switch (cubit.state) {
@@ -149,16 +169,18 @@ class RobotCoordinatorPanel extends StatelessWidget {
       context,
       hosts: cubit.hosts(),
       offline: _offline(context.read<BookCubit>().state),
-      network: network,
-      coordinatorDetails: coordinatorDetails,
+      network: widget.network,
+      coordinatorDetails: widget.coordinatorDetails,
+      closeWhen: _gone.future,
     );
-    if (coordinator == null || !context.mounted) return;
+    if (coordinator == null || !mounted) return;
     final confirmed = await SendRobotDialog.show(
       context,
-      nickname: nickname,
+      nickname: widget.nickname,
       coordinator: coordinator,
+      closeWhen: _gone.future,
     );
-    if (!confirmed || !context.mounted) return;
+    if (!confirmed || !mounted) return;
     await cubit.putOn(coordinator);
   }
 

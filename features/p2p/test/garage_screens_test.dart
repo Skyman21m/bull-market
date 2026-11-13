@@ -2544,6 +2544,86 @@ void main() {
       },
     );
 
+    // Security review of step 6: what the panel opened closes with it when the Garage changes under it, and nothing is recorded or sent.
+    for (final opened in [
+      '« Robots from elsewhere »',
+      '« Select Host »',
+      'the confirmation',
+    ]) {
+      for (final change in [
+        'the network',
+        'the next robot',
+        'the key deleted',
+      ]) {
+        testWidgets(
+          '$change while $opened is open: it closes, and nothing is recorded or sent',
+          (tester) async {
+            keystoreHolding({_testnetEntry: null, _mainnetEntry: null});
+            await openGarage(tester);
+            tor.add(P2pTorState.ready);
+            await letTheVaultSettle(tester);
+            final fingerprint = switch (GarageKeyFingerprint.of(fixedKey)) {
+              Ok(:final value) => value,
+              Err() => throw StateError('no fingerprint'),
+            };
+            Future<GarageKeyHistory> testnetHistory() async =>
+                switch (await locator<RobotBindingRepository>().exposureOf(
+                  RobosatsNetwork.testnet,
+                  fingerprint,
+                )) {
+                  Ok(:final value) => value.history,
+                  Err() => throw StateError('unreadable'),
+                };
+            await tester.ensureVisible(find.text('Select Host'));
+            await settle(tester);
+            await tester.tap(find.text('Select Host'));
+            await afterRoute(tester);
+            expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            if (opened != '« Robots from elsewhere »') {
+              await tester.ensureVisible(find.text('I understand'));
+              await settle(tester);
+              await tester.tap(find.text('I understand'));
+              await afterRoute(tester);
+              expect(find.byType(SelectHostSheet), findsOneWidget);
+            }
+            if (opened == 'the confirmation') {
+              await tester.tap(find.text('Temple of Sats'));
+              await afterRoute(tester);
+              expect(find.byType(SendRobotDialog), findsOneWidget);
+            }
+            final history = await testnetHistory();
+            expect(
+              history,
+              opened == '« Robots from elsewhere »'
+                  ? GarageKeyHistory.unknown
+                  : GarageKeyHistory.acknowledged,
+            );
+
+            final garage = tester
+                .element(find.byType(GarageView))
+                .read<GarageCubit>();
+            switch (change) {
+              case 'the network':
+                network.switchTo(RobosatsNetwork.mainnet);
+              case 'the next robot':
+                garage.next();
+              default:
+                unawaited(garage.delete(reauthenticate: () async => true));
+            }
+            await settle(tester);
+            await letTheVaultSettle(tester);
+
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(SelectHostSheet), findsNothing);
+            expect(find.byType(SendRobotDialog), findsNothing);
+            expect(find.byType(GarageView), findsOneWidget);
+            expect(await testnetHistory(), history);
+            expect(robotRequestsMade(), isFalse);
+          },
+        );
+      }
+    }
+
     testWidgets(
       'a key drawn here: Select Host once Tor is ready, then the sheet and the confirmation, and Cancel sends nothing',
       (tester) async {

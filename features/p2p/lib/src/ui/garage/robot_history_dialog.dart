@@ -2,6 +2,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import 'closes_with_panel.dart';
 
 /// « Robots from elsewhere »: what « Select Host » asks first for a robot of a Garage Key of unknown history, pasted in or whose draw this device could not record, once per key and network.
 ///
@@ -12,10 +13,18 @@ class RobotHistoryDialog extends StatelessWidget {
   const RobotHistoryDialog({super.key});
 
   /// Opens the dialog; completes with `true` only when the user pressed « I understand ».
-  static Future<bool> show(BuildContext context) async =>
+  ///
+  /// It closes, as dismissed, when [closeWhen] completes: when the panel that opened it is gone.
+  static Future<bool> show(
+    BuildContext context, {
+    required Future<void> closeWhen,
+  }) async =>
       await BullDialog.show<bool>(
         context: context,
-        builder: (_) => const RobotHistoryDialog(),
+        builder: (_) => ClosesWithPanel(
+          until: closeWhen,
+          child: const RobotHistoryDialog(),
+        ),
       ) ??
       false;
 

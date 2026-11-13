@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../presentation/coordinator_text.dart';
+import 'closes_with_panel.dart';
 
 /// « Send {nickname} to {coordinator}? »: the confirmation before a robot's first contact, the only way a robot reaches a coordinator from the Garage.
 ///
@@ -21,15 +22,20 @@ class SendRobotDialog extends StatelessWidget {
   });
 
   /// Opens the dialog; completes with `true` only when the user pressed « Continue ».
+  ///
+  /// It closes, as dismissed, when [closeWhen] completes: when the panel that opened it is gone (security review of step 6).
   static Future<bool> show(
     BuildContext context, {
     required String nickname,
     required Coordinator coordinator,
+    required Future<void> closeWhen,
   }) async =>
       await BullDialog.show<bool>(
         context: context,
-        builder: (_) =>
-            SendRobotDialog(nickname: nickname, coordinator: coordinator),
+        builder: (_) => ClosesWithPanel(
+          until: closeWhen,
+          child: SendRobotDialog(nickname: nickname, coordinator: coordinator),
+        ),
       ) ??
       false;
 

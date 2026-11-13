@@ -8,6 +8,7 @@ import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../coordinator_details_dialog.dart';
 import '../widgets/coordinator_avatar.dart';
+import 'closes_with_panel.dart';
 
 /// « Select Host »: the coordinators a robot may be put on, with the label of the official client's coordinator choice (`components/BookTable/BookControl.tsx` and `components/MakerForm/SelectCoordinator.tsx` at commit ff1998c), as a sheet of the wallet's design.
 ///
@@ -33,6 +34,8 @@ class SelectHostSheet extends StatelessWidget {
   });
 
   /// Opens the sheet; completes with the coordinator chosen, or `null` when it is closed without a choice.
+  ///
+  /// It closes, without a choice, when [closeWhen] completes: when the panel that opened it is gone (security review of step 6).
   static Future<Coordinator?> show(
     BuildContext context, {
     required List<RobotHost> hosts,
@@ -40,13 +43,17 @@ class SelectHostSheet extends StatelessWidget {
     required RobosatsNetwork network,
     required CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
     coordinatorDetails,
+    required Future<void> closeWhen,
   }) => BullBottomSheet.show<Coordinator>(
     context: context,
-    child: SelectHostSheet(
-      hosts: hosts,
-      offline: offline,
-      network: network,
-      coordinatorDetails: coordinatorDetails,
+    child: ClosesWithPanel(
+      until: closeWhen,
+      child: SelectHostSheet(
+        hosts: hosts,
+        offline: offline,
+        network: network,
+        coordinatorDetails: coordinatorDetails,
+      ),
     ),
   );
 
