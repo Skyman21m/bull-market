@@ -8,6 +8,11 @@ abstract final class PgpLimits {
   /// Packets in a key block: a robot key has 5.
   static const keyPackets = 32;
 
+  /// Signature packets in a key block: a robot key has 2, the certification of its user ID and the binding of its subkey.
+  ///
+  /// Reading a key verifies its self-signatures with Ed25519, a few milliseconds each, on the isolate that reads it: a block of a coordinator's answer with more is refused before any is verified, so that one parse verifies at most this many.
+  static const keySignatures = 8;
+
   /// Characters of a cleartext signed message: a coordinator accepts at most 15 000 (`api/serializers.py:638-659`).
   static const cleartextChars = 20000;
 

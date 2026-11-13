@@ -77,6 +77,12 @@ NetworkRobot _robotAt(int index, RobosatsNetwork network) =>
 RobotIdentity _identityAt(int index) =>
     _robotAt(index, RobosatsNetwork.testnet).identity;
 
+/// A first contact of [robot] when [firstContact], else a read back.
+RobotContact _contact(NetworkRobot robot, {required bool firstContact}) =>
+    firstContact
+    ? RobotContact.firstContact(robot)
+    : RobotContact.readBack(robot);
+
 void main() {
   const network = RobosatsNetwork.testnet;
   final temple = coordinator('temple');
@@ -131,15 +137,11 @@ void main() {
     });
 
     Future<Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>
-    execute({
-      required bool createIfUnknown,
-      Coordinator? to,
-      NetworkRobot? as,
-    }) => usecase.execute(
-      to ?? temple,
-      as ?? networkRobot,
-      createIfUnknown: createIfUnknown,
-    );
+    execute({required bool firstContact, Coordinator? to, NetworkRobot? as}) =>
+        usecase.execute(
+          to ?? temple,
+          _contact(as ?? networkRobot, firstContact: firstContact),
+        );
 
     /// The answer of the coordinator, once the binding let the request leave.
     Result<CoordinatorRobot, CoordinatorFailure> answered(
@@ -156,7 +158,7 @@ void main() {
     test(
       'makes a first contact, with the Nostr key of the official client',
       () async {
-        final result = answered(await execute(createIfUnknown: true));
+        final result = answered(await execute(firstContact: true));
 
         expect(
           result,
@@ -199,7 +201,7 @@ void main() {
         'bad_request': 'On the first request…',
       });
 
-      final result = answered(await execute(createIfUnknown: false));
+      final result = answered(await execute(firstContact: false));
 
       expect(
         result,
@@ -219,10 +221,8 @@ void main() {
       final mainnetRobot = _robotAt(0, RobosatsNetwork.mainnet);
       expect(mainnetRobot.identity, identity);
 
-      for (final createIfUnknown in [true, false]) {
-        answered(
-          await execute(createIfUnknown: createIfUnknown, as: mainnetRobot),
-        );
+      for (final firstContact in [true, false]) {
+        answered(await execute(firstContact: firstContact, as: mainnetRobot));
       }
 
       expect(transport.requests.map((request) => request.url.host), [
@@ -238,7 +238,7 @@ void main() {
     test(
       'reads a known robot without creating it, with nothing held: its pair is proven',
       () async {
-        final result = answered(await execute(createIfUnknown: false));
+        final result = answered(await execute(firstContact: false));
 
         final robot = switch (result) {
           Ok(:final value) => value,
@@ -264,7 +264,7 @@ void main() {
           keys,
         );
 
-        final result = answered(await execute(createIfUnknown: true));
+        final result = answered(await execute(firstContact: true));
 
         expect(keys.generated, [identity]);
         expect(keys.proved, hasLength(1));
@@ -287,15 +287,15 @@ void main() {
           'encrypted_private_key': otherRobotPgpKey.encryptedPrivateKeyArmored,
         });
 
-        for (final createIfUnknown in [true, false]) {
+        for (final firstContact in [true, false]) {
           expect(
-            answered(await execute(createIfUnknown: createIfUnknown)),
+            answered(await execute(firstContact: firstContact)),
             isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
               (err) => err.failure,
               'failure',
               isA<RobotPgpKeyNotProven>(),
             ),
-            reason: 'createIfUnknown: $createIfUnknown',
+            reason: 'firstContact: $firstContact',
           );
         }
         expect(keys.proved, hasLength(2));
@@ -310,9 +310,9 @@ void main() {
         'nickname': other.nickname,
       });
 
-      for (final createIfUnknown in [true, false]) {
+      for (final firstContact in [true, false]) {
         expect(
-          answered(await execute(createIfUnknown: createIfUnknown)),
+          answered(await execute(firstContact: firstContact)),
           isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
             (err) => err.failure,
             'failure',
@@ -342,13 +342,49 @@ void main() {
           transport.onSend = () async => order.add('send');
 
           answered(
-            await ordered.execute(temple, networkRobot, createIfUnknown: true),
+            await ordered.execute(
+              temple,
+              RobotContact.firstContact(networkRobot),
+            ),
           );
           answered(
-            await ordered.execute(temple, networkRobot, createIfUnknown: false),
+            await ordered.execute(temple, RobotContact.readBack(networkRobot)),
           );
 
           expect(order, ['bind', 'generate', 'send', 'bind', 'send']);
+        },
+      );
+
+      test(
+        'a first contact makes its pair once, and sends it at each of its requests',
+        () async {
+          final contact = RobotContact.firstContact(networkRobot);
+
+          answered(await usecase.execute(temple, contact));
+          final robot = switch (answered(
+            await usecase.execute(temple, contact),
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+
+          expect(keys.generated, [identity]);
+          expect(transport.requests, hasLength(2));
+          expect(
+            transport.requests
+                .map((request) => request.headers['Authorization'])
+                .toSet(),
+            hasLength(1),
+          );
+          expect(contact.sentThePairOf(robot), isTrue);
+          // A new contact is a new request of the user: it makes a pair of its own.
+          answered(
+            await usecase.execute(
+              temple,
+              RobotContact.firstContact(networkRobot),
+            ),
+          );
+          expect(keys.generated, [identity, identity]);
         },
       );
 
@@ -359,12 +395,11 @@ void main() {
           keys,
         );
 
-        for (final createIfUnknown in [true, false]) {
+        for (final firstContact in [true, false]) {
           expect(
             await refusing.execute(
               temple,
-              networkRobot,
-              createIfUnknown: createIfUnknown,
+              _contact(networkRobot, firstContact: firstContact),
             ),
             refusedWith<RobotHistoryUnknownFailure>(),
           );
@@ -380,12 +415,12 @@ void main() {
           keys.generateFailure = const RobotKeyComputeFailure();
 
           expect(
-            await execute(createIfUnknown: true),
+            await execute(firstContact: true),
             refusedWith<RobotKeyComputeFailure>(),
           );
           expect(transport.requests, isEmpty);
           expect(
-            await execute(createIfUnknown: true, to: coordinator('lake')),
+            await execute(firstContact: true, to: coordinator('lake')),
             refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
           );
         },
@@ -397,7 +432,7 @@ void main() {
           keys.proveFailure = const RobotKeyComputeFailure();
 
           expect(
-            await execute(createIfUnknown: false),
+            await execute(firstContact: false),
             refusedWith<RobotKeyComputeFailure>(),
           );
           expect(transport.requests, hasLength(1));
@@ -412,7 +447,7 @@ void main() {
       test(
         'the binding is on disk before the request leaves, and for every kind of request',
         () async {
-          for (final (index, createIfUnknown) in [(0, true), (1, false)]) {
+          for (final (index, firstContact) in [(0, true), (1, false)]) {
             final robot = _robotAt(index, network);
             transport.onSend = () async {
               // A second coordinator is refused from inside the first request: the binding is already written.
@@ -429,7 +464,7 @@ void main() {
                 ),
               );
             };
-            await execute(createIfUnknown: createIfUnknown, as: robot);
+            await execute(firstContact: firstContact, as: robot);
           }
 
           expect(transport.requests, hasLength(2));
@@ -439,21 +474,21 @@ void main() {
       test(
         'a robot bound to a coordinator never reaches another one',
         () async {
-          answered(await execute(createIfUnknown: true));
+          answered(await execute(firstContact: true));
           transport.requests.clear();
 
-          for (final createIfUnknown in [true, false]) {
+          for (final firstContact in [true, false]) {
             expect(
-              await execute(createIfUnknown: createIfUnknown, to: lake),
+              await execute(firstContact: firstContact, to: lake),
               refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
             );
           }
           expect(transport.requests, isEmpty);
           // Its coordinator still gets it, and the next robot is free.
-          answered(await execute(createIfUnknown: false));
+          answered(await execute(firstContact: false));
           answered(
             await execute(
-              createIfUnknown: true,
+              firstContact: true,
               to: lake,
               as: _robotAt(1, network),
             ),
@@ -469,8 +504,8 @@ void main() {
         'two first contacts at once to two coordinators: one request leaves',
         () async {
           final results = await Future.wait([
-            execute(createIfUnknown: true),
-            execute(createIfUnknown: true, to: lake),
+            execute(firstContact: true),
+            execute(firstContact: true, to: lake),
           ]);
 
           expect(transport.requests, hasLength(1));
@@ -491,12 +526,11 @@ void main() {
             keys,
           );
 
-          for (final createIfUnknown in [true, false]) {
+          for (final firstContact in [true, false]) {
             expect(
               await refusing.execute(
                 temple,
-                networkRobot,
-                createIfUnknown: createIfUnknown,
+                _contact(networkRobot, firstContact: firstContact),
               ),
               refusedWith<RobotHistoryUnknownFailure>(),
             );
@@ -520,7 +554,7 @@ void main() {
           );
 
           await expectLater(
-            broken.execute(temple, networkRobot, createIfUnknown: true),
+            broken.execute(temple, RobotContact.firstContact(networkRobot)),
             throwsA(isA<StateError>()),
           );
           expect(transport.requests, isEmpty);
@@ -536,7 +570,10 @@ void main() {
         );
 
         expect(
-          await failing.execute(temple, networkRobot, createIfUnknown: true),
+          await failing.execute(
+            temple,
+            RobotContact.firstContact(networkRobot),
+          ),
           refusedWith<P2pStorageFailure>(),
         );
         expect(transport.requests, isEmpty);
@@ -554,8 +591,7 @@ void main() {
 
           final result = await checked.execute(
             coordinator('bazaar'),
-            networkRobot,
-            createIfUnknown: true,
+            RobotContact.firstContact(networkRobot),
           );
 
           expect(
@@ -580,7 +616,7 @@ void main() {
           });
 
           expect(
-            answered(await execute(createIfUnknown: true)),
+            answered(await execute(firstContact: true)),
             isA<Err<CoordinatorRobot, CoordinatorFailure>>().having(
               (err) => err.failure,
               'failure',
@@ -590,7 +626,7 @@ void main() {
           final sent = transport.requests.length;
 
           expect(
-            await execute(createIfUnknown: true, to: lake),
+            await execute(firstContact: true, to: lake),
             refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
           );
           expect(transport.requests, hasLength(sent));
@@ -601,11 +637,11 @@ void main() {
         transport.failure = const CoordinatorUnreachable();
 
         expect(
-          answered(await execute(createIfUnknown: true)),
+          answered(await execute(firstContact: true)),
           isA<Err<CoordinatorRobot, CoordinatorFailure>>(),
         );
         expect(
-          await execute(createIfUnknown: true, to: lake),
+          await execute(firstContact: true, to: lake),
           refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
         );
       });

@@ -45,6 +45,13 @@ void main() {
           'lib/src/domain/usecases/derive_first_robot_usecase.dart',
           'lib/src/domain/usecases/read_robot_standing_usecase.dart',
           'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart',
+          // The robot requests: they hold a robot, its token included, and the key pair of a first contact.
+          'lib/src/domain/robot_request_limiter.dart',
+          'lib/src/domain/robot_on_coordinator_face.dart',
+          'lib/src/domain/usecases/fetch_robot_usecase.dart',
+          'lib/src/domain/usecases/put_robot_on_coordinator_usecase.dart',
+          'lib/src/domain/usecases/read_robot_on_coordinator_usecase.dart',
+          'lib/src/domain/usecases/release_robot_usecase.dart',
         ]),
       );
     });

@@ -104,3 +104,33 @@ final class RobotKeyComputeFailure extends P2pFailure {
 final class RobotHistoryUnknownFailure extends P2pFailure {
   const RobotHistoryUnknownFailure();
 }
+
+/// This robot was sent to no coordinator from this device, so there is none to read it back from: nothing was sent.
+///
+/// Its coordinator is the one its binding names, never one a screen chooses; a robot without a binding can only be put on a coordinator, on the user's request.
+final class RobotNotBoundFailure extends P2pFailure {
+  const RobotNotBoundFailure();
+}
+
+/// The robot requests to this coordinator found the transport busy too often: after several attempts with growing waits, or so many times lately that its requests now fail at once until that passes.
+///
+/// Nothing was sent on the attempt that got the last busy answer, and none is made while the coordinator is in that state; the robot stays bound as it was.
+/// It is a sign about that coordinator, which may hold or drop the connections of its robots: try again in a moment.
+final class RobotCoordinatorBusyFailure extends P2pFailure {
+  const RobotCoordinatorBusyFailure();
+}
+
+/// This coordinator answered too many first contacts with a nickname already taken (error 7004) during this run of the app: first contacts to it fail at once, and nothing was written or sent.
+///
+/// A coordinator can answer that error to every robot, and each such answer leaves a robot index bound to it for good: the cap keeps it from using up the Garage Key.
+/// It is kept in memory only and ends with the run; reading back a robot already bound to that coordinator is not affected.
+final class RobotCoordinatorTooManyRefusalsFailure extends P2pFailure {
+  const RobotCoordinatorTooManyRefusalsFailure();
+}
+
+/// This robot was released, its screen left, before the request could leave: nothing more was sent for it.
+///
+/// A request already in flight when the robot was released runs to its end, and its answer is returned to the call that sent it, like any other: the screen that is gone drops it.
+final class RobotReleasedFailure extends P2pFailure {
+  const RobotReleasedFailure();
+}
