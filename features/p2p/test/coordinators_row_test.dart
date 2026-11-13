@@ -503,6 +503,30 @@ void main() {
       );
     }
 
+    testWidgets(
+      'a coordinator that answered something unusable reads offline, like a silent one',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final lake = mainnet.firstWhere((c) => c.shortAlias == 'lake');
+        await tester.pumpWidget(
+          row(
+            BookState(
+              network: RobosatsNetwork.mainnet,
+              coordinators: {
+                ...allAnswered.coordinators,
+                lake: const CoordinatorBookFailed(CoordinatorNotJson()),
+              },
+            ),
+          ),
+        );
+
+        expect(find.bySemanticsLabel('TheBigLake, offline'), findsOneWidget);
+        expect(sign('lake', Icons.cloud_off), findsOneWidget);
+        expect(shown('1 coordinator offline'), findsOneWidget);
+        semantics.dispose();
+      },
+    );
+
     testWidgets('a tap through the semantics opens the coordinator', (
       tester,
     ) async {
