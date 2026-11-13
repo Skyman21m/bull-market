@@ -1160,7 +1160,7 @@ void main() {
       'network': ['regtest', 'Mainnet', 7],
       'txid': ['A' * 64, 'a' * 63, 'g' * 64, 64],
       'tx_queued': ['true'],
-      'address': ['tb1q address', 'x' * 101, 'tb1q‮evil', '', 5],
+      'address': ['tb1q address', 'x' * 101, 'tb1q\u202Eevil', '', 5],
     };
 
     for (final MapEntry(key: field, value: values) in invalid.entries) {
@@ -1238,7 +1238,7 @@ void main() {
           'lntb 1',
           'lntb1\n',
           'lntb1é',
-          'lntb1‮',
+          'lntb1\u202E',
           'lntb1\u0000',
         ]) {
           expect(
@@ -1336,8 +1336,8 @@ void main() {
         _answer(
           9,
           changes: {
-            'description': 'Pay‮to\u0000 me\nhere',
-            'payment_method': 'SEPA‏ Revolut\t',
+            'description': 'Pay\u202Eto\u0000 me\nhere',
+            'payment_method': 'SEPA\u200F Revolut\t',
           },
         ),
       );
