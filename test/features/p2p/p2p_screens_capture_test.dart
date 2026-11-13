@@ -917,6 +917,12 @@ void main() {
         await settle();
         await capture('robot-sans-coordinateur');
 
+        // The book of the tab asks Gumpellite again, after 5 then 15 seconds, before it shows it offline: the sheet says so once it does.
+        for (var i = 0; i < 22; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          await settle();
+        }
+
         // « Select Host », its confirmation, then the first contact with Temple of Sats, which takes its time.
         await tester.tap(find.text(l10n.p2pRobotSelectHost));
         await settle();
