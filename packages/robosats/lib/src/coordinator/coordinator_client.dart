@@ -333,13 +333,14 @@ final class CoordinatorClient {
   static bool _isOrderId(int orderId) => orderId >= 1 && orderId <= 1 << 53;
 
   /// Whether [failure] of a take or a cancel comes before the action, so that nothing was done: see [OrderActionRefused] for the list and why.
+  ///
+  /// An [OrderNotFound] (1042) received here is an outcome unknown: on a `POST` an unknown order fails with a `500` before any 1042 (`api/views.py:542`), so a 1042 comes from the read that follows the action, the order gone after it ran.
   static OrderActionFailure _afterAction(CoordinatorFailure failure) =>
       switch (failure) {
         RobotHasActiveOrder() ||
         OrderAmountOutOfRange() ||
         OrderTakePenalty() ||
         OrderStatusChanged() ||
-        OrderNotFound() ||
         OrderWrongPassword() ||
         OrderRequestRefused(errorCode: null) ||
         RobotCredentialsRejected() ||

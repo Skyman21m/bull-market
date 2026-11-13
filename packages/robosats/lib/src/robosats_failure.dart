@@ -424,7 +424,7 @@ sealed class OrderActionFailure extends RobosatsFailure {
 
 /// Nothing was done: the coordinator refused before the action, or the request was never sent.
 ///
-/// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] (1042, or an order number out of range, not sent), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
+/// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] for an order number out of range, which is never sent (a 1042 received after a `POST` comes from the read that follows the action, `api/views.py:542`, and is an [OrderActionOutcomeUnknown]), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
 final class OrderActionRefused extends OrderActionFailure {
   @override
   final CoordinatorFailure cause;
