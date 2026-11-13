@@ -833,6 +833,27 @@ void main() {
       },
     );
 
+    test(
+      'an overdue a newer request overtook before the book handled it is dropped',
+      () async {
+        scripted.held.add('temple');
+        final book = await shown();
+
+        // The 75 seconds pass, and a refresh asks temple again before the book has shown it offline.
+        waits.fireAwaitedBounds();
+        final refreshed = book.refresh();
+        await settle();
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+        expect(book.state.failedCoordinators, isEmpty);
+        expect(waits.awaitedBounds, hasLength(1));
+
+        scripted.release('temple');
+        await refreshed;
+        expect(book.state.orders.map((o) => o.id), [1, 2]);
+        await book.close();
+      },
+    );
+
     test('the bound starts again on a refresh', () async {
       scripted.held.add('temple');
       final book = await shown();
