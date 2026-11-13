@@ -9,6 +9,7 @@ import 'dart:ui' as ui;
 
 import 'package:bb_mobile/core/themes/app_theme.dart';
 import 'package:bb_mobile/generated/l10n/localization.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -114,6 +115,101 @@ final class _RecordedTransport implements CoordinatorTransport {
         headers: const {'content-type': 'application/json'},
         body: body,
       ),
+    );
+  }
+}
+
+/// The books of the map captures: orders of the test's own, each in a city, paid in cash face to face, or without their positions unless [located]; a coordinator not listed answers an empty book, and those of [offline] answer as unreachable.
+final class _MapTransport implements CoordinatorTransport {
+  final Set<String> offline;
+  final bool located;
+
+  const _MapTransport({this.offline = const {}, this.located = true});
+
+  /// By coordinator: the id, the type (0 buy, 1 sell), the currency id, the amount, the latitude and the longitude of each order.
+  static const _books = <String, List<(int, int, int, String, String, String)>>{
+    'temple': [
+      (1, 1, 2, '150', '48.8566', '2.3522'),
+      (2, 0, 2, '300', '52.5200', '13.4050'),
+      (3, 1, 2, '80', '40.4168', '-3.7038'),
+      (4, 0, 2, '200', '41.9028', '12.4964'),
+      (5, 1, 2, '120', '52.3676', '4.9041'),
+      (6, 1, 2, '100', '38.7223', '-9.1393'),
+      (7, 0, 2, '250', '38.7223', '-9.1393'),
+      (8, 1, 2, '60', '38.7223', '-9.1393'),
+    ],
+    'lake': [
+      (1, 1, 1, '500', '40.7128', '-74.0060'),
+      (2, 0, 1, '150', '41.8781', '-87.6298'),
+      (3, 1, 15, '2000', '19.4326', '-99.1332'),
+      (4, 0, 20, '600', '-23.5505', '-46.6333'),
+      (5, 1, 30, '90000', '-34.6037', '-58.3816'),
+    ],
+    'bazaar': [
+      (1, 1, 46, '10000', '-1.2921', '36.8219'),
+      (2, 0, 50, '80000', '6.5244', '3.3792'),
+      (3, 1, 3, '20000', '35.6762', '139.6503'),
+    ],
+    'freeport': [
+      (1, 0, 5, '200', '-33.8688', '151.2093'),
+      (2, 1, 4, '100', '51.5074', '-0.1278'),
+      (3, 0, 7, '150', '47.3769', '8.5417'),
+    ],
+  };
+
+  @override
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
+    CoordinatorRequest request,
+  ) async {
+    final alias = Federation.robosats
+        .on(RobosatsNetwork.mainnet)
+        .firstWhere(
+          (c) =>
+              Uri.parse(c.origins(RobosatsNetwork.mainnet).onion ?? '').host ==
+              request.url.host,
+        )
+        .shortAlias;
+    if (offline.contains(alias)) return const Err(CoordinatorUnreachable());
+    CoordinatorResponse json(int status, Object body) => CoordinatorResponse(
+      statusCode: status,
+      headers: const {'content-type': 'application/json'},
+      body: utf8.encode(jsonEncode(body)),
+    );
+    final book = _books[alias];
+    if (book == null) return Ok(json(404, {'not_found': 'No orders found'}));
+    return Ok(
+      json(200, [
+        for (final (id, type, currency, amount, latitude, longitude) in book)
+          {
+            'id': id,
+            'created_at': _now
+                .subtract(const Duration(hours: 3))
+                .toIso8601String(),
+            'expires_at': _now.add(const Duration(hours: 20)).toIso8601String(),
+            'type': type,
+            'currency': currency,
+            'amount': amount,
+            'has_range': false,
+            'min_amount': null,
+            'max_amount': null,
+            'payment_method': 'Cash F2F',
+            'is_explicit': false,
+            'premium': '${(id % 5) - 1}.5',
+            'satoshis': null,
+            'maker': 1,
+            'escrow_duration': 10800,
+            'bond_size': '3.0',
+            'latitude': located ? latitude : null,
+            'longitude': located ? longitude : null,
+            // A maker of the test: a hash id drawn from the coordinator and the order, no robot of anyone.
+            'maker_hash_id': sha256
+                .convert(utf8.encode('troc map capture $alias $id'))
+                .toString(),
+            'satoshis_now': 150000,
+            'price': null,
+            'maker_status': 'Active',
+          },
+      ]),
     );
   }
 }
@@ -551,6 +647,170 @@ void main() {
       await capture('offres-petit-texte2-hors-ligne');
       tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
+  }
+
+  // The « Map » view, over books the test makes: of the recorded orders one only has a position, 0° and 0°, so these orders, their places and their robots are the test's own.
+  // The map as it opens, an order under the finger, a group zoomed in on, the list of a group zooming cannot part, the same orders without their positions, the recorded books, and a small phone with the text three times as large.
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the map in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final l10n = lookupP2pLocalizations(locale);
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        /// The tab on mainnet over [transport], Tor ready, then the « Map » view.
+        Future<void> showMap(CoordinatorTransport transport) async {
+          final locator = GetIt.asNewInstance();
+          final tor = StreamController<P2pTorState>.broadcast();
+          addTearDown(tor.close);
+          addTearDown(locator.reset);
+          setUpP2pForTesting(
+            locator,
+            transport: transport,
+            torStates: () => tor.stream,
+            clock: () => _now,
+            shuffle: _phrasesFromTheSecond,
+          );
+          await tester.pumpWidget(
+            _App(
+              locale: locale,
+              locator: locator,
+              network: RobosatsNetwork.mainnet,
+            ),
+          );
+          await tester.pump();
+          tor.add(P2pTorState.ready);
+          await settle();
+          await tester.tap(find.text(l10n.p2pBookViewMap));
+          await settle();
+        }
+
+        final paint = find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint && widget.painter is MapChartPainter,
+        );
+
+        /// Where on the screen the first mark that [matches] is drawn.
+        Offset markAt(bool Function(MapMark mark) matches) {
+          final painter = tester.widget<CustomPaint>(paint).painter;
+          if (painter is! MapChartPainter) throw StateError('no map');
+          for (final (mark, at) in painter.layout.drawn) {
+            if (matches(mark)) return tester.getTopLeft(paint) + at;
+          }
+          throw StateError('no such mark');
+        }
+
+        bool holds(MapMark mark, String alias, int id) => switch (mark) {
+          MapPin(:final order) =>
+            order.coordinator.shortAlias == alias && order.id == id,
+          MapGroup(:final pins) => pins.any(
+            (pin) =>
+                pin.order.coordinator.shortAlias == alias && pin.order.id == id,
+          ),
+        };
+
+        await showMap(const _MapTransport());
+        await capture('carte');
+
+        // A long press on the pin of the seller in Nairobi shows its order.
+        final finger = await tester.startGesture(
+          markAt((mark) => mark is MapPin && holds(mark, 'bazaar', 1)) +
+              const Offset(0, -19),
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        await capture('carte-ordre');
+        await finger.up();
+        await settle();
+
+        // A tap on the group over Europe zooms in where it parts.
+        await tester.tapAt(
+          markAt((mark) => mark is MapGroup && holds(mark, 'temple', 1)),
+        );
+        await settle();
+        await capture('carte-zoom');
+
+        // The three orders in Lisbon stay together however near: a tap lists them.
+        for (var tap = 0; tap < 8; tap++) {
+          if (find.text(l10n.p2pMapOrdersHere(3)).evaluate().isNotEmpty) break;
+          await tester.tapAt(
+            markAt((mark) => mark is MapGroup && holds(mark, 'temple', 6)),
+          );
+          await settle();
+        }
+        await capture('carte-liste');
+        await tester.tap(find.byIcon(Icons.close).last);
+        await settle();
+
+        // The same orders without their positions: the map says so.
+        await showMap(const _MapTransport(located: false));
+        await capture('carte-sans-position');
+
+        // The recorded books: one order of Temple of Sats says 0.000000 and 0.000000, and is drawn there, as the official client draws it.
+        await showMap(
+          const _RecordedTransport(
+            RobosatsNetwork.mainnet,
+            empty: {'gumpellite'},
+          ),
+        );
+        await capture('carte-carnets-enregistres');
+
+        // A phone of 320 by 568 points with the text three times as large, two coordinators offline: the row scrolls with the map, which keeps its height.
+        tester.view.physicalSize = const Size(640, 1136);
+        tester.platformDispatcher.textScaleFactorTestValue = 3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await showMap(const _MapTransport(offline: {'lake', 'bazaar'}));
+        for (var i = 0; i < 22; i++) {
+          await tester.pump(const Duration(seconds: 1));
+          await settle();
+        }
+        await capture('carte-petit-texte3');
+        // Scrolled to its end by the book itself: a drag on the map would move the map.
+        final scroll = tester
+            .state<ScrollableState>(
+              find
+                  .descendant(
+                    of: find.byType(CustomScrollView).first,
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            )
+            .position;
+        scroll.jumpTo(scroll.maxScrollExtent);
+        await settle();
+        await capture('carte-petit-texte3-bas');
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      },
+    );
   }
 
   // The Garage, over a vault in memory, on testnet: the welcome, the wizard with the public example key pasted, its robot, the third step, the profile with the key hidden then shown after the PIN, « Delete All » and « Robot recovery », then a key drawn in memory, never shown: its backup alert, and the robot step and profile of a draw whose history could not be recorded.

@@ -15,6 +15,7 @@ import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/coordinator_text.dart';
 import 'coordinator_details_dialog.dart';
 import 'depth_chart_view.dart';
+import 'map_chart_view.dart';
 import 'search_order_dialog.dart';
 import 'widgets/coordinators_row.dart';
 import 'widgets/filter_choice.dart';
@@ -33,6 +34,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still awaited over orders shown, after a pull to refresh or a retry too.
 /// The row of the coordinators above it is Troc's own (#73): it shows who answered, who is awaited and who is offline, and stays once the offers are shown.
 /// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the row of the coordinators.
+/// « Map » shows, in the same place, every order of the book that has a position on a map of the world, whatever the filter, as the official client's map does.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
@@ -65,7 +67,7 @@ class _BookViewState extends State<BookView> {
   /// How many times « Search » was chosen, the key that puts the view bar back on the view shown.
   int _searches = 0;
 
-  /// The view shown: the list, or the depth chart.
+  /// The view shown: the list, the depth chart or the map.
   BookViewChoice _view = BookViewChoice.list;
 
   @override
@@ -92,7 +94,8 @@ class _BookViewState extends State<BookView> {
     final state = context.watch<BookCubit>().state;
     final shown = switch (_view) {
       BookViewChoice.list => state.orders.isNotEmpty,
-      BookViewChoice.chart => state.receivedOrders.isNotEmpty,
+      BookViewChoice.chart ||
+      BookViewChoice.map => state.receivedOrders.isNotEmpty,
     };
     return Column(
       children: [
@@ -112,7 +115,23 @@ class _BookViewState extends State<BookView> {
                       ..._content(context, state),
                     ],
                   ),
-                  BookViewChoice.chart => _chart(context, state),
+                  BookViewChoice.chart => _chart(
+                    context,
+                    state,
+                    () => DepthChartView(
+                      state: state,
+                      onOpenOrder: widget.onOpenOrder,
+                    ),
+                  ),
+                  BookViewChoice.map => _chart(
+                    context,
+                    state,
+                    () => MapChartView(
+                      state: state,
+                      now: _now,
+                      onOpenOrder: widget.onOpenOrder,
+                    ),
+                  ),
                 },
               ),
               // While a coordinator is still awaited over orders already shown, a bar runs over the top of the book, as the official client's book runs one over its rows; with nothing shown, the skeleton or the spinner is the wait.
@@ -147,8 +166,8 @@ class _BookViewState extends State<BookView> {
             initialValue: switch (_view) {
               BookViewChoice.list => l10n.p2pBookViewList,
               BookViewChoice.chart => l10n.p2pBookViewChart,
+              BookViewChoice.map => l10n.p2pBookViewMap,
             },
-            disabledItems: {l10n.p2pBookViewMap},
             onSelected: (item) {
               if (item == l10n.p2pCommonSearch) {
                 unawaited(_searchOrder());
@@ -156,6 +175,8 @@ class _BookViewState extends State<BookView> {
                 setState(() => _view = BookViewChoice.list);
               } else if (item == l10n.p2pBookViewChart) {
                 setState(() => _view = BookViewChoice.chart);
+              } else if (item == l10n.p2pBookViewMap) {
+                setState(() => _view = BookViewChoice.map);
               }
             },
           ),
@@ -194,17 +215,17 @@ class _BookViewState extends State<BookView> {
     onRetry: context.read<BookCubit>().retryFailed,
   );
 
-  /// The least height of the depth chart: on a short screen it scrolls rather than shrinks.
+  /// The least height of the depth chart and of the map: on a short screen they scroll rather than shrink.
   static const _chartMinHeight = 320.0;
 
-  /// The row of the coordinators, as above the list, then the depth chart once an order has arrived, the wait before, or the empty book once no coordinator is still awaited and one has answered.
+  /// The row of the coordinators, as above the list, then the depth chart or the map ([view]) once an order has arrived, the wait before, or the empty book once no coordinator is still awaited and one has answered.
   ///
-  /// The row scrolls with the chart, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text.
+  /// The row scrolls with the chart or the map, which keeps at least [_chartMinHeight] below it whatever the size of the screen and of the text; a drag that starts on the map moves the map, so the row is where the view scrolls and is pulled to refresh.
   /// A coordinator offline is shown in the row, with « Retry » under it, whether the others gave orders or not: a failure is not an empty book.
-  Widget _chart(BuildContext context, BookState state) {
+  Widget _chart(BuildContext context, BookState state, Widget Function() view) {
     final colors = context.bull;
     final Widget content = state.receivedOrders.isNotEmpty
-        ? DepthChartView(state: state, onOpenOrder: widget.onOpenOrder)
+        ? view()
         : state.isWaitingForFirstBook || state.loadingCoordinators.isNotEmpty
         ? Center(child: CircularProgressIndicator(color: colors.primary))
         : state.hasAnswer
@@ -274,8 +295,8 @@ class _BookViewState extends State<BookView> {
   }
 }
 
-/// The views of the book the bar below it offers; « Map » is not built yet and « Search » opens a dialog.
-enum BookViewChoice { list, chart }
+/// The views of the book the bar below it offers; « Search » opens a dialog.
+enum BookViewChoice { list, chart, map }
 
 /// « I want to [Buy] and use [EUR] pay with [ANY] hosted by [ANY] »: each choice opens a list.
 class BookFilterSentence extends StatelessWidget {

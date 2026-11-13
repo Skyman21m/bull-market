@@ -11,6 +11,7 @@ import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/depth_chart.dart';
 import 'package:p2p/src/ui/depth_chart_view.dart';
+import 'package:p2p/src/ui/map_chart_view.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
@@ -789,8 +790,12 @@ void main() {
     expect(colour('Chart'), testBullTheme.primary);
     expect(colour('Map'), isNot(testBullTheme.primary));
 
-    // « Map » is not built yet: choosing it changes nothing.
+    // « Map » shows the map in its place, and « Chart » the chart again.
     await tester.tap(find.text('Map'));
+    await settle(tester);
+    expect(chart, findsNothing);
+    expect(find.byType(MapChartView), findsOneWidget);
+    await tester.tap(find.text('Chart'));
     await settle(tester);
     expect(chart, findsOneWidget);
 
