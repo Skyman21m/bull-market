@@ -473,6 +473,21 @@ void main() {
       },
     );
 
+    test(
+      'only the panel asks the robot cubit for a first contact or a retry',
+      () {
+        // « Select Host » and « Continue », and « Retry »: the user's own taps, on the robot shown (security review of step 5).
+        for (final member in [
+          'RobotCoordinatorCubit.putOn',
+          'RobotCoordinatorCubit.retry',
+        ]) {
+          expect(referring((r) => r == member), {
+            'lib/src/ui/garage/robot_coordinator_panel.dart',
+          }, reason: member);
+        }
+      },
+    );
+
     test('deleting a key cannot reach the bindings', () {
       expect(
         references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
@@ -851,6 +866,7 @@ const _watched = {
   'RobotContact': ('package:p2p/', {'firstContact'}),
   // The robot use cases of the Garage's panel, and what its cubit and widgets must not reach but through them (#29, step 5).
   'PutRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
+  'RobotCoordinatorCubit': ('package:p2p/', {'putOn', 'retry'}),
   'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),
