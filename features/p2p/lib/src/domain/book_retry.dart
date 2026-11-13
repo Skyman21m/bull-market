@@ -56,7 +56,9 @@ final class BookRetry {
     CoordinatorNotJson() ||
     CoordinatorResponseMalformed() ||
     CoordinatorIdentityFailure() ||
-    CoordinatorRobotFailure() => false,
+    CoordinatorRobotFailure() ||
+    // Only the calls on an order give it, which the book never makes.
+    CoordinatorOrderFailure() => false,
   };
 
   /// The wait before asking again after [attempts] attempts, the last of which failed with [failure], or `null` when the coordinator is not asked again.

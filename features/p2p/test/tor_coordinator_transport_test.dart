@@ -760,6 +760,43 @@ void main() {
       expect(sessions.closed, {0});
     });
 
+    // An action on an order (a take, a cancel) is a `POST` that the coordinator may have carried out even when no answer came back: sent twice, it could act twice.
+    test('never sends a POST again once it reached the coordinator', () async {
+      final raw = await rawServer((socket) async {
+        socket.add(utf8.encode('HTTP/1.1 200 OK\r\nContent-Type: appl'));
+        await socket.flush();
+        socket.destroy();
+      });
+
+      final result = await transport().send(
+        _post(raw.url('/api/order/'), robot: _robot(1)),
+      );
+
+      expect(result, _failsWith<CoordinatorUnreachable>());
+      expect(raw.connections, 1);
+      expect(sessions.opened, hasLength(1));
+    });
+
+    test('never sends a POST again after its deadline passed', () async {
+      var received = 0;
+      final server = await serve({
+        '/api/order/': (request) async {
+          received++;
+          await Completer<void>().future;
+        },
+      });
+
+      final result = await transport(
+        deadline: const Duration(seconds: 1),
+      ).send(_post(server.url('/api/order/'), robot: _robot(1)));
+
+      expect(result, _failsWith<CoordinatorTimedOut>());
+      // Long enough for a second attempt, had there been one.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(received, 1);
+      expect(sessions.opened, hasLength(1));
+    });
+
     test('retries a connection closed before the headers', () async {
       final raw = await rawServer((socket) async {
         socket.add(utf8.encode('HTTP/1.1 200 OK\r\nContent-Type: appl'));
