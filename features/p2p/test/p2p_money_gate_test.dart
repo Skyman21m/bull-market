@@ -18,22 +18,26 @@ void main() {
     },
   );
 
+  test('an action on a recorded trade may always go on on testnet', () {
+    expect(
+      P2pMoneyGate.allowsActionOnRecordedTrade(RobosatsNetwork.testnet),
+      isTrue,
+    );
+  });
+
   test(
-    'an action on a recorded trade goes on, on both networks, whatever the approval',
+    'an action on a recorded mainnet trade may go on exactly when the owner approved mainnet',
     () {
-      // A bond locked before an update that withdrew the approval must not be left to the coordinator's timers.
-      for (final network in RobosatsNetwork.values) {
-        expect(
-          P2pMoneyGate.allowsActionOnRecordedTrade(network),
-          isTrue,
-          reason: network.name,
-        );
-      }
+      // Until a trade record carries its origin (#85, #87), a trade can reach the device otherwise than by a take the gate allowed: an unapproved build acts on none on mainnet.
+      expect(
+        P2pMoneyGate.allowsActionOnRecordedTrade(RobosatsNetwork.mainnet),
+        P2pMoneyGate.mainnetApproved,
+      );
     },
   );
 
   test('every network has an answer', () {
-    // The switch of `allowsNewTrade` is exhaustive: a third network would not compile until it is placed.
+    // The switches of the gate are exhaustive: a third network would not compile until it is placed.
     expect(RobosatsNetwork.values, [
       RobosatsNetwork.mainnet,
       RobosatsNetwork.testnet,

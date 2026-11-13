@@ -10,12 +10,20 @@ void main() {
       'It may change only in a pull request whose description quotes the repository owner\'s explicit approval of real money on mainnet and the amounts he accepted, reviewed as money code; '
       'that pull request changes this test in the same commit as the constant.';
 
-  test('no mainnet trade can start: the owner has not approved real money', () {
-    expect(P2pMoneyGate.mainnetApproved, isFalse, reason: howToChangeIt);
-    expect(
-      P2pMoneyGate.allowsNewTrade(RobosatsNetwork.mainnet),
-      isFalse,
-      reason: howToChangeIt,
-    );
-  });
+  test(
+    'nothing about a mainnet trade is allowed: the owner has not approved real money',
+    () {
+      expect(P2pMoneyGate.mainnetApproved, isFalse, reason: howToChangeIt);
+      expect(
+        P2pMoneyGate.allowsNewTrade(RobosatsNetwork.mainnet),
+        isFalse,
+        reason: howToChangeIt,
+      );
+      expect(
+        P2pMoneyGate.allowsActionOnRecordedTrade(RobosatsNetwork.mainnet),
+        isFalse,
+        reason: howToChangeIt,
+      );
+    },
+  );
 }
