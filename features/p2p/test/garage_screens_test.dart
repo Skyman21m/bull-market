@@ -3556,16 +3556,11 @@ void main() {
       }
 
       /// Taps [label] in the dialog, scrolled to first: the body is long, and in French the buttons are under the fold of a phone.
-      Future<void> tapInDialog(
-        WidgetTester tester,
-        String label, {
-        bool twice = false,
-      }) async {
+      Future<void> tapInDialog(WidgetTester tester, String label) async {
         final button = find.text(label);
         await tester.ensureVisible(button);
         await settle(tester);
         await tester.tap(button);
-        if (twice) await tester.tap(button, warnIfMissed: false);
         await afterRoute(tester);
       }
 
@@ -3636,19 +3631,17 @@ void main() {
         );
 
         testWidgets(
-          '« I understand » tapped twice: recorded once, then the sheet, and the robot is bound as acknowledged, in $language',
+          '« I understand »: recorded once, then the sheet, and the robot is bound as acknowledged, in $language',
           (tester) async {
             await showPanel(tester, locale: locale);
             final l10n = _text(tester);
             await openSelectHost(tester);
 
-            await tapInDialog(tester, confirm, twice: true);
+            await tapInDialog(tester, confirm);
 
             expect(acknowledgements(), 1);
             expect(find.byType(RobotHistoryDialog), findsNothing);
             expect(find.byType(SelectHostSheet), findsOneWidget);
-            // The second tap closed nothing else.
-            expect(find.byType(RobotCoordinatorPanel), findsOneWidget);
             expect(robotCoordinators.requests, isEmpty);
 
             await tester.tap(find.text('Temple of Sats'));
@@ -3736,6 +3729,94 @@ void main() {
           );
         }
       }
+
+      // A double tap as a finger makes it, 16, 50 or 120 ms apart, or within one frame (security review of step 6).
+      for (final gap in [0, 16, 50, 120]) {
+        testWidgets(
+          '« I understand » tapped twice, $gap ms apart: recorded once, nothing sent',
+          (tester) async {
+            await showPanel(tester);
+            await openSelectHost(tester);
+            final button = find.text('I understand');
+            await tester.ensureVisible(button);
+            await settle(tester);
+            final at = tester.getCenter(button);
+
+            await tester.tapAt(at);
+            if (gap > 0) await tester.pump(Duration(milliseconds: gap));
+            await tester.tapAt(at);
+            await afterRoute(tester);
+
+            expect(acknowledgements(), 1);
+            expect(find.byType(RobotHistoryDialog), findsNothing);
+            expect(find.byType(RobotCoordinatorPanel), findsOneWidget);
+            expect(robotCoordinators.requests, isEmpty);
+            // The tail of the double tap may land on the barrier of the sheet that just opened, and close it, as any tap outside it does: it never reaches the Garage under it. « Select Host » then goes straight to the sheet.
+            expect(
+              find.byType(SelectHostSheet).evaluate().length,
+              lessThanOrEqualTo(1),
+            );
+            if (find.byType(SelectHostSheet).evaluate().isEmpty) {
+              await openSelectHost(tester);
+              expect(find.byType(RobotHistoryDialog), findsNothing);
+              expect(find.byType(SelectHostSheet), findsOneWidget);
+            }
+            expect(acknowledgements(), 1);
+          },
+        );
+
+        testWidgets(
+          '« Select Host » tapped twice, $gap ms apart: one dialog, nothing recorded',
+          (tester) async {
+            await showPanel(tester);
+            final selectHost = find.text('Select Host');
+            await tester.ensureVisible(selectHost);
+            await settle(tester);
+            final at = tester.getCenter(selectHost);
+
+            await tester.tapAt(at);
+            if (gap > 0) await tester.pump(Duration(milliseconds: gap));
+            await tester.tapAt(at);
+            await afterRoute(tester);
+
+            expect(find.byType(RobotHistoryDialog), findsOneWidget);
+            expect(acknowledgements(), 0);
+            expect(robotCoordinators.requests, isEmpty);
+          },
+        );
+      }
+
+      // Tor stays ready for the panel once it has been (`TorWait`, as for the book): « I understand » cannot meet a Tor that is not ready; asked before, it records nothing and the panel says that Tor connects (security review of step 6).
+      testWidgets(
+        'before Tor is ready, an acknowledgement records nothing and the panel says Tor connects',
+        (tester) async {
+          final cubit = await showPanel(tester, torReady: false);
+          final l10n = _text(tester);
+          expect(find.text(l10n.p2pTorConnecting), findsOneWidget);
+
+          await cubit.acknowledge();
+          await settle(tester);
+
+          expect(acknowledgements(), 0);
+          expect(find.text(l10n.p2pTorConnecting), findsOneWidget);
+          expect(_selectHost(tester).disabled, isTrue);
+        },
+      );
+
+      testWidgets(
+        'Tor failing while the dialog is open does not stop « I understand »',
+        (tester) async {
+          await showPanel(tester);
+          await openSelectHost(tester);
+          robotTor.embedded.failed();
+          await settle(tester);
+
+          await tapInDialog(tester, 'I understand');
+
+          expect(acknowledgements(), 1);
+          expect(find.byType(SelectHostSheet), findsOneWidget);
+        },
+      );
 
       testWidgets(
         'once per key and network: the next robot goes straight to the sheet, the other network asks',
