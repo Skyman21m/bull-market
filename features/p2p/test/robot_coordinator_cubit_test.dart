@@ -724,7 +724,6 @@ void main() {
       },
     );
 
-
     test(
       'unknown, then known at « Retry »: no first contact, and no « already existed »',
       () async {
@@ -1053,20 +1052,165 @@ void main() {
     );
   });
 
+  // The reviewer's tests R1 to R5 of the security review of step 5, kept as regression tests.
+  group('leaving a robot, and the database, after the security review', () {
+    test(
+      'a read back whose binding read still runs when the panel closes is never sent',
+      () async {
+        await bound(robots[0], temple);
+        final gate = Completer<void>();
+        var reads = 0;
+        bindings.onRead = () {
+          reads++;
+          // The read of ReadRobotOnCoordinatorUsecase, after the panel's own.
+          if (reads == 2) bindings.readsWait = gate.future;
+        };
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await _settle();
+        expect(reads, 2);
+        expect(coordinators.requests, isEmpty);
+
+        await cubit.close();
+        expect(sessions.closed, [robots[0].identity.sessionKey]);
+        bindings.readsWait = null;
+        gate.complete();
+        await _settle();
+
+        expect(coordinators.requests, isEmpty);
+      },
+    );
+
+    test(
+      'a first contact whose binding read still runs when the panel closes: nothing bound or sent',
+      () async {
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await _settle();
+        expect(cubit.state, isA<RobotWithoutCoordinator>());
+        final gate = Completer<void>();
+        bindings.readsWait = gate.future;
+        final putting = cubit.putOn(temple);
+        await _settle();
+
+        await cubit.close();
+        bindings.readsWait = null;
+        gate.complete();
+        await putting;
+        await _settle();
+
+        expect(coordinators.requests, isEmpty);
+        expect(bindings.calls.where((call) => call.$1 == 'bind'), isEmpty);
+        expect(keys.generated, isEmpty);
+      },
+    );
+
+    test(
+      'a first contact sent, then the database unreadable: the attempt stays, and is said',
+      () async {
+        coordinators.script.add(RobotReply.notJson);
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await _settle();
+        coordinators.onSend = (_) {
+          bindings.readFailure = const P2pStorageFailure();
+        };
+
+        await cubit.putOn(temple);
+        await _settle();
+
+        expect(coordinators.firstContacts, hasLength(1));
+        final state = cubit.state as RobotStandingUnreadable;
+        expect(state.lastAttempt?.coordinator, temple);
+        expect(
+          state.lastAttempt?.problem,
+          isA<RobotRequestAnswered>().having(
+            (p) => p.failure,
+            'failure',
+            isA<CoordinatorNotJson>(),
+          ),
+        );
+
+        // « Retry » keeps it until the robot's standing can be read: then it is shown where the robot stands.
+        bindings.readFailure = null;
+        await cubit.retry();
+        expect(problemOf(cubit.state), state.lastAttempt?.problem);
+        expect((cubit.state as RobotOnCoordinator).coordinator, temple);
+      },
+    );
+
+    test(
+      'a first contact in flight when the panel closes: its late answer is ignored',
+      () async {
+        holdTenSeconds = true;
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await _settle();
+        coordinators.hold = Completer<void>();
+        final putting = cubit.putOn(temple);
+        await until(cubit, (state) => coordinators.requests.isNotEmpty);
+        final shown = cubit.state;
+
+        final closing = cubit.close();
+        await _settle();
+        coordinators.hold?.complete();
+        await closing;
+        await putting;
+
+        expect(identical(cubit.state, shown), isTrue);
+      },
+    );
+
+    test(
+      'a walk through five robots bound to one coordinator sends two requests at most',
+      () async {
+        for (var i = 0; i < 5; i++) {
+          await bound(robots[i], temple);
+        }
+        coordinators.hold = Completer<void>();
+        for (var i = 0; i < 5; i++) {
+          final cubit = cubitAt(i);
+          await cubit.load();
+          tor.embedded.ready();
+          await _settle();
+          unawaited(cubit.close());
+          await _settle();
+        }
+        // The two places of temple are taken by the first two reads; the others are dropped as their robots are left.
+        expect(coordinators.requests, hasLength(2));
+
+        coordinators.hold?.complete();
+        await _settle();
+        expect(coordinators.requests, hasLength(2));
+      },
+    );
+  });
+
   test('nothing printed or logged over every path holds the key', () async {
     final output = await captureKeyOutput(() async {
       await bound(robots[1], temple);
-      coordinators.script.addAll([
-        RobotReply.unreachable,
-        RobotReply.nicknameTaken,
-      ]);
       tor.embedded.ready();
-      for (final index in [0, 1, 2]) {
+      // Each failure the panel can show, a first contact, a read back and « Retry » on each.
+      for (final (index, replies) in <(int, List<RobotReply>)>[
+        (0, [RobotReply.unreachable, RobotReply.nicknameTaken]),
+        (1, []),
+        (2, [RobotReply.notJson, RobotReply.keyTooRecent]),
+        (0, [RobotReply.keysRefused, RobotReply.unknown]),
+        (2, [RobotReply.otherRobot]),
+        (1, List.filled(RobotRequestLimiter.maxAttempts, RobotReply.busy)),
+        (0, [RobotReply.keep]),
+      ]) {
+        coordinators.script.addAll(replies);
         final cubit = cubitAt(index);
         await cubit.load();
         tor.embedded.ready();
         await _settle();
         await cubit.putOn(temple);
+        await _settle();
         await cubit.retry();
         await _settle();
         await cubit.close();
