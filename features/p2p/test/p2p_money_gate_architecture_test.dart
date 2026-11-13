@@ -46,7 +46,8 @@ void main() {
   );
 
   group('the rule bites:', () {
-    const tradeUseCase = 'lib/src/domain/usecases/trade/take_order_usecase.dart';
+    const tradeUseCase =
+        'lib/src/domain/usecases/trade/take_order_usecase.dart';
     const cubit = 'lib/src/presentation/trade_cubit.dart';
 
     List<String> offencesOf(String path, String source) =>
@@ -115,26 +116,29 @@ Future<void> cancel(RobosatsNetwork network) async {
       },
     );
 
-    test('a call from a file that is not a trade use case fails, gate or not', () {
-      for (final path in [
-        cubit,
-        'lib/src/ui/trade_screen.dart',
-        'lib/src/domain/usecases/take_order_usecase.dart',
-        'lib/src/domain/usecases/trade/take_order.dart',
-        'lib/src/domain/usecases/trade/nested/take_order_usecase.dart',
-        'lib/src/data/trade_repository_impl.dart',
-      ]) {
-        expect(
-          offencesOf(path, '''
+    test(
+      'a call from a file that is not a trade use case fails, gate or not',
+      () {
+        for (final path in [
+          cubit,
+          'lib/src/ui/trade_screen.dart',
+          'lib/src/domain/usecases/take_order_usecase.dart',
+          'lib/src/domain/usecases/trade/take_order.dart',
+          'lib/src/domain/usecases/trade/nested/take_order_usecase.dart',
+          'lib/src/data/trade_repository_impl.dart',
+        ]) {
+          expect(
+            offencesOf(path, '''
 Future<void> take(RobosatsNetwork network) async {
   if (P2pMoneyGate.allowsNewTrade(network)) await client.takeOrder(1);
 }
 '''),
-          ['$path calls takeOrder but is not a trade use case'],
-          reason: path,
-        );
-      }
-    });
+            ['$path calls takeOrder but is not a trade use case'],
+            reason: path,
+          );
+        }
+      },
+    );
 
     test('every money member is watched', () {
       for (final member in _moneyMembers) {
@@ -159,17 +163,17 @@ Future<void> take(RobosatsNetwork network) async {
         ('symbol', 'final s = #takeOrder;'),
         ('interpolation', r'''final s = '${client.takeOrder}';'''),
       ]) {
-        expect(
-          offencesOf(cubit, source),
-          ['$cubit calls takeOrder but is not a trade use case'],
-          reason: label,
-        );
+        expect(offencesOf(cubit, source), [
+          '$cubit calls takeOrder but is not a trade use case',
+        ], reason: label);
       }
     });
 
-    test('a comment, a doc comment or a string that names a member is no call', () {
-      expect(
-        offencesOf(cubit, '''
+    test(
+      'a comment, a doc comment or a string that names a member is no call',
+      () {
+        expect(
+          offencesOf(cubit, '''
 // The trade use case calls takeOrder.
 /* takeOrder */
 /// See [CoordinatorClient.takeOrder] and [takeOrder].
@@ -179,9 +183,10 @@ final class TradeCubit {
   final String raw = r'openDispute';
 }
 '''),
-        isEmpty,
-      );
-    });
+          isEmpty,
+        );
+      },
+    );
 
     test('a declaration of a member with a watched name is no call', () {
       expect(
@@ -195,11 +200,26 @@ final class TradeCubit {
 
     test('the gate named only in a comment, a string or a tear-off is not asked', () {
       for (final (label, source) in [
-        ('comment', '// P2pMoneyGate.allowsNewTrade(network)\nvoid f() => client.takeOrder(1);'),
-        ('string', "final s = 'P2pMoneyGate.allowsNewTrade';\nvoid f() => client.takeOrder(1);"),
-        ('tear-off', 'final g = P2pMoneyGate.allowsNewTrade;\nvoid f() => client.takeOrder(1);'),
-        ('result dropped', 'void f() { P2pMoneyGate.allowsNewTrade(network); client.takeOrder(1); }'),
-        ('import only', "import '../../p2p_money_gate.dart';\nvoid f() => client.takeOrder(1);"),
+        (
+          'comment',
+          '// P2pMoneyGate.allowsNewTrade(network)\nvoid f() => client.takeOrder(1);',
+        ),
+        (
+          'string',
+          "final s = 'P2pMoneyGate.allowsNewTrade';\nvoid f() => client.takeOrder(1);",
+        ),
+        (
+          'tear-off',
+          'final g = P2pMoneyGate.allowsNewTrade;\nvoid f() => client.takeOrder(1);',
+        ),
+        (
+          'result dropped',
+          'void f() { P2pMoneyGate.allowsNewTrade(network); client.takeOrder(1); }',
+        ),
+        (
+          'import only',
+          "import '../../p2p_money_gate.dart';\nvoid f() => client.takeOrder(1);",
+        ),
       ]) {
         expect(
           offencesOf(tradeUseCase, source),
@@ -262,16 +282,15 @@ Future<void> take(RobosatsNetwork network) async {
           'reads mainnetApproved',
         ),
       ]) {
-        expect(
-          _gateOffences({cubit: source}),
-          ['$cubit $offence'],
-          reason: label,
-        );
+        expect(_gateOffences({cubit: source}), [
+          '$cubit $offence',
+        ], reason: label);
       }
       // The gate's own file declares it, and its imports and uses through the class pass.
       expect(
         _gateOffences({
-          _gate: 'abstract final class P2pMoneyGate { static const bool mainnetApproved = false; }',
+          _gate:
+              'abstract final class P2pMoneyGate { static const bool mainnetApproved = false; }',
           cubit: '''
 import '../domain/p2p_money_gate.dart' show P2pMoneyGate;
 import '../domain/p2p_money_gate.dart' as gate show P2pMoneyGate;
@@ -343,25 +362,21 @@ final b = gate.P2pMoneyGate.allowsActionOnRecordedTrade(n);
     test('never name a money member, nor the gate', () {
       final files = _dartFilesUnder(folder);
       expect(files, contains('$folder/p2p_robot_tor_test.dart'));
-      expect(
-        {
-          for (final path in files)
-            if (_MoneyFacts.of(File(path).readAsStringSync())
-                case final facts
-                when facts.calls.isNotEmpty || facts.namesGate)
-              path,
-        },
-        isEmpty,
-      );
+      expect({
+        for (final path in files)
+          if (_MoneyFacts.of(File(path).readAsStringSync()) case final facts
+              when facts.calls.isNotEmpty || facts.namesGate)
+            path,
+      }, isEmpty);
     });
 
     test('make robots on testnet only', () {
       final source = File('$folder/p2p_robot_tor_test.dart').readAsStringSync();
+      expect(source, contains('const _network = RobosatsNetwork.testnet;'));
       expect(
-        source,
-        contains('const _network = RobosatsNetwork.testnet;'),
+        _tokens(source).map((t) => t.lexeme).join(' '),
+        isNot(contains('RobosatsNetwork . mainnet')),
       );
-      expect(_tokens(source).map((t) => t.lexeme).join(' '), isNot(contains('RobosatsNetwork . mainnet')));
     });
   });
 }
@@ -387,9 +402,9 @@ const _moneyMembers = {
 const _gateQuestions = {'allowsNewTrade', 'allowsActionOnRecordedTrade'};
 
 /// Whether the file at [path] is a trade use case: a file `lib/src/domain/usecases/trade/<name>_usecase.dart`, one level deep, as the Garage's screens are grouped under `lib/src/ui/garage/`.
-bool _isTradeUseCase(String path) =>
-    RegExp(r'^lib/src/domain/usecases/trade/[a-z0-9_]+_usecase\.dart$')
-        .hasMatch(path);
+bool _isTradeUseCase(String path) => RegExp(
+  r'^lib/src/domain/usecases/trade/[a-z0-9_]+_usecase\.dart$',
+).hasMatch(path);
 
 /// Each breach of the rule in [sources], by path.
 List<String> _offences(Map<String, String> sources) => [
@@ -405,8 +420,7 @@ List<String> _offences(Map<String, String> sources) => [
           else ...[
             if (facts.asks.isEmpty)
               '$path calls $member without asking P2pMoneyGate',
-            if (member == 'takeOrder' &&
-                !facts.asks.contains('allowsNewTrade'))
+            if (member == 'takeOrder' && !facts.asks.contains('allowsNewTrade'))
               '$path calls $member without asking P2pMoneyGate.allowsNewTrade',
           ],
         ],
@@ -420,25 +434,29 @@ List<String> _offences(Map<String, String> sources) => [
 /// In the directives, it may be shown or hidden, never be an import prefix.
 List<String> _gateOffences(Map<String, String> sources) => [
   for (final MapEntry(key: path, value: source) in sources.entries)
-    if (path != _gate) ...() {
-      final unit = parseString(content: source, throwIfDiagnostics: false).unit;
-      final codeFrom = unit.directives.isEmpty
-          ? 0
-          : unit.directives.last.endToken.end;
-      final tokens = _tokensOf(unit);
-      return [
-        if (tokens.any(
-          (t) =>
-              t.lexeme == 'P2pMoneyGate' &&
-              (t.offset < codeFrom
-                  ? t.previous?.lexeme == 'as'
-                  : t.next?.type != TokenType.PERIOD),
-        ))
-          '$path names P2pMoneyGate other than as P2pMoneyGate.<member>',
-        if (tokens.any((t) => t.lexeme == 'mainnetApproved'))
-          '$path reads mainnetApproved',
-      ];
-    }(),
+    if (path != _gate)
+      ...() {
+        final unit = parseString(
+          content: source,
+          throwIfDiagnostics: false,
+        ).unit;
+        final codeFrom = unit.directives.isEmpty
+            ? 0
+            : unit.directives.last.endToken.end;
+        final tokens = _tokensOf(unit);
+        return [
+          if (tokens.any(
+            (t) =>
+                t.lexeme == 'P2pMoneyGate' &&
+                (t.offset < codeFrom
+                    ? t.previous?.lexeme == 'as'
+                    : t.next?.type != TokenType.PERIOD),
+          ))
+            '$path names P2pMoneyGate other than as P2pMoneyGate.<member>',
+          if (tokens.any((t) => t.lexeme == 'mainnetApproved'))
+            '$path reads mainnetApproved',
+        ];
+      }(),
 ];
 
 /// The code tokens of [source]: comments are not in the stream, and a string is one token.

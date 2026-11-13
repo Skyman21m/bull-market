@@ -8,12 +8,15 @@ void main() {
     expect(P2pMoneyGate.allowsNewTrade(RobosatsNetwork.testnet), isTrue);
   });
 
-  test('a new trade may start on mainnet exactly when the owner approved it', () {
-    expect(
-      P2pMoneyGate.allowsNewTrade(RobosatsNetwork.mainnet),
-      P2pMoneyGate.mainnetApproved,
-    );
-  });
+  test(
+    'a new trade may start on mainnet exactly when the owner approved it',
+    () {
+      expect(
+        P2pMoneyGate.allowsNewTrade(RobosatsNetwork.mainnet),
+        P2pMoneyGate.mainnetApproved,
+      );
+    },
+  );
 
   test(
     'an action on a recorded trade goes on, on both networks, whatever the approval',
