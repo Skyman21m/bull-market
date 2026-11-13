@@ -114,7 +114,7 @@ class Trades extends Table {
   /// `buyer` or `seller`, fixed at the take.
   TextColumn get role => text()();
 
-  /// `takenHere` for a take of this device under its money gate, `recovered` for a trade the user took over after recovery found it.
+  /// `takenHere` for a take of this device, `recovered` for a trade the user took over after recovery found it.
   TextColumn get origin => text()();
 
   /// When the row was written, in milliseconds since the epoch.

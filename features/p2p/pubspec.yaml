@@ -49,5 +49,7 @@ flutter:
   uses-material-design: true
   generate: true
   # The coordinators' own images, from RoboSats: their sources are pinned in `lib/src/ui/widgets/coordinator_images.dart`.
+  # The world map of the « Map » view, from Natural Earth (public domain), written by `tools/troc_world_map.py`: its source is pinned in `lib/src/domain/world_map.dart`.
   assets:
     - assets/coordinators/
+    - assets/map/
