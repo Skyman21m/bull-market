@@ -81,11 +81,9 @@ void main() {
 
     test('each name that commits funds is seen in code', () {
       for (final member in _moneyMembers) {
-        expect(
-          _moneyOffences({path: 'void f() => facade.$member();'}),
-          ['$path names $member'],
-          reason: member,
-        );
+        expect(_moneyOffences({path: 'void f() => facade.$member();'}), [
+          '$path names $member',
+        ], reason: member);
       }
     });
 

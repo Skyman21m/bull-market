@@ -30,27 +30,30 @@ void main() {
       };
 
   group('a quote', () {
-    test('itemises the service fee, the network fee, the total and what stays', () async {
-      final invoice = testInvoice();
-      final result = await usecase.execute(invoice);
-      final quote = switch (result) {
-        Ok(:final value) => value,
-        Err() => throw StateError('refused'),
-      };
-      expect(quote.invoice, same(invoice));
-      expect(quote.amount, Sats.fromInt(600));
-      expect(quote.payin, Sats.fromInt(603));
-      expect(quote.serviceFee, Sats.fromInt(3));
-      expect(quote.serviceFeeBasisPoints, 50);
-      expect(quote.networkFee, Sats.fromInt(26));
-      expect(quote.total, Sats.fromInt(629));
-      expect(quote.balance, Sats.fromInt(10000));
-      expect(quote.remaining, Sats.fromInt(9371));
-      expect(quote.quotedAt, testNow);
-      // The service is asked the invoice's amount on its network, and the fee is estimated for the payin.
-      expect(quotes.asked, [(RobosatsNetwork.mainnet, Sats.fromInt(600))]);
-      expect(wallets.estimated, [Sats.fromInt(603)]);
-    });
+    test(
+      'itemises the service fee, the network fee, the total and what stays',
+      () async {
+        final invoice = testInvoice();
+        final result = await usecase.execute(invoice);
+        final quote = switch (result) {
+          Ok(:final value) => value,
+          Err() => throw StateError('refused'),
+        };
+        expect(quote.invoice, same(invoice));
+        expect(quote.amount, Sats.fromInt(600));
+        expect(quote.payin, Sats.fromInt(603));
+        expect(quote.serviceFee, Sats.fromInt(3));
+        expect(quote.serviceFeeBasisPoints, 50);
+        expect(quote.networkFee, Sats.fromInt(26));
+        expect(quote.total, Sats.fromInt(629));
+        expect(quote.balance, Sats.fromInt(10000));
+        expect(quote.remaining, Sats.fromInt(9371));
+        expect(quote.quotedAt, testNow);
+        // The service is asked the invoice's amount on its network, and the fee is estimated for the payin.
+        expect(quotes.asked, [(RobosatsNetwork.mainnet, Sats.fromInt(600))]);
+        expect(wallets.estimated, [Sats.fromInt(603)]);
+      },
+    );
 
     test('may leave nothing in the wallet', () async {
       wallets.wallet = _wallet(balance: 629);
@@ -185,6 +188,33 @@ void main() {
       await pumpEventQueue();
       expect(seen.map(_sats), [10000, 9371, 9971]);
       expect(wallets.watched, ['instant']);
+      await subscription.cancel();
+    });
+
+    test('stops following the syncs at once when cancelled', () async {
+      final watch = WatchInstantBalanceUsecase(wallets);
+      final subscription = watch
+          .execute(RobosatsNetwork.mainnet)
+          .listen((_) {});
+      await pumpEventQueue();
+      expect(wallets.syncs.hasListener, isTrue);
+      // An `async*` body waiting for the next sync would not end here until one came.
+      await subscription.cancel().timeout(const Duration(seconds: 1));
+      expect(wallets.syncs.hasListener, isFalse);
+    });
+
+    test('skips a sync that fails, and gives the next one', () async {
+      final watch = WatchInstantBalanceUsecase(wallets);
+      final seen = <Result<Sats, P2pWalletRefusal>>[];
+      final subscription = watch
+          .execute(RobosatsNetwork.mainnet)
+          .listen(seen.add);
+      await pumpEventQueue();
+      wallets.syncs
+        ..addError(StateError('sync failed'))
+        ..add(_wallet(balance: 42));
+      await pumpEventQueue();
+      expect(seen.map(_sats), [10000, 42]);
       await subscription.cancel();
     });
 

@@ -22,34 +22,37 @@ void main() {
     int amount = 600,
   }) => repository.quote(network: network, amount: Sats.fromInt(amount));
 
-  test('asks the amount paid out, Liquid to Lightning, on the invoice\'s network', () async {
-    final answer = await ask();
-    expect(
-      answer,
-      isA<Ok<LightningSwapQuote, P2pWalletRefusal>>().having(
-        (ok) => (ok.value.payin, ok.value.feeBasisPoints),
-        'payin and rate',
-        (Sats.fromInt(603), 50),
-      ),
-    );
-    await ask(network: RobosatsNetwork.testnet, amount: 400);
-    expect(swaps.quotes, [
-      (
-        environment: OrderSwapEnvironment.mainnet,
-        amountSat: BigInt.from(600),
-        isInAmountFixed: false,
-        inNetwork: OrderSwapNetwork.liquid,
-        outNetwork: OrderSwapNetwork.lightning,
-      ),
-      (
-        environment: OrderSwapEnvironment.testnet,
-        amountSat: BigInt.from(400),
-        isInAmountFixed: false,
-        inNetwork: OrderSwapNetwork.liquid,
-        outNetwork: OrderSwapNetwork.lightning,
-      ),
-    ]);
-  });
+  test(
+    'asks the amount paid out, Liquid to Lightning, on the invoice\'s network',
+    () async {
+      final answer = await ask();
+      expect(
+        answer,
+        isA<Ok<LightningSwapQuote, P2pWalletRefusal>>().having(
+          (ok) => (ok.value.payin, ok.value.feeBasisPoints),
+          'payin and rate',
+          (Sats.fromInt(603), 50),
+        ),
+      );
+      await ask(network: RobosatsNetwork.testnet, amount: 400);
+      expect(swaps.quotes, [
+        (
+          environment: OrderSwapEnvironment.mainnet,
+          amountSat: BigInt.from(600),
+          isInAmountFixed: false,
+          inNetwork: OrderSwapNetwork.liquid,
+          outNetwork: OrderSwapNetwork.lightning,
+        ),
+        (
+          environment: OrderSwapEnvironment.testnet,
+          amountSat: BigInt.from(400),
+          isInAmountFixed: false,
+          inNetwork: OrderSwapNetwork.liquid,
+          outNetwork: OrderSwapNetwork.lightning,
+        ),
+      ]);
+    },
+  );
 
   test('refuses an answer that does not quote the invoice\'s amount', () async {
     for (final (label, answer) in [

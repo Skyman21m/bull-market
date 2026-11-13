@@ -70,7 +70,10 @@ class QuoteInvoicePaymentUsecase {
     final total = service.payin.value + networkFee.value;
     if (wallet.balance.value < total) {
       return Err(
-        P2pWalletNotEnoughBalance(available: wallet.balance, needed: Sats(total)),
+        P2pWalletNotEnoughBalance(
+          available: wallet.balance,
+          needed: Sats(total),
+        ),
       );
     }
     return Ok(

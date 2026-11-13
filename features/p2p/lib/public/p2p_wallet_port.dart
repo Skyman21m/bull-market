@@ -13,7 +13,9 @@ abstract interface class P2pWalletPort {
   /// What the Instant Payments wallet on [network] can spend now: at once, then again each time the app finishes a sync of that wallet.
   ///
   /// It reads the wallet's own records and starts no sync. A refusal ends the stream: [P2pWalletNoInstantWallet], [P2pWalletUnavailable] or [P2pWalletWrongNetwork] (the wallet is on the other network).
-  Stream<Result<Sats, P2pWalletRefusal>> instantBalance(RobosatsNetwork network);
+  Stream<Result<Sats, P2pWalletRefusal>> instantBalance(
+    RobosatsNetwork network,
+  );
 
   /// The swap service's quote for paying exactly [invoice] from the Instant Payments wallet, or why it cannot.
   ///

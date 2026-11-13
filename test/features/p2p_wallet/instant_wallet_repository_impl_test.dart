@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:bb_mobile/core/entities/signer_device_entity.dart';
 import 'package:bb_mobile/core/entities/signer_entity.dart';
 import 'package:bb_mobile/core/wallet/domain/consolidation_required_exception.dart';
+import 'package:bb_mobile/core/wallet/domain/entities/wallet.dart';
 import 'package:bb_mobile/core/wallet/domain/insufficient_funds_exception.dart';
 import 'package:bb_mobile/core/wallet/domain/no_spendable_utxo_exception.dart';
 import 'package:bb_mobile/core/wallet/domain/wallet_failure.dart';
@@ -49,24 +48,27 @@ void main() {
       };
 
   group('read', () {
-    test('is the default Liquid wallet, its balance, network and signer', () async {
-      getWallets.answer = Ok([
-        testWallet(origin: 'secure', isLiquid: false, balance: 1),
-        testWallet(origin: 'other', isDefault: false, balance: 2),
-        testWallet(balance: 7777),
-      ]);
-      final wallet = walletOf(await repository.read());
-      expect(wallet.id, 'instant');
-      expect(wallet.balance, Sats.fromInt(7777));
-      expect(wallet.isTestnet, isFalse);
-      expect(wallet.signsHere, isTrue);
-      // The wallet's records, without a sync: the port starts none.
-      expect(getWallets.calls, [
-        (onlyDefaults: true, onlyLiquid: true, sync: false),
-      ]);
-      getWallets.answer = Ok([testWallet(isTestnet: true)]);
-      expect(walletOf(await repository.read()).isTestnet, isTrue);
-    });
+    test(
+      'is the default Liquid wallet, its balance, network and signer',
+      () async {
+        getWallets.answer = Ok([
+          testWallet(origin: 'secure', isLiquid: false, balance: 1),
+          testWallet(origin: 'other', isDefault: false, balance: 2),
+          testWallet(balance: 7777),
+        ]);
+        final wallet = walletOf(await repository.read());
+        expect(wallet.id, 'instant');
+        expect(wallet.balance, Sats.fromInt(7777));
+        expect(wallet.isTestnet, isFalse);
+        expect(wallet.signsHere, isTrue);
+        // The wallet's records, without a sync: the port starts none.
+        expect(getWallets.calls, [
+          (onlyDefaults: true, onlyLiquid: true, sync: false),
+        ]);
+        getWallets.answer = Ok([testWallet(isTestnet: true)]);
+        expect(walletOf(await repository.read()).isTestnet, isTrue);
+      },
+    );
 
     test('says when the wallet cannot pay without a device or a key', () async {
       for (final wallet in [
@@ -80,8 +82,8 @@ void main() {
     });
 
     test('refuses with no Instant Payments wallet', () async {
-      for (final answer in [
-        const Err<List<Never>, WalletFailure>(NoWalletsFoundFailure()),
+      for (final answer in <Result<List<Wallet>, WalletFailure>>[
+        const Err(NoWalletsFoundFailure()),
         Ok([testWallet(isDefault: false)]),
         Ok([testWallet(isLiquid: false)]),
       ]) {
@@ -126,26 +128,29 @@ void main() {
       signsHere: true,
     );
 
-    test('reads the fee of an unsigned transaction to the wallet\'s first address, at 25 sat/kwu', () async {
-      liquid.fee = 31;
-      expect(
-        await repository.estimateNetworkFee(wallet, Sats.fromInt(603)),
-        isA<Ok<Sats, P2pWalletRefusal>>().having(
-          (ok) => ok.value,
-          'fee',
-          Sats.fromInt(31),
-        ),
-      );
-      expect(addresses.calls, [(walletId: 'instant', index: 0)]);
-      expect(liquid.builds, [
-        (
-          walletId: 'instant',
-          address: 'lq1fakeaddress0',
-          amountSat: 603,
-          feeRate: 25,
-        ),
-      ]);
-    });
+    test(
+      'reads the fee of an unsigned transaction to the wallet\'s first address, at 25 sat/kwu',
+      () async {
+        liquid.fee = 31;
+        expect(
+          await repository.estimateNetworkFee(wallet, Sats.fromInt(603)),
+          isA<Ok<Sats, P2pWalletRefusal>>().having(
+            (ok) => ok.value,
+            'fee',
+            Sats.fromInt(31),
+          ),
+        );
+        expect(addresses.calls, [(walletId: 'instant', index: 0)]);
+        expect(liquid.builds, [
+          (
+            walletId: 'instant',
+            address: 'lq1fakeaddress0',
+            amountSat: 603,
+            feeRate: 25,
+          ),
+        ]);
+      },
+    );
 
     test('maps the wallet\'s exceptions to refusals', () async {
       for (final (error, matcher) in [
@@ -155,10 +160,7 @@ void main() {
               .having((r) => r.available, 'available', Sats.fromInt(10000))
               .having((r) => r.needed, 'needed', Sats.fromInt(603)),
         ),
-        (
-          NoSpendableUtxoException('none'),
-          isA<P2pWalletNotEnoughBalance>(),
-        ),
+        (NoSpendableUtxoException('none'), isA<P2pWalletNotEnoughBalance>()),
         (
           ConsolidationRequiredException('too many inputs'),
           isA<P2pWalletNeedsConsolidation>(),

@@ -96,9 +96,7 @@ void main() {
     });
 
     test('naming the port outside the allowed files fails', () {
-      expect(_typeOffences({cubit: quote}), [
-        '$cubit names P2pWalletPort',
-      ]);
+      expect(_typeOffences({cubit: quote}), ['$cubit names P2pWalletPort']);
       expect(
         _typeOffences({
           'lib/src/ui/trade_screen.dart':
@@ -160,7 +158,8 @@ final class TradeCubit {
     test('a trade use case may not be a part of another library', () {
       expect(
         _memberOffences({
-          tradeUseCase: "part of '../../../presentation/trade_cubit.dart';\n$quote",
+          tradeUseCase:
+              "part of '../../../presentation/trade_cubit.dart';\n$quote",
         }),
         ['$tradeUseCase is a part of another library'],
       );
@@ -180,7 +179,9 @@ final class TradeCubit {
         );
       }
       expect(
-        _importOffences({cubit: "import 'package:primitives/primitives.dart';"}),
+        _importOffences({
+          cubit: "import 'package:primitives/primitives.dart';",
+        }),
         isEmpty,
       );
     });
@@ -244,7 +245,9 @@ List<String> _importOffences(Map<String, String> sources) => [
     for (final directive in _parse(source).directives)
       if (directive is NamespaceDirective)
         if (directive.uri.stringValue case final uri?)
-          if (_forbiddenPackages.any((package) => uri.startsWith('package:$package/')))
+          if (_forbiddenPackages.any(
+            (package) => uri.startsWith('package:$package/'),
+          ))
             '$path imports $uri',
 ];
 

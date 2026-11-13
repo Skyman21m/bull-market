@@ -153,7 +153,7 @@ CheckedBolt11Invoice? checkedBolt11InvoiceForTesting({
 
 /// A wallet's port whose answers the test writes: no wallet, no swap service, no money.
 ///
-/// The balance of each network is [balance] at each subscription, then each value given to [setBalance]; a refusal given there ends the subscriptions open, as the port's does.
+/// The balance of each network is the one given to the constructor, or the last given to [setBalance], at each subscription, then each value given to [setBalance]; a refusal given there ends the subscriptions open, as the port's does.
 /// Each [quote] takes the next answer of [scriptQuote], in order, and fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
 /// It records what it was asked: [balanceRequests] and [quoted].
 @visibleForTesting
@@ -170,8 +170,8 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   /// The invoices quoted, in order.
   final List<CheckedBolt11Invoice> quoted = [];
 
-  FakeP2pWalletPort({required Result<Sats, P2pWalletRefusal> balance})
-    : _balance = balance;
+  /// A port whose balance is [_balance] until [setBalance] changes it.
+  FakeP2pWalletPort(this._balance);
 
   /// The balance each subscription gets first.
   Result<Sats, P2pWalletRefusal> get balance => _balance;

@@ -123,35 +123,38 @@ void main() {
     await subscription.cancel();
   });
 
-  test('prints and logs nothing, so nothing of an invoice, an amount or an answer', () async {
-    final output = await _capture(() async {
-      await port.quote(testInvoice());
-      swaps.answer = Err(
-        SwapAmountOutOfBoundsFailure(
-          limitAmountSat: BigInt.from(1000),
-          isMinimum: true,
-          logMessage: 'Amount below 0.00001',
-        ),
-      );
-      await port.quote(testInvoice());
-      liquid.buildError = Exception('InsufficientFunds { missing_sats: 21 }');
-      swaps.answer = FakeSwapFacade.quoteOf();
-      await port.quote(testInvoice());
-      final balance = await port
-          .instantBalance(RobosatsNetwork.mainnet)
-          .first;
-      expect(balance, isA<Ok<Sats, P2pWalletRefusal>>());
-    });
-    // Over these fakes, the port's own code prints and logs nothing at all: no invoice, amount, answer of the service or exception text can be in what it writes.
-    final lines = output
-        .split('\n')
-        .where((line) => line.trim().isNotEmpty)
-        .toList();
-    expect(lines, hasLength(2));
-    expect(lines.first, 'print capture works');
-    expect(lines.last, contains('logger capture works'));
-    expect(output.contains(fakeBolt11(RobosatsNetwork.mainnet)), isFalse);
-  });
+  test(
+    'prints and logs nothing, so nothing of an invoice, an amount or an answer',
+    () async {
+      final output = await _capture(() async {
+        await port.quote(testInvoice());
+        swaps.answer = Err(
+          SwapAmountOutOfBoundsFailure(
+            limitAmountSat: BigInt.from(1000),
+            isMinimum: true,
+            logMessage: 'Amount below 0.00001',
+          ),
+        );
+        await port.quote(testInvoice());
+        liquid.buildError = Exception('InsufficientFunds { missing_sats: 21 }');
+        swaps.answer = FakeSwapFacade.quoteOf();
+        await port.quote(testInvoice());
+        final balance = await port
+            .instantBalance(RobosatsNetwork.mainnet)
+            .first;
+        expect(balance, isA<Ok<Sats, P2pWalletRefusal>>());
+      });
+      // Over these fakes, the port's own code prints and logs nothing at all: no invoice, amount, answer of the service or exception text can be in what it writes.
+      final lines = output
+          .split('\n')
+          .where((line) => line.trim().isNotEmpty)
+          .toList();
+      expect(lines, hasLength(2));
+      expect(lines.first, 'print capture works');
+      expect(lines.last, contains('logger capture works'));
+      expect(output.contains(fakeBolt11(RobosatsNetwork.mainnet)), isFalse);
+    },
+  );
 }
 
 /// Everything [body] prints and everything the project logger writes while it runs, as one text; a line printed and a line logged by the capture itself show that both are seen.

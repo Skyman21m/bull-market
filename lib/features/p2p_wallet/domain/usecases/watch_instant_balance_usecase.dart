@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/instant_wallet.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/instant_wallet_repository.dart';
 import 'package:p2p/p2p.dart';
@@ -9,27 +11,53 @@ class WatchInstantBalanceUsecase {
   const WatchInstantBalanceUsecase(this._wallets);
 
   /// The balance of the Instant Payments wallet for a trade on [network], then each balance that differs from the last one given; a refusal ends the stream.
-  Stream<Result<Sats, P2pWalletRefusal>> execute(
-    RobosatsNetwork network,
-  ) async* {
-    final InstantWallet wallet;
-    switch (await _wallets.read()) {
-      case Ok(:final value):
-        wallet = value;
-      case Err(:final failure):
-        yield Err(failure);
-        return;
+  ///
+  /// It reads the wallet when listened to, and stops following its syncs as soon as the subscription is cancelled (not an `async*` body, whose cancellation would wait for the next sync).
+  /// A sync whose wallet cannot be read is skipped: the next one gives the balance.
+  Stream<Result<Sats, P2pWalletRefusal>> execute(RobosatsNetwork network) {
+    StreamSubscription<InstantWallet>? syncs;
+    var cancelled = false;
+    late final StreamController<Result<Sats, P2pWalletRefusal>> controller;
+
+    Future<void> refuse(P2pWalletRefusal refusal) async {
+      controller.add(Err(refusal));
+      await controller.close();
     }
-    if (wallet.refusalFor(network) case final refusal?) {
-      yield Err(refusal);
-      return;
+
+    Future<void> start() async {
+      final read = await _wallets.read();
+      if (cancelled) return;
+      final InstantWallet wallet;
+      switch (read) {
+        case Ok(:final value):
+          wallet = value;
+        case Err(:final failure):
+          return refuse(failure);
+      }
+      if (wallet.refusalFor(network) case final refusal?) {
+        return refuse(refusal);
+      }
+      var last = wallet.balance;
+      controller.add(Ok(last));
+      syncs = _wallets
+          .watchSyncs(wallet.id)
+          .listen(
+            (synced) {
+              if (synced.balance == last) return;
+              last = synced.balance;
+              controller.add(Ok(last));
+            },
+            onError: (Object _) {},
+          );
     }
-    var last = wallet.balance;
-    yield Ok(last);
-    await for (final synced in _wallets.watchSyncs(wallet.id)) {
-      if (synced.balance == last) continue;
-      last = synced.balance;
-      yield Ok(last);
-    }
+
+    controller = StreamController(
+      onListen: () => unawaited(start()),
+      onCancel: () {
+        cancelled = true;
+        return syncs?.cancel();
+      },
+    );
+    return controller.stream;
   }
 }

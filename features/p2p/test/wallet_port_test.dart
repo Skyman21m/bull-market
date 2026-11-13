@@ -78,6 +78,11 @@ void main() {
         ('lnbcrt6u1', RobosatsNetwork.mainnet, false),
         ('lnbc1', RobosatsNetwork.mainnet, false),
         ('lntb1', RobosatsNetwork.testnet, false),
+        ('lnbc1500n1', RobosatsNetwork.mainnet, true),
+        ('lnbc21', RobosatsNetwork.mainnet, true),
+        ('lnbc6x1', RobosatsNetwork.mainnet, false),
+        ('lnbc6u', RobosatsNetwork.mainnet, false),
+        ('lnbcu1', RobosatsNetwork.mainnet, false),
         ('lightning:lnbc6u1', RobosatsNetwork.mainnet, false),
         ('xlnbc6u1', RobosatsNetwork.mainnet, false),
       ]) {
@@ -87,6 +92,11 @@ void main() {
           reason: '$prefix on ${network.name}',
         );
       }
+    });
+
+    test('has data after its separator', () {
+      expect(invoiceOf('lnbc6u1'), isNull);
+      expect(invoiceOf('lnbc6u1q'), isNotNull);
     });
 
     test('has an amount', () {
@@ -217,29 +227,36 @@ void main() {
   });
 
   group('the fake port', () {
-    test('gives the balance at once, then each change, to each subscription', () async {
-      final port = FakeP2pWalletPort(balance: Ok(Sats.fromInt(1000)));
-      final first = <Result<Sats, P2pWalletRefusal>>[];
-      final second = <Result<Sats, P2pWalletRefusal>>[];
-      final a = port.instantBalance(RobosatsNetwork.mainnet).listen(first.add);
-      await pumpEventQueue();
-      port.setBalance(Ok(Sats.fromInt(400)));
-      final b = port.instantBalance(RobosatsNetwork.testnet).listen(second.add);
-      await pumpEventQueue();
-      port.setBalance(Ok(Sats.fromInt(5000)));
-      await pumpEventQueue();
-      expect(first.map(_sats), [1000, 400, 5000]);
-      expect(second.map(_sats), [400, 5000]);
-      expect(port.balanceRequests, [
-        RobosatsNetwork.mainnet,
-        RobosatsNetwork.testnet,
-      ]);
-      await a.cancel();
-      await b.cancel();
-    });
+    test(
+      'gives the balance at once, then each change, to each subscription',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+        final first = <Result<Sats, P2pWalletRefusal>>[];
+        final second = <Result<Sats, P2pWalletRefusal>>[];
+        final a = port
+            .instantBalance(RobosatsNetwork.mainnet)
+            .listen(first.add);
+        await pumpEventQueue();
+        port.setBalance(Ok(Sats.fromInt(400)));
+        final b = port
+            .instantBalance(RobosatsNetwork.testnet)
+            .listen(second.add);
+        await pumpEventQueue();
+        port.setBalance(Ok(Sats.fromInt(5000)));
+        await pumpEventQueue();
+        expect(first.map(_sats), [1000, 400, 5000]);
+        expect(second.map(_sats), [400, 5000]);
+        expect(port.balanceRequests, [
+          RobosatsNetwork.mainnet,
+          RobosatsNetwork.testnet,
+        ]);
+        await a.cancel();
+        await b.cancel();
+      },
+    );
 
     test('ends a subscription on a refusal', () async {
-      final port = FakeP2pWalletPort(balance: Ok(Sats.fromInt(1000)));
+      final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
       final seen = <Result<Sats, P2pWalletRefusal>>[];
       final done = Completer<void>();
       port
@@ -256,42 +273,45 @@ void main() {
       );
     });
 
-    test('answers the quotes it was given, in order, and records them', () async {
-      final port = FakeP2pWalletPort(balance: Ok(Sats.fromInt(1000)));
-      final quote = P2pWalletQuote(
-        invoice: invoice(),
-        payin: Sats.fromInt(603),
-        serviceFeeBasisPoints: 50,
-        networkFee: Sats.fromInt(26),
-        balance: Sats.fromInt(1000),
-        quotedAt: expiry,
-      );
-      port
-        ..scriptQuote(Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(1000))))
-        ..scriptQuote(Ok(quote));
-      expect(
-        await port.quote(invoice()),
-        isA<Err<P2pWalletQuote, P2pWalletRefusal>>().having(
-          (err) => err.failure,
-          'failure',
-          isA<P2pWalletUnderMinimum>().having(
-            (refusal) => refusal.minimum,
-            'minimum',
-            Sats.fromInt(1000),
+    test(
+      'answers the quotes it was given, in order, and records them',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+        final quote = P2pWalletQuote(
+          invoice: invoice(),
+          payin: Sats.fromInt(603),
+          serviceFeeBasisPoints: 50,
+          networkFee: Sats.fromInt(26),
+          balance: Sats.fromInt(1000),
+          quotedAt: expiry,
+        );
+        port
+          ..scriptQuote(Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(1000))))
+          ..scriptQuote(Ok(quote));
+        expect(
+          await port.quote(invoice()),
+          isA<Err<P2pWalletQuote, P2pWalletRefusal>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<P2pWalletUnderMinimum>().having(
+              (refusal) => refusal.minimum,
+              'minimum',
+              Sats.fromInt(1000),
+            ),
           ),
-        ),
-      );
-      expect(
-        await port.quote(invoice()),
-        isA<Ok<P2pWalletQuote, P2pWalletRefusal>>().having(
-          (ok) => ok.value,
-          'value',
-          same(quote),
-        ),
-      );
-      expect(port.quoted, [invoice(), invoice()]);
-      expect(() => port.quote(invoice()), throwsStateError);
-    });
+        );
+        expect(
+          await port.quote(invoice()),
+          isA<Ok<P2pWalletQuote, P2pWalletRefusal>>().having(
+            (ok) => ok.value,
+            'value',
+            same(quote),
+          ),
+        );
+        expect(port.quoted, [invoice(), invoice()]);
+        expect(() => port.quote(invoice()), throwsStateError);
+      },
+    );
   });
 }
 

@@ -32,7 +32,7 @@ final class CheckedBolt11Invoice {
 
   /// The invoice [bolt11], decoded by the feature's check as [amount] on [network], expiring at [expiresAt]; `null` when no BOLT11 invoice of that network and amount can be that string.
   ///
-  /// Refused: more than [maxLength] characters, any character that is not visible ASCII (`!` to `~`), upper and lower case mixed (bech32 allows one case only), a prefix that is not the network's with an amount (`lnbc` and a digit on mainnet, `lntb` or `lntbs` and a digit on testnet, so neither regtest's `lnbcrt` nor an invoice without an amount), and an amount of zero.
+  /// Refused: more than [maxLength] characters, any character that is not visible ASCII (`!` to `~`), upper and lower case mixed (bech32 allows one case only), a human-readable part (before the last `1`, the bech32 separator) that is not the network's with an amount (`lnbc` then the amount's digits and its multiplier on mainnet, `lntb` or `lntbs` then the same on testnet: neither regtest's `lnbcrt` nor an invoice without an amount), no data after the separator, and an amount of zero.
   @internal
   static CheckedBolt11Invoice? of({
     required String bolt11,
@@ -45,11 +45,14 @@ final class CheckedBolt11Invoice {
     }
     final lower = bolt11.toLowerCase();
     if (bolt11 != lower && bolt11 != bolt11.toUpperCase()) return null;
+    // The human-readable part ends at the last `1`, the bech32 separator, which the data part cannot hold.
+    final separator = lower.lastIndexOf('1');
+    if (separator < 0 || separator == lower.length - 1) return null;
     final prefix = switch (network) {
       RobosatsNetwork.mainnet => _mainnetPrefix,
       RobosatsNetwork.testnet => _testnetPrefix,
     };
-    if (!prefix.hasMatch(lower)) return null;
+    if (!prefix.hasMatch(lower.substring(0, separator))) return null;
     if (amount.value <= BigInt.zero) return null;
     return CheckedBolt11Invoice._(bolt11, amount, network, expiresAt.toUtc());
   }
@@ -75,6 +78,8 @@ final class CheckedBolt11Invoice {
 /// One or more visible ASCII characters, from `!` to `~`, and nothing else.
 final _visibleAscii = RegExp(r'^[\x21-\x7e]+$');
 
-final _mainnetPrefix = RegExp('^lnbc[0-9]');
+/// The human-readable part of a mainnet invoice with an amount: `lnbc`, the amount's digits, and its multiplier if any.
+final _mainnetPrefix = RegExp(r'^lnbc[0-9]+[munp]?$');
 
-final _testnetPrefix = RegExp('^lntbs?[0-9]');
+/// The same on testnet (`lntb`) or signet (`lntbs`).
+final _testnetPrefix = RegExp(r'^lntbs?[0-9]+[munp]?$');
