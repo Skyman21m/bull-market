@@ -243,6 +243,9 @@ void main() {
             'acknowledgeByTearOff': {
               'RobotBindingRepository.recordAcknowledgedKey',
             },
+            'acknowledgeUseCaseByTearOff': {
+              'AcknowledgeGarageKeyHistoryUsecase.execute',
+            },
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
             'fetchByUseCaseTearOff': {'FetchRobotUsecase.execute'},
@@ -416,6 +419,20 @@ void main() {
         referring((r) => r == 'RobotBindingRepository.recordAcknowledgedKey'),
         {'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart'},
       );
+      // That use case is called by the robot panel's cubit alone, which the panel asks only on « I understand » of « Robots from elsewhere » (#29, step 6): nothing records it at an import, a draw, a display, a migration or in the test seam.
+      expect(
+        referring((r) => r == 'AcknowledgeGarageKeyHistoryUsecase.execute'),
+        {'lib/src/presentation/robot_coordinator_cubit.dart'},
+      );
+      expect(referring((r) => r == 'RobotCoordinatorCubit.acknowledge'), {
+        'lib/src/ui/garage/robot_coordinator_panel.dart',
+      });
+      // Its own file, the cubit and the composition, which builds it, name it; nothing else holds one.
+      expect(referring((r) => r == 'type AcknowledgeGarageKeyHistoryUsecase'), {
+        'lib/src/domain/usecases/acknowledge_garage_key_history_usecase.dart',
+        'lib/src/presentation/robot_coordinator_cubit.dart',
+        'lib/src/p2p_locator.dart',
+      });
     });
 
     test(
@@ -443,6 +460,7 @@ void main() {
           containsAll([
             cubit,
             'lib/src/ui/garage/robot_coordinator_panel.dart',
+            'lib/src/ui/garage/robot_history_dialog.dart',
             'lib/src/ui/garage/select_host_sheet.dart',
             'lib/src/ui/garage/send_robot_dialog.dart',
           ]),
@@ -866,7 +884,9 @@ const _watched = {
   'RobotContact': ('package:p2p/', {'firstContact'}),
   // The robot use cases of the Garage's panel, and what its cubit and widgets must not reach but through them (#29, step 5).
   'PutRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
-  'RobotCoordinatorCubit': ('package:p2p/', {'putOn', 'retry'}),
+  'RobotCoordinatorCubit': ('package:p2p/', {'putOn', 'retry', 'acknowledge'}),
+  // The acknowledgement of a key of unknown history, which only the user's « I understand » records (#29, step 6).
+  'AcknowledgeGarageKeyHistoryUsecase': ('package:p2p/', {'execute'}),
   'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),

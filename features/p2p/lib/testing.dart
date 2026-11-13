@@ -9,7 +9,6 @@ import 'package:bull_tor/tor.dart';
 import 'package:drift/native.dart';
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
-import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
@@ -20,8 +19,6 @@ import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
-import 'src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
-import 'src/domain/usecases/read_garage_key_usecase.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
@@ -106,22 +103,6 @@ void setUpP2pForTesting(
     );
   }
 }
-
-/// Records that the user acknowledged the history of the Garage Key stored for [network] in the vault of the Garage registered in [locator], as the acknowledgement of a later step of #29 is to: the robots of a pasted key may then be put on a coordinator from the Garage.
-///
-/// For the captures of the robot panel, which show the public example key of the RoboSats tests, pasted and so of unknown history; completes with whether it was recorded.
-@visibleForTesting
-Future<bool> acknowledgeGarageKeyForTesting(
-  GetIt locator,
-  RobosatsNetwork network,
-) async => switch (await locator<ReadGarageKeyUsecase>().execute(network)) {
-  Ok(value: final key) =>
-    switch (await locator<AcknowledgeGarageKeyHistoryUsecase>().execute(key)) {
-      Ok() => true,
-      Err() => false,
-    },
-  Err() => false,
-};
 
 /// Whether the feature registered in [locator] was given the vault's Garage Key handle, which `P2pFeature.setup` receives from the foreground composition of the shell only.
 @visibleForTesting

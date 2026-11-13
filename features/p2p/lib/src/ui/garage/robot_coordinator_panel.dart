@@ -16,6 +16,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/robot_coordinator_cubit.dart';
 import '../../presentation/robot_coordinator_state.dart';
 import '../widgets/coordinator_avatar.dart';
+import 'robot_history_dialog.dart';
 import 'select_host_sheet.dart';
 import 'send_robot_dialog.dart';
 
@@ -23,7 +24,7 @@ import 'send_robot_dialog.dart';
 ///
 /// The official client shows « Coordinators that know your robot: » in its profile dialog, one line per coordinator, since it sends every robot to all of them (`components/Dialogs/Profile.tsx` and `components/RobotInfo/index.tsx` at commit ff1998c), and the orders and rewards of the robot on its Garage profile (`basic/GaragePage/GarageKeyProfile.tsx`).
 /// In Troc a robot lives on one coordinator only, so the panel shows one: none yet, with « Select Host », the user's choice and never a requirement; or the coordinator of its binding, read back as soon as Tor is ready.
-/// A robot reaches a coordinator from here only through « Select Host », the choice and « Continue » on the confirmation.
+/// A robot reaches a coordinator from here only through « Select Host », the choice and « Continue » on the confirmation; for a key of unknown history, « Select Host » first asks « Robots from elsewhere » ([RobotHistoryDialog]), once per key and network, which the reference has no need of since it sends every robot everywhere.
 /// The orders are plain text: Troc has no page for them yet.
 class RobotCoordinatorPanel extends StatelessWidget {
   /// The nickname of the robot shown, for the confirmation.
@@ -130,9 +131,20 @@ class RobotCoordinatorPanel extends StatelessWidget {
     );
   }
 
-  /// « Select Host », then the confirmation, then the first contact: nothing leaves before « Continue ».
+  /// « Select Host »: for a key of unknown history, « Robots from elsewhere » first, recorded only on « I understand »; then the sheet, the confirmation, and the first contact: nothing leaves before « Continue ».
   Future<void> _selectHost(BuildContext context) async {
     final cubit = context.read<RobotCoordinatorCubit>();
+    if (cubit.state case RobotWithoutCoordinator(needsAcknowledgement: true)) {
+      if (!await RobotHistoryDialog.show(context) || !context.mounted) return;
+      await cubit.acknowledge();
+      if (!context.mounted) return;
+    }
+    // The sheet only for a robot that may be given a coordinator now: not when the acknowledgement could not be recorded.
+    final mayChooseHost = switch (cubit.state) {
+      RobotWithoutCoordinator(:final mayChooseHost) => mayChooseHost,
+      _ => false,
+    };
+    if (!mayChooseHost) return;
     final coordinator = await SelectHostSheet.show(
       context,
       hosts: cubit.hosts(),
@@ -181,6 +193,7 @@ class _WithoutCoordinator extends StatelessWidget {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     final attempt = state.lastAttempt;
+    final acknowledgementFailure = state.acknowledgementFailure;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -195,15 +208,27 @@ class _WithoutCoordinator extends StatelessWidget {
             color: colors.error,
           ),
         ],
+        // The acknowledgement was not recorded, and nothing was sent: « Select Host » asks it again.
+        if (acknowledgementFailure != null) ...[
+          const Gap(BullSpacing.xs),
+          _Line(
+            switch (acknowledgementFailure) {
+              P2pStorageFailure() => l10n.p2pRobotStorage,
+              _ => acknowledgementFailure.toTranslated(context),
+            },
+            color: colors.error,
+            live: true,
+          ),
+        ],
         const Gap(BullSpacing.sm),
         BullButton.big(
           label: l10n.p2pRobotSelectHost,
           iconData: Icons.dns_outlined,
           iconFirst: true,
-          // Disabled until Tor is ready, and for a key whose history must be acknowledged first, which a later step asks.
-          disabled: !state.mayChooseHost,
+          // Disabled until Tor is ready; for a key whose history must be acknowledged, it asks that first.
+          disabled: !state.maySelectHost,
           onPressed: () {
-            if (state.mayChooseHost) onSelectHost();
+            if (state.maySelectHost) onSelectHost();
           },
           outlined: true,
           bgColor: colors.transparent,
