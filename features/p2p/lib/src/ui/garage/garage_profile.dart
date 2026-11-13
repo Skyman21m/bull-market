@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/network_garage_key.dart';
+import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/garage_cubit.dart';
 import '../../presentation/garage_state.dart';
 import '../../presentation/p2p_failure_l10n.dart';
+import '../../presentation/robot_coordinator_cubit.dart';
 import '../widgets/garage_key_clipboard.dart';
 import '../widgets/garage_key_view.dart';
 import '../widgets/robot_avatar.dart';
@@ -14,6 +17,7 @@ import 'delete_garage_key_dialog.dart';
 import 'garage_key_history_notice.dart';
 import 'garage_reauthentication.dart';
 import 'garage_wizard.dart' show RobotNickname;
+import 'robot_coordinator_panel.dart';
 
 /// The profile of the Garage when a Garage Key is stored, as the official client draws it (`basic/GaragePage/GarageKeyProfile.tsx` at commit ff1998c): the nickname, the avatar, the robot navigator, then the Garage Key and « Delete All ».
 ///
@@ -23,17 +27,28 @@ import 'garage_wizard.dart' show RobotNickname;
 /// « Delete All » asks « Delete Garage Key? », then the same re-authentication when a robot of the key may live on a coordinator, which the cubit decides; RoboSats asks only the confirmation.
 /// Without [reauthenticate] such a key cannot be deleted here.
 /// Right after a draw whose history could not be recorded, it says so.
-/// What needs a coordinator is not shown: the settings of the robot, its orders and rewards, and whether it was used in a trade.
+/// Under the robot navigator, the panel of the robot shown ([RobotCoordinatorPanel]): the coordinator that knows it, if any, and what that coordinator says of its orders and rewards, with its own cubit for each robot, closed when the user moves to another robot.
+/// The settings of the robot (Telegram, webhook, stealth invoices) and the claim of its rewards are not shown.
 class GarageProfile extends StatefulWidget {
   final GarageWithKey state;
   final GarageKeyClipboard clipboard;
   final P2pReauthentication? reauthenticate;
+
+  /// Makes the cubit of the panel of the robot at an index of a Garage Key.
+  final RobotCoordinatorCubit Function(NetworkGarageKey key, int index)
+  robotCoordinator;
+
+  /// Makes the cubit of the coordinator dialog, opened from « Select Host ».
+  final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
+  coordinatorDetails;
 
   const GarageProfile({
     super.key,
     required this.state,
     required this.clipboard,
     required this.reauthenticate,
+    required this.robotCoordinator,
+    required this.coordinatorDetails,
   });
 
   @override
@@ -107,6 +122,18 @@ class _GarageProfileState extends State<GarageProfile> {
             const Gap(BullSpacing.md),
             const GarageKeyHistoryNotRecorded(),
           ],
+          const Gap(BullSpacing.md),
+          // One cubit per robot shown and per key: moving to another robot closes it, which releases the robot.
+          BlocProvider<RobotCoordinatorCubit>(
+            key: ValueKey((state.key, robot.index)),
+            create: (_) =>
+                widget.robotCoordinator(state.key, robot.index)..load(),
+            child: RobotCoordinatorPanel(
+              nickname: robot.nickname,
+              network: state.network,
+              coordinatorDetails: widget.coordinatorDetails,
+            ),
+          ),
           const Gap(BullSpacing.md),
           Container(
             width: double.infinity,

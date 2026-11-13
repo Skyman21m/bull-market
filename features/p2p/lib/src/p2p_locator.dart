@@ -18,6 +18,7 @@ import 'domain/p2p_shuffle.dart';
 import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/network_garage_key.dart';
 import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
@@ -30,6 +31,7 @@ import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
+import 'domain/usecases/list_robot_hosts_usecase.dart';
 import 'domain/usecases/load_federation_books_usecase.dart';
 import 'domain/usecases/needs_pin_to_delete_garage_key_usecase.dart';
 import 'domain/usecases/put_robot_on_coordinator_usecase.dart';
@@ -45,6 +47,7 @@ import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'presentation/robot_coordinator_cubit.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -124,7 +127,7 @@ final class P2pLocator {
         random: Random().nextDouble,
       );
     });
-    // A robot put on a coordinator, read back from it, and let go: their only callers will be the Garage's robot panel, and nothing outside the feature reaches them.
+    // A robot put on a coordinator, read back from it, and let go: their only caller is the Garage's robot panel, and nothing outside the feature reaches them.
     locator.registerFactory<PutRobotOnCoordinatorUsecase>(
       () => PutRobotOnCoordinatorUsecase(locator(), locator(), locator()),
     );
@@ -138,6 +141,10 @@ final class P2pLocator {
     );
     locator.registerFactory<ReleaseRobotUsecase>(
       () => ReleaseRobotUsecase(locator(), locator()),
+    );
+    // The coordinators « Select Host » lists, and the one a binding names: the federation list and the refusal caps of the limiter, nothing sent.
+    locator.registerFactory<ListRobotHostsUsecase>(
+      () => ListRobotHostsUsecase(Federation.robosats, locator()),
     );
     locator.registerFactory<HasGarageKeyUsecase>(
       () => HasGarageKeyUsecase(locator()),
@@ -175,6 +182,19 @@ final class P2pLocator {
     locator.registerFactoryParam<GarageCubit, RobosatsNetwork, void>(
       (network, _) => GarageCubit(
         network,
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+      ),
+    );
+    // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases.
+    locator.registerFactoryParam<RobotCoordinatorCubit, NetworkGarageKey, int>(
+      (key, index) => RobotCoordinatorCubit(
+        key,
+        index,
         locator(),
         locator(),
         locator(),

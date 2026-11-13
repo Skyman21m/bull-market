@@ -816,4 +816,148 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pGarageKeyHistoryNotRecorded =>
       'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.';
+
+  @override
+  String get p2pRobotCoordinatorTitle =>
+      'Coordinateur qui connaît votre robot :';
+
+  @override
+  String get p2pRobotNoCoordinator =>
+      'Aucun coordinateur ne connaît encore ce robot.';
+
+  @override
+  String get p2pRobotSelectHost => 'Sélectionner l\'hôte';
+
+  @override
+  String p2pRobotHostDetails(String coordinator) {
+    return 'Détails de $coordinator';
+  }
+
+  @override
+  String p2pRobotSendTitle(String nickname, String coordinator) {
+    return 'Envoyer $nickname à $coordinator ?';
+  }
+
+  @override
+  String p2pRobotSendBody(String coordinator) {
+    return '$coordinator connaîtra ce robot désormais. Dans Troc, un robot ne vit que chez un seul coordinateur : ce robot ne sera jamais envoyé à un autre. Pour échanger ailleurs, utilisez un autre robot.';
+  }
+
+  @override
+  String get p2pRobotSendOtherApp =>
+      'Si vous utilisez aussi cette clé de garage dans une autre application, celle-ci peut envoyer ce robot à tous les coordinateurs.';
+
+  @override
+  String get p2pGarageBuildingRobot => 'Construction de votre robot !';
+
+  @override
+  String get p2pRobotLookingForOrders => 'Recherche d\'ordres !';
+
+  @override
+  String p2pRobotStillWaiting(String coordinator) {
+    return 'Toujours en attente de $coordinator. Tor peut prendre une minute.';
+  }
+
+  @override
+  String p2pRobotActiveOrder(String orderId) {
+    return 'Ordre actif #$orderId';
+  }
+
+  @override
+  String p2pRobotLastOrder(String orderId) {
+    return 'Dernier ordre #$orderId';
+  }
+
+  @override
+  String get p2pRobotNoOrders => 'Aucun ordre existant trouvé';
+
+  @override
+  String get p2pRobotUsedInTrade =>
+      'Ce robot a participé à un échange. Passez à un nouveau compte pour préserver votre vie privée.';
+
+  @override
+  String get p2pRobotRewards => 'Vos compensations';
+
+  @override
+  String p2pRobotAlreadyExisted(String coordinator) {
+    return 'Ce robot existait déjà chez $coordinator.';
+  }
+
+  @override
+  String p2pRobotOnOtherNetwork(String network) {
+    String _temp0 = intl.Intl.selectLogic(network, {
+      'testnet': 'testnet',
+      'other': 'mainnet',
+    });
+    return 'Ce robot vit chez un coordinateur $_temp0.';
+  }
+
+  @override
+  String get p2pRobotCoordinatorTooManyRefusals =>
+      'Ce coordinateur a refusé trop de robots.';
+
+  @override
+  String get p2pRobotBusy =>
+      'Trop de requêtes attendent ce coordinateur. Réessayez dans un instant.';
+
+  @override
+  String p2pRobotNicknameTaken(String coordinator) {
+    return 'Le nom de ce robot est déjà pris chez $coordinator : il ne peut pas y être créé. Utilisez le robot suivant.';
+  }
+
+  @override
+  String p2pRobotNotCreated(String coordinator) {
+    return '$coordinator ne connaît pas encore ce robot.';
+  }
+
+  @override
+  String p2pRobotKeyTooRecent(String coordinator) {
+    return '$coordinator a refusé la clé du robot, jugée trop récente. Vérifiez la date et l’heure de votre téléphone, puis réessayez.';
+  }
+
+  @override
+  String p2pRobotRefused(String coordinator) {
+    return '$coordinator a refusé ce robot. Il utilise peut-être une autre version de RoboSats.';
+  }
+
+  @override
+  String p2pRobotMismatch(String coordinator) {
+    return '$coordinator a répondu avec un autre robot, ou avec des clés que ce robot n’a pas créées. N’utilisez pas ce robot chez ce coordinateur.';
+  }
+
+  @override
+  String p2pRobotBadAnswer(String coordinator) {
+    return '$coordinator a envoyé une réponse que Troc ne peut pas lire.';
+  }
+
+  @override
+  String p2pRobotCoordinatorChanged(String coordinator) {
+    return '$coordinator a changé d’adresse ou de clés depuis que ce robot lui a été envoyé. Rien n’a été envoyé. Tant qu’une mise à jour de l’application n’a pas vérifié ce changement, utilisez un autre robot.';
+  }
+
+  @override
+  String get p2pRobotStorage =>
+      'Troc n’a pas pu lire ses enregistrements sur cet appareil. Rien n’a été envoyé.';
+
+  @override
+  String p2pRobotNostrOld(String coordinator) {
+    return '$coordinator détient une ancienne clé Nostr de ce robot, qu’il peut calculer : ses notifications ne sont pas privées. Préférez un autre robot pour échanger.';
+  }
+
+  @override
+  String p2pRobotNostrUnknown(String coordinator) {
+    return '$coordinator détient une clé Nostr que cette application ne peut pas utiliser : les notifications concernant ce robot ne lui parviendront pas.';
+  }
+
+  @override
+  String get p2pRobotKeyComputeFailed =>
+      'Ce téléphone n’a pas pu créer ou vérifier les clés de ce robot. Vérifiez sa date et son heure, puis réessayez.';
+
+  @override
+  String get p2pRobotBoundElsewhere =>
+      'Ce robot vit chez un autre coordinateur. Rien n’a été envoyé.';
+
+  @override
+  String get p2pRobotRecordsUnreadable =>
+      'Troc n’a pas pu lire ses enregistrements sur cet appareil.';
 }

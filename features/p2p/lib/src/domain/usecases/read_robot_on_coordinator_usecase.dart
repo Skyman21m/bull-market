@@ -30,29 +30,30 @@ final class ReadRobotOnCoordinatorUsecase {
   ///
   /// The binding is read first, and nothing is sent when it does not name a coordinator of the robot's network: [RobotNotBoundFailure] for a robot sent to no coordinator, [RobotBoundToAnotherCoordinatorFailure] for one bound on the other network, [RobotCoordinatorChangedFailure] for a coordinator that the federation list of this version of the app no longer has on that network, [P2pStorageFailure] for a database that cannot be read.
   /// [FetchRobotUsecase] checks the binding again against the coordinator as the list gives it now.
-  /// A busy answer of the transport is sent again after a growing wait, as [RobotRequestLimiter] says; [RobotCoordinatorBusyFailure] when that does not get through, and [RobotReleasedFailure] once the robot was released.
+  /// A busy answer of the transport is sent again after a growing wait, as [RobotRequestLimiter] says; [RobotCoordinatorBusyFailure] when that does not get through, and [RobotReleasedFailure] once the robot was released, from the start of the call, the read of the binding included: nothing is then bound or sent.
   /// The inner result is what the coordinator answered, checked: [RobotUnknown] for a robot bound there whose first contact never created it, or its robot shown as a [RobotOnCoordinatorFace].
   Future<Result<Result<RobotOnCoordinatorFace, CoordinatorFailure>, P2pFailure>>
   execute(NetworkRobot robot) async {
-    final RobotStanding standing;
-    switch (await _bindings.standingOf(robot.slot)) {
-      case Ok(:final value):
-        standing = value;
-      case Err(:final failure):
-        return Err(failure);
-    }
-    final binding = standing.binding;
-    if (binding == null) return const Err(RobotNotBoundFailure());
-    if (standing.isBoundOnOtherNetwork) {
-      return const Err(RobotBoundToAnotherCoordinatorFailure());
-    }
-    final coordinator = _federation.byAlias(binding.coordinator.alias);
-    if (coordinator == null ||
-        CoordinatorIdentity.of(coordinator, robot.network) == null) {
-      return const Err(RobotCoordinatorChangedFailure());
-    }
+    // Opened before the binding is read, so that a release of the robot during that read stops the request before it binds or leaves (security review of step 5).
     final requests = _limiter.open(robot.identity.sessionKey);
     try {
+      final RobotStanding standing;
+      switch (await _bindings.standingOf(robot.slot)) {
+        case Ok(:final value):
+          standing = value;
+        case Err(:final failure):
+          return Err(failure);
+      }
+      final binding = standing.binding;
+      if (binding == null) return const Err(RobotNotBoundFailure());
+      if (standing.isBoundOnOtherNetwork) {
+        return const Err(RobotBoundToAnotherCoordinatorFailure());
+      }
+      final coordinator = _federation.byAlias(binding.coordinator.alias);
+      if (coordinator == null ||
+          CoordinatorIdentity.of(coordinator, robot.network) == null) {
+        return const Err(RobotCoordinatorChangedFailure());
+      }
       return switch (await requests.send(
         robot.network,
         coordinator,
