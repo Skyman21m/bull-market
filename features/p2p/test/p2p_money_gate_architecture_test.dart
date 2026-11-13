@@ -12,7 +12,8 @@ import 'package:test/test.dart';
 /// It reads the sources as text, parsed without resolution: a name is a call wherever it stands in code, a tear-off, a cascade, a call on an import prefix, an implicit `this` in an extension, a `dynamic` call and a `Symbol` included; comments, doc comments and strings are not code.
 /// A declaration of a member with one of these names is not a call (a fake of the client could declare them), but every use of such a member is, whoever declares it, and so is a named argument or a record field of that name: in the feature, these names are kept for the client's members.
 /// A file asks the gate when it uses the answer of `P2pMoneyGate.allowsNewTrade` or `P2pMoneyGate.allowsActionOnRecordedTrade`, called, not torn off nor dropped as a statement of its own; the file is the unit, not the function.
-/// What it cannot see is in the working note of #83 and in the AGENTS.md paragraph on the gate: a trade use case that hands a tear-off out, the value of a gate's answer ignored by an `if` that does nothing, and code outside `features/p2p/lib`.
+/// What it cannot see is left to the money review, as the AGENTS.md paragraph on the gate says: a tear-off or a wrapper that a trade use case hands out, an answer of the gate that a branch ignores, code outside `features/p2p/lib`, and a trade recorded otherwise than by a take the gate allowed.
+/// An extension on `CoordinatorClient`, which could rename a member, and a raw `CoordinatorTransport.send` are refused anywhere in the feature by `robot_bindings_architecture_test.dart`.
 void main() {
   // Tests run with the package directory as working directory.
   final sources = {
