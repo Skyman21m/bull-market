@@ -255,6 +255,9 @@ final class Schema3 extends i0.VersionedSchema {
         'CHECK(role IN (\'buyer\', \'seller\'))',
         'CHECK(origin IN (\'takenHere\', \'recovered\'))',
         'CHECK(origin = \'takenHere\' OR confirmed_at IS NOT NULL)',
+        'CHECK(payment_hash IS NULL OR(length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\'))',
+        'CHECK((payment_hash IS NULL)=(payment_started_at IS NULL))',
+        'CHECK(payment_swap_id IS NULL OR(payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128))',
         'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES robot_bindings(key_fingerprint, robot_index)',
       ],
       columns: [
@@ -269,6 +272,9 @@ final class Schema3 extends i0.VersionedSchema {
         _column_13,
         _column_14,
         _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
       ],
       attachedDatabase: database,
     ),
@@ -300,6 +306,12 @@ class Shape2 extends i0.VersionedTable {
       columnsByName['confirmed_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get closedAt =>
       columnsByName['closed_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get paymentHash =>
+      columnsByName['payment_hash']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get paymentStartedAt =>
+      columnsByName['payment_started_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get paymentSwapId =>
+      columnsByName['payment_swap_id']! as i1.GeneratedColumn<String>;
 }
 
 i1.GeneratedColumn<int> _column_11(String aliasedName) =>
@@ -340,6 +352,30 @@ i1.GeneratedColumn<int> _column_15(String aliasedName) =>
       aliasedName,
       true,
       type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_16(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'payment_hash',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_17(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'payment_started_at',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_18(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'payment_swap_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
 i0.MigrationStepWithVersion migrationSteps({
