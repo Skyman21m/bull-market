@@ -958,29 +958,38 @@ void main() {
           seen.add(active);
           changes.add(null);
         });
-        Future<List<TradeRecord>> next() async {
-          await changes.stream.first;
-          return switch (seen.last) {
-            Ok(:final value) => value,
-            Err(:final failure) => fail('$failure'),
-          };
+        // The latest list once it is [expected]: drift may emit more than once for one write, never a list the writes did not make.
+        Future<List<TradeRecord>> until(List<TradeRecord> expected) async {
+          while (true) {
+            if (seen.isNotEmpty) {
+              final latest = switch (seen.last) {
+                Ok(:final value) => value,
+                Err(:final failure) => fail('$failure'),
+              };
+              if (latest.length == expected.length &&
+                  latest.indexed.every((e) => e.$2 == expected[e.$1])) {
+                return latest;
+              }
+            }
+            await changes.stream.first.timeout(const Duration(seconds: 5));
+          }
         }
 
-        expect(await next(), isEmpty);
+        await until(const []);
         final first = await pendingTake(await reserved(0));
-        expect(await next(), [first]);
+        await until([first]);
         now = testNow.add(const Duration(minutes: 1));
         final second = await pendingTake(await reserved(1), orderId: 8);
-        expect(await next(), [first, second]);
+        await until([first, second]);
         final taken = switch (await trades.confirmTake(first)) {
           Ok(:final value) => value,
           Err(:final failure) => fail('$failure'),
         };
-        expect(await next(), [taken, second]);
+        await until([taken, second]);
         expect(await trades.closeTrade(second), isA<Ok>());
-        expect(await next(), [taken]);
+        await until([taken]);
         expect(await trades.closeTrade(taken), isA<Ok>());
-        expect(await next(), isEmpty);
+        await until(const []);
         // A trade of mainnet: recorded, recovered here, never listed for testnet.
         expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), isA<Ok>());
         expect(
@@ -996,9 +1005,17 @@ void main() {
           ),
           isA<Ok>(),
         );
-        expect(await next(), isEmpty);
+        await until(const []);
         await subscription.cancel();
         await changes.close();
+        expect(
+          await trades.watchActiveTrades(testnet).first,
+          isA<Ok<List<TradeRecord>, P2pFailure>>().having(
+            (ok) => ok.value,
+            'active',
+            isEmpty,
+          ),
+        );
         expect(
           await trades.watchActiveTrades(mainnet).first,
           isA<Ok<List<TradeRecord>, P2pFailure>>().having(

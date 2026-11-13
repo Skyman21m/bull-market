@@ -76,16 +76,17 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
-  /// Confirms a pending take: only a record of that robot and order neither confirmed nor closed changes.
+  /// Confirms a pending take: only the record of that robot, network, order and origin, neither confirmed nor closed, changes.
   static const String _confirmSql =
       'UPDATE trades SET confirmed_at = ? WHERE key_fingerprint = ? '
-      'AND robot_index = ? AND order_id = ? '
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
       'AND confirmed_at IS NULL AND closed_at IS NULL';
 
-  /// Closes a record: only a record of that robot and order not closed yet changes.
+  /// Closes a record: only the record of that robot, network, order and origin, not closed yet, changes.
   static const String _closeSql =
       'UPDATE trades SET closed_at = ? WHERE key_fingerprint = ? '
-      'AND robot_index = ? AND order_id = ? AND closed_at IS NULL';
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
+      'AND closed_at IS NULL';
 
   /// The record of one robot, and the binding of its index, in one statement that always gives one row: the columns of each absent when there is none.
   static const String _robotSql =
@@ -340,7 +341,9 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withInt(_clock().millisecondsSinceEpoch),
           Variable.withString(fingerprint),
           Variable.withInt(record.robot.accountIndex),
+          Variable.withString(_networkValue(record.network)),
           Variable.withInt(record.orderId),
+          Variable.withString(_originValue(record.origin)),
         ],
         updates: {_database.trades},
         updateKind: UpdateKind.update,
@@ -573,6 +576,12 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   static String _networkValue(RobosatsNetwork network) => switch (network) {
     RobosatsNetwork.mainnet => 'mainnet',
     RobosatsNetwork.testnet => 'testnet',
+  };
+
+  /// The origin as the database stores it.
+  static String _originValue(TradeOrigin origin) => switch (origin) {
+    TradeOrigin.takenHere => 'takenHere',
+    TradeOrigin.recovered => 'recovered',
   };
 
   /// The side as the database stores it.

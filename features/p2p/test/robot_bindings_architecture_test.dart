@@ -877,13 +877,14 @@ class RobotCoordinatorCubit {
     expect(
       confirm,
       'UPDATE trades SET confirmed_at = ? WHERE key_fingerprint = ? '
-      'AND robot_index = ? AND order_id = ? '
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
       'AND confirmed_at IS NULL AND closed_at IS NULL',
     );
     expect(
       close,
       'UPDATE trades SET closed_at = ? WHERE key_fingerprint = ? '
-      'AND robot_index = ? AND order_id = ? AND closed_at IS NULL',
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
+      'AND closed_at IS NULL',
     );
     expect(
       trades.strings.where(
