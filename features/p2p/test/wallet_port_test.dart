@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/testing.dart';
 
@@ -354,6 +355,50 @@ void main() {
       P2pWalletServiceRefused() => 'refused',
     };
     expect(refusals.map(name).toSet(), hasLength(13));
+  });
+
+  group('setup', () {
+    test('lends no port when none is given', () {
+      final locator = GetIt.asNewInstance();
+      addTearDown(locator.reset);
+      // As a composition written before the port, the WorkManager isolate's among them, calls it.
+      const P2pFeature().setup(
+        locator,
+        garageKeys: null,
+        databaseDirectory: null,
+      );
+      expect(hasWalletPortForTesting(locator), isFalse);
+      final explicit = GetIt.asNewInstance();
+      addTearDown(explicit.reset);
+      const P2pFeature().setup(
+        explicit,
+        garageKeys: null,
+        databaseDirectory: null,
+        wallet: null,
+      );
+      expect(hasWalletPortForTesting(explicit), isFalse);
+    });
+
+    test('registers the port given, and asks for it at its first use only', () {
+      final locator = GetIt.asNewInstance();
+      addTearDown(locator.reset);
+      final port = FakeP2pWalletPort(Ok(Sats.zero));
+      var asked = 0;
+      const P2pFeature().setup(
+        locator,
+        garageKeys: null,
+        databaseDirectory: null,
+        wallet: () {
+          asked++;
+          return port;
+        },
+      );
+      expect(hasWalletPortForTesting(locator), isTrue);
+      expect(asked, 0);
+      expect(locator<P2pWalletPort>(), same(port));
+      expect(locator<P2pWalletPort>(), same(port));
+      expect(asked, 1);
+    });
   });
 
   group('the fake port', () {

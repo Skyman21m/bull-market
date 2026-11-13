@@ -88,7 +88,6 @@ void main() {
       locator,
       garageKeys: null,
       databaseDirectory: null,
-      wallet: null,
     );
   });
 

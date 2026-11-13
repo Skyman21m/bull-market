@@ -23,7 +23,6 @@ void main() {
       locator,
       garageKeys: null,
       databaseDirectory: null,
-      wallet: null,
     );
     final waits = locator<P2pWaits>();
 
@@ -54,7 +53,6 @@ void main() {
         locator,
         garageKeys: null,
         databaseDirectory: null,
-        wallet: null,
       );
 
       expect(

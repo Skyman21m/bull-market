@@ -33,12 +33,12 @@ final class P2pFeature {
   /// Registering reads and writes no key and opens no file either way: the directory is asked for at the first query of the database.
   ///
   /// [wallet] gives the wallet's port, which only the foreground composition passes too, as a function so that the shell's wallet need not be registered yet: it is called at the first use of the port, and nothing calls the port yet (#100).
-  /// With `null`, the feature has no wallet: the trade screen will offer only « Pay with another wallet ».
+  /// Without it (the parameter left out, or `null`), the feature has no wallet: the trade screen will offer only « Pay with another wallet ». It is optional so that a composition written before it, such as the WorkManager isolate's, lends nothing by default.
   void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
     required Future<Directory> Function()? databaseDirectory,
-    required P2pWalletPort Function()? wallet,
+    P2pWalletPort Function()? wallet,
   }) {
     if ((garageKeys == null) != (databaseDirectory == null)) {
       throw ArgumentError(
