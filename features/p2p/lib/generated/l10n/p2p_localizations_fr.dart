@@ -604,6 +604,35 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Graphique de profondeur : rien à tracer sur cet axe.';
 
   @override
+  String get p2pMapNoLocation => 'Aucun ordre avec un emplacement face à face';
+
+  @override
+  String p2pMapSummary(String buyOrders, String sellOrders) {
+    return 'Carte des emplacements face à face du carnet d\'ordres : $buyOrders et $sellOrders.';
+  }
+
+  @override
+  String p2pMapOrdersHere(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ordres ici',
+      one: '$count ordre ici',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pMapPin(
+    String role,
+    String amount,
+    String currencyCode,
+    String coordinator,
+  ) {
+    return '$role, $amount $currencyCode, $coordinator';
+  }
+
+  @override
   String get p2pCommonContinue => 'Continuer';
 
   @override
