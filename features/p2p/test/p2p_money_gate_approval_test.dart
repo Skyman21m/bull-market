@@ -8,7 +8,9 @@ void main() {
   const howToChangeIt =
       'P2pMoneyGate.mainnetApproved was switched on. '
       'It may change only in a pull request whose description quotes the repository owner\'s explicit approval of real money on mainnet and the amounts he accepted, reviewed as money code; '
-      'that pull request changes this test in the same commit as the constant.';
+      'that pull request changes this test in the same commit as the constant, '
+      'and it must not land before #87 has made allowsActionOnRecordedTrade take the trade record, '
+      'or an approval withdrawn later would refuse cancel, dispute and payout on a trade an approved build took.';
 
   test(
     'nothing about a mainnet trade is allowed: the owner has not approved real money',
