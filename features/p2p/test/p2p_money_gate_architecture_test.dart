@@ -14,12 +14,15 @@ import 'package:test/test.dart';
 /// Outside the trade use cases (files `lib/src/domain/usecases/trade/<name>_usecase.dart`, not a `part`), any use is refused.
 /// Inside them, a member may only be called (no tear-off, no `Symbol`), and each call needs its own guard, the gate's answer deciding before it:
 /// - the guard is a call `P2pMoneyGate.allowsNewTrade(n)` for `takeOrder`, `P2pMoneyGate.allowsActionOnRecordedTrade(n)` for every other member, with one argument;
-/// - `P2pMoneyGate` is the gate's own library, imported by its relative path or as `package:p2p/src/domain/p2p_money_gate.dart`, without hiding it, unprefixed or through that import's prefix (another library declaring the name as well would make the name ambiguous, which does not compile);
+/// - `P2pMoneyGate` is the gate's own library, imported by its relative path or as `package:p2p/src/domain/p2p_money_gate.dart`, with no conditional URI and without hiding it, unprefixed or through that import's prefix (another library declaring the name as well would make the name ambiguous, which does not compile), and nothing in the file but that prefix bears the prefix's name;
 /// - the whole condition of an `if` without a `case` is that call, in parentheses or not, or its negation by one `!`, and nothing else (no `&&`, `||`, `await` or `?:`);
-/// - either `if (!gate) <exits>` or `if (gate) … else <exits>` stands before the call in a block that contains the call, or the call is inside the `then` branch of `if (gate)`; a branch exits when it is a `return`, a `throw`, a `rethrow`, or a non-empty block whose last statement exits;
-/// - `n` is a simple name and the call's second positional argument, its network as every client member takes it, is that same name, which no statement of the file assigns and which is not declared again between the guard and the call.
+/// - either `if (!gate) <exits>` or `if (gate) … else <exits>` stands before the call in a block that contains the call, or the call is inside the `then` branch of `if (gate)`; a branch exits when it is a `return`, a `throw`, a `rethrow`, or a non-empty block whose last statement exits (an `assert` does not);
+/// - `n` is a simple name and the call's second positional argument, its network as every client member takes it (`(coordinator, network, …)`), is that same name;
+/// - `n` holds one value from the guard to the call: it is a plain parameter of the function the guard is in, or a `final` or `const` local declared before the guard in a block that contains it, no statement of the file assigns it, and no variable, parameter (of a closure too), loop or pattern variable, `catch` parameter or local function of that name is declared between the guard and the call; a field, a getter, a top-level variable or a `this.` parameter is refused.
 /// So an `assert`, an expression statement, an unused variable, an `if` whose branch does not exit, a guard in another function or in a nested block, and a gate asked about a literal or another network are not guards.
-/// What it cannot see is left to the money review, as the AGENTS.md paragraph on the gate says: a callable that a trade use case hands out once the gate said yes, the value bound to `n` (that it is the trade's network is #87's to show), code outside `features/p2p/lib`, an inherited member or a class named `P2pMoneyGate` from another package, money moved by anything but these members (a payable mainnet invoice shown from `fetchOrder`, the wallet's `payInvoice` of slice 6), and a member added to the package under a name this list does not have yet.
+/// Where to put the guard: in the same function as the call, at the level of a block that contains the call (the function's body, or a block around it), before it; a guard and the call in the same `case` of a `switch` are refused, since the statements of a case are not a block (put the guard before the `switch`), and so is a guard in an `else if` (give it its own `if`).
+/// Not exploitable, not checked: `Symbol('takeOrder')` built from a string (no mirrors in Flutter) and a file the parser cannot read (it would not compile).
+/// What it cannot see is left to the money review, as the AGENTS.md paragraph on the gate says: a callable that a trade use case hands out once the gate said yes, that the value bound to the parameter or `final` local `n` is the trade's own network (#87's to show), code outside `features/p2p/lib`, an inherited member named `P2pMoneyGate` or like the gate's prefix, a class named `P2pMoneyGate` from another package, money moved by anything but these members (a payable mainnet invoice shown from `fetchOrder`, the wallet's `payInvoice` of slice 6, whose shape the network rule must be adapted to), and a member added to the package under a name this list does not have yet.
 /// An extension on `CoordinatorClient`, which could rename a member, and a raw `CoordinatorTransport.send` are refused anywhere in the feature by `robot_bindings_architecture_test.dart`.
 void main() {
   // Tests run with the package directory as working directory.
@@ -1058,7 +1061,9 @@ bool _holdsOneValue(String wanted, IfStatement at) {
     };
     return parameters?.parameters.any(
           (parameter) => switch (parameter) {
-            DefaultFormalParameter(parameter: SimpleFormalParameter(:final name?)) ||
+            DefaultFormalParameter(
+              parameter: SimpleFormalParameter(:final name?),
+            ) ||
             SimpleFormalParameter(:final name?) => name.lexeme == wanted,
             _ => false,
           },
@@ -1068,8 +1073,10 @@ bool _holdsOneValue(String wanted, IfStatement at) {
   return before.every(
     (d) => switch (d.node) {
       VariableDeclaration(
-        parent: VariableDeclarationList(:final isFinal, :final isConst) && final list,
-      ) when (isFinal || isConst) =>
+        parent: VariableDeclarationList(:final isFinal, :final isConst) &&
+            final list,
+      )
+          when (isFinal || isConst) =>
         list.parent is VariableDeclarationStatement &&
             ancestors.contains(list.parent?.parent),
       _ => false,
