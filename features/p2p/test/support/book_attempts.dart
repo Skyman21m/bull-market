@@ -10,7 +10,7 @@ import 'fakes.dart';
 
 /// The timers and the draw of the book's waits, which the test fires and sets itself.
 ///
-/// The waits before an attempt are told from the two bounds by their duration, which no spread wait can have: [BookRetry.awaitedAtMost] (75 s) and [BookRetry.refreshAtMost] (10 s).
+/// The waits before an attempt are told from the two bounds by their duration, which no spread wait can have: [BookRetry.awaitedAtMost] (80 s) and [BookRetry.refreshAtMost] (10 s).
 final class FakeWaits {
   /// Every timer started, in order, fired or cancelled ones included, the bounds included.
   final List<FakeTimer> all = [];

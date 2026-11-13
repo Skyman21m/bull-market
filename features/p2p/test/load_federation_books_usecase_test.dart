@@ -395,7 +395,7 @@ void main() {
     });
   });
 
-  group('awaited at most 75 seconds', () {
+  group('awaited at most 80 seconds', () {
     /// What [future] gave so far: `(false, null)` while it runs.
     Future<(bool, T?)> now<T>(Future<T> future) async {
       var done = false;
@@ -408,8 +408,8 @@ void main() {
       return (done, value);
     }
 
-    test('the bound is 75 seconds, one per coordinator asked', () async {
-      expect(BookRetry.awaitedAtMost, const Duration(seconds: 75));
+    test('the bound is 80 seconds, one per coordinator asked', () async {
+      expect(BookRetry.awaitedAtMost, const Duration(seconds: 80));
       transport.held.add('temple');
       ask('temple');
       await settle();
@@ -420,7 +420,7 @@ void main() {
     });
 
     test(
-      'a request still in flight at 75 seconds: shown offline, timed out, and its book still taken later',
+      'a request still in flight at 80 seconds: shown offline, timed out, and its book still taken later',
       () async {
         transport.held.add('temple');
         final attempts = ask('temple');
@@ -562,7 +562,7 @@ void main() {
       },
     );
 
-    test('one shown offline at 75 seconds counts as shown', () async {
+    test('one shown offline at 80 seconds counts as shown', () async {
       transport.held.add('temple');
       final all = usecase.execute(RobosatsNetwork.mainnet);
       var done = false;

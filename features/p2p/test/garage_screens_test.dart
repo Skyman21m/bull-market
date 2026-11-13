@@ -2785,7 +2785,7 @@ void main() {
         expect(find.text('Coordinator offline'), findsNothing);
         await closeHosts();
 
-        // Lake still has no answer 75 seconds after it was asked: the book shows it offline while its attempts go on, and so does the sheet.
+        // Lake still has no answer 80 seconds after it was asked: the book shows it offline while its attempts go on, and so does the sheet.
         bookWaits.fireAwaitedBounds();
         await settle(tester);
         await openHosts();

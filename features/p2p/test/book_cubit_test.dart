@@ -774,7 +774,7 @@ void main() {
     }
 
     test(
-      'still no answer 75 seconds after its load began: shown offline, its request going on; a late answer lights it',
+      'still no answer 80 seconds after its load began: shown offline, its request going on; a late answer lights it',
       () async {
         scripted.held.add('temple');
         final book = await shown();
@@ -804,7 +804,7 @@ void main() {
     );
 
     test(
-      '« Retry » on it sends nothing while its request is in flight, and shows it awaited for a new 75 seconds',
+      '« Retry » on it sends nothing while its request is in flight, and shows it awaited for a new 80 seconds',
       () async {
         scripted.held.add('temple');
         final book = await shown();
@@ -839,7 +839,7 @@ void main() {
         scripted.held.add('temple');
         final book = await shown();
 
-        // The 75 seconds pass, and a refresh asks temple again before the book has shown it offline.
+        // The 80 seconds pass, and a refresh asks temple again before the book has shown it offline.
         waits.fireAwaitedBounds();
         final refreshed = book.refresh();
         await settle();
@@ -877,7 +877,7 @@ void main() {
     });
 
     test(
-      'Tor failing: a coordinator in flight is shown offline at 75 seconds at the latest, then gives its last failure, asked no more',
+      'Tor failing: a coordinator in flight is shown offline at 80 seconds at the latest, then gives its last failure, asked no more',
       () async {
         scripted
           ..script['temple'] = const [ScriptedFailure(CoordinatorUnreachable())]

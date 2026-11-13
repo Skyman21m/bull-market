@@ -702,7 +702,7 @@ void main() {
       );
 
       testWidgets(
-        'a coordinator still silent 75 seconds after the load began is shown offline, a late answer lights it, and « Retry » meanwhile sends nothing',
+        'a coordinator still silent 80 seconds after the load began is shown offline, a late answer lights it, and « Retry » meanwhile sends nothing',
         (tester) async {
           transport
             ..failures.clear()
@@ -712,7 +712,7 @@ void main() {
           await settle(tester);
           expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
 
-          await tester.pump(const Duration(seconds: 74));
+          await tester.pump(const Duration(seconds: 79));
           expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
           await tester.pump(const Duration(seconds: 1));
           await settle(tester);

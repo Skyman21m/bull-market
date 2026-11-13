@@ -30,9 +30,9 @@ final class BookRetry {
   /// How long a coordinator is shown awaited at most, from the moment it is asked, before it is shown offline while its attempts go on.
   ///
   /// Each attempt may last up to 132 seconds, so a coordinator that times out every time would otherwise be awaited about seven minutes.
-  /// The slowest cold first contact measured succeeded 23 seconds after Tor was ready, and the third attempt of a coordinator that fails fast starts about 50 seconds after the first: 75 seconds covers both with a margin, and stays a bearable wait to look at.
+  /// The third attempt of a coordinator that fails fast starts 46 to 54 seconds after the first, with the spread, and the slowest cold first contact measured took 23.2 seconds once Tor was ready: 80 seconds covers the measured cases, and stays a bearable wait to look at.
   /// It is a decision of the project (#73), not of the official client, which stops waiting for a coordinator after 15 seconds but has no second attempt to wait for.
-  static const awaitedAtMost = Duration(seconds: 75);
+  static const awaitedAtMost = Duration(seconds: 80);
 
   /// How long a refresh, by a pull or by « Retry », is waited for at most: its indicator closes then, and the row of the coordinators shows those still awaited.
   static const refreshAtMost = Duration(seconds: 10);
