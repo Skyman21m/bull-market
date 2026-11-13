@@ -28,7 +28,7 @@ The code rules are those of the upstream repository: read [AGENTS.md](AGENTS.md)
 
 On the `develop → main` PR, never click "Update branch" or resolve conflicts in the web editor: that would write to `develop` and break the mirror.
 
-Files specific to Troc, for which we keep our version in case of conflict: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `NOTICE.md`, `.github/`. If Bull changes its `LICENSE` file, we keep ours and carry its change over to `LICENSE-BULL`.
+Files specific to this fork, for which we keep our version in case of conflict: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `NOTICE.md`, `.github/`. If Bull changes its `LICENSE` file, we keep ours and carry its change over to `LICENSE-BULL`.
 
 ## Security
 

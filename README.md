@@ -3,7 +3,7 @@
 > **Prototype under development. Do not use with real funds.**
 > Bull Market is not affiliated with Bull Bitcoin / Satoshi Portal or with RoboSats.
 
-> The app was called "Troc" until November 13, 2026 ([#105](https://github.com/Skyman21m/bull-market/issues/105)); the repository was renamed the same day, and some documents and internal names still carry the old one. Its Android application id changed that day too, from `io.github.skyman21m.troc` to `io.github.skyman21m.bullmarket`: a build from that change on installs next to an earlier one instead of replacing it, with its own data: the wallets and Garage Keys of the earlier build are not carried over.
+> The app was called "Troc" until November 13, 2026, when it was renamed Bull Market ([#105](https://github.com/Skyman21m/bull-market/issues/105)); the repository was renamed the same day, and some documents and internal names still carry the old name. With that change ([#107](https://github.com/Skyman21m/bull-market/pull/107)), the Android application id went from `io.github.skyman21m.troc` to `io.github.skyman21m.bullmarket`, so a newer build installs next to an earlier one instead of replacing it, and starts empty. To keep a wallet, restore it from its recovery phrase. The Garage Key is not part of that backup: copy it from the earlier build's Garage before uninstalling that build.
 
 Bull Market is a fork of the [Bull Bitcoin Mobile](https://github.com/SatoshiPortal/bullbitcoin-mobile) wallet (Flutter) that aims to embed a [RoboSats](https://github.com/RoboSats/robosats) client in it: peer-to-peer bitcoin exchange, with no account, over Tor, straight from a self-custodial wallet.
 
@@ -45,7 +45,7 @@ A few notes on what the mock-up shows:
 
 - The "Pay with the wallet" button on the bond screen is a goal, not a given. The wallet has no Lightning node and pays through a swap service: whether it can settle a hold invoice, which stays locked for hours, is still to be checked ([#8](https://github.com/Skyman21m/bull-market/issues/8)). Paid that way, the bond would not stay in the wallet while it is locked, unlike what the RoboSats text under the QR code says ("This is a hold invoice, it will freeze in your wallet"): it would be held by the swap service. The QR code, to be paid with another wallet as in RoboSats, remains the baseline.
 - The robot avatar is provisional ([#22](https://github.com/Skyman21m/bull-market/issues/22)). In the code, the nickname is already computed as in RoboSats; the ones in the mock-up are made up.
-- The labels are those of RoboSats; the French translation is completed where it is missing, and a few texts specific to Troc are added.
+- The labels are those of RoboSats; the French translation is completed where it is missing, and a few texts specific to Bull Market are added.
 
 <details>
 <summary>Captures en français (maquette)</summary>
@@ -212,7 +212,7 @@ Android first. Nothing is released yet. At this stage, the app still shows Bull'
 
 ## How it is built
 
-Troc adds two modules to Bull's code; Troc touches the rest as little as possible, so that it can keep up with updates of the original wallet. Outside them, the main changes to Bull's own code are in `packages/secrets`, which now also keeps the Garage Keys apart from the seeds, under its custody checks ([#45](https://github.com/Skyman21m/bull-market/pull/45), [#58](https://github.com/Skyman21m/bull-market/pull/58)), and in the shell that mounts the P2P tab and hands it that storage (`lib/router.dart`, `lib/locator.dart`).
+Bull Market adds two modules to Bull's code and touches the rest as little as possible, so that it can keep up with updates of the original wallet. Outside them, the main changes to Bull's own code are in `packages/secrets`, which now also keeps the Garage Keys apart from the seeds, under its custody checks ([#45](https://github.com/Skyman21m/bull-market/pull/45), [#58](https://github.com/Skyman21m/bull-market/pull/58)), and in the shell that mounts the P2P tab and hands it that storage (`lib/router.dart`, `lib/locator.dart`).
 
 | Module | Role |
 |---|---|
@@ -245,9 +245,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security vulnerabilities are reported pr
 
 ## Branches
 
-- `main`: Troc's branch, always buildable, changed only through pull requests.
+- `main`: this fork's branch, always buildable, changed only through pull requests.
 - `develop`: mirror of the `develop` branch of Bull Bitcoin Mobile, never changed here.
 
 ## License
 
-AGPL-3.0 for Troc ([LICENSE](LICENSE)). The original Bull Bitcoin Mobile code is under MIT, with its notice kept in [LICENSE-BULL](LICENSE-BULL). Details in [NOTICE.md](NOTICE.md).
+AGPL-3.0 for this fork ([LICENSE](LICENSE)). The original Bull Bitcoin Mobile code is under MIT, with its notice kept in [LICENSE-BULL](LICENSE-BULL). Details in [NOTICE.md](NOTICE.md).

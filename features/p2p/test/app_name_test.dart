@@ -10,6 +10,7 @@ import 'package:test/test.dart';
 /// The texts are the values of the translation files and the strings of the localisations generated from them; the descriptions of the translation files and the comments of the generated code are for translators and developers, and may name it.
 void main() {
   // Tests run with the package directory as working directory.
+  // Case-sensitive on purpose: « troc » is also a French common noun.
   final oldName = RegExp(r'\bTroc\b');
 
   test('no value of a translation file names the app « Troc »', () {
