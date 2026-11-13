@@ -45,7 +45,9 @@ void main() {
         makers.addAll(await makersIn(file.path));
       }
 
-      expect(makers.toSet(), {'lib/src/data/trade_record_repository_impl.dart'});
+      expect(makers.toSet(), {
+        'lib/src/data/trade_record_repository_impl.dart',
+      });
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );

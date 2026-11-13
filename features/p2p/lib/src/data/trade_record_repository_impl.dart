@@ -391,7 +391,9 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     }
     if (data['key_fingerprint'] == null) {
       return Err(
-        newTrade ? const RobotNotForNewTradeFailure() : const RobotNotBoundFailure(),
+        newTrade
+            ? const RobotNotForNewTradeFailure()
+            : const RobotNotBoundFailure(),
       );
     }
     final binding = _bindingFrom(data);

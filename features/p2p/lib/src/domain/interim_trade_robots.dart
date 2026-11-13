@@ -109,7 +109,11 @@ final class InterimTradeRobots implements TradeRobots {
   static Result<NetworkRobot, P2pFailure> _firstFreeRobot(
     NetworkGarageKey key,
     Set<int> inUse,
-  ) => firstFreeAmong(inUse, key.firstUsableRobot, (robot) => robot.accountIndex);
+  ) => firstFreeAmong(
+    inUse,
+    key.firstUsableRobot,
+    (robot) => robot.accountIndex,
+  );
 
   /// [_firstFreeRobot] over the robots [firstUsable] gives from an index, each robot's index read by [indexOf].
   ///

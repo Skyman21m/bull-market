@@ -51,18 +51,18 @@ void main() {
     'failure',
     isA<T>(),
   );
-  Matcher reservedIs(bool bound) => isA<Ok<bool, P2pFailure>>().having(
-    (ok) => ok.value,
-    'bound',
-    bound,
-  );
+  Matcher reservedIs(bool bound) =>
+      isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', bound);
   TradeRecord valueOf(Result<TradeRecord, P2pFailure> result) =>
       switch (result) {
         Ok(:final value) => value,
         Err(:final failure) => fail('$failure'),
       };
-  Matcher recordOf(Object matcher) => isA<Ok<TradeRecord, P2pFailure>>()
-      .having((ok) => ok.value, 'record', matcher);
+  Matcher recordOf(Object matcher) => isA<Ok<TradeRecord, P2pFailure>>().having(
+    (ok) => ok.value,
+    'record',
+    matcher,
+  );
 
   late DateTime now;
   late P2pDatabase database;
@@ -97,7 +97,7 @@ void main() {
   /// The pending take of order [orderId] by [robot] on temple.
   Future<TradeRecord> pendingTake(RobotSlot robot, {int orderId = 7}) async =>
       switch (await trades.recordPendingTake(
-          robot,
+        robot,
         temple,
         orderId: orderId,
         role: TradeRole.buyer,
@@ -234,18 +234,24 @@ void main() {
       },
     );
 
-    test('a coordinator of another network than the robot\'s is refused', () async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
+    test(
+      'a coordinator of another network than the robot\'s is refused',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
 
-      expect(
-        await trades.reserveForNewTrade(
-          RobotSlot(testnet, fingerprintA, 0),
-          templeMainnet,
-        ),
-        refusedWith<RobotNotForNewTradeFailure>(),
-      );
-      expect(await bindingRows(), isEmpty);
-    });
+        expect(
+          await trades.reserveForNewTrade(
+            RobotSlot(testnet, fingerprintA, 0),
+            templeMainnet,
+          ),
+          refusedWith<RobotNotForNewTradeFailure>(),
+        );
+        expect(await bindingRows(), isEmpty);
+      },
+    );
 
     test(
       'never binds an index that has a trade record, even one whose binding is missing',
@@ -285,26 +291,65 @@ void main() {
       Err(:final failure) => fail('$failure'),
     };
 
-    test('a key is for new trades only when drawn here and nothing else anywhere', () async {
-      expect((await standing(testnet, fingerprintA)).keyDrawnHereOnly, isFalse);
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
-      expect((await standing(testnet, fingerprintA)).keyDrawnHereOnly, isTrue);
-      // Not on the other network, where it was not drawn.
-      expect((await standing(mainnet, fingerprintA)).keyDrawnHereOnly, isFalse);
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintA), isA<Ok>());
-      expect((await standing(mainnet, fingerprintA)).keyDrawnHereOnly, isTrue);
-      expect(await bindings.recordImportedKey(mainnet, fingerprintA), isA<Ok>());
-      expect((await standing(testnet, fingerprintA)).keyDrawnHereOnly, isFalse);
-      expect((await standing(mainnet, fingerprintA)).keyDrawnHereOnly, isFalse);
-      expect(
-        await bindings.recordAcknowledgedKey(mainnet, fingerprintA),
-        isA<Ok>(),
-      );
-      expect((await standing(testnet, fingerprintA)).keyDrawnHereOnly, isFalse);
-      // Another key's record does not count.
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintB), isA<Ok>());
-      expect((await standing(testnet, fingerprintB)).keyDrawnHereOnly, isTrue);
-    });
+    test(
+      'a key is for new trades only when drawn here and nothing else anywhere',
+      () async {
+        expect(
+          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
+          isFalse,
+        );
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
+          isTrue,
+        );
+        // Not on the other network, where it was not drawn.
+        expect(
+          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
+          isFalse,
+        );
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
+          isTrue,
+        );
+        expect(
+          await bindings.recordImportedKey(mainnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
+          isFalse,
+        );
+        expect(
+          (await standing(mainnet, fingerprintA)).keyDrawnHereOnly,
+          isFalse,
+        );
+        expect(
+          await bindings.recordAcknowledgedKey(mainnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          (await standing(testnet, fingerprintA)).keyDrawnHereOnly,
+          isFalse,
+        );
+        // Another key's record does not count.
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintB),
+          isA<Ok>(),
+        );
+        expect(
+          (await standing(testnet, fingerprintB)).keyDrawnHereOnly,
+          isTrue,
+        );
+      },
+    );
 
     test(
       'the indexes in use are those bound on either network and those with a record, of that key only',
@@ -436,7 +481,7 @@ void main() {
       for (final orderId in [7, 8]) {
         expect(
           await trades.recordPendingTake(
-          robot,
+            robot,
             temple,
             orderId: orderId,
             role: TradeRole.buyer,
@@ -561,7 +606,7 @@ void main() {
         ]) {
           expect(
             await trades.recordPendingTake(
-          robot,
+              robot,
               coordinator,
               orderId: 5,
               role: TradeRole.buyer,
@@ -573,7 +618,6 @@ void main() {
         expect(await tradeRows(), isEmpty);
       },
     );
-
   });
 
   group('a recovered trade', () {
@@ -622,138 +666,162 @@ void main() {
       },
     );
 
-    test('is refused for a robot without a binding, or bound elsewhere', () async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
-      expect(
-        await bindings.bind(RobotSlot(testnet, fingerprintA, 1), lake),
-        isA<Ok>(),
-      );
+    test(
+      'is refused for a robot without a binding, or bound elsewhere',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          await bindings.bind(RobotSlot(testnet, fingerprintA, 1), lake),
+          isA<Ok>(),
+        );
 
-      expect(
-        await trades.recordRecoveredTrade(
-          RobotSlot(testnet, fingerprintA, 0),
-          temple,
-          orderId: 1,
-          role: TradeRole.buyer,
-        ),
-        refusedWith<RobotNotBoundFailure>(),
-      );
-      expect(
-        await trades.recordRecoveredTrade(
-          RobotSlot(testnet, fingerprintA, 1),
-          temple,
-          orderId: 1,
-          role: TradeRole.buyer,
-        ),
-        refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
-      );
-      expect(
-        await trades.recordRecoveredTrade(
-          RobotSlot(testnet, fingerprintA, 1),
-          templeMainnet,
-          orderId: 1,
-          role: TradeRole.buyer,
-        ),
-        refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
-      );
-      // A pending take of the robot is its record: a recovery confirms it, it does not add one.
-      final robot = await reserved(2);
-      await pendingTake(robot);
-      expect(
-        await trades.recordRecoveredTrade(
-          robot,
-          temple,
-          orderId: 7,
-          role: TradeRole.buyer,
-        ),
-        refusedWith<TradeAlreadyRecordedFailure>(),
-      );
-      expect(
-        (await tradeRows()).map((row) => row.origin),
-        ['takenHere'],
-      );
-    });
+        expect(
+          await trades.recordRecoveredTrade(
+            RobotSlot(testnet, fingerprintA, 0),
+            temple,
+            orderId: 1,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<RobotNotBoundFailure>(),
+        );
+        expect(
+          await trades.recordRecoveredTrade(
+            RobotSlot(testnet, fingerprintA, 1),
+            temple,
+            orderId: 1,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+        expect(
+          await trades.recordRecoveredTrade(
+            RobotSlot(testnet, fingerprintA, 1),
+            templeMainnet,
+            orderId: 1,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+        // A pending take of the robot is its record: a recovery confirms it, it does not add one.
+        final robot = await reserved(2);
+        await pendingTake(robot);
+        expect(
+          await trades.recordRecoveredTrade(
+            robot,
+            temple,
+            orderId: 7,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<TradeAlreadyRecordedFailure>(),
+        );
+        expect((await tradeRows()).map((row) => row.origin), ['takenHere']);
+      },
+    );
   });
 
   group('the state of a record', () {
     final later = testNow.add(const Duration(minutes: 2));
     final latest = testNow.add(const Duration(minutes: 5));
 
-    test('a pending take is confirmed once, and confirming again changes nothing', () async {
-      final pending = await pendingTake(await reserved(0));
-      now = later;
+    test(
+      'a pending take is confirmed once, and confirming again changes nothing',
+      () async {
+        final pending = await pendingTake(await reserved(0));
+        now = later;
 
-      final taken = await trades.confirmTake(pending);
-      expect(
-        taken,
-        recordOf(
-          isA<TradeRecord>()
-              .having((r) => r.confirmedAt, 'confirmedAt', later)
-              .having((r) => r.closedAt, 'closedAt', isNull)
-              .having((r) => r.isPendingTake, 'isPendingTake', isFalse)
-              .having((r) => r.isActive, 'isActive', isTrue),
-        ),
-      );
-      now = latest;
-      // Again, from the pending record or the taken one: the first confirmation stays.
-      for (final record in [pending, valueOf(taken)]) {
-        expect(await trades.confirmTake(record), recordOf(valueOf(taken)));
-      }
-    });
+        final taken = await trades.confirmTake(pending);
+        expect(
+          taken,
+          recordOf(
+            isA<TradeRecord>()
+                .having((r) => r.confirmedAt, 'confirmedAt', later)
+                .having((r) => r.closedAt, 'closedAt', isNull)
+                .having((r) => r.isPendingTake, 'isPendingTake', isFalse)
+                .having((r) => r.isActive, 'isActive', isTrue),
+          ),
+        );
+        now = latest;
+        // Again, from the pending record or the taken one: the first confirmation stays.
+        for (final record in [pending, valueOf(taken)]) {
+          expect(await trades.confirmTake(record), recordOf(valueOf(taken)));
+        }
+      },
+    );
 
-    test('a pending take that did not happen is closed, and never turns taken', () async {
-      final pending = await pendingTake(await reserved(0));
-      now = later;
+    test(
+      'a pending take that did not happen is closed, and never turns taken',
+      () async {
+        final pending = await pendingTake(await reserved(0));
+        now = later;
 
-      final closed = await trades.closeTrade(pending);
-      expect(
-        closed,
-        recordOf(
-          isA<TradeRecord>()
-              .having((r) => r.confirmedAt, 'confirmedAt', isNull)
-              .having((r) => r.closedAt, 'closedAt', later)
-              .having((r) => r.isActive, 'isActive', isFalse),
-        ),
-      );
-      now = latest;
-      expect(await trades.confirmTake(pending), refusedWith<TradeClosedFailure>());
-      expect(await trades.closeTrade(pending), recordOf(valueOf(closed)));
-      final row = (await tradeRows()).single;
-      expect((row.confirmedAt, row.closedAt), (null, later.millisecondsSinceEpoch));
-    });
+        final closed = await trades.closeTrade(pending);
+        expect(
+          closed,
+          recordOf(
+            isA<TradeRecord>()
+                .having((r) => r.confirmedAt, 'confirmedAt', isNull)
+                .having((r) => r.closedAt, 'closedAt', later)
+                .having((r) => r.isActive, 'isActive', isFalse),
+          ),
+        );
+        now = latest;
+        expect(
+          await trades.confirmTake(pending),
+          refusedWith<TradeClosedFailure>(),
+        );
+        expect(await trades.closeTrade(pending), recordOf(valueOf(closed)));
+        final row = (await tradeRows()).single;
+        expect(
+          (row.confirmedAt, row.closedAt),
+          (null, later.millisecondsSinceEpoch),
+        );
+      },
+    );
 
-    test('a taken trade is closed once, and a closed record never changes', () async {
-      final pending = await pendingTake(await reserved(0));
-      now = later;
-      final taken = switch (await trades.confirmTake(pending)) {
-        Ok(:final value) => value,
-        Err(:final failure) => fail('$failure'),
-      };
-      now = latest;
+    test(
+      'a taken trade is closed once, and a closed record never changes',
+      () async {
+        final pending = await pendingTake(await reserved(0));
+        now = later;
+        final taken = switch (await trades.confirmTake(pending)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        now = latest;
 
-      final closed = await trades.closeTrade(taken);
-      expect(
-        closed,
-        recordOf(
-          isA<TradeRecord>()
-              .having((r) => r.confirmedAt, 'confirmedAt', later)
-              .having((r) => r.closedAt, 'closedAt', latest),
-        ),
-      );
-      now = latest.add(const Duration(hours: 1));
-      for (final record in [pending, taken]) {
-        expect(await trades.closeTrade(record), recordOf(valueOf(closed)));
-        expect(await trades.confirmTake(record), refusedWith<TradeClosedFailure>());
-      }
-      final row = (await tradeRows()).single;
-      expect(
-        (row.confirmedAt, row.closedAt),
-        (later.millisecondsSinceEpoch, latest.millisecondsSinceEpoch),
-      );
-    });
+        final closed = await trades.closeTrade(taken);
+        expect(
+          closed,
+          recordOf(
+            isA<TradeRecord>()
+                .having((r) => r.confirmedAt, 'confirmedAt', later)
+                .having((r) => r.closedAt, 'closedAt', latest),
+          ),
+        );
+        now = latest.add(const Duration(hours: 1));
+        for (final record in [pending, taken]) {
+          expect(await trades.closeTrade(record), recordOf(valueOf(closed)));
+          expect(
+            await trades.confirmTake(record),
+            refusedWith<TradeClosedFailure>(),
+          );
+        }
+        final row = (await tradeRows()).single;
+        expect(
+          (row.confirmedAt, row.closedAt),
+          (later.millisecondsSinceEpoch, latest.millisecondsSinceEpoch),
+        );
+      },
+    );
 
     test('a recovered trade is closed as a taken one', () async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
+      expect(
+        await bindings.recordGeneratedKey(testnet, fingerprintA),
+        isA<Ok>(),
+      );
       expect(
         await bindings.bind(RobotSlot(testnet, fingerprintA, 0), temple),
         isA<Ok>(),
@@ -823,19 +891,22 @@ void main() {
       },
     );
 
-    test('a confirmation and a close at once leave one state that the statements allow', () async {
-      for (var index = 0; index < 10; index++) {
-        final pending = await pendingTake(await reserved(index));
-        final results = await Future.wait([
-          trades.confirmTake(pending),
-          trades.closeTrade(pending),
-        ]);
-        expect(results.last, isA<Ok>());
-      }
-      for (final row in await tradeRows()) {
-        expect(row.closedAt, isNotNull);
-      }
-    });
+    test(
+      'a confirmation and a close at once leave one state that the statements allow',
+      () async {
+        for (var index = 0; index < 10; index++) {
+          final pending = await pendingTake(await reserved(index));
+          final results = await Future.wait([
+            trades.confirmTake(pending),
+            trades.closeTrade(pending),
+          ]);
+          expect(results.last, isA<Ok>());
+        }
+        for (final row in await tradeRows()) {
+          expect(row.closedAt, isNotNull);
+        }
+      },
+    );
   });
 
   group('the database itself', () {
@@ -844,11 +915,13 @@ void main() {
       predicate((error) => '$error'.contains('SqliteException($code)')),
     );
 
-    Future<void> insertTrade(String values, List<Variable<Object>> variables) =>
-        database.customInsert(
-          'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES $values',
-          variables: variables,
-        );
+    Future<void> insertTrade(
+      String values,
+      List<Variable<Object>> variables,
+    ) => database.customInsert(
+      'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES $values',
+      variables: variables,
+    );
 
     test('enforces its foreign keys on every connection', () async {
       expect(
@@ -964,14 +1037,33 @@ void main() {
         for (final (label, assignments) in [
           ('a hash without its time', "payment_hash = '$hash'"),
           ('a time without its hash', 'payment_started_at = 1'),
-          ('a short hash', "payment_hash = '${'ab' * 31}', payment_started_at = 1"),
-          ('a hash in capitals', "payment_hash = '${'AB' * 32}', payment_started_at = 1"),
-          ('a hash that is not hexadecimal', "payment_hash = '${'zz' * 32}', payment_started_at = 1"),
+          (
+            'a short hash',
+            "payment_hash = '${'ab' * 31}', payment_started_at = 1",
+          ),
+          (
+            'a hash in capitals',
+            "payment_hash = '${'AB' * 32}', payment_started_at = 1",
+          ),
+          (
+            'a hash that is not hexadecimal',
+            "payment_hash = '${'zz' * 32}', payment_started_at = 1",
+          ),
           ('a swap before the payment', "payment_swap_id = 'swap1'"),
-          ('an empty swap id', "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = ''"),
-          ('a swap id too long', "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = '${'s' * 129}'"),
+          (
+            'an empty swap id',
+            "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = ''",
+          ),
+          (
+            'a swap id too long',
+            "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = '${'s' * 129}'",
+          ),
         ]) {
-          await expectLater(setPayment(assignments), sqliteCheck(), reason: label);
+          await expectLater(
+            setPayment(assignments),
+            sqliteCheck(),
+            reason: label,
+          );
         }
         await setPayment("payment_hash = '$hash', payment_started_at = 5");
         await setPayment("payment_swap_id = '${'s' * 128}'");
@@ -998,7 +1090,11 @@ void main() {
             recordOf(
               isA<TradeRecord>()
                   .having((r) => r.paymentHash, 'paymentHash', hash)
-                  .having((r) => r.paymentStartedAt, 'paymentStartedAt', testNow)
+                  .having(
+                    (r) => r.paymentStartedAt,
+                    'paymentStartedAt',
+                    testNow,
+                  )
                   .having((r) => r.paymentSwapId, 'paymentSwapId', 'swap1'),
             ),
           );
@@ -1009,7 +1105,10 @@ void main() {
           (hash, testNow.millisecondsSinceEpoch, 'swap1'),
         );
         // A record never prints its payment.
-        expect('${valueOf(await trades.closeTrade(pending))}', isNot(contains(hash)));
+        expect(
+          '${valueOf(await trades.closeTrade(pending))}',
+          isNot(contains(hash)),
+        );
       },
     );
 
@@ -1044,9 +1143,7 @@ void main() {
       () async {
         final seen = <Result<List<TradeRecord>, P2pFailure>>[];
         final changes = StreamController<void>.broadcast();
-        final subscription = trades.watchActiveTrades(testnet).listen((
-          active,
-        ) {
+        final subscription = trades.watchActiveTrades(testnet).listen((active) {
           seen.add(active);
           changes.add(null);
         });
@@ -1083,9 +1180,15 @@ void main() {
         expect(await trades.closeTrade(taken), isA<Ok>());
         await until(const []);
         // A trade of mainnet: recorded, recovered here, never listed for testnet.
-        expect(await bindings.recordGeneratedKey(mainnet, fingerprintB), isA<Ok>());
         expect(
-          await bindings.bind(RobotSlot(mainnet, fingerprintB, 0), templeMainnet),
+          await bindings.recordGeneratedKey(mainnet, fingerprintB),
+          isA<Ok>(),
+        );
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintB, 0),
+            templeMainnet,
+          ),
           isA<Ok>(),
         );
         expect(
@@ -1134,20 +1237,62 @@ void main() {
       final looseTrades = TradeRecordRepositoryImpl(loose, clock: () => now);
       final fingerprint = "'${fingerprintA.hex}'";
       for (final (index, values) in [
-        (0, "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL, NULL, NULL, NULL"),
-        (1, "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
-        (2, "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
-        (3, "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL, NULL, NULL, NULL"),
-        (4, "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
-        (5, "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL, NULL, NULL, NULL"),
-        (6, "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
-        (7, "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL, NULL, NULL, NULL"),
-        (8, "'testnet', $fingerprint, 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'AB', 0, NULL"),
-        (9, "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', NULL, NULL"),
-        (10, "'testnet', $fingerprint, 10, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, 0, NULL"),
-        (11, "'testnet', $fingerprint, 11, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, 'swap'"),
-        (12, "'testnet', $fingerprint, 12, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, ''"),
-        (13, "'testnet', $fingerprint, 13, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, 7"),
+        (
+          0,
+          "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          1,
+          "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          2,
+          "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          3,
+          "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          4,
+          "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          5,
+          "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          6,
+          "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
+        ),
+        (
+          7,
+          "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL, NULL, NULL, NULL",
+        ),
+        (
+          8,
+          "'testnet', $fingerprint, 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'AB', 0, NULL",
+        ),
+        (
+          9,
+          "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', NULL, NULL",
+        ),
+        (
+          10,
+          "'testnet', $fingerprint, 10, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, 0, NULL",
+        ),
+        (
+          11,
+          "'testnet', $fingerprint, 11, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, 'swap'",
+        ),
+        (
+          12,
+          "'testnet', $fingerprint, 12, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, ''",
+        ),
+        (
+          13,
+          "'testnet', $fingerprint, 13, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, '${'s' * 129}'",
+        ),
       ]) {
         await loose.customStatement('DELETE FROM trades');
         await loose.customStatement('INSERT INTO trades VALUES ($values)');
@@ -1172,47 +1317,52 @@ void main() {
 
     tearDown(() => directory.delete(recursive: true));
 
-    test('a record outlives its connection, and its foreign key holds there too', () async {
-      final first = P2pDatabase.open(() async => directory);
-      final one = TradeRecordRepositoryImpl(first, clock: () => testNow);
-      expect(
-        await bindingsInMemory(database: first).recordGeneratedKey(
-          testnet,
-          fingerprintA,
-        ),
-        isA<Ok>(),
-      );
-      expect(
-        await one.reserveForNewTrade(RobotSlot(testnet, fingerprintA, 0), temple),
-        reservedIs(true),
-      );
-      final written = await one.recordPendingTake(
+    test(
+      'a record outlives its connection, and its foreign key holds there too',
+      () async {
+        final first = P2pDatabase.open(() async => directory);
+        final one = TradeRecordRepositoryImpl(first, clock: () => testNow);
+        expect(
+          await bindingsInMemory(
+            database: first,
+          ).recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          await one.reserveForNewTrade(
+            RobotSlot(testnet, fingerprintA, 0),
+            temple,
+          ),
+          reservedIs(true),
+        );
+        final written = await one.recordPendingTake(
           RobotSlot(testnet, fingerprintA, 0),
-        temple,
-        orderId: 3,
-        role: TradeRole.buyer,
-      );
-      await first.close();
+          temple,
+          orderId: 3,
+          role: TradeRole.buyer,
+        );
+        await first.close();
 
-      final reopened = P2pDatabase.open(() async => directory);
-      expect(
-        (await reopened.customSelect('PRAGMA foreign_keys').getSingle())
-            .data
-            .values
-            .single,
-        1,
-      );
-      final again = TradeRecordRepositoryImpl(reopened, clock: () => testNow);
-      expect(
-        await again.watchActiveTrades(testnet).first,
-        isA<Ok<List<TradeRecord>, P2pFailure>>().having(
-          (ok) => ok.value,
-          'active',
-          [valueOf(written)],
-        ),
-      );
-      await reopened.close();
-    });
+        final reopened = P2pDatabase.open(() async => directory);
+        expect(
+          (await reopened.customSelect('PRAGMA foreign_keys').getSingle())
+              .data
+              .values
+              .single,
+          1,
+        );
+        final again = TradeRecordRepositoryImpl(reopened, clock: () => testNow);
+        expect(
+          await again.watchActiveTrades(testnet).first,
+          isA<Ok<List<TradeRecord>, P2pFailure>>().having(
+            (ok) => ok.value,
+            'active',
+            [valueOf(written)],
+          ),
+        );
+        await reopened.close();
+      },
+    );
 
     test(
       'two connections recording a pending take of one robot at once write one record',
@@ -1223,10 +1373,9 @@ void main() {
         final one = TradeRecordRepositoryImpl(first, clock: () => testNow);
         final other = TradeRecordRepositoryImpl(second, clock: () => testNow);
         expect(
-          await bindingsInMemory(database: first).recordGeneratedKey(
-            testnet,
-            fingerprintA,
-          ),
+          await bindingsInMemory(
+            database: first,
+          ).recordGeneratedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
 
@@ -1239,7 +1388,7 @@ void main() {
           final results = await Future.wait([
             untilNotBusy(
               () => one.recordPendingTake(
-          robot,
+                robot,
                 temple,
                 orderId: 10,
                 role: TradeRole.buyer,
@@ -1247,7 +1396,7 @@ void main() {
             ),
             untilNotBusy(
               () => other.recordPendingTake(
-          robot,
+                robot,
                 temple,
                 orderId: 11,
                 role: TradeRole.buyer,
@@ -1276,15 +1425,21 @@ void main() {
     );
   });
 
-  test('a record prints neither its key\'s fingerprint nor its coordinator\'s address', () async {
-    final record = await pendingTake(await reserved(0));
+  test(
+    'a record prints neither its key\'s fingerprint nor its coordinator\'s address',
+    () async {
+      final record = await pendingTake(await reserved(0));
 
-    expect('$record', 'TradeRecord(RobotSlot(testnet, 0), temple, 7, buyer, takenHere, pending)');
-    expect('$record', isNot(contains(fingerprintA.hex)));
-    expect('$record', isNot(contains(temple.onion)));
-    expect(
-      '${NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [1, 2])}',
-      'NewTradeStanding(true, 2 in use)',
-    );
-  });
+      expect(
+        '$record',
+        'TradeRecord(RobotSlot(testnet, 0), temple, 7, buyer, takenHere, pending)',
+      );
+      expect('$record', isNot(contains(fingerprintA.hex)));
+      expect('$record', isNot(contains(temple.onion)));
+      expect(
+        '${NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [1, 2])}',
+        'NewTradeStanding(true, 2 in use)',
+      );
+    },
+  );
 }

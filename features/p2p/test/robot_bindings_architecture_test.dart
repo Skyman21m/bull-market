@@ -725,28 +725,22 @@ class RobotCoordinatorCubit {
       isEmpty,
     );
     // And the table of the trades is named by its repository, the database and drift's code only.
-    expect(
-      where((facts) => facts.names.contains('trades')),
-      {
-        'lib/src/data/p2p_database.dart',
-        'lib/src/data/p2p_database.steps.dart',
-        'lib/src/data/trade_record_repository_impl.dart',
-        if (File('lib/src/data/p2p_database.g.dart').existsSync())
-          'lib/src/data/p2p_database.g.dart',
-      },
-    );
+    expect(where((facts) => facts.names.contains('trades')), {
+      'lib/src/data/p2p_database.dart',
+      'lib/src/data/p2p_database.steps.dart',
+      'lib/src/data/trade_record_repository_impl.dart',
+      if (File('lib/src/data/p2p_database.g.dart').existsSync())
+        'lib/src/data/p2p_database.g.dart',
+    });
     // The payment columns of schema 3 have no writer until the pull request that adds « Pay with this wallet »: the database declares them, drift's code knows them, and the trade records only read them, in the read of one robot and by name from its row.
     final payment = RegExp(r'\bpayment_(hash|started_at|swap_id)\b');
-    expect(
-      where((facts) => facts.strings.any(payment.hasMatch)),
-      {
-        'lib/src/data/p2p_database.dart',
-        'lib/src/data/p2p_database.steps.dart',
-        'lib/src/data/trade_record_repository_impl.dart',
-        if (File('lib/src/data/p2p_database.g.dart').existsSync())
-          'lib/src/data/p2p_database.g.dart',
-      },
-    );
+    expect(where((facts) => facts.strings.any(payment.hasMatch)), {
+      'lib/src/data/p2p_database.dart',
+      'lib/src/data/p2p_database.steps.dart',
+      'lib/src/data/trade_record_repository_impl.dart',
+      if (File('lib/src/data/p2p_database.g.dart').existsSync())
+        'lib/src/data/p2p_database.g.dart',
+    });
     final records =
         libraries['lib/src/data/trade_record_repository_impl.dart'] ??
         fail('no trade records');
@@ -757,7 +751,11 @@ class RobotCoordinatorCubit {
         (text) =>
             payment.hasMatch(text) &&
             !read.contains(text) &&
-            !{'payment_hash', 'payment_started_at', 'payment_swap_id'}.contains(text),
+            !{
+              'payment_hash',
+              'payment_started_at',
+              'payment_swap_id',
+            }.contains(text),
       ),
       isEmpty,
     );
@@ -849,9 +847,10 @@ class RobotCoordinatorCubit {
       'm.createTable(schema.trades)',
     ]);
     // The one statement the database runs itself: the foreign keys of the trades, on, at each opening.
-    expect(database.calls.where((call) => call.startsWith('customStatement(')), [
-      'customStatement(_foreignKeysOn)',
-    ]);
+    expect(
+      database.calls.where((call) => call.startsWith('customStatement(')),
+      ['customStatement(_foreignKeysOn)'],
+    );
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
   });
 
@@ -934,7 +933,10 @@ class RobotCoordinatorCubit {
       '_change(_confirmSql, record)',
       '_change(_closeSql, record)',
     ]);
-    expect(trades.callsByMethod['confirmTake'], contains('_change(_confirmSql, record)'));
+    expect(
+      trades.callsByMethod['confirmTake'],
+      contains('_change(_confirmSql, record)'),
+    );
     expect(trades.callsByMethod['closeTrade'], ['_change(_closeSql, record)']);
     // No other file of the feature holds SQL that changes or deletes a trade.
     expect(
@@ -950,113 +952,115 @@ class RobotCoordinatorCubit {
     );
   });
 
-
-  test('a robot is reserved, and a trade written, by one statement each that reads what decides it', () {
-    // Each write reads in the same statement the history of the key, the robot's binding and its record: a read followed by a write would let another connection's write land in between (#85).
-    final trades =
-        libraries['lib/src/data/trade_record_repository_impl.dart'] ??
-        fail('no trade records');
-    final writes = trades.calls.where(
-      (call) => call.startsWith('customWriteReturning('),
-    );
-    expect(writes, hasLength(3));
-    for (final (method, statement) in [
-      ('reserveForNewTrade', '_reserveSql'),
-      ('recordPendingTake', '_recordPendingTakeSql'),
-      ('recordRecoveredTrade', '_recordRecoveredTradeSql'),
-    ]) {
-      expect(
-        trades.callsByMethod[method]?.where(
-          (call) => call.startsWith('customWriteReturning('),
-        ),
-        [startsWith('customWriteReturning($statement,')],
-        reason: method,
+  test(
+    'a robot is reserved, and a trade written, by one statement each that reads what decides it',
+    () {
+      // Each write reads in the same statement the history of the key, the robot's binding and its record: a read followed by a write would let another connection's write land in between (#85).
+      final trades =
+          libraries['lib/src/data/trade_record_repository_impl.dart'] ??
+          fail('no trade records');
+      final writes = trades.calls.where(
+        (call) => call.startsWith('customWriteReturning('),
       );
-    }
-    // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the robot's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
-    expect(
-      trades.constants['_reserveSql'],
-      'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
-      'coordinator_alias, coordinator_onion, coordinator_node_keys, '
-      'coordinator_nostr_key, bound_at, provenance) '
-      'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
-      'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
-      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
-      'WHERE key_fingerprint = ? AND origin <> ?) '
-      'AND NOT EXISTS (SELECT 1 FROM trades '
-      'WHERE key_fingerprint = ? AND robot_index = ?) '
-      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
-      'RETURNING robot_index',
-    );
-    expect(
-      trades.constants['_recordPendingTakeSql'],
-      'INSERT INTO trades (network, key_fingerprint, robot_index, '
-      'coordinator_alias, coordinator_onion, order_id, role, origin, '
-      'taken_at, confirmed_at, closed_at) '
-      "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
-      "coordinator_onion, ?, ?, 'takenHere', ?, NULL, NULL "
-      'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
-      'AND network = ? AND provenance = ? AND coordinator_alias = ? '
-      'AND coordinator_onion = ? AND coordinator_node_keys = ? '
-      'AND coordinator_nostr_key = ? '
-      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
-      'RETURNING *',
-    );
-    expect(
-      trades.constants['_recordRecoveredTradeSql'],
-      'INSERT INTO trades (network, key_fingerprint, robot_index, '
-      'coordinator_alias, coordinator_onion, order_id, role, origin, '
-      'taken_at, confirmed_at, closed_at) '
-      "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
-      "coordinator_onion, ?, ?, 'recovered', ?, ?, NULL "
-      'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
-      'AND network = ? AND coordinator_alias = ? '
-      'AND coordinator_onion = ? AND coordinator_node_keys = ? '
-      'AND coordinator_nostr_key = ? '
-      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
-      'RETURNING *',
-    );
-    final pinned = [
-      for (final name in [
-        '_reserveSql',
-        '_recordPendingTakeSql',
-        '_recordRecoveredTradeSql',
-      ])
-        trades.constants[name] ?? fail('no $name'),
-    ];
-    // No other SQL text inserts, and an origin is written by its own statement only.
-    expect(
-      trades.strings.where(
-        (text) =>
-            RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
-            !pinned.any((statement) => statement.contains(text)),
-      ),
-      isEmpty,
-    );
-    expect(
-      trades.strings.where((text) => text.contains("'takenHere'")),
-      everyElement(predicate<String>((text) => pinned[1].contains(text))),
-    );
-    expect(
-      trades.strings.where((text) => text.contains("'recovered'")),
-      everyElement(predicate<String>((text) => pinned[2].contains(text))),
-    );
-    // And no other file of the feature inserts into the bindings or the trades but the two repositories.
-    expect(
-      where(
-        (facts) => facts.strings.any(
-          (text) => RegExp(
-            r'\binsert\s+into\s+(robot_bindings|trades)\b',
-            caseSensitive: false,
-          ).hasMatch(text),
+      expect(writes, hasLength(3));
+      for (final (method, statement) in [
+        ('reserveForNewTrade', '_reserveSql'),
+        ('recordPendingTake', '_recordPendingTakeSql'),
+        ('recordRecoveredTrade', '_recordRecoveredTradeSql'),
+      ]) {
+        expect(
+          trades.callsByMethod[method]?.where(
+            (call) => call.startsWith('customWriteReturning('),
+          ),
+          [startsWith('customWriteReturning($statement,')],
+          reason: method,
+        );
+      }
+      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the robot's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+      expect(
+        trades.constants['_reserveSql'],
+        'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, coordinator_node_keys, '
+        'coordinator_nostr_key, bound_at, provenance) '
+        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
+        'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
+        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+        'WHERE key_fingerprint = ? AND origin <> ?) '
+        'AND NOT EXISTS (SELECT 1 FROM trades '
+        'WHERE key_fingerprint = ? AND robot_index = ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trades.constants['_recordPendingTakeSql'],
+        'INSERT INTO trades (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, order_id, role, origin, '
+        'taken_at, confirmed_at, closed_at) '
+        "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+        "coordinator_onion, ?, ?, 'takenHere', ?, NULL, NULL "
+        'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+        'AND network = ? AND provenance = ? AND coordinator_alias = ? '
+        'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+        'AND coordinator_nostr_key = ? '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING *',
+      );
+      expect(
+        trades.constants['_recordRecoveredTradeSql'],
+        'INSERT INTO trades (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, order_id, role, origin, '
+        'taken_at, confirmed_at, closed_at) '
+        "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+        "coordinator_onion, ?, ?, 'recovered', ?, ?, NULL "
+        'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+        'AND network = ? AND coordinator_alias = ? '
+        'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+        'AND coordinator_nostr_key = ? '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING *',
+      );
+      final pinned = [
+        for (final name in [
+          '_reserveSql',
+          '_recordPendingTakeSql',
+          '_recordRecoveredTradeSql',
+        ])
+          trades.constants[name] ?? fail('no $name'),
+      ];
+      // No other SQL text inserts, and an origin is written by its own statement only.
+      expect(
+        trades.strings.where(
+          (text) =>
+              RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
+              !pinned.any((statement) => statement.contains(text)),
         ),
-      ),
-      {
-        'lib/src/data/robot_binding_repository_impl.dart',
-        'lib/src/data/trade_record_repository_impl.dart',
-      },
-    );
-  });
+        isEmpty,
+      );
+      expect(
+        trades.strings.where((text) => text.contains("'takenHere'")),
+        everyElement(predicate<String>((text) => pinned[1].contains(text))),
+      );
+      expect(
+        trades.strings.where((text) => text.contains("'recovered'")),
+        everyElement(predicate<String>((text) => pinned[2].contains(text))),
+      );
+      // And no other file of the feature inserts into the bindings or the trades but the two repositories.
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) => RegExp(
+              r'\binsert\s+into\s+(robot_bindings|trades)\b',
+              caseSensitive: false,
+            ).hasMatch(text),
+          ),
+        ),
+        {
+          'lib/src/data/robot_binding_repository_impl.dart',
+          'lib/src/data/trade_record_repository_impl.dart',
+        },
+      );
+    },
+  );
 
   test('a robot is bound by one statement that reads the history itself', () {
     // The binding may be written only while the key's history allows it: a read of the history followed by a write would let an import of the key, from another connection, land in between (review of #72).
@@ -1621,7 +1625,6 @@ const _panel = 'lib/src/ui/garage/robot_coordinator_panel.dart';
 const _tradeUseCases = 'lib/src/domain/usecases/trade/';
 const _takeOrderUseCase = '${_tradeUseCases}take_order_usecase.dart';
 const _recoverTradeUseCase = '${_tradeUseCases}recover_trade_usecase.dart';
-
 
 /// The public members of [declaration] (constructors, fields, methods, getters and setters whose names do not start with `_`), each as `<kind> <source without body>`.
 List<String> _publicSurface(ClassDeclaration declaration) => [

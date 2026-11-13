@@ -483,15 +483,12 @@ void main() {
     Future<Map<String, List<Map<String, Object?>>>> rowsOf(
       GeneratedDatabase database,
     ) async => {
-      for (final table in [
-        'garage_key_histories',
-        'robot_bindings',
-        'trades',
-      ])
+      for (final table in ['garage_key_histories', 'robot_bindings', 'trades'])
         table: [
-          for (final row in await database
-              .customSelect('SELECT * FROM $table ORDER BY rowid')
-              .get())
+          for (final row
+              in await database
+                  .customSelect('SELECT * FROM $table ORDER BY rowid')
+                  .get())
             row.data,
         ],
     };
@@ -500,11 +497,12 @@ void main() {
     Future<List<Map<String, Object?>>> schemaOf(
       GeneratedDatabase database,
     ) async => [
-      for (final row in await database
-          .customSelect(
-            'SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name',
-          )
-          .get())
+      for (final row
+          in await database
+              .customSelect(
+                'SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name',
+              )
+              .get())
         row.data,
     ];
 
@@ -574,35 +572,38 @@ void main() {
       },
     );
 
-    test('a file of schema 3 opened again is unchanged, rows and schema alike', () async {
-      await writeSchema2();
-      final first = P2pDatabase.open(() async => directory);
-      final trades = TradeRecordRepositoryImpl(first, clock: () => testNow);
-      expect(
-        await trades.reserveForNewTrade(
+    test(
+      'a file of schema 3 opened again is unchanged, rows and schema alike',
+      () async {
+        await writeSchema2();
+        final first = P2pDatabase.open(() async => directory);
+        final trades = TradeRecordRepositoryImpl(first, clock: () => testNow);
+        expect(
+          await trades.reserveForNewTrade(
+            RobotSlot(testnet, drawn, 1),
+            templeTestnet,
+          ),
+          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isTrue),
+        );
+        final pending = await trades.recordPendingTake(
           RobotSlot(testnet, drawn, 1),
           templeTestnet,
-        ),
-        isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isTrue),
-      );
-      final pending = await trades.recordPendingTake(
-        RobotSlot(testnet, drawn, 1),
-        templeTestnet,
-        orderId: 42,
-        role: TradeRole.buyer,
-      );
-      expect(pending, isA<Ok<TradeRecord, P2pFailure>>());
-      final rows = await rowsOf(first);
-      final schema = await schemaOf(first);
-      await first.close();
+          orderId: 42,
+          role: TradeRole.buyer,
+        );
+        expect(pending, isA<Ok<TradeRecord, P2pFailure>>());
+        final rows = await rowsOf(first);
+        final schema = await schemaOf(first);
+        await first.close();
 
-      final second = P2pDatabase.open(() async => directory);
-      expect(await versionOf(second), 3);
-      expect(await rowsOf(second), rows);
-      expect(await schemaOf(second), schema);
-      expect(rows['trades'], hasLength(1));
-      await second.close();
-    });
+        final second = P2pDatabase.open(() async => directory);
+        expect(await versionOf(second), 3);
+        expect(await rowsOf(second), rows);
+        expect(await schemaOf(second), schema);
+        expect(rows['trades'], hasLength(1));
+        await second.close();
+      },
+    );
 
     test('its keys and bindings follow the rules of schema 3 once migrated', () async {
       await writeSchema2();
@@ -644,7 +645,7 @@ void main() {
       // A binding of schema 2 under a key drawn here takes a pending take; one of an acknowledged key, only a recovered trade.
       expect(
         await trades.recordPendingTake(
-        RobotSlot(testnet, drawn, 0),
+          RobotSlot(testnet, drawn, 0),
           templeTestnet,
           orderId: 1,
           role: TradeRole.buyer,
@@ -653,7 +654,7 @@ void main() {
       );
       expect(
         await trades.recordPendingTake(
-        RobotSlot(testnet, pasted, 0),
+          RobotSlot(testnet, pasted, 0),
           templeTestnet,
           orderId: 2,
           role: TradeRole.buyer,
@@ -676,7 +677,11 @@ void main() {
             RobotSlot(testnet, key, 9),
             templeTestnet,
           ),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isFalse),
+          isA<Ok<bool, P2pFailure>>().having(
+            (ok) => ok.value,
+            'bound',
+            isFalse,
+          ),
         );
       }
       // A trade's robot needs its binding.
@@ -685,27 +690,32 @@ void main() {
           "INSERT INTO trades VALUES ('testnet', ?, 7, 'temple', 'o', 3, 'buyer', 'recovered', 0, 0, NULL, NULL, NULL, NULL)",
           variables: [Variable.withString(both.hex)],
         ),
-        throwsA(predicate((error) => '$error'.contains('SqliteException(787)'))),
+        throwsA(
+          predicate((error) => '$error'.contains('SqliteException(787)')),
+        ),
       );
       await database.close();
     });
 
-    test('a step that stopped after the table was made runs again over the file it left', () async {
-      await writeSchema2();
-      // Stopped after the table was created, before the version was written.
-      final half = v2.DatabaseAtV2(NativeDatabase(file));
-      await half.customStatement(
-        'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, payment_hash TEXT NULL, payment_started_at INTEGER NULL, payment_swap_id TEXT NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\')), CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL)), CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128)), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index))',
-      );
-      expect(await versionOf(half), 2);
-      await half.close();
+    test(
+      'a step that stopped after the table was made runs again over the file it left',
+      () async {
+        await writeSchema2();
+        // Stopped after the table was created, before the version was written.
+        final half = v2.DatabaseAtV2(NativeDatabase(file));
+        await half.customStatement(
+          'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, payment_hash TEXT NULL, payment_started_at INTEGER NULL, payment_swap_id TEXT NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\')), CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL)), CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128)), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index))',
+        );
+        expect(await versionOf(half), 2);
+        await half.close();
 
-      final database = P2pDatabase.open(() async => directory);
-      await expectRowsKept(database);
-      expect(await versionOf(database), 3);
-      await database.validateDatabaseSchema();
-      await database.close();
-    });
+        final database = P2pDatabase.open(() async => directory);
+        await expectRowsKept(database);
+        expect(await versionOf(database), 3);
+        await database.validateDatabaseSchema();
+        await database.close();
+      },
+    );
   });
 }
 

@@ -129,7 +129,10 @@ void main() {
 
   group('the robot for a new trade', () {
     setUp(() async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
+      expect(
+        await bindings.recordGeneratedKey(testnet, fingerprintA),
+        isA<Ok>(),
+      );
     });
 
     test(
@@ -154,41 +157,53 @@ void main() {
       },
     );
 
-    test('is never returned twice, and skips every robot already bound or recorded', () async {
-      // The Garage put robot 1 on lake; robot 3 was bound on the other network.
-      expect(await bindings.bind(RobotSlot(testnet, fingerprintA, 1), identityOf('lake', testnet)), isA<Ok>());
-      expect(await bindings.recordGeneratedKey(mainnet, fingerprintA), isA<Ok>());
-      expect(
-        await bindings.bind(
-          RobotSlot(mainnet, fingerprintA, 3),
-          identityOf('temple', mainnet),
-        ),
-        isA<Ok>(),
-      );
-
-      final given = <int>[];
-      for (var i = 0; i < 6; i++) {
-        final robot = robotOf(
-          await robots.robotForNewTrade(testnet, i.isEven ? temple : lake),
+    test(
+      'is never returned twice, and skips every robot already bound or recorded',
+      () async {
+        // The Garage put robot 1 on lake; robot 3 was bound on the other network.
+        expect(
+          await bindings.bind(
+            RobotSlot(testnet, fingerprintA, 1),
+            identityOf('lake', testnet),
+          ),
+          isA<Ok>(),
         );
-        given.add(robot.accountIndex);
-        // Half of them get a trade, which is closed: a robot that ever had a record is never returned again.
-        if (i.isEven) {
-          final record = recordOf(
-            await trades.recordPendingTake(
-              robot.slot,
-              templeTestnet,
-              orderId: 100 + i,
-              role: TradeRole.buyer,
-            ),
-          );
-          expect(await trades.closeTrade(record), isA<Ok>());
-        }
-      }
+        expect(
+          await bindings.recordGeneratedKey(mainnet, fingerprintA),
+          isA<Ok>(),
+        );
+        expect(
+          await bindings.bind(
+            RobotSlot(mainnet, fingerprintA, 3),
+            identityOf('temple', mainnet),
+          ),
+          isA<Ok>(),
+        );
 
-      expect(given, [0, 2, 4, 5, 6, 7]);
-      expect(await bindingRows(), hasLength(8));
-    });
+        final given = <int>[];
+        for (var i = 0; i < 6; i++) {
+          final robot = robotOf(
+            await robots.robotForNewTrade(testnet, i.isEven ? temple : lake),
+          );
+          given.add(robot.accountIndex);
+          // Half of them get a trade, which is closed: a robot that ever had a record is never returned again.
+          if (i.isEven) {
+            final record = recordOf(
+              await trades.recordPendingTake(
+                robot.slot,
+                templeTestnet,
+                orderId: 100 + i,
+                role: TradeRole.buyer,
+              ),
+            );
+            expect(await trades.closeTrade(record), isA<Ok>());
+          }
+        }
+
+        expect(given, [0, 2, 4, 5, 6, 7]);
+        expect(await bindingRows(), hasLength(8));
+      },
+    );
 
     test('two calls at once on one connection get two robots', () async {
       final results = await Future.wait([
@@ -202,40 +217,46 @@ void main() {
       expect(await bindingRows(), hasLength(10));
     });
 
-    test('a coordinator without an instance on the network is refused, and nothing is written', () async {
-      // freeport has no testnet instance.
-      expect(
-        await robots.robotForNewTrade(testnet, coordinator('freeport')),
-        refusedWith<TradeCoordinatorNotOnNetworkFailure>(),
-      );
-      expect(await bindingRows(), isEmpty);
-    });
-
-    test('a vault without the key, or that refuses it, gives its failure, and nothing is written', () async {
-      for (final failure in const <P2pFailure>[
-        GarageKeyMissingFailure(),
-        GarageKeyLockedFailure(),
-        GarageKeyUnreadableFailure(),
-        GarageKeyUnusableFailure(),
-      ]) {
-        vault.slots[testnet] = Err(failure);
-        final result = await robots.robotForNewTrade(testnet, temple);
+    test(
+      'a coordinator without an instance on the network is refused, and nothing is written',
+      () async {
+        // freeport has no testnet instance.
         expect(
-          result,
-          isA<Err<NetworkRobot, P2pFailure>>().having(
-            (err) => err.failure,
-            'failure',
-            same(failure),
-          ),
+          await robots.robotForNewTrade(testnet, coordinator('freeport')),
+          refusedWith<TradeCoordinatorNotOnNetworkFailure>(),
         );
-      }
-      vault.slots.remove(testnet);
-      expect(
-        await robots.robotForNewTrade(testnet, temple),
-        refusedWith<GarageKeyMissingFailure>(),
-      );
-      expect(await bindingRows(), isEmpty);
-    });
+        expect(await bindingRows(), isEmpty);
+      },
+    );
+
+    test(
+      'a vault without the key, or that refuses it, gives its failure, and nothing is written',
+      () async {
+        for (final failure in const <P2pFailure>[
+          GarageKeyMissingFailure(),
+          GarageKeyLockedFailure(),
+          GarageKeyUnreadableFailure(),
+          GarageKeyUnusableFailure(),
+        ]) {
+          vault.slots[testnet] = Err(failure);
+          final result = await robots.robotForNewTrade(testnet, temple);
+          expect(
+            result,
+            isA<Err<NetworkRobot, P2pFailure>>().having(
+              (err) => err.failure,
+              'failure',
+              same(failure),
+            ),
+          );
+        }
+        vault.slots.remove(testnet);
+        expect(
+          await robots.robotForNewTrade(testnet, temple),
+          refusedWith<GarageKeyMissingFailure>(),
+        );
+        expect(await bindingRows(), isEmpty);
+      },
+    );
   });
 
   group('a key from elsewhere never gives a robot for a new trade', () {
@@ -243,17 +264,32 @@ void main() {
       ('no record of its draw', []),
       ('imported', ['imported testnet']),
       ('acknowledged', ['imported testnet', 'acknowledged testnet']),
-      ('drawn here, then pasted into the other slot', ['generated testnet', 'imported mainnet']),
-      ('drawn here, and acknowledged in the other slot', ['generated testnet', 'acknowledged mainnet']),
-      ('drawn here, then imported again', ['generated testnet', 'imported testnet']),
+      (
+        'drawn here, then pasted into the other slot',
+        ['generated testnet', 'imported mainnet'],
+      ),
+      (
+        'drawn here, and acknowledged in the other slot',
+        ['generated testnet', 'acknowledged mainnet'],
+      ),
+      (
+        'drawn here, then imported again',
+        ['generated testnet', 'imported testnet'],
+      ),
     ]) {
       test(label, () async {
         for (final record in records) {
           final [origin, networkName] = record.split(' ');
           final network = RobosatsNetwork.values.byName(networkName);
           final written = switch (origin) {
-            'generated' => await bindings.recordGeneratedKey(network, fingerprintA),
-            'imported' => await bindings.recordImportedKey(network, fingerprintA),
+            'generated' => await bindings.recordGeneratedKey(
+              network,
+              fingerprintA,
+            ),
+            'imported' => await bindings.recordImportedKey(
+              network,
+              fingerprintA,
+            ),
             _ => await bindings.recordAcknowledgedKey(network, fingerprintA),
           };
           expect(written, isA<Ok>());
@@ -268,9 +304,18 @@ void main() {
     }
 
     test('nor a robot of a pasted key that the Garage bound', () async {
-      expect(await bindings.recordImportedKey(testnet, fingerprintA), isA<Ok>());
-      expect(await bindings.recordAcknowledgedKey(testnet, fingerprintA), isA<Ok>());
-      expect(await bindings.bind(RobotSlot(testnet, fingerprintA, 0), templeTestnet), isA<Ok>());
+      expect(
+        await bindings.recordImportedKey(testnet, fingerprintA),
+        isA<Ok>(),
+      );
+      expect(
+        await bindings.recordAcknowledgedKey(testnet, fingerprintA),
+        isA<Ok>(),
+      );
+      expect(
+        await bindings.bind(RobotSlot(testnet, fingerprintA, 0), templeTestnet),
+        isA<Ok>(),
+      );
 
       expect(
         await robots.robotForNewTrade(testnet, temple),
@@ -278,7 +323,7 @@ void main() {
       );
       expect(
         await trades.recordPendingTake(
-              RobotSlot(testnet, fingerprintA, 0),
+          RobotSlot(testnet, fingerprintA, 0),
           templeTestnet,
           orderId: 1,
           role: TradeRole.buyer,
@@ -302,10 +347,9 @@ void main() {
       () async {
         final first = P2pDatabase.open(() async => directory);
         expect(
-          await bindingsInMemory(database: first).recordGeneratedKey(
-            testnet,
-            fingerprintA,
-          ),
+          await bindingsInMemory(
+            database: first,
+          ).recordGeneratedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
         final before = InterimTradeRobots(
@@ -317,13 +361,16 @@ void main() {
         await first.close();
 
         final reopened = P2pDatabase.open(() async => directory);
-        final records = TradeRecordRepositoryImpl(reopened, clock: () => testNow);
+        final records = TradeRecordRepositoryImpl(
+          reopened,
+          clock: () => testNow,
+        );
         final after = InterimTradeRobots(vault, records);
         final next = robotOf(await after.robotForNewTrade(testnet, lake));
         expect(next.accountIndex, orphan.accountIndex + 1);
         final record = recordOf(
           await records.recordPendingTake(
-              next.slot,
+            next.slot,
             identityOf('lake', testnet),
             orderId: 5,
             role: TradeRole.buyer,
@@ -363,10 +410,9 @@ void main() {
         ];
         await openInTurn(databases);
         expect(
-          await bindingsInMemory(database: databases.first).recordGeneratedKey(
-            testnet,
-            fingerprintA,
-          ),
+          await bindingsInMemory(
+            database: databases.first,
+          ).recordGeneratedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
         final layers = [
@@ -418,14 +464,17 @@ void main() {
     late TradeRecord record;
 
     setUp(() async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
+      expect(
+        await bindings.recordGeneratedKey(testnet, fingerprintA),
+        isA<Ok>(),
+      );
       final robot = robotOf(await robots.robotForNewTrade(testnet, temple));
       robotOf(await robots.robotForNewTrade(testnet, temple));
       final second = robotOf(await robots.robotForNewTrade(testnet, temple));
       expect(robot.accountIndex, 0);
       record = recordOf(
         await trades.recordPendingTake(
-              second.slot,
+          second.slot,
           templeTestnet,
           orderId: 9,
           role: TradeRole.buyer,
@@ -470,55 +519,77 @@ void main() {
     });
   });
 
-  test('the search of a free robot goes on after a skipped index that leads to one in use', () {
-    // No Garage Key is known with an index to skip: robots are played by their indexes, and index 3 is skipped (its first usable robot from 3 is 4).
-    Result<int, P2pFailure> firstUsable(int from) => switch (from) {
-      3 => const Ok(4),
-      > 9 => const Err(GarageRobotUnavailableFailure()),
-      _ => Ok(from),
-    };
-    Result<int, P2pFailure> firstFree(Set<int> inUse) =>
-        InterimTradeRobots.firstFreeAmong(inUse, firstUsable, (index) => index);
+  test(
+    'the search of a free robot goes on after a skipped index that leads to one in use',
+    () {
+      // No Garage Key is known with an index to skip: robots are played by their indexes, and index 3 is skipped (its first usable robot from 3 is 4).
+      Result<int, P2pFailure> firstUsable(int from) => switch (from) {
+        3 => const Ok(4),
+        > 9 => const Err(GarageRobotUnavailableFailure()),
+        _ => Ok(from),
+      };
+      Result<int, P2pFailure> firstFree(Set<int> inUse) =>
+          InterimTradeRobots.firstFreeAmong(
+            inUse,
+            firstUsable,
+            (index) => index,
+          );
 
-    expect(firstFree({}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 0));
-    expect(firstFree({0, 1, 2}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 4));
-    expect(firstFree({0, 1, 2, 4}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 5));
-    expect(
-      firstFree({0, 1, 2, 4, 5, 6, 7, 8, 9}),
-      refusedWith<GarageRobotUnavailableFailure>(),
-    );
-  });
-
-  test('nothing printed or logged on these paths holds a key, a token or a fingerprint', () async {
-    late NetworkRobot robot;
-    final output = await captureKeyOutput(() async {
-      expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
-      robot = robotOf(await robots.robotForNewTrade(testnet, temple));
-      final record = recordOf(
-        await trades.recordPendingTake(
-              robot.slot,
-          templeTestnet,
-          orderId: 9,
-          role: TradeRole.buyer,
-        ),
+      expect(
+        firstFree({}),
+        isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 0),
       );
-      expect(await trades.confirmTake(record), isA<Ok>());
-      expect(await robots.robotOfTrade(record), isA<Ok>());
-      expect(await trades.closeTrade(record), isA<Ok>());
-      vault.slots[testnet] = Ok(NetworkGarageKey(testnet, keyB));
-      expect(await robots.robotOfTrade(record), isA<Err>());
-      vault.slots[testnet] = const Err(GarageKeyLockedFailure());
-      expect(await robots.robotForNewTrade(testnet, temple), isA<Err>());
-    });
+      expect(
+        firstFree({0, 1, 2}),
+        isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 4),
+      );
+      expect(
+        firstFree({0, 1, 2, 4}),
+        isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 5),
+      );
+      expect(
+        firstFree({0, 1, 2, 4, 5, 6, 7, 8, 9}),
+        refusedWith<GarageRobotUnavailableFailure>(),
+      );
+    },
+  );
 
-    expectNoKeyIn(output, [keyA, keyB]);
-    for (final (index, secret) in [
-      fingerprintA.hex,
-      robot.identity.token.reveal(),
-      robot.identity.tokenSha256Hex,
-      robot.identity.tokenSha256Base91,
-    ].indexed) {
-      expect(output.contains(secret), isFalse, reason: 'form $index');
-    }
-  });
+  test(
+    'nothing printed or logged on these paths holds a key, a token or a fingerprint',
+    () async {
+      late NetworkRobot robot;
+      final output = await captureKeyOutput(() async {
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
+        robot = robotOf(await robots.robotForNewTrade(testnet, temple));
+        final record = recordOf(
+          await trades.recordPendingTake(
+            robot.slot,
+            templeTestnet,
+            orderId: 9,
+            role: TradeRole.buyer,
+          ),
+        );
+        expect(await trades.confirmTake(record), isA<Ok>());
+        expect(await robots.robotOfTrade(record), isA<Ok>());
+        expect(await trades.closeTrade(record), isA<Ok>());
+        vault.slots[testnet] = Ok(NetworkGarageKey(testnet, keyB));
+        expect(await robots.robotOfTrade(record), isA<Err>());
+        vault.slots[testnet] = const Err(GarageKeyLockedFailure());
+        expect(await robots.robotForNewTrade(testnet, temple), isA<Err>());
+      });
+
+      expectNoKeyIn(output, [keyA, keyB]);
+      for (final (index, secret) in [
+        fingerprintA.hex,
+        robot.identity.token.reveal(),
+        robot.identity.tokenSha256Hex,
+        robot.identity.tokenSha256Base91,
+      ].indexed) {
+        expect(output.contains(secret), isFalse, reason: 'form $index');
+      }
+    },
+  );
 }
