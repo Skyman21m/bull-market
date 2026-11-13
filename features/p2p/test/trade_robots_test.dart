@@ -150,7 +150,10 @@ void main() {
         final robot = reserved.robot;
 
         expect(robot.slot, RobotSlot(testnet, fingerprintA, 0));
-        expect(reserved.reservation, TradeReservation(robot.slot, templeTestnet));
+        expect(
+          reserved.reservation,
+          TradeReservation(robot.slot, templeTestnet),
+        );
         // A reservation pairs with its own robot only.
         expect(ReservedRobot.of(robot, reserved.reservation), isNotNull);
         expect(

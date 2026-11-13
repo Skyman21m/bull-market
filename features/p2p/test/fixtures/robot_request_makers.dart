@@ -147,11 +147,8 @@ Object pendingTakeInClosure(
   TradeRecordRepository records,
   TradeReservation reservation,
 ) {
-  Object write() => records.recordPendingTake(
-    reservation,
-    orderId: 1,
-    role: TradeRole.buyer,
-  );
+  Object write() =>
+      records.recordPendingTake(reservation, orderId: 1, role: TradeRole.buyer);
   return write;
 }
 

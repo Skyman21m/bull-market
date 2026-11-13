@@ -84,7 +84,10 @@ void main() {
       database.select(database.robotBindings).get();
 
   /// The reservation of a robot of key A on testnet for a new trade on [on].
-  Future<TradeReservation> reserved(int index, [CoordinatorIdentity? on]) async {
+  Future<TradeReservation> reserved(
+    int index, [
+    CoordinatorIdentity? on,
+  ]) async {
     expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
     final robot = RobotSlot(testnet, fingerprintA, index);
     return switch (await trades.reserveForNewTrade(robot, on ?? temple)) {
@@ -97,15 +100,14 @@ void main() {
   Future<TradeRecord> pendingTake(
     TradeReservation reservation, {
     int orderId = 7,
-  }) async =>
-      switch (await trades.recordPendingTake(
-        reservation,
-        orderId: orderId,
-        role: TradeRole.buyer,
-      )) {
-        Ok(:final value) => value,
-        Err(:final failure) => fail('$failure'),
-      };
+  }) async => switch (await trades.recordPendingTake(
+    reservation,
+    orderId: orderId,
+    role: TradeRole.buyer,
+  )) {
+    Ok(:final value) => value,
+    Err(:final failure) => fail('$failure'),
+  };
 
   group('the reservation of a robot for a new trade', () {
     test(
@@ -1029,9 +1031,15 @@ void main() {
           ('a delete', 'DELETE FROM trades $where'),
           ('another order', 'UPDATE trades SET order_id = 8 $where'),
           ('another side', "UPDATE trades SET role = 'seller' $where"),
-          ('another origin', "UPDATE trades SET origin = 'recovered', confirmed_at = 1 $where"),
+          (
+            'another origin',
+            "UPDATE trades SET origin = 'recovered', confirmed_at = 1 $where",
+          ),
           ('another time of the take', 'UPDATE trades SET taken_at = 1 $where'),
-          ('another coordinator', "UPDATE trades SET coordinator_alias = 'lake' $where"),
+          (
+            'another coordinator',
+            "UPDATE trades SET coordinator_alias = 'lake' $where",
+          ),
         ]) {
           await expectLater(
             database.customStatement(statement),
@@ -1133,7 +1141,10 @@ void main() {
         final robot = RobotSlot(testnet, fingerprintA, 0);
         expect(await bindings.bind(robot, temple), isA<Ok>());
 
-        expect(await trades.reserveForNewTrade(robot, temple), reservedIs(false));
+        expect(
+          await trades.reserveForNewTrade(robot, temple),
+          reservedIs(false),
+        );
         expect(await tradeRows(), isEmpty);
       },
     );
@@ -1279,16 +1290,46 @@ void main() {
       final looseTrades = TradeRecordRepositoryImpl(loose, clock: () => now);
       final fingerprint = "'${fingerprintA.hex}'";
       for (final (index, values) in [
-        (0, "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL"),
-        (1, "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL"),
-        (2, "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (3, "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL"),
-        (4, "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (5, "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL"),
-        (6, "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (7, "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL"),
-        (8, "'testnet', '${fingerprintA.hex.toUpperCase()}', 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (9, "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', -1, NULL, NULL"),
+        (
+          0,
+          "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL",
+        ),
+        (
+          1,
+          "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL",
+        ),
+        (
+          2,
+          "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL",
+        ),
+        (
+          3,
+          "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL",
+        ),
+        (
+          4,
+          "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL",
+        ),
+        (
+          5,
+          "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL",
+        ),
+        (
+          6,
+          "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL",
+        ),
+        (
+          7,
+          "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL",
+        ),
+        (
+          8,
+          "'testnet', '${fingerprintA.hex.toUpperCase()}', 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL",
+        ),
+        (
+          9,
+          "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', -1, NULL, NULL",
+        ),
       ]) {
         await loose.customStatement('DELETE FROM trades');
         await loose.customStatement('INSERT INTO trades VALUES ($values)');

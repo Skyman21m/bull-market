@@ -50,7 +50,9 @@ final class ReservedRobot {
 
   /// [robot] with [reservation], or `null` when the reservation is not of that robot: the two always name the same robot.
   static ReservedRobot? of(NetworkRobot robot, TradeReservation reservation) =>
-      robot.slot == reservation.robot ? ReservedRobot._(robot, reservation) : null;
+      robot.slot == reservation.robot
+      ? ReservedRobot._(robot, reservation)
+      : null;
 
   @override
   String toString() => 'ReservedRobot($reservation)';

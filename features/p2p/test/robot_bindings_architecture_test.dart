@@ -791,7 +791,8 @@ class RobotCoordinatorCubit {
       expect(facts.names, isNot(contains('InsertMode')));
       for (final text in facts.strings) {
         // The steps hold the triggers of `trades.drift` as written, which name an update and a delete only to refuse them (pinned below).
-        if (identical(facts, steps) && _tradeTriggers.contains(_squeezed(text))) {
+        if (identical(facts, steps) &&
+            _tradeTriggers.contains(_squeezed(text))) {
           continue;
         }
         expect(
@@ -838,10 +839,11 @@ class RobotCoordinatorCubit {
     );
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
     // Its one `customSelect`, the step's look at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
-    expect(
-      database.calls.where((call) => call.startsWith('customSelect(')),
-      [startsWith("customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',")],
-    );
+    expect(database.calls.where((call) => call.startsWith('customSelect(')), [
+      startsWith(
+        "customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',",
+      ),
+    ]);
     expect(
       database.strings.where(
         (text) => RegExp(r'\bpragma\b', caseSensitive: false).hasMatch(text),

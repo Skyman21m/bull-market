@@ -201,9 +201,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         updateKind: UpdateKind.insert,
       );
       // The statement returns the row only when it wrote it: this call bound the robot, and no other can.
-      return Ok(
-        written.isEmpty ? null : TradeReservation(robot, coordinator),
-      );
+      return Ok(written.isEmpty ? null : TradeReservation(robot, coordinator));
     } on Exception {
       return const Err(P2pStorageFailure());
     }
