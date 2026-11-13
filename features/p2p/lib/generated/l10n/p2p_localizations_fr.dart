@@ -815,7 +815,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyHistoryNotRecorded =>
-      'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots sont traités comme venant d’ailleurs. Vous pouvez plutôt générer une nouvelle clé.';
+      'Cet appareil n’a pas pu enregistrer qu’il a généré cette clé de garage. Ses robots demanderont votre confirmation avant de rejoindre un coordinateur. Vous pouvez plutôt générer une nouvelle clé.';
 
   @override
   String get p2pRobotCoordinatorTitle =>
@@ -960,4 +960,14 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pRobotRecordsUnreadable =>
       'Troc n’a pas pu lire ses enregistrements sur cet appareil.';
+
+  @override
+  String get p2pRobotHistoryTitle => 'Robots venus d’ailleurs';
+
+  @override
+  String get p2pRobotHistoryBody =>
+      'Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs : l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Troc, un robot ne vit que chez un seul coordinateur : si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.';
+
+  @override
+  String get p2pRobotHistoryConfirm => 'Je comprends';
 }

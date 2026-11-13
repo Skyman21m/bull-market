@@ -761,7 +761,7 @@ void main() {
     });
   }
 
-  // The robot panel of the Garage, on mainnet so that « Select Host » lists every coordinator (Gumpellite, not recorded, shows as offline), over the public example key, pasted, then acknowledged through the test seam as the acknowledgement of a later step will: Tor on its way, a robot without a coordinator, « Select Host », the confirmation, the first contact and its long wait, the card of a robot in its states, every failure with a text, a coordinator closed by its refusals, and a robot read back.
+  // The robot panel of the Garage, on mainnet so that « Select Host » lists every coordinator (Gumpellite, not recorded, shows as offline), over the public example key, pasted, so of unknown history: Tor on its way, a robot without a coordinator, « Select Host » and its « Robots from elsewhere », asked once for the key, the confirmation, the first contact and its long wait, the card of a robot in its states, every failure with a text, a coordinator closed by its refusals, and a robot read back.
   // The coordinators are fakes that keep the key pair the robot sent: nothing leaves the test.
   for (final locale in const [Locale('fr'), Locale('en')]) {
     testWidgets(
@@ -886,7 +886,7 @@ void main() {
           await settle();
         }
 
-        // The example key, pasted from the welcome screen, then acknowledged.
+        // The example key, pasted from the welcome screen: its history is unknown.
         await tester.tap(find.text(l10n.p2pNavGarage));
         await settle();
         await tester.pump(const Duration(seconds: 6));
@@ -898,16 +898,6 @@ void main() {
         await tester.tap(find.text(l10n.p2pRecoveryRecover));
         await settle();
         await tester.pump(const Duration(seconds: 6));
-        await settle();
-        final acknowledged = await tester.runAsync(
-          () =>
-              acknowledgeGarageKeyForTesting(locator, RobosatsNetwork.mainnet),
-        );
-        if (acknowledged != true) throw StateError('not acknowledged');
-        // The panel reads where its robot stands when it is shown.
-        await tester.tap(find.byTooltip(l10n.p2pGarageNextAccount));
-        await settle();
-        await tester.tap(find.byTooltip(l10n.p2pGaragePreviousAccount));
         await settle();
         await tester.ensureVisible(find.text(l10n.p2pRobotSelectHost));
         await settle();
@@ -923,8 +913,14 @@ void main() {
           await settle();
         }
 
-        // « Select Host », its confirmation, then the first contact with Temple of Sats, which takes its time.
+        // « Select Host »: « Robots from elsewhere » first, for this pasted key, then the sheet once « I understand » records the acknowledgement; then the confirmation, and the first contact with Temple of Sats, which takes its time.
         await tester.tap(find.text(l10n.p2pRobotSelectHost));
+        await settle();
+        if (find.text(l10n.p2pRobotHistoryTitle).evaluate().isEmpty) {
+          throw StateError('« Select Host » does not ask the acknowledgement');
+        }
+        await capture('robot-historique');
+        await tester.tap(find.text(l10n.p2pRobotHistoryConfirm));
         await settle();
         await capture('robot-choisir-hote');
         await tester.tap(find.text('Temple of Sats'));

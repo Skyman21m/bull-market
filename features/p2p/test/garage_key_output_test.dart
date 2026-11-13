@@ -60,6 +60,10 @@ void main() {
           'lib/src/ui/garage/robot_coordinator_panel.dart',
           'lib/src/ui/garage/select_host_sheet.dart',
           'lib/src/ui/garage/send_robot_dialog.dart',
+          // The acknowledgement of a key of unknown history, which the panel records through its cubit (#29, step 6).
+          'lib/src/ui/garage/robot_history_dialog.dart',
+          // What closes the dialogs and the sheet of the panel with it (security review of step 6).
+          'lib/src/ui/garage/closes_with_panel.dart',
         ]),
       );
     });

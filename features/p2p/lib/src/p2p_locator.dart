@@ -191,11 +191,12 @@ final class P2pLocator {
         locator(),
       ),
     );
-    // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases.
+    // The panel of one robot of the Garage, made from the Garage Key of the Garage and the robot's index: the only caller of the robot use cases and of the acknowledgement of a key's history.
     locator.registerFactoryParam<RobotCoordinatorCubit, NetworkGarageKey, int>(
       (key, index) => RobotCoordinatorCubit(
         key,
         index,
+        locator(),
         locator(),
         locator(),
         locator(),
