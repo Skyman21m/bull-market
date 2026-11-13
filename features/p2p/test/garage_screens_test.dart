@@ -2574,6 +2574,7 @@ void main() {
     late RecordingBindings bindings;
     late RobotRequestLimiter limiter;
     late FakeTor robotTor;
+    late PairsByRobot keys;
 
     NetworkRobot robotAt(
       int index, [
@@ -2612,6 +2613,7 @@ void main() {
         random: () => 0.5,
       );
       robotTor = FakeTor();
+      keys = PairsByRobot(pairs);
     });
 
     /// Binds robot [index] to [alias] and has that coordinator keep it, as after a first contact in an earlier run.
@@ -2649,7 +2651,7 @@ void main() {
       final fetch = FetchRobotUsecase(
         CoordinatorClient(robotCoordinators, clock: () => testNow),
         bindings,
-        PairsByRobot(pairs),
+        keys,
       );
       final cubit = RobotCoordinatorCubit(
         NetworkGarageKey(network, fixedKey),
@@ -3321,6 +3323,108 @@ void main() {
           },
         );
       }
+    }
+
+    // The notes of the second security pass on step 5: a text never says that nothing was sent when a request of the call may have left.
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      final language = locale.languageCode;
+      final nothingSent = language == 'fr'
+          ? 'Rien n’a été envoyé.'
+          : 'Nothing was sent.';
+
+      testWidgets(
+        'a first contact answered, whose proof could not run, then the records unreadable: never « Nothing was sent. », in $language',
+        (tester) async {
+          // Robot 1 already lives on Temple of Sats with a pair made elsewhere: the answer must be proven, and the proof cannot run.
+          robotCoordinators.keepFor(
+            robotAt(1).identity,
+            'temple',
+            RobosatsNetwork.testnet,
+            otherPair,
+          );
+          keys.proveFailure = const RobotKeyComputeFailure();
+          await showPanel(tester, index: 1, locale: locale);
+          final l10n = _text(tester);
+          robotCoordinators.onSend = (_) {
+            bindings.readFailure = const P2pStorageFailure();
+          };
+          await sendToTemple(tester);
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(keys.proved, [robotAt(1).identity.hashId]);
+          expect(find.text(l10n.p2pRobotKeyComputeFailed), findsOneWidget);
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a put on a bound robot whose read back left, then refused by the database: never « Nothing was sent. », in $language',
+        (tester) async {
+          await boundTo(0, 'temple');
+          robotCoordinators.kept.clear();
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          expect(
+            find.text(l10n.p2pRobotNotCreated('Temple of Sats')),
+            findsOneWidget,
+          );
+          // The binding of the first contact, after the put's own read back, cannot be written.
+          robotCoordinators.onSend = (_) {
+            bindings.failure = const P2pStorageFailure();
+          };
+
+          await tester.tap(find.text(l10n.p2pCommonRetry));
+          await settle(tester);
+
+          expect(robotCoordinators.requests, hasLength(2));
+          expect(robotCoordinators.firstContacts, isEmpty);
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          // « Retry » reads it back.
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a nickname taken, its read 10 s later refused by the database, the records unreadable: never « Nothing was sent. », in $language',
+        (tester) async {
+          robotCoordinators.script.add(RobotReply.nicknameTaken);
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          robotCoordinators.onSend = (_) {
+            bindings
+              ..failure = const P2pStorageFailure()
+              ..readFailure = const P2pStorageFailure();
+          };
+          await sendToTemple(tester);
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.textContaining(nothingSent), findsNothing);
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a read back refused by the database says that nothing was sent, which is so, in $language',
+        (tester) async {
+          await boundTo(0, 'temple');
+          var reads = 0;
+          bindings.onRead = () {
+            // The read of ReadRobotOnCoordinatorUsecase, after the panel's own.
+            if (++reads == 2) bindings.readFailure = const P2pStorageFailure();
+          };
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+
+          expect(find.text(l10n.p2pRobotStorage), findsOneWidget);
+          expect(robotCoordinators.requests, isEmpty);
+        },
+      );
     }
 
     testWidgets(

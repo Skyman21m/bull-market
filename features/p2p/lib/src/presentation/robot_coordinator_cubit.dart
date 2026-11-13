@@ -168,7 +168,12 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
       switch (hosts.boundTo(binding)) {
         case Ok(value: final coordinator):
           if (attempt != null) {
-            emit(RobotOnCoordinator(coordinator, RobotFailed(attempt.problem)));
+            emit(
+              RobotOnCoordinator(
+                coordinator,
+                RobotFailed(attempt.problem, kind: RobotContactKind.create),
+              ),
+            );
           } else if (_tor != TorWait.ready) {
             emit(RobotOnCoordinator(coordinator, RobotWaitingForTor(_tor)));
           } else {
@@ -201,11 +206,17 @@ class RobotCoordinatorCubit extends Cubit<RobotCoordinatorState> {
           RobotCoordinatorChanged(coordinator.shortAlias, coordinator),
         Err(:final failure) => RobotOnCoordinator(
           coordinator,
-          RobotFailed(RobotRequestRefused(failure)),
+          RobotFailed(
+            RobotRequestRefused(failure),
+            kind: RobotContactKind.read,
+          ),
         ),
         Ok(value: Err(:final failure)) => RobotOnCoordinator(
           coordinator,
-          RobotFailed(RobotRequestAnswered(failure)),
+          RobotFailed(
+            RobotRequestAnswered(failure),
+            kind: RobotContactKind.read,
+          ),
         ),
         Ok(value: Ok(value: final face)) => RobotOnCoordinator(
           coordinator,

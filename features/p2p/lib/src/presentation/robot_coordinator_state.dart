@@ -149,7 +149,12 @@ final class RobotKnown extends RobotActivity {
 final class RobotFailed extends RobotActivity {
   final RobotRequestProblem problem;
 
-  const RobotFailed(this.problem);
+  /// Which call failed: a put of the robot on its coordinator ([RobotContactKind.create]), whose read back or first contact may have left before a later step was refused, or a read back ([RobotContactKind.read]), which sends nothing when the feature refuses it.
+  ///
+  /// So a refusal of the database after a put never says that nothing was sent (second security pass on step 5).
+  final RobotContactKind kind;
+
+  const RobotFailed(this.problem, {required this.kind});
 }
 
 /// A first contact to [coordinator] that failed, and why.

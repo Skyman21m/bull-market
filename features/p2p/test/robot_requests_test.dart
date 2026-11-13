@@ -1801,6 +1801,39 @@ void main() {
         );
       });
 
+      // S03 of the second security pass on step 5: each read closes its call in the limiter, whatever its outcome, so that a release finds no call of the robot still running but one opened since.
+      test('closes its call in the limiter, whatever its outcome', () async {
+        expect(await read.execute(robots[1]), _refused<RobotNotBoundFailure>());
+        expect(limiter.isInUse(keyOf[1]), isFalse);
+        _face(await put.execute(robots[0], temple));
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+
+        _face(await read.execute(robots[0]));
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+        coordinators.script.add(_Reply.unknown);
+        expect(await read.execute(robots[0]), _answered<RobotUnknown>());
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+        coordinators.script.add(_Reply.unreachable);
+        expect(
+          await read.execute(robots[0]),
+          _answered<CoordinatorUnreachable>(),
+        );
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+        coordinators.script.addAll(
+          List.filled(RobotRequestLimiter.maxAttempts, _Reply.busy),
+        );
+        expect(
+          await read.execute(robots[0]),
+          _refused<RobotCoordinatorBusyFailure>(),
+        );
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+        expect(
+          await read.execute(mainnetRobots[0]),
+          _refused<RobotBoundToAnotherCoordinatorFailure>(),
+        );
+        expect(limiter.isInUse(keyOf[0]), isFalse);
+      });
+
       test(
         'a robot without a binding is not read, and nothing is sent or written',
         () async {
@@ -2109,6 +2142,38 @@ void main() {
 
           expect(events, ['sent', 'close', 'answered', 'close']);
           await reading;
+        },
+      );
+
+      // S03 of the second security pass on step 5, what it changes: a read of the robot opened since the release and ended does not keep the sessions open after the late request.
+      test(
+        'closes again after a late request, once a read opened since has ended too',
+        () async {
+          _face(await put.execute(robots[0], temple));
+          time.holding = true;
+          final answer = Completer<void>();
+          var sent = 0;
+          coordinators.onSend = (request) async {
+            // Only the first read waits for its answer.
+            if (sent++ > 0) return;
+            events.add('sent');
+            await answer.future;
+            events.add('answered');
+          };
+          final first = read.execute(robots[0]);
+          await _until(() => events.contains('sent'));
+
+          final releasing = release.execute(robots[0]);
+          await _settle();
+          time.held.single.complete();
+          await _until(() => events.contains('close'));
+          // The user comes back to the robot: a read opened since, answered at once.
+          _face(await read.execute(robots[0]));
+          answer.complete();
+          await releasing;
+
+          expect(events, ['sent', 'close', 'answered', 'close']);
+          await first;
         },
       );
 

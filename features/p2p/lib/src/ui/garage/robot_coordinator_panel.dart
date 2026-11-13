@@ -75,17 +75,22 @@ class RobotCoordinatorPanel extends StatelessWidget {
               RobotStandingReading() => const _Progress(),
               RobotStandingUnreadable(:final failure, :final lastAttempt) =>
                 switch (lastAttempt) {
-                  // No request was made, or the one that failed was refused by the database itself before anything left: nothing was sent.
-                  null ||
-                  RobotAttempt(
-                    problem: RobotRequestRefused(failure: P2pStorageFailure()),
-                  ) => _Failure(
+                  // No request was made: nothing was sent.
+                  null => _Failure(
                     message: switch (failure) {
                       P2pStorageFailure() => l10n.p2pRobotStorage,
                       _ => failure.toTranslated(context),
                     },
                     onRetry: context.read<RobotCoordinatorCubit>().retry,
                   ),
+                  // A put the database refused, whose read back or first contact may have left before (a robot bound earlier, or a nickname taken read again): that the records cannot be read, never that nothing was sent (second security pass on step 5).
+                  RobotAttempt(
+                    problem: RobotRequestRefused(failure: P2pStorageFailure()),
+                  ) =>
+                    _Failure(
+                      message: l10n.p2pRobotRecordsUnreadable,
+                      onRetry: context.read<RobotCoordinatorCubit>().retry,
+                    ),
                   // A first contact may have left: what it got, then that the records cannot be read, never that nothing was sent.
                   final attempt => Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -265,9 +270,17 @@ class _OnCoordinator extends StatelessWidget {
             ],
           ],
           RobotKnown(:final face) => [_Known(face: face, name: name)],
-          RobotFailed(:final problem) => [
+          RobotFailed(:final problem, :final kind) => [
             _Failure(
-              message: problem.toRobotText(context, coordinator: name),
+              message: switch ((problem, kind)) {
+                // A put the database refused may follow its read back or its first contact: never « Nothing was sent. » (second security pass on step 5).
+                (
+                  RobotRequestRefused(failure: P2pStorageFailure()),
+                  RobotContactKind.create,
+                ) =>
+                  l10n.p2pRobotRecordsUnreadable,
+                _ => problem.toRobotText(context, coordinator: name),
+              },
               onRetry: problem.wayOut == RobotWayOut.none
                   ? null
                   : context.read<RobotCoordinatorCubit>().retry,

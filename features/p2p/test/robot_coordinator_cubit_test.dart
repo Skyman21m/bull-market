@@ -375,6 +375,67 @@ void main() {
     });
   });
 
+  // Second security pass on step 5: a refusal of the database after a put may follow a request that left, so the state says which call failed, and the panel words it.
+  group('a refusal of the database', () {
+    test(
+      'after the read back of a put on a bound robot: a put, whose read back left',
+      () async {
+        await bound(robots[0], temple);
+        coordinators.kept.clear();
+        final cubit = cubitAt(0);
+        await cubit.load();
+        tor.embedded.ready();
+        await until(cubit, failed);
+        expect(problemOf(cubit.state).wayOut, RobotWayOut.firstContact);
+        // The put reads the robot back first; then the binding of its first contact cannot be written.
+        coordinators.onSend = (_) =>
+            bindings.failure = const P2pStorageFailure();
+
+        await cubit.retry();
+        await until(cubit, failed);
+
+        expect(paths(), ['temple read', 'temple read']);
+        final activity =
+            (cubit.state as RobotOnCoordinator).activity as RobotFailed;
+        expect(
+          activity.problem,
+          isA<RobotRequestRefused>().having(
+            (p) => p.failure,
+            'failure',
+            isA<P2pStorageFailure>(),
+          ),
+        );
+        expect(activity.kind, RobotContactKind.create);
+      },
+    );
+
+    test('of a read back: a read, which sent nothing', () async {
+      await bound(robots[0], temple);
+      var reads = 0;
+      bindings.onRead = () {
+        // The read of ReadRobotOnCoordinatorUsecase, after the panel's own.
+        if (++reads == 2) bindings.readFailure = const P2pStorageFailure();
+      };
+      final cubit = cubitAt(0);
+      await cubit.load();
+      tor.embedded.ready();
+      await until(cubit, failed);
+
+      expect(coordinators.requests, isEmpty);
+      final activity =
+          (cubit.state as RobotOnCoordinator).activity as RobotFailed;
+      expect(
+        activity.problem,
+        isA<RobotRequestRefused>().having(
+          (p) => p.failure,
+          'failure',
+          isA<P2pStorageFailure>(),
+        ),
+      );
+      expect(activity.kind, RobotContactKind.read);
+    });
+  });
+
   group('a first contact that fails', () {
     Future<RobotCoordinatorCubit> sentToTemple(
       int index,
