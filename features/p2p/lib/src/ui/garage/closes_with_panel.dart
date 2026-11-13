@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-/// Closes the dialog or the sheet it is in once [until] completes: what the robot panel opened (« Robots from elsewhere », « Select Host », « Send {nickname} to {coordinator}? ») goes away with it, so that it never stays above a Garage it does not belong to (another robot, another key or network, the Garage left).
+/// Closes the dialog or the sheet it is in once [until] completes: what the robot panel opened (« Robots from elsewhere », « Select Host », « Send {nickname} to {coordinator}? », and the coordinator dialog behind an info button of « Select Host ») goes away with it, so that it never stays above a Garage it does not belong to (another robot, another key or network, the Garage left).
 ///
-/// The route is removed at once, without its animation, and the future its opener awaits completes with `null`, as a dismissal: nothing is recorded or sent (security review of step 6).
+/// Its own route is removed, whatever sits above it, at once and without its animation, and the future its opener awaits completes with `null`, as a dismissal: nothing is recorded or sent (security review of step 6).
 class ClosesWithPanel extends StatefulWidget {
   /// Completes when the panel that opened the route is gone.
   final Future<void> until;
