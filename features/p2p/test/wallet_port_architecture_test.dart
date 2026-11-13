@@ -12,7 +12,7 @@ import 'package:test/test.dart';
 /// The port's type may be named there too, and where the feature declares, exports, receives and registers it, and in its testing seam; nowhere else, so that no cubit or screen takes it from the locator.
 /// The only invoice the port takes, `CheckedBolt11Invoice`, is built by `CheckedBolt11Invoice.of`, which only its own file and the testing seam's helper may call today; the pull request that brings the trade screen's BOLT11 check (#86) adds its one file to that list. No file may declare an alias of the type, through which `of` could be reached under another name.
 /// The sources are read as text and parsed without resolution, as in `trade_money_calls_architecture_test.dart`: a name is a use wherever it stands in code, comments and strings are not code, and a declaration of a member with a watched name is no use (the fake of `testing.dart` declares them).
-/// It cannot see what a trade use case hands out (a tear-off, a wrapper), a member added to the port under a name this list does not have yet (the pull request that adds `pay`, `watch` and `find` adds them here), nor code outside `features/p2p/lib`: the shell's side has its own test, `test/features/p2p_wallet/p2p_wallet_architecture_test.dart`.
+/// It cannot see what a trade use case hands out (a tear-off, a wrapper), a member added to the port under a name this list does not have yet (the pull request that adds `pay`, `watch` and `find` adds them here), nor code outside `features/p2p/lib`: the shell's side has its own test, `features/p2p/test/wallet_shell_architecture_test.dart`.
 void main() {
   // Tests run with the package directory as working directory.
   final sources = {

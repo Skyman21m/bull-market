@@ -14,7 +14,7 @@ class WatchInstantBalanceUsecase {
   ///
   /// It reads the wallet when listened to, and stops following its syncs as soon as the subscription is cancelled, even while that first read runs (not an `async*` body, whose cancellation would wait for the next sync).
   /// After a refusal of the first read nothing is followed: the stream gives the refusal and ends.
-  /// A sync whose wallet cannot be read is skipped: the next one gives the balance. When the wallet's stream of syncs ends, so does this one; when a sync shows that the wallet followed is no longer the Instant Payments wallet, this one ends with that refusal, and listening again reads the new one.
+  /// A sync whose wallet cannot be read is skipped: the next one gives the balance. When the wallet's stream of syncs ends, so does this one; it ends with `Unavailable` if a sync shows the followed wallet is no longer the default Liquid one; a wallet deleted and replaced is not seen until the stream is listened to again.
   Stream<Result<Sats, P2pWalletRefusal>> execute(RobosatsNetwork network) {
     StreamSubscription<Result<InstantWallet, P2pWalletRefusal>>? syncs;
     var cancelled = false;

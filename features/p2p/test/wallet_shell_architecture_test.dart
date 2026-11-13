@@ -7,10 +7,11 @@ import 'package:test/test.dart';
 
 /// What the shell's side of the wallet port, `lib/features/p2p_wallet` of the app (#100), may reach: in this pull request, reads of the wallet and the swap service's quote, nothing else.
 ///
-/// It is an allow-list, pinned literally: every import of the feature, conditional alternatives included, is one of its own files or one of [_shellImports]; every member, constructor and type its code names is one of [_shellVocabulary], and every name of that list is used, so that nothing is allowed by a stale entry. Any other name of the wallet's code (an order, a signature, a broadcast, a sync, a new address) fails it, whatever object it is reached through.
+/// It is an allow-list, pinned literally: every import of the feature, conditional alternatives included, is one of its own files or one of [_shellImports]; every member, constructor and type its code names, and every label of a named argument it passes, is one of [_shellVocabulary], and every name of that list is used, so that nothing is allowed by a stale entry. An `extension`, an `extension type`, a `mixin`, an `extends` or a `with` counts as a name too, none of them listed: through them a member could be reached with an implicit `this`, unseen (the second review's evasion file, a fixture below). A label allows the argument, not its value: the feature passes no `sync:` to the wallet's reader, so `sync: true` fails as any `sync:` does. Any other name of the wallet's code (an order, a signature, a broadcast, a sync, a new address) fails it, whatever object it is reached through.
 /// It lives in `features/p2p`, whose tests have the analyzer, and reads the app's files from here, as `trade_money_calls_architecture_test.dart` reads the integration tests: the app has no analyzer among its dependencies. The sources are parsed without resolution: comments and strings are not code.
-/// It cannot see a name used bare (a top-level function or variable of an allowed import named without a call or a dot), nor what an allowed member does: the allowed members are the quote of `SwapFacade`, the `execute` of the readers the feature calls, and the build and fee read of an unsigned transaction, read in the review of this pull request.
-/// The pull request that adds the payment relaxes it by adding the names its pay use case needs, in that use case alone, and is reviewed as money code.
+/// It cannot see a name used bare (a top-level function or variable of an allowed import named without a call or a dot, such as one torn off under an allowed local name), nor what an allowed member does: the allowed members are the quote of `SwapFacade`, the `execute` of the readers the feature calls, and the build and fee read of an unsigned transaction, read in the reviews of this pull request.
+/// The pull request that adds the payment extends this rule with a per-file list: the names that commit funds are allowed in its one pay use case file only, and the shared list stays untouched. It is reviewed as money code.
+/// Pull request #106 adds `lib/features/p2p_wallet/data/bolt11_decoder_impl.dart`: whichever of #103 and #106 merges second adds that file's import of the `bolt11_decoder` package and its names to this list.
 void main() {
   // Tests run with the package directory as working directory.
   const shell = '../../lib/features/p2p_wallet';
@@ -90,6 +91,49 @@ void main() {
   );
 
   group('the rule bites:', () {
+    test('the second review\'s evasion file fails: an extension and sync: true', () {
+      const evasion = '''
+import 'package:bb_mobile/core/wallet/data/repositories/liquid_wallet_repository.dart';
+import 'package:bb_mobile/core/wallet/domain/usecases/get_wallets_usecase.dart';
+extension Sign on LiquidWalletRepository {
+  Future<String> Function({required String pset, required String walletId}) get execute => signPset;
+}
+Future<String> leak(LiquidWalletRepository liquid, GetWalletsUsecase wallets, String pset) async {
+  await wallets.execute(onlyDefaults: true, onlyLiquid: true, sync: true);
+  return liquid.execute(pset: pset, walletId: 'w');
+}
+''';
+      // Its imports are both allowed: only its names give it away.
+      expect(_importOffences({'data/zz_evasion2.dart': evasion}), isEmpty);
+      expect(
+        _vocabularyOf([evasion]).difference(_shellVocabulary),
+        containsAll(['extension', 'sync']),
+      );
+    });
+
+    test('each way of reaching a member with an implicit this is seen', () {
+      for (final (label, source, name) in [
+        ('extension', 'extension E on Object { void f() => g(); }', 'extension'),
+        ('extension type', 'extension type T(int i) {}', 'extension type'),
+        ('mixin', 'mixin M on Object {}', 'mixin'),
+        ('extends', 'class C extends LiquidWalletRepository {}', 'extends'),
+        ('with', 'class C with M {}', 'with'),
+        ('named argument', 'void f() => g(sync: true);', 'sync'),
+      ]) {
+        expect(_vocabularyOf([source]), contains(name), reason: label);
+      }
+      for (final name in [
+        'extension',
+        'extension type',
+        'mixin',
+        'extends',
+        'with',
+        'sync',
+      ]) {
+        expect(_shellVocabulary, isNot(contains(name)), reason: name);
+      }
+    });
+
     test('the reviewer\'s evasion file fails on every line', () {
       const evasion = '''
 import 'package:bb_mobile/core/blockchain/domain/repositories/liquid_blockchain_repository.dart';
@@ -458,6 +502,45 @@ final class _Vocabulary extends RecursiveAstVisitor<void> {
       names.add(component.lexeme);
     }
     super.visitSymbolLiteral(node);
+  }
+
+  /// The label of a named argument, such as `sync:`: allowing a reader allows only the arguments listed.
+  @override
+  void visitNamedExpression(NamedExpression node) {
+    names.add(node.name.label.name);
+    super.visitNamedExpression(node);
+  }
+
+  /// An extension, through which a member is reached with an implicit `this` that the rule would not see.
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    names.add('extension');
+    super.visitExtensionDeclaration(node);
+  }
+
+  @override
+  void visitExtensionTypeDeclaration(ExtensionTypeDeclaration node) {
+    names.add('extension type');
+    super.visitExtensionTypeDeclaration(node);
+  }
+
+  @override
+  void visitMixinDeclaration(MixinDeclaration node) {
+    names.add('mixin');
+    super.visitMixinDeclaration(node);
+  }
+
+  /// A superclass, whose members a subclass reaches with an implicit `this`.
+  @override
+  void visitExtendsClause(ExtendsClause node) {
+    names.add('extends');
+    super.visitExtendsClause(node);
+  }
+
+  @override
+  void visitWithClause(WithClause node) {
+    names.add('with');
+    super.visitWithClause(node);
   }
 
   /// A `[name]` in a doc comment names it without using it.
