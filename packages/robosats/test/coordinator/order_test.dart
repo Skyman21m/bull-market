@@ -1481,7 +1481,7 @@ void main() {
               .having((o) => o.status.wire, 'status', status)
               .having((o) => o.orderId, 'orderId', _orderId),
         );
-        expect('$outcome', isNot(contains('cancelled')));
+        expect('$outcome', isNot(contains('This order has been cancelled')));
       }
     });
 

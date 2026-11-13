@@ -243,7 +243,7 @@ final class CoordinatorClient {
   /// The coordinator refuses more than 8 decimals with an empty `400`, read as [OrderRequestRefused].
   /// [password] is the text the user typed for a protected order: the SHA-256 of its UTF-8 bytes is sent, in lowercase hexadecimal, as the reference client sends it; an empty one is not sent.
   ///
-  /// A `200` answer is the order as the coordinator then describes it, and is a [OrderTakeStarted] only when it shows this robot as the pre-taker: the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error (`api/views.py:595-596`).
+  /// A `200` answer is the order as the coordinator then describes it, and is an [OrderTakeStarted] only when it shows this robot as the pre-taker: the reference coordinator answers a take on an order that is no longer public with the order as it is, and no error (`api/views.py:595-596`).
   /// A refusal is a [CoordinatorOrderFailure], such as [RobotHasActiveOrder], [OrderAmountOutOfRange], [OrderTakePenalty] or [OrderWrongPassword].
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included: the coordinator may have taken the order for this robot all the same, which the next [fetchOrder] tells.
