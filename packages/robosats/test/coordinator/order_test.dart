@@ -2146,24 +2146,27 @@ void main() {
       }
     });
 
-    test('a 1042 after a POST is an outcome unknown, an order number out of range is refused', () async {
-      // The review's probe R5: an unknown order fails at `Order.objects.get` with a 500 before any 1042 (`api/views.py:542`).
-      serveJson(_error(1042), statusCode: 404);
-      for (final failure in [
-        expectErr(await takeAction()),
-        expectErr(await cancelAction()),
-      ]) {
-        expect(failure, isA<OrderActionOutcomeUnknown>());
-        expect(failure.cause, isA<OrderNotFound>());
-      }
-      expect(transport.requests, hasLength(2));
-      final outOfRange = expectErr(
-        await client.takeOrder(temple, _testnet, identity: _us, orderId: 0),
-      );
-      expect(outOfRange, isA<OrderActionRefused>());
-      expect(outOfRange.cause, isA<OrderNotFound>());
-      expect(transport.requests, hasLength(2));
-    });
+    test(
+      'a 1042 after a POST is an outcome unknown, an order number out of range is refused',
+      () async {
+        // The review's probe R5: an unknown order fails at `Order.objects.get` with a 500 before any 1042 (`api/views.py:542`).
+        serveJson(_error(1042), statusCode: 404);
+        for (final failure in [
+          expectErr(await takeAction()),
+          expectErr(await cancelAction()),
+        ]) {
+          expect(failure, isA<OrderActionOutcomeUnknown>());
+          expect(failure.cause, isA<OrderNotFound>());
+        }
+        expect(transport.requests, hasLength(2));
+        final outOfRange = expectErr(
+          await client.takeOrder(temple, _testnet, identity: _us, orderId: 0),
+        );
+        expect(outOfRange, isA<OrderActionRefused>());
+        expect(outOfRange.cause, isA<OrderNotFound>());
+        expect(transport.requests, hasLength(2));
+      },
+    );
 
     test(
       'the failures that say nothing was done, and those that do not',
