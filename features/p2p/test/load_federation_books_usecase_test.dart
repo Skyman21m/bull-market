@@ -74,7 +74,6 @@ void main() {
     for (final failure in const <CoordinatorTransportFailure>[
       CoordinatorUnreachable(),
       CoordinatorTimedOut(),
-      CoordinatorTransportFailed(),
       CoordinatorTransportBusy(),
     ]) {
       test(
@@ -105,6 +104,8 @@ void main() {
       ('an unexpected status', ScriptedUnusable(status: 500)),
       ('not a book', ScriptedUnusable()),
       ('too large', ScriptedFailure(CoordinatorResponseTooLarge())),
+      // What the transport gives for an answer that is not HTTP, among causes that do not pass.
+      ('that is not HTTP', ScriptedFailure(CoordinatorTransportFailed())),
     ]) {
       test(
         'an answer $name is not asked again: the coordinator answered',
@@ -167,7 +168,7 @@ void main() {
     test('gives its book on the third attempt', () async {
       transport.script['temple'] = const [
         ScriptedFailure(CoordinatorUnreachable()),
-        ScriptedFailure(CoordinatorTransportFailed()),
+        ScriptedFailure(CoordinatorTimedOut()),
       ];
       final attempts = ask('temple');
       await settle();

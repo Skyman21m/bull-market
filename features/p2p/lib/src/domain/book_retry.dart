@@ -3,8 +3,9 @@ import 'package:robosats/robosats.dart';
 /// When the book asks a coordinator for its book again by itself, after a request that got no answer.
 ///
 /// The official client has no such rule: it asks every coordinator once each time the book is shown or refreshed (`loadBook` of `frontend/src/models/Federation.model.ts` at commit ff1998c).
-/// Troc asks again, at the owner's request (#73), because the first requests after a cold start of Tor are the ones that fail: right after Tor is ready, Arti still has to fetch the descriptor of each onion service and build its circuits, and the measurements of `docs/spikes/` saw first contacts fail within about 5 seconds, or at Tor's 60-second budget, while requests on a connection already open did not fail.
-/// Only a failure that says nothing was answered is asked again: a coordinator that answered something unusable would answer it again.
+/// Troc asks again, at the owner's request (#73), because the first requests after a cold start of Tor are the ones that fail: right after Tor is ready, Arti still has to fetch the descriptor of each onion service and build its circuits, and the measurements of `docs/spikes/` saw first contacts fail within about 5 seconds (`other`) or at Tor's 60-second budget (`timeout`), while requests on a connection already open did not fail.
+/// The transport turns those connection failures into [CoordinatorUnreachable] or [CoordinatorTimedOut].
+/// Only a failure that says nothing was answered is asked again: a coordinator that answered something unusable, or something that is not HTTP, would answer it again.
 /// Each attempt is a whole request of the transport, which itself tries up to three Tor sessions within 132 seconds before it fails.
 final class BookRetry {
   /// The waits before the extra attempts, in order: one attempt more than there are waits.
@@ -41,13 +42,14 @@ final class BookRetry {
 
   /// Whether [failure] says that the coordinator answered nothing, so that asking again may get its book.
   ///
-  /// Unreachable, timed out, any other transport failure and a transport busy for now are asked again.
-  /// A body too large, an unexpected status, a body that is not JSON or not a book, and an answer that is not the coordinator's are not: the coordinator answered.
+  /// Unreachable, timed out and a transport busy for now are asked again.
+  /// [CoordinatorTransportFailed] is not: the transport gives it for an answer that is not HTTP, which a new circuit would get again, and otherwise for causes that do not pass (a request it refuses to send, its sessions closed under the request, an exception it let through).
+  /// A body too large, an unexpected status, a body that is not JSON or not a book, and an answer that is not the coordinator's are not either: the coordinator answered.
   static bool asksAgainAfter(CoordinatorFailure failure) => switch (failure) {
     CoordinatorUnreachable() ||
     CoordinatorTimedOut() ||
-    CoordinatorTransportFailed() ||
     CoordinatorTransportBusy() => true,
+    CoordinatorTransportFailed() ||
     CoordinatorResponseTooLarge() ||
     CoordinatorNotOnNetwork() ||
     CoordinatorUnexpectedStatus() ||

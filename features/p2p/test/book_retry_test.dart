@@ -8,10 +8,10 @@ void main() {
     const nothingAnswered = <CoordinatorFailure>[
       CoordinatorUnreachable(),
       CoordinatorTimedOut(),
-      CoordinatorTransportFailed(),
       CoordinatorTransportBusy(),
     ];
     const answered = <CoordinatorFailure>[
+      CoordinatorTransportFailed(),
       CoordinatorResponseTooLarge(),
       CoordinatorNotOnNetwork(),
       CoordinatorUnexpectedStatus(500),
