@@ -52,6 +52,11 @@ export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'
     show CoordinatorImage, coordinatorImages;
+// The marks of the « Map » view and the painter that lays them out, so that the captures find where an order is drawn.
+export 'src/domain/map_marks.dart' show MapGroup, MapMark, MapPin;
+// The world map of the « Map » view and its pinned source, which the app's tests load through the app's own asset bundle.
+export 'src/domain/world_map.dart' show WorldMap, WorldMapSource;
+export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
