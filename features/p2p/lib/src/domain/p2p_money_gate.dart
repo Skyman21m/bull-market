@@ -26,7 +26,9 @@ abstract final class P2pMoneyGate {
   ///
   /// A trade can reach the device otherwise than by a take this gate allowed: a pasted key's robot found holding an order, a restored or edited database, a bare order id.
   /// So until a trade record carries its origin, an unapproved build refuses every action on a mainnet trade, as it refuses taking one.
-  /// No bond can be stranded by this rule: no mainnet trade can have been taken by a build whose [mainnetApproved] is false.
+  /// This rule strands no bond only while no approved build has ever existed: until then no mainnet trade can have been taken.
+  /// So the pull request that sets [mainnetApproved] to true must not land before #87 has made this question take the trade record.
+  /// Otherwise an approval withdrawn later would refuse cancel, dispute and payout on a trade an approved build took.
   /// #85 gives a trade record its origin: `takenHere`, written only by the take use case after [allowsNewTrade] said yes, or `recovered`, written only by an explicit action of the user.
   /// #87 then makes this question take that record, so that a trade this device took under an approved build can still be cancelled, disputed and paid out after the approval is withdrawn.
   /// A recovered mainnet trade on an unapproved build stays refused, and the user is pointed to the official client with the trade's Garage Key.

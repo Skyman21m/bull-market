@@ -14,12 +14,15 @@ import 'package:test/test.dart';
 /// Outside the trade use cases (files `lib/src/domain/usecases/trade/<name>_usecase.dart`, not a `part`), any use is refused.
 /// Inside them, a member may only be called (no tear-off, no `Symbol`), and each call needs its own guard, the gate's answer deciding before it:
 /// - the guard is a call `P2pMoneyGate.allowsNewTrade(n)` for `takeOrder`, `P2pMoneyGate.allowsActionOnRecordedTrade(n)` for every other member, with one argument;
-/// - `P2pMoneyGate` is the gate's own library, imported by its relative path or as `package:p2p/src/domain/p2p_money_gate.dart`, without hiding it, unprefixed or through that import's prefix (another library declaring the name as well would make the name ambiguous, which does not compile);
+/// - `P2pMoneyGate` is the gate's own library, imported by its relative path or as `package:p2p/src/domain/p2p_money_gate.dart`, with no conditional URI and without hiding it, unprefixed or through that import's prefix (another library declaring the name as well would make the name ambiguous, which does not compile), and nothing in the file but that prefix bears the prefix's name;
 /// - the whole condition of an `if` without a `case` is that call, in parentheses or not, or its negation by one `!`, and nothing else (no `&&`, `||`, `await` or `?:`);
-/// - either `if (!gate) <exits>` or `if (gate) … else <exits>` stands before the call in a block that contains the call, or the call is inside the `then` branch of `if (gate)`; a branch exits when it is a `return`, a `throw`, a `rethrow`, or a non-empty block whose last statement exits;
-/// - `n` is a simple name and the call's second positional argument, its network as every client member takes it, is that same name, which no statement of the file assigns and which is not declared again between the guard and the call.
+/// - either `if (!gate) <exits>` or `if (gate) … else <exits>` stands before the call in a block that contains the call, or the call is inside the `then` branch of `if (gate)`; a branch exits when it is a `return`, a `throw`, a `rethrow`, or a non-empty block whose last statement exits (an `assert` does not);
+/// - `n` is a simple name and the call's second positional argument, its network as every client member takes it (`(coordinator, network, …)`), is that same name;
+/// - `n` holds one value from the guard to the call: it is a plain parameter of the function the guard is in, or a `final` or `const` local declared before the guard in a block that contains it, no statement of the file assigns it, and no variable, parameter (of a closure too), loop or pattern variable, `catch` parameter or local function of that name is declared between the guard and the call; a field, a getter, a top-level variable or a `this.` parameter is refused.
 /// So an `assert`, an expression statement, an unused variable, an `if` whose branch does not exit, a guard in another function or in a nested block, and a gate asked about a literal or another network are not guards.
-/// What it cannot see is left to the money review, as the AGENTS.md paragraph on the gate says: a callable that a trade use case hands out once the gate said yes, the value bound to `n` (that it is the trade's network is #87's to show), code outside `features/p2p/lib`, an inherited member or a class named `P2pMoneyGate` from another package, money moved by anything but these members (a payable mainnet invoice shown from `fetchOrder`, the wallet's `payInvoice` of slice 6), and a member added to the package under a name this list does not have yet.
+/// Where to put the guard: in the same function as the call, at the level of a block that contains the call (the function's body, or a block around it), before it; a guard and the call in the same `case` of a `switch` are refused, since the statements of a case are not a block (put the guard before the `switch`), and so is a guard in an `else if` (give it its own `if`).
+/// Not exploitable, not checked: `Symbol('takeOrder')` built from a string (no mirrors in Flutter) and a file the parser cannot read (it would not compile).
+/// What it cannot see is left to the money review, as the AGENTS.md paragraph on the gate says: a callable that a trade use case hands out once the gate said yes, that the value bound to the parameter or `final` local `n` is the trade's own network (#87's to show), code outside `features/p2p/lib`, an inherited member named `P2pMoneyGate` or like the gate's prefix, a class named `P2pMoneyGate` from another package, money moved by anything but these members (a payable mainnet invoice shown from `fetchOrder`, the wallet's `payInvoice` of slice 6, whose shape the network rule must be adapted to), and a member added to the package under a name this list does not have yet.
 /// An extension on `CoordinatorClient`, which could rename a member, and a raw `CoordinatorTransport.send` are refused anywhere in the feature by `robot_bindings_architecture_test.dart`.
 void main() {
   // Tests run with the package directory as working directory.
@@ -134,6 +137,28 @@ void main() {
           'the gate by its package URI, shown',
           "import 'package:p2p/src/domain/p2p_money_gate.dart' show P2pMoneyGate;\nFuture<void> take(RobosatsNetwork network) async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
         ),
+        (
+          'a final local taken from the trade',
+          '${import}Future<void> take(TradeRecord trade) async {\n  final network = trade.network;\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n',
+        ),
+        (
+          'the guard before a switch, the call in a case',
+          takeWith(
+            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\nswitch (await robots.robotForNewTrade(network, coordinator)) {\n  case Err():\n    return;\n  case Ok(value: final robot):\n    await client.takeOrder(coordinator, network, identity: robot.identity, orderId: 1);\n}',
+          ),
+        ),
+        (
+          'a null-aware call',
+          takeWith(
+            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\nawait client?.takeOrder(coordinator, network, 1);',
+          ),
+        ),
+        (
+          'a while loop between the guard and the call',
+          takeWith(
+            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\nwhile (busy) {\n  await tick();\n}\n$take',
+          ),
+        ),
       ]) {
         expect(offencesOf(tradeUseCase, source), isEmpty, reason: label);
       }
@@ -239,6 +264,30 @@ Future<void> cancel(RobosatsNetwork network) async {
             'an if-case',
             'if (P2pMoneyGate.allowsNewTrade(network) case false) return;\n$take',
           ),
+          (
+            'positive, then returns: the call runs only when the gate says no (B4)',
+            'if (P2pMoneyGate.allowsNewTrade(network)) return;\n$take',
+          ),
+          (
+            'the call in the else branch of a positive if (B7)',
+            'if (P2pMoneyGate.allowsNewTrade(network)) {\n  log();\n} else {\n  $take\n}',
+          ),
+          (
+            'a negated if-case that returns (B10)',
+            'if (!P2pMoneyGate.allowsNewTrade(network) case false) return;\n$take',
+          ),
+          (
+            'a then branch ending in an assert (B14)',
+            'if (!P2pMoneyGate.allowsNewTrade(network)) {\n  assert(false);\n}\n$take',
+          ),
+          (
+            'a guard in an else-if',
+            'if (ready) {\n  log();\n} else if (!P2pMoneyGate.allowsNewTrade(network)) return;\n$take',
+          ),
+          (
+            'a guard and the call in one switch case',
+            'switch (step) {\n  case 1:\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n}',
+          ),
         ]) {
           expect(offencesOf(tradeUseCase, takeWith(body)), [
             notAsked,
@@ -301,9 +350,144 @@ mixin Taker on CoordinatorClient {
           'the prefixed gate used unprefixed',
           "import '../../p2p_money_gate.dart' as gate;\nimport 'package:evil/evil.dart';\nFuture<void> take(RobosatsNetwork network) async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
         ),
+        (
+          'a conditional import of the gate (N5)',
+          "import '../../p2p_money_gate.dart' if (dart.library.io) 'package:evil/evil.dart';\nFuture<void> take(RobosatsNetwork network) async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
+        ),
       ]) {
         expect(offencesOf(tradeUseCase, source), [notAsked], reason: label);
       }
+    });
+
+    test(
+      'a name declared like the gate\'s import prefix fails: it would stand in for the prefix (N6)',
+      () {
+        const message =
+            '$tradeUseCase names gate, the gate\'s import prefix, other than as that prefix';
+        for (final (label, declaration) in [
+          ('a local', 'final gate = evil.holder();'),
+          ('a local function', 'Object gate() => evil.holder();'),
+        ]) {
+          expect(
+            offencesOf(
+              tradeUseCase,
+              "import '../../p2p_money_gate.dart' as gate;\nimport 'package:evil/evil.dart' as evil;\nFuture<void> take(RobosatsNetwork network) async {\n  $declaration\n  if (!gate.P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
+            ),
+            [message],
+            reason: label,
+          );
+        }
+        for (final (label, source) in [
+          (
+            'a parameter',
+            "import '../../p2p_money_gate.dart' as gate;\nFuture<void> take(RobosatsNetwork network, Object gate) async {\n  if (!gate.P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
+          ),
+          (
+            'a getter',
+            "import '../../p2p_money_gate.dart' as gate;\nfinal class TakeOrderUsecase {\n  Object get gate => evil.holder();\n  Future<void> take(RobosatsNetwork network) async {\n    if (!gate.P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n",
+          ),
+          (
+            'a field',
+            "import '../../p2p_money_gate.dart' as gate;\nfinal class TakeOrderUsecase {\n  final Object gate = evil.holder();\n  Future<void> take(RobosatsNetwork network) async {\n    if (!gate.P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n",
+          ),
+          (
+            'a type',
+            "import '../../p2p_money_gate.dart' as gate;\nclass gate {}\nFuture<void> take(RobosatsNetwork network) async {\n  if (!gate.P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n",
+          ),
+        ]) {
+          expect(offencesOf(tradeUseCase, source), [message], reason: label);
+        }
+      },
+    );
+
+    test('trade use cases written as #87 would write them pass', () {
+      expect(
+        offencesOf(tradeUseCase, r'''
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/p2p_money_gate.dart';
+import 'package:robosats/robosats.dart';
+
+final class TakeOrderUsecase {
+  final CoordinatorClient _client;
+  final TradeRobots _robots;
+  final TradeRepository _trades;
+  final RobotRequestLimiter _limiter;
+
+  TakeOrderUsecase(this._client, this._robots, this._trades, this._limiter);
+
+  Future<Result<TradeRecord, P2pFailure>> execute({
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required PublicOrder order,
+    double? amount,
+  }) async {
+    if (!P2pMoneyGate.allowsNewTrade(network)) {
+      return const Err(MainnetNotApprovedFailure());
+    }
+    final NetworkRobot robot;
+    switch (await _robots.robotForNewTrade(network, coordinator)) {
+      case Err(:final failure):
+        return Err(failure);
+      case Ok(:final value):
+        robot = value;
+    }
+    final pending = await _trades.recordPendingTake(robot, coordinator, order);
+    final answer = await _limiter.run(
+      coordinator,
+      network,
+      () => _client.takeOrder(
+        coordinator,
+        network,
+        identity: robot.identity,
+        orderId: order.id,
+        amount: amount,
+      ),
+    );
+    return switch (answer) {
+      Ok(value: final outcome) => _trades.confirm(pending, outcome),
+      Err() => const Err(TakeFailedFailure()),
+    };
+  }
+}
+'''),
+        isEmpty,
+      );
+      expect(
+        offencesOf(cancelUseCase, r'''
+import '../../p2p_money_gate.dart';
+
+final class CancelTradeUsecase {
+  final CoordinatorClient _client;
+  final TradeRobots _robots;
+
+  CancelTradeUsecase(this._client, this._robots);
+
+  Future<Result<void, P2pFailure>> execute(
+    TradeRecord trade, {
+    required int? storedStatus,
+  }) async {
+    final network = trade.network;
+    if (!P2pMoneyGate.allowsActionOnRecordedTrade(network)) {
+      return const Err(MainnetNotApprovedFailure());
+    }
+    final robot = await _robots.robotOfTrade(trade);
+    try {
+      final answer = await _client.cancelOrder(
+        trade.coordinator,
+        network,
+        identity: robot.identity,
+        orderId: trade.orderId,
+        cancelStatus: storedStatus,
+      );
+      return answer.map((_) {});
+    } on TimeoutException {
+      return const Err(P2pTimeoutFailure());
+    }
+  }
+}
+'''),
+        isEmpty,
+      );
     });
 
     test('a gate asked about another network than the call\'s fails', () {
@@ -356,6 +540,52 @@ mixin Taker on CoordinatorClient {
           'the network as a named argument',
           takeWith(
             'if (!P2pMoneyGate.allowsNewTrade(network)) return;\nawait client.takeOrder(coordinator, 1, network: network);',
+          ),
+        ),
+        (
+          'a final local of another block, a field at the guard',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  Future<void> execute() async {\n    {\n      final network = RobosatsNetwork.testnet;\n      log(network);\n    }\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
+        ),
+        (
+          'a field read in a getter, which has no parameters',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  Future<void> get run async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
+        ),
+        (
+          'a getter that changes at each read (N1)',
+          '${import}final class TakeOrderUsecase {\n  var _flip = false;\n  RobosatsNetwork get network => (_flip = !_flip) ? RobosatsNetwork.testnet : RobosatsNetwork.mainnet;\n  Future<void> execute() async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
+        ),
+        (
+          'a field set through this. (N2)',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  void flip() { this.network = RobosatsNetwork.mainnet; }\n  Future<void> execute() async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    flip();\n    $take\n  }\n}\n',
+        ),
+        (
+          'a public field another file can set (N3)',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  Future<void> execute(Future<void> Function() between) async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    await between();\n    $take\n  }\n}\n',
+        ),
+        (
+          'a catch parameter of the same name (N4)',
+          takeWith(
+            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\ntry {\n  throw RobosatsNetwork.mainnet;\n} on RobosatsNetwork catch (network) {\n  $take\n}',
+          ),
+        ),
+        (
+          'a field formal parameter',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network;\n  TakeOrderUsecase(this.network) {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    client.takeOrder(coordinator, network, 1);\n  }\n}\n',
+        ),
+        (
+          'a local that is not final',
+          takeWith(
+            'var other = network;\nif (!P2pMoneyGate.allowsNewTrade(other)) return;\nawait client.takeOrder(coordinator, other, 1);',
+          ),
+        ),
+        (
+          'a top-level variable',
+          '${import}var network = RobosatsNetwork.testnet;\nFuture<void> take() async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}\n',
+        ),
+        (
+          'a loop variable',
+          takeWith(
+            'for (final network in RobosatsNetwork.values) {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  $take\n}',
           ),
         ),
       ]) {
@@ -739,9 +969,22 @@ List<String> _offencesOf(String path, String source) {
     ];
   }
   final gate = _GateImport.of(unit, path);
+  final declarations = _Declarations.of(unit);
+  final tokens = _tokensOf(unit);
+  final codeFrom = unit.directives.isEmpty
+      ? 0
+      : unit.directives.last.endToken.end;
   return [
     if (unit.directives.any((d) => d is PartOfDirective))
       '$path is a part of another library',
+    for (final prefix in gate.prefixes)
+      if (tokens.any(
+        (t) =>
+            t.offset >= codeFrom &&
+            t.lexeme == prefix &&
+            t.next?.type != TokenType.PERIOD,
+      ))
+        '$path names $prefix, the gate\'s import prefix, other than as that prefix',
     for (final member in facts.namedOtherwise)
       '$path names $member other than in a call',
     for (final call in facts.calls)
@@ -763,12 +1006,13 @@ List<String> _offencesOf(String path, String source) {
               network != null &&
               guard.network == network &&
               !facts.assigned.contains(network) &&
-              !facts.declarations.any(
+              !declarations.found.any(
                 (d) =>
                     d.name == network &&
                     d.offset > guard.end &&
                     d.offset < call.offset,
-              ),
+              ) &&
+              _holdsOneValue(network, guard.at),
         );
         return [
           if (!same)
@@ -790,8 +1034,63 @@ String? _networkOf(MethodInvocation call) {
   };
 }
 
-/// A guard: the question asked of the gate, the simple name of the network it was asked about (or `null`), and where it ends.
-typedef _Guard = ({String question, String? network, int end});
+/// A question asked of the gate: which, the simple name of the network it was asked about (or `null`), and where it ends.
+typedef _Question = ({String question, String? network, int end});
+
+/// A guard: the question asked, and the `if` that asks it.
+typedef _Guard = ({String question, String? network, int end, IfStatement at});
+
+/// Whether [wanted], the network a guard [at] asked about, holds one value from the guard on: a parameter of the function the guard is in (a plain one, not `this.` or `super.`), or a `final` or `const` local declared before it in a block that contains it.
+///
+/// A field, a getter, a top-level variable, a variable that is not final, a pattern, a loop or `catch` variable, or a parameter of a closure in between could hold another network at the call: each is refused.
+/// That no statement of the file assigns the name, and that it is not declared again between the guard and the call, is checked apart.
+bool _holdsOneValue(String wanted, IfStatement at) {
+  AstNode? node = at.parent;
+  while (node != null && node is! FunctionBody) {
+    node = node.parent;
+  }
+  if (node is! FunctionBody) return false;
+  final body = node;
+  final ancestors = <AstNode>{};
+  for (AstNode? a = at; a != null && !identical(a, body); a = a.parent) {
+    ancestors.add(a);
+  }
+  ancestors.add(body);
+  final before = [
+    for (final d in _Declarations.of(body).found)
+      if (d.name == wanted && d.offset < at.offset) d,
+  ];
+  if (before.isEmpty) {
+    final parameters = switch (body.parent) {
+      FunctionExpression(:final parameters) => parameters,
+      MethodDeclaration(:final parameters) => parameters,
+      ConstructorDeclaration(:final parameters) => parameters,
+      _ => null,
+    };
+    return parameters?.parameters.any(
+          (parameter) => switch (parameter) {
+            DefaultFormalParameter(
+              parameter: SimpleFormalParameter(:final name?),
+            ) ||
+            SimpleFormalParameter(:final name?) => name.lexeme == wanted,
+            _ => false,
+          },
+        ) ??
+        false;
+  }
+  return before.every(
+    (d) => switch (d.node) {
+      VariableDeclaration(
+        parent: VariableDeclarationList(:final isFinal, :final isConst) &&
+            final list,
+      )
+          when (isFinal || isConst) =>
+        list.parent is VariableDeclarationStatement &&
+            ancestors.contains(list.parent?.parent),
+      _ => false,
+    },
+  );
+}
 
 /// The guards that decide before [call]: an `if` that refuses, before it in a block that contains it, or an `if (gate)` whose `then` branch contains it.
 List<_Guard> _guardsOf(AstNode call, _GateImport gate) {
@@ -802,16 +1101,26 @@ List<_Guard> _guardsOf(AstNode call, _GateImport gate) {
       for (final statement in parent.statements) {
         if (identical(statement, child)) break;
         if (statement is IfStatement) {
-          if (_refusingGuard(statement, gate) case final guard?) {
-            guards.add(guard);
+          if (_refusingGuard(statement, gate) case final asked?) {
+            guards.add((
+              question: asked.question,
+              network: asked.network,
+              end: asked.end,
+              at: statement,
+            ));
           }
         }
       }
     } else if (parent is IfStatement &&
         identical(child, parent.thenStatement) &&
         parent.caseClause == null) {
-      if (_asked(parent.expression, gate, negated: false) case final guard?) {
-        guards.add(guard);
+      if (_asked(parent.expression, gate, negated: false) case final asked?) {
+        guards.add((
+          question: asked.question,
+          network: asked.network,
+          end: asked.end,
+          at: parent,
+        ));
       }
     }
     child = parent;
@@ -820,7 +1129,7 @@ List<_Guard> _guardsOf(AstNode call, _GateImport gate) {
 }
 
 /// The guard of `if (!gate) <exits>` or `if (gate) … else <exits>`, after which the gate said yes.
-_Guard? _refusingGuard(IfStatement statement, _GateImport gate) {
+_Question? _refusingGuard(IfStatement statement, _GateImport gate) {
   if (statement.caseClause != null) return null;
   if (_asked(statement.expression, gate, negated: true) case final guard?
       when _exits(statement.thenStatement)) {
@@ -835,7 +1144,7 @@ _Guard? _refusingGuard(IfStatement statement, _GateImport gate) {
 }
 
 /// The guard [condition] is, when it is a question of the gate, negated by one `!` when [negated], in parentheses or not, and nothing else.
-_Guard? _asked(
+_Question? _asked(
   Expression condition,
   _GateImport gate, {
   required bool negated,
@@ -894,7 +1203,8 @@ final class _GateImport {
     final prefixes = <String>{};
     for (final directive in unit.directives.whereType<ImportDirective>()) {
       final uri = directive.uri.stringValue;
-      if (uri == null) continue;
+      // A conditional import may load another library in place of the gate (review of #98, N5).
+      if (uri == null || directive.configurations.isNotEmpty) continue;
       final isGate =
           uri == 'package:p2p/src/domain/p2p_money_gate.dart' ||
           (!uri.contains(':') &&
@@ -1011,9 +1321,6 @@ final class _MoneyVisitor extends RecursiveAstVisitor<void> {
   /// The simple names that some statement assigns.
   final Set<String> assigned = {};
 
-  /// Every variable and parameter declared, with where.
-  final List<({String name, int offset})> declarations = [];
-
   _MoneyVisitor();
 
   factory _MoneyVisitor.of(String source) {
@@ -1066,37 +1373,63 @@ final class _MoneyVisitor extends RecursiveAstVisitor<void> {
     super.visitAssignedVariablePattern(node);
   }
 
+  /// A `[name]` in a doc comment names a member without using it.
+  @override
+  void visitCommentReference(CommentReference node) {}
+}
+
+/// Every name declared under a node that a later declaration could shadow a network with: variables, parameters (of closures too), loop and pattern variables, `catch` parameters and local functions, each with where and what declares it.
+final class _Declarations extends RecursiveAstVisitor<void> {
+  final List<({String name, int offset, AstNode node})> found = [];
+
+  _Declarations._();
+
+  factory _Declarations.of(AstNode node) {
+    final declarations = _Declarations._();
+    node.accept(declarations);
+    return declarations;
+  }
+
+  void _add(Token name, AstNode node) =>
+      found.add((name: name.lexeme, offset: name.offset, node: node));
+
   @override
   void visitVariableDeclaration(VariableDeclaration node) {
-    declarations.add((name: node.name.lexeme, offset: node.name.offset));
+    _add(node.name, node);
     super.visitVariableDeclaration(node);
   }
 
   @override
   void visitFormalParameterList(FormalParameterList node) {
     for (final parameter in node.parameters) {
-      if (parameter.name case final name?) {
-        declarations.add((name: name.lexeme, offset: name.offset));
-      }
+      if (parameter.name case final name?) _add(name, parameter);
     }
     super.visitFormalParameterList(node);
   }
 
   @override
   void visitDeclaredIdentifier(DeclaredIdentifier node) {
-    declarations.add((name: node.name.lexeme, offset: node.name.offset));
+    _add(node.name, node);
     super.visitDeclaredIdentifier(node);
   }
 
   @override
   void visitDeclaredVariablePattern(DeclaredVariablePattern node) {
-    declarations.add((name: node.name.lexeme, offset: node.name.offset));
+    _add(node.name, node);
     super.visitDeclaredVariablePattern(node);
   }
 
-  /// A `[name]` in a doc comment names a member without using it.
   @override
-  void visitCommentReference(CommentReference node) {}
+  void visitCatchClauseParameter(CatchClauseParameter node) {
+    _add(node.name, node);
+    super.visitCatchClauseParameter(node);
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    _add(node.name, node);
+    super.visitFunctionDeclaration(node);
+  }
 }
 
 /// Every Dart file under [folder], as a path that starts with [folder].
