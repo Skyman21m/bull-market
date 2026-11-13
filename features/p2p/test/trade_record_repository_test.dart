@@ -257,7 +257,7 @@ void main() {
         );
         await database.customStatement('PRAGMA foreign_keys = OFF');
         await database.customInsert(
-          "INSERT INTO trades VALUES ('testnet', ?, 3, 'temple', ?, 9, 'buyer', 'takenHere', 0, NULL, NULL)",
+          "INSERT INTO trades VALUES ('testnet', ?, 3, 'temple', ?, 9, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL)",
           variables: [
             Variable.withString(fingerprintA.hex),
             Variable.withString(temple.onion),
@@ -946,6 +946,98 @@ void main() {
     });
   });
 
+  group('the payment of a trade, for the pull request that adds it', () {
+    // Schema 3 holds the columns of « Pay with this wallet » (design note § 3.5), which nothing in the feature writes yet: these tests write them by hand, as that pull request's statements will.
+    final hash = 'ab' * 32;
+    Matcher sqliteCheck() => throwsA(
+      predicate((error) => '$error'.contains('SqliteException(275)')),
+    );
+    Future<void> setPayment(String assignments) => database.customStatement(
+      'UPDATE trades SET $assignments WHERE robot_index = 0',
+    );
+
+    test(
+      'a hash of 64 lowercase hexadecimal characters with its time, then a swap id, and nothing else',
+      () async {
+        await pendingTake(await reserved(0));
+
+        for (final (label, assignments) in [
+          ('a hash without its time', "payment_hash = '$hash'"),
+          ('a time without its hash', 'payment_started_at = 1'),
+          ('a short hash', "payment_hash = '${'ab' * 31}', payment_started_at = 1"),
+          ('a hash in capitals', "payment_hash = '${'AB' * 32}', payment_started_at = 1"),
+          ('a hash that is not hexadecimal', "payment_hash = '${'zz' * 32}', payment_started_at = 1"),
+          ('a swap before the payment', "payment_swap_id = 'swap1'"),
+          ('an empty swap id', "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = ''"),
+          ('a swap id too long', "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = '${'s' * 129}'"),
+        ]) {
+          await expectLater(setPayment(assignments), sqliteCheck(), reason: label);
+        }
+        await setPayment("payment_hash = '$hash', payment_started_at = 5");
+        await setPayment("payment_swap_id = '${'s' * 128}'");
+        final row = (await tradeRows()).single;
+        expect(
+          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
+          (hash, 5, 's' * 128),
+        );
+      },
+    );
+
+    test(
+      'is read with the record, and kept as it is by the changes of the record',
+      () async {
+        final pending = await pendingTake(await reserved(0));
+        await setPayment(
+          "payment_hash = '$hash', payment_started_at = ${testNow.millisecondsSinceEpoch}, payment_swap_id = 'swap1'",
+        );
+        now = testNow.add(const Duration(minutes: 1));
+
+        for (final change in [trades.confirmTake, trades.closeTrade]) {
+          expect(
+            await change(pending),
+            recordOf(
+              isA<TradeRecord>()
+                  .having((r) => r.paymentHash, 'paymentHash', hash)
+                  .having((r) => r.paymentStartedAt, 'paymentStartedAt', testNow)
+                  .having((r) => r.paymentSwapId, 'paymentSwapId', 'swap1'),
+            ),
+          );
+        }
+        final row = (await tradeRows()).single;
+        expect(
+          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
+          (hash, testNow.millisecondsSinceEpoch, 'swap1'),
+        );
+        // A record never prints its payment.
+        expect('${valueOf(await trades.closeTrade(pending))}', isNot(contains(hash)));
+      },
+    );
+
+    test('nothing the repository writes sets it', () async {
+      final robot = await reserved(0);
+      await pendingTake(robot);
+      expect(
+        await bindings.bind(RobotSlot(testnet, fingerprintA, 1), temple),
+        isA<Ok>(),
+      );
+      expect(
+        await trades.recordRecoveredTrade(
+          RobotSlot(testnet, fingerprintA, 1),
+          temple,
+          orderId: 3,
+          role: TradeRole.buyer,
+        ),
+        isA<Ok>(),
+      );
+      for (final row in await tradeRows()) {
+        expect(
+          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
+          (null, null, null),
+        );
+      }
+    });
+  });
+
   group('the active trades', () {
     test(
       'come with each change, oldest first, pending takes included, never a closed trade nor another network\'s',
@@ -1033,7 +1125,7 @@ void main() {
         NativeDatabase.memory(
           setup: (raw) {
             raw.execute(
-              'CREATE TABLE trades (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, order_id INTEGER, role TEXT, origin TEXT, taken_at INTEGER, confirmed_at INTEGER, closed_at INTEGER, PRIMARY KEY (key_fingerprint, robot_index))',
+              'CREATE TABLE trades (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, order_id INTEGER, role TEXT, origin TEXT, taken_at INTEGER, confirmed_at INTEGER, closed_at INTEGER, payment_hash TEXT, payment_started_at INTEGER, payment_swap_id TEXT, PRIMARY KEY (key_fingerprint, robot_index))',
             );
             raw.execute('PRAGMA user_version = ${P2pDatabase.schema}');
           },
@@ -1042,14 +1134,20 @@ void main() {
       final looseTrades = TradeRecordRepositoryImpl(loose, clock: () => now);
       final fingerprint = "'${fingerprintA.hex}'";
       for (final (index, values) in [
-        (0, "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL"),
-        (1, "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL"),
-        (2, "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (3, "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL"),
-        (4, "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (5, "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL"),
-        (6, "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
-        (7, "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL"),
+        (0, "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL, NULL, NULL, NULL"),
+        (1, "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
+        (2, "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
+        (3, "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL, NULL, NULL, NULL"),
+        (4, "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
+        (5, "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL, NULL, NULL, NULL"),
+        (6, "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL"),
+        (7, "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL, NULL, NULL, NULL"),
+        (8, "'testnet', $fingerprint, 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'AB', 0, NULL"),
+        (9, "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', NULL, NULL"),
+        (10, "'testnet', $fingerprint, 10, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, 0, NULL"),
+        (11, "'testnet', $fingerprint, 11, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, 'swap'"),
+        (12, "'testnet', $fingerprint, 12, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, ''"),
+        (13, "'testnet', $fingerprint, 13, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, 7"),
       ]) {
         await loose.customStatement('DELETE FROM trades');
         await loose.customStatement('INSERT INTO trades VALUES ($values)');

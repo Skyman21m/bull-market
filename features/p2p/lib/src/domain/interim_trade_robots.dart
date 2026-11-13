@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show Coordinator, RobosatsNetwork;
 
@@ -92,16 +93,11 @@ final class InterimTradeRobots implements TradeRobots {
       case Err(:final failure):
         return Err(failure);
     }
-    if (key.fingerprint case Ok(
-      :final value,
-    ) when value == record.robot.keyFingerprint) {
-      // The index of the record, as the key gives it back: an index the key skips was never the robot of a trade.
-      return switch (key.firstUsableRobot(record.robot.accountIndex)) {
-        Ok(:final value) when value.slot == record.robot => Ok(value),
-        _ => const Err(TradeKeyMissingFailure()),
-      };
-    }
-    return const Err(TradeKeyMissingFailure());
+    // The index of the record, as the key gives it back: the same key (its fingerprint), network and index, or this is not the key of the trade.
+    return switch (key.firstUsableRobot(record.robot.accountIndex)) {
+      Ok(:final value) when value.slot == record.robot => Ok(value),
+      _ => const Err(TradeKeyMissingFailure()),
+    };
   }
 
   @override
@@ -113,15 +109,26 @@ final class InterimTradeRobots implements TradeRobots {
   static Result<NetworkRobot, P2pFailure> _firstFreeRobot(
     NetworkGarageKey key,
     Set<int> inUse,
+  ) => firstFreeAmong(inUse, key.firstUsableRobot, (robot) => robot.accountIndex);
+
+  /// [_firstFreeRobot] over the robots [firstUsable] gives from an index, each robot's index read by [indexOf].
+  ///
+  /// For tests only: no Garage Key is known whose first usable robot from a free index is one in use.
+  @visibleForTesting
+  static Result<R, F> firstFreeAmong<R, F extends Failure>(
+    Set<int> inUse,
+    Result<R, F> Function(int fromIndex) firstUsable,
+    int Function(R robot) indexOf,
   ) {
     var from = 0;
     while (true) {
       while (inUse.contains(from)) {
         from++;
       }
-      switch (key.firstUsableRobot(from)) {
-        case Ok(:final value) when inUse.contains(value.accountIndex):
-          from = value.accountIndex + 1;
+      switch (firstUsable(from)) {
+        case Ok(:final value) when inUse.contains(indexOf(value)):
+          // A skipped index led to one in use: go on after it.
+          from = indexOf(value) + 1;
         case final found:
           return found;
       }

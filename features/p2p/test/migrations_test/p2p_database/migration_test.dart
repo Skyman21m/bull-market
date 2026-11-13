@@ -682,7 +682,7 @@ void main() {
       // A trade's robot needs its binding.
       await expectLater(
         database.customInsert(
-          "INSERT INTO trades VALUES ('testnet', ?, 7, 'temple', 'o', 3, 'buyer', 'recovered', 0, 0, NULL)",
+          "INSERT INTO trades VALUES ('testnet', ?, 7, 'temple', 'o', 3, 'buyer', 'recovered', 0, 0, NULL, NULL, NULL, NULL)",
           variables: [Variable.withString(both.hex)],
         ),
         throwsA(predicate((error) => '$error'.contains('SqliteException(787)'))),
@@ -695,7 +695,7 @@ void main() {
       // Stopped after the table was created, before the version was written.
       final half = v2.DatabaseAtV2(NativeDatabase(file));
       await half.customStatement(
-        'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index))',
+        'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, payment_hash TEXT NULL, payment_started_at INTEGER NULL, payment_swap_id TEXT NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\')), CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL)), CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128)), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index))',
       );
       expect(await versionOf(half), 2);
       await half.close();

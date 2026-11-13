@@ -735,6 +735,22 @@ class RobotCoordinatorCubit {
           'lib/src/data/p2p_database.g.dart',
       },
     );
+    // The payment columns of schema 3 have no writer, nor reader in SQL, until the pull request that adds « Pay with this wallet »: only the database declares them, and drift's code.
+    expect(
+      where(
+        (facts) => facts.strings.any(
+          (text) => RegExp(
+            r'\bpayment_(hash|started_at|swap_id)\b',
+          ).hasMatch(text),
+        ),
+      ),
+      {
+        'lib/src/data/p2p_database.dart',
+        'lib/src/data/p2p_database.steps.dart',
+        if (File('lib/src/data/p2p_database.g.dart').existsSync())
+          'lib/src/data/p2p_database.g.dart',
+      },
+    );
     // No SQL text of another file reads or writes the trades.
     expect(
       where(

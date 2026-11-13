@@ -470,6 +470,25 @@ void main() {
     });
   });
 
+  test('the search of a free robot goes on after a skipped index that leads to one in use', () {
+    // No Garage Key is known with an index to skip: robots are played by their indexes, and index 3 is skipped (its first usable robot from 3 is 4).
+    Result<int, P2pFailure> firstUsable(int from) => switch (from) {
+      3 => const Ok(4),
+      > 9 => const Err(GarageRobotUnavailableFailure()),
+      _ => Ok(from),
+    };
+    Result<int, P2pFailure> firstFree(Set<int> inUse) =>
+        InterimTradeRobots.firstFreeAmong(inUse, firstUsable, (index) => index);
+
+    expect(firstFree({}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 0));
+    expect(firstFree({0, 1, 2}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 4));
+    expect(firstFree({0, 1, 2, 4}), isA<Ok<int, P2pFailure>>().having((ok) => ok.value, 'index', 5));
+    expect(
+      firstFree({0, 1, 2, 4, 5, 6, 7, 8, 9}),
+      refusedWith<GarageRobotUnavailableFailure>(),
+    );
+  });
+
   test('nothing printed or logged on these paths holds a key, a token or a fingerprint', () async {
     late NetworkRobot robot;
     final output = await captureKeyOutput(() async {

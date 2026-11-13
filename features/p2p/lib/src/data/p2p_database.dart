@@ -126,6 +126,17 @@ class Trades extends Table {
   /// When the trade ended, or its pending take turned out not to have happened, in milliseconds since the epoch; absent while it is active.
   IntColumn get closedAt => integer().nullable()();
 
+  /// The payment hash of a payment of this trade started from this wallet (« Pay with this wallet »), 64 lowercase hexadecimal characters; absent until that payment starts.
+  ///
+  /// Schema 3 adds the three payment columns so that no migration is needed before the first build; nothing writes them until the pull request that adds the payment (design note § 3.5, after #100), which sets each once and never clears it.
+  TextColumn get paymentHash => text().nullable()();
+
+  /// When that payment was started, in milliseconds since the epoch: written with [paymentHash], before the wallet is asked to pay.
+  IntColumn get paymentStartedAt => integer().nullable()();
+
+  /// The id of the wallet's swap that pays it, once the wallet returned it.
+  TextColumn get paymentSwapId => text().nullable()();
+
   /// One trade per robot, ever: a robot is never used for a second trade.
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
@@ -142,6 +153,10 @@ class Trades extends Table {
     "CHECK (origin IN ('takenHere', 'recovered'))",
     // A recovered trade is held by its robot when it is recorded: it is never a pending take.
     "CHECK (origin = 'takenHere' OR confirmed_at IS NOT NULL)",
+    // A payment started has its hash and its time together, and its swap only after both.
+    "CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*'))",
+    'CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL))',
+    'CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128))',
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index)',
   ];
 }

@@ -419,6 +419,10 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         .getSingle();
   }
 
+  /// Whether [hash] is a payment hash as the table stores it: 64 lowercase hexadecimal characters.
+  static bool _isPaymentHash(String hash) =>
+      RegExp(r'^[0-9a-f]{64}$').hasMatch(hash);
+
   /// The indexes of [joined], numbers joined with commas, or `null` for a text that is not.
   static List<int>? _indexesFrom(String joined) {
     final indexes = <int>[];
@@ -496,6 +500,17 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       final (takenValid, taken) = _timeFrom(takenAt);
       final (confirmedValid, confirmed) = _timeFrom(column('confirmed_at'));
       final (closedValid, closed) = _timeFrom(column('closed_at'));
+      final (startedValid, started) = _timeFrom(column('payment_started_at'));
+      final paymentHash = column('payment_hash');
+      final paymentSwapId = column('payment_swap_id');
+      // A payment's hash and time come together, and its swap only after them, as the CHECKs of the table say.
+      final paymentValid = switch ((paymentHash, started, paymentSwapId)) {
+        (null, null, null) => true,
+        (final String hash, _?, null) => _isPaymentHash(hash),
+        (final String hash, _?, final String swap) =>
+          _isPaymentHash(hash) && swap.isNotEmpty && swap.length <= 128,
+        _ => false,
+      };
       if (tradeNetwork == null ||
           key == null ||
           tradeRole == null ||
@@ -504,6 +519,8 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           !takenValid ||
           !confirmedValid ||
           !closedValid ||
+          !startedValid ||
+          !paymentValid ||
           index < 0 ||
           index > 2147483647 ||
           orderId <= 0 ||
@@ -520,6 +537,9 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         takenAt: taken,
         confirmedAt: confirmed,
         closedAt: closed,
+        paymentHash: paymentHash is String ? paymentHash : null,
+        paymentStartedAt: started,
+        paymentSwapId: paymentSwapId is String ? paymentSwapId : null,
       );
     }
     return null;

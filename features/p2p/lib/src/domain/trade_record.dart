@@ -55,6 +55,17 @@ final class TradeRecord {
   /// When the trade ended (a terminal status was read, or the pending take turned out not to have happened), or `null` while it is active.
   final DateTime? closedAt;
 
+  /// The payment hash of a payment of this trade started from this wallet, 64 lowercase hexadecimal characters, or `null` when none was started; never printed.
+  ///
+  /// Nothing writes it yet: the pull request that adds « Pay with this wallet » does, with [paymentStartedAt], before it asks the wallet to pay, so that the app never pays a trade twice (design note § 3.5, § 4.5).
+  final String? paymentHash;
+
+  /// When that payment was started: present exactly when [paymentHash] is.
+  final DateTime? paymentStartedAt;
+
+  /// The id of the wallet's swap that pays it, once the wallet returned it: present only with [paymentHash].
+  final String? paymentSwapId;
+
   const TradeRecord({
     required this.robot,
     required this.coordinatorAlias,
@@ -65,6 +76,9 @@ final class TradeRecord {
     required this.takenAt,
     required this.confirmedAt,
     required this.closedAt,
+    this.paymentHash,
+    this.paymentStartedAt,
+    this.paymentSwapId,
   });
 
   /// The network of the trade: the network of the robot's binding, never chosen apart from it.
@@ -89,7 +103,10 @@ final class TradeRecord {
       other.origin == origin &&
       other.takenAt == takenAt &&
       other.confirmedAt == confirmedAt &&
-      other.closedAt == closedAt;
+      other.closedAt == closedAt &&
+      other.paymentHash == paymentHash &&
+      other.paymentStartedAt == paymentStartedAt &&
+      other.paymentSwapId == paymentSwapId;
 
   @override
   int get hashCode => Object.hash(
@@ -102,9 +119,12 @@ final class TradeRecord {
     takenAt,
     confirmedAt,
     closedAt,
+    paymentHash,
+    paymentStartedAt,
+    paymentSwapId,
   );
 
-  /// The robot without its key's fingerprint, the coordinator's alias, the order and the state.
+  /// The robot without its key's fingerprint, the coordinator's alias, the order and the state; nothing of a payment.
   @override
   String toString() =>
       'TradeRecord($robot, $coordinatorAlias, $orderId, ${role.name}, ${origin.name}, ${switch ((confirmedAt, closedAt)) {
