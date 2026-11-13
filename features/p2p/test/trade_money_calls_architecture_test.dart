@@ -175,11 +175,23 @@ final class TradeCubit {
     test('the integration tests name no money member', () {
       final files = _dartFilesUnder(folder);
       expect(files, contains('$folder/p2p_robot_tor_test.dart'));
-      expect({
-        for (final path in files)
-          if (_MoneyNames.of(File(path).readAsStringSync()).named.isNotEmpty)
-            path,
-      }, isEmpty);
+      expect(
+        _namingMoney({
+          for (final path in files) path: File(path).readAsStringSync(),
+        }),
+        isEmpty,
+      );
+    });
+
+    test('the check of the integration tests sees a money member', () {
+      expect(
+        _namingMoney({
+          'a.dart': 'void f() => client.takeOrder(c, n, orderId: 1);',
+          'b.dart': "// takeOrder in a comment\nfinal s = 'cancelOrder';",
+          'c.dart': 'final f = client.openDispute;',
+        }),
+        {'a.dart', 'c.dart'},
+      );
     });
 
     test(
@@ -258,6 +270,12 @@ List<String> _offences(Map<String, String> sources) => [
       ];
     }(),
 ];
+
+/// The files of [sources] that name a money member in code.
+Set<String> _namingMoney(Map<String, String> sources) => {
+  for (final MapEntry(key: path, value: source) in sources.entries)
+    if (_MoneyNames.of(source).named.isNotEmpty) path,
+};
 
 /// What in the live robot test could give a network other than testnet: the constant `_network` must be `RobosatsNetwork.testnet`, no `.values`, `.byName` or `.fromWire` is used, and `mainnet` stands only in `coordinator.mainnet.onion`, the federation entry's mainnet onion that it compares the testnet one against.
 List<String> _liveNetworkOffences(String source) {
