@@ -35,7 +35,7 @@ abstract interface class GarageKeyRepository {
   @useResult
   Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network);
 
-  /// The key stored for [network], with that network, for the screens of the Garage: `GarageKeyView`, which shows it for backup, and the account navigator, which derives robot number N from it.
+  /// The key stored for [network], with that network, for the screens of the Garage (`GarageKeyView`, which shows it for backup, and the account navigator, which derives robot number N from it) and for the robots of the trades (`InterimTradeRobots`, which derives the robot of a new trade or of a recorded one from it).
   ///
   /// No key is a [GarageKeyMissingFailure].
   /// Hold it no longer than the screen that uses it.

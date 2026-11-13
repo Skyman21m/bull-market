@@ -86,14 +86,79 @@ class RobotBindings extends Table {
   ];
 }
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots and the history of the Garage Keys.
+/// The trades of this device's robots, one row per robot that ever had one, so that a trade survives the app being killed (schema 3, #85; design note `docs/design/phase-2-taking-an-order.md` § 3.5, § 4.5).
+///
+/// A row is written before the take's request leaves, as a pending take, or on the user's take-over of a trade that recovery found; it is never deleted.
+/// Its only changes are the times of its state, each set once: `confirmed_at` when the coordinator showed the robot as the taker, `closed_at` when the trade ended or the pending take turned out not to have happened.
+/// Its robot is bound to the coordinator it records (a foreign key to `robot_bindings`), and its network and coordinator are copied from that binding by the statement that writes it.
+@DataClassName('TradeRow')
+class Trades extends Table {
+  /// The network of the robot's binding, `mainnet` or `testnet`.
+  TextColumn get network => text()();
+
+  /// The `GarageKeyFingerprint` of the robot's key, 64 hexadecimal characters.
+  TextColumn get keyFingerprint => text()();
+
+  /// The index of the robot in its key.
+  IntColumn get robotIndex => integer()();
+
+  /// The short alias of the coordinator, as the robot's binding records it.
+  TextColumn get coordinatorAlias => text()();
+
+  /// The onion origin of the coordinator's instance, as the robot's binding records it.
+  TextColumn get coordinatorOnion => text()();
+
+  /// The id of the order on that coordinator.
+  IntColumn get orderId => integer()();
+
+  /// `buyer` or `seller`, fixed at the take.
+  TextColumn get role => text()();
+
+  /// `takenHere` for a take of this device under its money gate, `recovered` for a trade the user took over after recovery found it.
+  TextColumn get origin => text()();
+
+  /// When the row was written, in milliseconds since the epoch.
+  IntColumn get takenAt => integer()();
+
+  /// When the coordinator showed this robot as the order's taker, in milliseconds since the epoch; absent while the take is pending.
+  IntColumn get confirmedAt => integer().nullable()();
+
+  /// When the trade ended, or its pending take turned out not to have happened, in milliseconds since the epoch; absent while it is active.
+  IntColumn get closedAt => integer().nullable()();
+
+  /// One trade per robot, ever: a robot is never used for a second trade.
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (length(key_fingerprint) = 64)',
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    'CHECK (length(coordinator_alias) > 0)',
+    'CHECK (length(coordinator_onion) > 0)',
+    'CHECK (order_id > 0)',
+    "CHECK (role IN ('buyer', 'seller'))",
+    "CHECK (origin IN ('takenHere', 'recovered'))",
+    // A recovered trade is held by its robot when it is recorded: it is never a pending take.
+    "CHECK (origin = 'takenHere' OR confirmed_at IS NOT NULL)",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index)',
+  ];
+}
+
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys and the trades of the robots.
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
-@DriftDatabase(tables: [GarageKeyHistories, RobotBindings])
+@DriftDatabase(tables: [GarageKeyHistories, RobotBindings, Trades])
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 2;
+  static const int schema = 3;
+
+  /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
+  ///
+  /// It runs at each opening, after any migration step, outside a transaction, where SQLite takes it.
+  static const String _foreignKeysOn = 'PRAGMA foreign_keys = ON';
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -143,7 +208,14 @@ final class P2pDatabase extends _$P2pDatabase {
           );
         }
       },
+      from2To3: (m, schema) async {
+        // A new table: drift creates it only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // No binding and no history is touched.
+        await m.createTable(schema.trades);
+      },
     ),
+    // Every connection, the app's and the tests', enforces the foreign key of the trades.
+    beforeOpen: (details) => customStatement(_foreignKeysOn),
   );
 
   /// Whether [table] has a column named [column], read from SQLite's own description of the table.
