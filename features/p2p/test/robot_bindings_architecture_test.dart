@@ -264,7 +264,7 @@ void main() {
             'closeByPort': {'CoordinatorSessionsPort.closeRobotSessions'},
             'firstContactOutsidePut': {'RobotContact.firstContact'},
             'reserveByTearOff': {'TradeRecordRepository.reserveForNewTrade'},
-            'pendingTakeInCascade': {'TradeRecordRepository.recordPendingTake'},
+            'pendingTakeInClosure': {'TradeRecordRepository.recordPendingTake'},
             'recoveredTradeInVariable': {
               'TradeRecordRepository.recordRecoveredTrade',
             },

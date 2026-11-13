@@ -142,18 +142,20 @@ final acknowledgeInVariable = [
 Object reserveByTearOff(TradeRecordRepository records) =>
     records.reserveForNewTrade;
 
-/// A pending take, of origin `takenHere`, written in a cascade elsewhere than in the take use case.
-Object pendingTakeInCascade(
+/// A pending take, of origin `takenHere`, written through a local function elsewhere than in the take use case.
+Object pendingTakeInClosure(
   TradeRecordRepository records,
   RobotSlot robot,
   CoordinatorIdentity coordinator,
-) => records
-  ..recordPendingTake(
+) {
+  Object write() => records.recordPendingTake(
     robot,
     coordinator,
     orderId: 1,
     role: TradeRole.buyer,
   );
+  return write;
+}
 
 /// A recovered trade written from a top-level variable, elsewhere than in the recovery.
 final recoveredTradeInVariable = [
