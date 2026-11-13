@@ -90,9 +90,7 @@ void main() {
       for (final (label, source) in [
         (
           'negated, return',
-          takeWith(
-            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\n$take',
-          ),
+          takeWith('if (!P2pMoneyGate.allowsNewTrade(network)) return;\n$take'),
         ),
         (
           'negated in parentheses, block ending in a throw',
@@ -163,7 +161,10 @@ Future<void> cancel(RobosatsNetwork network) async {
             'assert of a closure that returns',
             'assert(() {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return false;\n  return true;\n}());\n$take',
           ),
-          ('expression statement', 'P2pMoneyGate.allowsNewTrade(network);\n$take'),
+          (
+            'expression statement',
+            'P2pMoneyGate.allowsNewTrade(network);\n$take',
+          ),
           (
             'parenthesised statement',
             '(P2pMoneyGate.allowsNewTrade(network));\n$take',
@@ -239,11 +240,9 @@ Future<void> cancel(RobosatsNetwork network) async {
             'if (P2pMoneyGate.allowsNewTrade(network) case false) return;\n$take',
           ),
         ]) {
-          expect(
-            offencesOf(tradeUseCase, takeWith(body)),
-            [notAsked],
-            reason: label,
-          );
+          expect(offencesOf(tradeUseCase, takeWith(body)), [
+            notAsked,
+          ], reason: label);
         }
       },
     );
@@ -364,54 +363,51 @@ mixin Taker on CoordinatorClient {
       }
     });
 
-    test(
-      'each money member needs its own question: an ungated action fails (A9)',
-      () {
-        for (final member in ['cancelOrder', 'confirmFiat', 'openDispute']) {
-          expect(
-            offencesOf(
-              cancelUseCase,
-              '${import}Future<void> act(RobosatsNetwork network) async {\n  await client.$member(coordinator, network, 1);\n}\n',
-            ),
-            [
-              '$cancelUseCase calls $member without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
-            ],
-            reason: member,
-          );
-        }
-        // Taking always starts a new trade; anything else acts on a recorded one.
-        expect(
-          offencesOf(
-            tradeUseCase,
-            takeWith(
-              'if (!P2pMoneyGate.allowsActionOnRecordedTrade(network)) return;\n$take',
-            ),
-          ),
-          [notAsked],
-        );
+    test('each money member needs its own question: an ungated action fails (A9)', () {
+      for (final member in ['cancelOrder', 'confirmFiat', 'openDispute']) {
         expect(
           offencesOf(
             cancelUseCase,
-            '${import}Future<void> cancel(RobosatsNetwork network) async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  await client.cancelOrder(coordinator, network, 1);\n}\n',
+            '${import}Future<void> act(RobosatsNetwork network) async {\n  await client.$member(coordinator, network, 1);\n}\n',
           ),
           [
-            '$cancelUseCase calls cancelOrder without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
+            '$cancelUseCase calls $member without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
           ],
+          reason: member,
         );
-        // One guarded call does not cover another.
-        expect(
-          offencesOf(
-            tradeUseCase,
-            takeWith(
-              'if (!P2pMoneyGate.allowsNewTrade(network)) return;\n$take\nawait client.cancelOrder(coordinator, network, 1);',
-            ),
+      }
+      // Taking always starts a new trade; anything else acts on a recorded one.
+      expect(
+        offencesOf(
+          tradeUseCase,
+          takeWith(
+            'if (!P2pMoneyGate.allowsActionOnRecordedTrade(network)) return;\n$take',
           ),
-          [
-            '$tradeUseCase calls cancelOrder without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
-          ],
-        );
-      },
-    );
+        ),
+        [notAsked],
+      );
+      expect(
+        offencesOf(
+          cancelUseCase,
+          '${import}Future<void> cancel(RobosatsNetwork network) async {\n  if (!P2pMoneyGate.allowsNewTrade(network)) return;\n  await client.cancelOrder(coordinator, network, 1);\n}\n',
+        ),
+        [
+          '$cancelUseCase calls cancelOrder without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
+        ],
+      );
+      // One guarded call does not cover another.
+      expect(
+        offencesOf(
+          tradeUseCase,
+          takeWith(
+            'if (!P2pMoneyGate.allowsNewTrade(network)) return;\n$take\nawait client.cancelOrder(coordinator, network, 1);',
+          ),
+        ),
+        [
+          '$tradeUseCase calls cancelOrder without asking P2pMoneyGate.allowsActionOnRecordedTrade first',
+        ],
+      );
+    });
 
     test('a trade use case may only call a member, not reach it otherwise', () {
       for (final (label, body) in [
@@ -457,23 +453,24 @@ mixin Taker on CoordinatorClient {
       },
     );
 
-    test('each of the seven members is watched outside the trade use cases', () {
-      for (final member in [
-        'takeOrder',
-        'cancelOrder',
-        'submitPayoutInvoice',
-        'submitPayoutAddress',
-        'confirmFiat',
-        'undoConfirmFiat',
-        'openDispute',
-      ]) {
-        expect(
-          offencesOf(cubit, 'void f() => client.$member();'),
-          ['$cubit calls $member but is not a trade use case'],
-          reason: member,
-        );
-      }
-    });
+    test(
+      'each of the seven members is watched outside the trade use cases',
+      () {
+        for (final member in [
+          'takeOrder',
+          'cancelOrder',
+          'submitPayoutInvoice',
+          'submitPayoutAddress',
+          'confirmFiat',
+          'undoConfirmFiat',
+          'openDispute',
+        ]) {
+          expect(offencesOf(cubit, 'void f() => client.$member();'), [
+            '$cubit calls $member but is not a trade use case',
+          ], reason: member);
+        }
+      },
+    );
 
     test('each way of reaching a member by its name is a use', () {
       for (final (label, source) in [
@@ -487,7 +484,10 @@ mixin Taker on CoordinatorClient {
         ('dynamic call', 'void f() => (client as dynamic).takeOrder(1);'),
         ('symbol', 'final s = #takeOrder;'),
         ('interpolation', r'''final s = '${client.takeOrder}';'''),
-        ('Function.apply', 'void f() => Function.apply(client.takeOrder, [1]);'),
+        (
+          'Function.apply',
+          'void f() => Function.apply(client.takeOrder, [1]);',
+        ),
       ]) {
         expect(offencesOf(cubit, source), [
           '$cubit calls takeOrder but is not a trade use case',
@@ -537,61 +537,58 @@ Future<void> take(RobosatsNetwork network) async {
       );
     });
 
-    test(
-      'a gate of its own, a shadow or a read of the approval elsewhere fails',
-      () {
-        for (final (label, source, offence) in [
-          (
-            'class',
-            'abstract final class P2pMoneyGate { static bool allowsNewTrade(Object n) => true; }',
-            'names P2pMoneyGate other than as P2pMoneyGate.<member>',
-          ),
-          (
-            'local variable',
-            'void f() { final P2pMoneyGate = _Open(); P2pMoneyGate.allowsNewTrade(n); }',
-            'names P2pMoneyGate other than as P2pMoneyGate.<member>',
-          ),
-          (
-            'getter of a class',
-            'final class TakeOrderUsecase { Object get P2pMoneyGate => _Open(); }',
-            'names P2pMoneyGate other than as P2pMoneyGate.<member>',
-          ),
-          (
-            'import prefix',
-            "import 'open_gate.dart' as P2pMoneyGate;",
-            'names P2pMoneyGate other than as P2pMoneyGate.<member>',
-          ),
-          (
-            'parameter',
-            'bool f(Object P2pMoneyGate) => true;',
-            'names P2pMoneyGate other than as P2pMoneyGate.<member>',
-          ),
-          (
-            'approval read',
-            'final open = P2pMoneyGate.mainnetApproved;',
-            'reads mainnetApproved',
-          ),
-        ]) {
-          expect(_gateOffences({cubit: source}), [
-            '$cubit $offence',
-          ], reason: label);
-        }
-        // The gate's own file declares it, and its imports and uses through the class pass.
-        expect(
-          _gateOffences({
-            _gate:
-                'abstract final class P2pMoneyGate { static const bool mainnetApproved = false; }',
-            cubit: '''
+    test('a gate of its own, a shadow or a read of the approval elsewhere fails', () {
+      for (final (label, source, offence) in [
+        (
+          'class',
+          'abstract final class P2pMoneyGate { static bool allowsNewTrade(Object n) => true; }',
+          'names P2pMoneyGate other than as P2pMoneyGate.<member>',
+        ),
+        (
+          'local variable',
+          'void f() { final P2pMoneyGate = _Open(); P2pMoneyGate.allowsNewTrade(n); }',
+          'names P2pMoneyGate other than as P2pMoneyGate.<member>',
+        ),
+        (
+          'getter of a class',
+          'final class TakeOrderUsecase { Object get P2pMoneyGate => _Open(); }',
+          'names P2pMoneyGate other than as P2pMoneyGate.<member>',
+        ),
+        (
+          'import prefix',
+          "import 'open_gate.dart' as P2pMoneyGate;",
+          'names P2pMoneyGate other than as P2pMoneyGate.<member>',
+        ),
+        (
+          'parameter',
+          'bool f(Object P2pMoneyGate) => true;',
+          'names P2pMoneyGate other than as P2pMoneyGate.<member>',
+        ),
+        (
+          'approval read',
+          'final open = P2pMoneyGate.mainnetApproved;',
+          'reads mainnetApproved',
+        ),
+      ]) {
+        expect(_gateOffences({cubit: source}), [
+          '$cubit $offence',
+        ], reason: label);
+      }
+      // The gate's own file declares it, and its imports and uses through the class pass.
+      expect(
+        _gateOffences({
+          _gate:
+              'abstract final class P2pMoneyGate { static const bool mainnetApproved = false; }',
+          cubit: '''
 import '../domain/p2p_money_gate.dart' show P2pMoneyGate;
 import '../domain/p2p_money_gate.dart' as gate show P2pMoneyGate;
 final a = P2pMoneyGate.allowsNewTrade(n);
 final b = gate.P2pMoneyGate.allowsActionOnRecordedTrade(n);
 ''',
-          }),
-          isEmpty,
-        );
-      },
-    );
+        }),
+        isEmpty,
+      );
+    });
   });
 
   test('the gate has no input but the network and its one constant', () {
@@ -661,17 +658,14 @@ final b = gate.P2pMoneyGate.allowsActionOnRecordedTrade(n);
       }, isEmpty);
     });
 
-    test(
-      'make robots with no network value but RobosatsNetwork.testnet',
-      () {
-        expect(
-          _liveNetworkOffences(
-            File('$folder/p2p_robot_tor_test.dart').readAsStringSync(),
-          ),
-          isEmpty,
-        );
-      },
-    );
+    test('make robots with no network value but RobosatsNetwork.testnet', () {
+      expect(
+        _liveNetworkOffences(
+          File('$folder/p2p_robot_tor_test.dart').readAsStringSync(),
+        ),
+        isEmpty,
+      );
+    });
 
     test('the check of the robot test sees the ways to mainnet', () {
       const head = 'const _network = RobosatsNetwork.testnet;\n';
@@ -686,11 +680,7 @@ final b = gate.P2pMoneyGate.allowsActionOnRecordedTrade(n);
         ('fromWire', "final n = RobosatsNetwork.fromWire('mainnet');"),
         ('another mainnet', 'final o = federation.mainnet.onion;'),
       ]) {
-        expect(
-          _liveNetworkOffences('$head$line'),
-          isNotEmpty,
-          reason: label,
-        );
+        expect(_liveNetworkOffences('$head$line'), isNotEmpty, reason: label);
       }
       // The one use of `mainnet` the test has: the federation entry's mainnet onion, which it compares the testnet one against.
       expect(
@@ -721,9 +711,8 @@ const _moneyMembers = {
 };
 
 /// The question of the gate each money member asks: taking an order starts a new trade, the others act on a recorded one.
-String _questionFor(String member) => member == 'takeOrder'
-    ? 'allowsNewTrade'
-    : 'allowsActionOnRecordedTrade';
+String _questionFor(String member) =>
+    member == 'takeOrder' ? 'allowsNewTrade' : 'allowsActionOnRecordedTrade';
 
 /// The questions the gate answers.
 const _gateQuestions = {'allowsNewTrade', 'allowsActionOnRecordedTrade'};
@@ -764,7 +753,9 @@ List<String> _offencesOf(String path, String source) {
             if (guard.question == question) guard,
         ];
         if (guards.isEmpty) {
-          return ['$path calls $member without asking P2pMoneyGate.$question first'];
+          return [
+            '$path calls $member without asking P2pMoneyGate.$question first',
+          ];
         }
         final network = _networkOf(call);
         final same = guards.any(
@@ -860,16 +851,18 @@ _Guard? _asked(
       return null;
     }
   }
-  if (expression case MethodInvocation(
-    :final target?,
-    :final methodName,
-    :final operator?,
-    :final argumentList,
-    typeArguments: null,
-  ) when operator.type == TokenType.PERIOD &&
-      _gateQuestions.contains(methodName.name) &&
-      gate.names(target) &&
-      argumentList.arguments.length == 1) {
+  if (expression
+      case MethodInvocation(
+        :final target?,
+        :final methodName,
+        :final operator?,
+        :final argumentList,
+        typeArguments: null,
+      )
+      when operator.type == TokenType.PERIOD &&
+          _gateQuestions.contains(methodName.name) &&
+          gate.names(target) &&
+          argumentList.arguments.length == 1) {
     final argument = argumentList.arguments.single;
     return (
       question: methodName.name,
