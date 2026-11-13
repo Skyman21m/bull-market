@@ -48,6 +48,9 @@ export 'package:robosats/robosats.dart'
 // The port that makes and proves a robot's key pair in isolates of their own, for the live test to prove what a coordinator returns on the path of the app.
 export 'src/data/isolate_robot_key_compute.dart' show IsolateRobotKeyCompute;
 export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
+// BOLT11 invoices made by the tests (never real ones), for the tests of the app's decoder against the trade's checks (#86).
+export 'src/testing/bolt11_test_invoice.dart'
+    show Bolt11TestDecoder, Bolt11TestInvoice;
 export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'

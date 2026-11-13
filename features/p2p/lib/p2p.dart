@@ -52,4 +52,16 @@ export 'package:robosats/robosats.dart'
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
+// The BOLT11 decoder port, which the shell implements with the app's pinned `bolt11_decoder` (#86, design note § 3.9): the trade's checks read every invoice of a coordinator through it.
+export 'src/domain/trade/bolt11.dart'
+    show
+        Bolt11AmountUnusable,
+        Bolt11Decoder,
+        Bolt11Invoice,
+        Bolt11Malformed,
+        Bolt11Network,
+        Bolt11NotVisibleAscii,
+        Bolt11Refusal,
+        Bolt11TooLong,
+        Bolt11UnknownNetwork;
 export 'src/ui/garage/garage_reauthentication.dart' show P2pReauthentication;
