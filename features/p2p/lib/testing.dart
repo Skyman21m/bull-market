@@ -135,7 +135,7 @@ bool hasP2pDatabaseForTesting(GetIt locator) =>
 bool hasWalletPortForTesting(GetIt locator) =>
     locator.isRegistered<P2pWalletPort>();
 
-/// A [CheckedBolt11Invoice] as the feature's BOLT11 check would build it from what it decoded, or `null` where the value refuses it: for the tests of the wallet's port, which take no invoice but this type.
+/// A [CheckedBolt11Invoice] as the feature's BOLT11 check would build it from what it decoded at [now] (the device's clock by default), or `null` where the value refuses it: for the tests of the wallet's port, which take no invoice but this type.
 ///
 /// Tests give obviously fake strings, never a real invoice.
 @visibleForTesting
@@ -144,11 +144,13 @@ CheckedBolt11Invoice? checkedBolt11InvoiceForTesting({
   required Sats amount,
   required RobosatsNetwork network,
   required DateTime expiresAt,
+  DateTime? now,
 }) => CheckedBolt11Invoice.of(
   bolt11: bolt11,
   amount: amount,
   network: network,
   expiresAt: expiresAt,
+  now: now ?? DateTime.now(),
 );
 
 /// A wallet's port whose answers the test writes: no wallet, no swap service, no money.

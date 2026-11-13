@@ -43,7 +43,6 @@ void main() {
         expect(quote.amount, Sats.fromInt(600));
         expect(quote.payin, Sats.fromInt(603));
         expect(quote.serviceFee, Sats.fromInt(3));
-        expect(quote.serviceFeeBasisPoints, 50);
         expect(quote.networkFee, Sats.fromInt(26));
         expect(quote.total, Sats.fromInt(629));
         expect(quote.balance, Sats.fromInt(10000));
@@ -164,7 +163,7 @@ void main() {
         const P2pWalletUnavailable(),
         P2pWalletNotEnoughBalance(
           available: Sats.fromInt(10000),
-          needed: Sats.fromInt(603),
+          needed: Sats.fromInt(10001),
         ),
       ]) {
         wallets.feeError = refusal;
@@ -181,10 +180,11 @@ void main() {
           .execute(RobosatsNetwork.mainnet)
           .listen(seen.add);
       await pumpEventQueue();
-      wallets.syncs.add(_wallet(balance: 10000));
-      wallets.syncs.add(_wallet(balance: 9371));
-      wallets.syncs.add(_wallet(balance: 9371));
-      wallets.syncs.add(_wallet(balance: 9971));
+      wallets.syncs
+        ..add(Ok(_wallet(balance: 10000)))
+        ..add(Ok(_wallet(balance: 9371)))
+        ..add(Ok(_wallet(balance: 9371)))
+        ..add(Ok(_wallet(balance: 9971)));
       await pumpEventQueue();
       expect(seen.map(_sats), [10000, 9371, 9971]);
       expect(wallets.watched, ['instant']);
@@ -212,10 +212,57 @@ void main() {
       await pumpEventQueue();
       wallets.syncs
         ..addError(StateError('sync failed'))
-        ..add(_wallet(balance: 42));
+        ..add(Ok(_wallet(balance: 42)));
       await pumpEventQueue();
       expect(seen.map(_sats), [10000, 42]);
       await subscription.cancel();
+    });
+
+    test('stops following the syncs when cancelled during the first read', () async {
+      final read = Completer<Result<InstantWallet, P2pWalletRefusal>>();
+      wallets.pendingRead = read;
+      final subscription = WatchInstantBalanceUsecase(
+        wallets,
+      ).execute(RobosatsNetwork.mainnet).listen((_) {});
+      await pumpEventQueue();
+      await subscription.cancel();
+      read.complete(Ok(_wallet()));
+      await pumpEventQueue();
+      expect(wallets.watched, isEmpty);
+      expect(wallets.syncs.hasListener, isFalse);
+    });
+
+    test('ends when the wallet\'s syncs end', () async {
+      final done = Completer<void>();
+      final seen = <Result<Sats, P2pWalletRefusal>>[];
+      WatchInstantBalanceUsecase(wallets)
+          .execute(RobosatsNetwork.mainnet)
+          .listen(seen.add, onDone: done.complete);
+      await pumpEventQueue();
+      await wallets.syncs.close();
+      await done.future.timeout(const Duration(seconds: 1));
+      expect(seen.map(_sats), [10000]);
+    });
+
+    test('ends with a refusal when the wallet followed changes', () async {
+      final done = Completer<void>();
+      final seen = <Result<Sats, P2pWalletRefusal>>[];
+      WatchInstantBalanceUsecase(wallets)
+          .execute(RobosatsNetwork.mainnet)
+          .listen(seen.add, onDone: done.complete);
+      await pumpEventQueue();
+      wallets.syncs.add(const Err(P2pWalletUnavailable()));
+      await done.future.timeout(const Duration(seconds: 1));
+      expect(seen, hasLength(2));
+      expect(
+        seen.last,
+        isA<Err<Sats, P2pWalletRefusal>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<P2pWalletUnavailable>(),
+        ),
+      );
+      expect(wallets.syncs.hasListener, isFalse);
     });
 
     test('ends on a refusal', () async {
@@ -267,17 +314,20 @@ final class _Wallets implements InstantWalletRepository {
   int reads = 0;
   final List<Sats> estimated = [];
   final List<String> watched = [];
-  final StreamController<InstantWallet> syncs = StreamController.broadcast();
+  Completer<Result<InstantWallet, P2pWalletRefusal>>? pendingRead;
+  final StreamController<Result<InstantWallet, P2pWalletRefusal>> syncs =
+      StreamController.broadcast();
 
   @override
   Future<Result<InstantWallet, P2pWalletRefusal>> read() async {
     reads++;
+    if (pendingRead case final read?) return read.future;
     if (readError case final refusal?) return Err(refusal);
     return Ok(wallet);
   }
 
   @override
-  Stream<InstantWallet> watchSyncs(String walletId) {
+  Stream<Result<InstantWallet, P2pWalletRefusal>> watchSyncs(String walletId) {
     watched.add(walletId);
     return syncs.stream;
   }
@@ -295,7 +345,7 @@ final class _Wallets implements InstantWalletRepository {
 
 final class _Quotes implements LightningSwapQuoteRepository {
   Result<LightningSwapQuote, P2pWalletRefusal> answer = Ok(
-    LightningSwapQuote(payin: Sats.fromInt(603), feeBasisPoints: 50),
+    LightningSwapQuote(payin: Sats.fromInt(603)),
   );
   final List<(RobosatsNetwork, Sats)> asked = [];
 

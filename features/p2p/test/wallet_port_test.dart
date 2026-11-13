@@ -7,8 +7,9 @@ import 'package:p2p/testing.dart';
 /// The wallet's port as the feature declares it (#100): the invoice it takes, the arithmetic of a quote, its refusals, and the fake that the tests of the feature and of the app use.
 void main() {
   final expiry = DateTime.utc(2026, 11, 13, 12);
+  final before = expiry.subtract(const Duration(minutes: 3));
 
-  // Obviously fake strings: the type checks their shape, never a signature.
+  // Obviously fake strings: the type checks their shape, never a signature or a checksum.
   String fake(String prefix, [int length = 40]) =>
       prefix + 'q' * (length - prefix.length);
 
@@ -16,15 +17,18 @@ void main() {
     String bolt11, {
     int amount = 600,
     RobosatsNetwork network = RobosatsNetwork.mainnet,
+    DateTime? now,
   }) => checkedBolt11InvoiceForTesting(
     bolt11: bolt11,
     amount: Sats.fromInt(amount),
     network: network,
     expiresAt: expiry,
+    now: now ?? before,
   );
 
+  // `n` is a tenth of a satoshi: `lnbc6000n` is 600 sats.
   CheckedBolt11Invoice invoice({int amount = 600}) {
-    final value = invoiceOf(fake('lnbc6u1'), amount: amount);
+    final value = invoiceOf(fake('lnbc${amount * 10}n1'), amount: amount);
     if (value == null) throw StateError('the fake invoice is refused');
     return value;
   }
@@ -55,17 +59,26 @@ void main() {
         ('nul', 'lnbc6u1\u0000qqq'),
         ('delete', 'lnbc6u1\u007fqqq'),
         ('non-ASCII', 'lnbc6u1qqéqq'),
+        ('non-ASCII before the separator', 'lnbc6éu1qqqq'),
         ('empty', ''),
       ]) {
         expect(invoiceOf(text), isNull, reason: label);
       }
-      expect(invoiceOf('lnbc6u1!~qq'), isNotNull);
+    });
+
+    test('has only bech32 characters after its separator', () {
+      expect(invoiceOf('lnbc6u1qpzry9x8gf2tvdw0s3jn54khce6mua7l'), isNotNull);
+      // The reviewer's probe P3: visible ASCII outside the alphabet.
+      for (final data in ['bio!~qq', 'qqbqq', 'qqiqq', 'qqoqq', 'qq-qq', 'qq_q']) {
+        expect(invoiceOf('lnbc6u1$data'), isNull, reason: data);
+      }
     });
 
     test('is in one case, as bech32 is', () {
       expect(invoiceOf(fake('LNBC6U1').toUpperCase()), isNotNull);
       expect(invoiceOf('lnbc6u1qqQq'), isNull);
       expect(invoiceOf('LNBC6U1QQqQ'), isNull);
+      expect(invoiceOf('LNBC6u1QQQQ'), isNull);
     });
 
     test('has the prefix of its network, with an amount', () {
@@ -74,12 +87,16 @@ void main() {
         ('lntb6u1', RobosatsNetwork.testnet, true),
         ('lntbs6u1', RobosatsNetwork.testnet, true),
         ('lntb6u1', RobosatsNetwork.mainnet, false),
+        ('lntbs6u1', RobosatsNetwork.mainnet, false),
         ('lnbc6u1', RobosatsNetwork.testnet, false),
         ('lnbcrt6u1', RobosatsNetwork.mainnet, false),
+        ('lnbcrt6u1', RobosatsNetwork.testnet, false),
+        ('lntbrt6u1', RobosatsNetwork.testnet, false),
+        ('lntx6u1', RobosatsNetwork.testnet, false),
+        ('lnt6u1', RobosatsNetwork.testnet, false),
+        ('lnsb6u1', RobosatsNetwork.testnet, false),
         ('lnbc1', RobosatsNetwork.mainnet, false),
         ('lntb1', RobosatsNetwork.testnet, false),
-        ('lnbc1500n1', RobosatsNetwork.mainnet, true),
-        ('lnbc21', RobosatsNetwork.mainnet, true),
         ('lnbc6x1', RobosatsNetwork.mainnet, false),
         ('lnbc6u', RobosatsNetwork.mainnet, false),
         ('lnbcu1', RobosatsNetwork.mainnet, false),
@@ -94,14 +111,107 @@ void main() {
       }
     });
 
+    test('says in its string the amount it is given', () {
+      for (final (prefix, sats) in [
+        ('lnbc6u1', 600),
+        ('lnbc6000n1', 600),
+        ('lnbc6000000p1', 600),
+        ('lnbc1500n1', 150),
+        ('lnbc10m1', 1000000),
+        ('lnbc2m1', 200000),
+        ('lnbc21', 200000000),
+        ('lnbc1u1', 100),
+        ('lnbc10n1', 1),
+        ('lnbc10000p1', 1),
+        ('lntb4u1', 400),
+      ]) {
+        final network = prefix.startsWith('lntb')
+            ? RobosatsNetwork.testnet
+            : RobosatsNetwork.mainnet;
+        expect(
+          invoiceOf(fake(prefix), amount: sats, network: network),
+          isNotNull,
+          reason: '$prefix is $sats sats',
+        );
+        expect(
+          invoiceOf(fake(prefix), amount: sats + 1, network: network),
+          isNull,
+          reason: '$prefix is not ${sats + 1} sats',
+        );
+        if (sats > 1) {
+          expect(
+            invoiceOf(fake(prefix), amount: sats - 1, network: network),
+            isNull,
+            reason: '$prefix is not ${sats - 1} sats',
+          );
+        }
+      }
+      // The reviewer's probe P1: a string of 1,000,000 sats, or of 2,100,000 BTC, given as 400 sats.
+      expect(invoiceOf(fake('lnbc10m1'), amount: 400), isNull);
+      expect(invoiceOf(fake('lnbc21000001'), amount: 400), isNull);
+    });
+
+    test('refuses an amount below a satoshi, with a leading zero, or zero', () {
+      // The reviewer's probe P2, and the BOLT11 rule on `p` amounts.
+      for (final (prefix, sats) in [
+        ('lnbc1p1', 1),
+        ('lnbc9n1', 1),
+        ('lnbc15n1', 1),
+        ('lnbc15n1', 2),
+        ('lnbc10001p1', 1),
+        ('lnbc0001n1', 1),
+        ('lnbc06u1', 600),
+        ('lnbc0n1', 400),
+        ('lnbc0n1', 0),
+        ('lnbc01', 0),
+      ]) {
+        expect(
+          invoiceOf(fake(prefix), amount: sats),
+          isNull,
+          reason: '$prefix as $sats sats',
+        );
+      }
+      expect(invoiceOf(fake('lnbc6u1'), amount: 0), isNull);
+    });
+
     test('has data after its separator', () {
       expect(invoiceOf('lnbc6u1'), isNull);
       expect(invoiceOf('lnbc6u1q'), isNotNull);
+      expect(invoiceOf('lnbc6uqqqq'), isNull);
     });
 
-    test('has an amount', () {
-      expect(invoiceOf(fake('lnbc6u1'), amount: 0), isNull);
-      expect(invoiceOf(fake('lnbc6u1'), amount: 1), isNotNull);
+    test('has not expired when it is built', () {
+      // The reviewer's probe P4: an invoice expired long ago.
+      expect(invoiceOf(fake('lnbc6u1'), now: DateTime.utc(2030)), isNull);
+      expect(invoiceOf(fake('lnbc6u1'), now: expiry), isNull);
+      expect(
+        invoiceOf(
+          fake('lnbc6u1'),
+          now: expiry.subtract(const Duration(milliseconds: 1)),
+        ),
+        isNotNull,
+      );
+      // Without a clock, the helper reads the device's.
+      expect(
+        checkedBolt11InvoiceForTesting(
+          bolt11: fake('lnbc6u1'),
+          amount: Sats.fromInt(600),
+          network: RobosatsNetwork.mainnet,
+          expiresAt: DateTime.utc(2000),
+        ),
+        isNull,
+      );
+    });
+
+    test('is fast on hostile strings', () {
+      final watch = Stopwatch()..start();
+      for (var i = 0; i < 100; i++) {
+        expect(invoiceOf('1' * 2000), isNull);
+        expect(invoiceOf('lnbc${'9' * 1990}m1q', amount: 1), isNull);
+        expect(invoiceOf('lnbc${'0' * 1990}x1qq'), isNull);
+        expect(invoiceOf('l' * 2000), isNull);
+      }
+      expect(watch.elapsed, lessThan(const Duration(seconds: 5)));
     });
 
     test('keeps its expiry in UTC and has expired from that instant', () {
@@ -111,6 +221,7 @@ void main() {
         amount: Sats.fromInt(600),
         network: RobosatsNetwork.mainnet,
         expiresAt: local,
+        now: local.subtract(const Duration(minutes: 1)),
       );
       expect(value?.expiresAt.isUtc, isTrue);
       expect(value?.expiresAt, local.toUtc());
@@ -127,7 +238,7 @@ void main() {
       expect(invoice(), invoice());
       expect(invoice().hashCode, invoice().hashCode);
       expect(invoice(), isNot(invoice(amount: 601)));
-      expect(invoiceOf(fake('lnbc6u1', 41)), isNot(invoice()));
+      expect(invoiceOf(fake('lnbc6000n1', 41)), isNot(invoice()));
     });
 
     test('prints nothing of itself', () {
@@ -138,13 +249,11 @@ void main() {
   group('a quote', () {
     P2pWalletQuote quoteOf({
       int payin = 603,
-      int basisPoints = 50,
       int networkFee = 26,
       int balance = 10000,
     }) => P2pWalletQuote(
       invoice: invoice(),
       payin: Sats.fromInt(payin),
-      serviceFeeBasisPoints: basisPoints,
       networkFee: Sats.fromInt(networkFee),
       balance: Sats.fromInt(balance),
       quotedAt: expiry,
@@ -155,7 +264,6 @@ void main() {
       expect(quote.amount, Sats.fromInt(600));
       expect(quote.payin, Sats.fromInt(603));
       expect(quote.serviceFee, Sats.fromInt(3));
-      expect(quote.serviceFeeBasisPoints, 50);
       expect(quote.networkFee, Sats.fromInt(26));
       expect(quote.total, Sats.fromInt(629));
       expect(quote.balance, Sats.fromInt(10000));
@@ -174,14 +282,29 @@ void main() {
       expect(() => quoteOf(payin: 599), throwsArgumentError);
     });
 
-    test('has no negative fee rate', () {
-      expect(quoteOf(basisPoints: 0).serviceFeeBasisPoints, 0);
-      expect(() => quoteOf(basisPoints: -1), throwsArgumentError);
-    });
-
     test('prints none of its amounts', () {
       expect('${quoteOf()}', 'P2pWalletQuote');
     });
+  });
+
+  test('not enough balance always needs more than there is', () {
+    expect(
+      P2pWalletNotEnoughBalance(
+        available: Sats.fromInt(628),
+        needed: Sats.fromInt(629),
+      ).needed,
+      Sats.fromInt(629),
+    );
+    for (final needed in [628, 0]) {
+      expect(
+        () => P2pWalletNotEnoughBalance(
+          available: Sats.fromInt(628),
+          needed: Sats.fromInt(needed),
+        ),
+        throwsArgumentError,
+        reason: '$needed',
+      );
+    }
   });
 
   test('a refusal prints its type and carries no text', () {
@@ -280,7 +403,6 @@ void main() {
         final quote = P2pWalletQuote(
           invoice: invoice(),
           payin: Sats.fromInt(603),
-          serviceFeeBasisPoints: 50,
           networkFee: Sats.fromInt(26),
           balance: Sats.fromInt(1000),
           quotedAt: expiry,

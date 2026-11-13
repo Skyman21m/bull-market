@@ -12,10 +12,11 @@ class WatchInstantBalanceUsecase {
 
   /// The balance of the Instant Payments wallet for a trade on [network], then each balance that differs from the last one given; a refusal ends the stream.
   ///
-  /// It reads the wallet when listened to, and stops following its syncs as soon as the subscription is cancelled (not an `async*` body, whose cancellation would wait for the next sync).
-  /// A sync whose wallet cannot be read is skipped: the next one gives the balance.
+  /// It reads the wallet when listened to, and stops following its syncs as soon as the subscription is cancelled, even while that first read runs (not an `async*` body, whose cancellation would wait for the next sync).
+  /// After a refusal of the first read nothing is followed: the stream gives the refusal and ends.
+  /// A sync whose wallet cannot be read is skipped: the next one gives the balance. When the wallet's stream of syncs ends, so does this one; when a sync shows that the wallet followed is no longer the Instant Payments wallet, this one ends with that refusal, and listening again reads the new one.
   Stream<Result<Sats, P2pWalletRefusal>> execute(RobosatsNetwork network) {
-    StreamSubscription<InstantWallet>? syncs;
+    StreamSubscription<Result<InstantWallet, P2pWalletRefusal>>? syncs;
     var cancelled = false;
     late final StreamController<Result<Sats, P2pWalletRefusal>> controller;
 
@@ -39,11 +40,23 @@ class WatchInstantBalanceUsecase {
       }
       var last = wallet.balance;
       controller.add(Ok(last));
-      syncs = _wallets.watchSyncs(wallet.id).listen((synced) {
-        if (synced.balance == last) return;
-        last = synced.balance;
-        controller.add(Ok(last));
-      }, onError: (Object _) {});
+      syncs = _wallets
+          .watchSyncs(wallet.id)
+          .listen(
+            (synced) {
+              switch (synced) {
+                case Ok(value: InstantWallet(:final balance)):
+                  if (balance == last) return;
+                  last = balance;
+                  controller.add(Ok(last));
+                case Err(:final failure):
+                  unawaited(syncs?.cancel());
+                  unawaited(refuse(failure));
+              }
+            },
+            onError: (Object _) {},
+            onDone: () => unawaited(controller.close()),
+          );
     }
 
     controller = StreamController(

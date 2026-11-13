@@ -57,12 +57,22 @@ class InstantWalletRepositoryImpl implements InstantWalletRepository {
   }
 
   @override
-  Stream<InstantWallet> watchSyncs(String walletId) => _watchSyncs
-      .execute(walletId: walletId)
-      .where((wallet) => wallet.isDefault && wallet.isLiquid)
-      .map(_instant)
-      .where((wallet) => wallet != null)
-      .cast<InstantWallet>();
+  Stream<Result<InstantWallet, P2pWalletRefusal>> watchSyncs(
+    String walletId,
+  ) =>
+      // Plain operators, not an `async*` body: a cancellation must reach the wallet's stream at once.
+      _watchSyncs
+          .execute(walletId: walletId)
+          .map<Result<InstantWallet, P2pWalletRefusal>?>(
+            (wallet) => !wallet.isDefault || !wallet.isLiquid
+                ? const Err(P2pWalletUnavailable())
+                : switch (_instant(wallet)) {
+                    final instant? => Ok(instant),
+                    null => null,
+                  },
+          )
+          .where((result) => result != null)
+          .cast<Result<InstantWallet, P2pWalletRefusal>>();
 
   @override
   Future<Result<Sats, P2pWalletRefusal>> estimateNetworkFee(
@@ -85,18 +95,23 @@ class InstantWalletRepositoryImpl implements InstantWalletRepository {
       if (fee < 0) return const Err(P2pWalletUnavailable());
       return Ok(Sats.fromInt(fee));
     } on InsufficientFundsException {
-      return Err(
-        P2pWalletNotEnoughBalance(available: wallet.balance, needed: amount),
-      );
+      return Err(_short(wallet, amount));
     } on NoSpendableUtxoException {
-      return Err(
-        P2pWalletNotEnoughBalance(available: wallet.balance, needed: amount),
-      );
+      return Err(_short(wallet, amount));
     } on ConsolidationRequiredException {
       return const Err(P2pWalletNeedsConsolidation());
     } catch (_) {
       return const Err(P2pWalletUnavailable());
     }
+  }
+
+  /// The wallet cannot cover [amount] and its fee: it needs at least [amount], and more than it has.
+  static P2pWalletNotEnoughBalance _short(InstantWallet wallet, Sats amount) {
+    final atLeast = wallet.balance.value + BigInt.one;
+    return P2pWalletNotEnoughBalance(
+      available: wallet.balance,
+      needed: Sats(amount.value > atLeast ? amount.value : atLeast),
+    );
   }
 
   /// The wallet as the port reads it, or `null` for a balance the wallet should never hold.

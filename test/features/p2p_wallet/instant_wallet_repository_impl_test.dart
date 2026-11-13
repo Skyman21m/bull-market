@@ -107,17 +107,54 @@ void main() {
     });
   });
 
-  test('watchSyncs gives the wallet after each sync of it', () async {
-    final seen = <InstantWallet>[];
-    final subscription = repository.watchSyncs('instant').listen(seen.add);
-    syncs.finished
-      ..add(testWallet(balance: 9371))
-      ..add(testWallet(origin: 'other', balance: 1))
-      ..add(testWallet(balance: 9971));
-    await pumpEventQueue();
-    expect(seen.map((wallet) => wallet.balance.value.toInt()), [9371, 9971]);
-    expect(syncs.watched, ['instant']);
-    await subscription.cancel();
+  group('watchSyncs', () {
+    int? balanceOf(Result<InstantWallet, P2pWalletRefusal> result) =>
+        switch (result) {
+          Ok(:final value) => value.balance.value.toInt(),
+          Err() => null,
+        };
+
+    test('gives the wallet after each sync of it', () async {
+      final seen = <Result<InstantWallet, P2pWalletRefusal>>[];
+      final subscription = repository.watchSyncs('instant').listen(seen.add);
+      syncs.finished
+        ..add(testWallet(balance: 9371))
+        ..add(testWallet(origin: 'other', balance: 1))
+        // A balance the wallet should never hold is no balance: skipped.
+        ..add(testWallet(balance: -1))
+        ..add(testWallet(balance: 9971));
+      await pumpEventQueue();
+      expect(seen.map(balanceOf), [9371, 9971]);
+      expect(syncs.watched, ['instant']);
+      await subscription.cancel();
+    });
+
+    test('says when the wallet is no longer the default Liquid one', () async {
+      for (final changed in [
+        testWallet(isDefault: false, balance: 5),
+        testWallet(isLiquid: false, balance: 5),
+      ]) {
+        final seen = <Result<InstantWallet, P2pWalletRefusal>>[];
+        final subscription = repository.watchSyncs('instant').listen(seen.add);
+        syncs.finished.add(changed);
+        await pumpEventQueue();
+        expect(seen, [
+          isA<Err<InstantWallet, P2pWalletRefusal>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<P2pWalletUnavailable>(),
+          ),
+        ]);
+        await subscription.cancel();
+      }
+    });
+
+    test('lets the wallet\'s stream go at once when cancelled', () async {
+      final subscription = repository.watchSyncs('instant').listen((_) {});
+      expect(syncs.finished.hasListener, isTrue);
+      await subscription.cancel().timeout(const Duration(seconds: 1));
+      expect(syncs.finished.hasListener, isFalse);
+    });
   });
 
   group('estimateNetworkFee', () {
@@ -152,15 +189,34 @@ void main() {
       },
     );
 
+    test('says the wallet needs at least the amount, and more than it has', () async {
+      liquid.buildError = InsufficientFundsException('short');
+      expect(
+        refusalOf(
+          await repository.estimateNetworkFee(wallet, Sats.fromInt(20000)),
+        ),
+        isA<P2pWalletNotEnoughBalance>()
+            .having((r) => r.available, 'available', Sats.fromInt(10000))
+            .having((r) => r.needed, 'needed', Sats.fromInt(20000)),
+      );
+    });
+
     test('maps the wallet\'s exceptions to refusals', () async {
       for (final (error, matcher) in [
         (
           InsufficientFundsException('InsufficientFunds { missing_sats: 21 }'),
           isA<P2pWalletNotEnoughBalance>()
               .having((r) => r.available, 'available', Sats.fromInt(10000))
-              .having((r) => r.needed, 'needed', Sats.fromInt(603)),
+              .having((r) => r.needed, 'needed', Sats.fromInt(10001)),
         ),
-        (NoSpendableUtxoException('none'), isA<P2pWalletNotEnoughBalance>()),
+        (
+          NoSpendableUtxoException('none'),
+          isA<P2pWalletNotEnoughBalance>().having(
+            (r) => r.needed,
+            'needed',
+            Sats.fromInt(10001),
+          ),
+        ),
         (
           ConsolidationRequiredException('too many inputs'),
           isA<P2pWalletNeedsConsolidation>(),

@@ -11,7 +11,9 @@ abstract interface class InstantWalletRepository {
   Future<Result<InstantWallet, P2pWalletRefusal>> read();
 
   /// The wallet [walletId] each time the app finishes a sync of it; this starts no sync.
-  Stream<InstantWallet> watchSyncs(String walletId);
+  ///
+  /// [P2pWalletUnavailable] when a sync shows that wallet is no longer the default Liquid wallet (listening again reads the one that is). A sync whose wallet cannot be read gives nothing; the stream ends when the wallet's own stream of syncs does.
+  Stream<Result<InstantWallet, P2pWalletRefusal>> watchSyncs(String walletId);
 
   /// The Liquid network fee of sending [amount] from [wallet], at the rate the wallet uses for every Liquid send.
   ///

@@ -29,9 +29,9 @@ void main() {
       expect(
         answer,
         isA<Ok<LightningSwapQuote, P2pWalletRefusal>>().having(
-          (ok) => (ok.value.payin, ok.value.feeBasisPoints),
-          'payin and rate',
-          (Sats.fromInt(603), 50),
+          (ok) => ok.value.payin,
+          'payin',
+          Sats.fromInt(603),
         ),
       );
       await ask(network: RobosatsNetwork.testnet, amount: 400);
@@ -59,7 +59,6 @@ void main() {
       ('pays out less', FakeSwapFacade.quoteOf(out: 599)),
       ('pays out more', FakeSwapFacade.quoteOf(out: 601)),
       ('asks a payin below the amount', FakeSwapFacade.quoteOf(payin: 599)),
-      ('a negative rate', FakeSwapFacade.quoteOf(basisPoints: -1)),
     ]) {
       swaps.answer = answer;
       expect(
@@ -72,8 +71,15 @@ void main() {
         reason: label,
       );
     }
-    swaps.answer = FakeSwapFacade.quoteOf(payin: 600, basisPoints: 0);
-    expect(await ask(), isA<Ok<LightningSwapQuote, P2pWalletRefusal>>());
+    // The rate the service lists is not the port's to check: the fee is the payin less the amount.
+    for (final basisPoints in [0, -1, 1 << 40]) {
+      swaps.answer = FakeSwapFacade.quoteOf(payin: 600, basisPoints: basisPoints);
+      expect(
+        await ask(),
+        isA<Ok<LightningSwapQuote, P2pWalletRefusal>>(),
+        reason: '$basisPoints',
+      );
+    }
   });
 
   group('maps each failure of the Swap feature', () {
@@ -121,6 +127,29 @@ void main() {
         ),
         isA<P2pWalletOverMaximum>().having((r) => r.maximum, 'maximum', null),
       );
+      // A limit above all the bitcoin there can be is no limit to show.
+      expect(
+        LightningSwapQuoteRepositoryImpl.refusalOf(
+          SwapAmountOutOfBoundsFailure(
+            limitAmountSat: BigInt.from(2100000000000001),
+            isMinimum: true,
+          ),
+        ),
+        isA<P2pWalletUnderMinimum>().having((r) => r.minimum, 'minimum', null),
+      );
+      expect(
+        LightningSwapQuoteRepositoryImpl.refusalOf(
+          SwapAmountOutOfBoundsFailure(
+            limitAmountSat: BigInt.from(2100000000000000),
+            isMinimum: false,
+          ),
+        ),
+        isA<P2pWalletOverMaximum>().having(
+          (r) => r.maximum,
+          'maximum',
+          Sats(BigInt.from(2100000000000000)),
+        ),
+      );
       // No operator: the side is unknown, and the limit is not guessed into one.
       expect(
         LightningSwapQuoteRepositoryImpl.refusalOf(
@@ -141,6 +170,26 @@ void main() {
           const Duration(seconds: 12),
         ),
       );
+      // `Retry-After` is any integer: never a negative wait, at most ten minutes.
+      for (final (asked, given) in [
+        (const Duration(seconds: -5), null),
+        (Duration.zero, Duration.zero),
+        (const Duration(minutes: 10), const Duration(minutes: 10)),
+        (const Duration(minutes: 10, seconds: 1), const Duration(minutes: 10)),
+        (const Duration(days: 365000), const Duration(minutes: 10)),
+      ]) {
+        expect(
+          LightningSwapQuoteRepositoryImpl.refusalOf(
+            SwapRateLimitedFailure(retryAfter: asked),
+          ),
+          isA<P2pWalletServiceBusy>().having(
+            (r) => r.retryAfter,
+            'retryAfter',
+            given,
+          ),
+          reason: '$asked',
+        );
+      }
       expect(
         LightningSwapQuoteRepositoryImpl.refusalOf(
           const SwapRateLimitedFailure(),

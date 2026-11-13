@@ -80,7 +80,6 @@ class QuoteInvoicePaymentUsecase {
       P2pWalletQuote(
         invoice: invoice,
         payin: service.payin,
-        serviceFeeBasisPoints: service.feeBasisPoints,
         networkFee: networkFee,
         balance: wallet.balance,
         quotedAt: _now(),

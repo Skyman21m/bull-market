@@ -10,6 +10,7 @@ import 'package:test/test.dart';
 /// The port is the shell's Instant Payments wallet, lent to the feature: today its balance and the swap service's quote, later its payment, reviewed as money code when it is added.
 /// Only the trade use cases, files `lib/src/domain/usecases/trade/<name>_usecase.dart` that are not a `part`, may name one of its members, as only they may name the coordinator's money members (`trade_money_calls_architecture_test.dart`), so that what reads the wallet and what will pay from it sit in one reviewed place.
 /// The port's type may be named there too, and where the feature declares, exports, receives and registers it, and in its testing seam; nowhere else, so that no cubit or screen takes it from the locator.
+/// The only invoice the port takes, `CheckedBolt11Invoice`, is built by `CheckedBolt11Invoice.of`, which only its own file and the testing seam's helper may call today; the pull request that brings the trade screen's BOLT11 check (#86) adds its one file to that list. No file may declare an alias of the type, through which `of` could be reached under another name.
 /// The sources are read as text and parsed without resolution, as in `trade_money_calls_architecture_test.dart`: a name is a use wherever it stands in code, comments and strings are not code, and a declaration of a member with a watched name is no use (the fake of `testing.dart` declares them).
 /// It cannot see what a trade use case hands out (a tear-off, a wrapper), a member added to the port under a name this list does not have yet (the pull request that adds `pay`, `watch` and `find` adds them here), nor code outside `features/p2p/lib`: the shell's side has its own test, `test/features/p2p_wallet/p2p_wallet_architecture_test.dart`.
 void main() {
@@ -56,6 +57,66 @@ void main() {
         reason: package,
       );
     }
+  });
+
+  group('who builds a checked invoice:', () {
+    test('the files that may call CheckedBolt11Invoice.of are these two, written out', () {
+      // The pull request that brings the BOLT11 check of the trade screen (#86) adds its one file here.
+      expect(_invoiceBuilders, {
+        'lib/src/domain/checked_bolt11_invoice.dart',
+        'lib/testing.dart',
+      });
+    });
+
+    test('only they call it', () {
+      expect(_invoiceOffences(sources), isEmpty);
+    });
+
+    test('the rule bites', () {
+      const cubit = 'lib/src/presentation/trade_cubit.dart';
+      for (final (label, source) in [
+        (
+          'call',
+          "final i = CheckedBolt11Invoice.of(bolt11: s, amount: a, network: n, expiresAt: e, now: t);",
+        ),
+        ('tear-off', 'final f = CheckedBolt11Invoice.of;'),
+        (
+          'import prefix',
+          "final i = p2p.CheckedBolt11Invoice.of(bolt11: s, amount: a, network: n, expiresAt: e, now: t);",
+        ),
+        ('alias', 'typedef Invoice = CheckedBolt11Invoice;'),
+        ('alias of a function type', 'typedef Make = CheckedBolt11Invoice? Function();'),
+      ]) {
+        expect(
+          _invoiceOffences({cubit: source}),
+          isNotEmpty,
+          reason: label,
+        );
+      }
+      // A trade use case is no exception: the check builds the invoice, the use cases receive it.
+      expect(
+        _invoiceOffences({
+          'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart':
+              'final f = CheckedBolt11Invoice.of;',
+        }),
+        isNotEmpty,
+      );
+      for (final path in _invoiceBuilders) {
+        expect(
+          _invoiceOffences({path: 'final f = CheckedBolt11Invoice.of;'}),
+          isEmpty,
+          reason: path,
+        );
+      }
+      // Naming the type, or another `of`, builds nothing.
+      expect(
+        _invoiceOffences({
+          cubit:
+              "/// [CheckedBolt11Invoice.of]\nvoid f(CheckedBolt11Invoice i, BuildContext c) { Theme.of(c); final s = 'CheckedBolt11Invoice.of'; }",
+        }),
+        isEmpty,
+      );
+    });
   });
 
   group('the rule bites:', () {
@@ -186,6 +247,70 @@ final class TradeCubit {
       );
     });
   });
+}
+
+/// The files of `lib/` that may call `CheckedBolt11Invoice.of`: its own, and the testing seam's helper.
+const _invoiceBuilders = {
+  'lib/src/domain/checked_bolt11_invoice.dart',
+  'lib/testing.dart',
+};
+
+/// Each file of [sources] that calls or tears off `CheckedBolt11Invoice.of` and may not, or that declares an alias naming the type (through which `of` could be reached under another name).
+List<String> _invoiceOffences(Map<String, String> sources) => [
+  for (final MapEntry(key: path, value: source) in sources.entries)
+    if (!_invoiceBuilders.contains(path))
+      ...() {
+        final finder = _InvoiceBuilds();
+        _parse(source).accept(finder);
+        return [for (final how in finder.found) '$path $how'];
+      }(),
+];
+
+/// The uses of `CheckedBolt11Invoice.of`, and the aliases of the type, in a source.
+final class _InvoiceBuilds extends RecursiveAstVisitor<void> {
+  final List<String> found = [];
+
+  bool _isInvoice(Expression? target) =>
+      target != null &&
+      (target.toSource() == 'CheckedBolt11Invoice' ||
+          target.toSource().endsWith('.CheckedBolt11Invoice'));
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == 'of' && _isInvoice(node.target)) {
+      found.add('calls CheckedBolt11Invoice.of');
+    }
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    if (node.identifier.name == 'of' &&
+        node.prefix.name == 'CheckedBolt11Invoice') {
+      found.add('names CheckedBolt11Invoice.of');
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    if (node.propertyName.name == 'of' && _isInvoice(node.target)) {
+      found.add('names CheckedBolt11Invoice.of');
+    }
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitGenericTypeAlias(GenericTypeAlias node) {
+    if (node.type.toSource().contains('CheckedBolt11Invoice')) {
+      found.add('aliases CheckedBolt11Invoice');
+    }
+    super.visitGenericTypeAlias(node);
+  }
+
+  /// A `[name]` in a doc comment names it without using it.
+  @override
+  void visitCommentReference(CommentReference node) {}
 }
 
 /// The members of `P2pWalletPort`. `pay`, `watch` and `find` are added here by the pull request that adds them to the port.

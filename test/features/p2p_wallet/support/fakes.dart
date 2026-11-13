@@ -18,11 +18,13 @@ import 'package:p2p/testing.dart' show checkedBolt11InvoiceForTesting;
 /// The instant the tests run at.
 final testNow = DateTime.utc(2026, 11, 13, 12);
 
-/// An obviously fake invoice string of [network], never a real invoice: the port's type checks its shape only.
-String fakeBolt11(RobosatsNetwork network) => switch (network) {
-  RobosatsNetwork.mainnet => 'lnbc6u1${'q' * 60}',
-  RobosatsNetwork.testnet => 'lntb6u1${'q' * 60}',
-};
+/// An obviously fake invoice string of [amount] sats on [network], never a real invoice: the port's type checks its shape and amount, not its checksum nor its signature (`n` is a tenth of a satoshi).
+String fakeBolt11(RobosatsNetwork network, {int amount = 600}) =>
+    switch (network) {
+      RobosatsNetwork.mainnet => 'lnbc',
+      RobosatsNetwork.testnet => 'lntb',
+    } +
+    '${amount * 10}n1${'q' * 60}';
 
 /// A checked invoice of [amount] sats on [network], expiring [expiresIn] after [testNow].
 CheckedBolt11Invoice testInvoice({
@@ -31,10 +33,12 @@ CheckedBolt11Invoice testInvoice({
   Duration expiresIn = const Duration(minutes: 3),
 }) {
   final invoice = checkedBolt11InvoiceForTesting(
-    bolt11: fakeBolt11(network),
+    bolt11: fakeBolt11(network, amount: amount),
     amount: Sats.fromInt(amount),
     network: network,
     expiresAt: testNow.add(expiresIn),
+    // Built before it expires, so that the port's own check of the expiry can be tested.
+    now: testNow.add(expiresIn).subtract(const Duration(minutes: 10)),
   );
   if (invoice == null) throw StateError('the fake invoice is refused');
   return invoice;

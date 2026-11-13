@@ -30,17 +30,12 @@ class LightningSwapQuoteRepositoryImpl implements LightningSwapQuoteRepository {
     );
     switch (answer) {
       case Ok(:final value):
+        // The fee rate the service lists is left out: the fee is the payin less the amount. The currencies are not compared either: the code holds no value of the service's for Lightning's, and the networks of the quote are the ones asked.
         if (value.outAmountSat != amount.value ||
-            value.inAmountSat < amount.value ||
-            value.feeBasisPoints < 0) {
+            value.inAmountSat < amount.value) {
           return const Err(P2pWalletServiceRefused());
         }
-        return Ok(
-          LightningSwapQuote(
-            payin: Sats(value.inAmountSat),
-            feeBasisPoints: value.feeBasisPoints,
-          ),
-        );
+        return Ok(LightningSwapQuote(payin: Sats(value.inAmountSat)));
       case Err(:final failure):
         return Err(refusalOf(failure));
     }
@@ -56,7 +51,7 @@ class LightningSwapQuoteRepositoryImpl implements LightningSwapQuoteRepository {
     SwapAmountOutOfBoundsFailure(isMinimum: null) =>
       const P2pWalletOutsideServiceLimits(),
     SwapRateLimitedFailure(:final retryAfter) => P2pWalletServiceBusy(
-      retryAfter: retryAfter,
+      retryAfter: _wait(retryAfter),
     ),
     SwapNetworkFailure() ||
     SwapTimeoutFailure() => const P2pWalletServiceUnreachable(),
@@ -74,6 +69,21 @@ class LightningSwapQuoteRepositoryImpl implements LightningSwapQuoteRepository {
     SwapPriceUnavailableFailure() => const P2pWalletServiceRefused(),
   };
 
+  /// The most bitcoin there can be, in sats: a limit above it, or below zero, is not one to show.
+  static final _maxSats = BigInt.from(2100000000000000);
+
+  /// The longest wait the port passes on: the service's `Retry-After` is any integer.
+  static const _maxWait = Duration(minutes: 10);
+
   static Sats? _sats(BigInt? value) =>
-      value == null || value.isNegative ? null : Sats(value);
+      value == null || value.isNegative || value > _maxSats
+      ? null
+      : Sats(value);
+
+  static Duration? _wait(Duration? value) => switch (value) {
+    null => null,
+    final wait when wait.isNegative => null,
+    final wait when wait > _maxWait => _maxWait,
+    final wait => wait,
+  };
 }

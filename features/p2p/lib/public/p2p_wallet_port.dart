@@ -19,7 +19,9 @@ abstract interface class P2pWalletPort {
 
   /// The swap service's quote for paying exactly [invoice] from the Instant Payments wallet, or why it cannot.
   ///
-  /// It runs only when called, and sends the swap service, over the network the wallet uses for it (clearnet, not Tor), the invoice's amount and the route (Liquid to Lightning), never the invoice; nothing is created at the service, nothing is signed, nothing is broadcast.
+  /// It runs only when called, and only once the invoice is unexpired, the wallet on its network and its balance at least the invoice's amount. Nothing is created at the service, nothing is signed, nothing is broadcast.
+  /// What the service learns, since P2P otherwise talks only over Tor: one HTTPS POST over clearnet, through the wallet's own client, to the wallet's swap service (its staging host on testnet), a JSON-RPC `getBestSwapOption` carrying the invoice's amount, `isInAmountFixed: false` and the two networks; never the invoice, an address or anything of the trade. The request bears no API key and the default Dart user agent, and the user's IP address. Its JSON-RPC id is `mobile-<microsecond timestamp>-<counter>`, the counter shared, for the life of the app, with the wallet's own calls to the service, which poll its swap orders: so the service can tie a quote to the user's other swap orders. And since a bond's amount follows from an order of the public book, a quote just before a take lets the service's operator guess which order this address is about to take.
+  /// Side effects in the wallet: the quote waits behind the wallet's own calls to the service, one at a time; an answer HTTP 418 sets the wallet's « app update required » flag, which stops its swaps until the app is updated.
   Future<Result<P2pWalletQuote, P2pWalletRefusal>> quote(
     CheckedBolt11Invoice invoice,
   );
@@ -28,6 +30,7 @@ abstract interface class P2pWalletPort {
 /// The swap service's quote for paying [invoice] from the Instant Payments wallet, with the wallet's estimate of its network fee.
 ///
 /// The service gives no expiry for a quote: [quotedAt] is when the wallet received it, so that a payment can refuse a quote it finds too old.
+/// The service's fee is given as an amount, [serviceFee], the payin less the invoice's amount: the rate the service lists beside it is not carried, since it may not add up to that amount.
 /// A payment made from this quote is bound to it: the same [invoice], at most [payin] sent to the service, and at most [total] leaving the wallet.
 /// Its [toString] names none of its amounts.
 final class P2pWalletQuote {
@@ -36,9 +39,6 @@ final class P2pWalletQuote {
 
   /// What the wallet sends to the swap service, which pays the invoice from it: the invoice's amount and the service's fee.
   final Sats payin;
-
-  /// The service's fee rate as it gives it, in basis points (1 % is 100), the sum of the fees it lists.
-  final int serviceFeeBasisPoints;
 
   /// The wallet's estimate of the Liquid network fee of sending [payin], at the rate the wallet uses for every Liquid send.
   final Sats networkFee;
@@ -49,20 +49,16 @@ final class P2pWalletQuote {
   /// When the wallet received the quote.
   final DateTime quotedAt;
 
-  /// Throws an [ArgumentError] when [payin] is less than the invoice's amount, [serviceFeeBasisPoints] is negative, or the [total] exceeds the [balance]: the implementation of the port refuses these before it builds a quote.
+  /// Throws an [ArgumentError] when [payin] is less than the invoice's amount or the [total] exceeds the [balance]: the implementation of the port refuses these before it builds a quote.
   P2pWalletQuote({
     required this.invoice,
     required this.payin,
-    required this.serviceFeeBasisPoints,
     required this.networkFee,
     required this.balance,
     required this.quotedAt,
   }) {
     if (payin.value < invoice.amount.value) {
       throw ArgumentError('A payin is never less than the invoice it pays');
-    }
-    if (serviceFeeBasisPoints < 0) {
-      throw ArgumentError('A fee rate is never negative');
     }
     if (total.value > balance.value) {
       throw ArgumentError('A quote never exceeds the balance');
@@ -90,14 +86,14 @@ sealed class P2pWalletRefusal extends Failure {
   const P2pWalletRefusal();
 }
 
-/// The invoice's amount is under the swap service's minimum, which it gives most of the time ([minimum], as the service states it).
+/// The invoice's amount is under the swap service's minimum, which it gives most of the time ([minimum], as the service states it, when it is a plausible amount of bitcoin).
 final class P2pWalletUnderMinimum extends P2pWalletRefusal {
   final Sats? minimum;
 
   const P2pWalletUnderMinimum({this.minimum});
 }
 
-/// The invoice's amount is over the swap service's maximum, which it gives most of the time ([maximum], as the service states it).
+/// The invoice's amount is over the swap service's maximum, which it gives most of the time ([maximum], as the service states it, when it is a plausible amount of bitcoin).
 final class P2pWalletOverMaximum extends P2pWalletRefusal {
   final Sats? maximum;
 
@@ -109,15 +105,19 @@ final class P2pWalletOutsideServiceLimits extends P2pWalletRefusal {
   const P2pWalletOutsideServiceLimits();
 }
 
-/// The Instant Payments wallet has [available], less than the [needed] that paying would take (at least that much, when the network fee could not be estimated).
+/// The Instant Payments wallet has [available], less than the [needed] that paying would take.
+///
+/// [needed] is always above [available]; it is a lower bound when the wallet could not price the network fee (it then says only that the payin and the fee are more than the balance).
 final class P2pWalletNotEnoughBalance extends P2pWalletRefusal {
   final Sats available;
   final Sats needed;
 
-  const P2pWalletNotEnoughBalance({
-    required this.available,
-    required this.needed,
-  });
+  /// Throws an [ArgumentError] unless [needed] is above [available].
+  P2pWalletNotEnoughBalance({required this.available, required this.needed}) {
+    if (needed.value <= available.value) {
+      throw ArgumentError('Not enough means needing more than there is');
+    }
+  }
 }
 
 /// The Instant Payments wallet holds too many coins to spend them in one transaction: the wallet's own consolidation comes first.
@@ -150,12 +150,12 @@ final class P2pWalletInvoiceExpired extends P2pWalletRefusal {
   const P2pWalletInvoiceExpired();
 }
 
-/// The swap service did not answer: no connection, or no answer in time.
+/// The swap service did not answer: no connection, no answer in time, or an HTTP status other than 2xx, 418 and 429 (which the wallet's client reads as a network failure).
 final class P2pWalletServiceUnreachable extends P2pWalletRefusal {
   const P2pWalletServiceUnreachable();
 }
 
-/// The swap service asked to wait before asking again ([retryAfter], when it says how long).
+/// The swap service asked to wait before asking again ([retryAfter], when it says how long: never negative, at most ten minutes).
 final class P2pWalletServiceBusy extends P2pWalletRefusal {
   final Duration? retryAfter;
 
