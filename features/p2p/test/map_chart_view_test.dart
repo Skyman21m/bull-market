@@ -824,6 +824,19 @@ void main() {
     );
     await settle(tester);
     expect(map, findsOneWidget);
+    // The bar, built again after « Search », still shows « Map » chosen.
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byType(BullSegmented).last,
+              matching: find.text('Map'),
+            ),
+          )
+          .style
+          ?.color,
+      testBullTheme.primary,
+    );
 
     await tester.tap(find.text('Chart'));
     await settle(tester);
