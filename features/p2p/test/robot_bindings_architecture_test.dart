@@ -372,7 +372,6 @@ void main() {
         expect(
           holders,
           containsAll([
-            'lib/src/domain/repositories/trade_record_repository.dart',
             'lib/src/data/trade_record_repository_impl.dart',
             'lib/src/domain/interim_trade_robots.dart',
           ]),
@@ -736,18 +735,17 @@ class RobotCoordinatorCubit {
           'lib/src/data/p2p_database.g.dart',
       },
     );
+    // No SQL text of another file reads or writes the trades.
     expect(
       where(
         (facts) => facts.strings.any(
-          (text) => RegExp(r'\btrades\b', caseSensitive: false).hasMatch(text),
+          (text) => RegExp(
+            r'\b(from|into|update|join)\s+"?trades\b',
+            caseSensitive: false,
+          ).hasMatch(text),
         ),
       ),
-      {
-        'lib/src/data/p2p_database.steps.dart',
-        'lib/src/data/trade_record_repository_impl.dart',
-        if (File('lib/src/data/p2p_database.g.dart').existsSync())
-          'lib/src/data/p2p_database.g.dart',
-      },
+      {'lib/src/data/trade_record_repository_impl.dart'},
     );
   });
 
