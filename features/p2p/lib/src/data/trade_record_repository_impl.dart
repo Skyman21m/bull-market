@@ -303,7 +303,10 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       )
       .watch()
       .transform(
-        StreamTransformer.fromHandlers(
+        StreamTransformer<
+          List<QueryRow>,
+          Result<List<TradeRecord>, P2pFailure>
+        >.fromHandlers(
           handleData: (rows, sink) {
             final records = <TradeRecord>[];
             for (final row in rows) {
@@ -455,17 +458,29 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     Map<String, Object?> data, {
     required String prefix,
   }) {
-    if (data case {
-      '${prefix}network': final String network,
-      '${prefix}key_fingerprint': final String fingerprint,
-      '${prefix}robot_index': final int index,
-      '${prefix}coordinator_alias': final String alias,
-      '${prefix}coordinator_onion': final String onion,
-      '${prefix}order_id': final int orderId,
-      '${prefix}role': final String role,
-      '${prefix}origin': final String origin,
-      '${prefix}taken_at': final int takenAt,
-    }) {
+    Object? column(String name) => data['$prefix$name'];
+    if ((
+          column('network'),
+          column('key_fingerprint'),
+          column('robot_index'),
+          column('coordinator_alias'),
+          column('coordinator_onion'),
+          column('order_id'),
+          column('role'),
+          column('origin'),
+          column('taken_at'),
+        )
+        case (
+          final String network,
+          final String fingerprint,
+          final int index,
+          final String alias,
+          final String onion,
+          final int orderId,
+          final String role,
+          final String origin,
+          final int takenAt,
+        )) {
       final tradeNetwork = _networkFrom(network);
       final key = GarageKeyFingerprint.stored(fingerprint);
       final tradeRole = switch (role) {
@@ -479,10 +494,8 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         _ => null,
       };
       final (takenValid, taken) = _timeFrom(takenAt);
-      final (confirmedValid, confirmed) = _timeFrom(
-        data['${prefix}confirmed_at'],
-      );
-      final (closedValid, closed) = _timeFrom(data['${prefix}closed_at']);
+      final (confirmedValid, confirmed) = _timeFrom(column('confirmed_at'));
+      final (closedValid, closed) = _timeFrom(column('closed_at'));
       if (tradeNetwork == null ||
           key == null ||
           tradeRole == null ||

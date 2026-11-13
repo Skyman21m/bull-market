@@ -210,9 +210,10 @@ An interface in the domain, implemented by whatever #79/#81 decide (or by the in
 
 - `Future<Result<NetworkRobot, P2pFailure>> robotForNewTrade(RoboSatsNetwork, Coordinator)`: a robot that never held an order (no binding with a recorded trade, no `last_order_id` on any read), of a key the user may trade with (generated here or derived from the seed; never a pasted key's robot, per #79), **bound to that coordinator atomically before it is returned**, and recorded as reserved so that a second take cannot get it; with RoboSats' rule « one robot, one active order » (`logics.py:75-135`) and its advice of one robot per trade, a robot is never reused for a second trade by Troc.
 - `Future<Result<NetworkRobot, P2pFailure>> robotOfTrade(TradeRecord)`: the robot of a recorded trade (key fingerprint, index, network), refusing if the key is not in the vault any more (`TradeKeyMissing`: « The Garage Key of this trade is not on this device. Paste it back to finish the trade. »).
-- `Stream<List<TradeRecord>> activeTrades(RoboSatsNetwork)` and, for recovery, `Future<List<FoundTrade>> findTradesOfKey(NetworkGarageKey)` (read every bound robot back, take its `active_order_id`; for a pasted key, #79's search on every coordinator).
+- `Stream<List<TradeRecord>> activeTrades(RoboSatsNetwork)` (in #85 a stream of `Result<List<TradeRecord>, P2pFailure>`, so that a database that cannot be read gives a typed failure, not a list) and, for recovery, `Future<List<FoundTrade>> findTradesOfKey(NetworkGarageKey)` (read every bound robot back, take its `active_order_id`; for a pasted key, #79's search on every coordinator).
+- #85 implements the interim (`InterimTradeRobots`): the robot is bound to the coordinator by one statement that also checks that its index has no binding and no trade and that the key is recorded as drawn here on that network and as nothing else on any network, and says whether this call wrote it; the binding is the reservation, so a robot bound and never recorded (the app killed in between) stays bound, without a trade, and is never returned again. `findTradesOfKey` is left to #79, since it needs coordinator reads.
 - The binding's provenance stays the gate for pasted robots: an `acknowledged` robot may finish an order it already holds (found by recovery) but is never returned by `robotForNewTrade` (answers an open point that the design of the robot panel, #29, left to phase 2).
-- Each trade record carries its origin (§ 3.5): `takenHere`, written only by `TakeOrderUsecase` after `P2pMoneyGate.allowsNewTrade` said yes, or `recovered`, written only when the user explicitly takes over a trade that `findTradesOfKey` found. On mainnet, a build whose approval constant is false refuses every action on a `recovered` trade and points the user to the official client with the trade's Garage Key (§ 3.7).
+- Each trade record carries its origin (§ 3.5): `takenHere`, written only by `TakeOrderUsecase` after `P2pMoneyGate.allowsNewTrade` said yes (#85: the repository's `recordPendingTake` requires a `NewTradePermit`, which only that yes gives), or `recovered`, written only when the user explicitly takes over a trade that `findTradesOfKey` found. On mainnet, a build whose approval constant is false refuses every action on a `recovered` trade and points the user to the official client with the trade's Garage Key (§ 3.7).
 
 ### 3.4 The robot's key pair during a trade
 
@@ -220,7 +221,7 @@ Signing a payout and the chat need the robot's unlocked key. The pair is not sto
 
 ### 3.5 Stored on the device (`p2p.sqlite` schema 3)
 
-One new table, `trades`, written before the take's POST as a « pending take » (§ 4.5, § 7 decision 2), so that a lost answer is recoverable, and never deleted by the app:
+One new table, `trades`, written before the take's POST as a « pending take » (§ 4.5, § 7 decision 2), so that a lost answer is recoverable, and never deleted by the app; one row per robot, ever (primary key: key fingerprint and robot index), so that the database itself refuses a second trade of a robot (#85):
 
 | Column | Why |
 |---|---|
@@ -229,8 +230,9 @@ One new table, `trades`, written before the take's POST as a « pending take » 
 | `order_id` | which order |
 | `role` (`buyer`/`seller`) | fixed at the take |
 | `origin` (`takenHere`/`recovered`) | whether this device took the trade under the money gate or the user took over a trade found by recovery; the gate's rule for actions depends on it (§ 3.7) |
-| `taken_at` | ordering, and « reserved » for the robot layer |
-| `closed_at` (nullable) | set when a terminal status is read (4, 5, 12, 14, 17, 18, or taken by another), or when a pending take turns out not to have happened (§ 4.5), so that active trades are those without it |
+| `taken_at` | when the record was written: ordering |
+| `confirmed_at` (nullable) | set once, when the coordinator's answer or a later read shows the robot as the taker; absent, with `closed_at` absent too, the record is a pending take; a `recovered` record has it from the start (decided in #85: two times set once each rather than a status column, which would repeat `closed_at` and allow states the statements never make) |
+| `closed_at` (nullable) | set once, when a terminal status is read (4, 5, 12, 14, 17, 18, or taken by another), or when a pending take turns out not to have happened (§ 4.5), so that active trades are those without it; a closed record never changes |
 
 Not stored: invoices, amounts, the chat, the peer's key or nick, the robot's pair, the last status (all read again from the coordinator; a terminal status is the only fact kept, as `closed_at`). Recovery after a reinstall or a lost file: § 3.3 `findTradesOfKey`. The chat is kept in memory and read again from index 0 at each session (the coordinator keeps it until about 3 days after the end, `chat/tasks.py:26-31`); the export is the user's copy. Migration 2 → 3 with the drift snapshot and steps as for schema 2 (`AGENTS.md` « One robot, one coordinator »).
 
@@ -291,7 +293,7 @@ Before showing a bond or escrow QR, decode the BOLT11 locally (bounded: at most 
 
 ### 4.5 App killed mid-trade, reopened
 
-The trade is recoverable from the robot alone: the trade record gives (key, index, coordinator, order id); without it (file lost), the robot layer reads every bound robot back and finds `active_order_id` (§ 3.3). On reopen, the P2P tab lists « Active trades », and opening one resumes polling at once. A take whose answer was lost (the POST timed out): the trade record is written before the POST as « pending take » and the next GET of that order tells whether the robot is the pre-taker (`is_taker`) or not; a pending take older than the TAK timer with no pre-take is closed. What is lost: the in-memory chat (read again from the coordinator) and the deadlines passed while closed (§ 3.8).
+The trade is recoverable from the robot alone: the trade record gives (key, index, coordinator, order id); without it (file lost), the robot layer reads every bound robot back and finds `active_order_id` (§ 3.3). On reopen, the P2P tab lists « Active trades », and opening one resumes polling at once. A take whose answer was lost (the POST timed out): the trade record is written before the POST as « pending take » and the next GET of that order tells whether the robot is the pre-taker (`is_taker`) or not; a pending take older than the TAK timer with no pre-take is closed (the repository enforces the states, not the timer: #87 closes a pending take only after it). What is lost: the in-memory chat (read again from the coordinator) and the deadlines passed while closed (§ 3.8).
 
 ### 4.6 What the independent security reviewer checks in each pull request
 
