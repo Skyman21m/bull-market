@@ -127,7 +127,8 @@ final class Bolt11Reader {
   /// The decoder sees only [maxLength] visible ASCII characters at most; an exception it throws is a [Bolt11Malformed], and so is an answer that breaks its own contract (a payment hash or a node key of the wrong form, no amount).
   Result<Bolt11Invoice, Bolt11Refusal> read(String text) {
     if (text.length > maxLength) return const Err(Bolt11TooLong());
-    if (!_visibleAscii.hasMatch(text)) return const Err(Bolt11NotVisibleAscii());
+    if (!_visibleAscii.hasMatch(text))
+      return const Err(Bolt11NotVisibleAscii());
     final Result<Bolt11Invoice, Bolt11Refusal> decoded;
     try {
       decoded = _decoder.decode(text);

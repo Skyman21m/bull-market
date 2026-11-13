@@ -92,9 +92,8 @@ final class CheckedInvoice extends StepInvoice {
   bool get passedEveryCheck => warnings.isEmpty;
 
   /// Whether the QR code and the copy may be shown without « Show anyway ».
-  bool get mayShow => warnings.every(
-    (warning) => warning.effect == TradeWarningEffect.shown,
-  );
+  bool get mayShow =>
+      warnings.every((warning) => warning.effect == TradeWarningEffect.shown);
 
   /// Whether the QR code and the copy may be shown after « Show anyway »: only the amount checks hide it so (design note § 3.2).
   bool get mayShowAnyway => warnings.every(
@@ -141,11 +140,7 @@ StepInvoice checkStepInvoice({
   final Bolt11Invoice facts;
   switch (decoded) {
     case Err(:final failure):
-      return UnusableInvoice._(
-        step,
-        hold.satoshis,
-        InvoiceUnreadable(failure),
-      );
+      return UnusableInvoice._(step, hold.satoshis, InvoiceUnreadable(failure));
     case Ok(:final value):
       facts = value;
   }

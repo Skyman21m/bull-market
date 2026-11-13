@@ -10,13 +10,14 @@ sealed class TradeAnswer {
   /// The answer a read gave, or `null` when it says nothing about the trade.
   ///
   /// The same holds for the order a take or a cancel answered with: pass it as [TradeOrderRead].
-  static TradeAnswer? ofRead(Result<CoordinatorOrder, CoordinatorFailure> read) =>
-      switch (read) {
-        Ok(:final value) => TradeOrderRead(value),
-        Err(failure: OrderCancelled()) => const TradeOrderCancelled(),
-        Err(failure: OrderNotAvailable()) => const TradeOrderNotAvailable(),
-        Err() => null,
-      };
+  static TradeAnswer? ofRead(
+    Result<CoordinatorOrder, CoordinatorFailure> read,
+  ) => switch (read) {
+    Ok(:final value) => TradeOrderRead(value),
+    Err(failure: OrderCancelled()) => const TradeOrderCancelled(),
+    Err(failure: OrderNotAvailable()) => const TradeOrderNotAvailable(),
+    Err() => null,
+  };
 }
 
 /// The order as its coordinator describes it to this robot, already checked by `package:robosats` against the robot that asked (`CoordinatorOrder`).

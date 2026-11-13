@@ -169,6 +169,8 @@ String _bech32(String hrp, List<int> data) {
     for (final unit in hrp.codeUnits) unit & 31,
   ];
   final polymod = _polymod([...expanded, ...data, 0, 0, 0, 0, 0, 0]) ^ 1;
-  final checksum = [for (var i = 0; i < 6; i++) (polymod >> (5 * (5 - i))) & 31];
+  final checksum = [
+    for (var i = 0; i < 6; i++) (polymod >> (5 * (5 - i))) & 31,
+  ];
   return '${hrp}1${[...data, ...checksum].map((word) => Bolt11TestInvoice._charset[word]).join()}';
 }

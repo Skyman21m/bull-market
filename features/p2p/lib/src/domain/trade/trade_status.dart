@@ -146,7 +146,8 @@ sealed class TradeStatus {
           readWarnings,
           trail._next(deadline: null, breached: _breaches(readWarnings)),
         );
-      case TradeOrderNotAvailable() when from == TradePosition.bondStep || from == TradePosition.start:
+      case TradeOrderNotAvailable()
+          when from == TradePosition.bondStep || from == TradePosition.start:
         return TakenByAnother._(
           now,
           readWarnings,
@@ -169,7 +170,10 @@ sealed class TradeStatus {
           terms: terms,
           now: now,
           reader: reader,
-          readWarnings: [...readWarnings, ..._orderWarnings(order, terms, to, from, trail)],
+          readWarnings: [
+            ...readWarnings,
+            ..._orderWarnings(order, terms, to, from, trail),
+          ],
         );
     }
   }
@@ -200,10 +204,8 @@ sealed class TradeStatus {
       CoordinatorOrderStatus.routingFailed => TradePosition.routingFailed,
       CoordinatorOrderStatus.waitingForDisputeResolution =>
         TradePosition.waitingDisputeResolution,
-      CoordinatorOrderStatus.makerLostDispute =>
-        TradePosition.makerLostDispute,
-      CoordinatorOrderStatus.takerLostDispute =>
-        TradePosition.takerLostDispute,
+      CoordinatorOrderStatus.makerLostDispute => TradePosition.makerLostDispute,
+      CoordinatorOrderStatus.takerLostDispute => TradePosition.takerLostDispute,
       CoordinatorOrderStatus.waitingForMakerBond ||
       CoordinatorOrderStatus.public ||
       CoordinatorOrderStatus.paused ||
@@ -320,8 +322,7 @@ sealed class TradeStatus {
     if (fixed && last != null && paid != null) {
       // The seller locks the trade and its fee; the buyer receives the trade less its fee (`api/logics.py:650-669`, `:733-749`).
       final fee = terms.role == TradeRole.seller ? paid - last : last - paid;
-      if (fee < 0 ||
-          fee > last * terms.takerFee + TradeTolerances.feeSats) {
+      if (fee < 0 || fee > last * terms.takerFee + TradeTolerances.feeSats) {
         warnings.add(const TakerFeeAboveAnnounced());
       }
     }
@@ -384,22 +385,23 @@ sealed class TradeStatus {
     final deadline = order.expiresAt;
     final role = terms.role;
 
-    StepInvoice? invoiceOf(HoldInvoice? hold, InvoiceStep step) => switch (hold) {
-      null => null,
-      _ => checkStepInvoice(
-        hold: hold,
-        step: step,
-        terms: terms,
-        reader: reader,
-        pinnedHash: switch (step) {
-          InvoiceStep.bond => trail.bondHash,
-          InvoiceStep.escrow => trail.escrowHash,
-        },
-        stepDeadline: deadline,
-        now: now,
-        readWarnings: readWarnings,
-      ),
-    };
+    StepInvoice? invoiceOf(HoldInvoice? hold, InvoiceStep step) =>
+        switch (hold) {
+          null => null,
+          _ => checkStepInvoice(
+            hold: hold,
+            step: step,
+            terms: terms,
+            reader: reader,
+            pinnedHash: switch (step) {
+              InvoiceStep.bond => trail.bondHash,
+              InvoiceStep.escrow => trail.escrowHash,
+            },
+            stepDeadline: deadline,
+            now: now,
+            readWarnings: readWarnings,
+          ),
+        };
 
     List<TradeWarning> warningsWith(StepInvoice? invoice) => switch (invoice) {
       CheckedInvoice(:final warnings) => warnings,

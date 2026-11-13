@@ -90,11 +90,11 @@ abstract final class TradeEdges {
       TradePosition.cancelled: _both,
     },
     TradePosition.waitingForBoth: {
-      // The buyer's payout is in (`api/logics.py:918-923`).
+      // The buyer's payout is in (`api/logics.py:920-935`).
       TradePosition.waitingForEscrow: _both,
       // The seller's escrow locked (`api/logics.py:1469-1474`).
       TradePosition.waitingForPayout: _both,
-      // The payout came while the escrow was already locked (`api/logics.py:924-931`).
+      // The payout came while the escrow was already locked (`api/logics.py:926-933`).
       TradePosition.chatting: _both,
       // Neither came in time: both bonds settled (`api/logics.py:360-379`).
       TradePosition.expired: _both,
@@ -114,7 +114,7 @@ abstract final class TradeEdges {
       TradePosition.cancelled: _both,
     },
     TradePosition.waitingForPayout: {
-      // The payout came (`api/logics.py:912-917`).
+      // The payout came (`api/logics.py:912-918`).
       TradePosition.chatting: _both,
       // The maker, the buyer, gave no payout: this seller's bond and escrow returned (`api/logics.py:423-443`).
       TradePosition.expired: _seller,
@@ -154,22 +154,25 @@ abstract final class TradeEdges {
       TradePosition.cancelled: _both,
       TradePosition.sendingSats: _both,
     },
+    // Back in the book without this robot, the order goes on without it: another robot takes it, it expires or is paused (error 1044), or its maker cancels it (error 1043). Only the closure uses these steps: a terminal position is never left.
+    TradePosition.publicAgain: {
+      TradePosition.notAvailable: _both,
+      TradePosition.cancelled: _both,
+    },
     TradePosition.sendingSats: {
       // The payout succeeded or failed (`api/lightning/lnd.py`, `cln.py:682-842`, `api/logics.py:1677`).
       TradePosition.succeeded: _both,
       TradePosition.routingFailed: _both,
     },
     TradePosition.routingFailed: {
-      // A new invoice or a retry (`api/logics.py:933-941`), or a retry that succeeds (`:1677`).
+      // A new invoice or a retry (`api/logics.py:938-944`), or a retry that succeeds (`:1677`).
       TradePosition.sendingSats: _both,
       TradePosition.succeeded: _both,
     },
   };
 
   static final Map<TradeRole, Map<TradePosition, Set<TradePosition>>>
-  _reachable = {
-    for (final role in TradeRole.values) role: _closure(role),
-  };
+  _reachable = {for (final role in TradeRole.values) role: _closure(role)};
 
   /// Whether a trade of a taker of [role] may be at [to] at a read after a read at [from]: the same position, or one reachable through [steps].
   ///
