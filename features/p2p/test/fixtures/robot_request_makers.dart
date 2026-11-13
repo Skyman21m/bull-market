@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
+import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' as robosats;
 import 'package:robosats/robosats.dart';
@@ -123,3 +124,13 @@ Future<void> closeByPort(
 /// A first contact made elsewhere than in the use case that puts a robot.
 Object firstContactOutsidePut(NetworkRobot robot) =>
     RobotContact.firstContact(robot);
+
+/// The acknowledgement of the robot panel's cubit wrapped in an extension, which any file could call (security review of step 6).
+extension AcknowledgeWrapper on RobotCoordinatorCubit {
+  Future<void> wrapped() => acknowledge();
+}
+
+/// The same, in a top-level variable.
+final acknowledgeInVariable = [
+  (RobotCoordinatorCubit cubit) => cubit.acknowledge(),
+];

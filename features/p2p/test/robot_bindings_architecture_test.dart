@@ -181,6 +181,8 @@ void main() {
     late AnalysisContextCollection collection;
     // What each scanned library refers to, by its path.
     late Map<String, Set<String>> references;
+    // What the robot panel's file refers to, by its top-level declaration.
+    late Map<String, Set<String>> panelDeclarations;
 
     setUpAll(() async {
       collection = AnalysisContextCollection(
@@ -194,6 +196,7 @@ void main() {
             path,
           )).values.fold(<String>{}, (all, found) => all..addAll(found)),
       };
+      panelDeclarations = await _referencesIn(collection, _panel);
     });
 
     Set<String> referring(bool Function(String reference) test) => {
@@ -219,7 +222,11 @@ void main() {
           {
             'fetchByTearOff': {'request CoordinatorClient.fetchKnownRobot'},
             'fetchInCascade': {'request CoordinatorClient.fetchRobot'},
-            'ReviewPeek': {'request CoordinatorClient.fetchKnownRobot'},
+            // An extension on a watched class is reported as such (security review of step 6).
+            'ReviewPeek': {
+              'extension on CoordinatorClient',
+              'request CoordinatorClient.fetchKnownRobot',
+            },
             'headerByTearOff': {'credential RobotIdentity.authorizationHeader'},
             'firstContactByTearOff': {
               'credential RobotIdentity.firstContactAuthorizationHeader',
@@ -246,6 +253,11 @@ void main() {
             'acknowledgeUseCaseByTearOff': {
               'AcknowledgeGarageKeyHistoryUsecase.execute',
             },
+            'AcknowledgeWrapper': {
+              'extension on RobotCoordinatorCubit',
+              'RobotCoordinatorCubit.acknowledge',
+            },
+            'acknowledgeInVariable': {'RobotCoordinatorCubit.acknowledge'},
             'proveByTearOff': {'UnprovenCoordinatorRobot.prove'},
             'generateByTearOff': {'RobotPgpKey.generate'},
             'fetchByUseCaseTearOff': {'FetchRobotUsecase.execute'},
@@ -506,6 +518,27 @@ void main() {
       },
     );
 
+    test(
+      'the robot cubit\'s actions are reached from the panel\'s own widgets only, and nothing wraps them',
+      () {
+        // The pins above go by name: a wrapper of the panel's file (an extension, a top-level function or variable) called from another file, or an extension elsewhere, would go around them (security review of step 6).
+        const actions = {
+          'RobotCoordinatorCubit.putOn',
+          'RobotCoordinatorCubit.retry',
+          'RobotCoordinatorCubit.acknowledge',
+        };
+        expect(
+          {
+            for (final MapEntry(key: declaration, value: found)
+                in panelDeclarations.entries)
+              if (found.any(actions.contains)) declaration,
+          },
+          {'_RobotCoordinatorPanelState', '_OnCoordinator'},
+        );
+        expect(referring((r) => r.startsWith('extension on ')), isEmpty);
+      },
+    );
+
     test('deleting a key cannot reach the bindings', () {
       expect(
         references['lib/src/domain/usecases/delete_garage_key_usecase.dart'],
@@ -517,6 +550,67 @@ void main() {
         ),
       );
     });
+  });
+
+  test('the robot cubit\'s public surface is exactly what the panel uses', () {
+    // A public member of the cubit is a way to its use cases: one more, wrapping the acknowledgement or a request, fails here before any review, as the custody gate pins the surfaces of the Garage Key's readers (security review of step 6).
+    final unit = parseString(
+      content: File(
+        'lib/src/presentation/robot_coordinator_cubit.dart',
+      ).readAsStringSync(),
+    ).unit;
+    expect(
+      unit.directives.where((d) => d is PartDirective || d is PartOfDirective),
+      isEmpty,
+    );
+    expect(
+      [
+        for (final declaration in unit.declarations)
+          switch (declaration) {
+            ClassDeclaration(:final namePart) => namePart.typeName.lexeme,
+            GenericTypeAlias(:final name) => name.lexeme,
+            _ => declaration.toSource(),
+          },
+      ].where((name) => !name.startsWith('_')),
+      ['RobotCoordinatorCubit'],
+    );
+    expect(
+      _publicSurface(unit.declarations.whereType<ClassDeclaration>().single),
+      [
+        'field static const stillWaitingAfter',
+        'constructor RobotCoordinatorCubit(this._key, this._index, this._readStanding, this._putOnCoordinator, this._readOnCoordinator, this._release, this._watchTor, this._listHosts, this._acknowledge, {this._stillWaitingAfter = RobotCoordinatorCubit.stillWaitingAfter})',
+        'method Future<void> load()',
+        'method List<RobotHost> hosts()',
+        'method Future<void> putOn(Coordinator coordinator)',
+        'method Future<void> acknowledge()',
+        'method Future<void> retry()',
+        'method Future<void> close()',
+      ],
+    );
+    // The check sees a wrapper method, a public field and a named constructor.
+    expect(
+      _publicSurface(
+        parseString(
+              content: '''
+class RobotCoordinatorCubit {
+  final Object _acknowledge;
+  RobotCoordinatorCubit(this._acknowledge);
+  RobotCoordinatorCubit.other(this._acknowledge);
+  final Object leak = 0;
+  Future<void> wrapped() async => _acknowledge;
+  void _private() {}
+}
+''',
+            ).unit.declarations.single
+            as ClassDeclaration,
+      ),
+      [
+        'constructor RobotCoordinatorCubit(this._acknowledge)',
+        'constructor RobotCoordinatorCubit.other(this._acknowledge)',
+        'field final leak',
+        'method Future<void> wrapped()',
+      ],
+    );
   });
 
   test('only the data layer and the composition reach the database', () {
@@ -1066,21 +1160,39 @@ final class _ReferenceVisitor extends RecursiveAstVisitor<void> {
   static bool _isDynamic(Expression? expression) =>
       expression?.staticType is DynamicType;
 
+  /// Each reference is kept under the top-level declaration it is in, whatever its kind: a class, a function, an extension, a top-level variable, and any other kind under a label of its own, so that a wrapper is never counted as part of the declaration before it (security review of step 6).
   @override
-  void visitFunctionDeclaration(FunctionDeclaration node) {
-    _declaration = node.name.lexeme;
-    super.visitFunctionDeclaration(node);
+  void visitCompilationUnit(CompilationUnit node) {
+    _declaration = '';
+    for (final directive in node.directives) {
+      directive.accept(this);
+    }
+    for (final declaration in node.declarations) {
+      _declaration = switch (declaration) {
+        ClassDeclaration(:final namePart) => namePart.typeName.lexeme,
+        FunctionDeclaration(:final name) => name.lexeme,
+        ExtensionDeclaration(:final name) => name?.lexeme ?? 'extension',
+        TopLevelVariableDeclaration(:final variables) => [
+          for (final variable in variables.variables) variable.name.lexeme,
+        ].join(', '),
+        _ => '${declaration.runtimeType} at ${declaration.offset}',
+      };
+      declaration.accept(this);
+    }
   }
 
-  @override
-  void visitClassDeclaration(ClassDeclaration node) {
-    _declaration = node.namePart.typeName.lexeme;
-    super.visitClassDeclaration(node);
-  }
-
+  /// An extension on a watched class can wrap its members under other names: it is reported as `extension on Class`.
   @override
   void visitExtensionDeclaration(ExtensionDeclaration node) {
-    _declaration = node.name?.lexeme ?? '';
+    if (node.onClause?.extendedType.type case InterfaceType(:final element)) {
+      final name = element.name;
+      for (final MapEntry(key: watched, value: (library, _))
+          in _watched.entries) {
+        if (name == watched && _in(element, library)) {
+          _add('extension on $watched');
+        }
+      }
+    }
     super.visitExtensionDeclaration(node);
   }
 
@@ -1154,3 +1266,35 @@ String _dartSdkPath() {
     directory = directory.parent;
   }
 }
+
+/// The file of the robot panel of the Garage.
+const _panel = 'lib/src/ui/garage/robot_coordinator_panel.dart';
+
+/// The public members of [declaration] (constructors, fields, methods, getters and setters whose names do not start with `_`), each as `<kind> <source without body>`.
+List<String> _publicSurface(ClassDeclaration declaration) => [
+  for (final member in switch (declaration.body) {
+    BlockClassBody(:final members) => members,
+    _ => const <ClassMember>[],
+  })
+    ...switch (member) {
+      ConstructorDeclaration(:final name, :final parameters)
+          when !(name?.lexeme.startsWith('_') ?? false) =>
+        [
+          'constructor ${declaration.namePart.typeName.lexeme}${name == null ? '' : '.${name.lexeme}'}${parameters.toSource()}',
+        ],
+      FieldDeclaration(:final fields, :final isStatic) => [
+        for (final variable in fields.variables)
+          if (!variable.name.lexeme.startsWith('_'))
+            [
+              'field',
+              if (isStatic) 'static',
+              ?fields.keyword?.lexeme,
+              variable.name.lexeme,
+            ].join(' '),
+      ],
+      MethodDeclaration(:final name) when !name.lexeme.startsWith('_') => [
+        '${['method', if (member.isStatic) 'static', if (member.isGetter) 'get', if (member.isSetter) 'set', ?member.returnType?.toSource(), name.lexeme].join(' ')}${member.parameters?.toSource() ?? ''}',
+      ],
+      _ => const <String>[],
+    },
+];
