@@ -349,27 +349,27 @@ void main() {
         ),
         (
           const CoordinatorResponseTooLarge(),
-          '$name sent an answer Troc cannot read.',
+          '$name sent an answer Bull Market cannot read.',
           RobotWayOut.readBack,
         ),
         (
           const CoordinatorNotJson(),
-          '$name sent an answer Troc cannot read.',
+          '$name sent an answer Bull Market cannot read.',
           RobotWayOut.readBack,
         ),
         (
           const CoordinatorResponseMalformed('hash_id'),
-          '$name sent an answer Troc cannot read.',
+          '$name sent an answer Bull Market cannot read.',
           RobotWayOut.readBack,
         ),
         (
           const CoordinatorUnexpectedStatus(500),
-          '$name sent an answer Troc cannot read.',
+          '$name sent an answer Bull Market cannot read.',
           RobotWayOut.readBack,
         ),
         (
           const CoordinatorNodeIdMismatch(),
-          '$name sent an answer Troc cannot read.',
+          '$name sent an answer Bull Market cannot read.',
           RobotWayOut.readBack,
         ),
         (
@@ -428,7 +428,7 @@ void main() {
       for (final (failure, text, wayOut) in <(P2pFailure, String, RobotWayOut)>[
         (
           const P2pStorageFailure(),
-          'Troc could not read its records on this device. Nothing was sent.',
+          'Bull Market could not read its records on this device. Nothing was sent.',
           RobotWayOut.readBack,
         ),
         (
