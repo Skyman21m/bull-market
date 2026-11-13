@@ -1320,14 +1320,17 @@ void main() {
 
         // The binds of one connection run in order; the record of the other lands somewhere among them.
         // It checks the order of the results, not that a bind is atomic: a bind that read the history, then wrote, passes it most of the time; `robot_bindings_architecture_test.dart` pins the one statement (review of #72).
-        // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections below: such a bind is a P2pStorageFailure that refuses the request, and a record that gave up is asked again until it is written (`untilNotBusy`).
+        // Two connections writing at once can make SQLite give up after its busy timeout, as in the test of three connections below: such a write is a P2pStorageFailure that refuses the request, and it is asked again until it is answered (`untilNotBusy`).
+        // A bind gives up only while the record holds the write lock, and is asked again behind the binds already queued on its connection, so it is answered once the record is written, as the binds after it are: the order still follows the record, and under the load of the whole suite every bind of a phase could give up otherwise (#65).
         Future<List<Result<void, P2pFailure>>> bindDuring(
           Iterable<int> indexes,
           Future<Result<void, P2pFailure>> Function() record,
         ) async {
           final binds = [
             for (final index in indexes)
-              one.bind(RobotSlot(testnet, fingerprintA, index), temple),
+              untilNotBusy(
+                () => one.bind(RobotSlot(testnet, fingerprintA, index), temple),
+              ),
           ];
           final recorded = untilNotBusy(record);
           final results = await Future.wait(binds);
