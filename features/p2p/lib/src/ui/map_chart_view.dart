@@ -352,8 +352,15 @@ class _MapChartViewState extends State<MapChartView> {
                 child: IgnorePointer(
                   child: ExcludeSemantics(
                     child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(BullSpacing.lg),
+                      // On a card, so that the borders of the countries do not cross the words.
+                      child: Container(
+                        margin: const EdgeInsets.all(BullSpacing.lg),
+                        padding: const EdgeInsets.all(BullSpacing.md),
+                        decoration: BoxDecoration(
+                          color: colors.cardBackground,
+                          borderRadius: BorderRadius.circular(BullRadius.xs),
+                          border: Border.all(color: colors.outline),
+                        ),
                         child: Text(
                           l10n.p2pMapNoLocation,
                           textAlign: TextAlign.center,
