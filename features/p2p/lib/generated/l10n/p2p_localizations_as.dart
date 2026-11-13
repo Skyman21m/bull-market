@@ -775,7 +775,7 @@ class P2pLocalizationsAs extends P2pLocalizations {
 
   @override
   String get p2pGarageKeyHistoryNotRecorded =>
-      'This device could not record that it drew this Garage Key. Its robots are treated as coming from elsewhere. You can generate a new key instead.';
+      'This device could not record that it drew this Garage Key. Its robots will ask for your confirmation before they reach a coordinator. You can generate a new key instead.';
 
   @override
   String get p2pRobotCoordinatorTitle => 'Coordinator that knows your robot:';
@@ -918,4 +918,14 @@ class P2pLocalizationsAs extends P2pLocalizations {
   @override
   String get p2pRobotRecordsUnreadable =>
       'Troc could not read its records on this device.';
+
+  @override
+  String get p2pRobotHistoryTitle => 'Robots from elsewhere';
+
+  @override
+  String get p2pRobotHistoryBody =>
+      'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.';
+
+  @override
+  String get p2pRobotHistoryConfirm => 'I understand';
 }
