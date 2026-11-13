@@ -26,6 +26,13 @@ final class BookRetry {
   /// How far each wait is spread, up or down, at random: a wait of 5 seconds lasts from 4 to 6 seconds, so that coordinators that failed together, as on a cold start, are not asked again together.
   static const jitter = 0.2;
 
+  /// How long a coordinator is shown awaited at most, from the moment it is asked, before it is shown offline while its attempts go on.
+  ///
+  /// Each attempt may last up to 132 seconds, so a coordinator that times out every time would otherwise be awaited about seven minutes.
+  /// The slowest cold first contact measured succeeded 23 seconds after Tor was ready, and the third attempt of a coordinator that fails fast starts about 50 seconds after the first: 75 seconds covers both with a margin, and stays a bearable wait to look at.
+  /// It is a decision of the project (#73), not of the official client, which stops waiting for a coordinator after 15 seconds but has no second attempt to wait for.
+  static const awaitedAtMost = Duration(seconds: 75);
+
   /// How many attempts a coordinator gets in all: the first and one per wait.
   int get maxAttempts => waits.length + 1;
 

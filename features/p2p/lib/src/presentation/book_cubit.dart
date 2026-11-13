@@ -16,7 +16,7 @@ import 'book_state.dart';
 
 /// The P2P book: it starts Tor, waits for it, then asks every coordinator for its book and shows each one as it arrives.
 ///
-/// A coordinator whose request got no answer is asked again by the use case, and stays awaited meanwhile: it is shown offline only after its last attempt.
+/// A coordinator whose request got no answer is asked again by the use case, and stays awaited meanwhile: it is shown offline after its last attempt, or once it has been awaited `BookRetry.awaitedAtMost`, its attempts going on and its book still taken if one of them gets it.
 class BookCubit extends Cubit<BookState> {
   final WatchP2pTorStateUsecase _watchTor;
   final StartP2pTorUsecase _startTor;
@@ -49,10 +49,10 @@ class BookCubit extends Cubit<BookState> {
     unawaited(_retryTor.execute());
   }
 
-  /// Asks every coordinator again, keeping their orders on screen meanwhile, each with all its attempts; completes once each has given its book or its last attempt failed.
+  /// Asks every coordinator again, keeping their orders on screen meanwhile, each with all its attempts; completes once each has given its book or is shown offline.
   Future<void> refresh() => _request(state.coordinators.keys.toSet());
 
-  /// Asks again, with all their attempts, only the coordinators shown offline.
+  /// Asks again, with all their attempts, only the coordinators shown offline; completes as [refresh] does.
   Future<void> retryFailed() => _request(state.failedCoordinators.toSet());
 
   void selectSide(BookSide side) => _filter(state.filter.withSide(side));
@@ -105,10 +105,11 @@ class BookCubit extends Cubit<BookState> {
         ),
     };
     emit(state.copyWith(coordinators: statuses));
-    await Future.wait([
-      for (final MapEntry(key: coordinator, value: attempts) in started.entries)
-        _await(coordinator, attempts),
-    ]);
+    for (final MapEntry(key: coordinator, value: attempts) in started.entries) {
+      unawaited(_await(coordinator, attempts));
+      unawaited(_awaitOverdue(coordinator, attempts));
+    }
+    await Future.wait([for (final attempts in started.values) attempts.shown]);
   }
 
   Future<void> _await(
@@ -123,10 +124,27 @@ class BookCubit extends Cubit<BookState> {
       return;
     }
     _attempts.remove(coordinator);
-    final status = switch (result) {
+    _show(coordinator, switch (result) {
       Ok(:final value) => CoordinatorBookLoaded(value),
       Err(:final failure) => CoordinatorBookFailed(failure),
-    };
+    });
+  }
+
+  /// Shows offline a coordinator awaited too long; its attempts go on, and [_await] shows its book if one of them gets it.
+  Future<void> _awaitOverdue(
+    Coordinator coordinator,
+    CoordinatorBookAttempts attempts,
+  ) async {
+    final failure = await attempts.overdue;
+    if (failure == null ||
+        isClosed ||
+        !identical(_attempts[coordinator], attempts)) {
+      return;
+    }
+    _show(coordinator, CoordinatorBookFailed(failure));
+  }
+
+  void _show(Coordinator coordinator, CoordinatorBookStatus status) {
     final coordinators = {...state.coordinators, coordinator: status};
     emit(
       state.copyWith(

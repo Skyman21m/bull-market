@@ -32,7 +32,7 @@ final class CoordinatorBookLoaded extends CoordinatorBookStatus {
   List<PublicOrder> get orders => book.orders;
 }
 
-/// The coordinator gave no book, and is not asked again until the user does: it is shown offline, and its orders are not.
+/// The coordinator gave no book after its last attempt, or none yet after `BookRetry.awaitedAtMost`, its attempts going on: it is shown offline, and its orders are not.
 final class CoordinatorBookFailed extends CoordinatorBookStatus {
   final CoordinatorFailure failure;
 

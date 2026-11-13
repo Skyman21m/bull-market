@@ -636,6 +636,40 @@ void main() {
         },
       );
 
+      testWidgets(
+        'a coordinator still silent 75 seconds after the load began is shown offline, a late answer lights it, and « Retry » meanwhile sends nothing',
+        (tester) async {
+          transport
+            ..failures.clear()
+            ..held.add('lake');
+          await open(tester);
+          tor.add(P2pTorState.ready);
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+
+          await tester.pump(const Duration(seconds: 74));
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+          await tester.pump(const Duration(seconds: 1));
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.offline);
+          expect(shown('1 coordinator offline'), findsOneWidget);
+
+          await tester.tap(retry);
+          await settle(tester);
+          expect(
+            transport.requested.where((request) => request == 'lake/api/book/'),
+            hasLength(1),
+          );
+          expect(rowState(tester, 'lake'), CoordinatorRowState.awaited);
+
+          transport.release('lake');
+          await settle(tester);
+          expect(rowState(tester, 'lake'), CoordinatorRowState.answered);
+          expect(find.text('Buyer'), findsOneWidget);
+          expect(shown('6 of 6 coordinators answered'), findsOneWidget);
+        },
+      );
+
       testWidgets('a retry runs the bar until the coordinator answers', (
         tester,
       ) async {

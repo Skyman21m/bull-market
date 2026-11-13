@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:p2p/src/domain/book_retry.dart';
 import 'package:p2p/src/domain/p2p_waits.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -8,9 +9,11 @@ import 'package:robosats/robosats.dart';
 import 'fakes.dart';
 
 /// The timers and the draw of the book's waits, which the test fires and sets itself.
+///
+/// The waits before an attempt are told from the bound of [BookRetry.awaitedAtMost] (75 s) by their duration, which no spread wait can have.
 final class FakeWaits {
-  /// Every timer started, in order, fired or cancelled ones included.
-  final List<FakeTimer> started = [];
+  /// Every timer started, in order, fired or cancelled ones included, the bounds included.
+  final List<FakeTimer> all = [];
 
   /// The draw from 0 to 1 that spreads each wait: the middle, which spreads none, unless the test sets another.
   double draw = 0.5;
@@ -21,7 +24,7 @@ final class FakeWaits {
   late final P2pWaits waits = P2pWaits(
     start: (duration, callback) {
       final timer = FakeTimer(duration, callback);
-      started.add(timer);
+      all.add(timer);
       return timer;
     },
     random: () {
@@ -30,15 +33,43 @@ final class FakeWaits {
     },
   );
 
-  /// The timers still waiting, in the order they were started.
+  static bool _isBound(FakeTimer timer) =>
+      timer.duration == BookRetry.awaitedAtMost;
+
+  /// The waits before an attempt started, in order, fired or cancelled ones included.
+  List<FakeTimer> get started => [
+    for (final timer in all)
+      if (!_isBound(timer)) timer,
+  ];
+
+  /// The waits before an attempt still running, in the order they were started.
   List<FakeTimer> get pending => [
     for (final timer in started)
       if (timer.isActive) timer,
   ];
 
-  /// Fires every timer still waiting.
+  /// The bounds of [BookRetry.awaitedAtMost] still running, one per coordinator asked.
+  List<FakeTimer> get awaitedBounds => [
+    for (final timer in all)
+      if (timer.isActive && timer.duration == BookRetry.awaitedAtMost) timer,
+  ];
+
+  /// Every timer still running, waits and bounds.
+  List<FakeTimer> get running => [
+    for (final timer in all)
+      if (timer.isActive) timer,
+  ];
+
+  /// Fires every wait before an attempt still running, not the bounds.
   void fireAll() {
     for (final timer in pending) {
+      timer.fire();
+    }
+  }
+
+  /// Lets [BookRetry.awaitedAtMost] pass for every coordinator asked so far.
+  void fireAwaitedBounds() {
+    for (final timer in awaitedBounds) {
       timer.fire();
     }
   }

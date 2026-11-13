@@ -1,3 +1,4 @@
+import 'package:p2p/src/domain/book_retry.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:primitives/primitives.dart';
@@ -390,6 +391,141 @@ void main() {
       attempts.stopAskingAgain();
       transport.release('temple');
       expect(idsOf(await outcomeNow(attempts)), [1]);
+    });
+  });
+
+  group('awaited at most 75 seconds', () {
+    /// What [future] gave so far: `(false, null)` while it runs.
+    Future<(bool, T?)> now<T>(Future<T> future) async {
+      var done = false;
+      T? value;
+      future.then((v) {
+        value = v;
+        done = true;
+      }).ignore();
+      await settle();
+      return (done, value);
+    }
+
+    test('the bound is 75 seconds, one per coordinator asked', () async {
+      expect(BookRetry.awaitedAtMost, const Duration(seconds: 75));
+      transport.held.add('temple');
+      ask('temple');
+      await settle();
+      expect(waits.awaitedBounds, hasLength(1));
+      transport.release('temple');
+      await settle();
+      expect(waits.running, isEmpty);
+    });
+
+    test(
+      'a request still in flight at 75 seconds: shown offline, timed out, and its book still taken later',
+      () async {
+        transport.held.add('temple');
+        final attempts = ask('temple');
+        await settle();
+        expect(await now(attempts.overdue), (false, null));
+
+        waits.fireAwaitedBounds();
+        final (shownOffline, failure) = await now(attempts.overdue);
+        expect(shownOffline, isTrue);
+        expect(failure, isA<CoordinatorTimedOut>());
+        expect((await now(attempts.outcome)).$1, isFalse);
+        expect((await now(attempts.shown)).$1, isTrue);
+
+        transport.release('temple');
+        expect(idsOf(await outcomeNow(attempts)), [1]);
+        expect(transport.requestsTo('temple'), 1);
+        expect(waits.running, isEmpty);
+      },
+    );
+
+    test(
+      'once shown offline, its attempts go on within the rule, and the latest failure is the one shown',
+      () async {
+        transport.script['temple'] = const [
+          ScriptedFailure(CoordinatorUnreachable()),
+        ];
+        final attempts = ask('temple');
+        await settle();
+        transport.held.add('temple');
+        waits.fireAll();
+        await settle();
+        expect(transport.requestsTo('temple'), 2);
+
+        waits.fireAwaitedBounds();
+        expect((await now(attempts.overdue)).$2, isA<CoordinatorUnreachable>());
+        transport.release('temple');
+        expect(idsOf(await outcomeNow(attempts)), [1]);
+      },
+    );
+
+    test(
+      'an outcome before the bound: never shown offline, the bound ended',
+      () async {
+        final attempts = ask('temple');
+        expect(idsOf(await outcomeNow(attempts)), [1]);
+        expect(await attempts.overdue, isNull);
+        expect(waits.running, isEmpty);
+      },
+    );
+
+    test(
+      '« shown » comes after the outcome or the overdue failure, whoever waits for it first',
+      () async {
+        final order = <String>[];
+        transport.held.addAll({'temple', 'lake'});
+        final temple = ask('temple');
+        final lake = ask('lake');
+        temple.shown.then((_) => order.add('temple shown')).ignore();
+        lake.shown.then((_) => order.add('lake shown')).ignore();
+        temple.outcome.then((_) => order.add('temple outcome')).ignore();
+        lake.overdue.then((_) => order.add('lake overdue')).ignore();
+        await settle();
+
+        transport.release('temple');
+        await settle();
+        waits.fireAwaitedBounds();
+        await settle();
+        expect(order, [
+          'temple outcome',
+          'temple shown',
+          'lake overdue',
+          'lake shown',
+        ]);
+        transport.release('lake');
+        await settle();
+      },
+    );
+
+    test('cancel ends the bound too', () async {
+      transport.held.add('temple');
+      final attempts = ask('temple');
+      await settle();
+      final bound = waits.awaitedBounds.single;
+
+      attempts.cancel();
+      expect(bound.cancelled, isTrue);
+      expect(await attempts.overdue, isNull);
+      expect(waits.running, isEmpty);
+      transport.release('temple');
+      await settle();
+    });
+
+    test('a new call for the coordinator starts a bound of its own', () async {
+      transport.held.add('temple');
+      final first = ask('temple');
+      await settle();
+      first.cancel();
+      final second = ask('temple');
+      await settle();
+
+      expect(waits.awaitedBounds, hasLength(1));
+      waits.fireAwaitedBounds();
+      expect(await second.overdue, isA<CoordinatorTimedOut>());
+      expect(transport.requestsTo('temple'), 1);
+      transport.release('temple');
+      expect(idsOf(await outcomeNow(second)), [1]);
     });
   });
 

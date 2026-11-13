@@ -96,12 +96,20 @@ final class CoordinatorBookAttempts {
   final LoadFederationBooksUsecase _usecase;
   final BookRetry _retry;
   final _outcome = Completer<Result<OrderBook, CoordinatorFailure>?>();
+  final _overdue = Completer<CoordinatorFailure?>();
+  final _shown = Completer<void>();
 
   /// How many requests these attempts have sent or joined so far.
   int _attempts = 0;
 
   /// The failure of the last attempt, while the wait before the next one runs.
   CoordinatorFailure? _lastFailure;
+
+  /// The failure of the latest attempt that failed, kept while the next one runs.
+  CoordinatorFailure? _latestFailure;
+
+  /// The time a coordinator is shown awaited at most, from these attempts' start: [BookRetry.awaitedAtMost].
+  late final Timer _bound;
 
   /// The wait before the next attempt, while it runs.
   Timer? _wait;
@@ -113,6 +121,7 @@ final class CoordinatorBookAttempts {
     : _retry = _usecase._reached.contains(coordinator)
           ? BookRetry.reached
           : BookRetry.firstContact {
+    _bound = _usecase._waits.start(BookRetry.awaitedAtMost, _showOffline);
     _attempt();
   }
 
@@ -125,13 +134,26 @@ final class CoordinatorBookAttempts {
   /// Whether the wait before another attempt is running.
   bool get isWaiting => _wait != null;
 
-  /// Stops at once: no other request is sent, the wait before one ends, and [outcome] completes with `null`.
+  /// The failure to show once [BookRetry.awaitedAtMost] has passed without an outcome: the coordinator is shown offline then, while its attempts go on, and an answer they get later still gives its book through [outcome].
+  ///
+  /// It is the failure of the latest attempt that failed, or [CoordinatorTimedOut] while the first one is still in flight; `null` when the outcome came first or [cancel] was called.
+  Future<CoordinatorFailure?> get overdue => _overdue.future;
+
+  /// Completes once the coordinator is no longer shown awaited, its outcome given or it shown offline, or once these attempts were cancelled.
+  ///
+  /// It completes after [outcome] or [overdue] has its value, so that whoever waits for those has handled it first.
+  Future<void> get shown => _shown.future;
+
+  /// Stops at once: no other request is sent, the wait before one ends, and [outcome] and [overdue] complete with `null`.
   ///
   /// A request in flight is not stopped, since the transport cannot take it back; its answer is dropped here, and a later call of [LoadFederationBooksUsecase.execute] joins it.
   void cancel() {
     _wait?.cancel();
     _wait = null;
+    _bound.cancel();
     if (!_outcome.isCompleted) _outcome.complete(null);
+    if (!_overdue.isCompleted) _overdue.complete(null);
+    if (!_shown.isCompleted) _shown.complete();
   }
 
   /// Sends no other request: a wait before one ends at once with the failure that led to it, and a request in flight gives the outcome, whatever it is.
@@ -162,6 +184,7 @@ final class CoordinatorBookAttempts {
                   attempts: attempts,
                   draw: _usecase._waits.random,
                 );
+          _latestFailure = failure;
           if (wait == null) {
             _finish(Err(failure));
           } else {
@@ -173,6 +196,15 @@ final class CoordinatorBookAttempts {
   }
 
   void _finish(Result<OrderBook, CoordinatorFailure> result) {
+    _bound.cancel();
     if (!_outcome.isCompleted) _outcome.complete(result);
+    if (!_overdue.isCompleted) _overdue.complete(null);
+    if (!_shown.isCompleted) _shown.complete();
+  }
+
+  void _showOffline() {
+    if (_outcome.isCompleted || _overdue.isCompleted) return;
+    _overdue.complete(_latestFailure ?? const CoordinatorTimedOut());
+    if (!_shown.isCompleted) _shown.complete();
   }
 }
