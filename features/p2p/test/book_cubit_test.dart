@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/order_search.dart';
@@ -657,6 +659,34 @@ void main() {
         expect(scripted.requestsTo('temple'), 5);
         expect(book.state.failedCoordinators, [coordinator('temple')]);
         expect(scripted.mostAtOnce['temple'], 1);
+        await book.close();
+      },
+    );
+
+    test(
+      'an outcome a newer request overtook before the book handled it is dropped',
+      () async {
+        scripted.script['temple'] = const [
+          ScriptedFailure(CoordinatorUnreachable()),
+        ];
+        final book = await shown();
+        expect(waits.pending, hasLength(1));
+        scripted.held.add('temple');
+
+        // Tor fails under the book: temple's attempts end at once with their failure, and a refresh asks it again before the book has handled that outcome.
+        tor.embedded.failed();
+        late Future<void> refreshed;
+        scheduleMicrotask(() => refreshed = book.refresh());
+        await settle();
+
+        expect(scripted.requestsTo('temple'), 2);
+        expect(book.state.loadingCoordinators, [coordinator('temple')]);
+        expect(book.state.failedCoordinators, isEmpty);
+
+        scripted.release('temple');
+        await refreshed;
+        expect(book.state.loadingCoordinators, isEmpty);
+        expect(book.state.orders.map((o) => o.id), [1, 2]);
         await book.close();
       },
     );
