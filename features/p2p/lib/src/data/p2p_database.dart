@@ -90,13 +90,14 @@ class RobotBindings extends Table {
 ///
 /// A row is written before the take's request leaves, as a pending take, or on the user's take-over of a trade that recovery found; it is never deleted.
 /// Its only changes are the times of its state, each set once: `confirmed_at` when the coordinator showed the robot as the taker, `closed_at` when the trade ended or the pending take turned out not to have happened.
-/// Its robot is bound to the coordinator it records (a foreign key to `robot_bindings`), and its network and coordinator are copied from that binding by the statement that writes it.
+/// The triggers of `trades.drift` refuse any other change and any delete, whatever the code that writes.
+/// Its robot is bound, on the trade's network, to the coordinator it records (a foreign key to `robot_bindings`), and its network and coordinator are copied from that binding by the statement that writes it.
 @DataClassName('TradeRow')
 class Trades extends Table {
   /// The network of the robot's binding, `mainnet` or `testnet`.
   TextColumn get network => text()();
 
-  /// The `GarageKeyFingerprint` of the robot's key, 64 hexadecimal characters.
+  /// The `GarageKeyFingerprint` of the robot's key, 64 lowercase hexadecimal characters.
   TextColumn get keyFingerprint => text()();
 
   /// The index of the robot in its key.
@@ -126,17 +127,6 @@ class Trades extends Table {
   /// When the trade ended, or its pending take turned out not to have happened, in milliseconds since the epoch; absent while it is active.
   IntColumn get closedAt => integer().nullable()();
 
-  /// The payment hash of a payment of this trade started from this wallet (« Pay with this wallet »), 64 lowercase hexadecimal characters; absent until that payment starts.
-  ///
-  /// Schema 3 adds the three payment columns so that no migration is needed before the first build; nothing writes them until the pull request that adds the payment (design note § 3.5, after #100), which sets each once and never clears it.
-  TextColumn get paymentHash => text().nullable()();
-
-  /// When that payment was started, in milliseconds since the epoch: written with [paymentHash], before the wallet is asked to pay.
-  IntColumn get paymentStartedAt => integer().nullable()();
-
-  /// The id of the wallet's swap that pays it, once the wallet returned it.
-  TextColumn get paymentSwapId => text().nullable()();
-
   /// One trade per robot, ever: a robot is never used for a second trade.
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
@@ -144,7 +134,7 @@ class Trades extends Table {
   @override
   List<String> get customConstraints => const [
     "CHECK (network IN ('mainnet', 'testnet'))",
-    'CHECK (length(key_fingerprint) = 64)',
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
     'CHECK (length(coordinator_alias) > 0)',
     'CHECK (length(coordinator_onion) > 0)',
@@ -153,11 +143,12 @@ class Trades extends Table {
     "CHECK (origin IN ('takenHere', 'recovered'))",
     // A recovered trade is held by its robot when it is recorded: it is never a pending take.
     "CHECK (origin = 'takenHere' OR confirmed_at IS NOT NULL)",
-    // A payment started has its hash and its time together, and its swap only after both.
-    "CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*'))",
-    'CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL))',
-    'CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128))',
-    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index)',
+    // Times of the records this code writes: never before the epoch.
+    'CHECK (taken_at >= 0)',
+    'CHECK (confirmed_at IS NULL OR confirmed_at >= 0)',
+    'CHECK (closed_at IS NULL OR closed_at >= 0)',
+    // The robot's binding, on the trade's network: the unique index `robot_bindings_network` (trades.drift) is its parent key.
+    'FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network)',
   ];
 }
 
@@ -166,7 +157,10 @@ class Trades extends Table {
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
-@DriftDatabase(tables: [GarageKeyHistories, RobotBindings, Trades])
+@DriftDatabase(
+  tables: [GarageKeyHistories, RobotBindings, Trades],
+  include: {'trades.drift'},
+)
 final class P2pDatabase extends _$P2pDatabase {
   static const int schema = 3;
 
@@ -224,9 +218,12 @@ final class P2pDatabase extends _$P2pDatabase {
         }
       },
       from2To3: (m, schema) async {
-        // A new table: drift creates it only when it is missing, so a step that stopped before the version was written runs again over the file it left.
-        // No binding and no history is touched.
+        // A new table, the unique index its foreign key needs on the bindings, and the triggers that keep its rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // The index adds no rule to the bindings, which the primary key (key fingerprint, robot index) already makes unique; no binding and no history is copied, changed or dropped.
         await m.createTable(schema.trades);
+        await m.createIndex(schema.robotBindingsNetwork);
+        await m.createTrigger(schema.tradesNeverDeleted);
+        await m.createTrigger(schema.tradesSetOnce);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

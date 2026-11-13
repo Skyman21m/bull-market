@@ -55,17 +55,6 @@ final class TradeRecord {
   /// When the trade ended (a terminal status was read, or the pending take turned out not to have happened), or `null` while it is active.
   final DateTime? closedAt;
 
-  /// The payment hash of a payment of this trade started from this wallet, 64 lowercase hexadecimal characters, or `null` when none was started; never printed.
-  ///
-  /// Nothing writes it yet: the pull request that adds « Pay with this wallet » does, with [paymentStartedAt], before it asks the wallet to pay, so that the app never pays a trade twice (design note § 3.5, § 4.5).
-  final String? paymentHash;
-
-  /// When that payment was started: present exactly when [paymentHash] is.
-  final DateTime? paymentStartedAt;
-
-  /// The id of the wallet's swap that pays it, once the wallet returned it: present only with [paymentHash].
-  final String? paymentSwapId;
-
   const TradeRecord({
     required this.robot,
     required this.coordinatorAlias,
@@ -76,9 +65,6 @@ final class TradeRecord {
     required this.takenAt,
     required this.confirmedAt,
     required this.closedAt,
-    this.paymentHash,
-    this.paymentStartedAt,
-    this.paymentSwapId,
   });
 
   /// The network of the trade: the network of the robot's binding, never chosen apart from it.
@@ -103,10 +89,7 @@ final class TradeRecord {
       other.origin == origin &&
       other.takenAt == takenAt &&
       other.confirmedAt == confirmedAt &&
-      other.closedAt == closedAt &&
-      other.paymentHash == paymentHash &&
-      other.paymentStartedAt == paymentStartedAt &&
-      other.paymentSwapId == paymentSwapId;
+      other.closedAt == closedAt;
 
   @override
   int get hashCode => Object.hash(
@@ -119,12 +102,9 @@ final class TradeRecord {
     takenAt,
     confirmedAt,
     closedAt,
-    paymentHash,
-    paymentStartedAt,
-    paymentSwapId,
   );
 
-  /// The robot without its key's fingerprint, the coordinator's alias, the order and the state; nothing of a payment.
+  /// The robot without its key's fingerprint, the coordinator's alias, the order and the state.
   @override
   String toString() =>
       'TradeRecord($robot, $coordinatorAlias, $orderId, ${role.name}, ${origin.name}, ${switch ((confirmedAt, closedAt)) {
@@ -132,6 +112,38 @@ final class TradeRecord {
         (_?, null) => 'taken',
         (null, null) => 'pending',
       }})';
+}
+
+/// A robot that the repository of the trade records has just bound to a coordinator for a new trade, in one statement that found its index free: the proof a pending take needs (`TradeRecordRepository.recordPendingTake`).
+///
+/// Only that repository makes one, when its reservation wrote the binding: `test/trade_record_test.dart` pins that no other library of the feature calls this constructor, and nothing extends or implements it.
+/// So a robot that the Garage bound, or that a reservation lost to another call, never takes a pending take.
+/// It lives in memory only: a reservation not followed by a pending take, as when the app is killed in between, leaves its robot bound to that coordinator, without a trade, and never returned again.
+/// It holds no token and no key, but the fingerprint of the robot's key, which is never printed.
+@immutable
+final class TradeReservation {
+  /// The robot reserved, with its key's network, which is the network of the trade.
+  final RobotSlot robot;
+
+  /// The coordinator the robot was bound to.
+  final CoordinatorIdentity coordinator;
+
+  const TradeReservation(this.robot, this.coordinator);
+
+  /// The network of the trade: the robot's, which is the coordinator's.
+  RobosatsNetwork get network => robot.network;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TradeReservation &&
+      other.robot == robot &&
+      other.coordinator == coordinator;
+
+  @override
+  int get hashCode => Object.hash(robot, coordinator);
+
+  @override
+  String toString() => 'TradeReservation($robot, $coordinator)';
 }
 
 /// What a new trade may use of one Garage Key on one network, read in one statement: whether the key's history lets its robots start a trade, and the indexes already used.

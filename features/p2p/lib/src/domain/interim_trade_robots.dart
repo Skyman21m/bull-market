@@ -27,7 +27,7 @@ final class InterimTradeRobots implements TradeRobots {
   const InterimTradeRobots(this._keys, this._records);
 
   @override
-  Future<Result<NetworkRobot, P2pFailure>> robotForNewTrade(
+  Future<Result<ReservedRobot, P2pFailure>> robotForNewTrade(
     RobosatsNetwork network,
     Coordinator coordinator,
   ) async {
@@ -68,9 +68,13 @@ final class InterimTradeRobots implements TradeRobots {
           return Err(failure);
       }
       switch (await _records.reserveForNewTrade(candidate.slot, identity)) {
-        case Ok(value: true):
-          return Ok(candidate);
-        case Ok(value: false):
+        case Ok(value: final reservation?):
+          return switch (ReservedRobot.of(candidate, reservation)) {
+            final reserved? => Ok(reserved),
+            // The repository reserved another robot than the one asked: a bug of this code, never a robot to use.
+            null => throw StateError('A reservation of another robot.'),
+          };
+        case Ok(value: null):
           // Another call took that index, or the key's history changed: the next reading says which.
           continue;
         case Err(:final failure):

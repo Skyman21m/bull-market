@@ -578,16 +578,15 @@ void main() {
         await writeSchema2();
         final first = P2pDatabase.open(() async => directory);
         final trades = TradeRecordRepositoryImpl(first, clock: () => testNow);
-        expect(
-          await trades.reserveForNewTrade(
-            RobotSlot(testnet, drawn, 1),
-            templeTestnet,
-          ),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isTrue),
-        );
-        final pending = await trades.recordPendingTake(
+        final reservation = switch (await trades.reserveForNewTrade(
           RobotSlot(testnet, drawn, 1),
           templeTestnet,
+        )) {
+          Ok(value: final reservation?) => reservation,
+          final other => fail('not reserved: $other'),
+        };
+        final pending = await trades.recordPendingTake(
+          reservation,
           orderId: 42,
           role: TradeRole.buyer,
         );
@@ -632,30 +631,37 @@ void main() {
           NewTradeStanding(keyDrawnHereOnly: true, indexesInUse: [0, 2]),
         ),
       );
+      // A binding of schema 2 is never reserved for a new trade, so it never takes a pending take: it was made by the Garage, and its robot may have met its coordinator for anything (review of #102).
+      // A free index of the same key is reserved, and takes one.
+      TradeReservation? reservation;
       for (final (index, bound) in [(0, false), (2, false), (1, true)]) {
+        final reserved = await trades.reserveForNewTrade(
+          RobotSlot(testnet, drawn, index),
+          lakeTestnet,
+        );
         expect(
-          await trades.reserveForNewTrade(
-            RobotSlot(testnet, drawn, index),
-            lakeTestnet,
+          reserved,
+          isA<Ok<TradeReservation?, P2pFailure>>().having(
+            (ok) => ok.value != null,
+            'bound',
+            bound,
           ),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', bound),
           reason: '$index',
         );
+        if (reserved case Ok(value: final reserved?)) reservation = reserved;
       }
-      // A binding of schema 2 under a key drawn here takes a pending take; one of an acknowledged key, only a recovered trade.
       expect(
         await trades.recordPendingTake(
-          RobotSlot(testnet, drawn, 0),
-          templeTestnet,
+          reservation ?? fail('no reservation'),
           orderId: 1,
           role: TradeRole.buyer,
         ),
         isA<Ok<TradeRecord, P2pFailure>>(),
       );
+      // A binding of an acknowledged key: even with a reservation made by hand, no pending take; a recovered trade only.
       expect(
         await trades.recordPendingTake(
-          RobotSlot(testnet, pasted, 0),
-          templeTestnet,
+          TradeReservation(RobotSlot(testnet, pasted, 0), templeTestnet),
           orderId: 2,
           role: TradeRole.buyer,
         ),
@@ -677,17 +683,17 @@ void main() {
             RobotSlot(testnet, key, 9),
             templeTestnet,
           ),
-          isA<Ok<bool, P2pFailure>>().having(
+          isA<Ok<TradeReservation?, P2pFailure>>().having(
             (ok) => ok.value,
-            'bound',
-            isFalse,
+            'reservation',
+            isNull,
           ),
         );
       }
       // A trade's robot needs its binding.
       await expectLater(
         database.customInsert(
-          "INSERT INTO trades VALUES ('testnet', ?, 7, 'temple', 'o', 3, 'buyer', 'recovered', 0, 0, NULL, NULL, NULL, NULL)",
+          "INSERT INTO trades VALUES ('testnet', ?, 7, 'temple', 'o', 3, 'buyer', 'recovered', 0, 0, NULL)",
           variables: [Variable.withString(both.hex)],
         ),
         throwsA(
@@ -704,7 +710,11 @@ void main() {
         // Stopped after the table was created, before the version was written.
         final half = v2.DatabaseAtV2(NativeDatabase(file));
         await half.customStatement(
-          'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, payment_hash TEXT NULL, payment_started_at INTEGER NULL, payment_swap_id TEXT NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (payment_hash IS NULL OR (length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\')), CHECK ((payment_hash IS NULL) = (payment_started_at IS NULL)), CHECK (payment_swap_id IS NULL OR (payment_started_at IS NOT NULL AND length(payment_swap_id) BETWEEN 1 AND 128)), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES robot_bindings (key_fingerprint, robot_index))',
+          'CREATE TABLE trades (network TEXT NOT NULL, key_fingerprint TEXT NOT NULL, robot_index INTEGER NOT NULL, coordinator_alias TEXT NOT NULL, coordinator_onion TEXT NOT NULL, order_id INTEGER NOT NULL, role TEXT NOT NULL, origin TEXT NOT NULL, taken_at INTEGER NOT NULL, confirmed_at INTEGER NULL, closed_at INTEGER NULL, PRIMARY KEY (key_fingerprint, robot_index), CHECK (network IN (\'mainnet\', \'testnet\')), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(coordinator_alias) > 0), CHECK (length(coordinator_onion) > 0), CHECK (order_id > 0), CHECK (role IN (\'buyer\', \'seller\')), CHECK (origin IN (\'takenHere\', \'recovered\')), CHECK (origin = \'takenHere\' OR confirmed_at IS NOT NULL), CHECK (taken_at >= 0), CHECK (confirmed_at IS NULL OR confirmed_at >= 0), CHECK (closed_at IS NULL OR closed_at >= 0), FOREIGN KEY (key_fingerprint, robot_index, network) REFERENCES robot_bindings (key_fingerprint, robot_index, network))',
+        );
+        // And after the index of the bindings was made, before the triggers.
+        await half.customStatement(
+          'CREATE UNIQUE INDEX robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
         );
         expect(await versionOf(half), 2);
         await half.close();

@@ -145,12 +145,10 @@ Object reserveByTearOff(TradeRecordRepository records) =>
 /// A pending take, of origin `takenHere`, written through a local function elsewhere than in the take use case.
 Object pendingTakeInClosure(
   TradeRecordRepository records,
-  RobotSlot robot,
-  CoordinatorIdentity coordinator,
+  TradeReservation reservation,
 ) {
   Object write() => records.recordPendingTake(
-    robot,
-    coordinator,
+    reservation,
     orderId: 1,
     role: TradeRole.buyer,
   );

@@ -51,8 +51,8 @@ void main() {
     'failure',
     isA<T>(),
   );
-  Matcher reservedIs(bool bound) =>
-      isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', bound);
+  Matcher reservedIs(bool bound) => isA<Ok<TradeReservation?, P2pFailure>>()
+      .having((ok) => ok.value != null, 'bound', bound);
   TradeRecord valueOf(Result<TradeRecord, P2pFailure> result) =>
       switch (result) {
         Ok(:final value) => value,
@@ -83,22 +83,23 @@ void main() {
   Future<List<RobotBindingRow>> bindingRows() =>
       database.select(database.robotBindings).get();
 
-  /// A robot of key A on testnet, reserved for a new trade on [on].
-  Future<RobotSlot> reserved(int index, [CoordinatorIdentity? on]) async {
+  /// The reservation of a robot of key A on testnet for a new trade on [on].
+  Future<TradeReservation> reserved(int index, [CoordinatorIdentity? on]) async {
     expect(await bindings.recordGeneratedKey(testnet, fingerprintA), isA<Ok>());
     final robot = RobotSlot(testnet, fingerprintA, index);
-    expect(
-      await trades.reserveForNewTrade(robot, on ?? temple),
-      isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'bound', isTrue),
-    );
-    return robot;
+    return switch (await trades.reserveForNewTrade(robot, on ?? temple)) {
+      Ok(value: final reservation?) => reservation,
+      final other => fail('not reserved: $other'),
+    };
   }
 
-  /// The pending take of order [orderId] by [robot] on temple.
-  Future<TradeRecord> pendingTake(RobotSlot robot, {int orderId = 7}) async =>
+  /// The pending take of order [orderId] by the robot of [reservation].
+  Future<TradeRecord> pendingTake(
+    TradeReservation reservation, {
+    int orderId = 7,
+  }) async =>
       switch (await trades.recordPendingTake(
-        robot,
-        temple,
+        reservation,
         orderId: orderId,
         role: TradeRole.buyer,
       )) {
@@ -263,7 +264,7 @@ void main() {
         );
         await database.customStatement('PRAGMA foreign_keys = OFF');
         await database.customInsert(
-          "INSERT INTO trades VALUES ('testnet', ?, 3, 'temple', ?, 9, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL)",
+          "INSERT INTO trades VALUES ('testnet', ?, 3, 'temple', ?, 9, 'buyer', 'takenHere', 0, NULL, NULL)",
           variables: [
             Variable.withString(fingerprintA.hex),
             Variable.withString(temple.onion),
@@ -417,12 +418,14 @@ void main() {
     test(
       'is written for a robot reserved for a new trade, its network and coordinator copied from the binding',
       () async {
-        final robot = await reserved(2);
+        final reservation = await reserved(2);
+        final robot = reservation.robot;
+        expect(reservation, TradeReservation(robot, temple));
+        expect(reservation.network, testnet);
         now = testNow.add(const Duration(minutes: 1));
 
         final written = await trades.recordPendingTake(
-          robot,
-          temple,
+          reservation,
           orderId: 1234,
           role: TradeRole.seller,
         );
@@ -475,14 +478,14 @@ void main() {
     );
 
     test('a robot has one record, ever, whatever the order', () async {
-      final robot = await reserved(0);
-      final first = await pendingTake(robot);
+      final reservation = await reserved(0);
+      final first = await pendingTake(reservation);
 
+      // The same reservation used again.
       for (final orderId in [7, 8]) {
         expect(
           await trades.recordPendingTake(
-            robot,
-            temple,
+            reservation,
             orderId: orderId,
             role: TradeRole.buyer,
           ),
@@ -493,8 +496,7 @@ void main() {
       expect(await trades.closeTrade(first), isA<Ok>());
       expect(
         await trades.recordPendingTake(
-          robot,
-          temple,
+          reservation,
           orderId: 9,
           role: TradeRole.buyer,
         ),
@@ -502,7 +504,7 @@ void main() {
       );
       expect(
         await trades.recordRecoveredTrade(
-          robot,
+          reservation.robot,
           temple,
           orderId: 9,
           role: TradeRole.buyer,
@@ -513,7 +515,7 @@ void main() {
     });
 
     test(
-      'is refused for a robot not reserved for a new trade, and nothing is written',
+      'a reservation the repository did not give is still checked by the statement, and nothing is written',
       () async {
         expect(
           await bindings.recordGeneratedKey(testnet, fingerprintA),
@@ -604,10 +606,10 @@ void main() {
             refusedWith<RobotNotForNewTradeFailure>(),
           ),
         ]) {
+          // Only the repository makes a reservation in the feature (`trade_record_test.dart`): a test makes these by hand, as a bug or a lost file could make the statement see them.
           expect(
             await trades.recordPendingTake(
-              robot,
-              coordinator,
+              TradeReservation(robot, coordinator),
               orderId: 5,
               role: TradeRole.buyer,
             ),
@@ -634,7 +636,7 @@ void main() {
         );
         final pasted = RobotSlot(testnet, fingerprintB, 3);
         expect(await bindings.bind(pasted, temple), isA<Ok>());
-        final drawn = await reserved(1, lake);
+        final drawn = (await reserved(1, lake)).robot;
 
         for (final (robot, coordinator) in [(pasted, temple), (drawn, lake)]) {
           expect(
@@ -706,11 +708,11 @@ void main() {
           refusedWith<RobotBoundToAnotherCoordinatorFailure>(),
         );
         // A pending take of the robot is its record: a recovery confirms it, it does not add one.
-        final robot = await reserved(2);
-        await pendingTake(robot);
+        final reservation = await reserved(2);
+        await pendingTake(reservation);
         expect(
           await trades.recordRecoveredTrade(
-            robot,
+            reservation.robot,
             temple,
             orderId: 7,
             role: TradeRole.buyer,
@@ -936,8 +938,7 @@ void main() {
     test(
       'refuses a record of a robot without a binding, a second record of a robot, and values no version writes',
       () async {
-        final robot = await reserved(0);
-        await pendingTake(robot);
+        await pendingTake(await reserved(0));
         final key = Variable.withString(fingerprintA.hex);
         final onion = Variable.withString(temple.onion);
 
@@ -1017,124 +1018,211 @@ void main() {
       );
       expect(await bindingRows(), hasLength(1));
     });
-  });
-
-  group('the payment of a trade, for the pull request that adds it', () {
-    // Schema 3 holds the columns of « Pay with this wallet » (design note § 3.5), which nothing in the feature writes yet: these tests write them by hand, as that pull request's statements will.
-    final hash = 'ab' * 32;
-    Matcher sqliteCheck() => throwsA(
-      predicate((error) => '$error'.contains('SqliteException(275)')),
-    );
-    Future<void> setPayment(String assignments) => database.customStatement(
-      'UPDATE trades SET $assignments WHERE robot_index = 0',
-    );
 
     test(
-      'a hash of 64 lowercase hexadecimal characters with its time, then a swap id, and nothing else',
+      'a record only gains its two times, once each, and is never deleted, even by hand',
       () async {
-        await pendingTake(await reserved(0));
-
-        for (final (label, assignments) in [
-          ('a hash without its time', "payment_hash = '$hash'"),
-          ('a time without its hash', 'payment_started_at = 1'),
-          (
-            'a short hash',
-            "payment_hash = '${'ab' * 31}', payment_started_at = 1",
-          ),
-          (
-            'a hash in capitals',
-            "payment_hash = '${'AB' * 32}', payment_started_at = 1",
-          ),
-          (
-            'a hash that is not hexadecimal',
-            "payment_hash = '${'zz' * 32}', payment_started_at = 1",
-          ),
-          ('a swap before the payment', "payment_swap_id = 'swap1'"),
-          (
-            'an empty swap id',
-            "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = ''",
-          ),
-          (
-            'a swap id too long',
-            "payment_hash = '$hash', payment_started_at = 1, payment_swap_id = '${'s' * 129}'",
-          ),
+        // 1811: a trigger refused it (`trades.drift`).
+        final pending = await pendingTake(await reserved(0));
+        final where = "WHERE key_fingerprint = '${fingerprintA.hex}'";
+        for (final (label, statement) in [
+          ('a delete', 'DELETE FROM trades $where'),
+          ('another order', 'UPDATE trades SET order_id = 8 $where'),
+          ('another side', "UPDATE trades SET role = 'seller' $where"),
+          ('another origin', "UPDATE trades SET origin = 'recovered', confirmed_at = 1 $where"),
+          ('another time of the take', 'UPDATE trades SET taken_at = 1 $where'),
+          ('another coordinator', "UPDATE trades SET coordinator_alias = 'lake' $where"),
         ]) {
           await expectLater(
-            setPayment(assignments),
-            sqliteCheck(),
+            database.customStatement(statement),
+            sqliteError(1811),
             reason: label,
           );
         }
-        await setPayment("payment_hash = '$hash', payment_started_at = 5");
-        await setPayment("payment_swap_id = '${'s' * 128}'");
+        // Confirmed once: never cleared nor moved.
+        expect(await trades.confirmTake(pending), isA<Ok>());
+        for (final statement in [
+          'UPDATE trades SET confirmed_at = NULL $where',
+          'UPDATE trades SET confirmed_at = 5 $where',
+        ]) {
+          await expectLater(
+            database.customStatement(statement),
+            sqliteError(1811),
+            reason: statement,
+          );
+        }
+        // Closed: nothing changes any more, not even the close.
+        expect(await trades.closeTrade(pending), isA<Ok>());
+        for (final statement in [
+          'UPDATE trades SET closed_at = NULL $where',
+          'UPDATE trades SET closed_at = 5 $where',
+          'UPDATE trades SET confirmed_at = 5 $where',
+        ]) {
+          await expectLater(
+            database.customStatement(statement),
+            sqliteError(1811),
+            reason: statement,
+          );
+        }
         final row = (await tradeRows()).single;
-        expect(
-          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
-          (hash, 5, 's' * 128),
-        );
+        expect((row.orderId, row.role, row.origin), (7, 'buyer', 'takenHere'));
+        expect(row.closedAt, isNotNull);
       },
     );
 
     test(
-      'is read with the record, and kept as it is by the changes of the record',
+      'a record is on its binding\'s network, with a lowercase fingerprint and times from the epoch',
       () async {
-        final pending = await pendingTake(await reserved(0));
-        await setPayment(
-          "payment_hash = '$hash', payment_started_at = ${testNow.millisecondsSinceEpoch}, payment_swap_id = 'swap1'",
-        );
-        now = testNow.add(const Duration(minutes: 1));
+        await reserved(0);
+        final key = Variable.withString(fingerprintA.hex);
+        final onion = Variable.withString(temple.onion);
 
-        for (final change in [trades.confirmTake, trades.closeTrade]) {
-          expect(
-            await change(pending),
-            recordOf(
-              isA<TradeRecord>()
-                  .having((r) => r.paymentHash, 'paymentHash', hash)
-                  .having(
-                    (r) => r.paymentStartedAt,
-                    'paymentStartedAt',
-                    testNow,
-                  )
-                  .having((r) => r.paymentSwapId, 'paymentSwapId', 'swap1'),
-            ),
+        // The robot is bound on testnet: a mainnet record of it has no parent key (review of #102, R8).
+        await expectLater(
+          insertTrade(
+            "('mainnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, NULL)",
+            [key, onion],
+          ),
+          sqliteError(787),
+        );
+        for (final (label, values, variables) in [
+          (
+            'a fingerprint in capitals',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, NULL)",
+            [Variable.withString(fingerprintA.hex.toUpperCase()), onion],
+          ),
+          (
+            'a take before the epoch',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', -1, NULL, NULL)",
+            [key, onion],
+          ),
+          (
+            'a confirmation before the epoch',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, -1, NULL)",
+            [key, onion],
+          ),
+          (
+            'a close before the epoch',
+            "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, -1)",
+            [key, onion],
+          ),
+        ]) {
+          await expectLater(
+            insertTrade(values, variables),
+            sqliteError(275),
+            reason: label,
           );
         }
-        final row = (await tradeRows()).single;
-        expect(
-          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
-          (hash, testNow.millisecondsSinceEpoch, 'swap1'),
+        await insertTrade(
+          "('testnet', ?, 0, 'temple', ?, 5, 'buyer', 'takenHere', 0, NULL, NULL)",
+          [key, onion],
         );
-        // A record never prints its payment.
+        expect(await tradeRows(), hasLength(1));
+      },
+    );
+  });
+
+  group('never inside a transaction (review of #102, R1)', () {
+    test(
+      'each write throws, so that the transaction rolls back with nothing reported as done',
+      () async {
+        final reservation = await reserved(0);
+        final record = await pendingTake(reservation);
+        final robot = RobotSlot(testnet, fingerprintA, 1);
+        for (final (label, write) in <(String, Future<Object?> Function())>[
+          ('reserve', () => trades.reserveForNewTrade(robot, temple)),
+          (
+            'pending take',
+            () => trades.recordPendingTake(
+              reservation,
+              orderId: 9,
+              role: TradeRole.buyer,
+            ),
+          ),
+          (
+            'recovered trade',
+            () => trades.recordRecoveredTrade(
+              robot,
+              temple,
+              orderId: 9,
+              role: TradeRole.buyer,
+            ),
+          ),
+          ('confirm', () => trades.confirmTake(record)),
+          ('close', () => trades.closeTrade(record)),
+        ]) {
+          await expectLater(
+            database.transaction(write),
+            throwsStateError,
+            reason: label,
+          );
+        }
+        // Nothing of it stayed: robot 1 is still free, and the record still pending.
         expect(
-          '${valueOf(await trades.closeTrade(pending))}',
-          isNot(contains(hash)),
+          await trades.reserveForNewTrade(robot, lake),
+          reservedIs(true),
         );
+        expect(valueOf(await trades.closeTrade(record)).closedAt, isNotNull);
+        expect((await tradeRows()).single.confirmedAt, isNull);
+      },
+    );
+  });
+
+  group('the review of #102', () {
+    test(
+      'a robot the Garage bound gets no reservation, so no pending take (R2)',
+      () async {
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprintA),
+          isA<Ok>(),
+        );
+        final robot = RobotSlot(testnet, fingerprintA, 0);
+        expect(await bindings.bind(robot, temple), isA<Ok>());
+
+        expect(await trades.reserveForNewTrade(robot, temple), reservedIs(false));
+        expect(await tradeRows(), isEmpty);
       },
     );
 
-    test('nothing the repository writes sets it', () async {
-      final robot = await reserved(0);
-      await pendingTake(robot);
-      expect(
-        await bindings.bind(RobotSlot(testnet, fingerprintA, 1), temple),
-        isA<Ok>(),
-      );
-      expect(
-        await trades.recordRecoveredTrade(
-          RobotSlot(testnet, fingerprintA, 1),
-          temple,
-          orderId: 3,
-          role: TradeRole.buyer,
-        ),
-        isA<Ok>(),
-      );
-      for (final row in await tradeRows()) {
+    test(
+      'a key drawn here on the other network only gives no reservation (M01)',
+      () async {
         expect(
-          (row.paymentHash, row.paymentStartedAt, row.paymentSwapId),
-          (null, null, null),
+          await bindings.recordGeneratedKey(mainnet, fingerprintA),
+          isA<Ok>(),
         );
-      }
-    });
+
+        expect(
+          await trades.reserveForNewTrade(
+            RobotSlot(testnet, fingerprintA, 0),
+            temple,
+          ),
+          reservedIs(false),
+        );
+        expect(await bindingRows(), isEmpty);
+      },
+    );
+
+    test(
+      'a key pasted in again between the reservation and the pending take refuses the pending take (R13)',
+      () async {
+        final reservation = await reserved(0);
+        expect(
+          await bindings.recordImportedKey(mainnet, fingerprintA),
+          isA<Ok>(),
+        );
+
+        expect(
+          await trades.recordPendingTake(
+            reservation,
+            orderId: 3,
+            role: TradeRole.buyer,
+          ),
+          refusedWith<GarageKeyNotForTradesFailure>(),
+        );
+        expect(await tradeRows(), isEmpty);
+      },
+    );
   });
 
   group('the active trades', () {
@@ -1228,7 +1316,7 @@ void main() {
         NativeDatabase.memory(
           setup: (raw) {
             raw.execute(
-              'CREATE TABLE trades (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, order_id INTEGER, role TEXT, origin TEXT, taken_at INTEGER, confirmed_at INTEGER, closed_at INTEGER, payment_hash TEXT, payment_started_at INTEGER, payment_swap_id TEXT, PRIMARY KEY (key_fingerprint, robot_index))',
+              'CREATE TABLE trades (network TEXT, key_fingerprint TEXT, robot_index INTEGER, coordinator_alias TEXT, coordinator_onion TEXT, order_id INTEGER, role TEXT, origin TEXT, taken_at INTEGER, confirmed_at INTEGER, closed_at INTEGER, PRIMARY KEY (key_fingerprint, robot_index))',
             );
             raw.execute('PRAGMA user_version = ${P2pDatabase.schema}');
           },
@@ -1237,62 +1325,16 @@ void main() {
       final looseTrades = TradeRecordRepositoryImpl(loose, clock: () => now);
       final fingerprint = "'${fingerprintA.hex}'";
       for (final (index, values) in [
-        (
-          0,
-          "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          1,
-          "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          2,
-          "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          3,
-          "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          4,
-          "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          5,
-          "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          6,
-          "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, NULL",
-        ),
-        (
-          7,
-          "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL, NULL, NULL, NULL",
-        ),
-        (
-          8,
-          "'testnet', $fingerprint, 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'AB', 0, NULL",
-        ),
-        (
-          9,
-          "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', NULL, NULL",
-        ),
-        (
-          10,
-          "'testnet', $fingerprint, 10, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, 0, NULL",
-        ),
-        (
-          11,
-          "'testnet', $fingerprint, 11, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, NULL, NULL, 'swap'",
-        ),
-        (
-          12,
-          "'testnet', $fingerprint, 12, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, ''",
-        ),
-        (
-          13,
-          "'testnet', $fingerprint, 13, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL, 'abababababababababababababababababababababababababababababababab', 0, '${'s' * 129}'",
-        ),
+        (0, "'testnet', $fingerprint, 0, 'temple', 'o', 1, 'buyer', 'elsewhere', 0, NULL, NULL"),
+        (1, "'testnet', $fingerprint, 1, 'temple', 'o', 1, 'maker', 'takenHere', 0, NULL, NULL"),
+        (2, "'testnet', 'short', 2, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
+        (3, "'testnet', $fingerprint, 3, 'temple', 'o', 1, 'buyer', 'recovered', 0, NULL, NULL"),
+        (4, "'testnet', $fingerprint, 4, 'temple', 'o', 0, 'buyer', 'takenHere', 0, NULL, NULL"),
+        (5, "'testnet', $fingerprint, 5, 'temple', 'o', 1, 'buyer', 'takenHere', 'soon', NULL, NULL"),
+        (6, "'testnet', $fingerprint, 6, NULL, 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
+        (7, "'testnet', $fingerprint, 7, 'temple', 'o', 1, 'buyer', 'takenHere', 0, 99999999999999999, NULL"),
+        (8, "'testnet', '${fingerprintA.hex.toUpperCase()}', 8, 'temple', 'o', 1, 'buyer', 'takenHere', 0, NULL, NULL"),
+        (9, "'testnet', $fingerprint, 9, 'temple', 'o', 1, 'buyer', 'takenHere', -1, NULL, NULL"),
       ]) {
         await loose.customStatement('DELETE FROM trades');
         await loose.customStatement('INSERT INTO trades VALUES ($values)');
@@ -1328,16 +1370,15 @@ void main() {
           ).recordGeneratedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
-        expect(
-          await one.reserveForNewTrade(
-            RobotSlot(testnet, fingerprintA, 0),
-            temple,
-          ),
-          reservedIs(true),
-        );
-        final written = await one.recordPendingTake(
+        final reservation = switch (await one.reserveForNewTrade(
           RobotSlot(testnet, fingerprintA, 0),
           temple,
+        )) {
+          Ok(value: final reservation?) => reservation,
+          final other => fail('not reserved: $other'),
+        };
+        final written = await one.recordPendingTake(
+          reservation,
           orderId: 3,
           role: TradeRole.buyer,
         );
@@ -1381,23 +1422,24 @@ void main() {
 
         for (var index = 0; index < 5; index++) {
           final robot = RobotSlot(testnet, fingerprintA, index);
-          expect(
-            await untilNotBusy(() => one.reserveForNewTrade(robot, temple)),
-            reservedIs(true),
-          );
+          final reservation = switch (await untilNotBusy(
+            () => one.reserveForNewTrade(robot, temple),
+          )) {
+            Ok(value: final reservation?) => reservation,
+            final other => fail('not reserved: $other'),
+          };
+          // The one reservation handed to both connections, as a bug would: the database still writes one record.
           final results = await Future.wait([
             untilNotBusy(
               () => one.recordPendingTake(
-                robot,
-                temple,
+                reservation,
                 orderId: 10,
                 role: TradeRole.buyer,
               ),
             ),
             untilNotBusy(
               () => other.recordPendingTake(
-                robot,
-                temple,
+                reservation,
                 orderId: 11,
                 role: TradeRole.buyer,
               ),

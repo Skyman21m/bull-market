@@ -13,10 +13,12 @@ import 'p2p_database.dart';
 
 /// The trade records of the robots, and the binding that reserves a robot for a new trade, in the feature's database.
 ///
-/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the key's history and the robot's binding and record for [reserveForNewTrade], the robot's binding and record for the two inserts of a trade, the record's state for its two changes.
+/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the key's history and the robot's binding and record for [reserveForNewTrade], the robot's binding, record and key's history for a pending take, the robot's binding and record for a recovered trade, the record's state for its two changes.
 /// So two connections, or two calls on one connection, never reserve one robot twice, record two trades of one robot, or move a closed record.
-/// The primary key of `trades` (key fingerprint, robot index) refuses a second record of a robot, and its foreign key a record of a robot without a binding, whatever the code that writes.
+/// A pending take needs the [TradeReservation] that only [reserveForNewTrade] gives, when it wrote the robot's binding.
+/// The primary key of `trades` (key fingerprint, robot index) refuses a second record of a robot, its foreign key a record of a robot without a binding on the record's network, and the triggers of `trades.drift` any change but the two times set once and any delete, whatever the code that writes.
 /// The only SQL that changes a row is [_confirmSql] and [_closeSql], on `trades`; nothing deletes a row, and nothing changes a binding (`robot_bindings_architecture_test.dart`).
+/// No write runs inside a transaction: each throws a [StateError] there, since a rollback would undo it after it answered success.
 /// It returns no row of the database: the domain types only, and a [P2pStorageFailure] for any [Exception] the database or the directory the shell gave throws, and for a row this code never writes.
 /// An [Error] is a bug (AGENTS.md, rule 11) and is not caught.
 final class TradeRecordRepositoryImpl implements TradeRecordRepository {
@@ -48,7 +50,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING robot_index';
 
-  /// Records a pending take of a robot bound to that very coordinator on the robot's network under a key drawn here, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
+  /// Records a pending take of a robot bound to that very coordinator on the reservation's network under a key drawn here and still recorded as nothing else, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
   static const String _recordPendingTakeSql =
       'INSERT INTO trades (network, key_fingerprint, robot_index, '
       'coordinator_alias, coordinator_onion, order_id, role, origin, '
@@ -59,6 +61,8 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'AND network = ? AND provenance = ? AND coordinator_alias = ? '
       'AND coordinator_onion = ? AND coordinator_node_keys = ? '
       'AND coordinator_nostr_key = ? '
+      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+      'WHERE key_fingerprint = ? AND origin <> ?) '
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
@@ -98,10 +102,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'trades.order_id AS trade_order_id, trades.role AS trade_role, '
       'trades.origin AS trade_origin, trades.taken_at AS trade_taken_at, '
       'trades.confirmed_at AS trade_confirmed_at, '
-      'trades.closed_at AS trade_closed_at, '
-      'trades.payment_hash AS trade_payment_hash, '
-      'trades.payment_started_at AS trade_payment_started_at, '
-      'trades.payment_swap_id AS trade_payment_swap_id, robot_bindings.* '
+      'trades.closed_at AS trade_closed_at, robot_bindings.* '
       'FROM (SELECT 1) LEFT JOIN trades ON trades.key_fingerprint = ? '
       'AND trades.robot_index = ? LEFT JOIN robot_bindings '
       'ON robot_bindings.key_fingerprint = ? '
@@ -167,10 +168,11 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   }
 
   @override
-  Future<Result<bool, P2pFailure>> reserveForNewTrade(
+  Future<Result<TradeReservation?, P2pFailure>> reserveForNewTrade(
     RobotSlot robot,
     CoordinatorIdentity coordinator,
   ) async {
+    _refuseInsideTransaction();
     if (coordinator.network != robot.network) {
       return const Err(RobotNotForNewTradeFailure());
     }
@@ -199,7 +201,10 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         updates: {_database.robotBindings},
         updateKind: UpdateKind.insert,
       );
-      return Ok(written.isNotEmpty);
+      // The statement returns the row only when it wrote it: this call bound the robot, and no other can.
+      return Ok(
+        written.isEmpty ? null : TradeReservation(robot, coordinator),
+      );
     } on Exception {
       return const Err(P2pStorageFailure());
     }
@@ -207,11 +212,13 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
 
   @override
   Future<Result<TradeRecord, P2pFailure>> recordPendingTake(
-    RobotSlot robot,
-    CoordinatorIdentity coordinator, {
+    TradeReservation reservation, {
     required int orderId,
     required TradeRole role,
   }) async {
+    _refuseInsideTransaction();
+    final robot = reservation.robot;
+    final coordinator = reservation.coordinator;
     // The robot and the coordinator name one network, which the binding must have too.
     if (coordinator.network != robot.network) {
       return const Err(RobotNotForNewTradeFailure());
@@ -227,9 +234,11 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           Variable.withInt(_clock().millisecondsSinceEpoch),
           Variable.withString(fingerprint),
           Variable.withInt(robot.accountIndex),
-          Variable.withString(_networkValue(robot.network)),
+          Variable.withString(_networkValue(reservation.network)),
           Variable.withString(_generated),
           ..._coordinatorVariables(coordinator),
+          Variable.withString(fingerprint),
+          Variable.withString(_generated),
         ],
         updates: {_database.trades},
         updateKind: UpdateKind.insert,
@@ -247,6 +256,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     required int orderId,
     required TradeRole role,
   }) async {
+    _refuseInsideTransaction();
     if (coordinator.network != robot.network) {
       return const Err(RobotBoundToAnotherCoordinatorFailure());
     }
@@ -336,6 +346,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     String sql,
     TradeRecord record,
   ) async {
+    _refuseInsideTransaction();
     final fingerprint = record.robot.keyFingerprint.hex;
     try {
       await _database.customUpdate(
@@ -401,10 +412,25 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     if (binding.admits(coordinator) case Err(:final failure)) {
       return Err(failure);
     }
-    // Bound to that coordinator, with no record, and still not written: for a new trade, a binding made under a key from elsewhere; or a write that another connection's record beat, read here as gone (it is never deleted), which this code does not explain.
-    return newTrade
-        ? const Err(RobotNotForNewTradeFailure())
-        : const Err(P2pStorageFailure());
+    if (!newTrade) {
+      // Bound to that coordinator, with no record, and still not written: a write that another connection's record beat, read here as gone (it is never deleted), which this code does not explain.
+      return const Err(P2pStorageFailure());
+    }
+    // Bound to that coordinator under a key drawn here, with no record: the key was pasted in, or acknowledged, since the reservation.
+    if (binding.provenance == BindingProvenance.drawnHere &&
+        binding.coordinator.network == robot.network) {
+      return switch (await newTradeStandingOf(
+        robot.network,
+        robot.keyFingerprint,
+      )) {
+        Ok(value: NewTradeStanding(keyDrawnHereOnly: false)) => const Err(
+          GarageKeyNotForTradesFailure(),
+        ),
+        Ok() => const Err(RobotNotForNewTradeFailure()),
+        Err(:final failure) => Err(failure),
+      };
+    }
+    return const Err(RobotNotForNewTradeFailure());
   }
 
   /// The row of [_robotSql] for [robot].
@@ -424,9 +450,14 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         .getSingle();
   }
 
-  /// Whether [hash] is a payment hash as the table stores it: 64 lowercase hexadecimal characters.
-  static bool _isPaymentHash(String hash) =>
-      RegExp(r'^[0-9a-f]{64}$').hasMatch(hash);
+  /// Throws a [StateError] when called inside a transaction of the database: a write that answered success there could be rolled back afterwards, after its robot left for the coordinator (AGENTS.md, rule 11: a bug, not a failure).
+  ///
+  /// drift runs the statements of a `transaction(…)` block on another engine than the database itself.
+  void _refuseInsideTransaction() {
+    if (!identical(_database.resolvedEngine, _database)) {
+      throw StateError('The trade records are never written inside a transaction.');
+    }
+  }
 
   /// The indexes of [joined], numbers joined with commas, or `null` for a text that is not.
   static List<int>? _indexesFrom(String joined) {
@@ -452,12 +483,11 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   /// The largest distance from the epoch a `DateTime` holds, in milliseconds.
   static const int _maxMilliseconds = 8640000000000000;
 
-  /// Whether [value] is absent or a time a `DateTime` holds, and that time.
+  /// Whether [value] is absent or a time this code writes, from the epoch to the last a `DateTime` holds, and that time.
   static (bool, DateTime?) _timeFrom(Object? value) => switch (value) {
     null => (true, null),
     final int milliseconds
-        when milliseconds >= -_maxMilliseconds &&
-            milliseconds <= _maxMilliseconds =>
+        when milliseconds >= 0 && milliseconds <= _maxMilliseconds =>
       (true, DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true)),
     _ => (false, null),
   };
@@ -505,17 +535,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       final (takenValid, taken) = _timeFrom(takenAt);
       final (confirmedValid, confirmed) = _timeFrom(column('confirmed_at'));
       final (closedValid, closed) = _timeFrom(column('closed_at'));
-      final (startedValid, started) = _timeFrom(column('payment_started_at'));
-      final paymentHash = column('payment_hash');
-      final paymentSwapId = column('payment_swap_id');
-      // A payment's hash and time come together, and its swap only after them, as the CHECKs of the table say.
-      final paymentValid = switch ((paymentHash, started, paymentSwapId)) {
-        (null, null, null) => true,
-        (final String hash, _?, null) => _isPaymentHash(hash),
-        (final String hash, _?, final String swap) =>
-          _isPaymentHash(hash) && swap.isNotEmpty && swap.length <= 128,
-        _ => false,
-      };
       if (tradeNetwork == null ||
           key == null ||
           tradeRole == null ||
@@ -524,8 +543,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           !takenValid ||
           !confirmedValid ||
           !closedValid ||
-          !startedValid ||
-          !paymentValid ||
           index < 0 ||
           index > 2147483647 ||
           orderId <= 0 ||
@@ -542,9 +559,6 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         takenAt: taken,
         confirmedAt: confirmed,
         closedAt: closed,
-        paymentHash: paymentHash is String ? paymentHash : null,
-        paymentStartedAt: started,
-        paymentSwapId: paymentSwapId is String ? paymentSwapId : null,
       );
     }
     return null;

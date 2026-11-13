@@ -13,6 +13,7 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/trade_robots.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -93,6 +94,11 @@ void main() {
     'failure',
     isA<T>(),
   );
+  ReservedRobot reservedOf(Result<ReservedRobot, P2pFailure> result) =>
+      switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
   NetworkRobot robotOf(Result<NetworkRobot, P2pFailure> result) =>
       switch (result) {
         Ok(:final value) => value,
@@ -138,9 +144,22 @@ void main() {
     test(
       'is the first free robot of the key, bound to the coordinator before it is returned',
       () async {
-        final robot = robotOf(await robots.robotForNewTrade(testnet, temple));
+        final reserved = reservedOf(
+          await robots.robotForNewTrade(testnet, temple),
+        );
+        final robot = reserved.robot;
 
         expect(robot.slot, RobotSlot(testnet, fingerprintA, 0));
+        expect(reserved.reservation, TradeReservation(robot.slot, templeTestnet));
+        // A reservation pairs with its own robot only.
+        expect(ReservedRobot.of(robot, reserved.reservation), isNotNull);
+        expect(
+          ReservedRobot.of(
+            robotOf(NetworkGarageKey(testnet, keyA).firstUsableRobot(1)),
+            reserved.reservation,
+          ),
+          isNull,
+        );
         expect(
           robot,
           robotOf(NetworkGarageKey(testnet, keyA).firstUsableRobot(0)),
@@ -182,16 +201,15 @@ void main() {
 
         final given = <int>[];
         for (var i = 0; i < 6; i++) {
-          final robot = robotOf(
+          final reserved = reservedOf(
             await robots.robotForNewTrade(testnet, i.isEven ? temple : lake),
           );
-          given.add(robot.accountIndex);
+          given.add(reserved.robot.accountIndex);
           // Half of them get a trade, which is closed: a robot that ever had a record is never returned again.
           if (i.isEven) {
             final record = recordOf(
               await trades.recordPendingTake(
-                robot.slot,
-                templeTestnet,
+                reserved.reservation,
                 orderId: 100 + i,
                 role: TradeRole.buyer,
               ),
@@ -211,7 +229,7 @@ void main() {
       ]);
 
       expect(
-        {for (final result in results) robotOf(result).accountIndex},
+        {for (final result in results) reservedOf(result).robot.accountIndex},
         {for (var i = 0; i < 10; i++) i},
       );
       expect(await bindingRows(), hasLength(10));
@@ -242,7 +260,7 @@ void main() {
           final result = await robots.robotForNewTrade(testnet, temple);
           expect(
             result,
-            isA<Err<NetworkRobot, P2pFailure>>().having(
+            isA<Err<ReservedRobot, P2pFailure>>().having(
               (err) => err.failure,
               'failure',
               same(failure),
@@ -321,14 +339,17 @@ void main() {
         await robots.robotForNewTrade(testnet, temple),
         refusedWith<GarageKeyNotForTradesFailure>(),
       );
+      // Nor does the repository reserve it, whatever the coordinator.
       expect(
-        await trades.recordPendingTake(
-          RobotSlot(testnet, fingerprintA, 0),
+        await trades.reserveForNewTrade(
+          RobotSlot(testnet, fingerprintA, 1),
           templeTestnet,
-          orderId: 1,
-          role: TradeRole.buyer,
         ),
-        refusedWith<RobotNotForNewTradeFailure>(),
+        isA<Ok<TradeReservation?, P2pFailure>>().having(
+          (ok) => ok.value,
+          'reservation',
+          isNull,
+        ),
       );
     });
   });
@@ -356,7 +377,9 @@ void main() {
           vault,
           TradeRecordRepositoryImpl(first, clock: () => testNow),
         );
-        final orphan = robotOf(await before.robotForNewTrade(testnet, temple));
+        final orphan = reservedOf(
+          await before.robotForNewTrade(testnet, temple),
+        ).robot;
         // The app is killed here: no pending take was written.
         await first.close();
 
@@ -366,12 +389,14 @@ void main() {
           clock: () => testNow,
         );
         final after = InterimTradeRobots(vault, records);
-        final next = robotOf(await after.robotForNewTrade(testnet, lake));
+        final reserved = reservedOf(
+          await after.robotForNewTrade(testnet, lake),
+        );
+        final next = reserved.robot;
         expect(next.accountIndex, orphan.accountIndex + 1);
         final record = recordOf(
           await records.recordPendingTake(
-            next.slot,
-            identityOf('lake', testnet),
+            reserved.reservation,
             orderId: 5,
             role: TradeRole.buyer,
           ),
@@ -387,7 +412,9 @@ void main() {
           ),
         );
         expect(
-          robotOf(await after.robotForNewTrade(testnet, temple)).accountIndex,
+          reservedOf(
+            await after.robotForNewTrade(testnet, temple),
+          ).robot.accountIndex,
           next.accountIndex + 1,
         );
         expect(
@@ -437,7 +464,10 @@ void main() {
         ];
         final results = [
           for (final call in calls)
-            (coordinator: call.coordinator, robot: robotOf(await call.result)),
+            (
+              coordinator: call.coordinator,
+              robot: reservedOf(await call.result).robot,
+            ),
         ];
         for (final database in databases) {
           await database.close();
@@ -468,14 +498,15 @@ void main() {
         await bindings.recordGeneratedKey(testnet, fingerprintA),
         isA<Ok>(),
       );
-      final robot = robotOf(await robots.robotForNewTrade(testnet, temple));
-      robotOf(await robots.robotForNewTrade(testnet, temple));
-      final second = robotOf(await robots.robotForNewTrade(testnet, temple));
+      final robot = reservedOf(
+        await robots.robotForNewTrade(testnet, temple),
+      ).robot;
+      reservedOf(await robots.robotForNewTrade(testnet, temple));
+      final second = reservedOf(await robots.robotForNewTrade(testnet, temple));
       expect(robot.accountIndex, 0);
       record = recordOf(
         await trades.recordPendingTake(
-          second.slot,
-          templeTestnet,
+          second.reservation,
           orderId: 9,
           role: TradeRole.buyer,
         ),
@@ -563,11 +594,13 @@ void main() {
           await bindings.recordGeneratedKey(testnet, fingerprintA),
           isA<Ok>(),
         );
-        robot = robotOf(await robots.robotForNewTrade(testnet, temple));
+        final reserved = reservedOf(
+          await robots.robotForNewTrade(testnet, temple),
+        );
+        robot = reserved.robot;
         final record = recordOf(
           await trades.recordPendingTake(
-            robot.slot,
-            templeTestnet,
+            reserved.reservation,
             orderId: 9,
             role: TradeRole.buyer,
           ),

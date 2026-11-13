@@ -732,33 +732,6 @@ class RobotCoordinatorCubit {
       if (File('lib/src/data/p2p_database.g.dart').existsSync())
         'lib/src/data/p2p_database.g.dart',
     });
-    // The payment columns of schema 3 have no writer until the pull request that adds « Pay with this wallet »: the database declares them, drift's code knows them, and the trade records only read them, in the read of one robot and by name from its row.
-    final payment = RegExp(r'\bpayment_(hash|started_at|swap_id)\b');
-    expect(where((facts) => facts.strings.any(payment.hasMatch)), {
-      'lib/src/data/p2p_database.dart',
-      'lib/src/data/p2p_database.steps.dart',
-      'lib/src/data/trade_record_repository_impl.dart',
-      if (File('lib/src/data/p2p_database.g.dart').existsSync())
-        'lib/src/data/p2p_database.g.dart',
-    });
-    final records =
-        libraries['lib/src/data/trade_record_repository_impl.dart'] ??
-        fail('no trade records');
-    final read = records.constants['_robotSql'] ?? fail('no _robotSql');
-    expect(read, startsWith('SELECT '));
-    expect(
-      records.strings.where(
-        (text) =>
-            payment.hasMatch(text) &&
-            !read.contains(text) &&
-            !{
-              'payment_hash',
-              'payment_started_at',
-              'payment_swap_id',
-            }.contains(text),
-      ),
-      isEmpty,
-    );
     // No SQL text of another file reads or writes the trades.
     expect(
       where(
@@ -812,6 +785,10 @@ class RobotCoordinatorCubit {
       );
       expect(facts.names, isNot(contains('InsertMode')));
       for (final text in facts.strings) {
+        // The steps hold the triggers of `trades.drift` as written, which name an update and a delete only to refuse them (pinned below).
+        if (identical(facts, steps) && _tradeTriggers.contains(_squeezed(text))) {
+          continue;
+        }
         expect(
           RegExp(
             r'\b(delete|update|drop|replace|alter)\b',
@@ -840,18 +817,50 @@ class RobotCoordinatorCubit {
     expect(database.calls.where((call) => call.startsWith('addColumn(')), [
       'addColumn(schema.robotBindings, schema.robotBindings.provenance)',
     ]);
-    // Every call of the migrator, in order: nothing else changes a table; schema 3 adds the table of the trades.
+    // Every call of the migrator, in order: nothing else changes a table; schema 3 adds the table of the trades, the unique index its foreign key needs on the bindings, and its two triggers.
     expect(database.qualifiedCalls.where((call) => call.startsWith('m.')), [
       'm.alterTable(TableMigration(schema.garageKeyHistories))',
       'm.addColumn(schema.robotBindings, schema.robotBindings.provenance)',
       'm.createTable(schema.trades)',
+      'm.createIndex(schema.robotBindingsNetwork)',
+      'm.createTrigger(schema.tradesNeverDeleted)',
+      'm.createTrigger(schema.tradesSetOnce)',
     ]);
-    // The one statement the database runs itself: the foreign keys of the trades, on, at each opening.
+    // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
     expect(
       database.calls.where((call) => call.startsWith('customStatement(')),
       ['customStatement(_foreignKeysOn)'],
     );
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
+    // Its one `customSelect`, the step's look at a column: no other statement, and no other pragma, could turn the foreign keys off (review of #102).
+    expect(
+      database.calls.where((call) => call.startsWith('customSelect(')),
+      [startsWith("customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',")],
+    );
+    expect(
+      database.strings.where(
+        (text) => RegExp(r'\bpragma\b', caseSensitive: false).hasMatch(text),
+      ),
+      ['PRAGMA foreign_keys = ON'],
+    );
+    // The database's own rules on the trades, as written in `trades.drift`: the parent key of their foreign key, and the triggers that refuse a delete and any change but the two times set once.
+    expect(
+      _drifted(File('lib/src/data/trades.drift').readAsStringSync()),
+      _tradeRules,
+    );
+  });
+
+  test('nothing in the feature opens a database transaction', () {
+    // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
+    // The repository of the trade records also refuses to run inside one, at run time.
+    expect(
+      where(
+        (facts) =>
+            facts.invoked.contains('transaction') ||
+            facts.names.contains('TransactionExecutor'),
+      ),
+      isEmpty,
+    );
   });
 
   test('a trade record is changed only by its two changes, and never deleted', () {
@@ -938,14 +947,16 @@ class RobotCoordinatorCubit {
       contains('_change(_confirmSql, record)'),
     );
     expect(trades.callsByMethod['closeTrade'], ['_change(_closeSql, record)']);
-    // No other file of the feature holds SQL that changes or deletes a trade.
+    // No other file of the feature holds SQL that changes or deletes a trade, but the triggers that refuse it, as drift copies them.
     expect(
       where(
         (facts) => facts.strings.any(
-          (text) => RegExp(
-            r'\b(update|delete)\b[^;]*\btrades\b',
-            caseSensitive: false,
-          ).hasMatch(text),
+          (text) =>
+              RegExp(
+                r'\b(update|delete)\b[^;]*\btrades\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !_tradeTriggers.contains(_squeezed(text)),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -976,7 +987,7 @@ class RobotCoordinatorCubit {
           reason: method,
         );
       }
-      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the robot's network to that coordinator; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the reservation's network to that coordinator, under a key still recorded as drawn here only; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
       expect(
         trades.constants['_reserveSql'],
         'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
@@ -1002,6 +1013,8 @@ class RobotCoordinatorCubit {
         'AND network = ? AND provenance = ? AND coordinator_alias = ? '
         'AND coordinator_onion = ? AND coordinator_node_keys = ? '
         'AND coordinator_nostr_key = ? '
+        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+        'WHERE key_fingerprint = ? AND origin <> ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );
@@ -1653,4 +1666,31 @@ List<String> _publicSurface(ClassDeclaration declaration) => [
       ],
       _ => const <String>[],
     },
+];
+
+/// [text] with every run of white space made one space and trimmed, so that a statement compares the same however drift lays it out.
+String _squeezed(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// The statements of a `.drift` file, comments and the import left out, each squeezed.
+List<String> _drifted(String source) => [
+  for (final statement in source
+      .split('\n')
+      .where((line) => !line.trimLeft().startsWith('--'))
+      .join('\n')
+      .split(RegExp(r';\s*(?=\n|$)')))
+    if (_squeezed(statement) case final squeezed
+        when squeezed.isNotEmpty && !squeezed.startsWith('import '))
+      squeezed,
+];
+
+/// The two triggers of the trades, as `trades.drift` writes them.
+const _tradeTriggers = {
+  "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+};
+
+/// The statements of `trades.drift`, in order.
+final _tradeRules = [
+  'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  ..._tradeTriggers,
 ];
