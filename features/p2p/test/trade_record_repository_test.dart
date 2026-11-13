@@ -1151,6 +1151,8 @@ void main() {
       ]) {
         await loose.customStatement('DELETE FROM trades');
         await loose.customStatement('INSERT INTO trades VALUES ($values)');
+        // A raw statement does not tell drift that the table changed: told so, each row is read afresh, not the answer of the row before.
+        loose.markTablesUpdated([loose.trades]);
         expect(
           await looseTrades.watchActiveTrades(testnet).first,
           refusedWith<P2pStorageFailure>(),
