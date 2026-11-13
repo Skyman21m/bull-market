@@ -2466,6 +2466,85 @@ void main() {
       },
     );
 
+    testWidgets('Continue on robot #1 sends robot #1, and robot #0 stays unbound', (
+      tester,
+    ) async {
+      keystoreHolding({_mainnetEntry: null});
+      await openGarage(tester);
+      await tester.tap(find.text('Start'));
+      await settle(tester);
+      await tester.tap(find.text('Generate Garage Key'));
+      await letTheVaultSettle(tester);
+      // The key drawn for this test, kept in memory only, to derive its robots.
+      await tester.tap(find.byTooltip('Copy'));
+      await settle(tester);
+      final key = switch (GarageKey.parse(clipboardWrites.last ?? '')) {
+        Ok(:final value) => value,
+        Err() => fail('the copied text is not a key'),
+      };
+      await tester.pump(const Duration(seconds: 31));
+      final robot1 = switch (NetworkGarageKey(
+        RobosatsNetwork.testnet,
+        key,
+      ).firstUsableRobot(1)) {
+        Ok(:final value) => value.identity,
+        Err() => fail('no robot 1'),
+      };
+      await tester.tap(find.text('Continue'));
+      await settle(tester);
+      await tester.tap(find.text('Continue'));
+      await settle(tester);
+      await tester.tap(find.text('See profile'));
+      await settle(tester);
+      await tester.tap(find.byTooltip('Next account'));
+      await settle(tester);
+      expect(find.text('Robot #1'), findsOneWidget);
+      tor.add(P2pTorState.ready);
+      await letTheVaultSettle(tester);
+
+      await tester.ensureVisible(find.text('Select Host'));
+      await settle(tester);
+      await tester.tap(find.text('Select Host'));
+      await afterRoute(tester);
+      await tester.tap(find.text('Temple of Sats'));
+      await afterRoute(tester);
+      expect(
+        find.text('Send ${robot1.nickname} to Temple of Sats?'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Continue'));
+      // The key pair is made in an isolate: real time passes for it.
+      bool sent() => transport.requests.any((r) => r.robot != null);
+      for (var i = 0; i < 400 && !sent(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 25)),
+        );
+        await tester.pump(const Duration(milliseconds: 25));
+      }
+      await settle(tester);
+
+      final robotRequests = [
+        for (final request in transport.requests)
+          if (request.robot != null) request,
+      ];
+      expect(robotRequests, hasLength(1));
+      expect(robotRequests.single.robot, robot1.sessionKey);
+      expect(
+        robotRequests.single.url.host,
+        FakeRobotCoordinators.hostOf('temple', RobosatsNetwork.testnet),
+      );
+      // The fake coordinator answers no robot: robot #1 is bound to Temple of Sats all the same.
+      expect(find.text('Temple of Sats'), findsOneWidget);
+
+      await tester.ensureVisible(find.byTooltip('Previous account'));
+      await settle(tester);
+      await tester.tap(find.byTooltip('Previous account'));
+      await settle(tester);
+      expect(find.text('Robot #0'), findsOneWidget);
+      expect(find.text('No coordinator knows this robot yet.'), findsOneWidget);
+      expect(transport.requests.where((r) => r.robot != null), hasLength(1));
+    });
+
     testWidgets('moving to another robot gives it a panel of its own', (
       tester,
     ) async {
@@ -2725,6 +2804,82 @@ void main() {
         expect(find.byType(CoordinatorDetailsDialog), findsOneWidget);
         expect(robotCoordinators.requests, isEmpty);
         semantics.dispose();
+      },
+    );
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      testWidgets(
+        'a first contact sent, then the records unreadable: never « Nothing was sent. », in ${locale.languageCode}',
+        (tester) async {
+          robotCoordinators.script.add(RobotReply.notJson);
+          await showPanel(tester, locale: locale);
+          final l10n = _text(tester);
+          robotCoordinators.onSend = (_) {
+            bindings.readFailure = const P2pStorageFailure();
+          };
+          await tester.tap(find.text(l10n.p2pRobotSelectHost));
+          await afterRoute(tester);
+          await tester.tap(find.text('Temple of Sats'));
+          await afterRoute(tester);
+          await tester.tap(find.text(l10n.p2pCommonContinue));
+          await afterRoute(tester);
+          await settle(tester);
+
+          expect(robotCoordinators.firstContacts, hasLength(1));
+          expect(
+            find.text(l10n.p2pRobotBadAnswer('Temple of Sats')),
+            findsOneWidget,
+          );
+          expect(find.text(l10n.p2pRobotRecordsUnreadable), findsOneWidget);
+          expect(find.text(l10n.p2pRobotStorage), findsNothing);
+          expect(find.text(l10n.p2pCommonRetry), findsOneWidget);
+
+          // Once the records can be read: the failure, under the coordinator it went to.
+          bindings.readFailure = null;
+          await tester.tap(find.text(l10n.p2pCommonRetry));
+          await settle(tester);
+          expect(find.text('Temple of Sats'), findsOneWidget);
+          expect(
+            find.text(l10n.p2pRobotBadAnswer('Temple of Sats')),
+            findsOneWidget,
+          );
+        },
+      );
+    }
+
+    testWidgets(
+      'the coordinator chosen, not the first: the confirmation names it, and the first contact goes to it',
+      (tester) async {
+        await showPanel(tester);
+        final l10n = _text(tester);
+        final nickname = robotAt(0).identity.nickname;
+        await tester.tap(find.text(l10n.p2pRobotSelectHost));
+        await afterRoute(tester);
+        // TheBigLake, the second coordinator of testnet.
+        await tester.tap(find.text('TheBigLake'));
+        await afterRoute(tester);
+        expect(
+          find.text(l10n.p2pRobotSendTitle(nickname, 'TheBigLake')),
+          findsOneWidget,
+        );
+        expect(find.text(l10n.p2pRobotSendBody('TheBigLake')), findsOneWidget);
+        expect(find.textContaining('Temple of Sats'), findsNothing);
+
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await afterRoute(tester);
+        await settle(tester);
+
+        expect(robotCoordinators.firstContacts, hasLength(1));
+        expect(
+          robotCoordinators.firstContacts.single.url.host,
+          FakeRobotCoordinators.hostOf('lake', RobosatsNetwork.testnet),
+        );
+        expect(
+          robotCoordinators.firstContacts.single.robot,
+          robotAt(0).identity.sessionKey,
+        );
+        expect(find.text('TheBigLake'), findsOneWidget);
+        expect(find.text(l10n.p2pRobotNoOrders), findsOneWidget);
       },
     );
 
@@ -3221,6 +3376,33 @@ void main() {
           await settle(tester);
           await tester.tap(find.text('See profile'));
           await settle(tester);
+          // The robot panel: « Select Host », « Continue », then « Retry » (security review of step 5).
+          tor.add(P2pTorState.ready);
+          await letTheVaultSettle(tester);
+          await tester.tap(find.text('Select Host'));
+          await afterRoute(tester);
+          await tester.tap(find.text('Temple of Sats'));
+          await afterRoute(tester);
+          await tester.tap(find.text('Continue'));
+          // The key pair is made in an isolate, and the fake coordinator answers no robot: « Retry » comes.
+          for (
+            var i = 0;
+            i < 400 && find.text('Retry').evaluate().isEmpty;
+            i++
+          ) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 25)),
+            );
+            await tester.pump(const Duration(milliseconds: 25));
+          }
+          await tester.tap(find.text('Retry'));
+          await settle(tester);
+          expect(
+            transport.requests.where((request) => request.robot != null),
+            hasLength(2),
+          );
+          await tester.ensureVisible(find.text('Show Garage Key'));
+          await settle(tester);
           await tester.tap(find.text('Show Garage Key'));
           await afterRoute(tester);
           await tester.tap(find.text('PIN ok'));
@@ -3228,7 +3410,10 @@ void main() {
           await tapDeleteAll(tester);
           await settle(tester);
           await tester.tap(find.text('Delete Garage Key'));
-          await settle(tester);
+          // A robot of the key is bound now: the delete asks the PIN.
+          await afterRoute(tester);
+          await tester.tap(find.text('PIN ok'));
+          await afterRoute(tester);
           await tester.tap(find.text('Recovery'));
           await settle(tester);
           await tester.enterText(
@@ -3265,6 +3450,18 @@ void main() {
       Err() => fail('not a key'),
     };
     expectNoKeyIn(printed.join('\n'), [copied, example]);
+    // Nor the credential of the robot that went to the coordinator (robot #1, shown since the wizard), nor of robot #0.
+    for (final index in [0, 1]) {
+      final robot = switch (copied.deriveIdentity(index)) {
+        Ok(:final value) => value,
+        Err() => fail('no robot $index'),
+      };
+      expect(
+        printed.join('\n').contains(robot.tokenSha256Hex),
+        isFalse,
+        reason: 'robot $index',
+      );
+    }
   });
 }
 
