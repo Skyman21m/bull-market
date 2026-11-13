@@ -1162,7 +1162,13 @@ void main() {
     test('a pre-taker\'s read always carries its bond', () async {
       // The view gives the bond with status 3, or answers an error (`api/views.py:381-396`).
       expect(
-        await refuse(_answer(1, role: _Role.preTaker, changes: {'bond_invoice': null, 'bond_satoshis': null})),
+        await refuse(
+          _answer(
+            1,
+            role: _Role.preTaker,
+            changes: {'bond_invoice': null, 'bond_satoshis': null},
+          ),
+        ),
         malformed('bond_invoice'),
       );
     });
@@ -1171,7 +1177,17 @@ void main() {
       // `finalize_contract` sets the taker and status 6 together (`api/logics.py:1320-1380`).
       for (final role in [_Role.maker, _Role.taker]) {
         expect(
-          await refuse(_answer(6, role: role, changes: {'taker_hash_id': null, 'taker_nick': 'None', 'taker_nostr_pubkey': null})),
+          await refuse(
+            _answer(
+              6,
+              role: role,
+              changes: {
+                'taker_hash_id': null,
+                'taker_nick': 'None',
+                'taker_nostr_pubkey': null,
+              },
+            ),
+          ),
           malformed('taker_hash_id'),
           reason: role.name,
         );
