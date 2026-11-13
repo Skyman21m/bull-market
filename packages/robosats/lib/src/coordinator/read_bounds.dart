@@ -12,6 +12,9 @@ abstract final class CoordinatorReadBounds {
   /// Bytes of a `/api/robot/` body: about 2.5 KB with the two armored keys of a robot.
   static const robotBytes = 65536;
 
+  /// Bytes of a `/api/order/` body: about 2 KB, with a hold invoice of about 400 characters and a trade summary.
+  static const orderBytes = 65536;
+
   /// Orders read from one book: a coordinator publishes at most `MAX_PUBLIC_ORDERS`, 100 in its sample configuration (`.env-sample:151`), and the rest of a longer book is left unread.
   static const maxOrders = 1000;
 
