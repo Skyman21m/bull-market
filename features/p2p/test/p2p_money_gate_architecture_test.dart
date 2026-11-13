@@ -543,6 +543,14 @@ final class CancelTradeUsecase {
           ),
         ),
         (
+          'a final local of another block, a field at the guard',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  Future<void> execute() async {\n    {\n      final network = RobosatsNetwork.testnet;\n      log(network);\n    }\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
+        ),
+        (
+          'a field read in a getter, which has no parameters',
+          '${import}final class TakeOrderUsecase {\n  RobosatsNetwork network = RobosatsNetwork.testnet;\n  Future<void> get run async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
+        ),
+        (
           'a getter that changes at each read (N1)',
           '${import}final class TakeOrderUsecase {\n  var _flip = false;\n  RobosatsNetwork get network => (_flip = !_flip) ? RobosatsNetwork.testnet : RobosatsNetwork.mainnet;\n  Future<void> execute() async {\n    if (!P2pMoneyGate.allowsNewTrade(network)) return;\n    $take\n  }\n}\n',
         ),
