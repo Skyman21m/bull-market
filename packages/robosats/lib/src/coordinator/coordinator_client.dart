@@ -313,7 +313,10 @@ final class CoordinatorClient {
       network,
       identity: identity,
       orderId: orderId,
-      body: {'action': 'cancel', 'cancel_status': storedStatusOf(lastRead).wire},
+      body: {
+        'action': 'cancel',
+        'cancel_status': storedStatusOf(lastRead).wire,
+      },
     );
     return switch (_orderAnswer(response)) {
       Err(:final failure) => Err(_afterAction(failure)),
@@ -407,7 +410,9 @@ final class CoordinatorClient {
   /// With no code, `401` and `403` are the authentication's refusal, an empty `400` is the form check of the `POST` (`api/views.py:539-540`), and anything else is the HTTP status alone.
   static CoordinatorFailure _orderRefusal(CoordinatorResponse answer) {
     final status = answer.statusCode;
-    if (status < 400 || status > 499) return CoordinatorUnexpectedStatus(status);
+    if (status < 400 || status > 499) {
+      return CoordinatorUnexpectedStatus(status);
+    }
     final fields = switch (_decode(Ok(answer))) {
       Ok(value: final Map<String, Object?> object) => JsonFields(object),
       _ => null,

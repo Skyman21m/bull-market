@@ -457,44 +457,53 @@ void main() {
       }
     });
 
-    test('a pre-taker\'s cancel is guarded with the stored status, public', () async {
-      // The view shows 3 to the pre-taker only; the coordinator stores the order as public (`api/views.py:381-396`) and compares that (`api/logics.py:1010-1015`).
-      final preTake = _readAt(1, role: _Role.preTaker);
-      expect(preTake.status, CoordinatorOrderStatus.waitingForTakerBond);
-      serveJson(_answer(1, role: _Role.outsider));
-      await cancel(lastRead: preTake);
-      expectPost('{"action":"cancel","cancel_status":1}');
-    });
+    test(
+      'a pre-taker\'s cancel is guarded with the stored status, public',
+      () async {
+        // The view shows 3 to the pre-taker only; the coordinator stores the order as public (`api/views.py:381-396`) and compares that (`api/logics.py:1010-1015`).
+        final preTake = _readAt(1, role: _Role.preTaker);
+        expect(preTake.status, CoordinatorOrderStatus.waitingForTakerBond);
+        serveJson(_answer(1, role: _Role.outsider));
+        await cancel(lastRead: preTake);
+        expectPost('{"action":"cancel","cancel_status":1}');
+      },
+    );
 
-    test('a cancel goes to the order, coordinator and network of its last read', () async {
-      final lake = coordinatorNamed('lake');
-      final lastRead = _read(
-        _answer(9, changes: {'id': 43}),
-        alias: 'lake',
-        network: RobosatsNetwork.mainnet,
-      );
-      transport.answer(
-        lake,
-        RobosatsNetwork.mainnet,
-        '/api/order/',
-        Ok(jsonResponse(_ended(12)..['id'] = 43)),
-      );
-      expectOk(await cancel(lastRead: lastRead));
-      expect(
-        transport.requests.single.url.toString(),
-        '${lake.mainnet.onion}/api/order/?order_id=43',
-      );
-    });
+    test(
+      'a cancel goes to the order, coordinator and network of its last read',
+      () async {
+        final lake = coordinatorNamed('lake');
+        final lastRead = _read(
+          _answer(9, changes: {'id': 43}),
+          alias: 'lake',
+          network: RobosatsNetwork.mainnet,
+        );
+        transport.answer(
+          lake,
+          RobosatsNetwork.mainnet,
+          '/api/order/',
+          Ok(jsonResponse(_ended(12)..['id'] = 43)),
+        );
+        expectOk(await cancel(lastRead: lastRead));
+        expect(
+          transport.requests.single.url.toString(),
+          '${lake.mainnet.onion}/api/order/?order_id=43',
+        );
+      },
+    );
 
     test('a cancel after a read by another robot is not sent', () async {
       final theirs = _read(
-        _answer(9, changes: {
-          'ur_nick': _peer.nickname,
-          'taker_hash_id': _peer.hashId.hex,
-          'taker_nick': _peer.nickname,
-          'maker_hash_id': _us.hashId.hex,
-          'maker_nick': _us.nickname,
-        }),
+        _answer(
+          9,
+          changes: {
+            'ur_nick': _peer.nickname,
+            'taker_hash_id': _peer.hashId.hex,
+            'taker_nick': _peer.nickname,
+            'maker_hash_id': _us.hashId.hex,
+            'maker_nick': _us.nickname,
+          },
+        ),
         identity: _peer,
       );
       final failure = expectErr(await cancelAction(lastRead: theirs));
@@ -935,7 +944,7 @@ void main() {
       expect(summary.contractExchangeRate, 91234.56);
       expect(summary.contractTimestamp, DateTime.utc(2026, 11, 13, 8, 3));
       expect(summary.contractTotalTime, const Duration(milliseconds: 1234500));
-      expect(summary.routingBudgetSats, Sats.zero);
+      expect(summary.routingBudgetSats, 0.0);
     });
 
     test('the summary of a successful seller', () async {
@@ -1019,110 +1028,280 @@ void main() {
         ({'is_buyer': false, 'is_seller': true}, 'is_buyer'),
         ({'type': 0}, 'is_buyer'),
       ]) {
-        expect(await refuse(_answer(9, changes: changes)), malformed(field), reason: '$changes');
+        expect(
+          await refuse(_answer(9, changes: changes)),
+          malformed(field),
+          reason: '$changes',
+        );
       }
     });
 
     test('must agree with the robot that asked', () async {
       for (final (answer, field) in [
         // This robot named as the taker of an order the answer says it does not take.
-        (_answer(9, role: _Role.maker, changes: {'taker_hash_id': _us.hashId.hex, 'taker_nick': _us.nickname, 'maker_hash_id': _peer.hashId.hex, 'maker_nick': _peer.nickname}), 'maker_hash_id'),
+        (
+          _answer(
+            9,
+            role: _Role.maker,
+            changes: {
+              'taker_hash_id': _us.hashId.hex,
+              'taker_nick': _us.nickname,
+              'maker_hash_id': _peer.hashId.hex,
+              'maker_nick': _peer.nickname,
+            },
+          ),
+          'maker_hash_id',
+        ),
         // Said to be the taker, another robot named.
-        (_answer(9, changes: {'taker_hash_id': _peer.hashId.hex, 'taker_nick': _peer.nickname}), 'taker_hash_id'),
+        (
+          _answer(
+            9,
+            changes: {
+              'taker_hash_id': _peer.hashId.hex,
+              'taker_nick': _peer.nickname,
+            },
+          ),
+          'taker_hash_id',
+        ),
         // Said to be the maker, another robot named.
-        (_answer(9, role: _Role.maker, changes: {'maker_hash_id': _peer.hashId.hex, 'maker_nick': _peer.nickname, 'taker_hash_id': _us.hashId.hex, 'taker_nick': _us.nickname}), 'maker_hash_id'),
+        (
+          _answer(
+            9,
+            role: _Role.maker,
+            changes: {
+              'maker_hash_id': _peer.hashId.hex,
+              'maker_nick': _peer.nickname,
+              'taker_hash_id': _us.hashId.hex,
+              'taker_nick': _us.nickname,
+            },
+          ),
+          'maker_hash_id',
+        ),
         // This robot named as the maker of an order the answer says it is no maker of.
-        (_answer(1, role: _Role.outsider, changes: {'maker_hash_id': _us.hashId.hex, 'maker_nick': _us.nickname}), 'maker_hash_id'),
+        (
+          _answer(
+            1,
+            role: _Role.outsider,
+            changes: {
+              'maker_hash_id': _us.hashId.hex,
+              'maker_nick': _us.nickname,
+            },
+          ),
+          'maker_hash_id',
+        ),
         // Another robot's nickname as this robot's.
         (_answer(9, changes: {'ur_nick': _peer.nickname}), 'ur_nick'),
         (_answer(9, changes: {'ur_nick': null}), 'ur_nick'),
         // A taker past a pre-take, not named.
-        (_answer(9, changes: {'taker_hash_id': null, 'taker_nick': 'None', 'taker_nostr_pubkey': null}), 'taker_hash_id'),
-        (_answer(9, role: _Role.maker, changes: {'taker_hash_id': null, 'taker_nick': 'None', 'taker_nostr_pubkey': null}), 'taker_hash_id'),
-      ]) {
-        expect(await refuse(answer), malformed(field), reason: '$field');
-      }
-    });
-
-    test('a robot that is no participant sees a public order without any participant field', () async {
-      expect(
-        await refuse(_answer(1, role: _Role.outsider, changes: {'status': 6})),
-        malformed('status'),
-      );
-      for (final (key, value) in <(String, Object)>[
-        ('bond_invoice', _bondInvoice),
-        ('escrow_invoice', _escrowInvoice),
-        ('is_buyer', true),
-        ('ur_nick', _us.nickname),
-        ('trade_satoshis', 5),
-        ('chat_last_index', 0),
-        ('taker_summary', <String, Object?>{}),
-        ('address', 'tb1qfake'),
-      ]) {
-        final answer = _answer(1, role: _Role.outsider, changes: {key: value});
-        if (key == 'bond_invoice') answer['bond_satoshis'] = 4932;
-        if (key == 'escrow_invoice') answer['escrow_satoshis'] = 4932;
-        expect(await refuse(answer), malformed(key), reason: key);
-      }
-      // A `null` is the same as absent.
-      expect(await read(_answer(1, role: _Role.outsider, changes: {'ur_nick': null})), isA<CoordinatorOrder>());
-    });
-
-    test('a hold invoice only at the step that asks for it, to the robot that pays it', () async {
-      for (final (answer, field) in [
-        (_answer(9, changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932}), 'bond_invoice'),
-        (_answer(1, role: _Role.maker, changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932}), 'bond_invoice'),
-        (_answer(9, buyer: false, changes: {'escrow_invoice': _escrowInvoice, 'escrow_satoshis': 4}), 'escrow_invoice'),
-        (_answer(6, changes: {'escrow_invoice': _escrowInvoice, 'escrow_satoshis': 4}), 'escrow_invoice'),
-        (_answer(6, buyer: false, changes: {'invoice_amount': 5}), 'invoice_amount'),
+        (
+          _answer(
+            9,
+            changes: {
+              'taker_hash_id': null,
+              'taker_nick': 'None',
+              'taker_nostr_pubkey': null,
+            },
+          ),
+          'taker_hash_id',
+        ),
+        (
+          _answer(
+            9,
+            role: _Role.maker,
+            changes: {
+              'taker_hash_id': null,
+              'taker_nick': 'None',
+              'taker_nostr_pubkey': null,
+            },
+          ),
+          'taker_hash_id',
+        ),
       ]) {
         expect(await refuse(answer), malformed(field), reason: field);
       }
     });
+
+    test(
+      'a robot that is no participant sees a public order without any participant field',
+      () async {
+        expect(
+          await refuse(
+            _answer(1, role: _Role.outsider, changes: {'status': 6}),
+          ),
+          malformed('status'),
+        );
+        for (final (key, value) in <(String, Object)>[
+          ('bond_invoice', _bondInvoice),
+          ('escrow_invoice', _escrowInvoice),
+          ('is_buyer', true),
+          ('ur_nick', _us.nickname),
+          ('trade_satoshis', 5),
+          ('chat_last_index', 0),
+          ('taker_summary', <String, Object?>{}),
+          ('address', 'tb1qfake'),
+        ]) {
+          final answer = _answer(
+            1,
+            role: _Role.outsider,
+            changes: {key: value},
+          );
+          if (key == 'bond_invoice') answer['bond_satoshis'] = 4932;
+          if (key == 'escrow_invoice') answer['escrow_satoshis'] = 4932;
+          expect(await refuse(answer), malformed(key), reason: key);
+        }
+        // A `null` is the same as absent.
+        expect(
+          await read(
+            _answer(1, role: _Role.outsider, changes: {'ur_nick': null}),
+          ),
+          isA<CoordinatorOrder>(),
+        );
+      },
+    );
+
+    test(
+      'a hold invoice only at the step that asks for it, to the robot that pays it',
+      () async {
+        for (final (answer, field) in [
+          (
+            _answer(
+              9,
+              changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932},
+            ),
+            'bond_invoice',
+          ),
+          (
+            _answer(
+              1,
+              role: _Role.maker,
+              changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932},
+            ),
+            'bond_invoice',
+          ),
+          (
+            _answer(
+              9,
+              buyer: false,
+              changes: {'escrow_invoice': _escrowInvoice, 'escrow_satoshis': 4},
+            ),
+            'escrow_invoice',
+          ),
+          (
+            _answer(
+              6,
+              changes: {'escrow_invoice': _escrowInvoice, 'escrow_satoshis': 4},
+            ),
+            'escrow_invoice',
+          ),
+          (
+            _answer(6, buyer: false, changes: {'invoice_amount': 5}),
+            'invoice_amount',
+          ),
+        ]) {
+          expect(await refuse(answer), malformed(field), reason: field);
+        }
+      },
+    );
   });
 
   group('the review\'s probes', () {
     // The first security pass of #99 found these answers refused, or contradictions accepted.
-    test('P1: a participant of a face-to-face order, coordinates as JSON numbers', () async {
-      final order = await read(_answer(9, changes: {'latitude': 48.8566, 'longitude': 2.3522}));
-      expect(order.location?.latitude, 48.8566);
-    });
+    test(
+      'P1: a participant of a face-to-face order, coordinates as JSON numbers',
+      () async {
+        final order = await read(
+          _answer(9, changes: {'latitude': 48.8566, 'longitude': 2.3522}),
+        );
+        expect(order.location?.latitude, 48.8566);
+      },
+    );
 
     test('P2: the take of a face-to-face order by a pre-taker', () async {
-      serveJson(_answer(1, role: _Role.preTaker, changes: {'latitude': 48.8566, 'longitude': 2.3522}));
+      serveJson(
+        _answer(
+          1,
+          role: _Role.preTaker,
+          changes: {'latitude': 48.8566, 'longitude': 2.3522},
+        ),
+      );
       expect(expectOk(await take()), isA<OrderTakeStarted>());
     });
 
     for (final status in [13, 14]) {
       for (final buyer in [true, false]) {
-        test('P3: status $status, ${buyer ? 'buyer' : 'seller'}, a routing budget of 0.0', () async {
-          final answer = _answer(status, buyer: buyer);
-          (answer['platform_summary'] as Map<String, Object?>)['routing_budget_sats'] = 0.0;
-          final order = await read(answer);
-          expect(order.summary?.routingBudgetSats, 0.0);
-        });
+        test(
+          'P3: status $status, ${buyer ? 'buyer' : 'seller'}, a routing budget of 0.0',
+          () async {
+            final answer = _answer(status, buyer: buyer);
+            (answer['platform_summary']
+                    as Map<String, Object?>)['routing_budget_sats'] =
+                0.0;
+            final order = await read(answer);
+            expect(order.summary?.routingBudgetSats, 0.0);
+          },
+        );
       }
     }
 
-    test('P4: contradictory roles are refused, a status 3 without its bond is no take', () async {
-      expect(
-        await refuse(_answer(9, changes: {'is_maker': true, 'is_taker': true, 'is_participant': false})),
-        malformed('is_taker'),
-      );
-      expect(await refuse(_answer(9, changes: {'is_buyer': true, 'is_seller': true})), malformed('is_seller'));
-      expect(
-        await refuse(_answer(1, role: _Role.outsider, changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932})),
-        malformed('bond_invoice'),
-      );
-      serveJson(_answer(1, role: _Role.preTaker, changes: {'bond_invoice': null, 'bond_satoshis': null}));
-      expect(expectErr(await take()), malformed('bond_invoice'));
-      serveJson(_answer(1, role: _Role.preTaker, changes: {'is_maker': true}));
-      expect(expectErr(await take()), malformed('is_taker'));
-      expect(
-        await refuse(_answer(9, changes: {'taker_hash_id': null, 'taker_nick': 'None', 'taker_nostr_pubkey': null})),
-        malformed('taker_hash_id'),
-      );
-    });
+    test(
+      'P4: contradictory roles are refused, a status 3 without its bond is no take',
+      () async {
+        expect(
+          await refuse(
+            _answer(
+              9,
+              changes: {
+                'is_maker': true,
+                'is_taker': true,
+                'is_participant': false,
+              },
+            ),
+          ),
+          malformed('is_taker'),
+        );
+        expect(
+          await refuse(
+            _answer(9, changes: {'is_buyer': true, 'is_seller': true}),
+          ),
+          malformed('is_seller'),
+        );
+        expect(
+          await refuse(
+            _answer(
+              1,
+              role: _Role.outsider,
+              changes: {'bond_invoice': _bondInvoice, 'bond_satoshis': 4932},
+            ),
+          ),
+          malformed('bond_invoice'),
+        );
+        serveJson(
+          _answer(
+            1,
+            role: _Role.preTaker,
+            changes: {'bond_invoice': null, 'bond_satoshis': null},
+          ),
+        );
+        expect(expectErr(await take()), malformed('bond_invoice'));
+        serveJson(
+          _answer(1, role: _Role.preTaker, changes: {'is_maker': true}),
+        );
+        expect(expectErr(await take()), malformed('is_taker'));
+        expect(
+          await refuse(
+            _answer(
+              9,
+              changes: {
+                'taker_hash_id': null,
+                'taker_nick': 'None',
+                'taker_nostr_pubkey': null,
+              },
+            ),
+          ),
+          malformed('taker_hash_id'),
+        );
+      },
+    );
   });
 
   group('Nostr keys', () {
@@ -1418,14 +1597,24 @@ void main() {
 
     test('an invalid summary is dropped alone, the order kept', () async {
       // Display only, and it comes with what a buyer must act on: never the reason to lose the order.
-      for (final (key, change) in <(String, void Function(Map<String, Object?>))>[
-        ('taker_summary', (summary) => summary['sent_fiat'] = '150'),
-        ('taker_summary', (summary) => summary['is_buyer'] = null),
-        ('taker_summary', (summary) => summary['received_sats'] = -5),
-        ('platform_summary', (summary) => summary['contract_timestamp'] = 'then'),
-        ('platform_summary', (summary) => summary['routing_budget_sats'] = '0.000'),
-        ('platform_summary', (summary) => summary['routing_budget_sats'] = -0.5),
-      ]) {
+      for (final (key, change)
+          in <(String, void Function(Map<String, Object?>))>[
+            ('taker_summary', (summary) => summary['sent_fiat'] = '150'),
+            ('taker_summary', (summary) => summary['is_buyer'] = null),
+            ('taker_summary', (summary) => summary['received_sats'] = -5),
+            (
+              'platform_summary',
+              (summary) => summary['contract_timestamp'] = 'then',
+            ),
+            (
+              'platform_summary',
+              (summary) => summary['routing_budget_sats'] = '0.000',
+            ),
+            (
+              'platform_summary',
+              (summary) => summary['routing_budget_sats'] = -0.5,
+            ),
+          ]) {
         final answer = _answer(15, buyer: false);
         change(answer[key] as Map<String, Object?>);
         final order = await read(answer);
@@ -1445,23 +1634,37 @@ void main() {
     });
 
     test('the routing budget is read in sats with millisat decimals', () async {
-      for (final (value, read_) in [(0.0, 0.0), (164.126, 164.126), (0, 0.0), (5000, 5000.0)]) {
+      for (final (value, read_) in [
+        (0.0, 0.0),
+        (164.126, 164.126),
+        (0, 0.0),
+        (5000, 5000.0),
+      ]) {
         final answer = _answer(14);
-        (answer['platform_summary'] as Map<String, Object?>)['routing_budget_sats'] = value;
+        (answer['platform_summary']
+                as Map<String, Object?>)['routing_budget_sats'] =
+            value;
         expect((await read(answer)).summary?.routingBudgetSats, read_);
       }
     });
 
-    test('a hold invoice\'s negative amount is malformed, never a crash', () async {
-      expect(
-        await refuse(_answer(1, role: _Role.preTaker, changes: {'bond_satoshis': -1})),
-        malformed('bond_satoshis'),
-      );
-      expect(
-        await refuse(_answer(6, buyer: false, changes: {'escrow_satoshis': -1})),
-        malformed('escrow_satoshis'),
-      );
-    });
+    test(
+      'a hold invoice\'s negative amount is malformed, never a crash',
+      () async {
+        expect(
+          await refuse(
+            _answer(1, role: _Role.preTaker, changes: {'bond_satoshis': -1}),
+          ),
+          malformed('bond_satoshis'),
+        );
+        expect(
+          await refuse(
+            _answer(6, buyer: false, changes: {'escrow_satoshis': -1}),
+          ),
+          malformed('escrow_satoshis'),
+        );
+      },
+    );
 
     test('the peer\'s summary is not read', () async {
       final answer = _answer(14);
@@ -1571,7 +1774,10 @@ void main() {
         malformed('latitude'),
       );
       expect((await read(_answer(9, place: false))).location, isNull);
-      expect((await read(_answer(1, role: _Role.outsider))).location?.longitude, 2.3522);
+      expect(
+        (await read(_answer(1, role: _Role.outsider))).location?.longitude,
+        2.3522,
+      );
       final order = await read(
         _answer(
           9,
@@ -1687,13 +1893,16 @@ void main() {
   });
 
   group('the take', () {
-    test('started: the order at status 3 with this robot as pre-taker, and its bond', () async {
-      serveJson(_answer(1, role: _Role.preTaker));
-      final outcome = expectOk(await take());
-      expect(outcome, isA<OrderTakeStarted>());
-      expect((outcome as OrderTakeStarted).bondInvoice.invoice, _bondInvoice);
-      expect(outcome.order.bondInvoice?.invoice, _bondInvoice);
-    });
+    test(
+      'started: the order at status 3 with this robot as pre-taker, and its bond',
+      () async {
+        serveJson(_answer(1, role: _Role.preTaker));
+        final outcome = expectOk(await take());
+        expect(outcome, isA<OrderTakeStarted>());
+        expect((outcome as OrderTakeStarted).bondInvoice.invoice, _bondInvoice);
+        expect(outcome.order.bondInvoice?.invoice, _bondInvoice);
+      },
+    );
 
     test(
       'not taken: the order as it is, from a coordinator that took nothing',
@@ -1712,27 +1921,45 @@ void main() {
       },
     );
 
-    test('already this robot\'s from an earlier take, at every later status', () async {
-      // A caller that dropped such a trade would let its step time out, and a taker who does loses its bond (`api/logics.py:404-458`).
-      for (final status in [5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18]) {
-        serveJson(_answer(status));
-        final outcome = expectOk(await take());
-        expect(outcome, isA<OrderAlreadyTakenByThisRobot>(), reason: '$status');
-        expect(outcome.order.status.wire, status);
-      }
-    });
+    test(
+      'already this robot\'s from an earlier take, at every later status',
+      () async {
+        // A caller that dropped such a trade would let its step time out, and a taker who does loses its bond (`api/logics.py:404-458`).
+        for (final status in [5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18]) {
+          serveJson(_answer(status));
+          final outcome = expectOk(await take());
+          expect(
+            outcome,
+            isA<OrderAlreadyTakenByThisRobot>(),
+            reason: '$status',
+          );
+          expect(outcome.order.status.wire, status);
+        }
+      },
+    );
 
     test('a status 3 that is no pre-take of this robot is refused', () async {
       for (final (changes, field) in [
         // Shown to a robot that is not the taker.
         ({'is_taker': false, 'is_participant': false}, 'status'),
-        ({'is_taker': false, 'is_maker': true, 'maker_hash_id': _us.hashId.hex, 'maker_nick': _us.nickname}, 'status'),
+        (
+          {
+            'is_taker': false,
+            'is_maker': true,
+            'maker_hash_id': _us.hashId.hex,
+            'maker_nick': _us.nickname,
+          },
+          'status',
+        ),
         // This robot as maker and taker at once.
         ({'is_maker': true}, 'is_taker'),
         // With no bond to lock.
         ({'bond_invoice': null, 'bond_satoshis': null}, 'bond_invoice'),
         // With a taker already named.
-        ({'taker_hash_id': _us.hashId.hex, 'taker_nick': _us.nickname}, 'status'),
+        (
+          {'taker_hash_id': _us.hashId.hex, 'taker_nick': _us.nickname},
+          'status',
+        ),
       ]) {
         serveJson(_answer(1, role: _Role.preTaker, changes: changes));
         final failure = expectErr(await takeAction());
@@ -1828,7 +2055,20 @@ void main() {
     const httpStatuses = [400, 403, 404, 409];
 
     // The codes that come before the take or the cancel did anything (see `OrderActionRefused`); every other one may come from the read after it.
-    const before = {1000, 1001, 1002, 1003, 1011, 1012, 1020, 1042, 1045, 7000, 7001, 7003};
+    const before = {
+      1000,
+      1001,
+      1002,
+      1003,
+      1011,
+      1012,
+      1020,
+      1042,
+      1045,
+      7000,
+      7001,
+      7003,
+    };
 
     for (final MapEntry(key: code, value: matcher) in codes.entries) {
       test('error $code', () async {
@@ -1857,7 +2097,11 @@ void main() {
         serveJson(_error(1044), statusCode: status);
         expect(
           expectErr(await fetch()),
-          isA<CoordinatorUnexpectedStatus>().having((f) => f.statusCode, 'statusCode', status),
+          isA<CoordinatorUnexpectedStatus>().having(
+            (f) => f.statusCode,
+            'statusCode',
+            status,
+          ),
         );
         final failure = expectErr(await takeAction());
         expect(failure, isA<OrderActionOutcomeUnknown>());
@@ -1865,34 +2109,50 @@ void main() {
       }
     });
 
-    test('the failures that say nothing was done, and those that do not', () async {
-      // Nothing sent, or refused before the action.
-      serve(const Err(CoordinatorTransportBusy()));
-      expect(expectErr(await takeAction()), isA<OrderActionRefused>());
-      serve(Ok(rawResponse(const [], statusCode: 400)));
-      expect(expectErr(await takeAction()), isA<OrderActionRefused>());
-      expect(expectErr(await cancelAction()), isA<OrderActionRefused>());
-      for (final status in [401, 403]) {
-        serveJson({'detail': 'Not authenticated.'}, statusCode: status);
+    test(
+      'the failures that say nothing was done, and those that do not',
+      () async {
+        // Nothing sent, or refused before the action.
+        serve(const Err(CoordinatorTransportBusy()));
+        expect(expectErr(await takeAction()), isA<OrderActionRefused>());
+        serve(Ok(rawResponse(const [], statusCode: 400)));
         expect(expectErr(await takeAction()), isA<OrderActionRefused>());
         expect(expectErr(await cancelAction()), isA<OrderActionRefused>());
-      }
-      // Anything that may come after the action: an unmapped code, a 400 with a body, a malformed answer, a lost connection, a timeout.
-      for (final answer in <Result<CoordinatorResponse, CoordinatorTransportFailure>>[
-        Ok(jsonResponse(_error(1047), statusCode: 403)),
-        Ok(rawResponse(utf8.encode('<html></html>'), statusCode: 400, contentType: 'text/html')),
-        Ok(jsonResponse(_answer(9, changes: {'status': 'nine'}))),
-        Ok(rawResponse(utf8.encode('not json'))),
-        const Err(CoordinatorUnreachable()),
-        const Err(CoordinatorTimedOut()),
-        const Err(CoordinatorTransportFailed()),
-        const Err(CoordinatorResponseTooLarge()),
-      ]) {
-        serve(answer);
-        expect(expectErr(await takeAction()), isA<OrderActionOutcomeUnknown>());
-        expect(expectErr(await cancelAction()), isA<OrderActionOutcomeUnknown>());
-      }
-    });
+        for (final status in [401, 403]) {
+          serveJson({'detail': 'Not authenticated.'}, statusCode: status);
+          expect(expectErr(await takeAction()), isA<OrderActionRefused>());
+          expect(expectErr(await cancelAction()), isA<OrderActionRefused>());
+        }
+        // Anything that may come after the action: an unmapped code, a 400 with a body, a malformed answer, a lost connection, a timeout.
+        for (final answer
+            in <Result<CoordinatorResponse, CoordinatorTransportFailure>>[
+              Ok(jsonResponse(_error(1047), statusCode: 403)),
+              Ok(
+                rawResponse(
+                  utf8.encode('<html></html>'),
+                  statusCode: 400,
+                  contentType: 'text/html',
+                ),
+              ),
+              Ok(jsonResponse(_answer(9, changes: {'status': 'nine'}))),
+              Ok(rawResponse(utf8.encode('not json'))),
+              const Err(CoordinatorUnreachable()),
+              const Err(CoordinatorTimedOut()),
+              const Err(CoordinatorTransportFailed()),
+              const Err(CoordinatorResponseTooLarge()),
+            ]) {
+          serve(answer);
+          expect(
+            expectErr(await takeAction()),
+            isA<OrderActionOutcomeUnknown>(),
+          );
+          expect(
+            expectErr(await cancelAction()),
+            isA<OrderActionOutcomeUnknown>(),
+          );
+        }
+      },
+    );
 
     test('the robots in use share one type', () {
       for (final code in [1000, 1001, 1002, 1003]) {

@@ -421,10 +421,10 @@ final class CoordinatorOrder {
 
   final OnchainPayout? onchainPayout;
 
-  const CoordinatorOrder._({
+  const CoordinatorOrder._(
+    this._readBy, {
     required this.coordinator,
     required this.network,
-    required String readBy,
     required this.id,
     required this.status,
     required this.createdAt,
@@ -483,7 +483,7 @@ final class CoordinatorOrder {
     required this.expiryReason,
     required this.summary,
     required this.onchainPayout,
-  }) : _readBy = readBy;
+  });
 
   /// Whether this answer was given to the robot [identity].
   @internal
@@ -843,7 +843,8 @@ final class CoordinatorOrder {
       }
       if (escrowInvoice != null &&
           !(!buys &&
-              (status == CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
+              (status ==
+                      CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
                   status == CoordinatorOrderStatus.waitingForCollateral))) {
         return Err(reject('escrow_invoice'));
       }
@@ -859,9 +860,9 @@ final class CoordinatorOrder {
 
     return Ok(
       CoordinatorOrder._(
+        ownHash,
         coordinator: coordinator,
         network: network,
-        readBy: ownHash,
         id: id,
         status: status,
         createdAt: createdAt,
