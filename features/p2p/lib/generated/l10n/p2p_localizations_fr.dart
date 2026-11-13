@@ -608,7 +608,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pMapSummary(String buyOrders, String sellOrders) {
-    return 'Carte des emplacements face à face : $buyOrders et $sellOrders. Ces ordres sont aussi dans la liste.';
+    return 'Carte des emplacements face à face du carnet d\'ordres : $buyOrders et $sellOrders.';
   }
 
   @override

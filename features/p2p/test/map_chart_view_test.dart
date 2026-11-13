@@ -79,6 +79,7 @@ void main() {
     bool showMap = true,
     Size? screen,
     double textScale = 1,
+    AssetBundle? bundle,
   }) async {
     setUpP2pForTesting(
       locator,
@@ -107,7 +108,14 @@ void main() {
         ),
       ],
     );
-    await tester.pumpWidget(routerHarness(router, locale: locale));
+    await tester.pumpWidget(
+      bundle == null
+          ? routerHarness(router, locale: locale)
+          : DefaultAssetBundle(
+              bundle: bundle,
+              child: routerHarness(router, locale: locale),
+            ),
+    );
     await settle(tester);
     tor.add(P2pTorState.ready);
     await settle(tester);
@@ -173,7 +181,7 @@ void main() {
   Finder shown(String text) => find.text(text).hitTestable();
 
   const summary =
-      'Map of the face to face locations: 1 buy order and 2 sell orders. These orders are in the list too.';
+      'Map of the face to face locations of the order book: 1 buy order and 2 sell orders.';
 
   testWidgets(
     '« Map » shows the orders with a position on the world, under the row of the coordinators',
@@ -268,10 +276,10 @@ void main() {
     transport = FakeTransport(
       books: {
         'temple': [
-          for (var id = 1; id <= 12; id++) located(id, '38.7223', '-9.1393'),
+          for (var id = 1; id <= 10; id++) located(id, '38.7223', '-9.1393'),
         ],
         'lake': [
-          for (var id = 1; id <= 3; id++) located(id, '-23.5505', '-46.6333'),
+          for (var id = 1; id <= 9; id++) located(id, '-23.5505', '-46.6333'),
         ],
         'bazaar': [
           for (var id = 1; id <= 100; id++) located(id, '35.6762', '139.6503'),
@@ -285,7 +293,7 @@ void main() {
       paints
         ..path(color: theme.text.withValues(alpha: 0.1))
         ..path(color: theme.textMuted)
-        // From north to south: twelve in Lisbon, fewer than 100, yellow; a hundred in Tokyo, orange; three in São Paulo, fewer than 10, green.
+        // From north to south, at the edges of the sizes: ten in Lisbon, yellow; a hundred in Tokyo, orange; nine in São Paulo, green.
         // The figures of the test font are about as wide as the text is high: two or three widen the discs, one fits the 30 and 40 points of Leaflet.markercluster's.
         ..circle(color: theme.tertiary.withValues(alpha: 0.35))
         ..circle(color: theme.tertiary.withValues(alpha: 0.75))
@@ -572,7 +580,7 @@ void main() {
   });
 
   testWidgets(
-    'the map shows the orders of the currency and the host of the filter, both sides, as the chart',
+    'the map shows every order of the book that has a position, whatever the filter, as the official client\'s map',
     (tester) async {
       final semantics = tester.ensureSemantics();
       transport = FakeTransport(
@@ -587,15 +595,13 @@ void main() {
           ],
         },
       );
+      const all =
+          'Map of the face to face locations of the order book: 2 buy orders and 2 sell orders.';
       await openMap(tester);
-      expect(
-        find.bySemanticsLabel(
-          'Map of the face to face locations: 2 buy orders and 2 sell orders. These orders are in the list too.',
-        ),
-        findsOneWidget,
-      );
+      expect(drawnIds(tester).expand((ids) => ids).toSet(), {1, 2, 3, 4});
+      expect(find.bySemanticsLabel(all), findsOneWidget);
 
-      // « I want to sell » with euros, in the list: the map keeps both sides, in euros only.
+      // « I want to sell » with euros, hosted by TheBigLake, in the list: the map still draws both sides, dollars too, and temple's orders.
       await tester.tap(find.text('List'));
       await settle(tester);
       await tester.tap(find.text('ANY').first);
@@ -606,28 +612,14 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('EUR').last);
       await settle(tester);
-      await tester.tap(find.text('Map'));
-      await settle(tester);
-      expect(drawnIds(tester).expand((ids) => ids).toSet(), {1, 3});
-      expect(
-        find.bySemanticsLabel(
-          'Map of the face to face locations: 1 buy order and 1 sell order. These orders are in the list too.',
-        ),
-        findsOneWidget,
-      );
-
-      // Hosted by TheBigLake: its order alone.
-      await tester.tap(find.text('List'));
-      await settle(tester);
       await tester.tap(find.text('ANY').last);
       await settle(tester);
       await tester.tap(find.text('TheBigLake').last);
       await settle(tester);
       await tester.tap(find.text('Map'));
       await settle(tester);
-      expect(drawnIds(tester), [
-        [3],
-      ]);
+      expect(drawnIds(tester).expand((ids) => ids).toSet(), {1, 2, 3, 4});
+      expect(find.bySemanticsLabel(all), findsOneWidget);
       semantics.dispose();
     },
   );
@@ -736,7 +728,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(
         find.bySemanticsLabel(
-          'Map of the face to face locations: 650 buy orders and 656 sell orders. These orders are in the list too.',
+          'Map of the face to face locations of the order book: 650 buy orders and 656 sell orders.',
         ),
         findsOneWidget,
       );
@@ -804,6 +796,70 @@ void main() {
       );
       await settle(tester);
       expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
+  for (final (name, bundle) in [
+    ('missing', () => _BrokenMapBundle(missing: true)),
+    ('cut short', _BrokenMapBundle.new),
+  ]) {
+    testWidgets(
+      'a world map $name in the bundle: no error, and the orders on an empty map',
+      (tester) async {
+        await openMap(tester, bundle: bundle());
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(map, findsOneWidget);
+        expect(painter(tester).world, isNull);
+        expect(drawnIds(tester), [
+          [1, 2],
+          [4],
+        ]);
+        await tester.tapAt(pinOf(tester, 4));
+        await settle(tester);
+        expect(find.text('# 4'), findsOneWidget);
+      },
+    );
+  }
+
+  testWidgets(
+    'a pin keeps its node for a screen reader while the map moves, and scrolling the summary moves the map',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openMap(tester);
+      final pin = find.semantics.byLabel('Buyer, 100 EUR, TheBigLake');
+      final group = find.semantics.byLabel('2 orders here');
+      expect(group, findsOne);
+      final id = pin.evaluate().single.id;
+      // Dragged 220 points east: the group over Europe leaves the view, São Paulo's pin stays, with its node.
+      final finger = await tester.startGesture(tester.getCenter(paint));
+      for (var step = 0; step < 55; step++) {
+        await finger.moveBy(const Offset(4, 0));
+        await tester.pump();
+      }
+      await finger.up();
+      await tester.pump();
+      expect(layout(tester).camera.x, lessThan(0.5));
+      expect(group, findsNothing);
+      expect(pin.evaluate().single.id, id);
+
+      // Scrolled left, the map shows what lies east, half a view further; scrolled down, what lies north.
+      final width = tester.getSize(paint).width;
+      final height = tester.getSize(paint).height;
+      final before = layout(tester).camera;
+      tester.semantics.scrollLeft(scrollable: find.semantics.byLabel(summary));
+      await tester.pump();
+      expect(
+        layout(tester).camera.x,
+        closeTo(before.x + width / 2 / 512, 1e-12),
+      );
+      tester.semantics.scrollDown(scrollable: find.semantics.byLabel(summary));
+      await tester.pump();
+      expect(
+        layout(tester).camera.y,
+        closeTo(before.y - height / 2 / 512, 1e-12),
+      );
       semantics.dispose();
     },
   );
@@ -888,7 +944,7 @@ void main() {
     expect(find.byTooltip('Zoom arrière'), findsOneWidget);
     expect(
       find.bySemanticsLabel(
-        "Carte des emplacements face à face : 1 ordre d'achat et 2 ordres de vente. Ces ordres sont aussi dans la liste.",
+        "Carte des emplacements face à face du carnet d'ordres : 1 ordre d'achat et 2 ordres de vente.",
       ),
       findsOneWidget,
     );
@@ -965,6 +1021,8 @@ void main() {
     // A bundle whose map is not what the script writes: the view draws the orders on an empty map.
     final bundle = _BrokenMapBundle();
     expect(await tester.runAsync(() => MapChartView.worldOf(bundle)), isNull);
+    final missing = _BrokenMapBundle(missing: true);
+    expect(await tester.runAsync(() => MapChartView.worldOf(missing)), isNull);
     expect(
       identical(MapChartView.worldOf(bundle), MapChartView.worldOf(bundle)),
       isTrue,
@@ -972,10 +1030,17 @@ void main() {
   });
 }
 
-/// The bundle of the tests, with a world map cut short.
+/// The bundle of the tests, with a world map cut short, or without it when [missing], as a build that lost it.
 final class _BrokenMapBundle extends CachingAssetBundle {
+  final bool missing;
+
+  _BrokenMapBundle({this.missing = false});
+
   @override
   Future<ByteData> load(String key) async {
+    if (key == MapChartView.worldAsset && missing) {
+      throw FlutterError('Unable to load asset: "$key".');
+    }
     final data = await rootBundle.load(key);
     if (key != MapChartView.worldAsset) return data;
     return ByteData.sublistView(data, 0, data.lengthInBytes - 1);

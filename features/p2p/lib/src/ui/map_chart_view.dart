@@ -24,8 +24,8 @@ import 'widgets/offer_row.dart';
 /// Each order of the book with a position has a pin, red for a seller and in the secondary colour for a buyer, as the official client colours them; pins that would overlap are grouped with their count (`MapMarks`).
 /// A drag moves the map and a pinch zooms it, within the official client's zooms, and the « + » and « − » buttons zoom too, as Leaflet's zoom control does.
 /// A tap on a pin opens its order, as a tap on the chart does; a tap on a group zooms in on it, or lists its orders when zooming cannot part them; a long press, or a pointer that hovers, shows the order of a pin.
-/// It shows the orders the chart shows, those of the currency and the host of the filter, and only those with a position.
-/// A screen reader reads a summary, then each pin and group in view, which it can open as a tap does; these orders are in the list too.
+/// It shows every order of the book that has a position, whatever the filter of the list, as the official client's map shows its whole book (`MapChart`, `orders={federation.book}`).
+/// A screen reader reads a summary, then each pin and group in view, which it can open as a tap does; the summary moves the map when the screen reader scrolls it.
 /// Nothing moves by itself, so there is no animation to stop for reduced motion.
 class MapChartView extends StatefulWidget {
   final BookState state;
@@ -57,27 +57,35 @@ class MapChartView extends StatefulWidget {
 }
 
 /// The world map of one bundle, once it is read, and its outline, built once for every view that shows it.
+///
+/// An asset the bundle cannot give, as a build that lost it would be, is no world, as one it gives garbled: the orders are drawn on an empty map, and nothing is thrown.
+/// It is not asked again: a bundled asset missing once stays missing for the life of the app.
 final class _WorldLoad {
   late final Future<WorldMap?> future;
   bool done = false;
   Path? outline;
 
   _WorldLoad(AssetBundle bundle) {
-    future = bundle.load(MapChartView.worldAsset).then((data) {
-      final world = WorldMap.parse(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-      );
-      outline = world == null ? null : MapChartPainter.outline(world);
-      done = true;
-      return world;
-    });
+    future = bundle
+        .load(MapChartView.worldAsset)
+        .then<WorldMap?>(
+          (data) => WorldMap.parse(
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          ),
+          onError: (Object _) => null,
+        )
+        .then((world) {
+          outline = world == null ? null : MapChartPainter.outline(world);
+          done = true;
+          return world;
+        });
   }
 }
 
 class _MapChartViewState extends State<MapChartView> {
   MapCamera _camera = const MapCamera();
 
-  /// The marks of the current book and filter, built once for them.
+  /// The marks of the current book, built once for it.
   MapMarks? _marks;
 
   /// The outline of the world map at zoom 0, once it is read: `null` before, and when it could not be.
@@ -91,9 +99,8 @@ class _MapChartViewState extends State<MapChartView> {
   /// The pin whose order the tooltip shows, while a finger presses or a pointer hovers.
   MapPin? _selected;
 
-  MapMarks get _currentMarks => _marks ??= MapMarks.of(
-    widget.state.receivedOrders.where(widget.state.filter.showsInDepthChart),
-  );
+  MapMarks get _currentMarks =>
+      _marks ??= MapMarks.of(widget.state.receivedOrders);
 
   @override
   void didChangeDependencies() {
@@ -118,9 +125,8 @@ class _MapChartViewState extends State<MapChartView> {
   @override
   void didUpdateWidget(covariant MapChartView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // A new book or another filter groups the orders again; the map stays where the user left it, as the official client's does.
-    if (!identical(oldWidget.state.coordinators, widget.state.coordinators) ||
-        oldWidget.state.filter != widget.state.filter) {
+    // A new book groups the orders again; the map stays where the user left it, as the official client's does.
+    if (!identical(oldWidget.state.coordinators, widget.state.coordinators)) {
       _marks = null;
       _selected = null;
     }
@@ -129,6 +135,19 @@ class _MapChartViewState extends State<MapChartView> {
   void _select(MapPin? pin) {
     if (pin == _selected) return;
     setState(() => _selected = pin);
+  }
+
+  /// Moves the map with what lies under the centre of a view of [size] moved by [by].
+  void _pan(Size size, Offset by) {
+    final centre = size.center(Offset.zero);
+    _move(
+      _camera.zoomedTo(
+        _camera.zoom,
+        anchor: centre,
+        to: centre + by,
+        view: size,
+      ),
+    );
   }
 
   void _move(MapCamera camera) {
@@ -321,6 +340,11 @@ class _MapChartViewState extends State<MapChartView> {
               child: Semantics(
                 container: true,
                 label: summary,
+                // A screen reader that scrolls the summary moves the map by half a view, as a drag would.
+                onScrollLeft: () => _pan(size, Offset(-size.width / 2, 0)),
+                onScrollRight: () => _pan(size, Offset(size.width / 2, 0)),
+                onScrollUp: () => _pan(size, Offset(0, -size.height / 2)),
+                onScrollDown: () => _pan(size, Offset(0, size.height / 2)),
                 child: MouseRegion(
                   onHover: (event) =>
                       _select(layout.pinAt(event.localPosition)),
@@ -340,6 +364,7 @@ class _MapChartViewState extends State<MapChartView> {
                         direction: direction,
                         scaler: scaler,
                         label: label,
+                        labels: l10n,
                         onTap: (mark) => _open(layout, mark),
                       ),
                     ),
@@ -801,6 +826,9 @@ final class MapChartPainter extends CustomPainter {
   final String Function(MapMark mark) label;
   final ValueChanged<MapMark> onTap;
 
+  /// The texts [label] writes with: the nodes of the screen reader are built again when they change.
+  final Object labels;
+
   const MapChartPainter({
     required this.layout,
     required this.world,
@@ -809,6 +837,7 @@ final class MapChartPainter extends CustomPainter {
     required this.direction,
     required this.scaler,
     required this.label,
+    required this.labels,
     required this.onTap,
   });
 
@@ -825,6 +854,9 @@ final class MapChartPainter extends CustomPainter {
 
   /// The largest text scale of a group's count.
   static const maxCountScale = 1.5;
+
+  /// The most marks given to a screen reader: those nearest the centre of the view, when more are drawn, as can happen past the levels with groups; the summary counts them all.
+  static const maxSemanticsMarks = 200;
 
   /// The width of the outlines of the countries, Leaflet's `weight: 1` of the official client.
   static const borderWidth = 1.0;
@@ -885,7 +917,9 @@ final class MapChartPainter extends CustomPainter {
     }
   }
 
-  /// A pin of the app's own drawing, tip at [at]: a drop with a robot's visor, two eyes and a smile, as the official client's `MapPin`, none of whose drawing it reuses.
+  /// A pin, tip at [at]: a drop with a robot's visor, two eyes and a smile, as the official client's `MapPin`.
+  ///
+  /// The outline of the drop and the smile are the app's own drawing; the proportions of the visor and of the eyes are taken from RoboSats' `MapPin` (`components/Map/index.tsx`, AGPL-3.0), its rectangles scaled from its 18.66-unit width to the 24 points of the pin.
   void _pin(Canvas canvas, Offset at, Color fill) {
     final head = at.translate(0, -pinHeadAbove);
     const radius = 11.0;
@@ -974,24 +1008,58 @@ final class MapChartPainter extends CustomPainter {
   }
 
   @override
-  SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => [
-        for (final (mark, at) in layout.drawn)
-          if (MapLayout.semanticsRectOf(mark, at, size) case final rect?)
-            CustomPainterSemantics(
-              rect: rect,
-              properties: SemanticsProperties(
-                label: label(mark),
-                textDirection: direction,
-                button: true,
-                onTap: () => onTap(mark),
-              ),
-            ),
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+    var marks = layout.drawn;
+    if (marks.length > maxSemanticsMarks) {
+      final centre = size.center(Offset.zero);
+      final nearest = [...marks]
+        ..sort(
+          (a, b) => (a.$2 - centre).distanceSquared.compareTo(
+            (b.$2 - centre).distanceSquared,
+          ),
+        );
+      final kept = nearest.take(maxSemanticsMarks).toSet();
+      marks = [
+        for (final entry in marks)
+          if (kept.contains(entry)) entry,
       ];
+    }
+    return [
+      for (final (mark, at) in marks)
+        if (MapLayout.semanticsRectOf(mark, at, size) case final rect?)
+          CustomPainterSemantics(
+            // The same pin or group keeps its node while the map moves, so that the screen reader's focus stays on it.
+            key: semanticsKeyOf(mark),
+            rect: rect,
+            properties: SemanticsProperties(
+              label: label(mark),
+              textDirection: direction,
+              button: true,
+              onTap: () => onTap(mark),
+            ),
+          ),
+    ];
+  };
+
+  /// The key of the node of [mark]: its order's coordinator and number, or those of a group's first order.
+  static Key semanticsKeyOf(MapMark mark) => switch (mark) {
+    MapPin(:final order) => ValueKey((
+      'pin',
+      order.coordinator.shortAlias,
+      order.id,
+    )),
+    MapGroup(:final pins) => ValueKey((
+      'group',
+      pins.first.order.coordinator.shortAlias,
+      pins.first.order.id,
+    )),
+  };
 
   @override
   bool shouldRepaint(MapChartPainter oldDelegate) =>
-      oldDelegate.layout != layout ||
+      !identical(oldDelegate.layout.marks, layout.marks) ||
+      oldDelegate.layout.camera != layout.camera ||
+      oldDelegate.layout.size != layout.size ||
       oldDelegate.world != world ||
       oldDelegate.colors != colors ||
       oldDelegate.countStyle != countStyle ||
@@ -1000,5 +1068,5 @@ final class MapChartPainter extends CustomPainter {
 
   @override
   bool shouldRebuildSemantics(MapChartPainter oldDelegate) =>
-      shouldRepaint(oldDelegate) || oldDelegate.label != label;
+      shouldRepaint(oldDelegate) || !identical(oldDelegate.labels, labels);
 }

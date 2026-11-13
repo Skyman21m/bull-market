@@ -833,9 +833,9 @@
   "@p2pMapNoLocation": {
     "description": "Not in the RoboSats texts, whose map then shows no pin and says nothing: written over the map, and said by a screen reader, when no order it would show has a location. « Face to Face Location » is RoboSats' name for the position a maker sets (« Emplacement face à face »)."
   },
-  "p2pMapSummary": "Map of the face to face locations: {buyOrders} and {sellOrders}. These orders are in the list too.",
+  "p2pMapSummary": "Map of the face to face locations of the order book: {buyOrders} and {sellOrders}.",
   "@p2pMapSummary": {
-    "description": "Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders, the orders with a location the map shows.",
+    "description": "Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders: every order of the book received that has a location, whatever the filter of the list, as the map shows them.",
     "placeholders": {
       "buyOrders": {
         "type": "String"

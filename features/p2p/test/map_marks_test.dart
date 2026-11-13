@@ -100,6 +100,22 @@ void main() {
   );
 
   test(
+    'a group stands at the mean of its orders, not the middle of their box',
+    () async {
+      // Three orders on one meridian, at 0°, 10° and 40°: one group at level 0.
+      final marks = MapMarks.of(
+        await orders([located(1, 0, 0), located(2, 10, 0), located(3, 40, 0)]),
+      );
+      final group = marks.marksAt(0).single as MapGroup;
+      final mean =
+          (WebMercator.yOf(0) + WebMercator.yOf(10) + WebMercator.yOf(40)) / 3;
+      expect(group.y, closeTo(mean, 1e-12));
+      expect(group.y, isNot(closeTo((group.top + group.bottom) / 2, 1e-3)));
+      expect(group.x, 0.5);
+    },
+  );
+
+  test(
     'the order of the orders decides between two groups, as documented',
     () async {
       // The middle one first: at level 3 it takes both others, 10° away each.

@@ -1,5 +1,5 @@
-import 'dart:ui';
-
+import 'package:bull_ui/testing.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/map_marks.dart';
 import 'package:p2p/src/domain/web_mercator.dart';
@@ -166,6 +166,51 @@ void main() {
     });
   });
 
+  group('a tap on a group, at the edges of its rules', () {
+    test(
+      'a group whose box fits exactly at the current whole zoom still zooms in one level',
+      () async {
+        // The box of 0.5° fits up to zoom 9, and the map is at 9: one level nearer, never nothing.
+        final marks = MapMarks.of(
+          await orders([
+            located(1, 0, 0),
+            located(2, 0, 0),
+            located(3, 0, '0.5'),
+          ]),
+        );
+        final group = marks.marksAt(7).single as MapGroup;
+        final next = MapCamera.at(zoom: 9, x: 0.5, y: 0.5).zoomedOnGroup(
+          group,
+          splitLevel: marks.splitLevel(group, 9),
+          view: view,
+        );
+        expect(next, MapCamera.at(zoom: 10, x: group.x, y: group.y));
+      },
+    );
+
+    test(
+      'a group whose box fits exactly at the level where it parts goes to its box, centred on it',
+      () async {
+        // 0°, 2° and 10°: grouped up to level 5, parted at 6; 10° fits up to zoom 6 in 500 points.
+        final marks = MapMarks.of(
+          await orders([located(1, 0, 0), located(2, 0, 2), located(3, 0, 10)]),
+        );
+        final group = marks.marksAt(1).single as MapGroup;
+        const wide = Size(500, 400);
+        expect(marks.splitLevel(group, 1), 6);
+        expect(MapCamera.fitZoom(group.right - group.left, 0, wide), 6);
+        final next = const MapCamera().zoomedOnGroup(
+          group,
+          splitLevel: marks.splitLevel(group, 1),
+          view: wide,
+        );
+        // The middle of the box, 5°, not the mean of the orders, 4°.
+        expect(next.zoom, 6);
+        expect(next.x, closeTo(5 / 360 + 0.5, 1e-12));
+      },
+    );
+  });
+
   group('the layout of a view', () {
     test(
       'draws the marks in view, from north to south, and leaves out the others',
@@ -221,6 +266,44 @@ void main() {
         );
         expect(at13.drawn, hasLength(1));
         expect(at13.drawn.single.$1.count, 1000);
+      },
+    );
+
+    test(
+      'a screen reader is given at most 200 marks, those nearest the centre',
+      () async {
+        // 999 pins along the equator, 1.2 points apart at zoom 15: about 360 in view.
+        final marks = MapMarks.of(
+          await orders([
+            for (var id = 1; id <= 999; id++)
+              located(id, 0, (id * 0.00005 - 0.025).toStringAsFixed(5)),
+          ]),
+        );
+        final layout = MapLayout.of(
+          marks,
+          MapCamera.at(zoom: 15, x: 0.5, y: 0.5),
+          view,
+        );
+        expect(layout.drawn.length, greaterThan(300));
+        final nodes = MapChartPainter(
+          layout: layout,
+          world: null,
+          colors: MapColors.of(testBullTheme),
+          countStyle: const TextStyle(fontSize: 12),
+          direction: TextDirection.ltr,
+          scaler: TextScaler.noScaling,
+          label: (mark) => '${mark.x}',
+          labels: 'en',
+          onTap: (_) {},
+        ).semanticsBuilder(view);
+        expect(nodes, hasLength(MapChartPainter.maxSemanticsMarks));
+        final farthest = nodes
+            .map((node) => (node.rect.center.dx - 150).abs())
+            .reduce((a, b) => a > b ? a : b);
+        // The 200 nearest of pins 1.2 points apart lie within about 120 points of the centre.
+        expect(farthest, lessThan(130));
+        // Each keeps the key of its order.
+        expect(nodes.map((node) => node.key).toSet(), hasLength(200));
       },
     );
 

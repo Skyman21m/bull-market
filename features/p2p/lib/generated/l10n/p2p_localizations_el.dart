@@ -599,7 +599,7 @@ class P2pLocalizationsEl extends P2pLocalizations {
 
   @override
   String p2pMapSummary(String buyOrders, String sellOrders) {
-    return 'Map of the face to face locations: $buyOrders and $sellOrders. These orders are in the list too.';
+    return 'Map of the face to face locations of the order book: $buyOrders and $sellOrders.';
   }
 
   @override

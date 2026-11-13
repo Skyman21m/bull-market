@@ -19,9 +19,11 @@
 # names the source file and python3 is there.
 # Usage: python3 tools/troc_world_map.py <ne_110m_admin_0_countries.geojson> [repo-root]           writes the asset
 #        python3 tools/troc_world_map.py --check <ne_110m_admin_0_countries.geojson> [repo-root]   writes nothing, exits 1 if it differs
+# Any other argument, a path that is not a regular file of the pinned size, or another file, is refused before anything is written.
 import hashlib
 import json
 import os
+import stat
 import struct
 import sys
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -93,14 +95,22 @@ def encode(rings):
 
 
 def main(argv):
+    usage = 'usage: troc_world_map.py [--check] <ne_110m_admin_0_countries.geojson> [repo-root]'
     check = '--check' in argv
     args = [a for a in argv if a != '--check']
-    if not args:
-        sys.exit('usage: troc_world_map.py [--check] <ne_110m_admin_0_countries.geojson> [repo-root]')
+    if not 1 <= len(args) <= 2 or any(a.startswith('-') for a in args):
+        sys.exit(usage)
     source_path = args[0]
     root = args[1] if len(args) > 1 else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # The size is checked before anything is read, so that no other file, a device or a huge one, is read at all.
+    try:
+        info = os.stat(source_path)
+    except OSError as error:
+        sys.exit('cannot read the source %s: %s' % (source_path, error.strerror))
+    if not stat.S_ISREG(info.st_mode) or info.st_size != SOURCE_BYTES:
+        sys.exit('not the pinned source: expected a regular file of %d bytes with SHA-256 %s' % (SOURCE_BYTES, SOURCE_SHA256))
     with open(source_path, 'rb') as f:
-        raw = f.read()
+        raw = f.read(SOURCE_BYTES + 1)
     if len(raw) != SOURCE_BYTES or hashlib.sha256(raw).hexdigest() != SOURCE_SHA256:
         sys.exit('not the pinned source: expected %d bytes with SHA-256 %s' % (SOURCE_BYTES, SOURCE_SHA256))
     rings, dropped = rings_of(json.loads(raw.decode('utf-8'), parse_float=Decimal))

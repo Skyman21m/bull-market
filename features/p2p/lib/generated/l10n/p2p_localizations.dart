@@ -1128,10 +1128,10 @@ abstract class P2pLocalizations {
   /// **'No order with a face to face location'**
   String get p2pMapNoLocation;
 
-  /// Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders, the orders with a location the map shows.
+  /// Not in the RoboSats texts: what a screen reader says of the map before its pins and groups. {buyOrders} and {sellOrders} are the counts of p2pChartBuyOrders and p2pChartSellOrders: every order of the book received that has a location, whatever the filter of the list, as the map shows them.
   ///
   /// In en, this message translates to:
-  /// **'Map of the face to face locations: {buyOrders} and {sellOrders}. These orders are in the list too.'**
+  /// **'Map of the face to face locations of the order book: {buyOrders} and {sellOrders}.'**
   String p2pMapSummary(String buyOrders, String sellOrders);
 
   /// Not in the RoboSats texts, whose groups show their count only: what a screen reader says of a group of pins on the map, and the title of the list of its orders, which a tap on a group that zooming cannot part opens.

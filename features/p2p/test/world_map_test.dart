@@ -122,6 +122,35 @@ void main() {
     );
   });
 
+  group('the script', () {
+    // It needs python3 only, no source: each of these is refused before anything is read or written.
+    final python = Process.runSync('python3', ['--version']).exitCode == 0;
+    for (final (name, arguments, message) in [
+      (
+        'a path that does not exist',
+        ['/nonexistent/source.geojson'],
+        'cannot read the source',
+      ),
+      ('a folder', ['.'], 'not the pinned source'),
+      ('a file of another size', ['pubspec.yaml'], 'not the pinned source'),
+      ('an argument too many', ['a', 'b', 'c'], 'usage:'),
+      ('an unknown option', ['--write', 'a'], 'usage:'),
+      ('no source', <String>[], 'usage:'),
+    ]) {
+      test('refuses $name', skip: python ? null : 'no python3', () {
+        final result = Process.runSync('python3', [
+          '-I',
+          '../../tools/troc_world_map.py',
+          '--check',
+          ...arguments,
+        ]);
+        expect(result.exitCode, 1, reason: name);
+        expect('${result.stderr}', contains(message), reason: name);
+        expect('${result.stderr}', isNot(contains('Traceback')));
+      });
+    }
+  });
+
   group('the reader', () {
     test('reads the rings, projected', () {
       final world = WorldMap.parse(asset([triangle, corners]));

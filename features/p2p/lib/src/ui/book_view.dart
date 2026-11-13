@@ -34,7 +34,7 @@ String _coordinatorName(Coordinator coordinator) => CoordinatorText.of(
 /// While the book loads, the wait shows as the official client's does: skeleton rows while no order is shown (`BookSkeleton`), then a bar running over the top of the book while a coordinator is still awaited over orders shown, after a pull to refresh or a retry too.
 /// The row of the coordinators above it is Troc's own (#73): it shows who answered, who is awaited and who is offline, and stays once the offers are shown.
 /// « Chart » shows the depth chart instead, as the official client does on a phone: without the filter sentence, whose currency and host it follows, and below the row of the coordinators.
-/// « Map » shows the orders that have a position on a map of the world in the same place, with the same orders as the chart.
+/// « Map » shows, in the same place, every order of the book that has a position on a map of the world, whatever the filter, as the official client's map does.
 class BookView extends StatefulWidget {
   final DateTime Function() now;
   final ValueChanged<PublicOrder> onOpenOrder;
