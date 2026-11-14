@@ -1134,7 +1134,7 @@ abstract class P2pLocalizations {
   /// **'I have a Garage Key'**
   String get p2pNoRobotHaveKey;
 
-  /// The RoboSats text of a coordinator's refusal to show an order (error 1044), shown when an order searched by its URL is not in the public book and a Garage Key is stored, or cannot be read.
+  /// The RoboSats text of a coordinator's refusal to show an order (error 1044), shown when an order searched by its URL is not in the public book and a Garage Key is stored, or cannot be read. Also on the trade screens (#88): the coordinator's message of error 1044 (`api/errors.py`), which the official client shows alone on the order page, an order that left the book just before a take, and an order public again that the book no longer lists.
   ///
   /// In en, this message translates to:
   /// **'This order is not available'**
@@ -1846,6 +1846,696 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'I understand'**
   String get p2pRobotHistoryConfirm;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the amount field of a range order (`TakeButton.tsx:224`). {currencyCode} is the order's currency code, « Sats » for an order in bitcoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount {currencyCode}'**
+  String p2pTakeAmountLabel(String currencyCode);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Tooltip of the amount field of a range order (`TakeButton.tsx:218`).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter amount of fiat to exchange for bitcoin'**
+  String get p2pTakeAmountHint;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Under the amount field when the amount typed is below the order's minimum (`TakeButton.tsx:129`).
+  ///
+  /// In en, this message translates to:
+  /// **'Too low'**
+  String get p2pTakeTooLow;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Under the amount field when the amount typed is above the order's maximum (`TakeButton.tsx:131`).
+  ///
+  /// In en, this message translates to:
+  /// **'Too high'**
+  String get p2pTakeTooHigh;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Under the amount field of a range sell order once the amount is valid (`TakeButton.tsx:291`). {satoshis} is a number of sats written in the conventions of the language.
+  ///
+  /// In en, this message translates to:
+  /// **'You will receive {satoshis} Sats (Approx)'**
+  String p2pTakeYouWillReceive(String satoshis);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Tooltip of « Take Order », disabled while the amount of a range order is empty or out of range (`TakeButton.tsx:251`).
+  ///
+  /// In en, this message translates to:
+  /// **'You must specify an amount first'**
+  String get p2pTakeSpecifyAmountFirst;
+
+  /// Not in the RoboSats texts: the project's own (design note § 2.1): under « Take Order », shown disabled on a buy order, whose taker would sell (#96).
+  ///
+  /// In en, this message translates to:
+  /// **'Selling is coming in a later version.'**
+  String get p2pTakeSellingLater;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Title of the backup reminder shown before a take (`Dialogs/StoreToken.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Store your garage key'**
+  String get p2pStoreKeyTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's. Text of the backup reminder shown before a take (`Dialogs/StoreToken.tsx`). The key itself is not shown there: it is shown only in the Garage, behind the PIN.
+  ///
+  /// In en, this message translates to:
+  /// **'Your garage key provides access to all your robot accounts. Store it safely. You can simply copy it into another application.'**
+  String get p2pStoreKeyText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button that closes a dialog without doing anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Go back'**
+  String get p2pCommonGoBack;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button of the backup reminder that goes on with the take (`Dialogs/StoreToken.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get p2pCommonDone;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator's book or fees could not be read just before the take, so nothing was sent with a robot. {coordinator} is its long alias.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach {coordinator}. The order was not taken.'**
+  String p2pTakeCoordinatorUnreadable(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the order read again just before the take differs from the one shown (anything but its price).
+  ///
+  /// In en, this message translates to:
+  /// **'This order changed since it was shown. It was not taken: open it again from the book.'**
+  String get p2pTakeOrderChanged;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1011 (`api/errors.py`), which the official client shows under « Take Order »; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The amount specified is outside the range specified by the maker'**
+  String get p2pTakeAmountOutOfRange;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator announces a taker fee above the app's ceiling (`TradeTolerances.takerFeeCeiling`).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} asks for a taker fee above 1 %. The order was not taken.'**
+  String p2pTakeFeeTooHigh(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the terms of the take cannot be built from the order read (`TradeTermsUnusable`).
+  ///
+  /// In en, this message translates to:
+  /// **'The terms of this order could not be checked. It was not taken.'**
+  String get p2pTakeTermsUnusable;
+
+  /// Not in the RoboSats texts: the project's own: after the text of a failure of the robot or of the coordinator during a take. {reason} is that text, a sentence of the app.
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} The order was not taken.'**
+  String p2pTakeNotTakenAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: the records of the take could not be written before it was sent, so it was not sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not write its records on this device. The order was not taken.'**
+  String get p2pTakeNotRecorded;
+
+  /// Not in the RoboSats texts: the project's own: a key pasted or acknowledged gives no robot for a new trade (#79).
+  ///
+  /// In en, this message translates to:
+  /// **'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.'**
+  String get p2pTakeKeyNotForTrades;
+
+  /// Not in the RoboSats texts: the project's own: the fresh robot of the take was already known to the coordinator; the next take uses another robot.
+  ///
+  /// In en, this message translates to:
+  /// **'The robot chosen for this take already existed on {coordinator}. The order was not taken: try again.'**
+  String p2pTakeRobotNotNew(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator answered the take with the order as it is, this robot not its taker.
+  ///
+  /// In en, this message translates to:
+  /// **'The order was not taken.'**
+  String get p2pTakeNotMade;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1000 (`api/errors.py`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are already maker of an active order'**
+  String get p2pTakeAlreadyMaker;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1001 (`api/errors.py`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are already taker of an active order'**
+  String get p2pTakeAlreadyTaker;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1002 (`api/errors.py`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are already taking an active order'**
+  String get p2pTakeAlreadyTaking;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1003 (`api/errors.py`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are still pending a payment from a recent order'**
+  String get p2pTakePaymentPending;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1012 (`api/errors.py`); the French is the project's. {seconds} is a whole number.
+  ///
+  /// In en, this message translates to:
+  /// **'You need to wait {seconds} seconds to take an order'**
+  String p2pTakePenalty(String seconds);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): a take refused for a penalty whose length is not known (`TakeButton.tsx:98`).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until you can take an order'**
+  String get p2pTakeWaitPenalty;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). The second tab of the order page of a participant, open first (`basic/OrderPage/index.tsx:268`).
+  ///
+  /// In en, this message translates to:
+  /// **'Contract'**
+  String get p2pTradeTabContract;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the step of the trade after its title (`TradeBox/stepXofY.ts`). {step} and {steps} are small whole numbers.
+  ///
+  /// In en, this message translates to:
+  /// **'({step}/{steps})'**
+  String p2pTradeStep(String step, String steps);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at status 3 (`TradeBox/index.tsx:430`), which `fr.json` misses (design note § 1.7); the French is the design note's. {amountSats} is the bond in sats, written in the conventions of the language.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock {amountSats} Sats to TAKE order'**
+  String p2pTradeTitleLockBond(String amountSats);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are BUYING BTC'**
+  String get p2pTradeYouAreBuying;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/WalletsButton.tsx`). Here it shows the link, to copy: the app never opens it.
+  ///
+  /// In en, this message translates to:
+  /// **'See Compatible Wallets'**
+  String get p2pTradeCompatibleWallets;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): copies the bond invoice (`Prompts/LockInvoice.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy to clipboard'**
+  String get p2pTradeCopyToClipboard;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), under the bond's QR code (`Prompts/LockInvoice.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'This is a hold invoice, it will freeze in your wallet. It will be charged only if you cancel or lose a dispute.'**
+  String get p2pTradeHoldInvoiceBond;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader says of the QR code of the bond invoice.
+  ///
+  /// In en, this message translates to:
+  /// **'QR code of the bond invoice'**
+  String get p2pTradeInvoiceQr;
+
+  /// Not in the RoboSats texts: the project's own: label of the time of day the bond invoice expires at, among the facts read from it under the QR code (design note § 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'Expires at'**
+  String get p2pTradeInvoiceExpires;
+
+  /// Not in the RoboSats texts: the project's own: label of the network of the bond invoice, among the facts read from it (design note § 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get p2pTradeInvoiceNetwork;
+
+  /// Not in the RoboSats texts: the project's own: label of the description of the bond invoice, the coordinator's text shown cleaned (design note § 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get p2pTradeInvoiceDescription;
+
+  /// Not in the RoboSats texts: the project's own: the network of an invoice for the main Bitcoin network.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitcoin'**
+  String get p2pTradeNetworkMainnet;
+
+  /// Not in the RoboSats texts: the project's own: the network of an invoice for the Bitcoin test network.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitcoin testnet'**
+  String get p2pTradeNetworkTestnet;
+
+  /// Not in the RoboSats texts: the project's own, at the owner's request (2026-11-13): the section of the bond panel that holds the QR code and the copy, for any other Lightning wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay with another wallet'**
+  String get p2pTradePayOtherWallet;
+
+  /// Not in the RoboSats texts: the project's own (design note § 3.2): shows the QR code an amount check hid.
+  ///
+  /// In en, this message translates to:
+  /// **'Show anyway'**
+  String get p2pTradeShowAnyway;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`TradeBox/BondStatus.tsx`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your taker bond is locked'**
+  String get p2pTradeBondLocked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`TradeBox/BondStatus.tsx`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your taker bond is unlocked'**
+  String get p2pTradeBondUnlocked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`TradeBox/BondStatus.tsx`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your taker bond is settled'**
+  String get p2pTradeBondSettled;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 6 and 8 for the buyer (`TradeBox/index.tsx:462`), which `fr.json` misses; the French is the design note's (§ 1.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Submit payout info'**
+  String get p2pTradeTitlePayout;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Payout.tsx`). {amountFiat} is the amount of the trade in its currency, {currencyCode} the currency's code.
+  ///
+  /// In en, this message translates to:
+  /// **'Before letting you send {amountFiat} {currencyCode}, we want to make sure you are able to receive the BTC.'**
+  String p2pTradePayoutPrompt(String amountFiat, String currencyCode);
+
+  /// Not in the RoboSats texts: the project's own: in place of the payout form, which a later slice brings (#89, #90).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your payout info comes in a later version of Bull Market.'**
+  String get p2pTradePayoutLater;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 7 for the buyer (`TradeBox/index.tsx:494`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your info looks good!'**
+  String get p2pTradeTitleInfoGood;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/EscrowWait.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'We are waiting for the seller to lock the trade amount.'**
+  String get p2pTradeEscrowWait;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/EscrowWait.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Just hang on for a moment. If the seller does not deposit, you will get your bond back automatically. In addition, you will receive a compensation (check the rewards in your profile).'**
+  String get p2pTradeEscrowWaitHangOn;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's label of expiry reason 0 (`api/models/order.py:57`), shown by `Prompts/Expired.tsx`; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired not taken'**
+  String get p2pTradeExpiredNotTaken;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's label of expiry reason 1 (`api/models/order.py:58`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Maker bond not locked'**
+  String get p2pTradeExpiredMakerBond;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's label of expiry reason 2 (`api/models/order.py:59`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Escrow not locked'**
+  String get p2pTradeExpiredEscrow;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's label of expiry reason 3 (`api/models/order.py:60`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Invoice not submitted'**
+  String get p2pTradeExpiredInvoice;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's label of expiry reason 4 (`api/models/order.py:61`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Neither escrow locked or invoice submitted'**
+  String get p2pTradeExpiredNeither;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1043 (`api/errors.py`), which the official client shows alone on the order page; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'This order has been cancelled'**
+  String get p2pOrderCancelled;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 9 and 10 for the buyer (`TradeBox/index.tsx:542`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat with the seller'**
+  String get p2pTradeTitleChat;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 11 (`TradeBox/index.tsx:583`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'A dispute has been opened'**
+  String get p2pTradeTitleDispute;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 11 once the statement is in (`TradeBox/index.tsx:578`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'We have received your statement'**
+  String get p2pTradeTitleStatementReceived;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 13 for the buyer (`TradeBox/index.tsx:605`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Attempting Lightning Payment'**
+  String get p2pTradeTitleSendingSats;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 14 (`TradeBox/index.tsx:633`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Trade finished!'**
+  String get p2pTradeTitleFinished;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 15 for the buyer (`TradeBox/index.tsx:657`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Lightning Routing Failed'**
+  String get p2pTradeTitleRoutingFailed;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 16 (`TradeBox/index.tsx:695`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'We have the statements'**
+  String get p2pTradeTitleStatements;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 17 for a taker (`TradeBox/index.tsx:712`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You have won the dispute'**
+  String get p2pTradeTitleDisputeWon;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 18 for a taker (`TradeBox/index.tsx:706`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You have lost the dispute'**
+  String get p2pTradeTitleDisputeLost;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the default title of a status (`TradeBox/index.tsx:363`), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown Order Status'**
+  String get p2pTradeTitleUnknown;
+
+  /// Not in the RoboSats texts: the project's own: in place of the prompt of a step that a later slice brings (chat, dispute, payout).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot show this step yet.'**
+  String get p2pTradeStepLater;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CancelButton.tsx`): copies the order's address on its coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy URL'**
+  String get p2pTradeCopyUrl;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): tooltip of « Copy URL ».
+  ///
+  /// In en, this message translates to:
+  /// **'Copy order URL'**
+  String get p2pTradeCopyOrderUrl;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): tooltip of « Cancel » while cancelling is free (the pre-take).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel order'**
+  String get p2pTradeCancelOrder;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's: tooltip of « Cancel » once the bond is locked.
+  ///
+  /// In en, this message translates to:
+  /// **'Unilateral cancelation (bond at risk!)'**
+  String get p2pTradeCancelUnilateral;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): title of both cancel dialogs (`Dialogs/CancelOrder.tsx`, `TradeBox/Dialogs/ConfirmCancel.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel the order?'**
+  String get p2pTradeCancelTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Dialogs/CancelOrder.tsx`, « loose » in the reference, spelled « lose » here).
+  ///
+  /// In en, this message translates to:
+  /// **'If the order is cancelled now but you already tried to pay the invoice, you might lose your bond.'**
+  String get p2pTradeCancelPreTakeText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): closes the cancel dialog of the pre-take without cancelling.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get p2pTradeCancelBack;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): cancels the pre-take (`Dialogs/CancelOrder.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm cancellation'**
+  String get p2pTradeConfirmCancellation;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/Dialogs/ConfirmCancel.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'If the order is cancelled now you will lose your bond.'**
+  String get p2pTradeCancelBondText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): cancels once the bond is locked, which loses it (`TradeBox/Dialogs/ConfirmCancel.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Cancel'**
+  String get p2pTradeConfirmCancel;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator refused the cancel because the status changed (error 1020).
+  ///
+  /// In en, this message translates to:
+  /// **'The order moved on before the cancel: nothing was cancelled.'**
+  String get p2pTradeCancelMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: after the text of a failure that kept a cancel from being sent. {reason} is that text, a sentence of the app.
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} Nothing was cancelled.'**
+  String p2pTradeCancelNotDoneAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: the cancel was sent and its outcome is unknown; the next reads tell.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether the cancel went through. It keeps checking.'**
+  String get p2pTradeCancelUnknown;
+
+  /// Not in the RoboSats texts: the project's own: the status shown comes from no order read, so a cancel cannot be sent yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again before cancelling.'**
+  String get p2pTradeCancelNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9).
+  ///
+  /// In en, this message translates to:
+  /// **'Only a collaborative cancel is possible now, which comes in a later version.'**
+  String get p2pTradeCancelOnlyTogether;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1021 (`api/errors.py`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You cannot cancel this order'**
+  String get p2pTradeCancelNotPossible;
+
+  /// Not in the RoboSats texts: the project's own: a take whose answer was lost, until a read tells whether this robot holds the order (#87).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether the take went through. It keeps checking with {coordinator}.'**
+  String p2pTradeTakePending(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a pending take whose request never left (#87).
+  ///
+  /// In en, this message translates to:
+  /// **'This take was never sent to {coordinator}.'**
+  String p2pTradeTakeNeverSent(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: three reads of the trade failed in a row; the last status read stays shown. {time} is the time of the last read, hours and minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot reach {coordinator}. What is shown was read at {time}.'**
+  String p2pTradeReadsFailing(String coordinator, String time);
+
+  /// Not in the RoboSats texts: the project's own: a write of the trade's records failed after the coordinator answered; the trade goes on (#87).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not write the records of this trade on this device.'**
+  String get p2pTradeRecordProblem;
+
+  /// Not in the RoboSats texts: the project's own: `TradeClosedFailure` (#87), shown, never dropped.
+  ///
+  /// In en, this message translates to:
+  /// **'This trade was closed on this device, but {coordinator} shows this robot as its taker.'**
+  String p2pTradeClosedProblem(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the trade's stored records are refused (#87); it is shown read-only.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot read the records of this trade. Nothing is sent.'**
+  String get p2pTradeUnrestorable;
+
+  /// Not in the RoboSats texts: the project's own: the trade's coordinator left the federation list (#87); the trade is shown read-only.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is no longer in the list of coordinators. Nothing is sent.'**
+  String p2pTradeCoordinatorGone(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the trade cannot be read (no records, a binding that refuses the coordinator…), #87.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot open this trade now. Nothing is sent.'**
+  String get p2pTradeUnavailable;
+
+  /// Not in the RoboSats texts: the project's own: the Garage Key whose robot holds the trade is not stored (#87).
+  ///
+  /// In en, this message translates to:
+  /// **'The Garage Key of this trade is not on this device. Nothing is sent.'**
+  String get p2pTradeKeyMissing;
+
+  /// Not in the RoboSats texts: the project's own: `TradeRoleMismatch` (design note § 3.2).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} gives this robot another role than the one it took. Do not pay anything.'**
+  String p2pTradeWarnRole(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `TradeOrderMismatch`.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} answered about another order. Do not pay anything.'**
+  String p2pTradeWarnOrder(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `TradeTermsChanged`.
+  ///
+  /// In en, this message translates to:
+  /// **'The terms of the order are not those of the order taken.'**
+  String get p2pTradeWarnTerms;
+
+  /// Not in the RoboSats texts: the project's own: `TradeStatusUnexpected` (design note § 3.2).
+  ///
+  /// In en, this message translates to:
+  /// **'Unexpected change on the coordinator\'s side.'**
+  String get p2pTradeWarnUnexpected;
+
+  /// Not in the RoboSats texts: the project's own: `TradeStatusRegressed`.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} sent a status that does not follow this trade. It was ignored.'**
+  String p2pTradeWarnRegressed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `CoordinatorInconsistent`.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} contradicted itself earlier in this trade.'**
+  String p2pTradeWarnInconsistent(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `TradeHistoryUnknown`.
+  ///
+  /// In en, this message translates to:
+  /// **'This trade was found without its history: its invoices cannot be compared with the first ones.'**
+  String get p2pTradeWarnHistoryUnknown;
+
+  /// Not in the RoboSats texts: the project's own: `BondAmountOutsideOrder`.
+  ///
+  /// In en, this message translates to:
+  /// **'The bond asked is not the bond of the order taken.'**
+  String get p2pTradeWarnBond;
+
+  /// Not in the RoboSats texts: the project's own: `TradePriceOutsideOrder`.
+  ///
+  /// In en, this message translates to:
+  /// **'The trade amount does not match the order\'s price.'**
+  String get p2pTradeWarnPrice;
+
+  /// Not in the RoboSats texts: the project's own: `EscrowAmountMismatch`, `PayoutAmountMismatch` and `TakerFeeAboveAnnounced`.
+  ///
+  /// In en, this message translates to:
+  /// **'The amounts {coordinator} gives do not add up.'**
+  String p2pTradeWarnAmounts(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `DeadlineMovedBack`.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} moved the deadline earlier.'**
+  String p2pTradeWarnDeadline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceUnreadable` (design note § 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice {coordinator} sent cannot be read. It is not shown.'**
+  String p2pTradeWarnUnreadable(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceWrongNetwork` (design note § 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice {coordinator} sent is for another network. It is not shown.'**
+  String p2pTradeWarnWrongNetwork(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceAmountMismatch`.
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice amount is not the amount the order asks for.'**
+  String get p2pTradeWarnInvoiceAmount;
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceExpired`.
+  ///
+  /// In en, this message translates to:
+  /// **'This invoice has expired.'**
+  String get p2pTradeWarnExpired;
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceExpiringSoon`.
+  ///
+  /// In en, this message translates to:
+  /// **'This invoice expires in less than a minute.'**
+  String get p2pTradeWarnExpiringSoon;
+
+  /// Not in the RoboSats texts: the project's own: `InvoiceHashChanged`.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} sent a new invoice for the same step. Do not pay it.'**
+  String p2pTradeWarnHashChanged(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: `InvoicePayeeNotCoordinator`, the design note's text (§ 4.4).
+  ///
+  /// In en, this message translates to:
+  /// **'This invoice is not from {coordinator}\'s known Lightning node. Do not pay it.'**
+  String p2pTradeWarnPayee(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`basic/GaragePage/GarageKeyProfile.tsx:209`): one line per active trade in the sheet « Order » opens when there are several. {orderId} is the order's number on its coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Active order #{orderId}'**
+  String p2pActiveOrder(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: the stored records of the trade hold an end, and no read of it is there to show (#87, #88). No action.
+  ///
+  /// In en, this message translates to:
+  /// **'This trade is over for this robot.'**
+  String get p2pTradeEnded;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the unit the official client writes for an amount of an order in bitcoin, which it shows in sats (`TakeButton.tsx:82-83`, `Payout.tsx:70`).
+  ///
+  /// In en, this message translates to:
+  /// **'Sats'**
+  String get p2pSatsUnit;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:78`, without « You are »), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's, worded on the English.
+  ///
+  /// In en, this message translates to:
+  /// **'SWAPPING INTO Lightning'**
+  String get p2pTradeYouAreSwappingIn;
 }
 
 class _P2pLocalizationsDelegate

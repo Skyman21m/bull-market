@@ -1597,9 +1597,374 @@ void main() {
       },
     );
   }
+
+  // The take and the trade screen (#88), on mainnet, the whole path of the app: a Garage Key drawn in the Garage (so recorded as drawn here, which a take needs), the book, the order details with « Take Order », « Store your garage key », the take for a fresh robot of the key, then each panel as the coordinator moves the order on.
+  // Temple of Sats is the `ScriptedCoordinator` of the test seam, which plays the reference backend with invoices made by the tests; the other coordinators answer an empty book, but Lake, whose book holds one range order of the test for the amount field. Nothing leaves the test, no money moves, and the key, drawn in memory, is never captured.
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the trade screen in ${locale.languageCode}',
+      skip: directory == null,
+      timeout: const Timeout(Duration(minutes: 15)),
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        // A robot's key pair is made in an isolate, and the database answers on the event loop: real time passes for them.
+        Future<void> waitFor(Finder finder) async {
+          for (var i = 0; i < 1200 && finder.evaluate().isEmpty; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await tester.pump(const Duration(milliseconds: 200));
+          }
+          if (finder.evaluate().isEmpty) throw StateError('not shown: $finder');
+          await settle();
+        }
+
+        final l10n = lookupP2pLocalizations(locale);
+        final now = DateTime.utc(2026, 11, 14, 9);
+        final transport = _TradeTransport(now);
+
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        setUpP2pForTesting(
+          locator,
+          transport: transport,
+          torStates: () => tor.stream,
+          clock: () => now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          bolt11Decoder: transport,
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.mainnet,
+          ),
+        );
+        // Tor is told ready only once the scripted coordinator is in place, so that the book is read from it.
+        await settle();
+
+        // A Garage Key drawn here: the robots of a take come from it. Its text, shown for backup right after the draw, gives the test the robots the scripted coordinator knows; it is never captured.
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        final shownKey = find.byWidgetPredicate(
+          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
+        );
+        await waitFor(shownKey);
+        final key = switch (GarageKey.parse(
+          tester.widget<Text>(shownKey).data ?? '',
+        )) {
+          Ok(:final value) => value,
+          Err() => throw StateError('not a key'),
+        };
+        final identities = [
+          for (var i = 0; i < 12; i++)
+            if (key.deriveIdentity(i) case Ok(:final value)) value,
+        ];
+        final coordinator = ScriptedCoordinator(
+          network: RobosatsNetwork.mainnet,
+          robots: identities,
+          clock: () => now,
+        );
+        transport.temple = coordinator;
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        tor.add(P2pTorState.ready);
+        await settle();
+
+        // The book: the order of Temple of Sats, then its details with « Take Order ».
+        Future<void> openTempleOrder() async {
+          await tester.tap(find.text(l10n.p2pNavOffers));
+          await settle();
+          final row = find.text('100 EUR', findRichText: true);
+          await waitFor(row);
+          await tester.tap(row);
+          await settle();
+        }
+
+        /// The robot that holds the pre-take now.
+        RobotIdentity taker() =>
+            identities.firstWhere(coordinator.holdsPreTake);
+
+        Future<void> take() async {
+          await openTempleOrder();
+          await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+          await settle();
+          await tester.tap(find.text(l10n.p2pTakeOrder));
+          await settle();
+          await tester.tap(find.text(l10n.p2pCommonDone));
+          await waitFor(find.text(l10n.p2pTradeTabContract));
+        }
+
+        /// Lets the trade's watch read again, at the reference's cadence.
+        Future<void> nextRead() async {
+          for (var i = 0; i < 12; i++) {
+            await tester.pump(const Duration(seconds: 1));
+            await settle();
+          }
+        }
+
+        /// Back from the page shown, as its top bar's arrow does.
+        Future<void> backToTab() async {
+          GoRouter.of(tester.element(find.text(l10n.p2pNavOrder).first)).pop();
+          await settle();
+        }
+
+        // The range order of Lake: the amount field, then the estimate.
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        final rangeRow = find.text('50-200 EUR', findRichText: true);
+        await waitFor(rangeRow);
+        await tester.tap(rangeRow);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await capture('echange-montant');
+        await tester.enterText(find.byType(TextField), '10');
+        await settle();
+        await capture('echange-montant-trop-bas');
+        await tester.enterText(find.byType(TextField), '120');
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await capture('echange-montant-estimation');
+        await backToTab();
+
+        // Take 1: the order details, « Store your garage key », then 3, 6, 7 and the end at 5.
+        await openTempleOrder();
+        await capture('echange-ordre');
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await capture('echange-ordre-bas');
+        await tester.tap(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await capture('echange-sauvegarder-cle');
+        await tester.tap(find.text(l10n.p2pCommonDone));
+        await waitFor(find.text(l10n.p2pTradeTabContract));
+        await capture('echange-3');
+        await tester.ensureVisible(find.text(l10n.p2pTradeCopyToClipboard));
+        await settle();
+        await capture('echange-3-bas');
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        await settle();
+        await capture('echange-3-texte2');
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await capture('echange-3-annuler');
+        await tester.tap(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await capture('echange-3-dialogue-annuler');
+        await tester.tap(find.text(l10n.p2pTradeCancelBack));
+        await settle();
+        await tester.tap(find.text(l10n.p2pNavOrder).last);
+        await settle();
+        await capture('echange-3-onglet-ordre');
+        await tester.tap(find.text(l10n.p2pTradeTabContract));
+        await settle();
+
+        coordinator.lockBond(taker());
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitlePayout));
+        await capture('echange-6');
+        await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await capture('echange-6-bas');
+        await tester.tap(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await capture('echange-6-dialogue-annuler');
+        await tester.tap(find.text(l10n.p2pCommonGoBack));
+        await settle();
+
+        // The entry « Order » of the tab while the trade runs, which opens it again.
+        await backToTab();
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        await capture('echange-entree-ordre');
+        await tester.tap(find.text(l10n.p2pNavOrder));
+        await waitFor(find.text(l10n.p2pTradeTabContract));
+
+        coordinator.moveTo(7);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleInfoGood));
+        await capture('echange-7');
+        coordinator.expire();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pTradeExpiredInvoice));
+        await capture('echange-expire');
+        await backToTab();
+
+        // Take 2: cancelled at 3, the order public again.
+        coordinator.backToPublic();
+        await take();
+        await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await tester.tap(find.text(l10n.p2pTradeConfirmCancellation));
+        await waitFor(find.text(l10n.p2pOrderHost));
+        await capture('echange-public');
+        await backToTab();
+
+        // Take 3: the bond locked, then the maker cancels.
+        coordinator.backToPublic();
+        await take();
+        coordinator.lockBond(taker());
+        await nextRead();
+        coordinator.cancelByMaker();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pOrderCancelled));
+        await capture('echange-annule');
+        await backToTab();
+
+        // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
+        coordinator.backToPublic();
+        await take();
+        coordinator.takenByAnother();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pOrderNotAvailable));
+        await capture('echange-indisponible');
+
+        // The screens gone, their cubits closed: the waits they leave (the release of the robots, 10 s at most) run out.
+        await backToTab();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(seconds: 3)),
+        );
+        await tester.pump(const Duration(minutes: 1));
+      },
+    );
+  }
 }
 
 const _frame = ValueKey('p2p-capture-frame');
+
+/// The coordinators of the trade captures: Temple of Sats is [temple], the scripted coordinator of the test seam once the test knows the robots of the key it drew, Lake answers a book of one range order of the test, the others an empty book; every invoice is read by [temple]'s decoder.
+final class _TradeTransport implements CoordinatorTransport, Bolt11Decoder {
+  final DateTime now;
+  ScriptedCoordinator? temple;
+
+  _TradeTransport(this.now);
+
+  /// The maker of Lake's range order: a robot of no one, its hash id drawn from a fixed text.
+  static final _lakeMakerHash = sha256
+      .convert(utf8.encode('troc trade capture lake maker'))
+      .toString();
+
+  @override
+  Result<Bolt11Invoice, Bolt11Refusal> decode(String invoice) =>
+      switch (temple) {
+        final temple? => temple.decoder.decode(invoice),
+        null => const Err(Bolt11Malformed()),
+      };
+
+  @override
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
+    CoordinatorRequest request,
+  ) async {
+    final alias = Federation.robosats
+        .on(RobosatsNetwork.mainnet)
+        .firstWhere(
+          (c) =>
+              Uri.parse(c.origins(RobosatsNetwork.mainnet).onion ?? '').host ==
+              request.url.host,
+        )
+        .shortAlias;
+    CoordinatorResponse json(int status, Object body) => CoordinatorResponse(
+      statusCode: status,
+      headers: const {'content-type': 'application/json'},
+      body: utf8.encode(jsonEncode(body)),
+    );
+    final temple = this.temple;
+    if (alias == 'temple' && temple != null) return temple.send(request);
+    if (alias == 'lake' && request.url.path.contains('book')) {
+      return Ok(
+        json(200, [
+          {
+            'id': 7,
+            'created_at': now
+                .subtract(const Duration(hours: 2))
+                .toIso8601String(),
+            'expires_at': now.add(const Duration(hours: 20)).toIso8601String(),
+            'type': 1,
+            'currency': 2,
+            'amount': null,
+            'has_range': true,
+            'min_amount': '50',
+            'max_amount': '200',
+            'payment_method': 'Revolut Instant SEPA',
+            'is_explicit': false,
+            'premium': '2.0',
+            'satoshis': null,
+            'maker': 1,
+            'escrow_duration': 10800,
+            'bond_size': '3.0',
+            'latitude': null,
+            'longitude': null,
+            'maker_hash_id': _lakeMakerHash,
+            'satoshis_now': 213800,
+            'price': 93545,
+            'maker_status': 'Active',
+          },
+        ]),
+      );
+    }
+    if (request.url.path.contains('book')) {
+      return Ok(json(404, {'not_found': 'No orders found'}));
+    }
+    return const Err(CoordinatorUnreachable());
+  }
+}
 
 /// The P2P tab inside a bottom bar like the one of the shell: Wallet, P2P, Exchange.
 class _App extends StatelessWidget {

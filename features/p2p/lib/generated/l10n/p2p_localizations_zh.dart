@@ -1059,4 +1059,435 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pRobotHistoryConfirm => 'I understand';
+
+  @override
+  String p2pTakeAmountLabel(String currencyCode) {
+    return 'Amount $currencyCode';
+  }
+
+  @override
+  String get p2pTakeAmountHint =>
+      'Enter amount of fiat to exchange for bitcoin';
+
+  @override
+  String get p2pTakeTooLow => 'Too low';
+
+  @override
+  String get p2pTakeTooHigh => 'Too high';
+
+  @override
+  String p2pTakeYouWillReceive(String satoshis) {
+    return 'You will receive $satoshis Sats (Approx)';
+  }
+
+  @override
+  String get p2pTakeSpecifyAmountFirst => 'You must specify an amount first';
+
+  @override
+  String get p2pTakeSellingLater => 'Selling is coming in a later version.';
+
+  @override
+  String get p2pStoreKeyTitle => 'Store your garage key';
+
+  @override
+  String get p2pStoreKeyText =>
+      'Your garage key provides access to all your robot accounts. Store it safely. You can simply copy it into another application.';
+
+  @override
+  String get p2pCommonGoBack => 'Go back';
+
+  @override
+  String get p2pCommonDone => 'Done';
+
+  @override
+  String p2pTakeCoordinatorUnreadable(String coordinator) {
+    return 'Could not reach $coordinator. The order was not taken.';
+  }
+
+  @override
+  String get p2pTakeOrderChanged =>
+      'This order changed since it was shown. It was not taken: open it again from the book.';
+
+  @override
+  String get p2pTakeAmountOutOfRange =>
+      'The amount specified is outside the range specified by the maker';
+
+  @override
+  String p2pTakeFeeTooHigh(String coordinator) {
+    return '$coordinator asks for a taker fee above 1 %. The order was not taken.';
+  }
+
+  @override
+  String get p2pTakeTermsUnusable =>
+      'The terms of this order could not be checked. It was not taken.';
+
+  @override
+  String p2pTakeNotTakenAfter(String reason) {
+    return '$reason The order was not taken.';
+  }
+
+  @override
+  String get p2pTakeNotRecorded =>
+      'Bull Market could not write its records on this device. The order was not taken.';
+
+  @override
+  String get p2pTakeKeyNotForTrades =>
+      'The robots of a pasted Garage Key cannot take orders here. Generate a new Garage Key in the Garage.';
+
+  @override
+  String p2pTakeRobotNotNew(String coordinator) {
+    return 'The robot chosen for this take already existed on $coordinator. The order was not taken: try again.';
+  }
+
+  @override
+  String get p2pTakeNotMade => 'The order was not taken.';
+
+  @override
+  String get p2pTakeAlreadyMaker => 'You are already maker of an active order';
+
+  @override
+  String get p2pTakeAlreadyTaker => 'You are already taker of an active order';
+
+  @override
+  String get p2pTakeAlreadyTaking => 'You are already taking an active order';
+
+  @override
+  String get p2pTakePaymentPending =>
+      'You are still pending a payment from a recent order';
+
+  @override
+  String p2pTakePenalty(String seconds) {
+    return 'You need to wait $seconds seconds to take an order';
+  }
+
+  @override
+  String get p2pTakeWaitPenalty => 'Wait until you can take an order';
+
+  @override
+  String get p2pTradeTabContract => 'Contract';
+
+  @override
+  String p2pTradeStep(String step, String steps) {
+    return '($step/$steps)';
+  }
+
+  @override
+  String p2pTradeTitleLockBond(String amountSats) {
+    return 'Lock $amountSats Sats to TAKE order';
+  }
+
+  @override
+  String get p2pTradeYouAreBuying => 'You are BUYING BTC';
+
+  @override
+  String get p2pTradeCompatibleWallets => 'See Compatible Wallets';
+
+  @override
+  String get p2pTradeCopyToClipboard => 'Copy to clipboard';
+
+  @override
+  String get p2pTradeHoldInvoiceBond =>
+      'This is a hold invoice, it will freeze in your wallet. It will be charged only if you cancel or lose a dispute.';
+
+  @override
+  String get p2pTradeInvoiceQr => 'QR code of the bond invoice';
+
+  @override
+  String get p2pTradeInvoiceExpires => 'Expires at';
+
+  @override
+  String get p2pTradeInvoiceNetwork => 'Network';
+
+  @override
+  String get p2pTradeInvoiceDescription => 'Description';
+
+  @override
+  String get p2pTradeNetworkMainnet => 'Bitcoin';
+
+  @override
+  String get p2pTradeNetworkTestnet => 'Bitcoin testnet';
+
+  @override
+  String get p2pTradePayOtherWallet => 'Pay with another wallet';
+
+  @override
+  String get p2pTradeShowAnyway => 'Show anyway';
+
+  @override
+  String get p2pTradeBondLocked => 'Your taker bond is locked';
+
+  @override
+  String get p2pTradeBondUnlocked => 'Your taker bond is unlocked';
+
+  @override
+  String get p2pTradeBondSettled => 'Your taker bond is settled';
+
+  @override
+  String get p2pTradeTitlePayout => 'Submit payout info';
+
+  @override
+  String p2pTradePayoutPrompt(String amountFiat, String currencyCode) {
+    return 'Before letting you send $amountFiat $currencyCode, we want to make sure you are able to receive the BTC.';
+  }
+
+  @override
+  String get p2pTradePayoutLater =>
+      'Sending your payout info comes in a later version of Bull Market.';
+
+  @override
+  String get p2pTradeTitleInfoGood => 'Your info looks good!';
+
+  @override
+  String get p2pTradeEscrowWait =>
+      'We are waiting for the seller to lock the trade amount.';
+
+  @override
+  String get p2pTradeEscrowWaitHangOn =>
+      'Just hang on for a moment. If the seller does not deposit, you will get your bond back automatically. In addition, you will receive a compensation (check the rewards in your profile).';
+
+  @override
+  String get p2pTradeExpiredNotTaken => 'Expired not taken';
+
+  @override
+  String get p2pTradeExpiredMakerBond => 'Maker bond not locked';
+
+  @override
+  String get p2pTradeExpiredEscrow => 'Escrow not locked';
+
+  @override
+  String get p2pTradeExpiredInvoice => 'Invoice not submitted';
+
+  @override
+  String get p2pTradeExpiredNeither =>
+      'Neither escrow locked or invoice submitted';
+
+  @override
+  String get p2pOrderCancelled => 'This order has been cancelled';
+
+  @override
+  String get p2pTradeTitleChat => 'Chat with the seller';
+
+  @override
+  String get p2pTradeTitleDispute => 'A dispute has been opened';
+
+  @override
+  String get p2pTradeTitleStatementReceived =>
+      'We have received your statement';
+
+  @override
+  String get p2pTradeTitleSendingSats => 'Attempting Lightning Payment';
+
+  @override
+  String get p2pTradeTitleFinished => 'Trade finished!';
+
+  @override
+  String get p2pTradeTitleRoutingFailed => 'Lightning Routing Failed';
+
+  @override
+  String get p2pTradeTitleStatements => 'We have the statements';
+
+  @override
+  String get p2pTradeTitleDisputeWon => 'You have won the dispute';
+
+  @override
+  String get p2pTradeTitleDisputeLost => 'You have lost the dispute';
+
+  @override
+  String get p2pTradeTitleUnknown => 'Unknown Order Status';
+
+  @override
+  String get p2pTradeStepLater => 'Bull Market cannot show this step yet.';
+
+  @override
+  String get p2pTradeCopyUrl => 'Copy URL';
+
+  @override
+  String get p2pTradeCopyOrderUrl => 'Copy order URL';
+
+  @override
+  String get p2pTradeCancelOrder => 'Cancel order';
+
+  @override
+  String get p2pTradeCancelUnilateral =>
+      'Unilateral cancelation (bond at risk!)';
+
+  @override
+  String get p2pTradeCancelTitle => 'Cancel the order?';
+
+  @override
+  String get p2pTradeCancelPreTakeText =>
+      'If the order is cancelled now but you already tried to pay the invoice, you might lose your bond.';
+
+  @override
+  String get p2pTradeCancelBack => 'Back';
+
+  @override
+  String get p2pTradeConfirmCancellation => 'Confirm cancellation';
+
+  @override
+  String get p2pTradeCancelBondText =>
+      'If the order is cancelled now you will lose your bond.';
+
+  @override
+  String get p2pTradeConfirmCancel => 'Confirm Cancel';
+
+  @override
+  String get p2pTradeCancelMovedOn =>
+      'The order moved on before the cancel: nothing was cancelled.';
+
+  @override
+  String p2pTradeCancelNotDoneAfter(String reason) {
+    return '$reason Nothing was cancelled.';
+  }
+
+  @override
+  String get p2pTradeCancelUnknown =>
+      'Bull Market does not know yet whether the cancel went through. It keeps checking.';
+
+  @override
+  String get p2pTradeCancelNeedsRead =>
+      'Wait until the order is read again before cancelling.';
+
+  @override
+  String get p2pTradeCancelOnlyTogether =>
+      'Only a collaborative cancel is possible now, which comes in a later version.';
+
+  @override
+  String get p2pTradeCancelNotPossible => 'You cannot cancel this order';
+
+  @override
+  String p2pTradeTakePending(String coordinator) {
+    return 'Bull Market does not know yet whether the take went through. It keeps checking with $coordinator.';
+  }
+
+  @override
+  String p2pTradeTakeNeverSent(String coordinator) {
+    return 'This take was never sent to $coordinator.';
+  }
+
+  @override
+  String p2pTradeReadsFailing(String coordinator, String time) {
+    return 'Cannot reach $coordinator. What is shown was read at $time.';
+  }
+
+  @override
+  String get p2pTradeRecordProblem =>
+      'Bull Market could not write the records of this trade on this device.';
+
+  @override
+  String p2pTradeClosedProblem(String coordinator) {
+    return 'This trade was closed on this device, but $coordinator shows this robot as its taker.';
+  }
+
+  @override
+  String get p2pTradeUnrestorable =>
+      'Bull Market cannot read the records of this trade. Nothing is sent.';
+
+  @override
+  String p2pTradeCoordinatorGone(String coordinator) {
+    return '$coordinator is no longer in the list of coordinators. Nothing is sent.';
+  }
+
+  @override
+  String get p2pTradeUnavailable =>
+      'Bull Market cannot open this trade now. Nothing is sent.';
+
+  @override
+  String get p2pTradeKeyMissing =>
+      'The Garage Key of this trade is not on this device. Nothing is sent.';
+
+  @override
+  String p2pTradeWarnRole(String coordinator) {
+    return '$coordinator gives this robot another role than the one it took. Do not pay anything.';
+  }
+
+  @override
+  String p2pTradeWarnOrder(String coordinator) {
+    return '$coordinator answered about another order. Do not pay anything.';
+  }
+
+  @override
+  String get p2pTradeWarnTerms =>
+      'The terms of the order are not those of the order taken.';
+
+  @override
+  String get p2pTradeWarnUnexpected =>
+      'Unexpected change on the coordinator\'s side.';
+
+  @override
+  String p2pTradeWarnRegressed(String coordinator) {
+    return '$coordinator sent a status that does not follow this trade. It was ignored.';
+  }
+
+  @override
+  String p2pTradeWarnInconsistent(String coordinator) {
+    return '$coordinator contradicted itself earlier in this trade.';
+  }
+
+  @override
+  String get p2pTradeWarnHistoryUnknown =>
+      'This trade was found without its history: its invoices cannot be compared with the first ones.';
+
+  @override
+  String get p2pTradeWarnBond =>
+      'The bond asked is not the bond of the order taken.';
+
+  @override
+  String get p2pTradeWarnPrice =>
+      'The trade amount does not match the order\'s price.';
+
+  @override
+  String p2pTradeWarnAmounts(String coordinator) {
+    return 'The amounts $coordinator gives do not add up.';
+  }
+
+  @override
+  String p2pTradeWarnDeadline(String coordinator) {
+    return '$coordinator moved the deadline earlier.';
+  }
+
+  @override
+  String p2pTradeWarnUnreadable(String coordinator) {
+    return 'The invoice $coordinator sent cannot be read. It is not shown.';
+  }
+
+  @override
+  String p2pTradeWarnWrongNetwork(String coordinator) {
+    return 'The invoice $coordinator sent is for another network. It is not shown.';
+  }
+
+  @override
+  String get p2pTradeWarnInvoiceAmount =>
+      'The invoice amount is not the amount the order asks for.';
+
+  @override
+  String get p2pTradeWarnExpired => 'This invoice has expired.';
+
+  @override
+  String get p2pTradeWarnExpiringSoon =>
+      'This invoice expires in less than a minute.';
+
+  @override
+  String p2pTradeWarnHashChanged(String coordinator) {
+    return '$coordinator sent a new invoice for the same step. Do not pay it.';
+  }
+
+  @override
+  String p2pTradeWarnPayee(String coordinator) {
+    return 'This invoice is not from $coordinator\'s known Lightning node. Do not pay it.';
+  }
+
+  @override
+  String p2pActiveOrder(String orderId) {
+    return 'Active order #$orderId';
+  }
+
+  @override
+  String get p2pTradeEnded => 'This trade is over for this robot.';
+
+  @override
+  String get p2pSatsUnit => 'Sats';
+
+  @override
+  String get p2pTradeYouAreSwappingIn => 'SWAPPING INTO Lightning';
 }

@@ -26,6 +26,19 @@ void main() {
     expect(fr.amount(fiat(1234.56)), '1 235');
   });
 
+  test(
+    'the amount of the payout prompt keeps at most 4 decimals, an order in bitcoin in sats',
+    () {
+      expect(en.payoutAmount(123.45, inBitcoin: false), '123.45');
+      expect(fr.payoutAmount(123.45, inBitcoin: false), '123,45');
+      expect(en.payoutAmount(12345, inBitcoin: false), '12,345');
+      expect(fr.payoutAmount(12345, inBitcoin: false), '12\u202f345');
+      expect(en.payoutAmount(0.123456, inBitcoin: false), '0.1235');
+      expect(en.payoutAmount(0.001, inBitcoin: true), '100,000');
+      expect(fr.payoutAmount(0.001, inBitcoin: true), '100\u202f000');
+    },
+  );
+
   test('how far Tor has got is a whole percentage in the language', () {
     expect(en.torProgress(0), '0%');
     expect(en.torProgress(42), '42%');
