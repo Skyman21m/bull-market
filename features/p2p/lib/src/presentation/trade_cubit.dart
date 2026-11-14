@@ -129,7 +129,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
           signals: signals.stream,
           onScreen: _onScreen,
         ).listen(
-(watch) {
+          (watch) {
             // Superseded by a newer watch of the trade: not an error; the stream ends and this cubit stops, showing what it showed.
             if (isClosed || watch is TradeWatchSuperseded) return;
             emit(state._with(watch: _keepingWhatWasRead(watch)));
