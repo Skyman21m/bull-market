@@ -520,19 +520,34 @@ void main() {
       await capture('offres');
 
       // Several payment methods: the sheet with two checked, then the sentence that names the first and counts the other.
+      // The sheet lists every method of the official client, so the two chosen are scrolled to; they are neighbours at the end of the list, and both show in the capture.
       await tester.tap(find.text(l10n.p2pBookFilterAnyMethod));
       await settle();
-      await tester.tap(find.text('Revolut').last);
-      await settle();
-      await tester.tap(find.text('Wise').last);
-      await settle();
+      final methodList = find.byType(ListView).last;
+      for (final method in ['Wise', 'Zelle']) {
+        final row = find.descendant(
+          of: methodList,
+          matching: find.text(method),
+        );
+        await tester.scrollUntilVisible(
+          row,
+          200,
+          scrollable: find
+              .descendant(of: methodList, matching: find.byType(Scrollable))
+              .first,
+        );
+        await settle();
+        await tester.tap(row);
+        await settle();
+      }
       await tester.pump(const Duration(seconds: 1));
       await capture('filtres-feuille-plusieurs');
-      await tester.tap(close);
+      // The title, and its close button, scrolled away with the rows: a tap above the sheet closes it.
+      await tester.tapAt(const Offset(4, 4));
       await settle();
       await capture('filtres-paiements');
       // « Any payment method » at the top of the sheet clears the choice.
-      await tester.tap(find.text('Revolut +1'));
+      await tester.tap(find.text('Wise +1'));
       await settle();
       await tester.tap(find.text(l10n.p2pBookFilterAnyMethod).last);
       await settle();
