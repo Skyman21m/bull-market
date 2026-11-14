@@ -29,7 +29,9 @@ void main() {
       msats: BigInt.from(msats),
       paymentHash: hash ?? payHash().toUpperCase(),
       expiresAt: BigInt.from(
-        expiresAt == 0 ? testNow.millisecondsSinceEpoch ~/ 1000 + 180 : expiresAt,
+        expiresAt == 0
+            ? testNow.millisecondsSinceEpoch ~/ 1000 + 180
+            : expiresAt,
       ),
       network: network,
     );
@@ -124,21 +126,24 @@ void main() {
       quotedAt: testNow,
     );
 
-    test('a quote given is let through once, with the wallet it was given for', () {
-      final issued = IssuedQuotes();
-      final one = quote();
-      issued.issue(one, walletId: 'instant');
-      expect(issued.consume(one), 'instant');
-      expect(issued.consume(one), isNull);
-      // Given again after it was used, it stays used; given again for another wallet, it keeps its first.
-      issued.issue(one, walletId: 'other');
-      expect(issued.consume(one), isNull);
-      final two = quote();
-      issued
-        ..issue(two, walletId: 'instant')
-        ..issue(two, walletId: 'other');
-      expect(issued.consume(two), 'instant');
-    });
+    test(
+      'a quote given is let through once, with the wallet it was given for',
+      () {
+        final issued = IssuedQuotes();
+        final one = quote();
+        issued.issue(one, walletId: 'instant');
+        expect(issued.consume(one), 'instant');
+        expect(issued.consume(one), isNull);
+        // Given again after it was used, it stays used; given again for another wallet, it keeps its first.
+        issued.issue(one, walletId: 'other');
+        expect(issued.consume(one), isNull);
+        final two = quote();
+        issued
+          ..issue(two, walletId: 'instant')
+          ..issue(two, walletId: 'other');
+        expect(issued.consume(two), 'instant');
+      },
+    );
 
     test(
       'an equal quote that was not given is refused: identity, not equality',

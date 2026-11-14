@@ -658,6 +658,9 @@ const _shellVocabulary = {
   'isClosed',
   'isEmpty',
   'isUtc',
+  'Map',
+  'Set',
+  'zero',
   'sort',
   'then',
   'toList',
@@ -793,7 +796,7 @@ const _perFile = <String, Set<String>>{
     'signedTransaction',
     'sourceWalletId',
     'transactionId',
-    'zero',
+    'OrderSwapEnvironment',
   },
   // The reads of a payment: the wallet's records of its swap orders, never a creation, a change or a refresh.
   'data/wallet_payment_repository_impl.dart': {
@@ -863,7 +866,10 @@ const _perFile = <String, Set<String>>{
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
   },
-  'domain/usecases/quote_invoice_payment_usecase.dart': {'IssuedQuotes', 'issue'},
+  'domain/usecases/quote_invoice_payment_usecase.dart': {
+    'IssuedQuotes',
+    'issue',
+  },
 };
 
 /// The imports each of these files may have besides [_shellImports], and no other file.

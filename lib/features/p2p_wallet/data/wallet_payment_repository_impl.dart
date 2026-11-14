@@ -261,6 +261,6 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
   }
 
   /// The latest of [records], by creation.
-  static OrderSwapRecord _latest(List<OrderSwapRecord> records) => records
-      .reduce((a, b) => b.createdAt.isAfter(a.createdAt) ? b : a);
+  static OrderSwapRecord _latest(List<OrderSwapRecord> records) =>
+      records.reduce((a, b) => b.createdAt.isAfter(a.createdAt) ? b : a);
 }

@@ -590,7 +590,12 @@ void main() {
           (OrderSwapLocalStatus.expired, true, true, 'pending'),
           (OrderSwapLocalStatus.failed, true, false, 'pending'),
           (OrderSwapLocalStatus.failed, true, true, 'pending'),
-          (OrderSwapLocalStatus.awaitingUserConfirmation, false, false, 'under review'),
+          (
+            OrderSwapLocalStatus.awaitingUserConfirmation,
+            false,
+            false,
+            'under review',
+          ),
         ]) {
           reset();
           final invoice = payInvoice();
@@ -630,7 +635,11 @@ void main() {
           refusalOf(await payOf(invoice)),
           isA<P2pWalletPaymentExists>()
               .having((r) => r.payment?.id, 'payment', 'signed')
-              .having((r) => r.progress, 'progress', isA<P2pWalletPaymentSigned>()),
+              .having(
+                (r) => r.progress,
+                'progress',
+                isA<P2pWalletPaymentSigned>(),
+              ),
         );
         expect(journal.events, isEmpty);
       },
@@ -664,29 +673,39 @@ void main() {
       },
     );
 
-    test('another case, another purpose or another wallet: the same invoice', () async {
-      final invoice = payInvoice();
-      for (final record in [
-        paymentRecord(
-          destination: invoice.bolt11.toUpperCase(),
-          status: OrderSwapLocalStatus.payinBroadcast,
-          signed: 's',
-          transactionId: 't',
-        ),
-        paymentRecord(
-          destination: invoice.bolt11,
-          purpose: OrderSwapPurpose.transfer,
-          note: null,
-        ),
-        paymentRecord(destination: invoice.bolt11, walletId: 'another', note: null),
-      ]) {
-        swaps.records
-          ..clear()
-          ..[record.localId] = record;
-        expect(refusalOf(await payOf(invoice)), isA<P2pWalletPaymentExists>());
-      }
-      expect(journal.events, isEmpty);
-    });
+    test(
+      'another case, another purpose or another wallet: the same invoice',
+      () async {
+        final invoice = payInvoice();
+        for (final record in [
+          paymentRecord(
+            destination: invoice.bolt11.toUpperCase(),
+            status: OrderSwapLocalStatus.payinBroadcast,
+            signed: 's',
+            transactionId: 't',
+          ),
+          paymentRecord(
+            destination: invoice.bolt11,
+            purpose: OrderSwapPurpose.transfer,
+            note: null,
+          ),
+          paymentRecord(
+            destination: invoice.bolt11,
+            walletId: 'another',
+            note: null,
+          ),
+        ]) {
+          swaps.records
+            ..clear()
+            ..[record.localId] = record;
+          expect(
+            refusalOf(await payOf(invoice)),
+            isA<P2pWalletPaymentExists>(),
+          );
+        }
+        expect(journal.events, isEmpty);
+      },
+    );
 
     test(
       'another invoice of the same payment hash that this feature paid, or whose invoice cannot be read',
@@ -720,8 +739,11 @@ void main() {
             transactionId: 't',
           ),
         );
-        expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletUnavailable>());
-        expectNoOrder();
+        expect(
+          refusalOf(await payOf(payInvoice())),
+          isA<P2pWalletUnavailable>(),
+        );
+        expect(journal.events, isEmpty);
         // An order of the wallet's own Send with the same hash is not this feature's: only its text would match.
         reset();
         invoices.learn(earlier);
@@ -803,7 +825,11 @@ void main() {
             paymentOf(retry);
             expect(journal.only({'broadcast'}), hasLength(1), reason: label);
           } else {
-            expect(refusalOf(retry), isA<P2pWalletPaymentExists>(), reason: label);
+            expect(
+              refusalOf(retry),
+              isA<P2pWalletPaymentExists>(),
+              reason: label,
+            );
             expect(journal.events, isEmpty, reason: label);
           }
           // And never a third time once paid.
@@ -1214,33 +1240,43 @@ void main() {
       broadcasting: Duration(milliseconds: 50),
     );
 
-    test('a step that hangs ends the payment, with what it means for the funds', () async {
-      for (final (step, refusal, broadcasts) in [
-        ('refund-address', isA<P2pWalletUnavailable>(), 0),
-        ('create', isA<P2pWalletServiceUnreachable>(), 0),
-        ('build', isA<P2pWalletUnavailable>(), 0),
-        ('sign', isA<P2pWalletUnavailable>(), 0),
-        ('save', isA<P2pWalletUnavailable>(), 0),
-        ('markUnknown', isA<P2pWalletUnavailable>(), 0),
-        ('broadcast', isA<P2pWalletBroadcastUnknown>(), 1),
-      ]) {
+    test(
+      'a step that hangs ends the payment, with what it means for the funds',
+      () async {
+        for (final (step, refusal, broadcasts) in [
+          ('refund-address', isA<P2pWalletUnavailable>(), 0),
+          ('create', isA<P2pWalletServiceUnreachable>(), 0),
+          ('build', isA<P2pWalletUnavailable>(), 0),
+          ('sign', isA<P2pWalletUnavailable>(), 0),
+          ('save', isA<P2pWalletUnavailable>(), 0),
+          ('markUnknown', isA<P2pWalletUnavailable>(), 0),
+          ('broadcast', isA<P2pWalletBroadcastUnknown>(), 1),
+        ]) {
+          timeouts = short;
+          reset();
+          journal.hanging.add(step);
+          final result = await payOf(payInvoice());
+          expect(refusalOf(result), refusal, reason: step);
+          expect(
+            journal.only({'broadcast'}),
+            hasLength(broadcasts),
+            reason: step,
+          );
+        }
+        timeouts = const PayTimeouts();
+      },
+    );
+
+    test(
+      'a last mark that hangs does not change the outcome: the broadcast is done',
+      () async {
         timeouts = short;
         reset();
-        journal.hanging.add(step);
-        final result = await payOf(payInvoice());
-        expect(refusalOf(result), refusal, reason: step);
-        expect(journal.only({'broadcast'}), hasLength(broadcasts), reason: step);
-      }
-      timeouts = const PayTimeouts();
-    });
-
-    test('a last mark that hangs does not change the outcome: the broadcast is done', () async {
-      timeouts = short;
-      reset();
-      journal.hanging.add('markBroadcast');
-      paymentOf(await payOf(payInvoice()));
-      timeouts = const PayTimeouts();
-    });
+        journal.hanging.add('markBroadcast');
+        paymentOf(await payOf(payInvoice()));
+        timeouts = const PayTimeouts();
+      },
+    );
 
     test('a payment that hung does not hold the next one', () async {
       timeouts = short;

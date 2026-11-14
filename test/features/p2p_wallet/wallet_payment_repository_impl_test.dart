@@ -217,63 +217,76 @@ void main() {
   });
 
   group('provably unspent', () {
-    test('each status, with nothing signed: this feature\'s and another feature\'s', () {
-      const ours = {
-        OrderSwapLocalStatus.creating: true,
-        OrderSwapLocalStatus.creationUnknown: true,
-        OrderSwapLocalStatus.awaitingUserConfirmation: true,
-        OrderSwapLocalStatus.preparingPayin: true,
-        OrderSwapLocalStatus.expired: true,
-        OrderSwapLocalStatus.failed: true,
-      };
-      const ended = {OrderSwapLocalStatus.expired, OrderSwapLocalStatus.failed};
-      for (final status in OrderSwapLocalStatus.values) {
-        final signedByStatus =
-            status == OrderSwapLocalStatus.readyToBroadcast ||
-            status == OrderSwapLocalStatus.broadcastUnknown;
-        final sentByStatus = status == OrderSwapLocalStatus.payinBroadcast;
-        final record = recordOf(
-          status,
-          signed: signedByStatus || sentByStatus ? 's' : null,
-          transactionId: sentByStatus ? 't' : null,
-        );
-        expect(
-          WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: true),
-          ours[status] ?? false,
-          reason: 'ours ${status.name}',
-        );
-        expect(
-          WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: false),
-          ended.contains(status),
-          reason: 'theirs ${status.name}',
-        );
-      }
-    });
+    test(
+      'each status, with nothing signed: this feature\'s and another feature\'s',
+      () {
+        const ours = {
+          OrderSwapLocalStatus.creating: true,
+          OrderSwapLocalStatus.creationUnknown: true,
+          OrderSwapLocalStatus.awaitingUserConfirmation: true,
+          OrderSwapLocalStatus.preparingPayin: true,
+          OrderSwapLocalStatus.expired: true,
+          OrderSwapLocalStatus.failed: true,
+        };
+        const ended = {
+          OrderSwapLocalStatus.expired,
+          OrderSwapLocalStatus.failed,
+        };
+        for (final status in OrderSwapLocalStatus.values) {
+          final signedByStatus =
+              status == OrderSwapLocalStatus.readyToBroadcast ||
+              status == OrderSwapLocalStatus.broadcastUnknown;
+          final sentByStatus = status == OrderSwapLocalStatus.payinBroadcast;
+          final record = recordOf(
+            status,
+            signed: signedByStatus || sentByStatus ? 's' : null,
+            transactionId: sentByStatus ? 't' : null,
+          );
+          expect(
+            WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: true),
+            ours[status] ?? false,
+            reason: 'ours ${status.name}',
+          );
+          expect(
+            WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: false),
+            ended.contains(status),
+            reason: 'theirs ${status.name}',
+          );
+        }
+      },
+    );
 
-    test('a signed payin, a transaction id or a manual review is never unspent, whatever the status', () {
-      for (final status in [
-        OrderSwapLocalStatus.awaitingUserConfirmation,
-        OrderSwapLocalStatus.preparingPayin,
-        OrderSwapLocalStatus.expired,
-        OrderSwapLocalStatus.failed,
-      ]) {
-        for (final record in [
-          recordOf(status, signed: 's'),
-          recordOf(status, signed: 's', transactionId: 't'),
-          // A failed order with nothing signed has no service order left to be under review.
-          if (status != OrderSwapLocalStatus.failed)
-            recordOf(status, payinStatus: 'under review'),
+    test(
+      'a signed payin, a transaction id or a manual review is never unspent, whatever the status',
+      () {
+        for (final status in [
+          OrderSwapLocalStatus.awaitingUserConfirmation,
+          OrderSwapLocalStatus.preparingPayin,
+          OrderSwapLocalStatus.expired,
+          OrderSwapLocalStatus.failed,
         ]) {
-          for (final ours in [true, false]) {
-            expect(
-              WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: ours),
-              isFalse,
-              reason: '${status.name} ${record.hasPreparedPayin} ${record.hasFundsMoved} $ours',
-            );
+          for (final record in [
+            recordOf(status, signed: 's'),
+            recordOf(status, signed: 's', transactionId: 't'),
+            // A failed order with nothing signed has no service order left to be under review.
+            if (status != OrderSwapLocalStatus.failed)
+              recordOf(status, payinStatus: 'under review'),
+          ]) {
+            for (final ours in [true, false]) {
+              expect(
+                WalletPaymentRepositoryImpl.isProvablyUnspent(
+                  record,
+                  ours: ours,
+                ),
+                isFalse,
+                reason:
+                    '${status.name} ${record.hasPreparedPayin} ${record.hasFundsMoved} $ours',
+              );
+            }
           }
         }
-      }
-    });
+      },
+    );
 
     test(
       'the earlier orders of an invoice: their ids while all are unspent, the latest spent one otherwise',
@@ -303,7 +316,11 @@ void main() {
             'failure',
             isA<P2pWalletPaymentExists>()
                 .having((r) => r.payment?.id, 'payment', 'c')
-                .having((r) => r.progress, 'progress', isA<P2pWalletPaymentPending>()),
+                .having(
+                  (r) => r.progress,
+                  'progress',
+                  isA<P2pWalletPaymentPending>(),
+                ),
           ),
         );
       },
@@ -536,7 +553,10 @@ void main() {
         expect(await payments.find(payHash(9)), _isOk(isNull));
         // A hash read once is kept: the same repository answers without decoding again.
         final reads = invoices.reads.length;
-        expect(await payments.find(invoice.paymentHash), isA<Ok<Object?, P2pWalletRefusal>>());
+        expect(
+          await payments.find(invoice.paymentHash),
+          isA<Ok<Object?, P2pWalletRefusal>>(),
+        );
         expect(invoices.reads, hasLength(reads));
         // An order of this feature whose invoice the decoder cannot read: never « none », but Unavailable (fail closed), for the look-up and for a new payment.
         invoices.known.clear();

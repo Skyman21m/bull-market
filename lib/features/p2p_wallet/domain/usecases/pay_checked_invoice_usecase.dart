@@ -66,7 +66,9 @@ class PayCheckedInvoiceUsecase {
   final BroadcastLiquidTransactionUsecase _broadcast;
   final DateTime Function() _now;
   final Future<void> Function(Duration) _delay;
-  final PayTimeouts _timeouts;
+
+  /// How long each step may take.
+  final PayTimeouts timeouts;
 
   /// The end of the latest payment started: the next one waits for it.
   Future<void> _previous = Future<void>.value();
@@ -82,9 +84,8 @@ class PayCheckedInvoiceUsecase {
     this._broadcast,
     this._now, {
     Future<void> Function(Duration)? delay,
-    PayTimeouts timeouts = const PayTimeouts(),
-  }) : _delay = delay ?? Future<void>.delayed,
-       _timeouts = timeouts;
+    this.timeouts = const PayTimeouts(),
+  }) : _delay = delay ?? Future<void>.delayed;
 
   /// Pays [invoice] within [accepted], or says why not; see the class for the sequence.
   ///
@@ -125,7 +126,7 @@ class PayCheckedInvoiceUsecase {
     }
     final InstantWallet wallet;
     switch (await _wallets.read().timeout(
-      _timeouts.reading,
+      timeouts.reading,
       onTimeout: () => const Err(P2pWalletUnavailable()),
     )) {
       case Ok(:final value):
@@ -142,7 +143,7 @@ class PayCheckedInvoiceUsecase {
     switch (await _invoices
         .read(invoice.bolt11)
         .timeout(
-          _timeouts.reading,
+          timeouts.reading,
           onTimeout: () => const Err(P2pWalletUnavailable()),
         )) {
       case Ok(:final value):
@@ -166,7 +167,7 @@ class PayCheckedInvoiceUsecase {
     switch (await _payments
         .earlierAttemptsOf(invoice)
         .timeout(
-          _timeouts.reading,
+          timeouts.reading,
           onTimeout: () => const Err(P2pWalletUnavailable()),
         )) {
       case Ok(:final value):
@@ -187,7 +188,7 @@ class PayCheckedInvoiceUsecase {
     switch (await _wallets
         .estimateNetworkFee(wallet, accepted.payin)
         .timeout(
-          _timeouts.building,
+          timeouts.building,
           onTimeout: () => const Err(P2pWalletUnavailable()),
         )) {
       case Ok(:final value) when value.value > accepted.networkFee.value:
@@ -203,9 +204,11 @@ class PayCheckedInvoiceUsecase {
     }
     final String refund;
     try {
-      refund = (await _refundAddress
-          .execute(walletId: wallet.id)
-          .timeout(_timeouts.reading)).address;
+      refund =
+          (await _refundAddress
+                  .execute(walletId: wallet.id)
+                  .timeout(timeouts.reading))
+              .address;
     } catch (_) {
       return const Err(P2pWalletUnavailable());
     }
@@ -275,7 +278,7 @@ class PayCheckedInvoiceUsecase {
             amountSat: payin.toInt(),
             feeRate: _liquidFeeRate,
           )
-          .timeout(_timeouts.building);
+          .timeout(timeouts.building);
     } on InsufficientFundsException {
       return Err(_short(wallet, accepted));
     } on NoSpendableUtxoException {
@@ -294,10 +297,10 @@ class PayCheckedInvoiceUsecase {
             address: payinAddress,
             walletId: wallet.id,
           )
-          .timeout(_timeouts.building);
+          .timeout(timeouts.building);
       sizeAndFee = await _liquid
           .getPsetSizeAndAbsoluteFees(pset: pset)
-          .timeout(_timeouts.building);
+          .timeout(timeouts.building);
     } catch (_) {
       return const Err(P2pWalletUnavailable());
     }
@@ -320,7 +323,7 @@ class PayCheckedInvoiceUsecase {
     try {
       signed = await _liquid
           .signPset(pset: pset, walletId: wallet.id)
-          .timeout(_timeouts.signing);
+          .timeout(timeouts.signing);
     } catch (_) {
       return const Err(P2pWalletUnavailable());
     }
@@ -331,7 +334,7 @@ class PayCheckedInvoiceUsecase {
             signedTransaction: signed,
             isPsbt: false,
           )
-          .timeout(_timeouts.storing)) {
+          .timeout(timeouts.storing)) {
         case Ok(:final value)
             when value.localStatus == OrderSwapLocalStatus.readyToBroadcast &&
                 value.signedPayinTransaction == signed:
@@ -347,7 +350,7 @@ class PayCheckedInvoiceUsecase {
     try {
       switch (await _swaps
           .markBroadcastUnknown(record.localId)
-          .timeout(_timeouts.storing)) {
+          .timeout(timeouts.storing)) {
         case Ok(:final value)
             when value.localStatus == OrderSwapLocalStatus.broadcastUnknown:
           // The transaction broadcast is the one saved on the order, read back from it, and only if it is the one just signed.
@@ -372,7 +375,7 @@ class PayCheckedInvoiceUsecase {
     try {
       transactionId = await _broadcast
           .execute(saved, isTestnet: wallet.isTestnet)
-          .timeout(_timeouts.broadcasting);
+          .timeout(timeouts.broadcasting);
     } catch (_) {
       // The transaction may have reached the network (a broadcast that times out may still complete): the order stays « broadcast unknown », and nothing tries again.
       return Err(P2pWalletBroadcastUnknown(payment));
@@ -384,7 +387,7 @@ class PayCheckedInvoiceUsecase {
             localId: record.localId,
             transactionId: transactionId,
           )
-          .timeout(_timeouts.storing);
+          .timeout(timeouts.storing);
     } catch (_) {}
 
     // 8. The handle.
@@ -416,7 +419,7 @@ class PayCheckedInvoiceUsecase {
           note: WalletPaymentRepository.note,
           quotedCounterpartAmountSat: accepted.payin.value,
         )
-        .timeout(_timeouts.creation);
+        .timeout(timeouts.creation);
 
     try {
       var created = await create();
