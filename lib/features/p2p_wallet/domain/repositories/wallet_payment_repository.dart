@@ -6,17 +6,18 @@ abstract interface class WalletPaymentRepository {
   /// The note of every order this feature creates: a fixed text, which the wallet makes a label of the funding transaction once the order completes, and by which [find] and [watch] know this feature's orders. No order id, no hash.
   static const note = 'RoboSats';
 
-  /// Whether the wallet's records hold any swap order that pays [invoice], in any state: an order of any kind and of any wallet whose destination is the invoice's text (in either case), or an order of this feature for an invoice with the same payment hash.
+  /// The earlier swap orders of the wallet's records that pay [invoice], when every one of them is provably unspent: their local ids (empty when there is none), so that the invoice may be paid (again).
   ///
-  /// [P2pWalletUnavailable] when the records cannot be read.
+  /// An order pays [invoice] when its destination is the invoice's text (in either case), whatever its kind and wallet, or when it is an order of this feature for an invoice with the same payment hash.
+  /// [P2pWalletPaymentExists] when one of them is not provably unspent (signed, broadcast or after, or an open order of another feature), with where the latest such order stands; [P2pWalletUnavailable] when the records, or the invoice of any order of this feature, cannot be read (fail closed).
   @useResult
-  Future<Result<bool, P2pWalletRefusal>> holdsPaymentOf(
+  Future<Result<Set<String>, P2pWalletRefusal>> earlierAttemptsOf(
     CheckedBolt11Invoice invoice,
   );
 
   /// The latest order of this feature that pays an invoice of [paymentHash], with its progress, or `null`.
   ///
-  /// [P2pWalletUnavailable] when the records cannot be read.
+  /// It fails closed: [P2pWalletUnavailable] when the records, or the invoice of any order of this feature, cannot be read, never `null`.
   @useResult
   Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> find(
     String paymentHash,

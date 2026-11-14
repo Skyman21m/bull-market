@@ -71,7 +71,6 @@ export 'public/p2p_wallet_port.dart'
         P2pWalletUnderMinimum,
         P2pWalletWrongNetwork,
         // The payment (#100, W3): its handle, its progress and the refusals it adds.
-        P2pWalletAlreadyPaid,
         P2pWalletBroadcastUnknown,
         P2pWalletFunds,
         P2pWalletInvoiceExpiresTooSoon,
@@ -90,7 +89,8 @@ export 'public/p2p_wallet_port.dart'
         P2pWalletPaymentSigned,
         P2pWalletPaymentUnderReview,
         P2pWalletQuoteChanged,
-        P2pWalletQuoteStale;
+        P2pWalletQuoteStale,
+        P2pWalletPaymentExists;
 export 'src/domain/checked_bolt11_invoice.dart' show CheckedBolt11Invoice;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 // The BOLT11 decoder port, which the shell implements with the app's pinned `bolt11_decoder` (#86, design note § 3.9): the trade's checks read every invoice of a coordinator through it.

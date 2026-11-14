@@ -17,7 +17,18 @@ import 'fakes.dart';
 final class Journal {
   final List<String> events = [];
 
+  /// The steps that never answer, by their kind (`create`, `build`, `sign`, `save`, `markUnknown`, `broadcast`, `markBroadcast`, `refund-address`): a fake journals the step, then waits for ever, as a call that hangs.
+  final Set<String> hanging = {};
+
   void add(String event) => events.add(event);
+
+  /// Journals [event], and never answers when its kind hangs.
+  Future<void> step(String event) async {
+    events.add(event);
+    if (hanging.contains(event.split(':').first)) {
+      await Completer<void>().future;
+    }
+  }
 
   /// The events of [kinds] only, in order (an event's kind is the text before its first `:`).
   List<String> only(Set<String> kinds) => [
@@ -124,6 +135,9 @@ final class FakeOrderSwaps implements SwapFacade {
 
   /// What every creation was asked: amount, destination, refund address, purpose, wallet, note, payin quoted.
   final List<Map<String, Object?>> created = [];
+
+  /// The local ids of the earlier orders a creation answered again.
+  final List<String> reused = [];
   var _next = 0;
 
   FakeOrderSwaps(this.journal, this.now);
@@ -155,7 +169,7 @@ final class FakeOrderSwaps implements SwapFacade {
     String? note,
     BigInt? quotedCounterpartAmountSat,
   }) async {
-    journal.add('create');
+    await journal.step('create');
     created.add({
       'amount': amountSat,
       'fixedIn': isInAmountFixed,
@@ -172,12 +186,52 @@ final class FakeOrderSwaps implements SwapFacade {
     onCreate?.call();
     if (createFailures.isNotEmpty) return Err(createFailures.removeAt(0));
     if (createAnswer case final answer?) return Ok(answer);
-    for (final record in records.values) {
+    // As the wallet's store (`OrderSwapRepositoryImpl._createOrderLocked`): an active order of the same purpose, environment, networks, amount, destination and wallet is answered instead of a new one; a `creating` one is an unknown outcome; one past its deadline is expired, and a new order created.
+    for (final record in records.values.toList()) {
       if (!record.localStatus.isTerminal &&
           record.destination == destinationAddress &&
           record.sourceWalletId == sourceWalletId &&
           record.purpose == purpose &&
+          record.environment == environment &&
+          record.isInAmountFixed == isInAmountFixed &&
           record.requestedAmountSat == amountSat) {
+        if (record.localStatus == OrderSwapLocalStatus.creating) {
+          return const Err(SwapCreationUnknownFailure());
+        }
+        if (record.localStatus == OrderSwapLocalStatus.creationUnknown) {
+          // The store asks the service again for that order, and records it.
+          final recovered = paymentRecord(
+            localId: record.localId,
+            destination: record.destination,
+            fallback: record.fallback,
+            amount: record.requestedAmountSat,
+            payin: payinFor(record.quotedCounterpartAmountSat ?? amountSat),
+            walletId: record.sourceWalletId,
+            note: record.note,
+            purpose: record.purpose,
+            createdAt: record.createdAt,
+            deadline: now().add(const Duration(minutes: 10)),
+            payinAddress: 'lq1payin-${record.localId}',
+            quoted: record.quotedCounterpartAmountSat,
+            environment: record.environment,
+          );
+          records[record.localId] = recovered;
+          reused.add(record.localId);
+          return Ok(recovered);
+        }
+        final deadline = record.order?.confirmationDeadline;
+        final canExpire =
+            record.localStatus ==
+                OrderSwapLocalStatus.awaitingUserConfirmation ||
+            record.localStatus == OrderSwapLocalStatus.preparingPayin ||
+            record.localStatus == OrderSwapLocalStatus.readyToBroadcast;
+        if (canExpire && deadline != null && !deadline.isAfter(now())) {
+          records[record.localId] = record.withPayinState(
+            status: OrderSwapLocalStatus.expired,
+          );
+          continue;
+        }
+        reused.add(record.localId);
         return Ok(record);
       }
     }
@@ -196,6 +250,8 @@ final class FakeOrderSwaps implements SwapFacade {
       deadline: now().add(const Duration(minutes: 10)),
       status: OrderSwapLocalStatus.awaitingUserConfirmation,
       payinAddress: 'lq1payin$_next',
+      quoted: quotedCounterpartAmountSat,
+      environment: environment,
     );
     records[record.localId] = record;
     return Ok(record);
@@ -221,7 +277,7 @@ final class FakeOrderSwaps implements SwapFacade {
     required String signedTransaction,
     required bool isPsbt,
   }) async {
-    journal.add('save:$signedTransaction');
+    await journal.step('save:$signedTransaction');
     if (saveFailure case final failure?) return Err(failure);
     final record = records[localId];
     if (record == null) return const Err(SwapOrderNotFoundFailure());
@@ -242,7 +298,7 @@ final class FakeOrderSwaps implements SwapFacade {
   Future<Result<OrderSwapRecord, SwapFailure>> markBroadcastUnknown(
     String localId,
   ) async {
-    journal.add('markUnknown');
+    await journal.step('markUnknown');
     if (markUnknownFailure case final failure?) return Err(failure);
     final record = records[localId];
     if (record == null) return const Err(SwapOrderNotFoundFailure());
@@ -271,7 +327,7 @@ final class FakeOrderSwaps implements SwapFacade {
     required String localId,
     required String transactionId,
   }) async {
-    journal.add('markBroadcast:$transactionId');
+    await journal.step('markBroadcast:$transactionId');
     if (markBroadcastError case final error?) throw error;
     final record = records[localId];
     if (record == null) return const Err(SwapOrderNotFoundFailure());
@@ -332,17 +388,21 @@ OrderSwapRecord paymentRecord({
   String? transactionId,
   String payinStatus = 'pending',
   bool withOrder = true,
+  BigInt? quoted,
+  OrderSwapEnvironment environment = OrderSwapEnvironment.mainnet,
+  String? payoutAddress,
 }) {
   final requested = amount ?? BigInt.from(600);
   final created = createdAt ?? testNow;
   return OrderSwapRecord(
     localId: localId,
     purpose: purpose,
-    environment: OrderSwapEnvironment.mainnet,
+    environment: environment,
     inNetwork: OrderSwapNetwork.liquid,
     outNetwork: OrderSwapNetwork.lightning,
     isInAmountFixed: false,
     requestedAmountSat: requested,
+    quotedCounterpartAmountSat: quoted ?? BigInt.from(603),
     destination: destination,
     fallback: fallback,
     createdAt: created,
@@ -373,7 +433,7 @@ OrderSwapRecord paymentRecord({
             confirmationDeadline:
                 deadline ?? created.add(const Duration(minutes: 10)),
             liquidAddress: payinAddress,
-            lightningInvoice: destination,
+            lightningInvoice: payoutAddress ?? destination,
           )
         : null,
   );
@@ -385,6 +445,13 @@ final class FakePayingLiquid implements LiquidWalletRepository {
   int fee = 26;
   Object? buildError;
   Object? signError;
+
+  /// The fee of a transaction to the order's payin address, when it differs from [fee] (the quote's estimate is built to the wallet's own address).
+  int? payinFee;
+
+  /// What building a transaction to the order's payin address throws, when only that build fails.
+  Object? payinBuildError;
+  final Map<String, String> _addresses = {};
 
   /// The amount the built transaction sends to the address asked, as read back (by default, the amount asked).
   int Function(int asked)? sentInstead;
@@ -401,11 +468,15 @@ final class FakePayingLiquid implements LiquidWalletRepository {
     required RelativeFee feeRate,
     bool? drain,
   }) async {
-    journal.add('build:$address:$amountSat:${feeRate.satPerKwu}');
+    await journal.step('build:$address:$amountSat:${feeRate.satPerKwu}');
     if (buildError case final error?) throw error;
+    if (address.startsWith('lq1payin')) {
+      if (payinBuildError case final error?) throw error;
+    }
     _builds++;
     final pset = 'pset$_builds';
     _amounts[pset] = amountSat ?? 0;
+    _addresses[pset] = address;
     return pset;
   }
 
@@ -421,8 +492,8 @@ final class FakePayingLiquid implements LiquidWalletRepository {
 
   @override
   Future<(int, int)> getPsetSizeAndAbsoluteFees({required String pset}) async {
-    if (!_amounts.containsKey(pset)) throw StateError('unknown pset');
-    return (1000, fee);
+    final address = _addresses[pset] ?? (throw StateError('unknown pset'));
+    return (1000, address.startsWith('lq1payin') ? payinFee ?? fee : fee);
   }
 
   @override
@@ -430,7 +501,7 @@ final class FakePayingLiquid implements LiquidWalletRepository {
     required String pset,
     required String walletId,
   }) async {
-    journal.add('sign:$pset');
+    await journal.step('sign:$pset');
     if (signError case final error?) throw error;
     return 'signed-$pset';
   }
@@ -450,7 +521,7 @@ final class FakeBroadcast implements BroadcastLiquidTransactionUsecase {
 
   @override
   Future<String> execute(String signedPset, {bool? isTestnet}) async {
-    journal.add('broadcast:$signedPset');
+    await journal.step('broadcast:$signedPset');
     networks.add(isTestnet);
     if (error case final error?) throw error;
     return 'txid-of-$signedPset';
@@ -473,7 +544,7 @@ final class FakeRefundAddress implements GetReceiveAddressUsecase {
     required String walletId,
     bool generateNew = false,
   }) async {
-    journal.add('refund-address');
+    await journal.step('refund-address');
     calls.add((walletId: walletId, generateNew: generateNew));
     if (error case final error?) throw error;
     return WalletAddress(

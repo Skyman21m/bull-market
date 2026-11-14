@@ -110,6 +110,59 @@ void main() {
       },
     );
 
+    test(
+      'the security review\'s file that quotes and pays through the locator fails (#116)',
+      () {
+        const evasion = '''
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:get_it/get_it.dart';
+import 'package:p2p/p2p.dart';
+
+class FindAndPay {
+  final GetIt locator;
+
+  FindAndPay(this.locator);
+
+  Future<void> start(CheckedBolt11Invoice invoice) async {
+    final quoted = await locator<QuoteInvoicePaymentUsecase>().execute(invoice);
+    if (quoted case Ok(:final value)) {
+      await locator<PayCheckedInvoiceUsecase>().execute(
+        invoice,
+        accepted: value,
+      );
+    }
+  }
+}
+''';
+        const path = 'domain/usecases/find_and_pay_probe.dart';
+        expect(_importOffences({path: evasion}), [
+          '$path imports package:get_it/get_it.dart',
+        ]);
+        expect(
+          _vocabularyOffences({path: evasion}).join(),
+          allOf(
+            contains('PayCheckedInvoiceUsecase'),
+            contains('QuoteInvoicePaymentUsecase'),
+            contains('GetIt'),
+          ),
+        );
+        // Through the facade's type or the port's member, too.
+        expect(
+          _vocabularyOffences({
+            path:
+                'Future<void> f(P2pWalletPort port, CheckedBolt11Invoice i, P2pWalletQuote q, Object o) async { await port.payInvoice(i, accepted: q); final P2pWalletFacade f = o as P2pWalletFacade; }',
+          }).join(),
+          allOf(contains('payInvoice'), contains('P2pWalletFacade')),
+        );
+        // In the locator's own file, the composition names them, and nothing else may.
+        expect(
+          _vocabularyOffences({'p2p_wallet_locator.dart': evasion}).join(),
+          isNot(contains('PayCheckedInvoiceUsecase')),
+        );
+      },
+    );
+
     test('a file that reaches the signature by another way fails', () {
       // The third review's probe: from another file of the feature, the wallet's signer through the locator, a pattern, an extension, a cascade or a symbol.
       const evasion = '''
@@ -127,8 +180,10 @@ Future<void> leak(String pset, SwapFacade swaps) async {
 }
 ''';
       const path = 'data/zz_evasion3.dart';
-      // Its imports are all allowed: only its names give it away.
-      expect(_importOffences({path: evasion}), isEmpty);
+      // Of its imports, only the locator's package is refused; its names give it away too.
+      expect(_importOffences({path: evasion}), [
+        '$path imports package:get_it/get_it.dart',
+      ]);
       expect(
         _vocabularyOffences({path: evasion}),
         contains(
@@ -295,6 +350,8 @@ Future<void> leak(String pset) async {
         'data/zz_evasion.dart imports package:bb_mobile/core/wallet/domain/usecases/sync_wallet_usecase.dart',
         'data/zz_evasion.dart imports package:bb_mobile/features/sp/public/sp_facade.dart',
         'data/zz_evasion.dart imports package:bb_mobile/features/send/send_locator.dart',
+        // The locator's package, since the security review of #116: only the feature's locator resolves anything.
+        'data/zz_evasion.dart imports package:get_it/get_it.dart',
       ]);
       expect(
         _vocabularyOf([evasion]).difference(_shellVocabulary),
@@ -444,7 +501,6 @@ const _shellImports = {
   'package:bb_mobile/core/wallet/domain/usecases/watch_finished_wallet_syncs_usecase.dart',
   'package:bb_mobile/core/wallet/domain/wallet_failure.dart',
   'package:bb_mobile/features/swap/public/swap_facade.dart',
-  'package:get_it/get_it.dart',
   'package:meta/meta.dart',
   'package:p2p/p2p.dart',
 };
@@ -457,7 +513,6 @@ const _shellVocabulary = {
   'DateTime',
   'Duration',
   'Future',
-  'GetIt',
   'List',
   'Object',
   'Stream',
@@ -470,7 +525,6 @@ const _shellVocabulary = {
   'CheckedBolt11Invoice',
   'Err',
   'Ok',
-  'P2pWalletFacade',
   'P2pWalletInvoiceExpired',
   'P2pWalletNeedsConsolidation',
   'P2pWalletNoInstantWallet',
@@ -487,7 +541,7 @@ const _shellVocabulary = {
   'P2pWalletUnderMinimum',
   'P2pWalletWrongNetwork',
   // The payment's types (#100, W3): the handle, its progress and the refusals it adds; and the reading of a pattern's fields that #103's code already had (`Err(:final failure)`, `SwapAmountOutOfBoundsFailure(isMinimum: true, :final limitAmountSat)`).
-  'P2pWalletAlreadyPaid',
+  'P2pWalletPaymentExists',
   'P2pWalletBroadcastUnknown',
   'P2pWalletInvoiceExpiresTooSoon',
   'P2pWalletInvoiceUnreadable',
@@ -565,12 +619,9 @@ const _shellVocabulary = {
   'LightningSwapQuote',
   'LightningSwapQuoteRepository',
   'LightningSwapQuoteRepositoryImpl',
-  'QuoteInvoicePaymentUsecase',
   'WatchInstantBalanceUsecase',
   // The payment's own classes, and their members and labels used across files.
   'FindWalletPaymentUsecase',
-  'IssuedQuotes',
-  'PayCheckedInvoiceUsecase',
   'WalletInvoice',
   'WalletInvoiceRepository',
   'WalletInvoiceRepositoryImpl',
@@ -579,12 +630,9 @@ const _shellVocabulary = {
   'WatchWalletPaymentUsecase',
   'accepted',
   'bolt11',
-  'consume',
   'expiresAt',
   'find',
-  'holdsPaymentOf',
   'isSameInvoiceAs',
-  'issue',
   'maxSats',
   'maybeSent',
   'note',
@@ -634,7 +682,6 @@ const _shellVocabulary = {
   'isExpiredAt',
   'isNegative',
   'listen',
-  'locator',
   'mainnet',
   'map',
   'network',
@@ -646,8 +693,6 @@ const _shellVocabulary = {
   'refusalFor',
   'refusalOf',
   'refuse',
-  'registerFactory',
-  'registerLazySingleton',
   'start',
   'stream',
   'testnet',
@@ -703,7 +748,23 @@ const _perFile = <String, Set<String>>{
     '_createOrder',
     '_delay',
     '_lateRefusal',
+    'broadcasting',
+    'building',
+    'consume',
+    'contains',
+    'creation',
     'delayed',
+    'earlierAttemptsOf',
+    'IssuedQuotes',
+    'localPayinTransactionId',
+    'onTimeout',
+    'payoutAddress',
+    'PayTimeouts',
+    'reading',
+    'signing',
+    'storing',
+    'timeout',
+    'TimeoutException',
     '_pay',
     '_refusalOf',
     'after',
@@ -738,8 +799,14 @@ const _perFile = <String, Set<String>>{
   'data/wallet_payment_repository_impl.dart': {
     '_belongsTo',
     '_isOurs',
+    '_latest',
     '_paymentHashOf',
     '_records',
+    'isProvablyUnspent',
+    'localPayinTransactionId',
+    'ours',
+    'reduce',
+    'signedPayinTransaction',
     'awaitingUserConfirmation',
     'broadcastUnknown',
     'completed',
@@ -771,18 +838,32 @@ const _perFile = <String, Set<String>>{
   },
   // The wallet's decoder of invoices, its Send screen's.
   'data/wallet_invoice_repository_impl.dart': {
-    '_parse',
-    'Bolt11PaymentRequest',
-    'parse',
-    'PaymentRequest',
+    '_decode',
+    'DecodedInvoice',
+    'fromString',
+    'msats',
+    'preimageHash',
+    's',
+    'WalletBolt11Read',
   },
   // The record of the quotes given.
-  'domain/entities/issued_quotes.dart': {
-    '_QuoteUse',
-    'Expando',
-    'issued',
-    'used',
+  'domain/entities/issued_quotes.dart': {'_QuoteUse', 'Expando', 'used'},
+  // The composition of the feature: the only file that resolves from the locator, and with the facade the only one that names the two use cases that quote and pay, so that no other file can reach them.
+  'p2p_wallet_locator.dart': {
+    'GetIt',
+    'IssuedQuotes',
+    'locator',
+    'P2pWalletFacade',
+    'PayCheckedInvoiceUsecase',
+    'QuoteInvoicePaymentUsecase',
+    'registerFactory',
+    'registerLazySingleton',
   },
+  'public/p2p_wallet_facade.dart': {
+    'PayCheckedInvoiceUsecase',
+    'QuoteInvoicePaymentUsecase',
+  },
+  'domain/usecases/quote_invoice_payment_usecase.dart': {'IssuedQuotes', 'issue'},
 };
 
 /// The imports each of these files may have besides [_shellImports], and no other file.
@@ -791,9 +872,8 @@ const _perFileImports = <String, Set<String>>{
     'package:bb_mobile/core/blockchain/domain/usecases/broadcast_liquid_transaction_usecase.dart',
     'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
   },
-  'data/wallet_invoice_repository_impl.dart': {
-    'package:bb_mobile/core/utils/payment_request.dart',
-  },
+  'data/wallet_invoice_repository_impl.dart': {'package:bull_sdk/boltz.dart'},
+  'p2p_wallet_locator.dart': {'package:get_it/get_it.dart'},
 };
 
 /// Each file of [sources] that names what neither [_shellVocabulary] nor its own entry of [_perFile] allows, with those names.

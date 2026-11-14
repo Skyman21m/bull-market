@@ -56,9 +56,9 @@ void main() {
         expect(quote.balance, Sats.fromInt(10000));
         expect(quote.remaining, Sats.fromInt(9371));
         expect(quote.quotedAt, testNow);
-        // Given by this wallet: a payment may take it, once.
-        expect(issued.consume(quote), isTrue);
-        expect(issued.consume(quote), isFalse);
+        // Given by this wallet, for the wallet it read: a payment may take it, once, from that wallet.
+        expect(issued.consume(quote), 'instant');
+        expect(issued.consume(quote), isNull);
         // The service is asked the invoice's amount on its network, and the fee is estimated for the payin.
         expect(quotes.asked, [(RobosatsNetwork.mainnet, Sats.fromInt(600))]);
         expect(wallets.estimated, [Sats.fromInt(603)]);

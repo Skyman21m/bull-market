@@ -13,10 +13,13 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
   final SwapFacade _swaps;
   final WalletInvoiceRepository _invoices;
 
-  const WalletPaymentRepositoryImpl(this._swaps, this._invoices);
+  /// The payment hash of each destination read so far.
+  final Map<String, String> _hashes = {};
+
+  WalletPaymentRepositoryImpl(this._swaps, this._invoices);
 
   @override
-  Future<Result<bool, P2pWalletRefusal>> holdsPaymentOf(
+  Future<Result<Set<String>, P2pWalletRefusal>> earlierAttemptsOf(
     CheckedBolt11Invoice invoice,
   ) async {
     final List<OrderSwapRecord> records;
@@ -27,15 +30,66 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
         return Err(failure);
     }
     final text = invoice.bolt11.toLowerCase();
-    if (records.any((record) => record.destination.toLowerCase() == text)) {
-      return const Ok(true);
-    }
-    for (final record in records.where(_isOurs)) {
-      if (await _paymentHashOf(record) == invoice.paymentHash) {
-        return const Ok(true);
+    final matching = <OrderSwapRecord>[];
+    for (final record in records) {
+      if (record.destination.toLowerCase() == text) {
+        matching.add(record);
+      } else if (_isOurs(record)) {
+        switch (await _paymentHashOf(record)) {
+          case null:
+            // An order of this feature whose invoice cannot be read could be one of the same hash, and is not known to be unspent: refused.
+            return const Err(P2pWalletUnavailable());
+          case final hash when hash == invoice.paymentHash:
+            matching.add(record);
+          case _:
+            break;
+        }
       }
     }
-    return const Ok(false);
+    final spent = [
+      for (final record in matching)
+        if (!isProvablyUnspent(record, ours: _isOurs(record))) record,
+    ];
+    if (spent.isEmpty) {
+      return Ok({for (final record in matching) record.localId});
+    }
+    final latest = _latest(spent);
+    return Err(
+      P2pWalletPaymentExists(
+        progress: progressOf(latest),
+        payment: _isOurs(latest)
+            ? P2pWalletPayment(
+                id: latest.localId,
+                paymentHash: invoice.paymentHash,
+              )
+            : null,
+      ),
+    );
+  }
+
+  /// Whether nothing can have left the wallet, nor can leave it later, through [record]: then the invoice it pays may be paid again, after a new confirmation.
+  ///
+  /// A record is provably unspent when it holds no signed payin and no transaction id, its service order is not under review, and its status is one in which nothing was signed: the creation (`creating`, `creationUnknown`), the order waiting for its funding (`awaitingUserConfirmation`, `preparingPayin`), or an end with nothing signed (`expired`, `failed`). A record signed (`readyToBroadcast`), « broadcast unknown », broadcast, paid out, completed or refunded is not, nor is anything not listed. An order of this feature is never funded later (nothing resumes it); an order of another feature (the wallet's Send screen) that has not ended may still be funded by its screen, so only its ends count as unspent ([ours] false).
+  /// The reason: the swap service is paid by a Liquid transaction of this wallet; a second attempt while the first one's transaction may exist would send the amount twice, and getting the second back would depend on the service's refund.
+  static bool isProvablyUnspent(OrderSwapRecord record, {required bool ours}) {
+    if (record.signedPayinTransaction != null ||
+        record.localPayinTransactionId != null ||
+        (record.order?.requiresManualReview ?? false)) {
+      return false;
+    }
+    return switch (record.localStatus) {
+      OrderSwapLocalStatus.expired || OrderSwapLocalStatus.failed => true,
+      OrderSwapLocalStatus.creating ||
+      OrderSwapLocalStatus.creationUnknown ||
+      OrderSwapLocalStatus.awaitingUserConfirmation ||
+      OrderSwapLocalStatus.preparingPayin => ours,
+      OrderSwapLocalStatus.readyToBroadcast ||
+      OrderSwapLocalStatus.broadcastUnknown ||
+      OrderSwapLocalStatus.payinBroadcast ||
+      OrderSwapLocalStatus.payoutInProgress ||
+      OrderSwapLocalStatus.completed ||
+      OrderSwapLocalStatus.refunded => false,
+    };
   }
 
   @override
@@ -49,22 +103,26 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
       case Err(:final failure):
         return Err(failure);
     }
-    final ours = records.where(_isOurs).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    for (final record in ours) {
-      if (await _paymentHashOf(record) == paymentHash) {
-        return Ok(
-          P2pWalletPaymentFound(
-            payment: P2pWalletPayment(
-              id: record.localId,
-              paymentHash: paymentHash,
-            ),
-            progress: progressOf(record),
-          ),
-        );
+    final matching = <OrderSwapRecord>[];
+    for (final record in records.where(_isOurs)) {
+      switch (await _paymentHashOf(record)) {
+        case null:
+          // Fail closed: that order could be the payment looked for.
+          return const Err(P2pWalletUnavailable());
+        case final hash when hash == paymentHash:
+          matching.add(record);
+        case _:
+          break;
       }
     }
-    return const Ok(null);
+    if (matching.isEmpty) return const Ok(null);
+    final latest = _latest(matching);
+    return Ok(
+      P2pWalletPaymentFound(
+        payment: P2pWalletPayment(id: latest.localId, paymentHash: paymentHash),
+        progress: progressOf(latest),
+      ),
+    );
   }
 
   @override
@@ -188,9 +246,21 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
       _isOurs(record) && await _paymentHashOf(record) == payment.paymentHash;
 
   /// The payment hash of the invoice [record] pays, as the wallet's decoder reads it, or `null`.
-  Future<String?> _paymentHashOf(OrderSwapRecord record) async =>
-      switch (await _invoices.read(record.destination)) {
-        Ok(:final value) => value.paymentHash,
-        Err() => null,
-      };
+  ///
+  /// An order's destination never changes: a hash read once is kept for the run of the app, so that each payment and each look-up decodes only the orders it has not decoded before (a few per payment, the history of this feature's orders at the first look-up). A failed read is not kept.
+  Future<String?> _paymentHashOf(OrderSwapRecord record) async {
+    final known = _hashes[record.destination];
+    if (known != null) return known;
+    switch (await _invoices.read(record.destination)) {
+      case Ok(:final value):
+        _hashes[record.destination] = value.paymentHash;
+        return value.paymentHash;
+      case Err():
+        return null;
+    }
+  }
+
+  /// The latest of [records], by creation.
+  static OrderSwapRecord _latest(List<OrderSwapRecord> records) => records
+      .reduce((a, b) => b.createdAt.isAfter(a.createdAt) ? b : a);
 }

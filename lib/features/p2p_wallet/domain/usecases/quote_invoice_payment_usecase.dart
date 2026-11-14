@@ -10,7 +10,7 @@ import 'package:p2p/p2p.dart';
 ///
 /// It moves nothing: it reads the wallet, asks the service (the amount and the route only), and builds an unsigned transaction to the wallet's own address to read its fee.
 /// The service is asked only once the invoice, the wallet and its balance allow the payment, so that an invoice that cannot be paid sends the service nothing.
-/// Each quote given is recorded in [IssuedQuotes], so that a payment takes only a quote this wallet gave, once.
+/// Each quote given is recorded in [IssuedQuotes] with the wallet it was given for, so that a payment takes only a quote this wallet gave, once, from that wallet.
 class QuoteInvoicePaymentUsecase {
   final InstantWalletRepository _wallets;
   final LightningSwapQuoteRepository _quotes;
@@ -91,7 +91,7 @@ class QuoteInvoicePaymentUsecase {
       balance: wallet.balance,
       quotedAt: _now(),
     );
-    _issued.issue(quote);
+    _issued.issue(quote, walletId: wallet.id);
     return Ok(quote);
   }
 }

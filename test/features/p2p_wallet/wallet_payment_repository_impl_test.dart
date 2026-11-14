@@ -216,6 +216,100 @@ void main() {
     });
   });
 
+  group('provably unspent', () {
+    test('each status, with nothing signed: this feature\'s and another feature\'s', () {
+      const ours = {
+        OrderSwapLocalStatus.creating: true,
+        OrderSwapLocalStatus.creationUnknown: true,
+        OrderSwapLocalStatus.awaitingUserConfirmation: true,
+        OrderSwapLocalStatus.preparingPayin: true,
+        OrderSwapLocalStatus.expired: true,
+        OrderSwapLocalStatus.failed: true,
+      };
+      const ended = {OrderSwapLocalStatus.expired, OrderSwapLocalStatus.failed};
+      for (final status in OrderSwapLocalStatus.values) {
+        final signedByStatus =
+            status == OrderSwapLocalStatus.readyToBroadcast ||
+            status == OrderSwapLocalStatus.broadcastUnknown;
+        final sentByStatus = status == OrderSwapLocalStatus.payinBroadcast;
+        final record = recordOf(
+          status,
+          signed: signedByStatus || sentByStatus ? 's' : null,
+          transactionId: sentByStatus ? 't' : null,
+        );
+        expect(
+          WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: true),
+          ours[status] ?? false,
+          reason: 'ours ${status.name}',
+        );
+        expect(
+          WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: false),
+          ended.contains(status),
+          reason: 'theirs ${status.name}',
+        );
+      }
+    });
+
+    test('a signed payin, a transaction id or a manual review is never unspent, whatever the status', () {
+      for (final status in [
+        OrderSwapLocalStatus.awaitingUserConfirmation,
+        OrderSwapLocalStatus.preparingPayin,
+        OrderSwapLocalStatus.expired,
+        OrderSwapLocalStatus.failed,
+      ]) {
+        for (final record in [
+          recordOf(status, signed: 's'),
+          recordOf(status, signed: 's', transactionId: 't'),
+          // A failed order with nothing signed has no service order left to be under review.
+          if (status != OrderSwapLocalStatus.failed)
+            recordOf(status, payinStatus: 'under review'),
+        ]) {
+          for (final ours in [true, false]) {
+            expect(
+              WalletPaymentRepositoryImpl.isProvablyUnspent(record, ours: ours),
+              isFalse,
+              reason: '${status.name} ${record.hasPreparedPayin} ${record.hasFundsMoved} $ours',
+            );
+          }
+        }
+      }
+    });
+
+    test(
+      'the earlier orders of an invoice: their ids while all are unspent, the latest spent one otherwise',
+      () async {
+        final invoice = payInvoice();
+        invoices.learn(invoice);
+        expect(await payments.earlierAttemptsOf(invoice), _isOk(isEmpty));
+        swaps
+          ..hold(recordOf(OrderSwapLocalStatus.expired, localId: 'a'))
+          ..hold(recordOf(OrderSwapLocalStatus.failed, localId: 'b'));
+        expect(
+          await payments.earlierAttemptsOf(invoice),
+          _isOk(equals({'a', 'b'})),
+        );
+        swaps.hold(
+          recordOf(
+            OrderSwapLocalStatus.payoutInProgress,
+            localId: 'c',
+            signed: 's',
+            transactionId: 't',
+          ),
+        );
+        expect(
+          await payments.earlierAttemptsOf(invoice),
+          isA<Err<Set<String>, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletPaymentExists>()
+                .having((r) => r.payment?.id, 'payment', 'c')
+                .having((r) => r.progress, 'progress', isA<P2pWalletPaymentPending>()),
+          ),
+        );
+      },
+    );
+  });
+
   group('watch', () {
     test(
       'gives the progress at once, then each change, and only changes',
@@ -325,7 +419,7 @@ void main() {
 
   group('after a restart', () {
     test(
-      'each interrupted state is found as it stands, and refuses a second payment',
+      'each interrupted state is found as it stands; a new payment is allowed only while nothing was signed',
       () async {
         for (final (record, matcher) in [
           (
@@ -377,7 +471,20 @@ void main() {
                 ),
             reason: record.localStatus.name,
           );
-          expect(await afterRestart.holdsPaymentOf(invoice), _isOk(isTrue));
+          final unspent =
+              record.signedPayinTransaction == null &&
+              record.localPayinTransactionId == null;
+          expect(
+            await afterRestart.earlierAttemptsOf(invoice),
+            unspent
+                ? _isOk(equals({'local-1'}))
+                : isA<Err<Set<String>, P2pWalletRefusal>>().having(
+                    (e) => e.failure,
+                    'failure',
+                    isA<P2pWalletPaymentExists>(),
+                  ),
+            reason: record.localStatus.name,
+          );
           await store.close();
         }
       },
@@ -427,10 +534,29 @@ void main() {
           ),
         );
         expect(await payments.find(payHash(9)), _isOk(isNull));
-        // An invoice the wallet's decoder no longer reads is not found by its hash, but its text still refuses a second payment.
+        // A hash read once is kept: the same repository answers without decoding again.
+        final reads = invoices.reads.length;
+        expect(await payments.find(invoice.paymentHash), isA<Ok<Object?, P2pWalletRefusal>>());
+        expect(invoices.reads, hasLength(reads));
+        // An order of this feature whose invoice the decoder cannot read: never « none », but Unavailable (fail closed), for the look-up and for a new payment.
         invoices.known.clear();
-        expect(await payments.find(invoice.paymentHash), _isOk(isNull));
-        expect(await payments.holdsPaymentOf(invoice), _isOk(isTrue));
+        final fresh = WalletPaymentRepositoryImpl(swaps, invoices);
+        expect(
+          await fresh.find(invoice.paymentHash),
+          isA<Err<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletUnavailable>(),
+          ),
+        );
+        expect(
+          await fresh.earlierAttemptsOf(payInvoice(tag: 'z', hash: payHash(7))),
+          isA<Err<Set<String>, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletUnavailable>(),
+          ),
+        );
       },
     );
 
@@ -443,8 +569,8 @@ void main() {
           isA<Err<P2pWalletPaymentFound?, P2pWalletRefusal>>(),
         );
         expect(
-          await payments.holdsPaymentOf(payInvoice()),
-          isA<Err<bool, P2pWalletRefusal>>(),
+          await payments.earlierAttemptsOf(payInvoice()),
+          isA<Err<Set<String>, P2pWalletRefusal>>(),
         );
       },
     );
@@ -464,7 +590,10 @@ void main() {
       await payments.find(invoice.paymentHash),
       isA<Ok<Object?, P2pWalletRefusal>>(),
     );
-    expect(await payments.holdsPaymentOf(invoice), _isOk(isTrue));
+    expect(
+      await payments.earlierAttemptsOf(invoice),
+      isA<Err<Set<String>, P2pWalletRefusal>>(),
+    );
     await payments
         .watch(
           P2pWalletPayment(id: 'local-1', paymentHash: invoice.paymentHash),

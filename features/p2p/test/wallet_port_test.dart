@@ -427,7 +427,7 @@ void main() {
       const P2pWalletInvoiceExpiresTooSoon(),
       const P2pWalletQuoteStale(),
       const P2pWalletQuoteChanged(),
-      const P2pWalletAlreadyPaid(),
+      const P2pWalletPaymentExists(progress: P2pWalletPaymentSent()),
       const P2pWalletBroadcastUnknown(
         P2pWalletPayment(id: 'local-1', paymentHash: testPaymentHash),
       ),
@@ -460,7 +460,7 @@ void main() {
       P2pWalletInvoiceExpiresTooSoon() => 'too soon',
       P2pWalletQuoteStale() => 'stale',
       P2pWalletQuoteChanged() => 'changed',
-      P2pWalletAlreadyPaid() => 'already paid',
+      P2pWalletPaymentExists() => 'payment exists',
       P2pWalletBroadcastUnknown() => 'broadcast unknown',
     };
     expect(refusals.map(name).toSet(), hasLength(18));
@@ -493,11 +493,12 @@ void main() {
       const P2pWalletPaymentRefundPending(): (true, false),
       const P2pWalletPaymentRefunded(): (true, true),
       const P2pWalletPaymentExpired(P2pWalletFunds.notSent): (false, true),
-      const P2pWalletPaymentExpired(P2pWalletFunds.maybeSent): (true, true),
-      const P2pWalletPaymentExpired(P2pWalletFunds.sent): (true, true),
+      // A refund may be due: not final (the review of #116).
+      const P2pWalletPaymentExpired(P2pWalletFunds.maybeSent): (true, false),
+      const P2pWalletPaymentExpired(P2pWalletFunds.sent): (true, false),
       const P2pWalletPaymentFailed(P2pWalletFunds.notSent): (false, true),
-      const P2pWalletPaymentFailed(P2pWalletFunds.maybeSent): (true, true),
-      const P2pWalletPaymentFailed(P2pWalletFunds.sent): (true, true),
+      const P2pWalletPaymentFailed(P2pWalletFunds.maybeSent): (true, false),
+      const P2pWalletPaymentFailed(P2pWalletFunds.sent): (true, false),
     };
     for (final MapEntry(key: value, value: (mayHaveLeft, isFinal))
         in progress.entries) {
@@ -657,37 +658,63 @@ void main() {
       },
     );
 
-    test('answers the payments it was given, and records them', () async {
-      final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
-      final quote = P2pWalletQuote(
-        invoice: invoice(),
-        payin: Sats.fromInt(603),
-        networkFee: Sats.fromInt(26),
-        balance: Sats.fromInt(1000),
-        quotedAt: expiry,
-      );
-      const payment = P2pWalletPayment(
-        id: 'local-1',
-        paymentHash: testPaymentHash,
-      );
-      port
-        ..scriptPayment(const Err(P2pWalletAlreadyPaid()))
-        ..scriptPayment(const Ok(payment));
-      expect(
-        await port.payInvoice(invoice(), accepted: quote),
-        isA<Err<P2pWalletPayment, P2pWalletRefusal>>(),
-      );
-      expect(
-        await port.payInvoice(invoice(), accepted: quote),
-        isA<Ok<P2pWalletPayment, P2pWalletRefusal>>(),
-      );
-      expect(port.paid, hasLength(2));
-      expect(port.paid.first.$2, same(quote));
-      expect(
-        () => port.payInvoice(invoice(), accepted: quote),
-        throwsStateError,
-      );
-    });
+    test(
+      'answers the payments it was given, takes a quote once and gives an invoice one payment, as the real port',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+        P2pWalletQuote quoteOf(CheckedBolt11Invoice of) => P2pWalletQuote(
+          invoice: of,
+          payin: Sats.fromInt(603),
+          networkFee: Sats.fromInt(26),
+          balance: Sats.fromInt(1000),
+          quotedAt: expiry,
+        );
+        const payment = P2pWalletPayment(
+          id: 'local-1',
+          paymentHash: testPaymentHash,
+        );
+        final first = quoteOf(invoice());
+        port
+          ..scriptPayment(const Err(P2pWalletServiceUnreachable()))
+          ..scriptPayment(const Ok(payment));
+        // A refusal that moved nothing: a new quote may pay.
+        expect(
+          await port.payInvoice(invoice(), accepted: first),
+          isA<Err<P2pWalletPayment, P2pWalletRefusal>>(),
+        );
+        // The same quote again: stale, no answer taken.
+        expect(
+          await port.payInvoice(invoice(), accepted: first),
+          isA<Err<P2pWalletPayment, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletQuoteStale>(),
+          ),
+        );
+        expect(
+          await port.payInvoice(invoice(), accepted: quoteOf(invoice())),
+          isA<Ok<P2pWalletPayment, P2pWalletRefusal>>(),
+        );
+        // Paid: the same invoice again is refused, with the progress set for it.
+        port.setProgress(payment, const Ok(P2pWalletPaymentPending()));
+        expect(
+          await port.payInvoice(invoice(), accepted: quoteOf(invoice())),
+          isA<Err<P2pWalletPayment, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletPaymentExists>()
+                .having((r) => r.payment, 'payment', payment)
+                .having(
+                  (r) => r.progress,
+                  'progress',
+                  isA<P2pWalletPaymentPending>(),
+                ),
+          ),
+        );
+        expect(port.paid, hasLength(4));
+        expect(port.paid.first.$2, same(first));
+      },
+    );
 
     test(
       'gives a payment\'s progress, then each change, until a refusal',

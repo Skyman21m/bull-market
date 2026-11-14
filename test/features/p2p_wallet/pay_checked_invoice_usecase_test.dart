@@ -36,6 +36,7 @@ void main() {
   late IssuedQuotes issued;
   late List<Duration> waits;
   late PayCheckedInvoiceUsecase pay;
+  var timeouts = const PayTimeouts();
 
   PayCheckedInvoiceUsecase build() => PayCheckedInvoiceUsecase(
     issued,
@@ -56,6 +57,7 @@ void main() {
       waits.add(wait);
       now = now.add(wait);
     },
+    timeouts: timeouts,
   );
 
   void reset() {
@@ -92,7 +94,7 @@ void main() {
       balance: Sats.fromInt(balance),
       quotedAt: at ?? now,
     );
-    if (issue) issued.issue(quote);
+    if (issue) issued.issue(quote, walletId: 'instant');
     return quote;
   }
 
@@ -120,6 +122,12 @@ void main() {
         Err(:final failure) => fail('refused: $failure'),
       };
 
+  /// The builds of a funding transaction, to an order's payin address (not the estimate's, to the wallet's own address).
+  List<String> payinBuilds() => [
+    for (final event in journal.only({'build'}))
+      if (event.startsWith('build:lq1payin')) event,
+  ];
+
   /// Nothing was signed, saved, marked or broadcast.
   void expectNothingMoved() => expect(
     journal.only({'sign', 'save', 'markUnknown', 'broadcast', 'markBroadcast'}),
@@ -142,19 +150,21 @@ void main() {
         expect(payment.id, 'local-1');
         expect(payment.paymentHash, invoice.paymentHash);
         expect(journal.events, [
+          // Before the order: the quote's estimate made again, an unsigned transaction to the wallet's own address.
+          'build:lq1fakeaddress0:603:25',
           'refund-address',
           'create',
           'build:lq1payin1:603:25',
-          'sign:pset1',
-          'save:signed-pset1',
+          'sign:pset2',
+          'save:signed-pset2',
           'markUnknown',
-          'broadcast:signed-pset1',
-          'markBroadcast:txid-of-signed-pset1',
+          'broadcast:signed-pset2',
+          'markBroadcast:txid-of-signed-pset2',
         ]);
         final record = swaps.records['local-1'];
         expect(record?.localStatus, OrderSwapLocalStatus.payinBroadcast);
-        expect(record?.signedPayinTransaction, 'signed-pset1');
-        expect(record?.localPayinTransactionId, 'txid-of-signed-pset1');
+        expect(record?.signedPayinTransaction, 'signed-pset2');
+        expect(record?.localPayinTransactionId, 'txid-of-signed-pset2');
         // What the order was asked: the invoice, an address of the wallet for a refund, the payin accepted as the quote.
         expect(swaps.created.single, {
           'amount': BigInt.from(600),
@@ -192,7 +202,7 @@ void main() {
       liquid.fee = 20;
       final cheaper = payInvoice(tag: 'p', hash: payHash(2));
       paymentOf(await payOf(cheaper));
-      expect(journal.only({'build'}), [
+      expect(payinBuilds(), [
         'build:lq1payin1:603:25',
         'build:lq1payin2:601:25',
       ]);
@@ -207,7 +217,7 @@ void main() {
         final save = events.indexOf('save:$saved');
         final mark = events.indexOf('markUnknown');
         final sent = events.indexOf('broadcast:$saved');
-        expect(save, greaterThan(events.indexOf('sign:pset1')));
+        expect(save, greaterThan(events.indexOf('sign:pset2')));
         expect(mark, greaterThan(save));
         expect(sent, greaterThan(mark));
         expect(
@@ -233,6 +243,21 @@ void main() {
   });
 
   group('the quote:', () {
+    test(
+      'is paid only from the wallet it was given for (the review\'s probe WALLET-CHANGED)',
+      () async {
+        final invoice = payInvoice();
+        invoices.learn(invoice);
+        final quote = quoteOf(invoice);
+        getWallets.answer = Ok([testWallet(origin: 'replaced', balance: 5000)]);
+        expect(
+          refusalOf(await pay.execute(invoice, accepted: quote)),
+          isA<P2pWalletQuoteStale>(),
+        );
+        expectNoOrder();
+      },
+    );
+
     test('one the wallet did not give is refused, nothing asked', () async {
       final invoice = payInvoice();
       invoices.learn(invoice);
@@ -472,68 +497,199 @@ void main() {
   });
 
   group('never twice:', () {
+    /// An earlier order of [invoice] in [status], with what that status implies of its payin; this feature's unless [note] says otherwise.
+    OrderSwapRecord earlierOf(
+      CheckedBolt11Invoice invoice,
+      OrderSwapLocalStatus status, {
+      String? note = 'RoboSats',
+      String localId = 'earlier',
+      bool signed = false,
+      bool sent = false,
+      String payinStatus = 'pending',
+    }) {
+      final mustBeSigned =
+          status == OrderSwapLocalStatus.readyToBroadcast ||
+          status == OrderSwapLocalStatus.broadcastUnknown;
+      final mustBeSent = status == OrderSwapLocalStatus.payinBroadcast;
+      return paymentRecord(
+        localId: localId,
+        destination: invoice.bolt11,
+        status: status,
+        note: note,
+        signed: signed || sent || mustBeSigned || mustBeSent
+            ? 'signed-earlier'
+            : null,
+        transactionId: sent || mustBeSent ? 'txid-earlier' : null,
+        payinStatus: payinStatus,
+        // The earlier order's deadline has passed: a new payment gets a new order.
+        deadline: testNow.subtract(const Duration(minutes: 1)),
+        createdAt: testNow.subtract(const Duration(minutes: 20)),
+        withOrder:
+            status != OrderSwapLocalStatus.creating &&
+            status != OrderSwapLocalStatus.creationUnknown &&
+            !(status == OrderSwapLocalStatus.failed && !signed && !sent),
+      );
+    }
+
+    /// The statuses an earlier order of this feature, with nothing signed, leaves the invoice payable in.
+    const unspent = {
+      OrderSwapLocalStatus.creating,
+      OrderSwapLocalStatus.creationUnknown,
+      OrderSwapLocalStatus.awaitingUserConfirmation,
+      OrderSwapLocalStatus.preparingPayin,
+      OrderSwapLocalStatus.expired,
+      OrderSwapLocalStatus.failed,
+    };
+
     test(
-      "an invoice the wallet's records hold in any status, a refunded one included",
+      'an earlier order of this feature in each status: paid again only while nothing was signed',
       () async {
         for (final status in OrderSwapLocalStatus.values) {
           reset();
           final invoice = payInvoice();
-          final signed = switch (status) {
-            OrderSwapLocalStatus.readyToBroadcast ||
-            OrderSwapLocalStatus.broadcastUnknown => 'signed-earlier',
-            _ => null,
-          };
-          swaps.hold(
-            paymentRecord(
-              destination: invoice.bolt11,
-              status: status,
-              signed: signed,
-              transactionId: status == OrderSwapLocalStatus.payinBroadcast
-                  ? 'txid-earlier'
-                  : null,
-              withOrder:
-                  status != OrderSwapLocalStatus.creating &&
-                  status != OrderSwapLocalStatus.creationUnknown,
-            ),
-          );
-          expect(
-            refusalOf(await payOf(invoice)),
-            isA<P2pWalletAlreadyPaid>(),
-            reason: status.name,
-          );
-          expect(journal.events, isEmpty, reason: status.name);
+          swaps.hold(earlierOf(invoice, status));
+          final result = await payOf(invoice);
+          if (status == OrderSwapLocalStatus.creating) {
+            // Allowed by the rule, but the wallet's store answers an order still being created as an unknown outcome (until its watcher marks it unknown after a minute): nothing moved.
+            expect(
+              refusalOf(result),
+              isA<P2pWalletServiceUnreachable>(),
+              reason: status.name,
+            );
+            expectNothingMoved();
+          } else if (unspent.contains(status)) {
+            paymentOf(result);
+            expect(
+              journal.only({'broadcast'}),
+              hasLength(1),
+              reason: status.name,
+            );
+          } else {
+            expect(
+              refusalOf(result),
+              isA<P2pWalletPaymentExists>()
+                  .having((r) => r.payment?.id, 'payment', 'earlier')
+                  .having(
+                    (r) => r.progress.fundsMayHaveLeft,
+                    'fundsMayHaveLeft',
+                    status != OrderSwapLocalStatus.readyToBroadcast,
+                  ),
+              reason: status.name,
+            );
+            expect(journal.events, isEmpty, reason: status.name);
+          }
         }
       },
     );
 
     test(
-      'whatever the record: another case, another purpose, another wallet, another note',
+      'an expired or failed order whose funding was signed or sent, or under review, refuses it',
+      () async {
+        for (final record in [
+          (OrderSwapLocalStatus.expired, true, false, 'pending'),
+          (OrderSwapLocalStatus.expired, true, true, 'pending'),
+          (OrderSwapLocalStatus.failed, true, false, 'pending'),
+          (OrderSwapLocalStatus.failed, true, true, 'pending'),
+          (OrderSwapLocalStatus.awaitingUserConfirmation, false, false, 'under review'),
+        ]) {
+          reset();
+          final invoice = payInvoice();
+          swaps.hold(
+            earlierOf(
+              invoice,
+              record.$1,
+              signed: record.$2,
+              sent: record.$3,
+              payinStatus: record.$4,
+            ),
+          );
+          expect(
+            refusalOf(await payOf(invoice)),
+            isA<P2pWalletPaymentExists>(),
+            reason: '$record',
+          );
+          expect(journal.events, isEmpty, reason: '$record');
+        }
+      },
+    );
+
+    test(
+      'one unspent and one signed earlier order: refused, with the signed one',
       () async {
         final invoice = payInvoice();
-        for (final record in [
-          paymentRecord(destination: invoice.bolt11.toUpperCase()),
-          paymentRecord(
-            destination: invoice.bolt11,
-            purpose: OrderSwapPurpose.transfer,
-          ),
-          paymentRecord(destination: invoice.bolt11, walletId: 'another'),
-          paymentRecord(
-            destination: invoice.bolt11,
-            walletId: null,
-            note: null,
-          ),
-        ]) {
-          swaps.records
-            ..clear()
-            ..[record.localId] = record;
-          expect(refusalOf(await payOf(invoice)), isA<P2pWalletAlreadyPaid>());
-        }
+        swaps
+          ..hold(earlierOf(invoice, OrderSwapLocalStatus.expired))
+          ..hold(
+            earlierOf(
+              invoice,
+              OrderSwapLocalStatus.readyToBroadcast,
+              localId: 'signed',
+            ),
+          );
+        expect(
+          refusalOf(await payOf(invoice)),
+          isA<P2pWalletPaymentExists>()
+              .having((r) => r.payment?.id, 'payment', 'signed')
+              .having((r) => r.progress, 'progress', isA<P2pWalletPaymentSigned>()),
+        );
         expect(journal.events, isEmpty);
       },
     );
 
     test(
-      'another invoice of the same payment hash that this feature paid',
+      'an order of the wallet\'s own screens: its ends with nothing signed leave it payable, an open one refuses it',
+      () async {
+        for (final status in OrderSwapLocalStatus.values) {
+          reset();
+          final invoice = payInvoice();
+          swaps.hold(earlierOf(invoice, status, note: null));
+          final result = await payOf(invoice);
+          final ended =
+              status == OrderSwapLocalStatus.expired ||
+              status == OrderSwapLocalStatus.failed;
+          if (ended) {
+            paymentOf(result);
+          } else {
+            expect(
+              refusalOf(result),
+              isA<P2pWalletPaymentExists>().having(
+                (r) => r.payment,
+                'payment',
+                isNull,
+              ),
+              reason: status.name,
+            );
+          }
+        }
+      },
+    );
+
+    test('another case, another purpose or another wallet: the same invoice', () async {
+      final invoice = payInvoice();
+      for (final record in [
+        paymentRecord(
+          destination: invoice.bolt11.toUpperCase(),
+          status: OrderSwapLocalStatus.payinBroadcast,
+          signed: 's',
+          transactionId: 't',
+        ),
+        paymentRecord(
+          destination: invoice.bolt11,
+          purpose: OrderSwapPurpose.transfer,
+          note: null,
+        ),
+        paymentRecord(destination: invoice.bolt11, walletId: 'another', note: null),
+      ]) {
+        swaps.records
+          ..clear()
+          ..[record.localId] = record;
+        expect(refusalOf(await payOf(invoice)), isA<P2pWalletPaymentExists>());
+      }
+      expect(journal.events, isEmpty);
+    });
+
+    test(
+      'another invoice of the same payment hash that this feature paid, or whose invoice cannot be read',
       () async {
         final earlier = payInvoice(tag: 'p');
         invoices.learn(earlier);
@@ -541,15 +697,34 @@ void main() {
           paymentRecord(
             destination: earlier.bolt11,
             status: OrderSwapLocalStatus.refunded,
+            signed: 's',
+            transactionId: 't',
           ),
         );
         expect(
           refusalOf(await payOf(payInvoice())),
-          isA<P2pWalletAlreadyPaid>(),
+          isA<P2pWalletPaymentExists>().having(
+            (r) => r.progress,
+            'progress',
+            isA<P2pWalletPaymentRefunded>(),
+          ),
         );
         expect(journal.events, isEmpty);
+        // The review's probe HASH-UNDECODABLE: an order of this feature whose invoice the decoder cannot read could be of the same hash: refused, fail closed.
+        reset();
+        swaps.hold(
+          paymentRecord(
+            destination: payBolt11(tag: 'z'),
+            status: OrderSwapLocalStatus.payinBroadcast,
+            signed: 's',
+            transactionId: 't',
+          ),
+        );
+        expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletUnavailable>());
+        expectNoOrder();
         // An order of the wallet's own Send with the same hash is not this feature's: only its text would match.
-        swaps.records.clear();
+        reset();
+        invoices.learn(earlier);
         swaps.hold(paymentRecord(destination: earlier.bolt11, note: 'my note'));
         paymentOf(await payOf(payInvoice()));
       },
@@ -562,60 +737,185 @@ void main() {
     });
 
     test(
-      'a second payment of an invoice is refused, whatever became of the first once it had an order',
+      'after a first attempt that moved nothing, a new confirmation pays once; after one whose funds may have left, never',
       () async {
-        final firsts = <String, void Function()>{
-          'paid': () {},
-          'broadcast unknown': () => broadcast.error = StateError('electrum'),
-          'refused at the cap': () =>
-              swaps.payinFor = (quoted) => quoted + BigInt.one,
-          'refused for the fee': () => liquid.fee = 27,
-          'signature failed': () => liquid.signError = StateError('secrets'),
-          'save failed': () =>
-              swaps.saveFailure = const SwapStorageFailure('disk'),
-          'mark failed': () =>
-              swaps.markUnknownFailure = const SwapStorageFailure('disk'),
-          'consolidation needed': () =>
-              liquid.buildError = ConsolidationRequiredException('many'),
+        // Each first attempt, and whether a retry with a new quote may pay.
+        final firsts = <String, (void Function(), bool)>{
+          'paid': (() {}, false),
+          'broadcast unknown': (
+            () => broadcast.error = StateError('electrum'),
+            false,
+          ),
+          'mark failed after the save': (
+            () => swaps.markUnknownFailure = const SwapStorageFailure('disk'),
+            false,
+          ),
+          'refused at the cap': (
+            () => swaps.payinFor = (quoted) => quoted + BigInt.one,
+            true,
+          ),
+          'the fee of the funding above the quote': (
+            () => liquid.payinFee = 27,
+            true,
+          ),
+          'the funding could not be built': (
+            () => liquid.payinBuildError = InsufficientFundsException('short'),
+            true,
+          ),
+          'signature failed': (
+            () => liquid.signError = StateError('secrets'),
+            true,
+          ),
+          'save failed': (
+            () => swaps.saveFailure = const SwapStorageFailure('disk'),
+            true,
+          ),
+          'creation with an unknown outcome': (
+            () => swaps.createFailures.add(const SwapTimeoutFailure('x')),
+            true,
+          ),
         };
-        for (final MapEntry(key: label, value: arrange) in firsts.entries) {
+        for (final MapEntry(key: label, value: (arrange, retries))
+            in firsts.entries) {
           reset();
           arrange();
           final invoice = payInvoice();
           await payOf(invoice);
-          expect(swaps.records, hasLength(1), reason: label);
           broadcast.error = null;
           liquid
             ..signError = null
-            ..buildError = null
-            ..fee = 26;
+            ..payinBuildError = null
+            ..payinFee = null;
           swaps
-            ..payinFor = ((quoted) => quoted)
             ..saveFailure = null
             ..markUnknownFailure = null;
+          final reusedPayin = swaps.records.values
+              .map((r) => r.order?.payinAmountSat.toInt() ?? 603)
+              .fold(603, max);
+          swaps.payinFor = (quoted) => quoted;
           journal.events.clear();
-          expect(
-            refusalOf(await payOf(invoice)),
-            isA<P2pWalletAlreadyPaid>(),
-            reason: label,
+          // A new quote and a new confirmation; the earlier order, still active, is answered again with its own payin.
+          final retry = await payOf(
+            invoice,
+            quote: quoteOf(invoice, payin: reusedPayin),
           );
-          expect(journal.events, isEmpty, reason: label);
+          if (retries) {
+            paymentOf(retry);
+            expect(journal.only({'broadcast'}), hasLength(1), reason: label);
+          } else {
+            expect(refusalOf(retry), isA<P2pWalletPaymentExists>(), reason: label);
+            expect(journal.events, isEmpty, reason: label);
+          }
+          // And never a third time once paid.
+          if (retries) {
+            expect(
+              refusalOf(await payOf(invoice)),
+              isA<P2pWalletPaymentExists>(),
+              reason: label,
+            );
+          }
         }
       },
     );
 
     test(
-      'a first attempt refused before any order leaves nothing to refuse a second on',
+      'a retry pays on the earlier order the wallet\'s store answers again, while it is active',
       () async {
-        swaps.createFailures.add(const SwapNetworkFailure('down'));
+        swaps.payinFor = (quoted) => quoted + BigInt.one;
         final invoice = payInvoice();
+        expect(refusalOf(await payOf(invoice)), isA<P2pWalletQuoteChanged>());
+        swaps.payinFor = (quoted) => quoted;
+        // The review's probe F2a: a fresh quote at the old payin is held to the order's payin, 604.
         expect(
-          refusalOf(await payOf(invoice)),
-          isA<P2pWalletServiceUnreachable>(),
+          refusalOf(await payOf(invoice, quote: quoteOf(invoice, payin: 603))),
+          isA<P2pWalletQuoteChanged>(),
         );
-        // The wallet's store deletes an order whose creation was refused: nothing was created, so a new confirmation may pay.
-        expect(swaps.records, isEmpty);
-        paymentOf(await payOf(invoice));
+        final payment = paymentOf(
+          await payOf(invoice, quote: quoteOf(invoice, payin: 604)),
+        );
+        expect(payment.id, 'local-1');
+        expect(swaps.reused, ['local-1', 'local-1']);
+        expect(swaps.records, hasLength(1));
+        expect(journal.only({'broadcast'}), hasLength(1));
+      },
+    );
+
+    test(
+      'a retry past the earlier order\'s deadline gets a new order; the old one expires',
+      () async {
+        final invoice = payInvoice(payableIn: const Duration(minutes: 30));
+        swaps.payinFor = (quoted) => quoted + BigInt.one;
+        expect(refusalOf(await payOf(invoice)), isA<P2pWalletQuoteChanged>());
+        swaps.payinFor = (quoted) => quoted;
+        now = now.add(const Duration(minutes: 11));
+        final payment = paymentOf(await payOf(invoice));
+        expect(payment.id, 'local-2');
+        expect(
+          swaps.records['local-1']?.localStatus,
+          OrderSwapLocalStatus.expired,
+        );
+        expect(journal.only({'broadcast'}), hasLength(1));
+      },
+    );
+
+    test(
+      'the review\'s probes F2b, F2c and LOW-BALANCE: the retry pays once',
+      () async {
+        // F2b: the funding could not be built after the order.
+        final b = payInvoice();
+        liquid.payinBuildError = StateError('x');
+        expect(refusalOf(await payOf(b)), isA<P2pWalletUnavailable>());
+        liquid.payinBuildError = null;
+        paymentOf(await payOf(b));
+        expect(refusalOf(await payOf(b)), isA<P2pWalletPaymentExists>());
+        // F2c: the margin checked again before the signature. The retry is allowed by the rule (nothing was signed), but the invoice's time is what stopped the first attempt, and it is shorter still: refused for its time, never as a payment that exists.
+        reset();
+        final c = payInvoice(payableIn: const Duration(seconds: 100));
+        swaps.onCreate = () => now = now.add(const Duration(seconds: 45));
+        expect(
+          refusalOf(await payOf(c)),
+          isA<P2pWalletInvoiceExpiresTooSoon>(),
+        );
+        swaps.onCreate = null;
+        expect(
+          refusalOf(await payOf(c)),
+          isA<P2pWalletInvoiceExpiresTooSoon>(),
+        );
+        // With a step that lasts longer (a later read of the trade gives the same invoice with more time), it pays once on the same order.
+        final later = payInvoice(payableIn: const Duration(seconds: 200));
+        invoices.learn(later);
+        paymentOf(await payOf(later));
+        expect(refusalOf(await payOf(later)), isA<P2pWalletPaymentExists>());
+        // LOW-BALANCE: the balance below the total accepted stops before any order now.
+        reset();
+        final low = payInvoice();
+        invoices.learn(low);
+        final quote = quoteOf(low);
+        getWallets.answer = Ok([testWallet(balance: 100)]);
+        expect(
+          refusalOf(await pay.execute(low, accepted: quote)),
+          isA<P2pWalletNotEnoughBalance>(),
+        );
+        expect(journal.only({'create', 'refund-address'}), isEmpty);
+        getWallets.answer = Ok([testWallet()]);
+        paymentOf(await payOf(low));
+      },
+    );
+
+    test(
+      'two retries at once after an attempt that moved nothing: one pays, the other sees it',
+      () async {
+        swaps.payinFor = (quoted) => quoted + BigInt.one;
+        final invoice = payInvoice();
+        expect(refusalOf(await payOf(invoice)), isA<P2pWalletQuoteChanged>());
+        swaps.payinFor = (quoted) => quoted;
+        final results = await Future.wait([
+          pay.execute(invoice, accepted: quoteOf(invoice, payin: 604)),
+          pay.execute(invoice, accepted: quoteOf(invoice, payin: 604)),
+        ]);
+        paymentOf(results.first);
+        expect(refusalOf(results.last), isA<P2pWalletPaymentExists>());
+        expect(journal.only({'broadcast'}), hasLength(1));
       },
     );
 
@@ -632,7 +932,7 @@ void main() {
           results.whereType<Ok<P2pWalletPayment, P2pWalletRefusal>>(),
           hasLength(1),
         );
-        expect(refusalOf(results.last), isA<P2pWalletAlreadyPaid>());
+        expect(refusalOf(results.last), isA<P2pWalletPaymentExists>());
         expect(journal.only({'create'}), ['create']);
         expect(journal.only({'broadcast'}), hasLength(1));
       },
@@ -649,7 +949,7 @@ void main() {
         final third = pay.execute(invoice, accepted: quoteOf(invoice));
         expect(refusalOf(await again), isA<P2pWalletQuoteStale>());
         paymentOf(await first);
-        expect(refusalOf(await third), isA<P2pWalletAlreadyPaid>());
+        expect(refusalOf(await third), isA<P2pWalletPaymentExists>());
         expect(journal.only({'create'}), ['create']);
       },
     );
@@ -672,7 +972,7 @@ void main() {
         ]);
         final events = journal.events;
         expect(
-          events.indexOf('markBroadcast:txid-of-signed-pset1'),
+          events.indexOf('markBroadcast:txid-of-signed-pset2'),
           lessThan(events.lastIndexOf('refund-address')),
         );
       },
@@ -853,6 +1153,22 @@ void main() {
           purpose: OrderSwapPurpose.transfer,
         ),
         paymentRecord(destination: invoice.bolt11, payinAddress: ''),
+        // The review's probe F3: an order of another feature for this invoice, answered by the store's dedupe.
+        paymentRecord(destination: invoice.bolt11, note: null),
+        paymentRecord(
+          destination: invoice.bolt11,
+          environment: OrderSwapEnvironment.testnet,
+        ),
+        // A new order whose quoted payin is not the one accepted.
+        paymentRecord(destination: invoice.bolt11, quoted: BigInt.from(700)),
+        // An order paying out another amount (the review's mutant M07).
+        paymentRecord(destination: invoice.bolt11, amount: BigInt.from(601)),
+        paymentRecord(
+          destination: invoice.bolt11,
+          status: OrderSwapLocalStatus.payinBroadcast,
+          signed: 's',
+          transactionId: 't',
+        ),
       ]) {
         reset();
         swaps.createAnswer = answer;
@@ -861,9 +1177,103 @@ void main() {
           isA<P2pWalletServiceRefused>(),
           reason: '${answer.localStatus} ${answer.destination}',
         );
-        expect(journal.only({'build'}), isEmpty);
+        expect(payinBuilds(), isEmpty);
         expectNothingMoved();
       }
+    });
+  });
+
+  test(
+    'the review\'s probe F3: an order of another feature created between the guard and the creation is refused, nothing signed',
+    () async {
+      final invoice = payInvoice();
+      swaps.onCreate = () {
+        if (swaps.records.isEmpty) {
+          swaps.hold(
+            paymentRecord(
+              localId: 'send-1',
+              destination: invoice.bolt11,
+              note: null,
+            ),
+          );
+        }
+      };
+      expect(refusalOf(await payOf(invoice)), isA<P2pWalletServiceRefused>());
+      expect(swaps.reused, ['send-1']);
+      expectNothingMoved();
+    },
+  );
+
+  group('the time each step may take:', () {
+    const short = PayTimeouts(
+      reading: Duration(milliseconds: 50),
+      creation: Duration(milliseconds: 50),
+      building: Duration(milliseconds: 50),
+      signing: Duration(milliseconds: 50),
+      storing: Duration(milliseconds: 50),
+      broadcasting: Duration(milliseconds: 50),
+    );
+
+    test('a step that hangs ends the payment, with what it means for the funds', () async {
+      for (final (step, refusal, broadcasts) in [
+        ('refund-address', isA<P2pWalletUnavailable>(), 0),
+        ('create', isA<P2pWalletServiceUnreachable>(), 0),
+        ('build', isA<P2pWalletUnavailable>(), 0),
+        ('sign', isA<P2pWalletUnavailable>(), 0),
+        ('save', isA<P2pWalletUnavailable>(), 0),
+        ('markUnknown', isA<P2pWalletUnavailable>(), 0),
+        ('broadcast', isA<P2pWalletBroadcastUnknown>(), 1),
+      ]) {
+        timeouts = short;
+        reset();
+        journal.hanging.add(step);
+        final result = await payOf(payInvoice());
+        expect(refusalOf(result), refusal, reason: step);
+        expect(journal.only({'broadcast'}), hasLength(broadcasts), reason: step);
+      }
+      timeouts = const PayTimeouts();
+    });
+
+    test('a last mark that hangs does not change the outcome: the broadcast is done', () async {
+      timeouts = short;
+      reset();
+      journal.hanging.add('markBroadcast');
+      paymentOf(await payOf(payInvoice()));
+      timeouts = const PayTimeouts();
+    });
+
+    test('a payment that hung does not hold the next one', () async {
+      timeouts = short;
+      reset();
+      journal.hanging.add('broadcast');
+      final first = payInvoice();
+      expect(refusalOf(await payOf(first)), isA<P2pWalletBroadcastUnknown>());
+      journal.hanging.clear();
+      final second = payInvoice(tag: 'p', hash: payHash(2));
+      paymentOf(await payOf(second));
+      timeouts = const PayTimeouts();
+    });
+
+    test('the bounds are the documented ones', () {
+      const bounds = PayTimeouts();
+      expect(
+        [
+          bounds.reading,
+          bounds.creation,
+          bounds.building,
+          bounds.signing,
+          bounds.storing,
+          bounds.broadcasting,
+        ],
+        const [
+          Duration(seconds: 20),
+          Duration(seconds: 75),
+          Duration(seconds: 30),
+          Duration(seconds: 30),
+          Duration(seconds: 10),
+          Duration(seconds: 60),
+        ],
+      );
     });
   });
 
@@ -880,7 +1290,7 @@ void main() {
           swaps.records['local-1']?.localStatus,
           OrderSwapLocalStatus.awaitingUserConfirmation,
         );
-        expect(journal.only({'build'}), isEmpty);
+        expect(payinBuilds(), isEmpty);
         expectNothingMoved();
       },
     );
@@ -947,30 +1357,46 @@ void main() {
             refusalOf(await payOf(payInvoice())),
             isA<P2pWalletUnavailable>(),
           );
-          expect(journal.only({'build'}), hasLength(1));
+          expect(payinBuilds(), hasLength(1));
           expectNothingMoved();
         }
       },
     );
 
-    test('a fee above the one accepted is not signed', () async {
-      liquid.fee = 27;
-      expect(
-        refusalOf(await payOf(payInvoice())),
-        isA<P2pWalletQuoteChanged>(),
-      );
-      expectNothingMoved();
-      reset();
-      liquid.fee = -1;
-      expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletUnavailable>());
-      expectNothingMoved();
-    });
+    test(
+      'a fee above the one accepted: known before the order, nothing reaches the service; found after it, nothing is signed',
+      () async {
+        // The quote's estimate made again before the order already comes out above it.
+        liquid.fee = 27;
+        expect(
+          refusalOf(await payOf(payInvoice())),
+          isA<P2pWalletQuoteChanged>(),
+        );
+        expectNoOrder();
+        reset();
+        liquid.fee = -1;
+        expect(
+          refusalOf(await payOf(payInvoice())),
+          isA<P2pWalletUnavailable>(),
+        );
+        expectNoOrder();
+        // The funding to the order's address costs more than the estimate to the wallet's own.
+        reset();
+        liquid.payinFee = 27;
+        expect(
+          refusalOf(await payOf(payInvoice())),
+          isA<P2pWalletQuoteChanged>(),
+        );
+        expect(payinBuilds(), hasLength(1));
+        expectNothingMoved();
+      },
+    );
 
     test(
       'the payin below the one accepted does not lift the fee above the one accepted',
       () async {
         swaps.payinFor = (quoted) => quoted - BigInt.from(10);
-        liquid.fee = 27;
+        liquid.payinFee = 27;
         expect(
           refusalOf(await payOf(payInvoice())),
           isA<P2pWalletQuoteChanged>(),
@@ -994,23 +1420,43 @@ void main() {
         (NoSpendableUtxoException('none'), isA<P2pWalletNotEnoughBalance>()),
         (StateError('lwk'), isA<P2pWalletUnavailable>()),
       ]) {
+        // Known before the order, from the estimate made again: nothing reaches the service.
         reset();
         liquid.buildError = error;
         expect(refusalOf(await payOf(payInvoice())), refusal, reason: '$error');
+        expectNoOrder();
+      }
+      for (final (error, refusal) in [
+        (
+          ConsolidationRequiredException('many'),
+          isA<P2pWalletNeedsConsolidation>(),
+        ),
+        (
+          InsufficientFundsException('short'),
+          isA<P2pWalletNotEnoughBalance>()
+              .having((r) => r.available, 'available', Sats.fromInt(10000))
+              .having((r) => r.needed, 'needed', Sats.fromInt(10001)),
+        ),
+        (NoSpendableUtxoException('none'), isA<P2pWalletNotEnoughBalance>()),
+        (StateError('lwk'), isA<P2pWalletUnavailable>()),
+      ]) {
+        // Found only when the funding to the order is built: nothing signed.
+        reset();
+        liquid.payinBuildError = error;
+        expect(refusalOf(await payOf(payInvoice())), refusal, reason: '$error');
+        expect(journal.only({'create'}), ['create']);
         expectNothingMoved();
       }
-      // The total accepted, when it is above the balance read now.
+      // The balance read now below the total accepted: refused before anything is built or created (the review's probe LOW-BALANCE).
       reset();
       getWallets.answer = Ok([testWallet(balance: 500)]);
-      liquid.buildError = InsufficientFundsException('short');
       expect(
         refusalOf(await payOf(payInvoice())),
-        isA<P2pWalletNotEnoughBalance>().having(
-          (r) => r.needed,
-          'needed',
-          Sats.fromInt(629),
-        ),
+        isA<P2pWalletNotEnoughBalance>()
+            .having((r) => r.available, 'available', Sats.fromInt(500))
+            .having((r) => r.needed, 'needed', Sats.fromInt(629)),
       );
+      expect(journal.events, isEmpty);
     });
 
     test(
@@ -1023,7 +1469,7 @@ void main() {
           ),
           isA<P2pWalletInvoiceExpiresTooSoon>(),
         );
-        expect(journal.only({'build'}), hasLength(1));
+        expect(payinBuilds(), hasLength(1));
         expectNothingMoved();
         // With the margin left after the order, it pays.
         reset();
@@ -1039,7 +1485,7 @@ void main() {
     test('a failed signature leaves the order unprepared', () async {
       liquid.signError = StateError('secrets');
       expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletUnavailable>());
-      expect(journal.only({'sign', 'save'}), ['sign:pset1']);
+      expect(journal.only({'sign', 'save'}), ['sign:pset2']);
       expect(
         swaps.records['local-1']?.localStatus,
         OrderSwapLocalStatus.awaitingUserConfirmation,
@@ -1097,7 +1543,7 @@ void main() {
           OrderSwapLocalStatus.broadcastUnknown,
         );
         expect(journal.only({'broadcast', 'markBroadcast'}), [
-          'broadcast:signed-pset1',
+          'broadcast:signed-pset2',
         ]);
         final found = await WalletPaymentRepositoryImpl(
           swaps,
@@ -1113,7 +1559,14 @@ void main() {
         );
         // Nothing tries the broadcast again.
         broadcast.error = null;
-        expect(refusalOf(await payOf(invoice)), isA<P2pWalletAlreadyPaid>());
+        expect(
+          refusalOf(await payOf(invoice)),
+          isA<P2pWalletPaymentExists>().having(
+            (r) => r.progress,
+            'progress',
+            isA<P2pWalletPaymentBroadcastUnknown>(),
+          ),
+        );
         expect(journal.only({'broadcast'}), hasLength(1));
       },
     );
