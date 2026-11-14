@@ -192,25 +192,34 @@ PayoutDestinationFailure _err(String text, RobosatsNetwork network) =>
 
 void main() {
   group('bech32 strings', () {
-    test('the separator is the last 1, the human-readable part may hold others', () {
-      for (final humanReadablePart in ['bc', 'ln1tb', 'lntb1639610n', '1', 'a1b1c']) {
-        for (final bech32m in [false, true]) {
-          final words = [for (var i = 0; i < 40; i++) (i * 7) % 32];
-          final read = readBech32(
-            encodeBech32(humanReadablePart, words, bech32m: bech32m),
-            maxLength: 200,
-          );
-          final parts = read.parts;
-          if (parts == null) fail('$humanReadablePart: ${read.refusal}');
-          expect(parts.humanReadablePart, humanReadablePart);
-          expect(parts.words, words);
-          expect(
-            parts.variant,
-            bech32m ? Bech32Variant.bech32m : Bech32Variant.bech32,
-          );
+    test(
+      'the separator is the last 1, the human-readable part may hold others',
+      () {
+        for (final humanReadablePart in [
+          'bc',
+          'ln1tb',
+          'lntb1639610n',
+          '1',
+          'a1b1c',
+        ]) {
+          for (final bech32m in [false, true]) {
+            final words = [for (var i = 0; i < 40; i++) (i * 7) % 32];
+            final read = readBech32(
+              encodeBech32(humanReadablePart, words, bech32m: bech32m),
+              maxLength: 200,
+            );
+            final parts = read.parts;
+            if (parts == null) fail('$humanReadablePart: ${read.refusal}');
+            expect(parts.humanReadablePart, humanReadablePart);
+            expect(parts.words, words);
+            expect(
+              parts.variant,
+              bech32m ? Bech32Variant.bech32m : Bech32Variant.bech32,
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     test('the length bound is read before anything else', () {
       final text = encodeBech32('lntb', List.filled(100, 3));
