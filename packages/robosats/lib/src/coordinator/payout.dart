@@ -74,7 +74,8 @@ final class MiningFeeRate {
 
   /// The rate of [satPerVbyte] sat/vB, or `null` when it is not a finite number from [minSatPerVbyte] to [maxSatPerVbyte] with at most 3 decimals.
   ///
-  /// The coordinator's `suggested_mining_fee_rate` has 3 decimals at most (`OnchainPayment.suggested_mining_fee_rate`, `api/models/onchain_payment.py:56-62`), so it gives a rate whenever it is within the bounds.
+  /// [satPerVbyte] must be exactly the double of a decimal with at most 3 places, as a parsed number is: anything else, even within a rounding error of one, is refused rather than rounded, so that what is sent is what was shown.
+  /// The coordinator's `suggested_mining_fee_rate` has 3 decimals at most (`OnchainPayment.suggested_mining_fee_rate`, `api/models/onchain_payment.py:56-62`), so it gives a rate whenever it is within the bounds; it can exceed 500, up to 1,000 (`api/logics.py:630-634`), and this then returns `null`: the panel offers at most [maxSatPerVbyte] and says that the coordinator suggests more than the client allows.
   static MiningFeeRate? of(double satPerVbyte) {
     if (!satPerVbyte.isFinite ||
         satPerVbyte < minSatPerVbyte ||
@@ -82,7 +83,8 @@ final class MiningFeeRate {
       return null;
     }
     final thousandths = (satPerVbyte * 1000).round();
-    if ((thousandths / 1000 - satPerVbyte).abs() > 1e-9) return null;
+    // Exact: a decimal of at most 3 places parsed to a double is the double nearest to it, as `thousandths / 1000` is, so nothing is rounded silently.
+    if (thousandths / 1000 != satPerVbyte) return null;
     return MiningFeeRate._(thousandths);
   }
 
@@ -187,31 +189,62 @@ final class SignedPayoutAddress extends SignedPayout {
   String toString() => 'SignedPayoutAddress($address)';
 }
 
-/// The human-readable part of a BOLT11 invoice: `ln`, the currency, then an optional amount (BOLT 11, « Human-Readable Part »).
-final RegExp _invoicePrefix = RegExp(r'^ln(bcrt|bc|tbs|tb)(?:[0-9]+[munp]?)?$');
+/// The human-readable part of a BOLT11 invoice: `ln`, the currency, then the amount's digits and multiplier, both optional here (BOLT 11, « Human-Readable Part »); the amount's rules are [_invoiceSats]'s.
+///
+/// The same grammar as `CheckedBolt11Invoice` of `features/p2p` (`_humanReadablePart`, `_satsOf`), which the package cannot import: restated here, to be unified with it (and with the feature's signet rule, ticket #113).
+final RegExp _invoicePrefix = RegExp(r'^ln(bcrt|bc|tbs|tb)([0-9]*)([munp]?)$');
 
 /// Words of a BOLT11 data part before its checksum: a 35-bit timestamp (7 words) and a 520-bit signature (104 words) at least.
 const _minimumInvoiceWords = 7 + 104;
 
-/// Checks that [invoice] has the shape of a BOLT11 invoice of [network], before it is signed: at most [CoordinatorOrder.maxInvoiceLength] characters, bech32 with a valid checksum, all lowercase or all uppercase, the prefix `lnbc` on mainnet and `lntb` on testnet.
+/// The amount of an invoice's human-readable part in satoshis, from its [digits] in bitcoin times its [multiplier] (BOLT11: `m` 10⁻³, `u` 10⁻⁶, `n` 10⁻⁹, `p` 10⁻¹²), in exact integer arithmetic; `null` for digits with a leading zero, a `p` amount not ending in 0 (BOLT11 refuses both), an amount that is not a whole number of satoshis, or more than [CoordinatorReadBounds.maxSats].
+BigInt? _invoiceSats(String digits, String multiplier) {
+  if (digits.isEmpty || digits.startsWith('0') || digits.length > 30) {
+    return null;
+  }
+  final value = BigInt.parse(digits);
+  // In millisatoshis: 1 bitcoin is 10¹¹ of them.
+  final BigInt millisats;
+  switch (multiplier) {
+    case '':
+      millisats = value * BigInt.from(10).pow(11);
+    case 'm':
+      millisats = value * BigInt.from(10).pow(8);
+    case 'u':
+      millisats = value * BigInt.from(10).pow(5);
+    case 'n':
+      millisats = value * BigInt.from(100);
+    case 'p':
+      if (value % BigInt.from(10) != BigInt.zero) return null;
+      millisats = value ~/ BigInt.from(10);
+    default:
+      return null;
+  }
+  if (millisats % BigInt.from(1000) != BigInt.zero) return null;
+  final sats = millisats ~/ BigInt.from(1000);
+  return sats > BigInt.from(CoordinatorReadBounds.maxSats) ? null : sats;
+}
+
+/// Checks that [invoice] has the shape of a BOLT11 invoice of [network] with an amount, before it is signed: at most [CoordinatorOrder.maxInvoiceLength] printable ASCII characters, all lowercase or all uppercase, bech32 with a valid checksum, the currency `bc` on mainnet and `tb` on testnet, and an amount BOLT11 allows that is a whole number of satoshis.
 ///
-/// A coordinator on testnet runs testnet3 (or testnet4), whose invoices are `lntb`: a signet invoice (`lntbs`) and a regtest one (`lnbcrt`) are another network.
-/// This is no decoding: the amount, expiry and payee are the caller's to check, on the very string signed.
+/// A coordinator on testnet runs testnet3 (or testnet4), whose invoices are `lntb`: a signet invoice (`lntbs`), a regtest one (`lnbcrt`) and any other prefix are another network.
+/// An invoice without an amount is refused ([PayoutDestinationNoAmount]): the coordinator refuses it too (`api/lightning/lnd.py:508-512`).
+/// The prefix is read first, so that a `lightning:` URI or an address is malformed, not a typo.
+/// This is no decoding: the amount's value, the expiry and the payee are the caller's to check, on the very string signed.
 @internal
 Result<void, PayoutDestinationFailure> checkPayoutInvoice(
   String invoice,
   RobosatsNetwork network,
 ) {
-  // The prefix first, so that a `lightning:` URI or an address is not reported as a typo.
   if (invoice.length > CoordinatorOrder.maxInvoiceLength) {
     return const Err(PayoutDestinationMalformed());
   }
   final lower = invoice.toLowerCase();
   final separator = lower.lastIndexOf('1');
-  if (separator < 0 ||
-      !_invoicePrefix.hasMatch(lower.substring(0, separator))) {
-    return const Err(PayoutDestinationMalformed());
-  }
+  final prefix = separator < 0
+      ? null
+      : _invoicePrefix.firstMatch(lower.substring(0, separator));
+  if (prefix == null) return const Err(PayoutDestinationMalformed());
   final read = readBech32(
     invoice,
     maxLength: CoordinatorOrder.maxInvoiceLength,
@@ -222,20 +255,27 @@ Result<void, PayoutDestinationFailure> checkPayoutInvoice(
         ? const Err(PayoutDestinationBadChecksum())
         : const Err(PayoutDestinationMalformed());
   }
-  final match = _invoicePrefix.firstMatch(parts.humanReadablePart);
-  if (match == null || parts.words.length < _minimumInvoiceWords) {
+  if (parts.words.length < _minimumInvoiceWords) {
     return const Err(PayoutDestinationMalformed());
   }
   if (parts.variant != Bech32Variant.bech32) {
     return const Err(PayoutDestinationBadChecksum());
   }
-  final invoiceNetwork = switch (match.group(1)) {
+  final invoiceNetwork = switch (prefix.group(1)) {
     'bc' => RobosatsNetwork.mainnet,
     'tb' => RobosatsNetwork.testnet,
     _ => null,
   };
   if (invoiceNetwork != network) {
     return const Err(PayoutDestinationWrongNetwork());
+  }
+  final digits = prefix.group(2) ?? '';
+  final multiplier = prefix.group(3) ?? '';
+  if (digits.isEmpty && multiplier.isEmpty) {
+    return const Err(PayoutDestinationNoAmount());
+  }
+  if (_invoiceSats(digits, multiplier) == null) {
+    return const Err(PayoutDestinationMalformed());
   }
   return const Ok(null);
 }

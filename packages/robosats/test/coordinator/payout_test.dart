@@ -67,6 +67,18 @@ String? _coordinatorCleartext(String signedMessage) {
   return _pythonStrip(pieces[1].split(_footer)[0]);
 }
 
+/// A refusal the coordinator answered, not one decided from the last read.
+final _notBuyerAnswered = isA<PayoutNotBuyer>().having(
+  (f) => f.fromLastRead,
+  'fromLastRead',
+  isFalse,
+);
+final _notNowAnswered = isA<PayoutNotNow>().having(
+  (f) => f.fromLastRead,
+  'fromLastRead',
+  isFalse,
+);
+
 void main() {
   final temple = coordinatorNamed('temple');
   final key = generateInteropKey();
@@ -147,7 +159,7 @@ void main() {
       for (final invoice in [
         testnetInvoice,
         testnetInvoice.toUpperCase(),
-        invoiceShaped('lntb', seed: 'no amount', wordCount: 111),
+        invoiceShaped('lntb10n', seed: 'one sat', wordCount: 111),
         invoiceShaped('lntb25m', seed: 'long', wordCount: 1900),
       ]) {
         final signed = expectOk(
@@ -333,6 +345,35 @@ void main() {
         ),
         invoiceShaped('lntb16x'): (_testnet, isA<PayoutDestinationMalformed>()),
         invoiceShaped('lno'): (_testnet, isA<PayoutDestinationMalformed>()),
+        // Amounts BOLT11 forbids, or not a whole number of sats, or more sats than exist: the grammar of the feature's `CheckedBolt11Invoice`.
+        invoiceShaped('lntb00001p'): (
+          _testnet,
+          isA<PayoutDestinationMalformed>(),
+        ),
+        invoiceShaped('lntb01u'): (_testnet, isA<PayoutDestinationMalformed>()),
+        invoiceShaped('lntb1p'): (_testnet, isA<PayoutDestinationMalformed>()),
+        invoiceShaped('lntb10p'): (_testnet, isA<PayoutDestinationMalformed>()),
+        invoiceShaped('lntb1n'): (_testnet, isA<PayoutDestinationMalformed>()),
+        invoiceShaped('lntbm'): (_testnet, isA<PayoutDestinationMalformed>()),
+        invoiceShaped('lntb99999999999999999999m'): (
+          _testnet,
+          isA<PayoutDestinationMalformed>(),
+        ),
+        invoiceShaped('lnbc21000001'): (
+          _mainnet,
+          isA<PayoutDestinationMalformed>(),
+        ),
+        // No amount: the coordinator refuses it (`api/lightning/lnd.py:508-512`).
+        invoiceShaped('lntb'): (_testnet, isA<PayoutDestinationNoAmount>()),
+        invoiceShaped('lnbc', seed: 'no amount'): (
+          _mainnet,
+          isA<PayoutDestinationNoAmount>(),
+        ),
+        // Not ASCII: refused before anything is read, so a payout's text is ASCII by construction.
+        '${testnetInvoice.substring(0, 30)}é${testnetInvoice.substring(31)}': (
+          _testnet,
+          isA<PayoutDestinationMalformed>(),
+        ),
         'LNTB${testnetInvoice.substring(4)}': (
           _testnet,
           isA<PayoutDestinationMalformed>(),
@@ -357,6 +398,31 @@ void main() {
       expect(
         testnetInvoice.length,
         lessThan(CoordinatorOrder.maxInvoiceLength),
+      );
+    });
+
+    test('takes every amount BOLT11 allows in whole sats, and gives ASCII', () {
+      for (final prefix in [
+        'lntb10n',
+        'lntb1u',
+        'lntb2500u',
+        'lntb1m',
+        'lntb1',
+        'lntb10000p',
+        'lntb21000000',
+      ]) {
+        final signed = expectOk(
+          unlocked.signPayoutInvoice(
+            invoiceShaped(prefix),
+            _testnet,
+            now: interopNow,
+          ),
+        );
+        expect(signed.signedMessage.codeUnits.every((unit) => unit < 128), isTrue);
+      }
+      expect(
+        signedAddress.signedMessage.codeUnits.every((unit) => unit < 128),
+        isTrue,
       );
     });
 
@@ -392,6 +458,8 @@ void main() {
         (0, 1000, 0),
         (2100000000000000, 99998, 1890004200000000),
         (2100000000000000, 1000, 2097900000000000),
+        // Where `n * ppm / 1e6`, multiplied first, would give one sat less in double precision.
+        (2012418945939879, 6069, 2000205575356970),
       ]) {
         final routingBudget = RoutingBudgetPpm.of(ppm);
         if (routingBudget == null) fail('$ppm is a budget');
@@ -465,6 +533,8 @@ void main() {
         1000,
         2.0505,
         12.3456,
+        2.05 + 1e-12,
+        2.05 - 1e-12,
         double.nan,
         double.infinity,
       ]) {
@@ -479,6 +549,8 @@ void main() {
         (164126, 0.0, 10.001, 161326), // 164,126 − 2,800
         (20000, 1.0, 2.0, 19240), // 20,000 − 200 − 560
         (1000, 5.0, 500.0, -139050), // 1,000 − 50 − 140,000
+        // Where `n * (1 - s / 100)` would give one sat less in double precision.
+        (254250, 33.2, 226.4, 106447), // 254,250 − 84,411 − 63,392
       ]) {
         final value = MiningFeeRate.of(rate);
         if (value == null) fail('$rate is a rate');
@@ -666,6 +738,8 @@ void main() {
           orderAnswer(7, changes: {'is_buyer': false, 'is_seller': true}),
           orderAnswer(7, changes: {'status': 'seven'}),
           orderAnswer(1, role: OrderRole.outsider),
+          // Still the buyer, but as the maker of a buy order, not the taker of the sell order read last.
+          orderAnswer(7, role: OrderRole.maker),
           <String, Object?>{},
         ]) {
           serveJson(answer);
@@ -818,6 +892,14 @@ void main() {
         final failure = expectErr(await submit());
         expect(failure, isA<OrderActionRefused>(), reason: name);
         expect(failure.cause, matcher, reason: name);
+        final cause = failure.cause;
+        if (cause is PayoutNotBuyer ||
+            cause is PayoutNotNow ||
+            cause is PayoutSwapUnavailable) {
+          expect((cause as PayoutRefused).fromLastRead, isTrue, reason: name);
+        } else if (cause is PayoutRefused) {
+          expect(cause.fromLastRead, isFalse, reason: name);
+        }
         expect(transport.requests, isEmpty, reason: name);
       }
     });
@@ -834,10 +916,10 @@ void main() {
     final invoiceCodes = <int, (Matcher, int)>{
       1047: (isA<OrderNotParticipant>(), 403),
       1048: (isA<PayoutSignatureRefused>(), 400),
-      1017: (isA<PayoutNotBuyer>(), 400),
-      1018: (isA<PayoutNotNow>(), 400),
-      1019: (isA<PayoutNotNow>(), 400),
-      3001: (isA<PayoutNotNow>(), 400),
+      1017: (_notBuyerAnswered, 400),
+      1018: (_notNowAnswered, 400),
+      1019: (_notNowAnswered, 400),
+      3001: (_notNowAnswered, 400),
       3000: (
         isA<PayoutInvoiceRefused>().having(
           (f) => f.reason,
@@ -858,8 +940,8 @@ void main() {
     final addressCodes = <int, (Matcher, int)>{
       1047: (isA<OrderNotParticipant>(), 403),
       1048: (isA<PayoutSignatureRefused>(), 400),
-      1015: (isA<PayoutNotBuyer>(), 400),
-      1016: (isA<PayoutNotNow>(), 400),
+      1015: (_notBuyerAnswered, 400),
+      1016: (_notNowAnswered, 400),
       4000: (
         isA<PayoutAddressRefused>().having(
           (f) => f.reason,

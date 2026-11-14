@@ -113,7 +113,9 @@ final class PgpWrongPassphrase extends PgpFailure {
   const PgpWrongPassphrase();
 }
 
-/// The text cannot be clear-signed for a coordinator, whose parser would not hand it back intact: it is empty, starts or ends with whitespace, has a line that starts with a dash or ends with a space, or contains a carriage return.
+/// The text cannot be clear-signed for a coordinator, whose extraction (`api/utils.py:642-644`) would not hand it back intact: it is empty; it starts or ends with whitespace as Dart's `String.trim` sees it, or with U+001C to U+001F, which Python's `str.strip` removes; it contains a carriage return, `-----BEGIN PGP SIGNED MESSAGE-----` or `-----BEGIN PGP SIGNATURE-----` anywhere; or one of its lines starts with a dash or ends with a space or a tab.
+///
+/// Nothing else is refused: other control characters, U+0000 included, lone surrogates and any non-ASCII text are signed, and a coordinator may then refuse the message (its form check or its GnuPG fails), but it never reads another text from it. A payout's text is ASCII by construction (`UnlockedRobotPgpKey.signPayoutInvoice`, `signPayoutAddress`).
 final class PgpCleartextUnsuitable extends PgpFailure {
   const PgpCleartextUnsuitable();
 }
@@ -392,9 +394,15 @@ final class OrderNotParticipant extends CoordinatorOrderFailure {
 /// The coordinator refused the buyer's payout, an invoice or an address, or this package refused to send it (`Logics.update_invoice` and `Logics.update_address`, `api/logics.py:752-907`, commit ff1998c).
 ///
 /// Each is a kind, never the coordinator's text: the reference sends some of these refusals without any code, as a bare `bad_invoice` or `bad_address` text, which is compared with the reference's exact wording and never kept.
-/// Every one of them comes before the payout is recorded, so a submission refused this way changed nothing (see `CoordinatorClient.submitPayoutInvoice`).
+/// Every one of them comes before the coordinator records a payout, so after a submission refused this way the order has no new payout (see `CoordinatorClient.submitPayoutInvoice`).
+/// Some are decided by this package before anything is sent: [fromLastRead] says which come from the last read of the order, which may be stale.
 sealed class PayoutRefused extends CoordinatorOrderFailure {
   const PayoutRefused();
+
+  /// Whether this package refused from the last read of the order, sending nothing, rather than the coordinator: [PayoutNotBuyer] and [PayoutNotNow] decided locally, and [PayoutSwapUnavailable].
+  ///
+  /// A last read may be stale: after such a refusal, read the order again and decide from the fresh read before telling the user anything.
+  bool get fromLastRead => false;
 }
 
 /// Why a payout invoice was refused.
@@ -482,19 +490,28 @@ final class PayoutSignatureRefused extends PayoutRefused {
   const PayoutSignatureRefused();
 }
 
-/// The robot is not the buyer of the order (errors 1015 and 1017), or the last read does not show it as the buyer.
+/// The robot is not the buyer of the order (errors 1015 and 1017), or the last read does not show it as the buyer ([fromLastRead]).
 final class PayoutNotBuyer extends PayoutRefused {
-  const PayoutNotBuyer();
+  @override
+  final bool fromLastRead;
+
+  const PayoutNotBuyer({required this.fromLastRead});
 }
 
-/// The order is not at a step that takes this payout: both bonds not locked (1018, 1019, 1016), a status other than 6 or 8, or 15 for an invoice once the failed one expired (3001, 1016), or a payout being sent (3001); or the last read already shows so.
+/// The order is not at a step that takes this payout: both bonds not locked (1018, 1019, 1016), a status other than 6 or 8, or 15 for an invoice once the failed one expired (3001, 1016), or a payout being sent (3001); or the last read already shows so ([fromLastRead]).
 final class PayoutNotNow extends PayoutRefused {
-  const PayoutNotNow();
+  @override
+  final bool fromLastRead;
+
+  const PayoutNotNow({required this.fromLastRead});
 }
 
 /// The last read of the order does not offer an on-chain payout (`swap_allowed`): refused by this package before anything is sent, since the reference coordinator then fails with a `500` (`api/logics.py:800-803`, `order.payout_tx` is `None`).
 final class PayoutSwapUnavailable extends PayoutRefused {
   const PayoutSwapUnavailable();
+
+  @override
+  bool get fromLastRead => true;
 }
 
 /// The payout was signed by the key of another robot than the one that submits it: refused by this package before anything is sent, since the coordinator checks the signature against the submitting robot's key (1048).
@@ -509,7 +526,7 @@ sealed class PayoutDestinationFailure extends RobosatsFailure {
   const PayoutDestinationFailure();
 }
 
-/// Not an address or an invoice of a kind this package reads: too long, a character outside the encoding, whitespace, mixed case, an unknown prefix or version, or a program of the wrong length.
+/// Not an address or an invoice of a kind this package reads: too long, a character outside the encoding, whitespace, mixed case, an unknown prefix or version, a program of the wrong length, or an invoice amount BOLT11 forbids (a leading zero, a `p` amount not ending in 0, not a whole number of satoshis).
 final class PayoutDestinationMalformed extends PayoutDestinationFailure {
   const PayoutDestinationMalformed();
 }
@@ -522,6 +539,11 @@ final class PayoutDestinationBadChecksum extends PayoutDestinationFailure {
 /// A valid address or invoice of another network than the trade's: the other of mainnet and testnet, regtest, or, for an invoice, signet.
 final class PayoutDestinationWrongNetwork extends PayoutDestinationFailure {
   const PayoutDestinationWrongNetwork();
+}
+
+/// A Lightning invoice without an amount: the coordinator refuses one (`validate_ln_invoice`, `api/lightning/lnd.py:508-512`), and the payout's amount is fixed by the order, so it is refused before signing.
+final class PayoutDestinationNoAmount extends PayoutDestinationFailure {
+  const PayoutDestinationNoAmount();
 }
 
 /// A valid segwit address of a kind this package does not sign for a payout: version 1 with a program other than 32 bytes, or versions 2 to 16.

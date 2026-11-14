@@ -341,8 +341,11 @@ final class CoordinatorClient {
   /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), when [invoice] was signed by another robot's key ([PayoutSignedByAnotherRobot]) or is for another network ([PayoutInvoiceRefused] with [PayoutInvoiceRefusal.wrongNetwork]), when [lastRead] does not show this robot as the buyer ([PayoutNotBuyer]), or not at a step the coordinator takes an invoice ([PayoutNotNow]): 6 or 8, or 15 once the failed invoice has expired (`api/logics.py:846-863`).
   ///
   /// The answer is [PayoutAccepted] with the order as it then is.
-  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [PayoutRefused] kind, [OrderNotParticipant] or one of the authentication's: each comes before the invoice is recorded (`api/views.py:617-634`, `api/logics.py:835-880`).
+  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [PayoutRefused] kind, [OrderNotParticipant] or one of the authentication's: each comes before the coordinator records a payout (`api/views.py:617-634`, `api/logics.py:835-880`); before the node's refusals and 3002 it may still mark the order's unused `OnchainPayment` cancelled (`api/logics.py:866`) or create one (`payout_amount`), which changes nothing the buyer depends on.
+  /// A [PayoutRefused] with [PayoutRefused.fromLastRead] was decided here from [lastRead], which may be stale: read the order again and decide from the fresh read before telling the user.
   /// Every other failure is an [OrderActionOutcomeUnknown]: read the order again.
+  ///
+  /// A signed invoice is not tied to an order or a step: sign it just before submitting, from the fresh read, and never submit one again to another order or step.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<PayoutOutcome, OrderActionFailure>> submitPayoutInvoice({
@@ -429,9 +432,9 @@ final class CoordinatorClient {
     } else if (payout.network != lastRead.network) {
       before = wrongNetwork;
     } else if (lastRead.isBuyer != true) {
-      before = const PayoutNotBuyer();
+      before = const PayoutNotBuyer(fromLastRead: true);
     } else if (!mayGive) {
-      before = const PayoutNotNow();
+      before = const PayoutNotNow(fromLastRead: true);
     } else if (swap && lastRead.swapAllowed != true) {
       before = const PayoutSwapUnavailable();
     } else {
@@ -465,9 +468,9 @@ final class CoordinatorClient {
     };
   }
 
-  /// Whether [failure] of a payout comes before the payout was recorded, so that nothing was done.
+  /// Whether [failure] of a payout comes before the coordinator recorded a payout, so that the order has no new payout.
   ///
-  /// Refused: every [PayoutRefused] and [OrderNotParticipant] (each answered before `Logics` records anything, `api/views.py:617-649`, `api/logics.py:752-880`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Refused: every [PayoutRefused] and [OrderNotParticipant] (each answered before `Logics` records a payout, `api/views.py:617-649`, `api/logics.py:752-880`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
   /// Everything else is an outcome unknown, the codes of the other actions included, which the reference never answers to a payout: a `5xx` (an on-chain payout the coordinator does not offer fails with a `500`, `api/logics.py:800-803`), an error of the read that follows the action, a malformed answer, a lost connection.
   static OrderActionFailure _afterPayout(CoordinatorFailure failure) =>
       switch (failure) {
@@ -532,8 +535,12 @@ final class CoordinatorClient {
     final CoordinatorFailure? refusal = switch ((code, invoice)) {
       (1047, _) => const OrderNotParticipant(),
       (1048, _) => const PayoutSignatureRefused(),
-      (1017, true) || (1015, false) => const PayoutNotBuyer(),
-      (1018 || 1019 || 3001, true) || (1016, false) => const PayoutNotNow(),
+      (1017, true) || (1015, false) => const PayoutNotBuyer(
+        fromLastRead: false,
+      ),
+      (1018 || 1019 || 3001, true) || (1016, false) => const PayoutNotNow(
+        fromLastRead: false,
+      ),
       (3000, true) => const PayoutInvoiceRefused(PayoutInvoiceRefusal.empty),
       (3002, true) => const PayoutInvoiceRefused(
         PayoutInvoiceRefusal.alreadySubmitted,

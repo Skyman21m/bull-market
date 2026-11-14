@@ -407,8 +407,9 @@ final class UnlockedRobotPgpKey {
 
   /// Clear-signs [invoice], a Lightning invoice of [network], for the buyer's payout: see `CoordinatorClient.submitPayoutInvoice`.
   ///
-  /// [invoice] is signed exactly as given, after a check of its shape only: a BOLT11 string of at most `CoordinatorOrder.maxInvoiceLength` characters with a valid bech32 checksum and the prefix of [network] (`lnbc` on mainnet, `lntb` on testnet).
+  /// [invoice] is signed exactly as given, after a check of its shape only: a BOLT11 string of at most `CoordinatorOrder.maxInvoiceLength` printable ASCII characters (so the signed text is ASCII by construction) with a valid bech32 checksum and the human-readable part of [network] with an amount (`lnbc…` on mainnet, `lntb…` on testnet; signet's `lntbs` and regtest's `lnbcrt` are another network).
   /// Its amount, expiry and payee are not read here: decode and check this very string, and show it, before signing it.
+  /// A signed payout is not tied to an order or a step: sign just before submitting, from a fresh read of the order.
   /// Fails with a [PayoutDestinationFailure] when the shape is wrong, and otherwise as [signCleartext].
   Result<SignedPayoutInvoice, RobosatsFailure> signPayoutInvoice(
     String invoice,
@@ -432,6 +433,8 @@ final class UnlockedRobotPgpKey {
   }
 
   /// Clear-signs [address], an on-chain address already checked for the trade's network, for the buyer's payout: see `CoordinatorClient.submitPayoutAddress`.
+  ///
+  /// The signed text is the address's, at most 90 ASCII letters and digits by construction ([BitcoinAddress.check]); sign just before submitting, from a fresh read of the order.
   ///
   /// Fails as [signCleartext].
   Result<SignedPayoutAddress, PgpFailure> signPayoutAddress(

@@ -221,6 +221,74 @@ void main() {
       },
     );
 
+    test('the invalid strings of BIP-173 and BIP-350 are refused, none throws', () {
+      // « Test vectors » of both BIPs, the strings that are not valid bech32 or bech32m: out-of-range characters, no separator, an empty human-readable part, a too short checksum, invalid characters, a checksum made over the uppercase form.
+      for (final text in [
+        '\u00201nwldj5',
+        '\u007f1axkwrx',
+        '\u00801eym55h',
+        'an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1569pvx',
+        'pzry9x0s0muk',
+        '1pzry9x0s0muk',
+        'x1b4n0q5v',
+        'li1dgmt3',
+        'de1lg7wt\u00ff',
+        'A1G7SGD8',
+        '10a06t8',
+        '1qzzfhee',
+        '\u00201xj0phk',
+        '\u007f1g6xzxy',
+        '\u00801vctc34',
+        'qyrz8wqd2c9m',
+        '1qyrz8wqd2c9m',
+        'y1b0jsk6g',
+        'lt1igcx5c0',
+        'in1muywd',
+        'mm1crxm3i',
+        'au1s5cgom',
+        'M1VUXWEZ',
+        '16plkw9',
+        '1p2gdwpf',
+      ]) {
+        final read = readBech32(text, maxLength: 90);
+        expect(read.parts, isNull, reason: text);
+        expect(read.refusal, isNotNull, reason: text);
+      }
+      // Those whose only fault is their human-readable part, or a checksum too short, are malformed, not a typo.
+      for (final text in [
+        '\u00201nwldj5',
+        '\u007f1axkwrx',
+        '1pzry9x0s0muk',
+        '10a06t8',
+        '1qzzfhee',
+        'li1dgmt3',
+        'in1muywd',
+        '16plkw9',
+        '1p2gdwpf',
+      ]) {
+        expect(
+          readBech32(text, maxLength: 90).refusal,
+          Bech32Refusal.malformed,
+          reason: text,
+        );
+      }
+    });
+
+    test('a data part under 6 characters is malformed and never throws', () {
+      const charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+      for (final humanReadablePart in ['a', 'bc', 'lntb10n', '1']) {
+        for (final first in charset.split('')) {
+          for (final second in charset.split('')) {
+            for (final data in ['', first, '$first$second', '$first$second$first$second$first']) {
+              final text = '${humanReadablePart}1$data';
+              final read = readBech32(text, maxLength: 90);
+              expect(read.refusal, Bech32Refusal.malformed, reason: text);
+            }
+          }
+        }
+      }
+    });
+
     test('the length bound is read before anything else', () {
       final text = encodeBech32('lntb', List.filled(100, 3));
       expect(readBech32(text, maxLength: text.length).parts, isNotNull);
@@ -375,6 +443,29 @@ void main() {
         }
       },
     );
+
+    test('a program with 5 bits of padding is refused', () {
+      // A 20-byte program is exactly 32 words; one more zero word leaves 5 bits of padding, which BIP-173 refuses.
+      final words = <int>[0];
+      var accumulator = 0;
+      var bits = 0;
+      for (final byte in _hash160) {
+        accumulator = accumulator << 8 | byte;
+        bits += 8;
+        while (bits >= 5) {
+          bits -= 5;
+          words.add(accumulator >> bits & 31);
+        }
+      }
+      expect(words, hasLength(33));
+      final valid = encodeBech32('bc', words);
+      expect(_ok(valid, _mainnet).kind, BitcoinAddressKind.p2wpkh);
+      final padded = encodeBech32('bc', [...words, 0]);
+      expect(expectErr(decodeSegwit(padded)), isA<PayoutDestinationMalformed>());
+      for (final network in RobosatsNetwork.values) {
+        expect(_err(padded, network), isA<PayoutDestinationMalformed>());
+      }
+    });
 
     test('a regtest address is another network, whatever the trade', () {
       final regtest = _segwitV0('bcrt', _hash160);

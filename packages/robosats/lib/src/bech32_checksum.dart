@@ -103,6 +103,8 @@ int _polymod(Iterable<int> values) {
       humanReadablePart.codeUnitAt(i) & 31,
     ...data,
   ]);
+  // Checked again where the checksum is cut off, so that no change above can make the cut throw.
+  if (data.length < 6) return malformed;
   for (final variant in Bech32Variant.values) {
     if (checksum == variant.constant) {
       return (
