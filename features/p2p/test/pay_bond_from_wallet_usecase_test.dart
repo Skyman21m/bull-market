@@ -297,6 +297,44 @@ void main() {
     },
   );
 
+  test(
+    'a quote of another invoice text with the same payment hash is not paid either',
+    () async {
+      final setup = await _Setup.start();
+      final invoice = await setup.offered();
+      final other = checkedBolt11InvoiceForTesting(
+        bolt11: Bolt11TestInvoice(
+          network: setup.harness.network == RobosatsNetwork.mainnet
+              ? Bolt11Network.mainnet
+              : Bolt11Network.testnet,
+          sats: invoice.amount.value.toInt(),
+          seed: 99,
+          createdAt: setup.harness.now,
+        ).text,
+        amount: invoice.amount,
+        network: invoice.network,
+        paymentHash: invoice.paymentHash,
+        expiresAt: invoice.expiresAt,
+        payableUntil: invoice.payableUntil,
+        now: setup.harness.now,
+      );
+      expect(other?.bolt11, isNot(invoice.bolt11));
+      final paid = await setup.payBond.payBond(
+        setup.record,
+        accepted: setup.quoteOf(other ?? (throw StateError('no invoice'))),
+      );
+      expect(
+        paid,
+        isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<BondPayInvoiceChanged>(),
+        ),
+      );
+      expect(setup.fake.paid, isEmpty);
+    },
+  );
+
   test('a start that cannot be written: the wallet is not asked', () async {
     final setup = await _Setup.start(payments: _Unwritable());
     final quote = await setup.quoted();
