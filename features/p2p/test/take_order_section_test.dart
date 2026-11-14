@@ -562,10 +562,7 @@ void main() {
         final line = find.text(fr0 ? fr : en);
         await _reveal(tester, line);
         expect(line, findsOneWidget);
-        expect(
-          tester.getSemantics(line),
-          isSemantics(isLiveRegion: true),
-        );
+        expect(tester.getSemantics(line), isSemantics(isLiveRegion: true));
         take.preparing?.complete(Ok(_read));
         await settle(tester);
         semantics.dispose();

@@ -1134,7 +1134,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pTakeBondEstimate(String estimate, String ceiling) {
-    return '$estimate sats, au plus $ceiling';
+    return '$estimate Sats, au plus $ceiling';
   }
 
   @override

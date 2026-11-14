@@ -297,7 +297,7 @@
   "p2pTakeOrderChanged": "Cet ordre a changé depuis son affichage. Il n’a pas été pris : rouvrez-le depuis le carnet.",
   "p2pOrderDescription": "Description",
   "p2pTakerBond": "Caution du preneur",
-  "p2pTakeBondEstimate": "{estimate} sats, au plus {ceiling}",
+  "p2pTakeBondEstimate": "{estimate} Sats, au plus {ceiling}",
   "p2pTakeReadAt": "Lu à {time}",
   "p2pTakeConfirm": "Confirmer",
   "p2pTakeOrderChangedRead": "L’ordre a changé.",

@@ -621,6 +621,45 @@ void main() {
         expect(await app.allTrades(), isEmpty);
       },
     );
+
+    for (final (label, change, refusal) in [
+      (
+        'deleted',
+        (TradeHarness app) => app.deleteKey(),
+        isA<GarageKeyMissingFailure>(),
+      ),
+      (
+        'replaced by another, not drawn here',
+        (TradeHarness app) => app.replaceKey(),
+        isA<GarageKeyNotForTradesFailure>(),
+      ),
+    ]) {
+      test(
+        '$label: a new preparation of the order does not use the robot kept for it (second review of #126, n1)',
+        () async {
+          final (app, _) = await prepareOne();
+          final reads = count(app, ScriptedRequest.order);
+          change(app);
+          expect(
+            await app.take.prepare(
+              await app.shownOrder(),
+              network: app.network,
+            ),
+            isA<Err<PreparedTake, TakeRefusal>>().having(
+              (err) => err.failure,
+              'refusal',
+              isA<TakeRobotRefused>().having(
+                (r) => r.failure,
+                'failure',
+                refusal,
+              ),
+            ),
+          );
+          // The robot of the earlier key read nothing more.
+          expect(count(app, ScriptedRequest.order), reads);
+        },
+      );
+    }
   });
 
   group('the robot\'s read again at the confirmation (review of #126, I4)', () {

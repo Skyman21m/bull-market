@@ -1654,7 +1654,11 @@ void main() {
             );
             await tester.pump(const Duration(milliseconds: 200));
           }
-          if (finder.evaluate().isEmpty) throw StateError('not shown: $finder');
+          if (finder.evaluate().isEmpty) {
+            throw StateError(
+              'not shown: $finder; shown: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).join(' | ')}',
+            );
+          }
           await settle();
         }
 
@@ -1735,14 +1739,42 @@ void main() {
         RobotIdentity taker() =>
             identities.firstWhere(coordinator.holdsPreTake);
 
-        Future<void> take() async {
+        /// The list of the page shown, which builds what is below the screen once scrolled to.
+        Finder pageList() => find
+            .byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            )
+            .first;
+
+        /// Scrolls the page shown until [finder] is built and in view.
+        Future<void> reveal(Finder finder) async {
+          await tester.scrollUntilVisible(finder, 200, scrollable: pageList());
+          await settle();
+        }
+
+        /// « Take Order » and « Done »: the robot reads the order (#119), whose read the order details then show, brought into view.
+        Future<void> prepare() async {
           await openTempleOrder();
           await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
           await settle();
           await tester.tap(find.text(l10n.p2pTakeOrder));
           await settle();
           await tester.tap(find.text(l10n.p2pCommonDone));
+          await waitFor(find.text(l10n.p2pTakerBond));
+        }
+
+        /// « Confirm »: the take, then its trade.
+        Future<void> confirm() async {
+          await reveal(find.text(l10n.p2pTakeConfirm));
+          await tester.tap(find.text(l10n.p2pTakeConfirm));
           await waitFor(find.text(l10n.p2pTradeTabContract));
+        }
+
+        Future<void> take() async {
+          await prepare();
+          await confirm();
         }
 
         /// Lets the trade's watch read again, at the reference's cadence.
@@ -1779,7 +1811,10 @@ void main() {
         await capture('echange-montant-estimation');
         await backToTab();
 
-        // Take 1: the order details, « Store your garage key », then 3, 6, 7 and the end at 5.
+        // Take 1: the order details, « Store your garage key », the wait of each step, the order read by the robot with the maker's description (#119), its figures changed at « Confirm », then 3, 6, 7 and the end at 5.
+        coordinator.description = locale.languageCode == 'fr'
+            ? 'Revolut uniquement, sans note dans le virement.'
+            : 'Revolut only, no notes in the transfer.';
         await openTempleOrder();
         await capture('echange-ordre');
         await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
@@ -1788,8 +1823,41 @@ void main() {
         await tester.tap(find.text(l10n.p2pTakeOrder));
         await settle();
         await capture('echange-sauvegarder-cle');
+        // Each request waits for its gate: the wait is captured at its first two steps.
+        var gate = Completer<void>();
+        coordinator.hold = gate.future;
+        Future<void> letGo() async {
+          final passing = gate;
+          gate = Completer<void>();
+          coordinator.hold = gate.future;
+          passing.complete();
+          await settle();
+        }
+
         await tester.tap(find.text(l10n.p2pCommonDone));
-        await waitFor(find.text(l10n.p2pTradeTabContract));
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await capture('prise-attente-verification');
+        await letGo();
+        await capture('prise-attente-robot');
+        coordinator.hold = null;
+        gate.complete();
+        await waitFor(find.text(l10n.p2pTakerBond));
+        await capture('prise-lecture-description');
+        await reveal(find.text(l10n.p2pTakeConfirm));
+        await capture('prise-lecture-bas');
+        // The maker changes the description before « Confirm »: the new read is shown, never taken by itself.
+        coordinator.description = locale.languageCode == 'fr'
+            ? 'Revolut uniquement. Paiement sous 30 minutes.'
+            : 'Revolut only. Pay within 30 minutes.';
+        final changed = coordinator.description ?? '';
+        await tester.tap(find.text(l10n.p2pTakeConfirm));
+        await waitFor(find.text(changed));
+        await capture('prise-chiffres-changes');
+        await reveal(find.text(l10n.p2pTakeOrderChangedRead));
+        await capture('prise-chiffres-changes-bas');
+        await confirm();
         await capture('echange-3');
         await tester.ensureVisible(find.text(l10n.p2pTradeCopyToClipboard));
         await settle();
@@ -1844,9 +1912,13 @@ void main() {
         await capture('echange-expire');
         await backToTab();
 
-        // Take 2: cancelled at 3, the order public again.
-        coordinator.backToPublic();
-        await take();
+        // Take 2: an order without a description, then cancelled at 3, the order public again.
+        coordinator
+          ..backToPublic()
+          ..description = null;
+        await prepare();
+        await capture('prise-lecture-sans-description');
+        await confirm();
         await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
         await settle();
         await tester.tap(find.text(l10n.p2pCommonCancel).last);
@@ -1854,6 +1926,18 @@ void main() {
         await tester.tap(find.text(l10n.p2pTradeConfirmCancellation));
         await waitFor(find.text(l10n.p2pOrderHost));
         await capture('echange-public');
+        await backToTab();
+
+        // An order the maker cancels between the read and « Confirm »: not available, nothing taken.
+        coordinator.backToPublic();
+        await prepare();
+        coordinator.cancelByMaker();
+        await reveal(find.text(l10n.p2pTakeConfirm));
+        await tester.tap(find.text(l10n.p2pTakeConfirm));
+        await waitFor(find.text(l10n.p2pOrderNotAvailable));
+        await tester.ensureVisible(find.text(l10n.p2pOrderNotAvailable));
+        await settle();
+        await capture('prise-ordre-disparu');
         await backToTab();
 
         // Take 3: the bond locked, then the maker cancels.
