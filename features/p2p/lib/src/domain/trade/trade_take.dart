@@ -89,12 +89,22 @@ final class TakeCoordinatorUnreadable extends TakeRefusal {
   String toString() => 'TakeCoordinatorUnreadable(${cause.runtimeType})';
 }
 
+/// The order already has an open trade on this device, [record]: a pending take, or a trade taken here or taken over (one open trade per order, review of #117); open it rather than take again.
+final class TakeOrderAlreadyTraded extends TakeRefusal {
+  final TradeRecord record;
+
+  const TakeOrderAlreadyTraded(this.record);
+
+  @override
+  String toString() => 'TakeOrderAlreadyTraded($record)';
+}
+
 /// The order is no longer in the coordinator's book read just before the take: taken, paused, cancelled or expired.
 final class TakeOrderGone extends TakeRefusal {
   const TakeOrderGone();
 }
 
-/// The order read just before the take is not the one the user accepted: another type, currency, amount or range, premium, bond size, escrow duration, or sats of an order priced in sats (the price may move, nothing else).
+/// The order read just before the take is not the one the user accepted on the order's page: another type, currency, amount or range, premium, bond size, escrow duration, sats of an order priced in sats, or sats at the current price moved by more than `TradeTolerances.price`; the user opens the order again and sees its new amounts.
 final class TakeOrderChanged extends TakeRefusal {
   const TakeOrderChanged();
 }
@@ -141,7 +151,7 @@ final class TakeRobotNotPut extends TakeRefusal {
   String toString() => 'TakeRobotNotPut(${cause.runtimeType})';
 }
 
-/// The pending take, its terms or its first trail could not be written: the take was not sent (`TradeRecordRepository.recordPendingTake`, #87).
+/// The trade records could not be read before the take, or the pending take, its terms or its first trail could not be written: the take was not sent (`TradeRecordRepository.recordPendingTake`, #87).
 final class TakeNotRecorded extends TakeRefusal {
   final P2pFailure failure;
 
@@ -160,9 +170,9 @@ sealed class TakeOutcome {
   const TakeOutcome();
 }
 
-/// The take started a trade: [status] is the pre-take with its bond (`TradeStatus.afterTake`).
+/// The take started a trade: [status] is the pre-take with its bond (`TradeStatus.afterTake`), once its trail is stored.
 ///
-/// [recordProblem] is set when the trail or the confirmation could not be written: the trade runs on the coordinator all the same, and the next read of the trade writes them; the screen shows the status and that the records could not be written.
+/// [recordProblem] is set when the trail or the confirmation could not be written: the trade runs on the coordinator all the same, and the next read of the trade writes them. When the trail could not be stored, [status] is the stored pending trail's (`StatusUnknown`, no invoice): an invoice is shown or offered to the wallet only from a status whose trail is stored (review of #117); the screen says the records could not be written and offers nothing payable.
 final class TakeStarted extends TakeOutcome {
   @override
   final TradeRecord record;

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -27,7 +28,7 @@ enum ScriptedRequest { info, book, robot, order, take, cancel }
 /// One coordinator of the federation list and one order of its book, played for the tests of the trade use cases, as the reference backend at commit ff1998c answers them (`api/views.py`, `api/logics.py`; design note § 1, § 5): never a real coordinator, never money.
 ///
 /// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`) and `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`).
-/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause]); time is [clock], and a pre-take ends at its deadline.
+/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedCoordinator implements CoordinatorTransport {
   /// The order's figures: 100 EUR (currency 2), 106,900 sats at the book's price, a premium of 2 %, a bond of 3 %, an escrow of 3 h.
@@ -65,6 +66,21 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// Whether a take on a public order is answered with the order as it is, this robot not its taker, as the reference does on a take that did not happen (`api/views.py:595-596`).
   bool takesNotMade = false;
 
+  /// Whether the order has a range, 50 to 200 EUR, its sats at the book's price given for the largest amount.
+  final bool range;
+
+  /// The password of a protected order: a take must send its SHA-256, or it is refused with 1045 (`api/views.py:531-596`).
+  final String? password;
+
+  /// The sats of the order's largest amount at the coordinator's price now: the market moves them (`Logics.satoshis_now`).
+  int satoshisNow = bookSats;
+
+  final Map<RobotSessionKey, Map<String, Object?>> _robotFields = {};
+  final List<int> _takeRefusals = [];
+  final Map<RobotSessionKey, DateTime> _penalties = {};
+  final Map<RobotSessionKey, double> _chosen = {};
+  int? _lastSatoshis;
+
   final Map<RobotSessionKey, RobotIdentity> _robots;
   final Map<RobotSessionKey, Map<String, Object?>> _kept = {};
   final Map<ScriptedRequest, List<ScriptedFault>> _faults = {};
@@ -88,6 +104,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     this.orderId = 42,
     this.orderType = 1,
     this.takerFee = 0.00175,
+    this.range = false,
+    this.password,
   }) : coordinator = switch (Federation.robosats.byAlias(alias)) {
          final found? => found,
          null => throw ArgumentError('no coordinator $alias'),
@@ -108,6 +126,17 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The status the coordinator stores now.
   int get status => _status;
 
+  /// The next take is refused with error [code] before anything is done, as the reference refuses it: 1000 to 1003 (the robot has an active order, HTTP 409, `Logics.validate_already_maker_or_taker`), 1011 (an amount out of the range), 1012 (a penalty, HTTP 403, with the seconds in its message), 1045 (a wrong password).
+  void refuseNextTake(int code) => _takeRefusals.add(code);
+
+  /// What every answer about [robot] on `/api/robot/` also says: an active or last order id (`active_order_id`, `last_order_id`), as for a robot that already traded.
+  void robotAnswerHas(RobotIdentity robot, Map<String, Object?> fields) =>
+      _robotFields[robot.sessionKey] = fields;
+
+  /// Whether [robot] has a penalty now, as after the cancel of its pre-take (`PENALTY_TIMEOUT`, 60 s, `api/logics.py:470-483`).
+  bool hasPenalty(RobotIdentity robot) =>
+      _penalties[robot.sessionKey]?.isAfter(clock().toUtc()) ?? false;
+
   /// Whether [robot] holds a live pre-take.
   bool holdsPreTake(RobotIdentity robot) {
     _expirePreTakes();
@@ -126,6 +155,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
     _preTakes.clear();
     _taker = robot.sessionKey;
+    _lastSatoshis = _satsOf(_chosen[robot.sessionKey] ?? bookAmount);
     _status = 6;
     _deadline = clock().toUtc().add(const Duration(seconds: escrowSeconds));
   }
@@ -152,6 +182,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   void backToPublic() {
     _status = 1;
     _taker = null;
+    _lastSatoshis = null;
     _preTakes.clear();
   }
 
@@ -229,12 +260,45 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _orderFor(_robotOf(request));
       case ScriptedRequest.take:
         final robot = _robotOf(request);
+        final body = jsonDecode(utf8.decode(request.body ?? const []));
+        final fields = body is Map<String, Object?> ? body : const {};
+        if (_takeRefusals.isNotEmpty) {
+          final code = _takeRefusals.removeAt(0);
+          return _json(switch (code) {
+            1000 || 1001 || 1002 || 1003 => 409,
+            1012 => 403,
+            _ => 400,
+          }, {
+            'error_code': code,
+            'bad_request': code == 1012
+                ? 'You need to wait 60 seconds to take an order'
+                : 'refused',
+          });
+        }
+        if (hasPenalty(robot)) {
+          return _json(403, {
+            'error_code': 1012,
+            'bad_request': 'You need to wait 60 seconds to take an order',
+          });
+        }
+        if (password case final expected?) {
+          final hashed = sha256.convert(utf8.encode(expected)).toString();
+          if (fields['password'] != hashed) {
+            return _json(400, {'error_code': 1045, 'bad_request': 'wrong'});
+          }
+        }
+        final sent = fields['amount'];
+        final amount = range && sent is num ? sent.toDouble() : bookAmount;
+        if (range && (amount < 50 || amount > 200)) {
+          return _json(400, {'error_code': 1011, 'bad_request': 'range'});
+        }
         if (_status == 1 && !_paused && _taker == null && !takesNotMade) {
+          _chosen.putIfAbsent(robot.sessionKey, () => amount);
           _preTakes.putIfAbsent(
             robot.sessionKey,
             () => (
               deadline: clock().toUtc().add(preTakeTime),
-              bond: _bondInvoice(),
+              bond: _bondInvoice(_satsOf(amount) * bondPercent ~/ 100),
             ),
           );
         }
@@ -257,6 +321,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
     if (preTaker) {
       _preTakes.remove(key);
+      // The pre-taker's cancel costs it a penalty (`kick_taker`, `api/logics.py:470-483`).
+      _penalties[key] = clock().toUtc().add(const Duration(seconds: 60));
       return _orderFor(robot);
     }
     switch (_status) {
@@ -299,6 +365,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'nickname': robot.nickname,
       'hash_id': robot.hashId.hex,
       ...kept,
+      ...?_robotFields[robot.sessionKey],
     });
   }
 
@@ -313,6 +380,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _json(403, {'error_code': 1044, 'bad_request': 'not yours'});
       }
       return _json(200, _orderJson(robot, 3, bond: pre.bond, at: pre.deadline));
+    }
+    // A paused order is shown to its participants only (`api/views.py:269-275`).
+    if (_status == 1 && _paused) {
+      return _json(403, {'error_code': 1044, 'bad_request': 'not yours'});
     }
     if (_status == 1) return _json(200, _orderJson(robot, 1));
     if (_taker != key) {
@@ -345,12 +416,16 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     return body is Map<String, Object?> ? body['action'] as String? : null;
   }
 
-  Bolt11TestInvoice _bondInvoice() {
+  /// The sats of [amount] at the price now: those of the largest amount, in proportion for a range.
+  int _satsOf(double amount) =>
+      range ? (satoshisNow * amount / 200).truncate() : satoshisNow;
+
+  Bolt11TestInvoice _bondInvoice([int? sats]) {
     final invoice = Bolt11TestInvoice(
       network: network == RobosatsNetwork.mainnet
           ? Bolt11Network.mainnet
           : Bolt11Network.testnet,
-      sats: bookSats * bondPercent ~/ 100,
+      sats: sats ?? satoshisNow * bondPercent ~/ 100,
       seed: _invoiceSeed++,
       createdAt: clock().toUtc(),
       expiry: const Duration(seconds: 200),
@@ -361,7 +436,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     return invoice;
   }
 
-  int get _fee => (bookSats * takerFee).round();
+  int get _last => _lastSatoshis ?? satoshisNow;
+
+  int get _fee => (_last * takerFee).round();
 
   Map<String, Object?> _info() => {
     'num_public_buy_orders': 0,
@@ -395,10 +472,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'expires_at': _createdAt.add(const Duration(hours: 23)).toIso8601String(),
     'type': orderType,
     'currency': 2,
-    'amount': '100.00000000',
-    'has_range': false,
-    'min_amount': null,
-    'max_amount': null,
+    'amount': range ? null : '100.00000000',
+    'has_range': range,
+    'min_amount': range ? '50.00000000' : null,
+    'max_amount': range ? '200.00000000' : null,
     'payment_method': 'Revolut Instant SEPA',
     'is_explicit': false,
     'premium': '2.00',
@@ -409,7 +486,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'latitude': null,
     'longitude': null,
     'maker_hash_id': _maker.hex,
-    'satoshis_now': bookSats,
+    'satoshis_now': satoshisNow,
     'price': 93545.0,
     'maker_status': 'Active',
   };
@@ -436,10 +513,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'expires_at': deadline.toIso8601String(),
       'type': orderType,
       'currency': 2,
-      'amount': '100.00000000',
-      'has_range': false,
-      'min_amount': null,
-      'max_amount': null,
+      'amount': !range
+          ? '100.00000000'
+          : switch (_chosen[robot.sessionKey]) {
+              final chosen? when participant => chosen.toStringAsFixed(8),
+              _ => null,
+            },
+      'has_range': range,
+      'min_amount': range ? '50.00000000' : null,
+      'max_amount': range ? '200.00000000' : null,
       'payment_method': 'Revolut Instant SEPA',
       'is_explicit': false,
       'premium': '2.00',
@@ -453,7 +535,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'is_maker': false,
       'is_taker': participant,
       'is_participant': participant,
-      'has_password': false,
+      'has_password': password != null,
       'total_secs_exp': deadline
           .difference(clock().toUtc())
           .inSeconds
@@ -467,11 +549,11 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       data
         ..['price_now'] = 93545.0
         ..['premium_now'] = 2.0
-        ..['satoshis_now'] = bookSats;
+        ..['satoshis_now'] = satoshisNow;
       return data;
     }
-    final payout = bookSats - _fee;
-    final escrow = bookSats + _fee;
+    final payout = _last - _fee;
+    final escrow = _last + _fee;
     data
       ..['is_buyer'] = buyer
       ..['is_seller'] = !buyer
@@ -481,7 +563,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       ..['is_disputed'] = status == 11 || status >= 16
       ..['ur_nick'] = robot.nickname
       // At the pre-take the participant's `satoshis_now` is the order's stale `last_satoshis`.
-      ..['satoshis_now'] = taken ? bookSats : bookSats + 4321
+      ..['satoshis_now'] = taken ? _last : bookSats + 4321
       ..['maker_locked'] = true
       ..['taker_locked'] = taken
       ..['escrow_locked'] = status == 8 || status >= 9;

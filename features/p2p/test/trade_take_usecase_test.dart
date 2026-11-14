@@ -336,7 +336,7 @@ void main() {
     );
 
     test(
-      'the take did not happen: the reads go on until the time to lock a bond is over, then it is closed',
+      'the take did not happen: the first read shows the order public, this robot no participant, and it is closed as not made',
       () async {
         final app = await TradeHarness.start();
         app.coordinator.failNext(take, ScriptedFault.timedOut);
@@ -344,17 +344,11 @@ void main() {
 
         final run = app.watchOf(record);
         await app.settle();
-        // The order public, this robot no participant: not the end yet.
-        expect(run.lastStatus.takePending, isTrue);
-        expect(run.lastStatus.seen.status, isA<StatusUnknown>());
-        expect(run.done, isFalse);
-        await app.elapse(const Duration(minutes: 30));
-        expect(run.lastStatus.takePending, isTrue);
-        expect(await app.activeRecords(), hasLength(1));
-
-        await app.elapse(const Duration(minutes: 1, seconds: 5));
-        expect(run.lastStatus.seen.status, isA<PreTakeEnded>());
-        expect(run.lastStatus.record.closedAt, isNotNull);
+        // A live pre-take of this robot would be shown as 3: it holds none, and no invoice was ever shown.
+        expect(
+          run.last,
+          isA<TradeWatchTakeNotMade>().having((s) => s.closed, 'closed', isTrue),
+        );
         expect(run.done, isTrue);
         expect(await app.activeRecords(), isEmpty);
         expect(app.activeTimers, isEmpty);
@@ -387,7 +381,7 @@ void main() {
     );
 
     test(
-      'after the pending take: the take never left, and the record is closed once its time is over',
+      'after the pending take: the take never left, and the record is closed at once, with no read',
       () async {
         final app = await TradeHarness.start();
         app.kill = KillAt.afterPendingTake;
@@ -395,10 +389,11 @@ void main() {
 
         final again = app.restart();
         final [record] = await again.activeRecords();
+        final requests = app.coordinator.requests.length;
         final run = again.watchOf(record);
         await again.settle();
-        expect(run.last, isA<TradeWatchTakeNeverSent>());
-        await again.elapse(const Duration(minutes: 32));
+        expect(app.coordinator.requests, hasLength(requests));
+        expect(run.done, isTrue);
         expect(
           run.last,
           isA<TradeWatchTakeNeverSent>().having(
@@ -413,7 +408,7 @@ void main() {
     );
 
     test(
-      'after the terms: resumed on the trail of a pending take, never a fresh trade',
+      'after the terms, before the first trail: the take never left, and the record is closed at once',
       () async {
         final app = await TradeHarness.start();
         app.kill = KillAt.afterTerms;
@@ -423,9 +418,10 @@ void main() {
         final [record] = await again.activeRecords();
         final run = again.watchOf(record);
         await again.settle();
-        expect(run.lastStatus.takePending, isTrue);
-        await again.elapse(const Duration(minutes: 32));
-        expect(run.lastStatus.seen.status, isA<PreTakeEnded>());
+        expect(
+          run.last,
+          isA<TradeWatchTakeNeverSent>().having((s) => s.closed, 'closed', isTrue),
+        );
         expect(await again.activeRecords(), isEmpty);
         expect(app.coordinator.received, isNot(contains(take)));
       },

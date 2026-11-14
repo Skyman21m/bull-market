@@ -1,20 +1,45 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show CoordinatorOrderStatus;
 
 import '../p2p_failure.dart';
+import '../robot_binding.dart';
 import '../trade_record.dart';
 import 'trade_storable.dart';
 import 'trade_watch.dart';
 
-/// The user's confirmation that a cancel now loses the taker bond (status 6 or 7, design note § 1.4): the trade screen builds it only from its confirmation dialog, after the user confirmed it (#88).
+/// The user's confirmation that a cancel now loses the taker bond (status 6 or 7, design note § 1.4), for one trade at the status the user saw: the trade screen builds it only from its confirmation dialog, after the user confirmed it (#88; `robot_bindings_architecture_test.dart` pins the file that may build it).
 ///
-/// `CancelTradeUsecase` refuses such a cancel without it; a free cancel (the pre-take, 3) needs none.
+/// `CancelTradeUsecase` refuses such a cancel without it, and refuses one given for another trade or at another status than the one it cancels with ([CancelAcknowledgementMismatch]); a free cancel (the pre-take, 3) needs none.
 @immutable
 final class BondLossAcknowledged {
-  const BondLossAcknowledged.fromConfirmationDialog();
+  /// The robot of the trade the user confirmed for (its key's fingerprint, index and network) and the order.
+  final RobotSlot robot;
+  final int orderId;
+
+  /// The status of the order the user saw, and when that status was read.
+  final CoordinatorOrderStatus status;
+  final DateTime seenAt;
+
+  /// The acknowledgement for [record] at [seen], which must come from an order (`TradeSeen.order`).
+  BondLossAcknowledged.fromConfirmationDialog(TradeRecord record, TradeSeen seen)
+    : robot = record.robot,
+      orderId = record.orderId,
+      status = switch (seen.order) {
+        final order? => order.status,
+        null => throw ArgumentError('a status seen from no order'),
+      },
+      seenAt = seen.status.seenAt;
+
+  /// Whether this acknowledgement was given for [record] at [seen].
+  bool covers(TradeRecord record, TradeSeen seen) =>
+      robot == record.robot &&
+      orderId == record.orderId &&
+      status == seen.order?.status &&
+      seenAt == seen.status.seenAt;
 
   @override
-  String toString() => 'BondLossAcknowledged';
+  String toString() => 'BondLossAcknowledged(${status.name})';
 }
 
 /// Why a cancel was not sent: a type for each reason, which the screen words (#88).
@@ -33,6 +58,11 @@ final class CancelNeedsARead extends CancelRefusal {
 /// The bond is locked and the escrow is not (6 or 7): a cancel now loses the bond, and needs [BondLossAcknowledged].
 final class CancelLosesTheBond extends CancelRefusal {
   const CancelLosesTheBond();
+}
+
+/// The acknowledgement given is for another trade, or another status, than the cancel's: nothing is sent; the screen asks again.
+final class CancelAcknowledgementMismatch extends CancelRefusal {
+  const CancelAcknowledgementMismatch();
 }
 
 /// The escrow is locked (8 or 9): only a collaborative cancel exists, a later slice.

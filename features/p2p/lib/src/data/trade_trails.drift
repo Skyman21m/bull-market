@@ -2,6 +2,14 @@
 -- What a trigger cannot say, that the position of a trail moves only along the edges of the trade, is `TradeTrailRecord.whyNotReplace`'s, which the repository asks before every write.
 import 'p2p_tables.dart';
 
+-- One open trade per order on this device: a second pending take, or take-over, of an order whose trade is open here is refused, whatever the code, before anything leaves.
+-- A trigger rather than a unique index, so that the step from schema 3 never fails: a file holding two open trades of one order (no version wrote a take before this one) keeps them, and only a new one is refused.
+CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades
+WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'an order has one open trade');
+END;
+
 -- The terms of a trade are never deleted.
 CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms
 BEGIN

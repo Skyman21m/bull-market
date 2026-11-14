@@ -56,6 +56,8 @@ import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
 import 'domain/usecases/trade/trade_reader.dart';
+import 'domain/usecases/trade/trade_take_locks.dart';
+import 'domain/usecases/trade/trade_watch_session.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/book_cubit.dart';
@@ -272,6 +274,8 @@ final class P2pLocator {
         clock: clock,
       ),
     );
+    // One for the feature: the takes of an order run one at a time, whichever use case object runs them.
+    locator.registerLazySingleton<TradeTakeLocks>(TradeTakeLocks.new);
     locator.registerFactory<TakeOrderUsecase>(
       () => TakeOrderUsecase(
         CoordinatorClient(transport(), clock: clock),
@@ -282,10 +286,13 @@ final class P2pLocator {
         locator(),
         locator(),
         invoices(),
+        locator(),
       ),
     );
+    // One for the feature: one subscription per trade, whichever use case object makes it.
+    locator.registerLazySingleton<TradeWatchRegistry>(TradeWatchRegistry.new);
     locator.registerFactory<WatchTradeUsecase>(
-      () => WatchTradeUsecase(locator(), locator(), locator()),
+      () => WatchTradeUsecase(locator(), locator(), locator(), locator()),
     );
     locator.registerFactory<CancelTradeUsecase>(
       () => CancelTradeUsecase(

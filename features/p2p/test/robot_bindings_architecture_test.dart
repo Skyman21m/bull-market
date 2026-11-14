@@ -268,6 +268,10 @@ void main() {
             'recoveredTradeInVariable': {
               'TradeRecordRepository.recordRecoveredTrade',
             },
+            'readerKeepByTearOff': {'TradeReader.keep'},
+            'acknowledgedByTearOff': {
+              'BondLossAcknowledged.fromConfirmationDialog',
+            },
           },
         );
       },
@@ -458,13 +462,41 @@ void main() {
         expect(referring((r) => r == 'TradeStatus.afterTake'), {
           _takeOrderUseCase,
         });
+        // Since the review of #117 a pending take without its first trail is closed as never sent: only the take names this factory.
         expect(referring((r) => r == 'TradeTrail.forPendingTake'), {
           _takeOrderUseCase,
-          '${_tradeUseCases}trade_reader.dart',
         });
         expect(referring((r) => r == 'TradeTrail.recovered'), {
           '${_tradeUseCases}trade_reader.dart',
         });
+      },
+    );
+
+    test(
+      'only the trade use cases reach the reader they share, and no file of lib/ builds an acknowledgement of a bond lost yet',
+      () {
+        // Its members store trails, confirm and close records: only the trade use cases and the composition name it (review of #117).
+        expect(
+          referring(
+            (r) => r.startsWith('TradeReader.'),
+          ).where((path) => !path.startsWith(_tradeUseCases)),
+          isEmpty,
+        );
+        expect(
+          referring((r) => r == 'type TradeReader').where(
+            (path) =>
+                !path.startsWith(_tradeUseCases) &&
+                path != 'lib/src/p2p_locator.dart',
+          ),
+          isEmpty,
+        );
+        // The trade screen's cancel confirmation (#88) is to be the one file that builds it: add that file here, alone.
+        expect(
+          referring(
+            (r) => r == 'BondLossAcknowledged.fromConfirmationDialog',
+          ),
+          isEmpty,
+        );
       },
     );
 
@@ -919,6 +951,7 @@ class RobotCoordinatorCubit {
       // Schema 4 (#87): the terms and the trails of the trades, and the triggers that keep them.
       'm.createTable(schema.tradeTerms)',
       'm.createTable(schema.tradeTrails)',
+      'm.createTrigger(schema.tradesOneOpenPerOrder)',
       'm.createTrigger(schema.tradeTermsNeverDeleted)',
       'm.createTrigger(schema.tradeTermsSetOnce)',
       'm.createTrigger(schema.tradeTermsInsertedOnce)',
@@ -1600,6 +1633,12 @@ const _watched = {
   // The fresh trails of the state machine (#86, #87): only the take starts a trade, only the take and the resolution of a pending take read one on a pending take's trail.
   'TradeStatus': ('package:p2p/', {'afterTake'}),
   'TradeTrail': ('package:p2p/', {'forPendingTake', 'recovered'}),
+  // What the trade use cases share, which writes trails and closes records, and the acknowledgement of a bond lost (review of #117).
+  'TradeReader': (
+    'package:p2p/',
+    {'open', 'readOrder', 'advance', 'keep', 'closeAtEnd', 'closeNeverSent'},
+  ),
+  'BondLossAcknowledged': ('package:p2p/', {'fromConfirmationDialog'}),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
@@ -1972,6 +2011,7 @@ final _tradeRules = [
 
 /// The statements of `trade_trails.drift` (#87), as written: the terms set once and kept, the trails written once, then only forward, never deleted, never written again once their trade is closed.
 const _trailTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'an order has one open trade'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are set once'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms WHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",

@@ -712,7 +712,7 @@ void main() {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network')",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name <> 'trades_one_open_per_order'",
               )
               .get())
         row.read<String>('name'): row
@@ -907,7 +907,7 @@ void main() {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name IN ('trade_terms', 'trade_trails')",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name IN ('trade_terms', 'trade_trails') OR name = 'trades_one_open_per_order')",
               )
               .get())
         row.read<String>('name'): row
@@ -1036,6 +1036,66 @@ void main() {
       },
     );
 
+    test('a file holding two open trades of one order migrates, keeps both, and refuses a third', () async {
+      await writeSchema3();
+      // No version wrote a take before schema 4: by hand, a second open trade of order 41.
+      final old = v3.DatabaseAtV3(NativeDatabase(file));
+      await old
+          .into(old.robotBindings)
+          .insert(
+            v3.RobotBindingsCompanion.insert(
+              network: testnet.name,
+              keyFingerprint: drawn.hex,
+              robotIndex: 5,
+              coordinatorAlias: temple.alias,
+              coordinatorOnion: temple.onion,
+              coordinatorNodeKeys: temple.nodeKeys.join(','),
+              coordinatorNostrKey: temple.nostrKey,
+              boundAt: 10,
+              provenance: const Value('generated'),
+            ),
+          );
+      await old
+          .into(old.trades)
+          .insert(
+            v3.TradesCompanion.insert(
+              network: testnet.name,
+              keyFingerprint: drawn.hex,
+              robotIndex: 5,
+              coordinatorAlias: temple.alias,
+              coordinatorOnion: temple.onion,
+              orderId: 41,
+              role: 'buyer',
+              origin: 'takenHere',
+              takenAt: 16,
+            ),
+          );
+      await old.close();
+
+      final database = P2pDatabase.open(() async => directory);
+      expect(await versionOf(database), 4);
+      expect(
+        await database
+            .customSelect(
+              'SELECT * FROM trades WHERE order_id = 41 AND closed_at IS NULL',
+            )
+            .get(),
+        hasLength(2),
+      );
+      await database.customStatement(
+        "INSERT INTO robot_bindings VALUES ('testnet', ?, 6, ?, ?, ?, ?, 10, 'generated')",
+        [drawn.hex, temple.alias, temple.onion, temple.nodeKeys.join(','), temple.nostrKey],
+      );
+      await expectLater(
+        database.customStatement(
+          "INSERT INTO trades VALUES ('testnet', ?, 6, ?, ?, 41, 'buyer', 'recovered', 0, 0, NULL)",
+          [drawn.hex, temple.alias, temple.onion],
+        ),
+        throwsA(predicate((error) => '$error'.contains('SqliteException(1811)'))),
+      );
+      await database.close();
+    });
+
     test(
       'a file migrated holds the same objects as a new file of schema 4',
       () async {
@@ -1120,10 +1180,11 @@ const _schema3Objects = [
   'trades_inserted_once',
 ];
 
-/// The objects schema 4 adds, in the order of its step from 3: the terms and the trails of the trades, and their nine triggers.
+/// The objects schema 4 adds, in the order of its step from 3: the terms and the trails of the trades, the trigger of one open trade per order, and the nine triggers of the terms and trails.
 const _schema4Objects = [
   'trade_terms',
   'trade_trails',
+  'trades_one_open_per_order',
   'trade_terms_never_deleted',
   'trade_terms_set_once',
   'trade_terms_inserted_once',

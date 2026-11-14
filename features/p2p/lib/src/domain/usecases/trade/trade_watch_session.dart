@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart';
 
-import '../../network_garage_key.dart';
 import '../../p2p_failure.dart';
 import '../../p2p_waits.dart';
+import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_cadence.dart';
@@ -17,7 +16,8 @@ import 'trade_reader.dart';
 /// One subscription to the watch of one trade (`WatchTradeUsecase`): its reads, their cadence and what each emits.
 ///
 /// At most one read is in flight; the next one starts the cadence's delay after it ended ([TradeCadence]), at once when the screen asks, and none once the trade is at a terminal status.
-/// Nothing runs once the subscription is cancelled: no timer, no new read, and a read in flight at the cancel writes nothing when it ends (its answer is dropped; the next subscription reads again).
+/// Nothing runs once the subscription is cancelled: no timer, no new read; a read whose answer comes after the cancel is dropped, and the writes of an answer already being kept finish (`TradeTrailRepository.storeTrail` keeps the stored trail correct whatever their order).
+/// One subscription per trade ([TradeWatchRegistry]): a second one reads nothing ([TradeWatchAlreadyWatched]).
 final class TradeWatchSession {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
@@ -25,10 +25,11 @@ final class TradeWatchSession {
   final TradeRecord _record;
   final Stream<TradeWatchSignal> _signals;
   final StreamController<TradeWatchState> _out;
+  final TradeWatchRegistry _registry;
+  bool _registered = false;
 
   bool _onScreen;
   OpenTrade? _trade;
-  (NetworkRobot, Coordinator)? _neverSent;
   RobotRequests? _requests;
   StreamSubscription<TradeWatchSignal>? _signalSubscription;
   Timer? _timer;
@@ -48,12 +49,19 @@ final class TradeWatchSession {
     this._waits,
     this._record,
     this._signals,
-    this._out, {
+    this._out,
+    this._registry, {
     required this._onScreen,
   });
 
   /// Opens the trade from its stored records, emits what they give, and reads at once when the trade goes on.
   Future<void> start() async {
+    if (!_registry.claim(_record.robot)) {
+      _emit(TradeWatchAlreadyWatched(_record));
+      await _finish();
+      return;
+    }
+    _registered = true;
     _signalSubscription = _signals.listen(_onSignal);
     final opening = await _reader.open(_record);
     if (_stopped) return;
@@ -64,11 +72,19 @@ final class TradeWatchSession {
       case TradeNotOpened(:final failure):
         _emit(TradeWatchUnavailable(_record, failure));
         await _finish();
-      case TradeTakeNeverSent(:final robot, :final coordinator):
-        _neverSent = (robot, coordinator);
-        _requests = _limiter.open(robot.identity.sessionKey);
-        _emit(TradeWatchTakeNeverSent(_record, closed: false));
-        unawaited(_read());
+      case TradeTakeNeverSent():
+        // Its request never left: closed at once, with no read.
+        final closed = await _reader.closeNeverSent(_record);
+        if (_stopped) return;
+        _emit(switch (closed) {
+          Ok(:final value) => TradeWatchTakeNeverSent(value, closed: true),
+          Err(:final failure) => TradeWatchTakeNeverSent(
+            _record,
+            closed: false,
+            recordProblem: failure,
+          ),
+        });
+        await _finish();
       case TradeOpened(:final trade):
         _trade = trade;
         if (trade.seen.status.isTerminal) {
@@ -104,6 +120,7 @@ final class TradeWatchSession {
   /// Stops everything: the subscription was cancelled.
   Future<void> stop() async {
     _stopped = true;
+    _release();
     _timer?.cancel();
     _requests?.close();
     await _signalSubscription?.cancel();
@@ -134,12 +151,7 @@ final class TradeWatchSession {
     _reading = true;
     _timer?.cancel();
     final trade = _trade;
-    final neverSent = _neverSent;
-    if (trade != null) {
-      await _readTrade(requests, trade);
-    } else if (neverSent != null) {
-      await _readNeverSent(requests, neverSent.$1, neverSent.$2);
-    }
+    if (trade != null) await _readTrade(requests, trade);
     _reading = false;
     if (_stopped || _out.isClosed) return;
     if (_readAgain) {
@@ -157,7 +169,7 @@ final class TradeWatchSession {
       trade.robot,
       trade.coordinator,
     );
-    // Cancelled while the read was in flight: its answer is dropped, nothing is written.
+    // Cancelled while the read was in flight: its answer is dropped.
     if (_stopped) return;
     final at = _reader.now();
     _lastReadEnded = at;
@@ -188,37 +200,19 @@ final class TradeWatchSession {
     if (step.recordProblem case final TradeClosedFailure closed) {
       _closedButTaken = closed;
     }
+    if (step.takeNotMade) {
+      _emit(
+        TradeWatchTakeNotMade(
+          next.record,
+          closed: next.record.closedAt != null,
+          recordProblem: step.recordProblem,
+        ),
+      );
+      await _finish();
+      return;
+    }
     _emitStatus(next, step.recordProblem);
     if (next.seen.status.isTerminal) await _finish();
-  }
-
-  Future<void> _readNeverSent(
-    RobotRequests requests,
-    NetworkRobot robot,
-    Coordinator coordinator,
-  ) async {
-    final read = await _reader.readOrder(requests, _record, robot, coordinator);
-    if (_stopped) return;
-    final at = _reader.now();
-    _lastReadEnded = at;
-    if (read case Ok(value: final result)) {
-      switch (await _reader.closeNeverSent(_record, result, at: at)) {
-        case Ok(:final value):
-          if (_stopped) return;
-          _emit(TradeWatchTakeNeverSent(value, closed: true));
-          await _finish();
-        case Err(:final failure):
-          _emit(
-            TradeWatchTakeNeverSent(
-              _record,
-              closed: false,
-              recordProblem: failure,
-            ),
-          );
-        case null:
-          break;
-      }
-    }
   }
 
   void _failed(OpenTrade trade, Failure? failure) {
@@ -263,10 +257,31 @@ final class TradeWatchSession {
 
   /// The trade is at an end, or cannot be read: the stream ends.
   Future<void> _finish() async {
+    _release();
     _timer?.cancel();
     _requests?.close();
     _requests = null;
     await _signalSubscription?.cancel();
     if (!_out.isClosed) await _out.close();
   }
+}
+
+  void _release() {
+    if (!_registered) return;
+    _registered = false;
+    _registry.release(_record.robot);
+  }
+}
+
+/// The trades watched in this process, one subscription each (a lazy singleton of the composition, `P2pLocator.registerTrades`): a second subscription to a trade reads nothing, so that a trade is never read twice at once by two screens, nor its trail written from two sessions.
+///
+/// Refused rather than shared: the two screens would send opposite signals (shown, not shown), and a trade screen is shown once at a time.
+final class TradeWatchRegistry {
+  final Set<RobotSlot> _watched = {};
+
+  /// Whether [robot]'s trade was free to watch, now watched.
+  bool claim(RobotSlot robot) => _watched.add(robot);
+
+  /// [robot]'s trade is no longer watched.
+  void release(RobotSlot robot) => _watched.remove(robot);
 }

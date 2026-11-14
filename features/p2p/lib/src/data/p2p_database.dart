@@ -89,10 +89,11 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradesInsertedOnce);
       },
       from3To4: (m, schema) async {
-        // Two new tables, the terms and the trail of each trade, and the triggers that keep their rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // Two new tables, the terms and the trail of each trade, the triggers that keep their rows, and one on the trades (one open trade per order): each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
         // No row of an older table is copied, changed or dropped.
         await m.createTable(schema.tradeTerms);
         await m.createTable(schema.tradeTrails);
+        await m.createTrigger(schema.tradesOneOpenPerOrder);
         await m.createTrigger(schema.tradeTermsNeverDeleted);
         await m.createTrigger(schema.tradeTermsSetOnce);
         await m.createTrigger(schema.tradeTermsInsertedOnce);

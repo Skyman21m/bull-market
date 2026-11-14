@@ -447,20 +447,33 @@ void main() {
     });
 
     test(
-      'a row of another type than this code writes is read as unreadable',
+      'a value of another storage class than this code writes is refused by the database',
       () async {
         final trade = await recorded();
-        // A REAL in an INTEGER column passes the bounds, and is not a time this code writes.
-        await database.customStatement(
-          'UPDATE trade_trails SET read_at = ? WHERE robot_index = 0',
-          [at(10) + 0.5],
-        );
-        final history = await historyOf(trade);
-        expect(history.unreadable, isTrue);
-        expect(history.trail, isNull);
-        expect(
-          await trails.storeTrail(trade, trailOf(readAt: at(20))),
-          refusedWith<P2pStorageFailure>(),
+        // A REAL in an INTEGER column would pass the bounds and read back as no record this code wrote (review of #117, P9).
+        for (final (column, value) in [
+          ('read_at', at(10) + 0.5),
+          ('bond_step_seen_at', 1.5),
+          ('position', 7),
+          ('breached', 0.0 + 1e-9),
+        ]) {
+          await expectLater(
+            database.customStatement(
+              'UPDATE trade_trails SET $column = ? WHERE robot_index = 0',
+              [value],
+            ),
+            throwsA(
+              predicate((error) => '$error'.contains('SqliteException(275)')),
+            ),
+            reason: column,
+          );
+        }
+        expect((await historyOf(trade)).trail, trailOf());
+        await expectLater(
+          database.customStatement(
+            'UPDATE trade_terms SET escrow_seconds = 10800.5',
+          ),
+          throwsA(anything),
         );
       },
     );

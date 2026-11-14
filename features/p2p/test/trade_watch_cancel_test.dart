@@ -394,7 +394,7 @@ void main() {
         final cancelled = await app.cancel.execute(
           record,
           seen,
-          bondLoss: const BondLossAcknowledged.fromConfirmationDialog(),
+          bondLoss: BondLossAcknowledged.fromConfirmationDialog(record, seen),
         );
         expect(
           cancelled,
@@ -614,7 +614,7 @@ void main() {
       () async {
         final (app, record) = await takenTrade();
         await app.database.customStatement(
-          'UPDATE trade_trails SET read_at = read_at + 0.5',
+          'UPDATE trade_trails SET read_at = read_at + 3600000000',
         );
         final reads = readsOf(app);
         final run = app.restart().watchOf(record);
@@ -664,7 +664,7 @@ void main() {
       () async {
         final (app, record) = await takenTrade();
         await app.database.customStatement(
-          'UPDATE trade_trails SET read_at = read_at + 0.5',
+          'UPDATE trade_trails SET read_at = read_at + 3600000000',
         );
         final listed = await app.list.execute(app.network).first;
         expect(

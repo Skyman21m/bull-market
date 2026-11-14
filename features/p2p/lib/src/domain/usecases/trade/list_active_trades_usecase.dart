@@ -89,10 +89,12 @@ final class ListActiveTradesUsecase {
     StoredTradeHistory? history,
   ) {
     final terms = history?.terms;
+    // The take sends its request only once its terms and its first trail are written.
+    if (record.isPendingTake && (terms == null || history?.trail == null)) {
+      return const ActiveTradeTakeNeverSent();
+    }
     if (history == null || terms == null) {
-      return record.isPendingTake
-          ? const ActiveTradeTakeNeverSent()
-          : const ActiveTradeUnrestorable(TradeRecordMalformed());
+      return const ActiveTradeUnrestorable(TradeRecordMalformed());
     }
     if (history.unreadable) {
       return const ActiveTradeUnrestorable(TradeRecordMalformed());
@@ -112,7 +114,7 @@ final class ListActiveTradesUsecase {
     }
     final trail = history.trail;
     if (trail == null) {
-      return record.isPendingTake || record.origin == TradeOrigin.recovered
+      return record.origin == TradeOrigin.recovered
           ? ActiveTradeAt(
               TradePosition.start,
               deadline: null,

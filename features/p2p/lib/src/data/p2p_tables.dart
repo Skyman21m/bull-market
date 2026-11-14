@@ -190,6 +190,8 @@ class StoredTradeTerms extends Table {
 
   @override
   List<String> get customConstraints => const [
+    // The storage class of each column this code writes: SQLite keeps a value of another class in any column (a REAL in an INTEGER column, a text), which would read back as a record this code never wrote.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(is_range) = 'integer' AND (explicit_satoshis IS NULL OR typeof(explicit_satoshis) = 'integer') AND typeof(escrow_seconds) = 'integer')",
     "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
     'CHECK (version >= 1)',
@@ -266,6 +268,8 @@ class StoredTradeTrails extends Table {
     'CHECK (length(coordinator_alias) > 0)',
     'CHECK (order_id BETWEEN 1 AND 9007199254740992)',
     "CHECK (role IN ('buyer', 'seller'))",
+    // The storage class of each column this code writes, as for the terms.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer')",
     // `TradePosition.values`, written out: a position added to the state machine needs a schema step.
     "CHECK (position IN ('start', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable'))",
     // Times from the epoch to the year 9999, as `TradeTrail.restore` takes them.
