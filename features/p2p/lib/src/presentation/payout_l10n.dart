@@ -3,10 +3,23 @@ import 'package:intl/intl.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_payout.dart';
 import '../domain/trade/trade_payout_outcome.dart';
 import 'p2p_formats.dart';
 import 'payout_cubit.dart';
+
+/// The date of an invoice's expiry, local, as the panel's table and its warning write it.
+String payoutExpiryDate(BuildContext context, DateTime expiresAt) =>
+    DateFormat.yMd(
+      P2pLocalizations.of(context).localeName,
+    ).format(expiresAt.toLocal());
+
+/// The time of an invoice's expiry, local, to the second, as the panel's table and its warning write it.
+String payoutExpiryTime(BuildContext context, DateTime expiresAt) =>
+    DateFormat.Hms(
+      P2pLocalizations.of(context).localeName,
+    ).format(expiresAt.toLocal());
 
 /// Why a payout cannot be given, in words of the app or of the reference (#91): never the pasted text, never a coordinator's text.
 extension PayoutCheckRefusalL10n on PayoutCheckRefusal {
@@ -46,15 +59,15 @@ extension PayoutWarningL10n on PayoutWarning {
   }) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      PayoutWarning.invoiceMayExpireFirst => l10n.p2pPayoutWarnExpiresFirst(
-        switch (payout) {
-          CheckedPayoutInvoice(:final expiresAt) => DateFormat.yMd(
-            l10n.localeName,
-          ).add_Hm().format(expiresAt.toLocal()),
-          CheckedPayoutAddress() => '',
-        },
-        coordinator,
-      ),
+      PayoutWarning.invoiceMayExpireFirst => switch (payout) {
+        CheckedPayoutInvoice(:final expiresAt) =>
+          l10n.p2pPayoutWarnExpiresFirst(
+            payoutExpiryDate(context, expiresAt),
+            payoutExpiryTime(context, expiresAt),
+            coordinator,
+          ),
+        CheckedPayoutAddress() => '',
+      },
       PayoutWarning.sentBelowMinimum => l10n.p2pPayoutWarnBelowMinimum(
         coordinator,
       ),
@@ -100,6 +113,7 @@ extension PayoutProgressL10n on PayoutProgress {
   String toText(BuildContext context, {required String coordinator}) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
+      PayoutProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
       PayoutProgress.unlockingKey => l10n.p2pPayoutStepUnlocking(coordinator),
       PayoutProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       PayoutProgress.sending => l10n.p2pPayoutStepSending(coordinator),
@@ -117,14 +131,20 @@ extension PayoutNoticeL10n on PayoutNotice {
     return switch (this) {
       PayoutNoticeGiven() => l10n.p2pPayoutGiven(coordinator),
       PayoutNoticeUnknown() => l10n.p2pPayoutUnknown(coordinator),
+      PayoutNoticeAskedAgain() => l10n.p2pPayoutAskedAgain(coordinator),
       PayoutNoticeNotTaken(:final cause, :final shown) => _notTaken(
         context,
         cause,
         shown,
         coordinator,
       ),
-      PayoutNoticeNotSent(:final refusal) => switch (refusal) {
-        PayoutChangedSinceShown() => l10n.p2pPayoutChanged,
+      PayoutNoticeNotSent(:final refusal, :final change) => switch (refusal) {
+        PayoutChangedSinceShown() => switch (change) {
+          PayoutChange.amount => l10n.p2pPayoutChangedAmount,
+          PayoutChange.expiry => l10n.p2pPayoutChangedExpiry,
+          PayoutChange.status => l10n.p2pPayoutChangedStatus,
+          PayoutChange.other || null => l10n.p2pPayoutChanged,
+        },
         PayoutNoLongerValid(:final reason) => reason.toText(
           context,
           coordinator: coordinator,
@@ -148,20 +168,19 @@ extension PayoutNoticeL10n on PayoutNotice {
   ) {
     final l10n = P2pLocalizations.of(context);
     return switch (cause) {
-      PayoutInvoiceRefused(:final reason) => switch (reason) {
+      PayoutInvoiceRefused(:final reason) && final refused => switch (reason) {
         PayoutInvoiceRefusal.empty => l10n.p2pPayoutRefusedEmptyInvoice,
         PayoutInvoiceRefusal.notAnInvoice => l10n.p2pPayoutRefusedNotInvoice,
         PayoutInvoiceRefusal.routeHintsUnpayable =>
           l10n.p2pPayoutRefusedRouteHints,
         PayoutInvoiceRefusal.noAmount => l10n.p2pPayoutRefusedNoAmount,
-        PayoutInvoiceRefusal.wrongAmount => l10n.p2pPayoutRefusedWrongAmount(
-          switch (shown) {
-            CheckedPayoutInvoice(:final amount) => P2pFormats.of(
-              context,
-            ).sats(amount.value.toInt()),
-            CheckedPayoutAddress() => '',
-          },
-        ),
+        // The amount the coordinator expects, from its own message: it computes it itself (`api/lightning/lnd.py:514-520`), and it is the one that differs from the invoice's.
+        PayoutInvoiceRefusal.wrongAmount => switch (refused.expectedSats) {
+          final expected? => l10n.p2pPayoutRefusedWrongAmount(
+            P2pFormats.of(context).sats(expected),
+          ),
+          null => l10n.p2pPayoutInvalidInvoiceAmount,
+        },
         PayoutInvoiceRefusal.expired => l10n.p2pPayoutRefusedExpired,
         PayoutInvoiceRefusal.alreadySubmitted =>
           l10n.p2pPayoutRefusedNewInvoice,
@@ -193,6 +212,8 @@ extension PayoutNoticeL10n on PayoutNotice {
         CheckedPayoutAddress() => l10n.p2pPayoutRefusedAddressNotNow,
       },
       OrderNotParticipant() => l10n.p2pPayoutRefusedNotParticipant,
+      // The request never reached the coordinator: nothing was recorded.
+      P2pFailure() => l10n.p2pPayoutNotReached(coordinator),
       _ => l10n.p2pPayoutRefusedOther(coordinator),
     };
   }

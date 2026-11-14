@@ -1319,6 +1319,167 @@ void main() {
     );
   });
 
+  group('the steps told to the panel (review of #132)', () {
+    test(
+      'each step is told before it starts: « sending » before the request leaves, « reading after » once it answered',
+      () async {
+        final (app, record, seen) = await atSix();
+        final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(invoice.text, budget: defaultBudget),
+          ),
+        );
+        final events = <String>[];
+        app.coordinator.onRequest = (request) {
+          final body = request.body;
+          final decoded = body == null ? null : jsonDecode(utf8.decode(body));
+          events.add(
+            decoded is Map<String, Object?> &&
+                    decoded['action'] == 'update_invoice'
+                ? 'payout'
+                : 'read',
+          );
+        };
+        final result = await app.payout.execute(
+          record,
+          shown,
+          onProgress: (step) => events.add(step.name),
+        );
+        expect(result, isA<Ok<PayoutSubmission, PayoutNotSent>>());
+        expect(events.first, 'waitingForOrder');
+        expect(
+          events.indexOf('unlockingKey'),
+          greaterThan(events.indexOf('waitingForOrder')),
+        );
+        // The fresh read between « reading the order » and « sending ».
+        expect(
+          events
+              .sublist(
+                events.indexOf('readingOrder'),
+                events.indexOf('sending'),
+              )
+              .contains('read'),
+          isTrue,
+        );
+        expect(events.indexOf('sending'), lessThan(events.indexOf('payout')));
+        expect(
+          events.indexOf('readingAfter'),
+          greaterThan(events.indexOf('payout')),
+        );
+        expect(
+          events.lastIndexOf('read'),
+          greaterThan(events.indexOf('readingAfter')),
+        );
+      },
+    );
+
+    test(
+      'the reads are dated when they leave too: the watch\'s and the payout\'s read after it (review of #132, M-d)',
+      () async {
+        final (app, record, seen) = await atSix();
+        expect(seen.requestedAt, isNotNull);
+        expect(seen.requestedAt?.isAfter(seen.status.seenAt), isFalse);
+        final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(invoice.text, budget: defaultBudget),
+          ),
+        );
+        final result = await app.payout.execute(record, shown);
+        final after = switch (result) {
+          Ok(value: PayoutGiven(:final seen)) => seen,
+          final other => throw StateError('$other'),
+        };
+        expect(after.requestedAt, isNotNull);
+        expect(after.requestedAt?.isAfter(after.status.seenAt), isFalse);
+      },
+    );
+
+    test(
+      'while another action holds the order, the payout says it waits for it, and goes on once it ended',
+      () async {
+        final (app, record, seen) = await atSix();
+        final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(invoice.text, budget: defaultBudget),
+          ),
+        );
+        final trade = await opened(app, record);
+        final other = Completer<void>();
+        final holding = app.locks.run(
+          record.network,
+          trade.coordinator,
+          record.orderId,
+          () => other.future,
+        );
+        final steps = <PayoutProgress>[];
+        final running = app.payout.execute(
+          record,
+          shown,
+          onProgress: steps.add,
+        );
+        await app.settle();
+        expect(steps, [PayoutProgress.waitingForOrder]);
+        expect(sent(app, payouts), 0);
+        other.complete();
+        await holding;
+        final result = await running;
+        expect(result, isA<Ok<PayoutSubmission, PayoutNotSent>>());
+        expect(steps.skip(1).first, PayoutProgress.unlockingKey);
+        expect(sent(app, payouts), 1);
+      },
+    );
+
+    test(
+      'a step told to a callback that throws: the payout goes on, and the fault reaches the zone',
+      () async {
+        final (app, record, seen) = await atSix();
+        final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(invoice.text, budget: defaultBudget),
+          ),
+        );
+        final faults = <Object>[];
+        final done = Completer<Result<PayoutSubmission, PayoutNotSent>>();
+        runZonedGuarded(() async {
+          done.complete(
+            await app.payout.execute(
+              record,
+              shown,
+              onProgress: (step) {
+                if (step == PayoutProgress.readingAfter) {
+                  throw StateError('a fault of the panel');
+                }
+              },
+            ),
+          );
+        }, (error, stack) => faults.add(error));
+        final result = await done.future;
+        expect(
+          result,
+          isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<PayoutGiven>(),
+          ),
+        );
+        expect(faults, [isA<StateError>()]);
+        expect(sent(app, payouts), 1);
+      },
+    );
+  });
+
   group('the keyring\'s lifetime', () {
     test(
       'an unlock that throws is not kept, even under a hold: the next lease tries again',

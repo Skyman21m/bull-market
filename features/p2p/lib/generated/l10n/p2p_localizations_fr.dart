@@ -1331,6 +1331,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Annulation unilatérale (caution en jeu !)';
 
   @override
+  String get p2pTradeCancelWhilePayout =>
+      '« Annuler » est désactivé pendant l’envoi de vos informations de paiement.';
+
+  @override
   String get p2pTradeCancelTitle => 'Annuler l\'ordre?';
 
   @override
@@ -1544,6 +1548,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayoutSubmit => 'Soumettre';
 
   @override
+  String get p2pPayoutSubmitWhileCancelling =>
+      '« Soumettre » est désactivé pendant l’annulation de l’échange.';
+
+  @override
   String get p2pPayoutInvalidInvoiceAmount => 'Montant de facture invalide';
 
   @override
@@ -1577,6 +1585,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayoutInvalid => 'Invalide';
+
+  @override
+  String p2pPayoutSuggestedRate(String coordinator, String rate) {
+    return 'Votre taux. $coordinator suggère $rate Sats/vByte.';
+  }
 
   @override
   String get p2pPayoutFailureReason => 'Raison de l\'échec :';
@@ -1706,7 +1719,12 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutRefusedOther(String coordinator) {
-    return '$coordinator n’a pas pris vos informations de paiement.';
+    return '$coordinator a refusé vos informations de paiement.';
+  }
+
+  @override
+  String p2pPayoutNotReached(String coordinator) {
+    return 'Vos informations de paiement ne sont pas parvenues à $coordinator : rien n’a été enregistré. Vous pouvez les soumettre de nouveau.';
   }
 
   @override
@@ -1752,8 +1770,12 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutWarnExpiresFirst(String time, String coordinator) {
-    return 'Cette facture expire à $time. Si le vendeur confirme après, $coordinator ne pourra pas la payer et vous en demandera une nouvelle.';
+  String p2pPayoutWarnExpiresFirst(
+    String date,
+    String time,
+    String coordinator,
+  ) {
+    return 'Cette facture expire le $date à $time. Si le vendeur confirme après, $coordinator ne pourra pas la payer et vous en demandera une nouvelle.';
   }
 
   @override
@@ -1792,7 +1814,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayoutStepUnlocking(String coordinator) {
-    return 'Lecture de votre robot chez $coordinator et déverrouillage de sa clé. La première fois prend quelques secondes.';
+    return 'Lecture de votre robot chez $coordinator et déverrouillage de sa clé. La première fois, cela prend quelques secondes.';
   }
 
   @override
@@ -1811,18 +1833,39 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String get p2pPayoutStepWaitingForOrder =>
+      'Attente de la fin d’une autre action sur cet ordre…';
+
+  @override
   String p2pPayoutGiven(String coordinator) {
     return '$coordinator a reçu vos informations de paiement.';
   }
 
   @override
   String p2pPayoutUnknown(String coordinator) {
-    return 'Bull Market ne sait pas encore si $coordinator a reçu vos informations de paiement. Il continue de vérifier.';
+    return 'Bull Market ne sait pas encore si $coordinator a reçu vos informations de paiement. L’application continue de vérifier tant que cet écran reste ouvert.';
+  }
+
+  @override
+  String p2pPayoutAskedAgain(String coordinator) {
+    return '$coordinator demande toujours vos informations de paiement : les dernières n’ont pas été enregistrées. Vous pouvez les soumettre de nouveau.';
   }
 
   @override
   String get p2pPayoutChanged =>
-      'Ceci a changé depuis son affichage. Vérifiez-le de nouveau avant de soumettre.';
+      'Rien n’a été envoyé : ce qui est affiché a changé depuis que vous l’avez vu. Vérifiez-le de nouveau avant de soumettre.';
+
+  @override
+  String get p2pPayoutChangedAmount =>
+      'Rien n’a été envoyé : le montant a changé depuis son affichage. Vérifiez-le de nouveau avant de soumettre.';
+
+  @override
+  String get p2pPayoutChangedExpiry =>
+      'Rien n’a été envoyé : cette facture expire désormais avant la fin possible de l’étape. Vérifiez-la de nouveau avant de soumettre.';
+
+  @override
+  String get p2pPayoutChangedStatus =>
+      'Rien n’a été envoyé : le statut de l’échange a changé depuis son affichage. Vérifiez de nouveau avant de soumettre.';
 
   @override
   String p2pPayoutNotSentKey(String coordinator) {

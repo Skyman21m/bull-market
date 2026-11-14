@@ -297,7 +297,7 @@ final class OnchainAsk {
     required this.suggestedSatPerVbyte,
   });
 
-  /// The suggested rate as a rate that may be sent, the reference's default for its field (`OnchainPayout.tsx:48-50`); `null` when there is none or it is outside 2 to 500 sat/vB: the panel then offers at most 500 and says the coordinator suggests more than the app allows.
+  /// The suggested rate as a rate that may be sent, the reference's default for its field (`OnchainPayout.tsx:48-50`), and the panel's rate until the user types one; `null` when there is none or it is outside 2 to 500 sat/vB: the panel then shows the suggestion as it is with « Invalid », and nothing can be submitted until the user types a rate, as in the reference (`:128-133`, `:151-157`).
   MiningFeeRate? get suggestedRate => switch (suggestedSatPerVbyte) {
     final rate? => MiningFeeRate.of(rate),
     null => null,
@@ -449,6 +449,14 @@ final class CheckedPayoutAddress extends CheckedPayout {
 
   @override
   String get text => address.text;
+
+  /// The swap fee in sats of the figures shown: `floor(invoice_amount × swap_fee_rate / 100)`, as [OnchainAsk.swapFeeSats].
+  int get swapFeeSats =>
+      (invoiceAmount.value.toDouble() * swapFeePercent / 100).floor();
+
+  /// The mining fee in sats at [rate] over the 280 vB the coordinator charges, as [OnchainAsk.miningFeeSatsFor].
+  int get miningFeeSats =>
+      (rate.satPerVbyte * MiningFeeRate.chargedVbytes).truncate();
 
   @override
   bool showsSameAs(CheckedPayout fresh) =>

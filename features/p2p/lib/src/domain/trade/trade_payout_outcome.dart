@@ -173,6 +173,9 @@ final class PayoutOutcomeUnknown extends PayoutSubmission {
 
 /// Where a payout being given stands, for the panel to say what it waits for (`SubmitPayoutUsecase.execute`'s `onProgress`): each step is told when it starts.
 enum PayoutProgress {
+  /// Another action of the trade's order (a take, a cancel, another payout) is under way: the payout waits for it to end (`TradeTakeLocks`).
+  waitingForOrder,
+
   /// The robot read back from its coordinator and its key unlocked away from the UI isolate: a few seconds the first time, nothing while the trade screen's hold keeps the key.
   unlockingKey,
 

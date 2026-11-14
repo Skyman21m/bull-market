@@ -75,12 +75,16 @@ final class _Cancels {
   final List<(TradeSeen, BondLossAcknowledged?)> asked = [];
   Result<CancelOutcome, CancelRefusal> Function(TradeSeen seen)? answer;
 
+  /// What the cancel waits for before it answers, when given.
+  Future<void>? gate;
+
   Future<Result<CancelOutcome, CancelRefusal>> call(
     TradeRecord record,
     TradeSeen seen, {
     BondLossAcknowledged? bondLoss,
   }) async {
     asked.add((seen, bondLoss));
+    if (gate case final gate?) await gate;
     return (answer ?? (seen) => Ok(CancelDone(record, seen)))(seen);
   }
 }
@@ -774,10 +778,41 @@ void main() {
           );
           if (shown) {
             expect(identical(requests.last.seen, _seen[name]), isTrue);
-            expect(requests.last.stored, isTrue);
+            expect(requests.last.seen.stored, isTrue);
             expect(requests.last.record, _record);
+            expect(requests.last.cancelling, isFalse);
           }
         }
+      },
+    );
+
+    testWidgets(
+      'while a cancel runs, the payout panel is told so, and « Submit » goes off (review of #132)',
+      (tester) async {
+        final gate = Completer<void>();
+        final cancels = _Cancels()..gate = gate.future;
+        final requests = <PayoutPanelRequest>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('six'),
+          payout: (context, request) {
+            requests.add(request);
+            return const SizedBox(height: 10);
+          },
+        );
+        expect(requests.last.cancelling, isFalse);
+        await _reveal(tester, find.text('Cancel'));
+        await tester.tap(find.text('Cancel'));
+        await settle(tester);
+        await tester.tap(find.text('Confirm Cancel'));
+        await tester.pump();
+        await tester.pump();
+        expect(cancels.asked, hasLength(1));
+        expect(requests.last.cancelling, isTrue);
+        gate.complete();
+        await settle(tester);
       },
     );
 
@@ -793,6 +828,11 @@ void main() {
       final cancel = find.widgetWithText(TradeButton, 'Cancel');
       await _reveal(tester, cancel);
       expect(tester.widget<TradeButton>(cancel).onPressed, isNull);
+      // Why, for a screen reader and a long press.
+      expect(
+        find.byTooltip('Cancel is off while your payout info is being sent.'),
+        findsOneWidget,
+      );
       await tester.tap(cancel, warnIfMissed: false);
       await settle(tester);
       expect(find.text('Cancel the order?'), findsNothing);

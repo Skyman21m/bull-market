@@ -1809,6 +1809,10 @@
   "@p2pTradeCancelUnilateral": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's: tooltip of « Cancel » once the bond is locked."
   },
+  "p2pTradeCancelWhilePayout": "Cancel is off while your payout info is being sent.",
+  "@p2pTradeCancelWhilePayout": {
+    "description": "Not in the RoboSats texts: the project's own: why « Cancel » is off while a payout is given (#91), for the screen reader and a long press."
+  },
   "p2pTradeCancelTitle": "Cancel the order?",
   "@p2pTradeCancelTitle": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): title of both cancel dialogs (`Dialogs/CancelOrder.tsx`, `TradeBox/Dialogs/ConfirmCancel.tsx`)."
@@ -2114,6 +2118,10 @@
   "@p2pPayoutSubmit": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:651`, `Forms/OnchainPayout.tsx:159`)."
   },
+  "p2pPayoutSubmitWhileCancelling": "Submit is off while the trade is being cancelled.",
+  "@p2pPayoutSubmitWhileCancelling": {
+    "description": "Not in the RoboSats texts: the project's own: why « Submit » is off while a cancel of the trade runs, for the screen reader and a long press."
+  },
   "p2pPayoutInvalidInvoiceAmount": "Invalid invoice amount",
   "@p2pPayoutInvalidInvoiceAmount": {
     "description": "The official client's text (`Forms/LightningPayout.tsx:120` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: an invoice for another amount than the one asked."
@@ -2169,6 +2177,18 @@
   "p2pPayoutInvalid": "Invalid",
   "@p2pPayoutInvalid": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:131`): a mining fee rate outside 2 to 500 sat/vB."
+  },
+  "p2pPayoutSuggestedRate": "Your rate. {coordinator} suggests {rate} Sats/vByte.",
+  "@p2pPayoutSuggestedRate": {
+    "description": "Not in the RoboSats texts: the project's own: under the mining fee the user typed, when the coordinator suggests another rate (review of #132).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      }
+    }
   },
   "p2pPayoutFailureReason": "Failure reason:",
   "@p2pPayoutFailureReason": {
@@ -2253,7 +2273,7 @@
   },
   "p2pPayoutRefusedWrongAmount": "The invoice provided is not for {amount} Sats",
   "@p2pPayoutRefusedWrongAmount": {
-    "description": "The coordinator's text (`api/lightning/lnd.py:514-520`, commit ff1998c), which the official client shows under the field; {amount} is the amount asked; the French is the project's.",
+    "description": "The coordinator's text (`api/lightning/lnd.py:514-520`, commit ff1998c), which the official client shows under the field; {amount} is the amount the coordinator expects, read from its own message (review of #132); the French is the project's.",
     "placeholders": {
       "amount": {
         "type": "String"
@@ -2321,9 +2341,18 @@
   "@p2pPayoutRefusedUnverifiable": {
     "description": "The coordinator's text (`api/utils.py:106-121`, commit ff1998c); the French is the project's."
   },
-  "p2pPayoutRefusedOther": "{coordinator} did not take your payout info.",
+  "p2pPayoutRefusedOther": "{coordinator} refused your payout info.",
   "@p2pPayoutRefusedOther": {
     "description": "Not in the RoboSats texts: the project's own: a refusal the reference has no text for (a refusal of the coordinator this app does not know, or a request that never reached it).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutNotReached": "Your payout info did not reach {coordinator}: nothing was recorded. You can submit again.",
+  "@p2pPayoutNotReached": {
+    "description": "Not in the RoboSats texts: the project's own: the request never reached the coordinator (a busy transport every time, the robot released).",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -2385,10 +2414,13 @@
       }
     }
   },
-  "p2pPayoutWarnExpiresFirst": "This invoice expires at {time}. If the seller confirms after that, {coordinator} cannot pay it and will ask you for a new one.",
+  "p2pPayoutWarnExpiresFirst": "This invoice expires on {date} at {time}. If the seller confirms after that, {coordinator} cannot pay it and will ask you for a new one.",
   "@p2pPayoutWarnExpiresFirst": {
-    "description": "Not in the RoboSats texts: the project's own: the invoice expires before the step's end and a day (design note § 4.4); information, never a refusal.",
+    "description": "Not in the RoboSats texts: the project's own: the invoice expires before the step's end and a day (design note § 4.4); information, never a refusal; {date} and {time} written as in the table above it.",
     "placeholders": {
+      "date": {
+        "type": "String"
+      },
       "time": {
         "type": "String"
       },
@@ -2437,7 +2469,7 @@
       }
     }
   },
-  "p2pPayoutSwapNoLiquidity": "{coordinator} has not enough on-chain funds for a swap.",
+  "p2pPayoutSwapNoLiquidity": "{coordinator} does not have enough on-chain funds for a swap.",
   "@p2pPayoutSwapNoLiquidity": {
     "description": "Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, read as a kind.",
     "placeholders": {
@@ -2491,6 +2523,10 @@
       }
     }
   },
+  "p2pPayoutStepWaitingForOrder": "Waiting for another action on this order to end…",
+  "@p2pPayoutStepWaitingForOrder": {
+    "description": "Not in the RoboSats texts: the project's own: a take, a cancel or another payout of the order is under way, and the payout waits for it."
+  },
   "p2pPayoutGiven": "{coordinator} received your payout info.",
   "@p2pPayoutGiven": {
     "description": "Not in the RoboSats texts: the project's own: the coordinator recorded the payout.",
@@ -2500,7 +2536,7 @@
       }
     }
   },
-  "p2pPayoutUnknown": "Bull Market does not know yet whether {coordinator} received your payout info. It keeps checking.",
+  "p2pPayoutUnknown": "Bull Market does not know yet whether {coordinator} received your payout info. It keeps checking while this screen is open.",
   "@p2pPayoutUnknown": {
     "description": "Not in the RoboSats texts: the project's own: the payout may have been recorded; nothing is sent again.",
     "placeholders": {
@@ -2509,9 +2545,30 @@
       }
     }
   },
-  "p2pPayoutChanged": "This changed since it was shown. Check it again before you submit.",
+  "p2pPayoutAskedAgain": "{coordinator} still asks for your payout info: the last you gave was not recorded. You can submit again.",
+  "@p2pPayoutAskedAgain": {
+    "description": "Not in the RoboSats texts: the project's own: a read sent after a payout that was received or may have been still shows the coordinator asking for one.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutChanged": "Nothing was sent: what is shown changed since you saw it. Check it again before you submit.",
   "@p2pPayoutChanged": {
-    "description": "Not in the RoboSats texts: the project's own: what the user would see changed with the read just before signing; nothing was sent."
+    "description": "Not in the RoboSats texts: the project's own: what the user would see changed with the read just before signing, other than the amount, the invoice's expiry or the status; nothing was sent."
+  },
+  "p2pPayoutChangedAmount": "Nothing was sent: the amount changed since it was shown. Check it again before you submit.",
+  "@p2pPayoutChangedAmount": {
+    "description": "Not in the RoboSats texts: the project's own: the amount asked or received changed with the read just before signing; nothing was sent."
+  },
+  "p2pPayoutChangedExpiry": "Nothing was sent: this invoice now expires before the step could end. Check it again before you submit.",
+  "@p2pPayoutChangedExpiry": {
+    "description": "Not in the RoboSats texts: the project's own: with the read just before signing, the invoice now expires before the step's end and a day; nothing was sent."
+  },
+  "p2pPayoutChangedStatus": "Nothing was sent: the trade's status changed since it was shown. Check it again before you submit.",
+  "@p2pPayoutChangedStatus": {
+    "description": "Not in the RoboSats texts: the project's own: the status carries a warning it did not with the read just before signing; nothing was sent."
   },
   "p2pPayoutNotSentKey": "The key of your robot could not be read from {coordinator}. Nothing was sent.",
   "@p2pPayoutNotSentKey": {

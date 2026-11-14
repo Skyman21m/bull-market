@@ -255,7 +255,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         ),
                         center: true,
                       ),
+                      // Keyed, so that a line added above it (reads that fail, a record not written) keeps it as it is.
                       final TradeContract contract => _Contract(
+                        key: const ValueKey('trade-contract'),
                         contract: contract,
                         now: _now,
                         record: record,
@@ -383,6 +385,7 @@ class _Contract extends StatelessWidget {
   final bool moneyActionRunning;
 
   const _Contract({
+    super.key,
     required this.contract,
     required this.now,
     required this.record,
@@ -513,17 +516,23 @@ class _Contract extends StatelessWidget {
     };
   }
 
-  /// The payout panel of the status shown, when the screen was given one.
-  Widget? _payoutPanel(BuildContext context) => payout?.call(
+  /// The payout panel of the status shown, when the screen was given one, keyed so that a change of the prompt around it keeps it.
+  Widget? _payoutPanel(BuildContext context) => switch (payout?.call(
     context,
     PayoutPanelRequest(
       record: record,
       seen: contract.seen,
-      stored: contract.payable,
       coordinator: coordinator,
       now: now,
+      cancelling: cancel is CancelRunning,
     ),
-  );
+  )) {
+    final panel? => KeyedSubtree(
+      key: const ValueKey('trade-payout-panel'),
+      child: panel,
+    ),
+    null => null,
+  };
 }
 
 /// « Your taker bond is locked / unlocked / settled » with the reference's icons (`TradeBox/BondStatus.tsx`).
@@ -657,7 +666,10 @@ class _CancelRowState extends State<_CancelRow> {
         ),
         const Gap(BullSpacing.sm),
         Tooltip(
-          message: offer == TradeCancelOffer.free
+          // While a payout is given, why « Cancel » is off, for a screen reader and a long press.
+          message: widget.moneyActionRunning
+              ? l10n.p2pTradeCancelWhilePayout
+              : offer == TradeCancelOffer.free
               ? l10n.p2pTradeCancelOrder
               : l10n.p2pTradeCancelUnilateral,
           child: TradeButton(

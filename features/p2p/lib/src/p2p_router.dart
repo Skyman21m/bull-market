@@ -93,68 +93,80 @@ final class P2pRouter {
         redirect: (context, state) =>
             state.extra is P2pTradeRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
-          // One cubit, so one watch, per shown trade, closed with its page.
-          final P2pTradeRouteArgs args => MultiBlocProvider(
-            providers: [
-              BlocProvider(
-                create: (_) =>
-                    locator<TradeCubit>(param1: args.record)..start(),
-              ),
-              BlocProvider(
-                create: (_) =>
-                    locator<TradeOrderPageCubit>(param1: args.record)
-                      ..loadInfo(),
-              ),
-              // One payout panel per shown trade, closed with its page, which lets the robot's key go.
-              if (locator.isRegistered<PayoutCubit>())
-                BlocProvider(
-                  create: (_) => locator<PayoutCubit>(param1: args.record),
-                ),
-            ],
-            child: Builder(
-              builder: (context) => TradeScreen(
-                now: locator<P2pClock>().now,
-                coordinatorDetails: (request) =>
-                    locator<CoordinatorDetailsCubit>(param1: request),
-                payout: locator.isRegistered<PayoutCubit>()
-                    ? (context, request) => PayoutPanel(
-                        request: request,
-                        onTold: () => context.read<TradeCubit>().signal(
-                          TradeWatchSignal.readNow,
-                        ),
-                      )
-                    : null,
-                moneyActionRunning: locator.isRegistered<PayoutCubit>()
-                    ? (context) =>
-                          context.watch<PayoutCubit>().state.phase
-                              is PayoutSending
-                    : null,
-                // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
-                takeCubitFor:
-                    locator.isRegistered<TakeOrderCubit>(
-                      instanceName: TakeOrderCubit.fromTrade,
-                    )
-                    ? (order) => locator<TakeOrderCubit>(
-                        param1: order,
-                        param2: args.record,
-                        instanceName: TakeOrderCubit.fromTrade,
-                      )
-                    : null,
-                onOpenGarage: locator.isRegistered<GarageCubit>()
-                    ? () => context.pop(P2pOrderExit.garage)
-                    : null,
-                onTaken: (record) => context.pushReplacementNamed(
-                  tradeName,
-                  extra: P2pTradeRouteArgs(record),
-                ),
-              ),
-            ),
-          ),
+          final P2pTradeRouteArgs args => tradePage(locator, args),
           _ => const SizedBox.shrink(),
         },
       ),
     ],
   );
+
+  /// The page of a trade: its watch, its order's page, and, when the feature holds robots, its payout panel's cubit, each one per shown trade and closed with the page (which lets the robot's key go).
+  @visibleForTesting
+  static Widget tradePage(GetIt locator, P2pTradeRouteArgs args) {
+    final payouts = locator.isRegistered<PayoutCubit>();
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => locator<TradeCubit>(param1: args.record)..start(),
+        ),
+        BlocProvider(
+          create: (_) =>
+              locator<TradeOrderPageCubit>(param1: args.record)..loadInfo(),
+        ),
+        // One payout panel per shown trade, closed with its page, which lets the robot's key go.
+        if (payouts)
+          BlocProvider(
+            create: (_) => locator<PayoutCubit>(param1: args.record),
+          ),
+      ],
+      child: Builder(
+        builder: (context) => _toldReads(
+          payouts,
+          context,
+          TradeScreen(
+            now: locator<P2pClock>().now,
+            coordinatorDetails: (request) =>
+                locator<CoordinatorDetailsCubit>(param1: request),
+            payout: payouts
+                ? (context, request) => PayoutPanel(request: request)
+                : null,
+            moneyActionRunning: payouts
+                ? (context) =>
+                      context.watch<PayoutCubit>().state.phase is PayoutSending
+                : null,
+            // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
+            takeCubitFor:
+                locator.isRegistered<TakeOrderCubit>(
+                  instanceName: TakeOrderCubit.fromTrade,
+                )
+                ? (order) => locator<TakeOrderCubit>(
+                    param1: order,
+                    param2: args.record,
+                    instanceName: TakeOrderCubit.fromTrade,
+                  )
+                : null,
+            onOpenGarage: locator.isRegistered<GarageCubit>()
+                ? () => context.pop(P2pOrderExit.garage)
+                : null,
+            onTaken: (record) => context.pushReplacementNamed(
+              tradeName,
+              extra: P2pTradeRouteArgs(record),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// [screen], under the payout panel's listener when there is one: once a payout given told something, the trade's watch reads at once, whichever tab is shown.
+  static Widget _toldReads(bool payouts, BuildContext context, Widget screen) =>
+      payouts
+      ? PayoutTold(
+          onTold: () =>
+              context.read<TradeCubit>().signal(TradeWatchSignal.readNow),
+          child: screen,
+        )
+      : screen;
 
   /// The page of an order: « Take Order » takes it when the feature holds robots (the vault's handle was given), and a take that was sent replaces the page by its trade, as the official client's order page becomes the trade at the same address.
   static Widget _orderPage(GetIt locator, P2pOrderRouteArgs args) {

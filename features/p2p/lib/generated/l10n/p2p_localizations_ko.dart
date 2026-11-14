@@ -1308,6 +1308,10 @@ class P2pLocalizationsKo extends P2pLocalizations {
       'Unilateral cancelation (bond at risk!)';
 
   @override
+  String get p2pTradeCancelWhilePayout =>
+      'Cancel is off while your payout info is being sent.';
+
+  @override
   String get p2pTradeCancelTitle => 'Cancel the order?';
 
   @override
@@ -1520,6 +1524,10 @@ class P2pLocalizationsKo extends P2pLocalizations {
   String get p2pPayoutSubmit => 'Submit';
 
   @override
+  String get p2pPayoutSubmitWhileCancelling =>
+      'Submit is off while the trade is being cancelled.';
+
+  @override
   String get p2pPayoutInvalidInvoiceAmount => 'Invalid invoice amount';
 
   @override
@@ -1553,6 +1561,11 @@ class P2pLocalizationsKo extends P2pLocalizations {
 
   @override
   String get p2pPayoutInvalid => 'Invalid';
+
+  @override
+  String p2pPayoutSuggestedRate(String coordinator, String rate) {
+    return 'Your rate. $coordinator suggests $rate Sats/vByte.';
+  }
 
   @override
   String get p2pPayoutFailureReason => 'Failure reason:';
@@ -1679,7 +1692,12 @@ class P2pLocalizationsKo extends P2pLocalizations {
 
   @override
   String p2pPayoutRefusedOther(String coordinator) {
-    return '$coordinator did not take your payout info.';
+    return '$coordinator refused your payout info.';
+  }
+
+  @override
+  String p2pPayoutNotReached(String coordinator) {
+    return 'Your payout info did not reach $coordinator: nothing was recorded. You can submit again.';
   }
 
   @override
@@ -1725,8 +1743,12 @@ class P2pLocalizationsKo extends P2pLocalizations {
   }
 
   @override
-  String p2pPayoutWarnExpiresFirst(String time, String coordinator) {
-    return 'This invoice expires at $time. If the seller confirms after that, $coordinator cannot pay it and will ask you for a new one.';
+  String p2pPayoutWarnExpiresFirst(
+    String date,
+    String time,
+    String coordinator,
+  ) {
+    return 'This invoice expires on $date at $time. If the seller confirms after that, $coordinator cannot pay it and will ask you for a new one.';
   }
 
   @override
@@ -1755,7 +1777,7 @@ class P2pLocalizationsKo extends P2pLocalizations {
 
   @override
   String p2pPayoutSwapNoLiquidity(String coordinator) {
-    return '$coordinator has not enough on-chain funds for a swap.';
+    return '$coordinator does not have enough on-chain funds for a swap.';
   }
 
   @override
@@ -1784,18 +1806,39 @@ class P2pLocalizationsKo extends P2pLocalizations {
   }
 
   @override
+  String get p2pPayoutStepWaitingForOrder =>
+      'Waiting for another action on this order to end…';
+
+  @override
   String p2pPayoutGiven(String coordinator) {
     return '$coordinator received your payout info.';
   }
 
   @override
   String p2pPayoutUnknown(String coordinator) {
-    return 'Bull Market does not know yet whether $coordinator received your payout info. It keeps checking.';
+    return 'Bull Market does not know yet whether $coordinator received your payout info. It keeps checking while this screen is open.';
+  }
+
+  @override
+  String p2pPayoutAskedAgain(String coordinator) {
+    return '$coordinator still asks for your payout info: the last you gave was not recorded. You can submit again.';
   }
 
   @override
   String get p2pPayoutChanged =>
-      'This changed since it was shown. Check it again before you submit.';
+      'Nothing was sent: what is shown changed since you saw it. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedAmount =>
+      'Nothing was sent: the amount changed since it was shown. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedExpiry =>
+      'Nothing was sent: this invoice now expires before the step could end. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedStatus =>
+      'Nothing was sent: the trade\'s status changed since it was shown. Check it again before you submit.';
 
   @override
   String p2pPayoutNotSentKey(String coordinator) {

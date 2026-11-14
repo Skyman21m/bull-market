@@ -103,6 +103,9 @@ void main() {
     Ok(:final value) => value.check(destination, now: readAt, reader: reader),
   };
 
+  // The app's clock, the one the reads are dated with: a second after the statuses were read.
+  DateTime clock() => readAt.add(const Duration(seconds: 1));
+
   PayoutCubit cubitOf(_Sender sender, [_Holds? holds]) {
     final cubit = PayoutCubit(
       record,
@@ -110,6 +113,7 @@ void main() {
       check,
       sender.call,
       (holds ?? _Holds()).call,
+      now: clock,
     );
     addTearDown(cubit.close);
     return cubit;
@@ -136,7 +140,7 @@ void main() {
         await cubit.submit(PayoutKind.lightning);
         expect(sender.sent, isEmpty);
 
-        cubit.checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+        cubit.editInvoice(invoice.text);
         final shown = cubit.state.submittable(PayoutKind.lightning);
         expect(shown, isA<CheckedPayoutInvoice>());
         // A check is no confirmation: nothing is given without « Submit ».
@@ -181,7 +185,7 @@ void main() {
     );
 
     test(
-      'a change since it was shown replaces what is shown, and only a new submit gives the fresh one',
+      'a change since it was shown: the form checked again against the fresh read is shown, and only a new submit gives it',
       () async {
         final fresh = switch (check(
           record,
@@ -200,27 +204,30 @@ void main() {
             : Ok(PayoutGiven(record, six));
         final cubit = cubitOf(sender)
           ..show(six)
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+          ..editInvoice(invoice.text);
         final shown = cubit.state.submittable(PayoutKind.lightning);
         await cubit.submit(PayoutKind.lightning);
         expect(identical(sender.sent.single, shown), isTrue);
-        expect(
-          identical(cubit.state.submittable(PayoutKind.lightning), fresh),
-          isTrue,
-        );
+        final again = cubit.state.submittable(PayoutKind.lightning);
+        expect(again, isNotNull);
+        expect(again?.text, invoice.text);
         expect(
           cubit.state.phase,
           isA<PayoutEditing>().having(
             (p) => p.notice,
             'notice',
-            isA<PayoutNoticeNotSent>(),
+            isA<PayoutNoticeNotSent>().having(
+              (n) => n.change,
+              'change',
+              PayoutChange.other,
+            ),
           ),
         );
         await pumpEventQueue();
         expect(sender.sent, hasLength(1));
         await cubit.submit(PayoutKind.lightning);
         expect(sender.sent, hasLength(2));
-        expect(identical(sender.sent.last, fresh), isTrue);
+        expect(identical(sender.sent.last, again), isTrue);
       },
     );
 
@@ -231,7 +238,7 @@ void main() {
           ..answer = (shown) => Ok(PayoutOutcomeUnknown(record, six));
         final cubit = cubitOf(sender)
           ..show(six)
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+          ..editInvoice(invoice.text);
         await cubit.submit(PayoutKind.lightning);
         await pumpEventQueue();
         expect(sender.sent, hasLength(1));
@@ -270,7 +277,7 @@ void main() {
           ..answer = (shown) => Ok(PayoutGiven(record, six));
         final cubit = cubitOf(sender)
           ..show(six)
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+          ..editInvoice(invoice.text);
         final running = cubit.submit(PayoutKind.lightning);
         await pumpEventQueue();
         cubit.show(
@@ -294,7 +301,7 @@ void main() {
         final sender = _Sender();
         final cubit = cubitOf(sender)
           ..show(TradeSeen(six.status, order: six.order))
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+          ..editInvoice(invoice.text);
         expect(
           cubit.state.ask,
           isA<Err<PayoutAsk, PayoutCheckRefusal>>().having(
@@ -304,10 +311,8 @@ void main() {
           ),
         );
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
-        // The status moves on: what was pasted is checked again against it.
-        cubit
-          ..show(six)
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+        // The status moves on: the invoice kept in the form is checked again against it.
+        cubit.show(six);
         expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
         cubit.show(seven);
         expect(
@@ -333,6 +338,7 @@ void main() {
           check,
           _Sender().call,
           holds.call,
+          now: clock,
         );
         cubit
           ..hold()
@@ -391,8 +397,9 @@ void main() {
       final output = await captureKeyOutput(() async {
         cubit
           ..show(sixSwap)
-          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault)
-          ..checkAddress(mainnetAddress, MiningFeeRate.of(4));
+          ..editInvoice(invoice.text)
+          ..editAddress(mainnetAddress)
+          ..editFee('4');
         await cubit.submit(PayoutKind.lightning);
         // The values print their kind only.
         Zone.current.print(
@@ -469,15 +476,16 @@ void main() {
               value: cubit,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: PayoutPanel(
-                  request: PayoutPanelRequest(
-                    record: record,
-                    seen: seen,
-                    stored: seen.stored,
-                    coordinator: coordinatorName,
-                    now: now ?? readAt,
-                  ),
+                child: PayoutTold(
                   onTold: () => told++,
+                  child: PayoutPanel(
+                    request: PayoutPanelRequest(
+                      record: record,
+                      seen: seen,
+                      coordinator: coordinatorName,
+                      now: now ?? readAt,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -516,15 +524,16 @@ void main() {
             BlocProvider.value(
               value: cubit,
               child: SingleChildScrollView(
-                child: PayoutPanel(
-                  request: PayoutPanelRequest(
-                    record: record,
-                    seen: six,
-                    stored: true,
-                    coordinator: coordinatorName,
-                    now: readAt,
-                  ),
+                child: PayoutTold(
                   onTold: () => told++,
+                  child: PayoutPanel(
+                    request: PayoutPanelRequest(
+                      record: record,
+                      seen: six,
+                      coordinator: coordinatorName,
+                      now: readAt,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -564,7 +573,7 @@ void main() {
         );
         expect(find.byType(LinearProgressIndicator), findsOneWidget);
         // After 30 s, that it still waits.
-        await tester.pump(PayoutPanel.stillWaitingAfter);
+        await tester.pump(PayoutCubit.stillWaitingAfter);
         expect(
           find.text('Still waiting for Temple of Sats. Tor can take a minute.'),
           findsOneWidget,
@@ -627,6 +636,25 @@ void main() {
         await tester.enterText(find.byKey(PayoutPanel.budgetField), '20000');
         await tester.pump();
         expect(find.text('Too high! (That is more than 1%)'), findsOneWidget);
+        // In red, as the reference's helper text.
+        expect(
+          tester
+              .widget<Text>(find.text('Too high! (That is more than 1%)'))
+              .style
+              ?.color,
+          testTheme.extension<BullTheme>()?.error,
+        );
+        // As the reference takes it: 99,999 ppm or more is refused, the field keeping the budget applied; an empty field is 0.
+        await tester.enterText(find.byKey(PayoutPanel.budgetField), '99999');
+        await tester.pump();
+        expect(_fieldText(tester, PayoutPanel.budgetField), '20000');
+        expect(cubit.state.form.budget, RoutingBudgetPpm.of(20000));
+        await tester.enterText(find.byKey(PayoutPanel.budgetField), '');
+        await tester.pump();
+        expect(_fieldText(tester, PayoutPanel.budgetField), '0');
+        expect(cubit.state.form.budget, RoutingBudgetPpm.of(0));
+        await tester.enterText(find.byKey(PayoutPanel.budgetField), '20000');
+        await tester.pump();
         // The whole amount is no longer the one asked.
         expect(find.text('Invalid invoice amount'), findsOneWidget);
         expect(enabled(tester, submitButton()), isFalse);
@@ -679,6 +707,7 @@ void main() {
           },
           _Sender().call,
           _Holds().call,
+          now: clock,
         );
         addTearDown(cubit.close);
         await show(tester, cubit, six);
@@ -687,7 +716,7 @@ void main() {
           short.text,
         );
         await tester.pump();
-        expect(find.textContaining('This invoice expires at'), findsOneWidget);
+        expect(find.textContaining('This invoice expires on'), findsOneWidget);
         expect(enabled(tester, submitButton()), isTrue);
       },
     );
@@ -739,26 +768,48 @@ void main() {
     );
 
     testWidgets(
-      'the coordinator\'s refusals are its own words, from the translations',
+      'the coordinator\'s refusals are its own words, under the field; a refused invoice is not offered again until it changes',
       (tester) async {
-        for (final (cause, said) in <(Failure, String)>[
-          (
-            const PayoutInvoiceRefused(PayoutInvoiceRefusal.wrongAmount),
-            'The invoice provided is not for 106,606 Sats',
-          ),
-          (
-            const PayoutInvoiceRefused(PayoutInvoiceRefusal.alreadySubmitted),
-            'You must submit a NEW invoice',
-          ),
-          (
-            const PayoutSignatureRefused(),
-            'The PGP signed cleartext message is not valid.',
-          ),
-          (
-            const RobotCoordinatorBusyFailure(),
-            'Temple of Sats did not take your payout info.',
-          ),
-        ]) {
+        for (final (cause, said, underField, offeredAgain)
+            in <(Failure, String, bool, bool)>[
+              // The amount the coordinator expects, from its own message (review of #132).
+              (
+                const PayoutInvoiceRefused(
+                  PayoutInvoiceRefusal.wrongAmount,
+                  expectedSats: 106700,
+                ),
+                'The invoice provided is not for 106,700 Sats',
+                true,
+                false,
+              ),
+              (
+                const PayoutInvoiceRefused(PayoutInvoiceRefusal.wrongAmount),
+                'Invalid invoice amount',
+                true,
+                false,
+              ),
+              (
+                const PayoutInvoiceRefused(
+                  PayoutInvoiceRefusal.alreadySubmitted,
+                ),
+                'You must submit a NEW invoice',
+                true,
+                false,
+              ),
+              (
+                const PayoutSignatureRefused(),
+                'The PGP signed cleartext message is not valid.',
+                true,
+                true,
+              ),
+              // Never reached the coordinator: said under « Submit », and a new « Submit » is the user's own.
+              (
+                const RobotCoordinatorBusyFailure(),
+                'Your payout info did not reach Temple of Sats: nothing was recorded. You can submit again.',
+                false,
+                true,
+              ),
+            ]) {
           final sender = _Sender()
             ..answer = (shown) => Ok(PayoutNotTaken(record, six, cause: cause));
           final cubit = cubitOf(sender);
@@ -774,8 +825,28 @@ void main() {
             await tester.pump();
           }
           expect(find.text(said), findsOneWidget, reason: '$cause');
-          // A new « Submit » is the user's own.
-          expect(enabled(tester, submitButton()), isTrue);
+          // Under the field: above « Submit »; otherwise under it.
+          final saidAt = tester.getTopLeft(find.text(said)).dy;
+          final submitAt = tester.getTopLeft(submitButton()).dy;
+          expect(saidAt < submitAt, underField, reason: '$cause');
+          expect(
+            enabled(tester, submitButton()),
+            offeredAgain,
+            reason: '$cause',
+          );
+          expect(sender.sent, hasLength(1));
+          if (!offeredAgain) {
+            // Another invoice, then this one again: offered, the refusal gone with the text it was about.
+            await tester.enterText(find.byKey(PayoutPanel.invoiceField), '');
+            await tester.pump();
+            await tester.enterText(
+              find.byKey(PayoutPanel.invoiceField),
+              invoice.text,
+            );
+            await tester.pump();
+            expect(find.text(said), findsNothing, reason: '$cause');
+            expect(enabled(tester, submitButton()), isTrue, reason: '$cause');
+          }
         }
       },
     );
@@ -918,11 +989,9 @@ void main() {
               request: PayoutPanelRequest(
                 record: record,
                 seen: six,
-                stored: true,
                 coordinator: coordinatorName,
                 now: readAt,
               ),
-              onTold: () {},
             ),
           ),
         ),
@@ -968,7 +1037,7 @@ void main() {
         await tester.pump();
         await tester.pump();
         const unknown =
-            'Bull Market does not know yet whether Temple of Sats received your payout info. It keeps checking.';
+            'Bull Market does not know yet whether Temple of Sats received your payout info. It keeps checking while this screen is open.';
         expect(
           tester.getSemantics(find.text(unknown)),
           matchesSemantics(label: unknown, isLiveRegion: true),
@@ -1012,7 +1081,33 @@ void main() {
               if (onchainTab) {
                 await tester.tap(find.text('Onchain'));
                 await tester.pump();
+                await tester.enterText(
+                  find.byKey(PayoutPanel.addressField),
+                  mainnetAddress,
+                );
+                await tester.enterText(find.byKey(PayoutPanel.feeField), '4');
+                await tester.pump();
               } else if (seen != fifteenRetrying) {
+                if (seen == six) {
+                  // The advanced options open, a budget above 1 % and the copy's « Copied! ».
+                  await tester.tap(find.byType(BullSwitch));
+                  await tester.pump();
+                  await tester.enterText(
+                    find.byKey(PayoutPanel.budgetField),
+                    '20000',
+                  );
+                  await tester.pump();
+                  await reveal(tester, find.byTooltip(_copyTooltip(locale)));
+                  await tester.tap(find.byTooltip(_copyTooltip(locale)));
+                  await tester.pump();
+                  _expectNothingCut(
+                    tester,
+                    'advanced ${locale.languageCode} $scale',
+                  );
+                  await tester.pump(const Duration(seconds: 3));
+                  await tester.tap(find.byType(BullSwitch));
+                  await tester.pump();
+                }
                 await tester.enterText(
                   find.byKey(PayoutPanel.invoiceField),
                   invoice.text,
@@ -1033,6 +1128,417 @@ void main() {
         );
       }
     }
+
+    testWidgets(
+      'a panel built again shows exactly the form the cubit holds, and « Submit » gives what it shows (review of #132, B1)',
+      (tester) async {
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutGiven(record, sixSwap));
+        final cubit = cubitOf(sender);
+        await show(tester, cubit, sixSwap);
+        await tester.tap(find.byType(BullSwitch));
+        await tester.pump();
+        await tester.enterText(find.byKey(PayoutPanel.budgetField), '0');
+        await tester.enterText(
+          find.byKey(PayoutPanel.invoiceField),
+          wholeAmount.text,
+        );
+        await tester.pump();
+        await tester.tap(find.text('Onchain'));
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(PayoutPanel.addressField),
+          mainnetAddress,
+        );
+        await tester.enterText(find.byKey(PayoutPanel.feeField), '50');
+        await tester.pump();
+        // Built again, as another tab of the trade or a line above it does.
+        await show(tester, cubit, sixSwap);
+        expect(find.text('Onchain'), findsOneWidget);
+        expect(_fieldText(tester, PayoutPanel.addressField), mainnetAddress);
+        expect(_fieldText(tester, PayoutPanel.feeField), '50');
+        // `int(50 × 280)`, `int(106713 − 800.3475 − 14000)`.
+        expect(find.text('14,000 Sats (50 Sats/vByte)'), findsOneWidget);
+        expect(find.text('91,912 Sats'), findsOneWidget);
+        await reveal(tester, submitButton());
+        await tester.tap(submitButton());
+        for (var i = 0; i < 4; i++) {
+          await tester.pump();
+        }
+        expect(
+          sender.sent.single,
+          isA<CheckedPayoutAddress>()
+              .having((a) => a.text, 'text', mainnetAddress)
+              .having((a) => a.rate, 'rate', MiningFeeRate.of(50))
+              .having((a) => a.sentSats, 'sent', 91912),
+        );
+        // The Lightning tab kept its budget and its invoice too.
+        await reveal(tester, find.text('Lightning'));
+        await tester.tap(find.text('Lightning'));
+        await tester.pump();
+        expect(_fieldText(tester, PayoutPanel.budgetField), '0');
+        expect(_fieldText(tester, PayoutPanel.invoiceField), wholeAmount.text);
+        expect(find.text('Submit invoice for 106,713 Sats'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Onchain: the rate not typed follows the coordinator\'s suggestion, and the figures shown are the check\'s (review of #132, B2)',
+      (tester) async {
+        final later = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(
+            6,
+            changes: {
+              'swap_allowed': true,
+              'swap_failure_reason': null,
+              'suggested_mining_fee_rate': 40,
+              'swap_fee_rate': 0.75,
+            },
+          ),
+          after: const Duration(seconds: 31),
+        );
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutGiven(record, later));
+        final cubit = cubitOf(sender);
+        await show(tester, cubit, sixSwap);
+        await tester.tap(find.text('Onchain'));
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(PayoutPanel.addressField),
+          mainnetAddress,
+        );
+        await tester.pump();
+        // What « Submit » gives: the address checked and its network.
+        expect(find.text(mainnetAddress), findsWidgets);
+        expect(find.text('Bitcoin'), findsOneWidget);
+        await show(tester, cubit, later);
+        expect(_fieldText(tester, PayoutPanel.feeField), '40');
+        expect(find.text('11,200 Sats (40 Sats/vByte)'), findsOneWidget);
+        expect(
+          cubit.state.submittable(PayoutKind.onchain),
+          isA<CheckedPayoutAddress>().having(
+            (a) => a.rate,
+            'rate',
+            MiningFeeRate.of(40),
+          ),
+        );
+        await reveal(tester, submitButton());
+        await tester.tap(submitButton());
+        for (var i = 0; i < 4; i++) {
+          await tester.pump();
+        }
+        expect(
+          (sender.sent.single as CheckedPayoutAddress).rate,
+          MiningFeeRate.of(40),
+        );
+      },
+    );
+
+    test(
+      'a rate typed stays the user\'s whatever the coordinator suggests next, and is said so',
+      () async {
+        final later = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(
+            6,
+            changes: {
+              'swap_allowed': true,
+              'swap_failure_reason': null,
+              'suggested_mining_fee_rate': 40,
+              'swap_fee_rate': 0.75,
+            },
+          ),
+          after: const Duration(seconds: 31),
+        );
+        final cubit = cubitOf(_Sender())
+          ..show(sixSwap)
+          ..selectKind(PayoutKind.onchain)
+          ..editAddress(mainnetAddress)
+          ..editFee('4');
+        cubit.show(later);
+        expect(cubit.state.feeTyped, isTrue);
+        expect(cubit.state.rate, MiningFeeRate.of(4));
+        expect(
+          (cubit.state.submittable(PayoutKind.onchain) as CheckedPayoutAddress?)
+              ?.rate,
+          MiningFeeRate.of(4),
+        );
+      },
+    );
+
+    testWidgets(
+      'a rate typed: the line says it is the user\'s and what the coordinator suggests',
+      (tester) async {
+        final cubit = cubitOf(_Sender());
+        await show(tester, cubit, sixSwap);
+        await tester.tap(find.text('Onchain'));
+        await tester.pump();
+        expect(find.textContaining('Your rate.'), findsNothing);
+        await tester.enterText(find.byKey(PayoutPanel.feeField), '4');
+        await tester.pump();
+        expect(
+          find.text('Your rate. Temple of Sats suggests 3.5 Sats/vByte.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    test(
+      'while a payout is given, a status shown changes nothing it shows; it is applied once the payout told something',
+      () async {
+        final later = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(
+            6,
+            changes: {
+              'swap_allowed': true,
+              'swap_failure_reason': null,
+              'suggested_mining_fee_rate': 40,
+              'swap_fee_rate': 0.75,
+            },
+          ),
+          after: const Duration(seconds: 31),
+        );
+        final gate = Completer<void>();
+        final sender = _Sender()
+          ..gate = gate.future
+          ..answer = (shown) => Ok(
+            PayoutNotTaken(
+              record,
+              sixSwap,
+              cause: const RobotCoordinatorBusyFailure(),
+            ),
+          );
+        final cubit = cubitOf(sender)
+          ..show(sixSwap)
+          ..selectKind(PayoutKind.onchain)
+          ..editAddress(mainnetAddress);
+        final running = cubit.submit(PayoutKind.onchain);
+        await pumpEventQueue();
+        cubit
+          ..show(later)
+          // Edits wait too.
+          ..editAddress('')
+          ..editFee('9');
+        expect(cubit.state.rate, MiningFeeRate.of(3.5));
+        expect(cubit.state.form.address, mainnetAddress);
+        expect(
+          (cubit.state.address as Ok<CheckedPayout, PayoutCheckRefusal>?)
+              ?.value,
+          isA<CheckedPayoutAddress>().having(
+            (a) => a.rate,
+            'rate',
+            MiningFeeRate.of(3.5),
+          ),
+        );
+        gate.complete();
+        await running;
+        expect(cubit.state.rate, MiningFeeRate.of(40));
+        expect(cubit.state.submittable(PayoutKind.onchain), isNotNull);
+      },
+    );
+
+    test(
+      '« Submit » is off for a check that is not what the fields show',
+      () async {
+        final cubit = cubitOf(_Sender())
+          ..show(sixSwap)
+          ..editInvoice(invoice.text);
+        final checked = cubit.state.submittable(PayoutKind.lightning);
+        expect(checked, isNotNull);
+        expect(cubit.state.form.invoice, invoice.text);
+        // The prefix of the reference is taken off the field itself.
+        cubit.editInvoice('lightning:${invoice.text}');
+        expect(cubit.state.form.invoice, invoice.text);
+        expect(
+          cubit.state.submittable(PayoutKind.lightning)?.text,
+          invoice.text,
+        );
+      },
+    );
+
+    test(
+      'execute that throws: the payout may have left, said so, never given again, and the fault goes on up (review of #132, P7)',
+      () async {
+        final cubit = PayoutCubit(
+          record,
+          PayoutAsk.of,
+          check,
+          (record, shown, {onProgress}) async => throw StateError('a fault'),
+          _Holds().call,
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        cubit
+          ..show(six)
+          ..editInvoice(invoice.text);
+        await expectLater(
+          cubit.submit(PayoutKind.lightning),
+          throwsA(isA<StateError>()),
+        );
+        expect(
+          cubit.state.phase,
+          isA<PayoutEditing>().having(
+            (p) => p.notice,
+            'notice',
+            isA<PayoutNoticeUnknown>(),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+      },
+    );
+
+    test(
+      'a read sent before the outcome came back offers nothing again; one sent after it, still asking, says so (review of #132, M-d)',
+      () async {
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutOutcomeUnknown(record, six));
+        final cubit = cubitOf(sender)
+          ..show(six)
+          ..editInvoice(invoice.text);
+        await cubit.submit(PayoutKind.lightning);
+        final read = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(6),
+          after: const Duration(minutes: 2),
+        );
+        // Answered after the outcome, sent before it.
+        cubit.show(
+          TradeSeen(
+            read.status,
+            order: read.order,
+            stored: true,
+            requestedAt: clock().subtract(const Duration(seconds: 1)),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        cubit.show(
+          TradeSeen(
+            read.status,
+            order: read.order,
+            stored: true,
+            requestedAt: clock().add(const Duration(seconds: 1)),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
+        expect(
+          cubit.state.phase,
+          isA<PayoutEditing>().having(
+            (p) => p.notice,
+            'notice',
+            isA<PayoutNoticeAskedAgain>(),
+          ),
+        );
+      },
+    );
+
+    testWidgets(
+      'while the trade is being cancelled, « Submit » is off and says why',
+      (tester) async {
+        final cubit = cubitOf(_Sender());
+        await tester.pumpWidget(
+          harness(
+            BlocProvider.value(
+              value: cubit,
+              child: SingleChildScrollView(
+                child: PayoutPanel(
+                  request: PayoutPanelRequest(
+                    record: record,
+                    seen: six,
+                    coordinator: coordinatorName,
+                    now: readAt,
+                    cancelling: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(PayoutPanel.invoiceField),
+          invoice.text,
+        );
+        await tester.pump();
+        expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
+        expect(enabled(tester, submitButton()), isFalse);
+        expect(
+          find.byTooltip('Submit is off while the trade is being cancelled.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a screen reader hears the switch\'s name, each field\'s label and the wait of the progress bar',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final gate = Completer<void>();
+        final sender = _Sender()
+          ..gate = gate.future
+          ..answer = (shown) => Ok(PayoutGiven(record, six));
+        final cubit = cubitOf(sender);
+        await show(tester, cubit, six);
+        expect(
+          tester.getSemantics(find.byType(Switch)),
+          containsSemantics(
+            label: 'Advanced options',
+            hasToggledState: true,
+            hasTapAction: true,
+          ),
+        );
+        expect(
+          tester.getSemantics(find.byKey(PayoutPanel.invoiceField)).label,
+          contains('Payout Lightning Invoice'),
+        );
+        await tester.enterText(
+          find.byKey(PayoutPanel.invoiceField),
+          invoice.text,
+        );
+        await tester.pump();
+        await reveal(tester, submitButton());
+        await tester.tap(submitButton());
+        for (var i = 0; i < 4; i++) {
+          await tester.pump();
+        }
+        expect(
+          tester.getSemantics(find.byType(LinearProgressIndicator)).label,
+          'Sending your payout info to Temple of Sats…',
+        );
+        gate.complete();
+        await tester.pump();
+        await tester.pump();
+        semantics.dispose();
+      },
+    );
+
+    test('what changed since it was shown is told: the expiry', () async {
+      // The step ends later at the fresh read: the invoice of two days now expires before its end and a day.
+      final late = await statuses.read(
+        await statuses.bondStep(),
+        orderJson(6, expiresAt: tradeNow.add(const Duration(days: 3))),
+      );
+      CheckedPayout checkedAt(TradeSeen seen) => switch (check(
+        record,
+        seen,
+        PayoutInvoiceText(
+          invoice.text,
+          budget: RoutingBudgetPpm.referenceDefault,
+        ),
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      expect(
+        PayoutChange.between(checkedAt(six), checkedAt(late)),
+        PayoutChange.expiry,
+      );
+      expect(
+        PayoutChange.between(checkedAt(six), checkedAt(six)),
+        PayoutChange.other,
+      );
+    });
 
     testWidgets('the panel prints nothing: no invoice, no address', (
       tester,
@@ -1104,6 +1610,14 @@ final class _Holds {
     return () => released++;
   }
 }
+
+/// The spoken name of the amount's copy.
+String _copyTooltip(Locale locale) =>
+    locale.languageCode == 'fr' ? 'Copier le montant' : 'Copy the amount';
+
+/// The text of the field of [key].
+String _fieldText(WidgetTester tester, Key key) =>
+    tester.widget<TextField>(find.byKey(key)).controller?.text ?? '';
 
 /// Every paragraph on the screen laid out without being cut, and no overflow.
 void _expectNothingCut(WidgetTester tester, String reason) {

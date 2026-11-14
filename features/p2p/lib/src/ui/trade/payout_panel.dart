@@ -27,11 +27,8 @@ import 'bond_panel.dart';
 final class PayoutPanelRequest {
   final TradeRecord record;
 
-  /// The status shown, with the order it was read from.
+  /// The status shown, with the order it was read from: the panel's cubit decides from it what can be checked and sent (only from a status marked stored, `SubmitPayoutUsecase.ask`).
   final TradeSeen seen;
-
-  /// Whether [seen] is marked stored (`TradeSeen.stored`): otherwise nothing can be checked or sent from it.
-  final bool stored;
 
   /// The long alias of the trade's coordinator, for the texts.
   final String coordinator;
@@ -39,12 +36,15 @@ final class PayoutPanelRequest {
   /// The screen's clock, for the countdown of a failed payout's next attempt.
   final DateTime now;
 
+  /// Whether a cancel of the trade runs: « Submit » is off meanwhile, as « Cancel » is while a payout is given.
+  final bool cancelling;
+
   const PayoutPanelRequest({
     required this.record,
     required this.seen,
-    required this.stored,
     required this.coordinator,
     required this.now,
+    this.cancelling = false,
   });
 }
 
@@ -72,26 +72,35 @@ final class PayoutWalletRequest {
 typedef PayoutWalletBuilder =
     Widget? Function(BuildContext context, PayoutWalletRequest request);
 
+/// Calls [onTold] once a payout given told something ([PayoutPanelState.toldBetween]): the route puts it around the trade screen, so that it hears it whichever tab is shown, and asks the trade's watch to read at once.
+class PayoutTold extends StatelessWidget {
+  final VoidCallback onTold;
+  final Widget child;
+
+  const PayoutTold({super.key, required this.onTold, required this.child});
+
+  @override
+  Widget build(BuildContext context) =>
+      BlocListener<PayoutCubit, PayoutPanelState>(
+        listenWhen: PayoutPanelState.toldBetween,
+        listener: (context, state) => onTold(),
+        child: child,
+      );
+}
+
 /// The official client's payout prompt (`TradeBox/Prompts/Payout.tsx`, `Forms/LightningPayout.tsx`, `Forms/OnchainPayout.tsx`, and at 15 `Prompts/RoutingFailed.tsx`, commit ff1998c) in the wallet's look (#91).
 ///
-/// At 6 and 8: the tabs « Lightning » and « Onchain », « Onchain » disabled when the coordinator offers no swap (with the reason it gave, which the reference does not show) or for an order in bitcoin. « Lightning »: « Advanced options » and its « Routing Budget », « Submit invoice for {{amountSats}} Sats » with the amount `SubmitPayoutUsecase.ask` gives and its copy, the field « Payout Lightning Invoice » with « Paste », what the check read of it (amount, expiry, network, the warnings) or why it cannot be given, and « Submit ». « Onchain »: the swap's text, its fees and « Final amount you will receive », the fields « Bitcoin Address » and « Mining Fee », and « Submit ».
+/// At 6 and 8: the tabs « Lightning » and « Onchain », « Onchain » disabled when the coordinator offers no swap (with the reason it gave, which the reference does not show) or for an order in bitcoin. « Lightning »: « Advanced options » and its « Routing Budget », « Submit invoice for {{amountSats}} Sats » with the amount `SubmitPayoutUsecase.ask` gives and its copy, the field « Payout Lightning Invoice » with « Paste », what the check read of it (amount, expiry, network, the warnings) or why it cannot be given, and « Submit ». « Onchain »: the swap's text, its fees and « Final amount you will receive », the fields « Bitcoin Address » and « Mining Fee », the address checked, and « Submit ».
 /// At 15, a failed payout: the reason and the next attempt, or, once the invoice expired, the reference's text and the Lightning tab alone.
-/// « Submit » gives the cubit the payout shown, once; while it is given, each wait says what it waits for, and after 30 s that it still waits; what it gave is said under « Submit », and the trade's screen is asked to read the order again.
+/// Everything typed or chosen lives in the cubit ([PayoutForm]): a panel built again (another tab of the trade, a line added above it) shows exactly what is checked, and the figures of what « Submit » gives are the check's own.
+/// « Submit » gives the cubit the payout shown, once; while it is given, each wait says what it waits for, and after 30 s that it still waits; what it gave is said under « Submit », a refusal of the coordinator under the field, as the reference's helper text.
 /// The robot's key is held while the panel is shown with the app in the foreground and its tab visible, and let go otherwise.
 /// [wallet] fills the slot of the wallet's address and invoice (#90): `null` today, and the slot draws nothing.
 class PayoutPanel extends StatefulWidget {
   final PayoutPanelRequest request;
   final PayoutWalletBuilder? wallet;
 
-  /// Asks the trade's watch to read now, once a payout given told something.
-  final VoidCallback onTold;
-
-  const PayoutPanel({
-    super.key,
-    required this.request,
-    required this.onTold,
-    this.wallet,
-  });
+  const PayoutPanel({super.key, required this.request, this.wallet});
 
   /// The keys of the fields, for the tests.
   static const invoiceField = ValueKey('payout-invoice');
@@ -99,39 +108,22 @@ class PayoutPanel extends StatefulWidget {
   static const feeField = ValueKey('payout-mining-fee');
   static const budgetField = ValueKey('payout-routing-budget');
 
-  /// How long a payout may be given before the panel says it still waits, as the take does.
-  static const stillWaitingAfter = Duration(seconds: 30);
-
   @override
   State<PayoutPanel> createState() => _PayoutPanelState();
 }
 
 class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
-  PayoutKind _kind = PayoutKind.lightning;
-  String _invoice = '';
-  String _address = '';
-
-  /// The mining fee rate typed, the coordinator's suggestion until the user changes it (`Forms/OnchainPayout.tsx:48-50`).
-  String? _fee;
-
-  bool _advanced = false;
-  bool _budgetInSats = false;
-  String _budgetText = '${RoutingBudgetPpm.referenceDefault.ppm}';
-  RoutingBudgetPpm _budget = RoutingBudgetPpm.referenceDefault;
+  /// The fields' texts, kept equal to the cubit's form ([_sync]): the cubit is their only source.
+  final _invoice = TextEditingController();
+  final _address = TextEditingController();
+  final _fee = TextEditingController();
+  final _budget = TextEditingController();
 
   /// Whether the app is in the foreground and the panel's tab of the shell is shown.
   bool _foreground = true;
   bool _tickerEnabled = true;
 
-  Timer? _stillWaiting;
-  bool _waitedLong = false;
   bool _copied = false;
-
-  /// Whether a payout was being given at the last state: its end is when it told something.
-  bool _wasSending = false;
-
-  /// The coordinator's suggested rate as text, the mining fee's value until the user types one.
-  String? _suggestedFee;
 
   late final PayoutCubit _cubit;
 
@@ -161,6 +153,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     super.didChangeDependencies();
     _tickerEnabled = TickerMode.valuesOf(context).enabled;
     _keepKey();
+    _sync(_cubit.state);
   }
 
   @override
@@ -188,93 +181,47 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stillWaiting?.cancel();
     _cubit.release();
+    _invoice.dispose();
+    _address.dispose();
+    _fee.dispose();
+    _budget.dispose();
     super.dispose();
   }
 
-  void _onState(BuildContext context, PayoutPanelState state) {
-    final sending = state.phase is PayoutSending;
-    if (sending && _stillWaiting == null) {
-      _stillWaiting = Timer(PayoutPanel.stillWaitingAfter, () {
-        if (mounted) setState(() => _waitedLong = true);
-      });
+  /// The mining fee's text: the rate typed, or the coordinator's suggestion as it gives it, without grouping so that it reads back as a number.
+  String _feeText(PayoutPanelState state) {
+    if (state.form.fee case final typed?) return typed;
+    final suggested = state.onchain?.suggestedSatPerVbyte;
+    return suggested == null
+        ? ''
+        : NumberFormat(
+            '0.###',
+            P2pLocalizations.of(context).localeName,
+          ).format(suggested);
+  }
+
+  /// Each field's text made the form's: a text the user did not type there (pasted, the `lightning:` prefix taken off, a budget refused, a panel built again) replaces it, the cursor at the start of an invoice or an address, as the reference puts it after a paste (`Forms/LightningPayout.tsx:321-330`), at the end of a number.
+  void _sync(PayoutPanelState state) {
+    void set(TextEditingController field, String text, {required bool start}) {
+      if (field.text == text) return;
+      field.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: start ? 0 : text.length),
+      );
     }
-    if (!sending) {
-      _stillWaiting?.cancel();
-      _stillWaiting = null;
-      _waitedLong = false;
-    }
-    // Once a payout given told something, the trade's watch reads at once, so that what follows is shown as soon as the coordinator tells it.
-    if (_wasSending && !sending) {
-      if (state.phase case PayoutEditing(:final notice?)
-          when notice is! PayoutNoticeNotSent ||
-              notice.refusal is PayoutNoLongerValid) {
-        widget.onTold();
-      }
-    }
-    _wasSending = sending;
+
+    final form = state.form;
+    set(_invoice, form.invoice, start: true);
+    set(_address, form.address, start: true);
+    set(_budget, form.budgetText, start: false);
+    set(_fee, _feeText(state), start: false);
   }
 
-  /// The mining fee typed, or the coordinator's suggestion until one is typed.
-  String get _feeText => _fee ?? _suggestedFee ?? '';
-
-  void _setInvoice(String text) {
-    setState(() => _invoice = text);
-    _cubit.checkInvoice(text, _budget);
-  }
-
-  void _setAddress(String text) {
-    setState(() => _address = text);
-    _cubit.checkAddress(text, _rateOf(_feeText));
-  }
-
-  void _setFee(String text) {
-    setState(() => _fee = text);
-    _cubit.checkAddress(_address, _rateOf(text));
-  }
-
-  static MiningFeeRate? _rateOf(String? text) {
-    final value = double.tryParse((text ?? '').trim().replaceAll(',', '.'));
-    return value == null ? null : MiningFeeRate.of(value);
-  }
-
-  /// The budget typed, in ppm or in sats of [buyerSats], taken only while it is under 99,999 ppm, as the reference takes it (`Forms/LightningPayout.tsx:289-307`).
-  void _setBudget(String text, Sats buyerSats) {
-    setState(() => _budgetText = text);
-    final value = int.tryParse(text);
-    if (value == null) return;
-    final buyer = buyerSats.value.toInt();
-    final ppm = _budgetInSats
-        ? (buyer == 0 ? null : (value * 1000000 / buyer).round())
-        : value;
-    final budget = ppm == null ? null : RoutingBudgetPpm.of(ppm);
-    if (budget == null) return;
-    setState(() => _budget = budget);
-    _cubit.checkInvoice(_invoice, budget);
-  }
-
-  /// The unit of the budget switched, the field showing the budget in the other unit (`Forms/LightningPayout.tsx:403-410`, `:300`).
-  void _switchBudgetUnit(Sats asked) {
-    setState(() {
-      _budgetInSats = !_budgetInSats;
-      _budgetText = _budgetInSats
-          ? '${(asked.value.toInt() / 1000000 * _budget.ppm).ceil()}'
-          : '${_budget.ppm}';
-    });
-  }
-
-  /// « Advanced options » off brings the reference's default budget back (`Forms/LightningPayout.tsx:229-243`).
-  void _setAdvanced(bool on) {
-    setState(() {
-      _advanced = on;
-      if (!on) {
-        _budget = RoutingBudgetPpm.referenceDefault;
-        _budgetInSats = false;
-        _budgetText = '${RoutingBudgetPpm.referenceDefault.ppm}';
-      }
-    });
-    if (!on) _cubit.checkInvoice(_invoice, _budget);
+  /// [change] made to the cubit's form, then the fields made the form's (a change refused leaves the form as it was).
+  void _edit(void Function() change) {
+    change();
+    if (mounted) _sync(_cubit.state);
   }
 
   /// Reads the clipboard once, on the user's tap, into the field of [kind].
@@ -287,12 +234,12 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     }
     final text = data?.text?.trim();
     if (!mounted || text == null || text.isEmpty) return;
-    switch (kind) {
-      case PayoutKind.lightning:
-        _setInvoice(text);
-      case PayoutKind.onchain:
-        _setAddress(text);
-    }
+    _edit(
+      () => switch (kind) {
+        PayoutKind.lightning => _cubit.editInvoice(text),
+        PayoutKind.onchain => _cubit.editAddress(text),
+      },
+    );
   }
 
   /// Copies the amount asked, as the reference's copy beside « Submit invoice for … » does (`Forms/LightningPayout.tsx:565-576`).
@@ -314,10 +261,12 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final l10n = P2pLocalizations.of(context);
     final request = widget.request;
     return BlocConsumer<PayoutCubit, PayoutPanelState>(
-      listenWhen: (before, after) => before.phase != after.phase,
-      listener: _onState,
+      listenWhen: (before, after) =>
+          !identical(before.form, after.form) ||
+          !identical(before.ask, after.ask),
+      listener: (context, state) => _sync(state),
       builder: (context, state) {
-        final status = request.seen.status;
+        final status = (state.seen ?? request.seen).status;
         // 15 before the invoice expired: the coordinator retries; nothing to give yet.
         if (status case RoutingFailed(invoiceExpired: false)) {
           return _RetryView(
@@ -361,10 +310,9 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     bool newInvoice,
   ) {
     final l10n = P2pLocalizations.of(context);
-    final colors = context.bull;
     final onchain = ask.onchain;
     // A tab whose option the coordinator withdrew falls back to Lightning.
-    final kind = onchain == null ? PayoutKind.lightning : _kind;
+    final kind = onchain == null ? PayoutKind.lightning : state.form.kind;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -375,8 +323,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
                 ? l10n.p2pPayoutTabLightning
                 : l10n.p2pPayoutTabOnchain,
             disabledItems: {if (onchain == null) l10n.p2pPayoutTabOnchain},
-            onSelected: (item) => setState(
-              () => _kind = item == l10n.p2pPayoutTabOnchain
+            onSelected: (item) => _cubit.selectKind(
+              item == l10n.p2pPayoutTabOnchain
                   ? PayoutKind.onchain
                   : PayoutKind.lightning,
             ),
@@ -402,10 +350,12 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             record: widget.request.record,
             ask: ask,
             kind: kind,
-            use: switch (kind) {
-              PayoutKind.lightning => _setInvoice,
-              PayoutKind.onchain => _setAddress,
-            },
+            use: (text) => _edit(
+              () => switch (kind) {
+                PayoutKind.lightning => _cubit.editInvoice(text),
+                PayoutKind.onchain => _cubit.editAddress(text),
+              },
+            ),
           ),
         ),
         switch ((kind, onchain)) {
@@ -416,7 +366,6 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           ),
           _ => _lightning(context, state, ask),
         },
-        ..._outcome(context, state, kind, colors),
       ],
     );
   }
@@ -429,45 +378,64 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
     final formats = P2pFormats.of(context);
-    final asked = ask.invoiceSatsFor(_budget);
-    final budgetPpm = _budget.ppm;
+    final form = state.form;
+    final editable = state.phase is PayoutEditing;
+    final asked = ask.invoiceSatsFor(form.budget);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: _Text(l10n.p2pPayoutAdvancedOptions)),
-            BullSwitch(value: _advanced, onChanged: _setAdvanced),
-          ],
+        // The switch named by its text for a screen reader.
+        MergeSemantics(
+          child: Row(
+            children: [
+              Expanded(child: _Text(l10n.p2pPayoutAdvancedOptions)),
+              BullSwitch(
+                value: form.advanced,
+                onChanged: editable
+                    ? (on) => _edit(() => _cubit.setAdvanced(on))
+                    : null,
+              ),
+            ],
+          ),
         ),
-        if (_advanced) ...[
+        if (form.advanced) ...[
           const Gap(BullSpacing.sm),
-          _Label(l10n.p2pPayoutRoutingBudget),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: BullInputText(
-                  uiKey: PayoutPanel.budgetField,
-                  value: _budgetText,
-                  onChanged: (text) => _setBudget(text, ask.buyerSats),
-                  digitsOnly: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
+                child: _Field(
+                  label: l10n.p2pPayoutRoutingBudget,
+                  field: BullInputText(
+                    uiKey: PayoutPanel.budgetField,
+                    controller: _budget,
+                    value: form.budgetText,
+                    onChanged: (text) => _edit(() => _cubit.editBudget(text)),
+                    disabled: !editable,
+                    digitsOnly: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
                 ),
               ),
               TextButton(
-                onPressed: asked == null
+                onPressed: asked == null || !editable
                     ? null
-                    : () => _switchBudgetUnit(asked),
+                    : () => _edit(_cubit.switchBudgetUnit),
                 child: Text(
-                  _budgetInSats ? l10n.p2pSatsUnit : l10n.p2pPayoutUnitPpm,
+                  form.budgetInSats ? l10n.p2pSatsUnit : l10n.p2pPayoutUnitPpm,
                   style: TextStyle(color: colors.primary),
                 ),
               ),
             ],
           ),
-          if (budgetPpm > 10000)
-            _Text(l10n.p2pPayoutBudgetTooHigh, color: colors.warning),
+          // The reference's helper text, in red under the field (`Forms/LightningPayout.tsx:389-390`).
+          if (form.budget.ppm > 10000)
+            _Text(
+              l10n.p2pPayoutBudgetTooHigh,
+              color: colors.error,
+              small: true,
+            ),
         ],
         const Gap(BullSpacing.md),
         if (asked != null)
@@ -496,23 +464,25 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           ),
         if (_copied) _Text(l10n.p2pCommonCopied, center: true, live: true),
         const Gap(BullSpacing.sm),
-        _Label(l10n.p2pPayoutInvoiceField),
-        BullInputText(
-          uiKey: PayoutPanel.invoiceField,
-          value: _invoice,
-          onChanged: _setInvoice,
-          maxLines: 4,
-          autocorrect: false,
-          enableSuggestions: false,
-          rightIcon: Tooltip(
-            message: l10n.p2pCommonPaste,
-            child: Icon(Icons.content_paste, color: colors.primary),
+        _Field(
+          label: l10n.p2pPayoutInvoiceField,
+          onPaste: editable ? () => _paste(PayoutKind.lightning) : null,
+          field: BullInputText(
+            uiKey: PayoutPanel.invoiceField,
+            controller: _invoice,
+            value: form.invoice,
+            onChanged: (text) => _edit(() => _cubit.editInvoice(text)),
+            disabled: !editable,
+            maxLines: 4,
+            autocorrect: false,
+            enableSuggestions: false,
           ),
-          onRightTap: () => _paste(PayoutKind.lightning),
         ),
+        ..._refused(context, state, PayoutKind.lightning),
         ..._check(context, state, PayoutKind.lightning),
         const Gap(BullSpacing.md),
         _submit(context, state, PayoutKind.lightning),
+        ..._outcome(context, state, PayoutKind.lightning),
         // The reference's wallets button under the Lightning form (`Forms/LightningPayout.tsx:658-660`), its link shown for copy as in the bond panel.
         const Gap(BullSpacing.sm),
         TradeButton(
@@ -538,13 +508,22 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final colors = context.bull;
     final formats = P2pFormats.of(context);
     final number = NumberFormat.decimalPattern(l10n.localeName);
+    final form = state.form;
+    final editable = state.phase is PayoutEditing;
+    // What « Submit » gives, once the address is checked: its own figures; before, the reference's preview from the rate of the form (`Forms/OnchainPayout.tsx:66-101`), the same rate the check uses.
+    final checked = switch (state.address) {
+      Ok(value: final CheckedPayoutAddress payout) => payout,
+      _ => null,
+    };
+    final rate = checked?.rate ?? state.rate;
+    final swapFee = checked?.swapFeeSats ?? onchain.swapFeeSats;
+    final swapPercent = checked?.swapFeePercent ?? onchain.swapFeePercent;
+    final miningFee =
+        checked?.miningFeeSats ??
+        (rate == null ? null : onchain.miningFeeSatsFor(rate));
+    final sent =
+        checked?.sentSats ?? (rate == null ? null : onchain.sentSatsFor(rate));
     final suggested = onchain.suggestedSatPerVbyte;
-    // Without grouping, so that the text reads back as a number.
-    _suggestedFee = suggested == null
-        ? null
-        : NumberFormat('0.###', l10n.localeName).format(suggested);
-    final rate = _rateOf(_feeText);
-    final sent = rate == null ? null : onchain.sentSatsFor(rate);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -555,15 +534,15 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             OrderDetailRow(
               l10n.p2pPayoutSwapFee,
               l10n.p2pPayoutSwapFeeValue(
-                formats.sats(onchain.swapFeeSats),
-                number.format(onchain.swapFeePercent),
+                formats.sats(swapFee),
+                number.format(swapPercent),
               ),
             ),
-            if (rate != null)
+            if (rate != null && miningFee != null)
               OrderDetailRow(
                 l10n.p2pPayoutMiningFee,
                 l10n.p2pPayoutMiningFeeValue(
-                  formats.sats(onchain.miningFeeSatsFor(rate)),
+                  formats.sats(miningFee),
                   number.format(rate.satPerVbyte),
                 ),
               ),
@@ -575,39 +554,78 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           ],
         ),
         const Gap(BullSpacing.md),
-        _Label(l10n.p2pPayoutAddressField),
-        BullInputText(
-          uiKey: PayoutPanel.addressField,
-          value: _address,
-          onChanged: _setAddress,
-          maxLines: 2,
-          autocorrect: false,
-          enableSuggestions: false,
-          rightIcon: Tooltip(
-            message: l10n.p2pCommonPaste,
-            child: Icon(Icons.content_paste, color: colors.primary),
+        _Field(
+          label: l10n.p2pPayoutAddressField,
+          onPaste: editable ? () => _paste(PayoutKind.onchain) : null,
+          field: BullInputText(
+            uiKey: PayoutPanel.addressField,
+            controller: _address,
+            value: form.address,
+            onChanged: (text) => _edit(() => _cubit.editAddress(text)),
+            disabled: !editable,
+            maxLines: 2,
+            autocorrect: false,
+            enableSuggestions: false,
           ),
-          onRightTap: () => _paste(PayoutKind.onchain),
         ),
+        ..._refused(context, state, PayoutKind.onchain),
         const Gap(BullSpacing.sm),
-        _Label(l10n.p2pPayoutMiningFeeField),
-        BullInputText(
-          uiKey: PayoutPanel.feeField,
-          value: _feeText,
-          onChanged: _setFee,
-          onlyNumbers: true,
-          autocorrect: false,
-          enableSuggestions: false,
+        _Field(
+          label: l10n.p2pPayoutMiningFeeField,
+          field: BullInputText(
+            uiKey: PayoutPanel.feeField,
+            controller: _fee,
+            value: _feeText(state),
+            onChanged: (text) => _edit(() => _cubit.editFee(text)),
+            disabled: !editable,
+            onlyNumbers: true,
+            autocorrect: false,
+            enableSuggestions: false,
+          ),
         ),
-        if (rate == null) _Text(l10n.p2pPayoutInvalid, color: colors.error),
+        if (state.rate == null)
+          _Text(l10n.p2pPayoutInvalid, color: colors.error, small: true)
+        // The rate is the user's: said, with the coordinator's suggestion when it differs.
+        else if (state.feeTyped &&
+            suggested != null &&
+            state.rate?.satPerVbyte != suggested)
+          _Text(
+            l10n.p2pPayoutSuggestedRate(
+              widget.request.coordinator,
+              number.format(suggested),
+            ),
+            muted: true,
+            small: true,
+          ),
         ..._check(context, state, PayoutKind.onchain),
         const Gap(BullSpacing.md),
         _submit(context, state, PayoutKind.onchain),
+        ..._outcome(context, state, PayoutKind.onchain),
       ],
     );
   }
 
-  /// What the check of [kind]'s text gave: why it cannot be given, or, for an invoice, what was read of it (amount, expiry, network), and the warnings.
+  /// The coordinator's refusal of the last payout of [kind]'s tab, in red under its field, as the reference's helper text (`Forms/LightningPayout.tsx:602-619`, `Forms/OnchainPayout.tsx:114-118`).
+  List<Widget> _refused(
+    BuildContext context,
+    PayoutPanelState state,
+    PayoutKind kind,
+  ) => switch (state.phase) {
+    PayoutEditing(notice: final PayoutNoticeNotTaken notice)
+        when notice.kind == kind && notice.byCoordinator =>
+      [
+        const Gap(BullSpacing.xs),
+        _Text(
+          notice.toText(context, coordinator: widget.request.coordinator),
+          color: context.bull.error,
+          small: true,
+          live: true,
+        ),
+      ],
+    _ => const [],
+  };
+
+  /// What the check of [kind]'s text gave: why it cannot be given, or what « Submit » gives: for an invoice what was read of it (amount, expiry, network), for an address the address checked and its network, and the warnings.
   List<Widget> _check(
     BuildContext context,
     PayoutPanelState state,
@@ -617,6 +635,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final colors = context.bull;
     final formats = P2pFormats.of(context);
     final coordinator = widget.request.coordinator;
+    String network(RobosatsNetwork network) => switch (network) {
+      RobosatsNetwork.mainnet => l10n.p2pTradeNetworkMainnet,
+      RobosatsNetwork.testnet => l10n.p2pTradeNetworkTestnet,
+    };
     return switch (state.checkOf(kind)) {
       null => const [],
       Err(:final failure) => [
@@ -628,31 +650,33 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         ),
       ],
       Ok(value: final payout) => [
-        if (payout case CheckedPayoutInvoice(
-          :final amount,
-          :final expiresAt,
-          :final network,
-        )) ...[
-          const Gap(BullSpacing.sm),
-          BullDetailsTable(
-            items: [
+        const Gap(BullSpacing.sm),
+        BullDetailsTable(
+          items: switch (payout) {
+            CheckedPayoutInvoice(:final amount, :final expiresAt) => [
               OrderDetailRow(
                 l10n.p2pBookColumnAmount,
                 l10n.p2pAmountSats(formats.sats(amount.value.toInt())),
               ),
               OrderDetailRow(
                 l10n.p2pTradeInvoiceExpires,
-                DateFormat.yMd(
-                  l10n.localeName,
-                ).add_Hms().format(expiresAt.toLocal()),
+                '${payoutExpiryDate(context, expiresAt)} '
+                '${payoutExpiryTime(context, expiresAt)}',
               ),
-              OrderDetailRow(l10n.p2pTradeInvoiceNetwork, switch (network) {
-                RobosatsNetwork.mainnet => l10n.p2pTradeNetworkMainnet,
-                RobosatsNetwork.testnet => l10n.p2pTradeNetworkTestnet,
-              }),
+              OrderDetailRow(
+                l10n.p2pTradeInvoiceNetwork,
+                network(payout.network),
+              ),
             ],
-          ),
-        ],
+            CheckedPayoutAddress(:final text) => [
+              OrderDetailRow(l10n.p2pPayoutAddressField, text),
+              OrderDetailRow(
+                l10n.p2pTradeInvoiceNetwork,
+                network(payout.network),
+              ),
+            ],
+          },
+        ),
         for (final warning in payout.warnings) ...[
           const Gap(BullSpacing.xs),
           _Text(
@@ -675,44 +699,55 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
       PayoutSending(kind: final sent) => sent == kind,
       PayoutEditing() => false,
     };
-    return TradeButton(
+    final cancelling = widget.request.cancelling;
+    final button = TradeButton(
       label: l10n.p2pPayoutSubmit,
       busy: sending,
-      onPressed: state.submittable(kind) == null
+      onPressed: cancelling || state.submittable(kind) == null
           ? null
           : () => unawaited(_cubit.submit(kind)),
     );
+    return cancelling
+        ? Tooltip(message: l10n.p2pPayoutSubmitWhileCancelling, child: button)
+        : button;
   }
 
-  /// What a payout being given waits for, and what the last one gave.
+  /// Under « Submit »: what a payout being given waits for, and what the last one of [kind]'s tab gave (a refusal of the coordinator aside, said under the field).
   List<Widget> _outcome(
     BuildContext context,
     PayoutPanelState state,
     PayoutKind kind,
-    BullTheme colors,
   ) {
     final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
     final coordinator = widget.request.coordinator;
     return switch (state.phase) {
-      PayoutSending(:final step) => [
-        const Gap(BullSpacing.sm),
-        _Text(
-          step.toText(context, coordinator: coordinator),
-          center: true,
-          live: true,
-        ),
-        const Gap(BullSpacing.xs),
-        LinearProgressIndicator(color: colors.primary),
-        if (_waitedLong) ...[
-          const Gap(BullSpacing.xs),
+      PayoutSending(kind: final sent, :final step, :final waitedLong)
+          when sent == kind =>
+        [
+          const Gap(BullSpacing.sm),
           _Text(
-            l10n.p2pRobotStillWaiting(coordinator),
+            step.toText(context, coordinator: coordinator),
             center: true,
-            muted: true,
             live: true,
           ),
+          const Gap(BullSpacing.xs),
+          LinearProgressIndicator(
+            color: colors.primary,
+            semanticsLabel: step.toText(context, coordinator: coordinator),
+          ),
+          if (waitedLong) ...[
+            const Gap(BullSpacing.xs),
+            _Text(
+              l10n.p2pRobotStillWaiting(coordinator),
+              center: true,
+              muted: true,
+              live: true,
+            ),
+          ],
         ],
-      ],
+      PayoutEditing(notice: PayoutNoticeNotTaken(byCoordinator: true)) =>
+        const [],
       PayoutEditing(:final notice?) when notice.kind == kind => [
         const Gap(BullSpacing.sm),
         _Text(
@@ -721,15 +756,57 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           live: true,
           color: switch (notice) {
             PayoutNoticeGiven() => colors.success,
-            PayoutNoticeUnknown() => colors.warning,
+            PayoutNoticeUnknown() || PayoutNoticeAskedAgain() => colors.warning,
             PayoutNoticeNotSent(refusal: PayoutChangedSinceShown()) =>
               colors.warning,
             PayoutNoticeNotTaken() || PayoutNoticeNotSent() => colors.error,
           },
         ),
       ],
-      PayoutEditing() => const [],
+      _ => const [],
     };
+  }
+}
+
+/// A field with its label above it, merged with it for a screen reader, which reads the label as the field's name; « Paste » beside the label, so that it keeps a node of its own.
+class _Field extends StatelessWidget {
+  final String label;
+  final Widget field;
+  final VoidCallback? onPaste;
+
+  const _Field({required this.label, required this.field, this.onPaste});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final onPaste = this.onPaste;
+    final named = MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Label(label, end: onPaste == null ? 0 : 40),
+          field,
+        ],
+      ),
+    );
+    if (onPaste == null) return named;
+    return Stack(
+      children: [
+        named,
+        PositionedDirectional(
+          top: 0,
+          end: 0,
+          child: IconButton(
+            tooltip: l10n.p2pCommonPaste,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            onPressed: onPaste,
+            icon: Icon(Icons.content_paste, size: 20, color: colors.primary),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -808,15 +885,16 @@ class _FailureReason extends StatelessWidget {
   }
 }
 
-/// The label above a field.
+/// The label above a field; [end] leaves room for a button beside it.
 class _Label extends StatelessWidget {
   final String text;
+  final double end;
 
-  const _Label(this.text);
+  const _Label(this.text, {this.end = 0});
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: BullSpacing.xs),
+    padding: EdgeInsetsDirectional.only(bottom: BullSpacing.xs, end: end),
     child: Text(
       text,
       style: Theme.of(

@@ -2273,6 +2273,12 @@ abstract class P2pLocalizations {
   /// **'Unilateral cancelation (bond at risk!)'**
   String get p2pTradeCancelUnilateral;
 
+  /// Not in the RoboSats texts: the project's own: why « Cancel » is off while a payout is given (#91), for the screen reader and a long press.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel is off while your payout info is being sent.'**
+  String get p2pTradeCancelWhilePayout;
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): title of both cancel dialogs (`Dialogs/CancelOrder.tsx`, `TradeBox/Dialogs/ConfirmCancel.tsx`).
   ///
   /// In en, this message translates to:
@@ -2591,6 +2597,12 @@ abstract class P2pLocalizations {
   /// **'Submit'**
   String get p2pPayoutSubmit;
 
+  /// Not in the RoboSats texts: the project's own: why « Submit » is off while a cancel of the trade runs, for the screen reader and a long press.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit is off while the trade is being cancelled.'**
+  String get p2pPayoutSubmitWhileCancelling;
+
   /// The official client's text (`Forms/LightningPayout.tsx:120` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: an invoice for another amount than the one asked.
   ///
   /// In en, this message translates to:
@@ -2650,6 +2662,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Invalid'**
   String get p2pPayoutInvalid;
+
+  /// Not in the RoboSats texts: the project's own: under the mining fee the user typed, when the coordinator suggests another rate (review of #132).
+  ///
+  /// In en, this message translates to:
+  /// **'Your rate. {coordinator} suggests {rate} Sats/vByte.'**
+  String p2pPayoutSuggestedRate(String coordinator, String rate);
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:36`).
   ///
@@ -2753,7 +2771,7 @@ abstract class P2pLocalizations {
   /// **'The invoice provided has no explicit amount'**
   String get p2pPayoutRefusedNoAmount;
 
-  /// The coordinator's text (`api/lightning/lnd.py:514-520`, commit ff1998c), which the official client shows under the field; {amount} is the amount asked; the French is the project's.
+  /// The coordinator's text (`api/lightning/lnd.py:514-520`, commit ff1998c), which the official client shows under the field; {amount} is the amount the coordinator expects, read from its own message (review of #132); the French is the project's.
   ///
   /// In en, this message translates to:
   /// **'The invoice provided is not for {amount} Sats'**
@@ -2846,8 +2864,14 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: a refusal the reference has no text for (a refusal of the coordinator this app does not know, or a request that never reached it).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} did not take your payout info.'**
+  /// **'{coordinator} refused your payout info.'**
   String p2pPayoutRefusedOther(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the request never reached the coordinator (a busy transport every time, the robot released).
+  ///
+  /// In en, this message translates to:
+  /// **'Your payout info did not reach {coordinator}: nothing was recorded. You can submit again.'**
+  String p2pPayoutNotReached(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the status shown was not stored with its order, so nothing can be checked or sent from it.
   ///
@@ -2909,11 +2933,15 @@ abstract class P2pLocalizations {
   /// **'{coordinator} may not be able to pay this kind of address.'**
   String p2pPayoutAddressUnsupported(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: the invoice expires before the step's end and a day (design note § 4.4); information, never a refusal.
+  /// Not in the RoboSats texts: the project's own: the invoice expires before the step's end and a day (design note § 4.4); information, never a refusal; {date} and {time} written as in the table above it.
   ///
   /// In en, this message translates to:
-  /// **'This invoice expires at {time}. If the seller confirms after that, {coordinator} cannot pay it and will ask you for a new one.'**
-  String p2pPayoutWarnExpiresFirst(String time, String coordinator);
+  /// **'This invoice expires on {date} at {time}. If the seller confirms after that, {coordinator} cannot pay it and will ask you for a new one.'**
+  String p2pPayoutWarnExpiresFirst(
+    String date,
+    String time,
+    String coordinator,
+  );
 
   /// Not in the RoboSats texts: the project's own: what the address would receive is under the coordinator's minimum (`api/logics.py:815-820`); information, the coordinator refuses it.
   ///
@@ -2948,7 +2976,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, read as a kind.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} has not enough on-chain funds for a swap.'**
+  /// **'{coordinator} does not have enough on-chain funds for a swap.'**
   String p2pPayoutSwapNoLiquidity(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: no on-chain payout offered, for a reason the app does not know.
@@ -2981,6 +3009,12 @@ abstract class P2pLocalizations {
   /// **'Reading the order again from {coordinator}…'**
   String p2pPayoutStepReadingAfter(String coordinator);
 
+  /// Not in the RoboSats texts: the project's own: a take, a cancel or another payout of the order is under way, and the payout waits for it.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for another action on this order to end…'**
+  String get p2pPayoutStepWaitingForOrder;
+
   /// Not in the RoboSats texts: the project's own: the coordinator recorded the payout.
   ///
   /// In en, this message translates to:
@@ -2990,14 +3024,38 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the payout may have been recorded; nothing is sent again.
   ///
   /// In en, this message translates to:
-  /// **'Bull Market does not know yet whether {coordinator} received your payout info. It keeps checking.'**
+  /// **'Bull Market does not know yet whether {coordinator} received your payout info. It keeps checking while this screen is open.'**
   String p2pPayoutUnknown(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: what the user would see changed with the read just before signing; nothing was sent.
+  /// Not in the RoboSats texts: the project's own: a read sent after a payout that was received or may have been still shows the coordinator asking for one.
   ///
   /// In en, this message translates to:
-  /// **'This changed since it was shown. Check it again before you submit.'**
+  /// **'{coordinator} still asks for your payout info: the last you gave was not recorded. You can submit again.'**
+  String p2pPayoutAskedAgain(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: what the user would see changed with the read just before signing, other than the amount, the invoice's expiry or the status; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: what is shown changed since you saw it. Check it again before you submit.'**
   String get p2pPayoutChanged;
+
+  /// Not in the RoboSats texts: the project's own: the amount asked or received changed with the read just before signing; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: the amount changed since it was shown. Check it again before you submit.'**
+  String get p2pPayoutChangedAmount;
+
+  /// Not in the RoboSats texts: the project's own: with the read just before signing, the invoice now expires before the step's end and a day; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: this invoice now expires before the step could end. Check it again before you submit.'**
+  String get p2pPayoutChangedExpiry;
+
+  /// Not in the RoboSats texts: the project's own: the status carries a warning it did not with the read just before signing; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was sent: the trade\'s status changed since it was shown. Check it again before you submit.'**
+  String get p2pPayoutChangedStatus;
 
   /// Not in the RoboSats texts: the project's own.
   ///

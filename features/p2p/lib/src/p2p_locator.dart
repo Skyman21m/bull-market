@@ -371,6 +371,7 @@ final class P2pLocator {
         payout.check,
         payout.execute,
         (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
+        now: locator<P2pClock>().now,
       );
     });
     locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(
