@@ -58,7 +58,7 @@ final class PayoutAsk {
   /// The end of the step (`expires_at`): at 6 and 8 the buyer loses the bond if no payout is in by then (`api/logics.py:360-379`, `:445-458`); at 15 the coordinator retries until it has a new invoice.
   final DateTime deadline;
 
-  /// The on-chain payout, when the coordinator offers it at this step; `null` otherwise, with [onchainRefusal] when the coordinator said why.
+  /// The on-chain payout, when the coordinator offers it at this step and the order is not in bitcoin; `null` otherwise, with [onchainRefusal] when the coordinator said why.
   final OnchainAsk? onchain;
   final SwapRefusal? onchainRefusal;
 
@@ -71,6 +71,9 @@ final class PayoutAsk {
     required this.onchain,
     required this.onchainRefusal,
   });
+
+  /// Whether the order is in bitcoin, a swap into Lightning: the reference offers it no on-chain payout (`Prompts/Payout.tsx:98`), so [onchain] is `null`.
+  bool get isSwapOrder => order.currency.isBitcoin;
 
   /// Whether the coordinator asks for a new invoice after a failed payout (15), rather than for the first payout (6 or 8).
   bool get isNewInvoice => seen.status.position == TradePosition.routingFailed;
@@ -114,10 +117,13 @@ final class PayoutAsk {
     final buyerSats = order.tradeSatoshis;
     if (buyerSats == null) return const Err(PayoutAmountUnknown());
     final firstPayout = seen.status.position != TradePosition.routingFailed;
+    // The reference offers no on-chain payout for an order in bitcoin, a swap into Lightning (`Prompts/Payout.tsx:98`).
+    final swapOrder = order.currency.isBitcoin;
     final invoiceAmount = order.payoutInvoiceAmount;
     final swapFee = order.swapFeeRate;
     final onchain =
         firstPayout &&
+            !swapOrder &&
             order.swapAllowed == true &&
             invoiceAmount != null &&
             swapFee != null
@@ -135,7 +141,7 @@ final class PayoutAsk {
         buyerSats: buyerSats,
         deadline: order.expiresAt,
         onchain: onchain,
-        onchainRefusal: firstPayout && order.swapAllowed != true
+        onchainRefusal: firstPayout && !swapOrder && order.swapAllowed != true
             ? order.swapRefusal
             : null,
       ),

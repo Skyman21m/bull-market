@@ -31,6 +31,7 @@ import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
 import 'confirm_cancel_dialog.dart';
+import 'payout_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
 
@@ -52,6 +53,9 @@ class TradeScreen extends StatefulWidget {
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
+  /// The payout panel of 6, 8 and 15 (#91): `null`, and the prompt shows no form, where the feature holds no robot (see [PayoutPanel]).
+  final PayoutPanelBuilder? payout;
+
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
@@ -66,6 +70,7 @@ class TradeScreen extends StatefulWidget {
     required this.now,
     required this.coordinatorDetails,
     this.walletPayment,
+    this.payout,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -253,6 +258,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         cancel: state.cancel,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
+                        payout: widget.payout,
                       ),
                     },
                   ],
@@ -367,6 +373,7 @@ class _Contract extends StatelessWidget {
   final TradeCancelState cancel;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
+  final PayoutPanelBuilder? payout;
 
   const _Contract({
     required this.contract,
@@ -375,6 +382,7 @@ class _Contract extends StatelessWidget {
     required this.cancel,
     required this.coordinator,
     required this.walletPayment,
+    required this.payout,
   });
 
   @override
@@ -474,9 +482,11 @@ class _Contract extends StatelessWidget {
             ),
             const Gap(BullSpacing.sm),
           ],
-          _Line(l10n.p2pTradePayoutLater, color: colors.textMuted),
+          ?_payoutPanel(context),
         ],
       ),
+      (TradePrompt.routingFailed, _) =>
+        _payoutPanel(context) ?? const SizedBox.shrink(),
       (TradePrompt.escrowWait, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -493,6 +503,18 @@ class _Contract extends StatelessWidget {
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
+
+  /// The payout panel of the status shown, when the screen was given one.
+  Widget? _payoutPanel(BuildContext context) => payout?.call(
+    context,
+    PayoutPanelRequest(
+      record: record,
+      seen: contract.seen,
+      stored: contract.payable,
+      coordinator: coordinator,
+      now: now,
+    ),
+  );
 }
 
 /// « Your taker bond is locked / unlocked / settled » with the reference's icons (`TradeBox/BondStatus.tsx`).

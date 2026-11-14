@@ -8,12 +8,14 @@ import 'package:robosats/robosats.dart';
 
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
+import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'presentation/payout_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -23,6 +25,7 @@ import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
+import 'ui/trade/payout_panel.dart';
 import 'ui/trade/trade_screen.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
@@ -102,12 +105,25 @@ final class P2pRouter {
                     locator<TradeOrderPageCubit>(param1: args.record)
                       ..loadInfo(),
               ),
+              // One payout panel per shown trade, closed with its page, which lets the robot's key go.
+              if (locator.isRegistered<PayoutCubit>())
+                BlocProvider(
+                  create: (_) => locator<PayoutCubit>(param1: args.record),
+                ),
             ],
             child: Builder(
               builder: (context) => TradeScreen(
                 now: locator<P2pClock>().now,
                 coordinatorDetails: (request) =>
                     locator<CoordinatorDetailsCubit>(param1: request),
+                payout: locator.isRegistered<PayoutCubit>()
+                    ? (context, request) => PayoutPanel(
+                        request: request,
+                        onTold: () => context.read<TradeCubit>().signal(
+                          TradeWatchSignal.readNow,
+                        ),
+                      )
+                    : null,
                 // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
                 takeCubitFor:
                     locator.isRegistered<TakeOrderCubit>(

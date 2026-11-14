@@ -2129,12 +2129,6 @@ abstract class P2pLocalizations {
   /// **'Before letting you send {amountFiat} {currencyCode}, we want to make sure you are able to receive the BTC.'**
   String p2pTradePayoutPrompt(String amountFiat, String currencyCode);
 
-  /// Not in the RoboSats texts: the project's own: in place of the payout form, which a later slice brings (#89, #90).
-  ///
-  /// In en, this message translates to:
-  /// **'Sending your payout info comes in a later version of Bull Market.'**
-  String get p2pTradePayoutLater;
-
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 7 for the buyer (`TradeBox/index.tsx:494`), which `fr.json` misses; the French is the project's.
   ///
   /// In en, this message translates to:
@@ -2536,6 +2530,498 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'SWAPPING INTO Lightning'**
   String get p2pTradeYouAreSwappingIn;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Payout.tsx:95`): the tab of a Lightning payout.
+  ///
+  /// In en, this message translates to:
+  /// **'Lightning'**
+  String get p2pPayoutTabLightning;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Payout.tsx:107`): the tab of an on-chain payout.
+  ///
+  /// In en, this message translates to:
+  /// **'Onchain'**
+  String get p2pPayoutTabOnchain;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:346`).
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced options'**
+  String get p2pPayoutAdvancedOptions;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:391`).
+  ///
+  /// In en, this message translates to:
+  /// **'Routing Budget'**
+  String get p2pPayoutRoutingBudget;
+
+  /// The official client's text (`Forms/LightningPayout.tsx:313` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: the routing budget above 10,000 ppm, said, not refused.
+  ///
+  /// In en, this message translates to:
+  /// **'Too high! (That is more than 1%)'**
+  String get p2pPayoutBudgetTooHigh;
+
+  /// The official client's text (`Forms/LightningPayout.tsx:412` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: the unit of the routing budget, parts per million.
+  ///
+  /// In en, this message translates to:
+  /// **'PPM'**
+  String get p2pPayoutUnitPpm;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:558`). {amountSats} is the amount the invoice must be for.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit invoice for {amountSats} Sats'**
+  String p2pPayoutSubmitInvoiceFor(String amountSats);
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader says of the copy button beside « Submit invoice for … Sats », which the reference draws as an icon only (`Forms/LightningPayout.tsx:565-576`).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the amount'**
+  String get p2pPayoutCopyAmount;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:609`).
+  ///
+  /// In en, this message translates to:
+  /// **'Payout Lightning Invoice'**
+  String get p2pPayoutInvoiceField;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/LightningPayout.tsx:651`, `Forms/OnchainPayout.tsx:159`).
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get p2pPayoutSubmit;
+
+  /// The official client's text (`Forms/LightningPayout.tsx:120` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: an invoice for another amount than the one asked.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid invoice amount'**
+  String get p2pPayoutInvalidInvoiceAmount;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:61`).
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats coordinator will do a swap and send the Sats to your onchain address.'**
+  String get p2pPayoutOnchainIntro;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:71`).
+  ///
+  /// In en, this message translates to:
+  /// **'Swap fee'**
+  String get p2pPayoutSwapFee;
+
+  /// The official client's figure (`Forms/OnchainPayout.tsx:66-70`): the swap fee in sats and as the coordinator's percentage.
+  ///
+  /// In en, this message translates to:
+  /// **'{sats} Sats ({percent}%)'**
+  String p2pPayoutSwapFeeValue(String sats, String percent);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:83`).
+  ///
+  /// In en, this message translates to:
+  /// **'Mining fee'**
+  String get p2pPayoutMiningFee;
+
+  /// The official client's figure (`Forms/OnchainPayout.tsx:78-82`): the mining fee over 280 vB and its rate.
+  ///
+  /// In en, this message translates to:
+  /// **'{sats} Sats ({rate} Sats/vByte)'**
+  String p2pPayoutMiningFeeValue(String sats, String rate);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:101`).
+  ///
+  /// In en, this message translates to:
+  /// **'Final amount you will receive'**
+  String get p2pPayoutFinalAmount;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:118`).
+  ///
+  /// In en, this message translates to:
+  /// **'Bitcoin Address'**
+  String get p2pPayoutAddressField;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:132`).
+  ///
+  /// In en, this message translates to:
+  /// **'Mining Fee'**
+  String get p2pPayoutMiningFeeField;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Forms/OnchainPayout.tsx:131`): a mining fee rate outside 2 to 500 sat/vB.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid'**
+  String get p2pPayoutInvalid;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:36`).
+  ///
+  /// In en, this message translates to:
+  /// **'Failure reason:'**
+  String get p2pPayoutFailureReason;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:68`).
+  ///
+  /// In en, this message translates to:
+  /// **'Retrying!'**
+  String get p2pPayoutRetrying;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:145`).
+  ///
+  /// In en, this message translates to:
+  /// **'Next attempt in'**
+  String get p2pPayoutNextAttempt;
+
+  /// The official client's countdown (`Prompts/RoutingFailed.tsx:76`, two digits each); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes}m {seconds}s'**
+  String p2pPayoutCountdown(String minutes, String seconds);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:95`).
+  ///
+  /// In en, this message translates to:
+  /// **'Your invoice has expired or more than 3 payment attempts have been made. Submit a new invoice.'**
+  String get p2pPayoutInvoiceExpiredSubmitNew;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:138`).
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats will try to pay your invoice 3 times with a one minute pause in between. If it keeps failing, you will be able to submit a new invoice. Check whether you have enough inbound liquidity. Remember that lightning nodes must be online in order to receive payments.'**
+  String get p2pPayoutWillRetry;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated (`Prompts/RoutingFailed.tsx:39`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment isn\'t failed (yet)'**
+  String get p2pPayoutFailureNotYet;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'There are more routes to try, but the payment timeout was exceeded.'**
+  String get p2pPayoutFailureTimeout;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'All possible routes were tried and failed permanently. Or there were no routes to the destination at all.'**
+  String get p2pPayoutFailureNoRoute;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'A non-recoverable error has occurred.'**
+  String get p2pPayoutFailureNonRecoverable;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment details are incorrect (unknown hash, invalid amount or invalid final CLTV delta).'**
+  String get p2pPayoutFailureIncorrect;
+
+  /// The coordinator's label (`api/models/ln_payment.py`, `LNPayment.FailureReason`, commit ff1998c), which the official client shows untranslated; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Insufficient unlocked balance in RoboSats\' node.'**
+  String get p2pPayoutFailureBalance;
+
+  /// Not in the RoboSats texts: the project's own: a failure label the package does not know (it keeps no coordinator text).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} gave a reason this app does not know.'**
+  String p2pPayoutFailureUnknown(String coordinator);
+
+  /// The coordinator's message for error 3000 (`api/errors.py:69`, commit ff1998c), which the official client shows under the field (`TradeBox/index.tsx:231-232`); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You submitted an empty invoice'**
+  String get p2pPayoutRefusedEmptyInvoice;
+
+  /// The coordinator's text (`api/lightning/lnd.py:463-533`, commit ff1998c), which the official client shows under the field; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Does not look like a valid lightning invoice'**
+  String get p2pPayoutRefusedNotInvoice;
+
+  /// The coordinator's text (`api/lightning/lnd.py`, commit ff1998c), which the official client shows under the field; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice hinted private routes are not payable within the submitted routing budget. This can be adjusted with Advanced Options enabled.'**
+  String get p2pPayoutRefusedRouteHints;
+
+  /// The coordinator's text (`api/lightning/lnd.py:508-512`, commit ff1998c), which the official client shows under the field; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice provided has no explicit amount'**
+  String get p2pPayoutRefusedNoAmount;
+
+  /// The coordinator's text (`api/lightning/lnd.py:514-520`, commit ff1998c), which the official client shows under the field; {amount} is the amount asked; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice provided is not for {amount} Sats'**
+  String p2pPayoutRefusedWrongAmount(String amount);
+
+  /// The coordinator's text (`api/lightning/lnd.py:529-533`, commit ff1998c), which the official client shows under the field; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice provided has already expired'**
+  String get p2pPayoutRefusedExpired;
+
+  /// The coordinator's message for error 3002 (`api/errors.py:71`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You must submit a NEW invoice'**
+  String get p2pPayoutRefusedNewInvoice;
+
+  /// The coordinator's message for error 3001 (`api/errors.py:70`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You can only submit an invoice after expiration or 3 failed attempts'**
+  String get p2pPayoutRefusedNotNow;
+
+  /// The coordinator's message for error 1016 (`api/errors.py:19`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You cannot submit an address now.'**
+  String get p2pPayoutRefusedAddressNotNow;
+
+  /// The coordinator's message for error 1017 (`api/errors.py:20`, commit ff1998c), also said for an address (1015); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the buyer of this order can provide a buyer invoice.'**
+  String get p2pPayoutRefusedNotBuyer;
+
+  /// The coordinator's message for error 1048 (`api/errors.py:55`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The PGP signed cleartext message is not valid.'**
+  String get p2pPayoutRefusedSignature;
+
+  /// The coordinator's message for error 1047 (`api/errors.py:54`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not a participant in this order'**
+  String get p2pPayoutRefusedNotParticipant;
+
+  /// The coordinator's message for error 4000 (`api/errors.py:77`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You submitted an empty address'**
+  String get p2pPayoutRefusedEmptyAddress;
+
+  /// The coordinator's message for error 4001 (`api/errors.py:78`, commit ff1998c), {rate} its minimum; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The mining fee is too low. Must be higher than {rate} Sat/vbyte'**
+  String p2pPayoutRefusedFeeTooLow(String rate);
+
+  /// The start of the coordinator's message for error 4001 (`api/errors.py:78`, commit ff1998c), when its minimum could not be read; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The mining fee is too low.'**
+  String get p2pPayoutRefusedFeeTooLowNoRate;
+
+  /// The coordinator's message for error 4002 (`api/errors.py:79`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The mining fee is too high, must be less than 500 Sats/vbyte'**
+  String get p2pPayoutRefusedFeeTooHigh;
+
+  /// The coordinator's message for error 4003 (`api/errors.py:80`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'The amount remaining after subtracting mining fee is close to dust limit.'**
+  String get p2pPayoutRefusedDust;
+
+  /// The coordinator's text (`api/utils.py:106-121`, commit ff1998c), which the official client shows under the field; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid address'**
+  String get p2pPayoutRefusedInvalidAddress;
+
+  /// The coordinator's text (`api/utils.py:106-121`, commit ff1998c); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to validate address, check bitcoind backend'**
+  String get p2pPayoutRefusedUnverifiable;
+
+  /// Not in the RoboSats texts: the project's own: a refusal the reference has no text for (a refusal of the coordinator this app does not know, or a request that never reached it).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not take your payout info.'**
+  String p2pPayoutRefusedOther(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the status shown was not stored with its order, so nothing can be checked or sent from it.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again to give your payout info.'**
+  String get p2pPayoutNeedsARead;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} does not ask for your payout info now.'**
+  String p2pPayoutNotAsked(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} does not give the amount to receive yet.'**
+  String p2pPayoutAmountUnknown(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: in place of the decoder's error text that the reference shows.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not a Lightning invoice this app can read.'**
+  String get p2pPayoutInvoiceUnreadable;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'This invoice is for another network than the trade\'s.'**
+  String get p2pPayoutInvoiceOtherNetwork;
+
+  /// Not in the RoboSats texts: the project's own: an invoice with no amount, or for a fraction of a sat (a deviation, `AGENTS.md`).
+  ///
+  /// In en, this message translates to:
+  /// **'The invoice must ask for exactly the Sats shown, with no fraction of a sat.'**
+  String get p2pPayoutInvoiceWholeSats;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not a Bitcoin address.'**
+  String get p2pPayoutAddressMalformed;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'This address has a typo: its checksum is wrong.'**
+  String get p2pPayoutAddressBadChecksum;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'This address is for another network than the trade\'s.'**
+  String get p2pPayoutAddressOtherNetwork;
+
+  /// Not in the RoboSats texts: the project's own: a valid segwit address of a version the coordinator's node may not pay.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} may not be able to pay this kind of address.'**
+  String p2pPayoutAddressUnsupported(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the invoice expires before the step's end and a day (design note § 4.4); information, never a refusal.
+  ///
+  /// In en, this message translates to:
+  /// **'This invoice expires at {time}. If the seller confirms after that, {coordinator} cannot pay it and will ask you for a new one.'**
+  String p2pPayoutWarnExpiresFirst(String time, String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: what the address would receive is under the coordinator's minimum (`api/logics.py:815-820`); information, the coordinator refuses it.
+  ///
+  /// In en, this message translates to:
+  /// **'Less than 20,000 Sats would reach this address: {coordinator} will refuse it.'**
+  String p2pPayoutWarnBelowMinimum(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: why « Onchain » is disabled for an order in bitcoin (`Prompts/Payout.tsx:98`).
+  ///
+  /// In en, this message translates to:
+  /// **'An order in bitcoin is paid on Lightning only.'**
+  String get p2pPayoutOnchainSwapOrder;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, which the reference does not show, read as a kind (`SwapRefusal`).
+  ///
+  /// In en, this message translates to:
+  /// **'The amount is below the smallest swap {coordinator} offers.'**
+  String p2pPayoutSwapBelowMinimum(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, read as a kind.
+  ///
+  /// In en, this message translates to:
+  /// **'The amount is above the largest swap {coordinator} offers.'**
+  String p2pPayoutSwapAboveMaximum(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, read as a kind.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} does not offer swaps.'**
+  String p2pPayoutSwapDisabled(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator's `swap_failure_reason`, read as a kind.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} has not enough on-chain funds for a swap.'**
+  String p2pPayoutSwapNoLiquidity(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: no on-chain payout offered, for a reason the app does not know.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} does not offer an on-chain payout for this order.'**
+  String p2pPayoutSwapUnavailable(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the wait before the payout is signed (the owner's request: each wait says what it waits for).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading your robot from {coordinator} and unlocking its key. The first time takes a few seconds.'**
+  String p2pPayoutStepUnlocking(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the read just before the payout is signed.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the order from {coordinator}…'**
+  String p2pPayoutStepReading(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the payout sent, its answer awaited.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your payout info to {coordinator}…'**
+  String p2pPayoutStepSending(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the read after the answer.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the order again from {coordinator}…'**
+  String p2pPayoutStepReadingAfter(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator recorded the payout.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} received your payout info.'**
+  String p2pPayoutGiven(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the payout may have been recorded; nothing is sent again.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether {coordinator} received your payout info. It keeps checking.'**
+  String p2pPayoutUnknown(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: what the user would see changed with the read just before signing; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'This changed since it was shown. Check it again before you submit.'**
+  String get p2pPayoutChanged;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'The key of your robot could not be read from {coordinator}. Nothing was sent.'**
+  String p2pPayoutNotSentKey(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the order from {coordinator}. Nothing was sent.'**
+  String p2pPayoutNotSentRead(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'The key of your robot could not sign this. Nothing was sent.'**
+  String get p2pPayoutNotSentSign;
+
+  /// Not in the RoboSats texts: the project's own.
+  ///
+  /// In en, this message translates to:
+  /// **'This trade cannot be opened now. Nothing was sent.'**
+  String get p2pPayoutNotSentTrade;
 }
 
 class _P2pLocalizationsDelegate
