@@ -460,28 +460,68 @@ void main() {
             reason: field,
           );
         }
+        // The same alias, another onion: compared on its own.
+        final otherOnion = TradeRecord(
+          robot: record.robot,
+          coordinatorAlias: record.coordinatorAlias,
+          coordinatorOnion:
+              'http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.onion',
+          orderId: record.orderId,
+          role: record.role,
+          origin: record.origin,
+          takenAt: record.takenAt,
+          confirmedAt: record.confirmedAt,
+          closedAt: record.closedAt,
+        );
+        expect(
+          app.payout.check(otherOnion, seen, invoice),
+          refusedWith<PayoutNotAsked>(),
+        );
       },
     );
 
     test(
-      'an invoice of no whole number of sats is refused with its own reason',
+      'an invoice of no amount or of a fraction of a sat is refused with its own reason, after the network, and a badly written amount is unreadable',
       () async {
         final (app, record, seen) = await atSix();
         final ask = switch (app.payout.ask(record, seen)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
         };
-        expect(
-          ask.check(
-            const PayoutInvoiceText(
-              'lntb1066065000p1fraction',
-              budget: RoutingBudgetPpm.referenceDefault,
-            ),
-            now: app.now,
-            reader: const Bolt11Reader(_FractionOfASat()),
+        // Every text below is read as the reader refuses its amount; the reason given follows its human-readable part, the network first.
+        for (final (text, matcher) in [
+          (
+            'lntb1066065000p1qqqq',
+            refusedWith<PayoutInvoiceAmountNotWholeSats>(),
           ),
-          refusedWith<PayoutInvoiceAmountNotWholeSats>(),
-        );
+          ('lntb1qqqq', refusedWith<PayoutInvoiceAmountNotWholeSats>()),
+          (
+            'lnbc1066065000p1qqqq',
+            refusedWith<PayoutInvoiceOfAnotherNetwork>(),
+          ),
+          (
+            'lntbs1066065000p1qqqq',
+            refusedWith<PayoutInvoiceOfAnotherNetwork>(),
+          ),
+          ('lnbc1qqqq', refusedWith<PayoutInvoiceOfAnotherNetwork>()),
+          ('lntb01u1qqqq', refusedWith<PayoutInvoiceUnreadable>()),
+          ('lntb1.5u1qqqq', refusedWith<PayoutInvoiceUnreadable>()),
+          ('lntb10mu1qqqq', refusedWith<PayoutInvoiceUnreadable>()),
+          ('lnxx1qqqq', refusedWith<PayoutInvoiceUnreadable>()),
+        ]) {
+          expect(
+            ask.check(
+              PayoutInvoiceText(
+                text,
+                budget: RoutingBudgetPpm.referenceDefault,
+              ),
+              now: app.now,
+              reader: const Bolt11Reader(_FractionOfASat()),
+            ),
+            matcher,
+            reason: text,
+          );
+        }
       },
     );
 
@@ -1515,7 +1555,7 @@ void main() {
   });
 }
 
-/// A decoder that reads every invoice as asking for a fraction of a sat, as the app's decoder refuses one (`Bolt11AmountUnusable`).
+/// A decoder that refuses the amount of every invoice (`Bolt11AmountUnusable`), as the app's decoder refuses no amount, a fraction of a sat and an amount in no strict form alike.
 final class _FractionOfASat implements Bolt11Decoder {
   const _FractionOfASat();
 

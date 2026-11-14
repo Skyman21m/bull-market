@@ -160,9 +160,9 @@ final class PayoutAsk {
             : text;
         final Bolt11Invoice facts;
         switch (reader.read(invoice)) {
-          // No amount, or a fraction of a sat (`…500p`): the amount shown and signed is a whole number of sats, so such an invoice is not exactly what is shown, although the coordinator would take one whose whole sats are right (`api/lightning/lnd.py:514-520`; a deviation, `AGENTS.md`).
-          case Err(failure: Bolt11AmountUnusable()):
-            return const Err(PayoutInvoiceAmountNotWholeSats());
+          // The reader refuses no amount, a fraction of a sat and an amount written in no strict form alike: told apart here, the network first, for the reason the panel gives (second review of #127).
+          case Err(failure: final Bolt11AmountUnusable failure):
+            return Err(_amountRefusal(invoice, network, failure));
           case Err(:final failure):
             return Err(PayoutInvoiceUnreadable(failure));
           case Ok(:final value):
@@ -233,6 +233,41 @@ final class PayoutAsk {
   }
 
   static const _lightningPrefix = 'lightning:';
+
+  /// Why an invoice whose amount the reader refused ([reason]) is refused, from its human-readable part (BOLT 11: `ln`, the network's prefix, the amount's digits and multiplier), only to give the panel the right reason: every path refuses.
+  ///
+  /// Another network than [network] first ([PayoutInvoiceOfAnotherNetwork]); then no amount, or an amount in the strict form (digits without a leading zero, at most one multiplier) that the reader refused, so a fraction of a sat ([PayoutInvoiceAmountNotWholeSats]: the amount shown and signed is a whole number of sats, so such an invoice is not exactly what is shown, although the coordinator would take one whose whole sats are right, `api/lightning/lnd.py:514-520`; a deviation, `AGENTS.md`); anything else, such as `1.5u` or a leading zero, is unreadable ([PayoutInvoiceUnreadable]).
+  static PayoutCheckRefusal _amountRefusal(
+    String invoice,
+    RobosatsNetwork network,
+    Bolt11Refusal reason,
+  ) {
+    final lower = invoice.toLowerCase();
+    final separator = lower.lastIndexOf('1');
+    final match = separator < 0
+        ? null
+        : _humanReadablePart.firstMatch(lower.substring(0, separator));
+    if (match == null) return PayoutInvoiceUnreadable(reason);
+    final prefixNetwork = switch (match.group(1)) {
+      'bc' => Bolt11Network.mainnet,
+      'tb' => Bolt11Network.testnet,
+      'tbs' => Bolt11Network.signet,
+      _ => Bolt11Network.regtest,
+    };
+    if (!prefixNetwork.belongsTo(network)) {
+      return const PayoutInvoiceOfAnotherNetwork();
+    }
+    final amount = match.group(2) ?? '';
+    return amount.isEmpty || _strictAmount.hasMatch(amount)
+        ? const PayoutInvoiceAmountNotWholeSats()
+        : PayoutInvoiceUnreadable(reason);
+  }
+
+  /// `ln`, a network's prefix (the longest first: `bcrt` before `bc`, `tbs` before `tb`), then whatever stands for the amount.
+  static final RegExp _humanReadablePart = RegExp(r'^ln(bcrt|bc|tbs|tb)(.*)$');
+
+  /// An amount in the strict form of BOLT 11: digits without a leading zero, and at most one multiplier.
+  static final RegExp _strictAmount = RegExp(r'^[1-9][0-9]*[munp]?$');
 
   @override
   String toString() => 'PayoutAsk(${seen.status})';
@@ -468,7 +503,7 @@ final class PayoutInvoiceOfAnotherNetwork extends PayoutCheckRefusal {
   const PayoutInvoiceOfAnotherNetwork();
 }
 
-/// An invoice with no amount, or for an amount that is not a whole number of sats (a millisatoshi precision such as `…500p`): ask for exactly the whole sats asked.
+/// An invoice with no amount, or for an amount that is not a whole number of sats (a millisatoshi precision such as `…500p`): ask for exactly the whole sats asked. An amount written in no strict form (`1.5u`, a leading zero) is [PayoutInvoiceUnreadable], and an invoice of another network [PayoutInvoiceOfAnotherNetwork], whatever its amount.
 ///
 /// The coordinator would take an invoice whose whole sats are the amount asked whatever its millisatoshis (LND compares `num_satoshis`), and so would the reference client (`Math.floor(value / 1000)`); here what is shown and signed is a whole number of sats, and an invoice that asks a fraction more is not exactly that (a deviation, `AGENTS.md`).
 final class PayoutInvoiceAmountNotWholeSats extends PayoutCheckRefusal {
