@@ -296,7 +296,7 @@ enum BookViewChoice { list, chart, map }
 
 /// « I want to [Buy] and use [EUR] pay with [Any payment method] hosted by [Any host] »: each choice opens a list, its texts given by [BookFilterText].
 ///
-/// The order type is one choice, in the wallet's picker; the currencies, the payment methods and the hosts take several (#101), in a [FilterSheet] that applies each tap at once.
+/// The order type is one choice, in a [FilterPickerSheet] that closes on it; the currencies, the payment methods and the hosts take several (#101), in a [FilterSheet] that applies each tap at once.
 /// The choices are those of the book's cubit, so they last while the tab lives; none of them asks a coordinator anything.
 class BookFilterSentence extends StatelessWidget {
   final BookState state;
@@ -331,14 +331,12 @@ class BookFilterSentence extends StatelessWidget {
             label: texts.side(filter.side),
             semanticsLabel: texts.sideSemantics(filter.side),
             onTap: () async {
-              final side = await BullBottomSheet.show<BookSide>(
-                context: context,
-                child: BullPickerSheet<BookSide>(
-                  title: l10n.p2pBookFilterSelectOrderType,
-                  options: BookSide.values,
-                  isSelected: (side) => side == filter.side,
-                  label: texts.side,
-                ),
+              final side = await FilterPickerSheet.show<BookSide>(
+                context,
+                title: l10n.p2pBookFilterSelectOrderType,
+                options: BookSide.values,
+                selected: filter.side,
+                label: texts.side,
               );
               if (side != null) cubit.selectSide(side);
             },

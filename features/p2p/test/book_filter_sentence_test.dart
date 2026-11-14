@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -17,6 +16,7 @@ import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:p2p/src/ui/widgets/filter_choice.dart';
 import 'package:p2p/src/ui/widgets/filter_sheet.dart';
 import 'package:p2p/testing.dart';
+import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
 import 'support/harness.dart';
@@ -40,7 +40,7 @@ void main() {
         ],
         'lake': [
           bookOrder(id: 5, paymentMethod: 'Instant SEPA', makerSeed: 5),
-          bookOrder(id: 6, currency: 7, paymentMethod: 'Twint', makerSeed: 6),
+          bookOrder(id: 6, currency: 7, paymentMethod: 'Bizum', makerSeed: 6),
         ],
         'freeport': [bookOrder(id: 7, paymentMethod: 'Revolut', makerSeed: 7)],
       },
@@ -112,9 +112,36 @@ void main() {
     await settle(tester);
   }
 
-  Future<void> closeSheet(WidgetTester tester) async {
-    await tester.tap(find.byTooltip('Close'));
+  /// Scrolls the open sheet until the row [label] is built and shown, then taps it: the list builds only the rows near the screen.
+  Future<void> pickRow(WidgetTester tester, String label) async {
+    if (row(label).evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        row(label),
+        100,
+        scrollable: find.descendant(
+          of: sheet,
+          matching: find.byType(Scrollable),
+        ),
+      );
+    }
+    await tester.ensureVisible(row(label));
     await settle(tester);
+    await tester.tap(row(label));
+    await settle(tester);
+  }
+
+  /// Closes the open sheet by its button, or, when its title has scrolled away with the button, by a tap above it.
+  Future<void> closeSheet(WidgetTester tester) async {
+    final button = find
+        .descendant(of: sheet, matching: find.byIcon(Icons.close))
+        .hitTestable();
+    if (button.evaluate().isNotEmpty) {
+      await tester.tap(button);
+    } else {
+      await tester.tapAt(const Offset(4, 4));
+    }
+    await settle(tester);
+    expect(sheet, findsNothing);
   }
 
   group('nothing chosen', () {
@@ -162,13 +189,13 @@ void main() {
 
     await tester.tap(choice('Any type'));
     await settle(tester);
-    expect(find.byType(BullPickerSheet<BookSide>), findsOneWidget);
+    expect(find.byType(FilterPickerSheet<BookSide>), findsOneWidget);
     expect(find.text('Select Order Type'), findsOneWidget);
     await tester.tap(find.text('Buy').last);
     await settle(tester);
 
     // The picker closes on the choice, as the official client's select does.
-    expect(find.byType(BullPickerSheet<BookSide>), findsNothing);
+    expect(find.byType(FilterPickerSheet<BookSide>), findsNothing);
     expect(find.text('I want to'), findsOneWidget);
     expect(choice('Buy'), findsOneWidget);
     expect(find.bySemanticsLabel('Order type: Buy'), findsOneWidget);
@@ -195,10 +222,7 @@ void main() {
       // « Any currency » first, checked while nothing is chosen.
       final rows = tester
           .widgetList<Text>(
-            find.descendant(
-              of: sheet,
-              matching: find.byType(Text),
-            ),
+            find.descendant(of: sheet, matching: find.byType(Text)),
           )
           .map((text) => text.data)
           .toList();
@@ -308,7 +332,7 @@ void main() {
     expect(listed(tester), isEmpty);
     await tester.tap(choice('Wise +2'));
     await settle(tester);
-    for (final method in ['Wise', 'Zelle', 'Instant SEPA', 'Twint']) {
+    for (final method in ['Wise', 'Zelle', 'Instant SEPA', 'Bizum']) {
       expect(row(method), findsOneWidget, reason: method);
     }
     expect(row('Revolut'), findsNothing);
@@ -331,10 +355,7 @@ void main() {
         expect(row(coordinator.longAlias), findsOneWidget);
       }
       expect(
-        find.descendant(
-          of: sheet,
-          matching: find.byType(CoordinatorAvatar),
-        ),
+        find.descendant(of: sheet, matching: find.byType(CoordinatorAvatar)),
         findsNWidgets(6),
       );
 
@@ -380,22 +401,18 @@ void main() {
             await open(tester, locale: locale, size: const Size(320, 568));
             final l10n = lookupP2pLocalizations(locale);
 
-            // Several of each, the longest names of the list.
-            await tester.tap(choice(l10n.p2pBookFilterAnyType));
+            // Several of each, chosen through the cubit: the sheets are tested above.
+            BlocProvider.of<BookCubit>(
+                tester.element(find.byType(BookFilterSentence)),
+              )
+              ..selectSide(BookSide.buy)
+              ..selectCurrencies([
+                for (final code in ['EUR', 'USD', 'CHF'])
+                  RobosatsCurrency.all.firstWhere((c) => c.code == code),
+              ])
+              ..selectPaymentMethods(['Instant SEPA', 'Revolut'])
+              ..selectHosts([coordinator('temple'), coordinator('lake')]);
             await settle(tester);
-            await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
-            await settle(tester);
-            for (final (any, picks) in [
-              (l10n.p2pBookFilterAnyCurrency, ['EUR', 'USD', 'CHF']),
-              (l10n.p2pBookFilterAnyMethod, ['Instant SEPA', 'Revolut']),
-              (l10n.p2pBookFilterAnyHost, ['Temple of Sats', 'TheBigLake']),
-            ]) {
-              await tapShown(tester, choice(any));
-              for (final pick in picks) {
-                await tapShown(tester, row(pick));
-              }
-              await closeSheet(tester);
-            }
 
             tester.platformDispatcher.textScaleFactorTestValue = scale;
             addTearDown(
@@ -427,7 +444,10 @@ void main() {
                 reason: label,
               );
               final paragraph = tester.renderObject<RenderParagraph>(
-                choice(label),
+                find.descendant(
+                  of: choice(label),
+                  matching: find.byType(RichText),
+                ),
               );
               expect(paragraph.didExceedMaxLines, isFalse, reason: label);
             }
@@ -444,7 +464,7 @@ void main() {
               tester,
               choice(l10n.p2pBookFilterMore('Instant SEPA', 1)),
             );
-            await tapShown(tester, row(l10n.p2pBookFilterAnyMethod));
+            await pickRow(tester, l10n.p2pBookFilterAnyMethod);
             expect(tester.takeException(), isNull);
             await closeSheet(tester);
             final any = find.ancestor(

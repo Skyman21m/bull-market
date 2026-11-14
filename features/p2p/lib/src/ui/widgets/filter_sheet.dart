@@ -83,84 +83,159 @@ class _FilterSheetState<T extends Object> extends State<FilterSheet<T>> {
 
   @override
   Widget build(BuildContext context) {
+    final leading = widget.leading;
+    return _SheetFrame(
+      title: widget.title,
+      rows: widget.options.length + 1,
+      row: (index) {
+        if (index == 0) {
+          return _FilterRow(
+            label: widget.anyLabel,
+            checked: _chosen.isEmpty,
+            onTap: _clear,
+          );
+        }
+        final option = widget.options[index - 1];
+        return _FilterRow(
+          label: widget.label(option),
+          leading: leading?.call(option),
+          checked: _chosen.contains(option),
+          onTap: () => _toggle(option),
+        );
+      },
+    );
+  }
+}
+
+/// The list of a selector of the book that takes one choice (the order type), drawn as [FilterSheet]: a tap chooses and closes it, as the official client's select does.
+class FilterPickerSheet<T extends Object> extends StatelessWidget {
+  final String title;
+  final List<T> options;
+  final T selected;
+  final String Function(T) label;
+
+  const FilterPickerSheet({
+    super.key,
+    required this.title,
+    required this.options,
+    required this.selected,
+    required this.label,
+  });
+
+  /// Opens the sheet; completes with the option chosen, or `null` when it is closed without a choice.
+  static Future<T?> show<T extends Object>(
+    BuildContext context, {
+    required String title,
+    required List<T> options,
+    required T selected,
+    required String Function(T) label,
+  }) => BullBottomSheet.show<T>(
+    context: context,
+    child: FilterPickerSheet<T>(
+      title: title,
+      options: options,
+      selected: selected,
+      label: label,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => _SheetFrame(
+    title: title,
+    rows: options.length,
+    row: (index) {
+      final option = options[index];
+      return _FilterRow(
+        label: label(option),
+        checked: option == selected,
+        exclusive: true,
+        onTap: () => Navigator.of(context).pop(option),
+      );
+    },
+  );
+}
+
+/// The frame of the sheets of the filter: the title, centred with the close button beside it, then the rows, in the design of `BullPickerSheet`.
+///
+/// The title scrolls with the rows rather than staying above them, so that on a small phone with large text, where the title alone can be taller than the sheet, the rows can still be reached.
+class _SheetFrame extends StatelessWidget {
+  final String title;
+  final int rows;
+  final Widget Function(int index) row;
+
+  const _SheetFrame({
+    required this.title,
+    required this.rows,
+    required this.row,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
-    final leading = widget.leading;
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.8,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Gap(BullSpacing.md),
-          Row(
-            children: [
-              const Gap(48),
-              Expanded(
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    widget.title,
-                    textAlign: TextAlign.center,
-                    style: text.headlineMedium?.copyWith(
-                      color: colors.onSurface,
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(
+          top: BullSpacing.md,
+          bottom: BullSpacing.lg,
+        ),
+        itemCount: rows + 1,
+        itemBuilder: (context, index) {
+          if (index > 0) return row(index - 1);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: BullSpacing.md),
+            child: Row(
+              children: [
+                const Gap(48),
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: text.headlineMedium?.copyWith(
+                        color: colors.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              IconButton(
-                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                iconSize: 20,
-                onPressed: () => Navigator.of(context).pop(),
-                color: colors.onSurface,
-                icon: const Icon(Icons.close),
-              ),
-              const Gap(BullSpacing.md),
-            ],
-          ),
-          const Gap(BullSpacing.md),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: widget.options.length + 1,
-              itemBuilder: (_, index) {
-                if (index == 0) {
-                  return _FilterRow(
-                    label: widget.anyLabel,
-                    checked: _chosen.isEmpty,
-                    onTap: _clear,
-                  );
-                }
-                final option = widget.options[index - 1];
-                return _FilterRow(
-                  label: widget.label(option),
-                  leading: leading?.call(option),
-                  checked: _chosen.contains(option),
-                  onTap: () => _toggle(option),
-                );
-              },
+                IconButton(
+                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+                  iconSize: 20,
+                  onPressed: () => Navigator.of(context).pop(),
+                  color: colors.onSurface,
+                  icon: const Icon(Icons.close),
+                ),
+                const Gap(BullSpacing.md),
+              ],
             ),
-          ),
-          const Gap(BullSpacing.lg),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-/// One row of [FilterSheet]: its label, in the primary colour with a check when it is chosen, as `BullPickerSheet` draws its selected row.
+/// One row of a sheet of the filter: its label, in the primary colour with a check when it is chosen, as `BullPickerSheet` draws its selected row.
 class _FilterRow extends StatelessWidget {
   final String label;
   final Widget? leading;
   final bool checked;
   final VoidCallback onTap;
 
+  /// Whether the row is one of options of which only one is chosen, as a radio button is.
+  final bool exclusive;
+
   const _FilterRow({
     required this.label,
     required this.checked,
     required this.onTap,
     this.leading,
+    this.exclusive = false,
   });
 
   @override
@@ -170,10 +245,11 @@ class _FilterRow extends StatelessWidget {
     return MergeSemantics(
       child: Semantics(
         checked: checked,
+        inMutuallyExclusiveGroup: exclusive,
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            // The padding of the rows of `BullPickerSheet`, which the order type's list uses.
+            // The padding of the rows of `BullPickerSheet`.
             padding: const EdgeInsets.symmetric(
               vertical: BullSpacing.md + BullSpacing.xxs,
               horizontal: BullSpacing.xl + BullSpacing.xs,
