@@ -89,6 +89,17 @@ final class BookState {
   bool get hasAnswer =>
       coordinators.values.any((status) => status is CoordinatorBookLoaded);
 
+  /// Whether the book of at least one coordinator is known: given in this load, or kept on screen while it is asked again (a pull to refresh).
+  ///
+  /// [hasAnswer] alone would say no during a refresh, when every coordinator is awaited again with its previous book still shown; with every coordinator offline, or none answered yet, the book is unknown, not empty.
+  bool get hasBookReceived => coordinators.values.any(
+    (status) => switch (status) {
+      CoordinatorBookLoaded() => true,
+      CoordinatorBookLoading(:final previous) => previous != null,
+      CoordinatorBookFailed() => false,
+    },
+  );
+
   /// Whether no book has arrived yet, so there is nothing to show but a wait.
   bool get isWaitingForFirstBook =>
       coordinators.isEmpty ||

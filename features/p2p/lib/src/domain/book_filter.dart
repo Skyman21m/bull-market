@@ -148,6 +148,51 @@ final class BookFilter {
   static List<PaymentMethodInfo> get offeredPaymentMethods =>
       PaymentMethods.fiat;
 
+  /// How many orders of [orders] the filter would keep if [method] were the only payment method chosen, the side, currencies and hosts staying as they are.
+  ///
+  /// It is the filter's own rule (`matchesPaymentMethods`: the order's text contains the name, case included), never the methods `PaymentMethods.parse` recognises, so that a count never promises an order the filter would not show: « SEPA » counts the orders of « Instant SEPA » too, and « Revolut » does not count an order written « revolut ».
+  Map<String, int> paymentMethodCounts(
+    Iterable<PublicOrder> orders,
+    Iterable<String> methods,
+  ) {
+    final texts = [
+      for (final order in orders)
+        if (_matchesAllButMethod(order)) order.paymentMethods.text,
+    ];
+    return {
+      for (final method in methods)
+        method: texts.where((text) => text.contains(method)).length,
+    };
+  }
+
+  /// The payment methods of the sheet, in the order it lists them when it opens (#118, the owner's request of 2026-11-14; the official client lists its fixed list in its own order): the methods chosen, in the order they were chosen, so that they are in view when the sheet opens again; then the methods some order would be kept with, the most orders first, equal counts in the order of the official list; then every other method of [offeredPaymentMethods], in its order.
+  PaymentMethodSheet paymentMethodSheet(Iterable<PublicOrder> orders) {
+    final offered = [for (final method in offeredPaymentMethods) method.name];
+    final chosen = paymentMethods.toList();
+    final counts = paymentMethodCounts(orders, {...chosen, ...offered});
+    final rest = [
+      for (final method in offered)
+        if (!paymentMethods.contains(method)) method,
+    ];
+    final available =
+        [
+          for (final (index, method) in rest.indexed)
+            if ((counts[method] ?? 0) > 0) (index, method),
+        ]..sort((a, b) {
+          final byCount = (counts[b.$2] ?? 0).compareTo(counts[a.$2] ?? 0);
+          return byCount != 0 ? byCount : a.$1.compareTo(b.$1);
+        });
+    return PaymentMethodSheet(
+      chosen: chosen,
+      available: [for (final (_, method) in available) method],
+      unavailable: [
+        for (final method in rest)
+          if ((counts[method] ?? 0) == 0) method,
+      ],
+      counts: counts,
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       other is BookFilter &&
@@ -173,4 +218,33 @@ final class BookFilter {
       'BookFilter(${side.name}, '
       '${[for (final currency in currencies) currency.code]}, '
       '${[for (final host in hosts) host.shortAlias]})';
+}
+
+/// The payment methods of the sheet of the filter, in three groups, and how many orders each would keep alone (`BookFilter.paymentMethodSheet`).
+@immutable
+final class PaymentMethodSheet {
+  /// The methods chosen, in the order they were chosen.
+  final List<String> chosen;
+
+  /// The other methods some order would be kept with, the most orders first.
+  final List<String> available;
+
+  /// The other methods no order would be kept with, in the order of the official list.
+  final List<String> unavailable;
+
+  /// For each method of the three groups, the orders the filter would keep with that method alone.
+  final Map<String, int> counts;
+
+  PaymentMethodSheet({
+    required List<String> chosen,
+    required List<String> available,
+    required List<String> unavailable,
+    required Map<String, int> counts,
+  }) : chosen = List.unmodifiable(chosen),
+       available = List.unmodifiable(available),
+       unavailable = List.unmodifiable(unavailable),
+       counts = Map.unmodifiable(counts);
+
+  /// The orders [method] would keep alone, 0 for a method not counted.
+  int countOf(String method) => counts[method] ?? 0;
 }

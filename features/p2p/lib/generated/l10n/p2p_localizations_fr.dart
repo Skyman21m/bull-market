@@ -168,6 +168,34 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pBookFilterListSeparator => ', ';
 
   @override
+  String p2pBookFilterOrderCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ordres',
+      one: '1 ordre',
+      zero: 'aucun ordre',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pBookFilterMethodWithCount(String method, String orders) {
+    return '$method · $orders';
+  }
+
+  @override
+  String p2pBookFilterMethodWithCountSemantics(String method, String orders) {
+    return '$method, $orders';
+  }
+
+  @override
+  String get p2pBookFilterMethodsWithoutOrders => 'Aucun ordre pour l\'instant';
+
+  @override
+  String get p2pBookFilterNoMethodFound => 'Aucun mode de paiement trouvé';
+
+  @override
   String get p2pBookMakerStatusActive => 'Actif';
 
   @override
