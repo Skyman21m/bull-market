@@ -49,6 +49,9 @@ final class PaymentMethods {
     reversible: false,
   );
 
+  /// The fiat payment methods the official client offers in its book filter, in the order of its list (`fiatMethods`, `frontend/src/components/MakerForm/AutocompletePayments.tsx:301` at commit ff1998c): a fixed list, whatever the orders of the book.
+  static const List<PaymentMethodInfo> fiat = robosatsFiatMethods;
+
   /// Every recognised method: [notSpecified], the swap destinations and the fiat methods, in the order the official client tries them.
   static final List<PaymentMethodInfo> known = List.unmodifiable([
     notSpecified,
