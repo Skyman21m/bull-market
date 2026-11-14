@@ -637,7 +637,9 @@ void main() {
         // Lake alone would say 70000; lake and temple together say the lower of their two votes, 60000, and their orders, at a premium of 0, sit on it.
         final both = DepthChart.of(
           book: book,
-          filter: BookFilter(hosts: [coordinator('lake'), coordinator('temple')]),
+          filter: BookFilter(
+            hosts: [coordinator('lake'), coordinator('temple')],
+          ),
           axis: DepthAxis.price,
         );
         expect(both.window.center, 60000);

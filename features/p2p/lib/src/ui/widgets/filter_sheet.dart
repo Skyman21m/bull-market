@@ -212,7 +212,10 @@ class _SheetFrame extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  Align(alignment: AlignmentDirectional.centerEnd, child: close),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: close,
+                  ),
                   heading,
                 ],
               ),

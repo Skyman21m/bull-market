@@ -750,10 +750,7 @@ void main() {
       await settle();
       await tester.pump(const Duration(seconds: 1));
       await capture('filtres-petit-texte3-hotes');
-      await tester.drag(
-        find.byType(ListView).last,
-        const Offset(0, -900),
-      );
+      await tester.drag(find.byType(ListView).last, const Offset(0, -900));
       await settle();
       await capture('filtres-petit-texte3-hotes-bas');
       await tester.tapAt(const Offset(4, 4));

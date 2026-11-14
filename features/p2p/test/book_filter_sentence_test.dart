@@ -458,7 +458,10 @@ void main() {
       await tester.scrollUntilVisible(
         row('Option 30'),
         200,
-        scrollable: find.descendant(of: sheet, matching: find.byType(Scrollable)),
+        scrollable: find.descendant(
+          of: sheet,
+          matching: find.byType(Scrollable),
+        ),
       );
       await tester.drag(
         find.descendant(of: sheet, matching: find.byType(Scrollable)),
@@ -466,7 +469,10 @@ void main() {
       );
       await settle(tester);
 
-      expect(tester.getRect(row('Option 30')).bottom, lessThanOrEqualTo(844 - 48));
+      expect(
+        tester.getRect(row('Option 30')).bottom,
+        lessThanOrEqualTo(844 - 48),
+      );
       expect(row('Option 30').hitTestable(), findsOneWidget);
     },
   );
