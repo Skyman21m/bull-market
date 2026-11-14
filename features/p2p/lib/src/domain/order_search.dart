@@ -27,7 +27,7 @@ final class OrderSearchNeedsRobot extends OrderSearchOutcome {
 /// « Search order », the « Search » entry of the book of the official client (`components/Dialogs/GoToOrder.tsx` at commit ff1998c).
 ///
 /// The official client reads `http(s)://<host>/order/<coordinator>/<id>`, ignores the host, and opens the page of that order, which asks the coordinator for it with the robot of the user (`GET /api/order/`, authenticated).
-/// Troc has no robot yet: it opens the order only when it is in the public book already received, and says a robot is needed otherwise.
+/// Troc does not read an order with a robot yet (#119): it opens the order only when it is in the public book already received, and otherwise the screen says « You do not have a Garage Key » when no Garage Key is stored, « This order is not available » when one is.
 /// Nothing is requested from any coordinator.
 abstract final class OrderSearch {
   /// The pattern of the official client, unchanged.

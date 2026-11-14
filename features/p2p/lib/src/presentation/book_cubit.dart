@@ -8,6 +8,7 @@ import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../domain/p2p_tor_state.dart';
 import '../domain/tor_wait.dart';
+import '../domain/usecases/has_garage_key_usecase.dart';
 import '../domain/usecases/load_federation_books_usecase.dart';
 import '../domain/usecases/retry_p2p_tor_usecase.dart';
 import '../domain/usecases/start_p2p_tor_usecase.dart';
@@ -23,6 +24,9 @@ class BookCubit extends Cubit<BookState> {
   final RetryP2pTorUsecase _retryTor;
   final LoadFederationBooksUsecase _loadBooks;
 
+  /// Whether a Garage Key is stored, when the feature has the vault's handle: registered with the Garage only.
+  final HasGarageKeyUsecase? _hasGarageKey;
+
   StreamSubscription<P2pTorReport>? _torStates;
 
   /// The attempts running for each coordinator: asking a coordinator again cancels the attempts before, whose outcome is then dropped.
@@ -33,8 +37,9 @@ class BookCubit extends Cubit<BookState> {
     this._watchTor,
     this._startTor,
     this._retryTor,
-    this._loadBooks,
-  ) : super(BookState(network: network));
+    this._loadBooks, {
+    this._hasGarageKey,
+  }) : super(BookState(network: network));
 
   /// Follows Tor and starts it: the book is requested once Tor is ready.
   void start() {
@@ -72,6 +77,17 @@ class BookCubit extends Cubit<BookState> {
   /// « Search order »: what an order URL finds among every order received, whatever the filter.
   OrderSearchOutcome searchOrder(String url) =>
       OrderSearch.run(url, state.receivedOrders);
+
+  /// After « Search order » found no order in the books received: whether no Garage Key is stored for the network of the book, for the screen to say the official client's « You do not have a Garage Key » rather than its « This order is not available ».
+  ///
+  /// `true` only when the vault said that the slot of the network is empty, or when the feature has no vault's handle, the Garage being disabled then.
+  /// A key that cannot be read (keystore locked, entry unreadable or unusable) is not an absence (`HasGarageKeyUsecase`) and gives `false`.
+  /// It asks the vault only whether a key is stored, which hands no key out and uses no robot, and sends nothing to any coordinator.
+  Future<bool> lacksGarageKey() async =>
+      switch (await _hasGarageKey?.execute(state.network)) {
+        null || Ok(value: false) => true,
+        Ok(value: true) || Err() => false,
+      };
 
   void _onTorState(P2pTorReport report) {
     final previous = state.tor;

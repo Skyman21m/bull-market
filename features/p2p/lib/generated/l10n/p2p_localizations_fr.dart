@@ -572,6 +572,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pNoRobotHaveKey => 'J\'ai une clé de garage';
 
   @override
+  String get p2pOrderNotAvailable => 'Cet ordre n\'est pas disponible';
+
+  @override
   String get p2pGarageOnboardingGenerateKey => 'Générer une clé de garage';
 
   @override
