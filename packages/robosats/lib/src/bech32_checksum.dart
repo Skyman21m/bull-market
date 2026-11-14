@@ -47,7 +47,13 @@ final Int8List _values = () {
 }();
 
 int _polymod(Iterable<int> values) {
-  const generator = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  const generator = [
+    0x3b6a57b2,
+    0x26508e6d,
+    0x1ea119fa,
+    0x3d4233dd,
+    0x2a1462b3,
+  ];
   var checksum = 1;
   for (final value in values) {
     final top = checksum >> 25;

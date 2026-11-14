@@ -41,7 +41,8 @@ final class RoutingBudgetPpm {
   }
 
   @override
-  bool operator ==(Object other) => other is RoutingBudgetPpm && other.ppm == ppm;
+  bool operator ==(Object other) =>
+      other is RoutingBudgetPpm && other.ppm == ppm;
 
   @override
   int get hashCode => ppm.hashCode;
@@ -201,7 +202,10 @@ Result<void, PayoutDestinationFailure> checkPayoutInvoice(
   String invoice,
   RobosatsNetwork network,
 ) {
-  final read = readBech32(invoice, maxLength: CoordinatorOrder.maxInvoiceLength);
+  final read = readBech32(
+    invoice,
+    maxLength: CoordinatorOrder.maxInvoiceLength,
+  );
   final parts = read.parts;
   if (parts == null) {
     return read.refusal == Bech32Refusal.badChecksum

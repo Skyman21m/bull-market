@@ -118,7 +118,9 @@ final class BitcoinAddress {
         (version == 0 && program.length != 20 && program.length != 32)) {
       return const Err(PayoutDestinationMalformed());
     }
-    final expected = version == 0 ? Bech32Variant.bech32 : Bech32Variant.bech32m;
+    final expected = version == 0
+        ? Bech32Variant.bech32
+        : Bech32Variant.bech32m;
     if (parts.variant != expected) {
       return const Err(PayoutDestinationBadChecksum());
     }
@@ -187,9 +189,7 @@ final class BitcoinAddress {
 
   @override
   bool operator ==(Object other) =>
-      other is BitcoinAddress &&
-      other.text == text &&
-      other.network == network;
+      other is BitcoinAddress && other.text == text && other.network == network;
 
   @override
   int get hashCode => Object.hash(text, network);
@@ -200,7 +200,11 @@ final class BitcoinAddress {
 }
 
 /// A segwit address decoded: its human-readable part in lowercase, its witness version and its program.
-typedef SegwitProgram = ({String humanReadablePart, int version, Uint8List program});
+typedef SegwitProgram = ({
+  String humanReadablePart,
+  int version,
+  Uint8List program,
+});
 
 /// The segwit address [text] decoded under the rules of BIP-173 and BIP-350, whatever its network among mainnet, testnet and regtest, for the specification's test vectors, or why it is not one.
 @visibleForTesting

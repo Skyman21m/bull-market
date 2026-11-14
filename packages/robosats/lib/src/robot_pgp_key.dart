@@ -420,7 +420,12 @@ final class UnlockedRobotPgpKey {
     }
     return switch (signCleartext(invoice, now: now)) {
       Ok(value: final signed) => Ok(
-        SignedPayoutInvoice.internal(invoice, signed, network, _identity.hashId),
+        SignedPayoutInvoice.internal(
+          invoice,
+          signed,
+          network,
+          _identity.hashId,
+        ),
       ),
       Err(:final failure) => Err(failure),
     };

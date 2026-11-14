@@ -12,15 +12,17 @@ import 'package:robosats/src/coordinator/currency_limits.dart';
 import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/order_book.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
+import 'package:robosats/src/coordinator/payout.dart';
 import 'package:robosats/src/coordinator/read_bounds.dart';
 import 'package:robosats/src/coordinator/robosats_currency.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/coordinator/json_fields.dart';
+import 'package:robosats/src/bitcoin_address.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
-/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order.
+/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order and its payout as buyer.
 ///
 /// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
 /// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
@@ -328,6 +330,255 @@ final class CoordinatorClient {
         identity: identity,
       ).mapErr(_afterAction),
     };
+  }
+
+  /// `POST /api/order/?order_id=` with the action `update_invoice`: gives the coordinator of [lastRead] the Lightning invoice the robot [identity] is to be paid with as buyer.
+  ///
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:276-290`, commit ff1998c): `{"action":"update_invoice","invoice":…,"routing_budget_ppm":…}`, the invoice clear-signed by the robot's key ([SignedPayoutInvoice.signedMessage]), which the coordinator verifies with GnuPG and reads back with its own split (`api/utils.py:628-648`).
+  /// The invoice must be for [RoutingBudgetPpm.invoiceSats] of the buyer's amount with this [routingBudget]: the coordinator refuses any other amount, and does not check how long the invoice has left before it expires.
+  /// What is signed is exactly what was decoded and shown: decode [SignedPayoutInvoice.text] itself, never a string read again.
+  ///
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), when [invoice] was signed by another robot's key ([PayoutSignedByAnotherRobot]) or is for another network ([PayoutInvoiceRefused] with [PayoutInvoiceRefusal.wrongNetwork]), when [lastRead] does not show this robot as the buyer ([PayoutNotBuyer]), or not at a step the coordinator takes an invoice ([PayoutNotNow]): 6 or 8, or 15 once the failed invoice has expired (`api/logics.py:846-863`).
+  ///
+  /// The answer is [PayoutAccepted] with the order as it then is.
+  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [PayoutRefused] kind, [OrderNotParticipant] or one of the authentication's: each comes before the invoice is recorded (`api/views.py:617-634`, `api/logics.py:835-880`).
+  /// Every other failure is an [OrderActionOutcomeUnknown]: read the order again.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<PayoutOutcome, OrderActionFailure>> submitPayoutInvoice({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required SignedPayoutInvoice invoice,
+    required RoutingBudgetPpm routingBudget,
+  }) {
+    final status = lastRead.status;
+    final mayGiveInvoice =
+        status == CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
+        status == CoordinatorOrderStatus.waitingForInvoice ||
+        (status == CoordinatorOrderStatus.routingFailed &&
+            lastRead.payoutInvoiceExpired == true);
+    return _submitPayout(
+      identity: identity,
+      lastRead: lastRead,
+      payout: invoice,
+      mayGive: mayGiveInvoice,
+      wrongNetwork: const PayoutInvoiceRefused(
+        PayoutInvoiceRefusal.wrongNetwork,
+      ),
+      body: {
+        'action': 'update_invoice',
+        'invoice': invoice.signedMessage,
+        'routing_budget_ppm': routingBudget.ppm,
+      },
+    );
+  }
+
+  /// `POST /api/order/?order_id=` with the action `update_address`: gives the coordinator of [lastRead] the on-chain address the robot [identity] is to be paid at as buyer, through the coordinator's swap.
+  ///
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:292-308`, commit ff1998c): `{"action":"update_address","address":…,"mining_fee_rate":…}`, the address clear-signed by the robot's key, the rate a number with at most 3 decimals, always sent.
+  /// The address was checked by [BitcoinAddress.check] for the order's network, a pre-check: the coordinator's bitcoind is the judge, and refuses with [PayoutAddressRefused].
+  /// What the address receives is [MiningFeeRate.sentSats]; under [MiningFeeRate.minimumSentSats] the coordinator refuses ([PayoutBelowDustLimit]).
+  ///
+  /// Nothing is sent, and the failure is an [OrderActionRefused], in the cases of [submitPayoutInvoice] (with [PayoutAddressRefusal.wrongNetwork]), at a step other than 6 or 8 (`api/logics.py:760-769`), and when [lastRead] does not offer the swap ([PayoutSwapUnavailable]): the reference coordinator answers that case with a `500`, not a refusal (`api/logics.py:800-803`).
+  ///
+  /// The answer and the failures are as for [submitPayoutInvoice] (`api/logics.py:752-820`).
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<PayoutOutcome, OrderActionFailure>> submitPayoutAddress({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required SignedPayoutAddress address,
+    required MiningFeeRate miningFeeRate,
+  }) {
+    final status = lastRead.status;
+    final mayGiveAddress =
+        status == CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
+        status == CoordinatorOrderStatus.waitingForInvoice;
+    return _submitPayout(
+      identity: identity,
+      lastRead: lastRead,
+      payout: address,
+      mayGive: mayGiveAddress,
+      swap: true,
+      wrongNetwork: const PayoutAddressRefused(
+        PayoutAddressRefusal.wrongNetwork,
+      ),
+      body: {
+        'action': 'update_address',
+        'address': address.signedMessage,
+        'mining_fee_rate': miningFeeRate.wire,
+      },
+    );
+  }
+
+  /// The checks every payout makes before it is sent, then the request and the reading of its answer.
+  Future<Result<PayoutOutcome, OrderActionFailure>> _submitPayout({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required SignedPayout payout,
+    required bool mayGive,
+    required PayoutRefused wrongNetwork,
+    required Map<String, Object> body,
+    bool swap = false,
+  }) async {
+    final CoordinatorFailure? before;
+    if (!lastRead.wasReadBy(identity)) {
+      before = const OrderReadElsewhere();
+    } else if (payout.signer != identity.hashId) {
+      before = const PayoutSignedByAnotherRobot();
+    } else if (payout.network != lastRead.network) {
+      before = wrongNetwork;
+    } else if (lastRead.isBuyer != true) {
+      before = const PayoutNotBuyer();
+    } else if (!mayGive) {
+      before = const PayoutNotNow();
+    } else if (swap && lastRead.swapAllowed != true) {
+      before = const PayoutSwapUnavailable();
+    } else {
+      before = null;
+    }
+    if (before != null) return Err(OrderActionRefused(before));
+    final response = await _postOrderAction(
+      lastRead.coordinator,
+      lastRead.network,
+      identity: identity,
+      orderId: lastRead.id,
+      body: body,
+    );
+    return switch (response) {
+      Err(:final failure) => Err(_afterPayout(failure)),
+      Ok(value: CoordinatorResponse(statusCode: 200)) => switch (_decode(
+        response,
+      )) {
+        Err(:final failure) => Err(_afterPayout(failure)),
+        Ok(:final value) => parsePayoutAnswer(
+          value,
+          identity: identity,
+          lastRead: lastRead,
+        ).mapErr(_afterPayout),
+      },
+      Ok(value: final answer) => Err(
+        _afterPayout(
+          _payoutRefusal(answer, invoice: payout is SignedPayoutInvoice),
+        ),
+      ),
+    };
+  }
+
+  /// Whether [failure] of a payout comes before the payout was recorded, so that nothing was done.
+  ///
+  /// Refused: every [PayoutRefused] and [OrderNotParticipant] (each answered before `Logics` records anything, `api/views.py:617-649`, `api/logics.py:752-880`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Everything else is an outcome unknown, the codes of the other actions included, which the reference never answers to a payout: a `5xx` (an on-chain payout the coordinator does not offer fails with a `500`, `api/logics.py:800-803`), an error of the read that follows the action, a malformed answer, a lost connection.
+  static OrderActionFailure _afterPayout(CoordinatorFailure failure) =>
+      switch (failure) {
+        PayoutRefused() ||
+        OrderNotParticipant() ||
+        OrderRequestRefused(errorCode: null) ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        OrderReadElsewhere() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
+
+  /// The texts the reference coordinator sends for an invoice its Lightning node refuses, with no code (`validate_ln_invoice`, `api/lightning/lnd.py:463-533`, the same in `cln.py:504-574`): compared, never kept.
+  static const _invoiceTexts = {
+    'Does not look like a valid lightning invoice':
+        PayoutInvoiceRefusal.notAnInvoice,
+    'The invoice hinted private routes are not payable within the submitted routing budget. This can be adjusted with Advanced Options enabled.':
+        PayoutInvoiceRefusal.routeHintsUnpayable,
+    'The invoice provided has no explicit amount':
+        PayoutInvoiceRefusal.noAmount,
+    'The invoice provided has already expired': PayoutInvoiceRefusal.expired,
+  };
+
+  /// `"The invoice provided is not for " + "{:,}".format(num_satoshis) + " Sats"` (`lnd.py:514-520`).
+  static final RegExp _wrongAmountText = RegExp(
+    r'^The invoice provided is not for [0-9]{1,3}(?:,[0-9]{3}){0,5} Sats$',
+  );
+
+  /// The texts of `validate_onchain_address` (`api/utils.py:106-121`), with no code: compared, never kept.
+  static const _addressTexts = {
+    'Invalid address': PayoutAddressRefusal.invalid,
+    'Unable to validate address, check bitcoind backend':
+        PayoutAddressRefusal.unverifiable,
+  };
+
+  /// The message of error 4001, the only place where the coordinator gives its minimum rate (`api/errors.py:83`, `api/logics.py:791-793`): an integer, or a Python float.
+  static final RegExp _minimumFeeText = RegExp(
+    r'^The mining fee is too low\. Must be higher than ([0-9]{1,4}(?:\.[0-9]{1,17})?) Sat/vbyte$',
+  );
+
+  /// Why a coordinator answered a payout with a status other than `200`: the codes and texts of the payout of the kind [invoice] says, then the rule of every action on an order ([_orderRefusal]).
+  ///
+  /// A code is read on a `4xx` answer only; the code of a refusal of the other payout kind is no payout refusal.
+  /// With no code, a `400` that holds a `bad_invoice` (invoice) or `bad_address` (address) text is that refusal, of the kind its exact wording gives, `unspecified` for any other text: only the reference's refusals before the payout is recorded write those keys.
+  static CoordinatorFailure _payoutRefusal(
+    CoordinatorResponse answer, {
+    required bool invoice,
+  }) {
+    final status = answer.statusCode;
+    if (status < 400 || status > 499) {
+      return CoordinatorUnexpectedStatus(status);
+    }
+    final fields = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(object),
+      _ => null,
+    };
+    if (fields == null) return _orderRefusal(answer);
+    final textKey = invoice ? 'bad_invoice' : 'bad_address';
+    final code = fields.optionalInt('error_code', min: 0, max: 99999);
+    final CoordinatorFailure? refusal = switch ((code, invoice)) {
+      (1047, _) => const OrderNotParticipant(),
+      (1048, _) => const PayoutSignatureRefused(),
+      (1017, true) || (1015, false) => const PayoutNotBuyer(),
+      (1018 || 1019 || 3001, true) || (1016, false) => const PayoutNotNow(),
+      (3000, true) => const PayoutInvoiceRefused(PayoutInvoiceRefusal.empty),
+      (3002, true) => const PayoutInvoiceRefused(
+        PayoutInvoiceRefusal.alreadySubmitted,
+      ),
+      (4000, false) => const PayoutAddressRefused(PayoutAddressRefusal.empty),
+      (4001, false) => PayoutMiningFeeTooLow(
+        _minimumFee(fields.optionalString(textKey, maxLength: 200)),
+      ),
+      (4002, false) => const PayoutMiningFeeTooHigh(),
+      (4003, false) => const PayoutBelowDustLimit(),
+      (4004, false) => const PayoutAddressRefused(PayoutAddressRefusal.invalid),
+      (4005, false) => const PayoutAddressRefused(
+        PayoutAddressRefusal.unverifiable,
+      ),
+      (null, true) when status == 400 => switch (fields.optionalString(
+        textKey,
+        maxLength: 500,
+      )) {
+        final text? => PayoutInvoiceRefused(
+          _invoiceTexts[text] ??
+              (_wrongAmountText.hasMatch(text)
+                  ? PayoutInvoiceRefusal.wrongAmount
+                  : PayoutInvoiceRefusal.unspecified),
+        ),
+        null => null,
+      },
+      (null, false) when status == 400 => switch (fields.optionalString(
+        textKey,
+        maxLength: 500,
+      )) {
+        final text? => PayoutAddressRefused(
+          _addressTexts[text] ?? PayoutAddressRefusal.unspecified,
+        ),
+        null => null,
+      },
+      _ => null,
+    };
+    return refusal ?? _orderRefusal(answer);
+  }
+
+  static double? _minimumFee(String? message) {
+    final minimum = double.tryParse(
+      _minimumFeeText.firstMatch(message ?? '')?.group(1) ?? '',
+    );
+    return minimum != null && minimum >= 2 && minimum <= 1000 ? minimum : null;
   }
 
   static bool _isOrderId(int orderId) => orderId >= 1 && orderId <= 1 << 53;
