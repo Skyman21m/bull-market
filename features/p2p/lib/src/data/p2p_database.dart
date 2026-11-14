@@ -39,12 +39,14 @@ final class P2pDatabase extends _$P2pDatabase {
   /// The database in the directory [directory] completes with, opened at the first query: creating it touches no file.
   ///
   /// Every commit is synced to disk (`synchronous = FULL`), so that a binding written survives a power cut before the request of its robot leaves.
+  /// Prepared statements are not cached (#128): `package:sqlite3` leaves a statement whose step failed unreset until its next use, and a cached write that met `SQLITE_BUSY` stays active, so every later write of the connection, reported written, stays uncommitted under its write lock and is rolled back when that statement runs again. Each statement is finalized after its use instead, whatever it gave.
   factory P2pDatabase.open(Future<Directory> Function() directory) =>
       P2pDatabase._(
         LazyDatabase(() async {
           final file = File.fromUri((await directory()).uri.resolve(fileName));
           return NativeDatabase.createInBackground(
             file,
+            cachePreparedStatements: false,
             setup: (database) {
               database.execute('PRAGMA busy_timeout = 2000;');
               database.execute('PRAGMA journal_mode = WAL;');
