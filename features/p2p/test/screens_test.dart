@@ -267,7 +267,7 @@ void main() {
       await settle(tester);
 
       expect(find.text('Offers'), findsOneWidget);
-      expect(find.text('I want to'), findsOneWidget);
+      expect(find.text('I want'), findsOneWidget);
       expect(find.text('Seller'), findsNWidgets(2));
       expect(find.text('Buyer'), findsOneWidget);
       expect(find.text('100 EUR', findRichText: true), findsNWidgets(2));
@@ -326,9 +326,11 @@ void main() {
         ]);
 
         // « hosted by » Temple of Sats: the row still shows every coordinator, the offline one included.
-        await tester.tap(find.text('ANY').last);
+        await tester.tap(find.text('Any host'));
         await settle(tester);
         await tester.tap(find.text('Temple of Sats').last);
+        await settle(tester);
+        await tester.tap(find.byTooltip('Close'));
         await settle(tester);
         expect(rowAliases(tester), hasLength(6));
         expect(rowState(tester, 'bazaar'), CoordinatorRowState.offline);
@@ -466,7 +468,7 @@ void main() {
             top,
           );
           expect(tester.getRect(find.byType(BookFilterSentence)).top, top);
-          final sentence = tester.getRect(find.text('I want to'));
+          final sentence = tester.getRect(find.text('I want'));
 
           await tester.tap(find.text('Chart'));
           await settle(tester);
@@ -483,7 +485,7 @@ void main() {
           await fadeOut(tester);
           expect(tester.hasRunningAnimations, isFalse);
           // Gone, the bar leaves the book where it was.
-          expect(tester.getRect(find.text('I want to')), sentence);
+          expect(tester.getRect(find.text('I want')), sentence);
         },
       );
 
@@ -783,7 +785,7 @@ void main() {
       tor.add(P2pTorState.ready);
       await settle(tester);
 
-      await tester.tap(find.text('ANY').first);
+      await tester.tap(find.text('Any type'));
       await settle(tester);
       await tester.tap(find.text('Sell').last);
       await settle(tester);
@@ -799,7 +801,7 @@ void main() {
       tor.add(P2pTorState.ready);
       await settle(tester);
 
-      await tester.tap(find.text('ANY').last);
+      await tester.tap(find.text('Any host'));
       await settle(tester);
 
       expect(find.text('Select Host'), findsOneWidget);
@@ -815,6 +817,8 @@ void main() {
 
       // Gumpellite answered an empty book: choosing it leaves no offer.
       await tester.tap(find.text('Gumpellite'));
+      await settle(tester);
+      await tester.tap(find.byTooltip('Close'));
       await settle(tester);
       expect(find.text('Gumpellite'), findsOneWidget);
       expect(find.text('Seller'), findsNothing);
@@ -1320,7 +1324,10 @@ void main() {
       expect(find.text('Using Testnet Bitcoin'), findsOneWidget);
       tor.add(P2pTorState.ready);
       await settle(tester);
-      expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsOneWidget,
+      );
       expect(find.text('Be the first one to create an order'), findsOneWidget);
     });
   });

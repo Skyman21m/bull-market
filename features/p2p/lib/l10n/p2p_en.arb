@@ -110,11 +110,7 @@
   },
   "p2pBookFilterIWantTo": "I want to",
   "@p2pBookFilterIWantTo": {
-    "description": "Start of the filter sentence « I want to [type] and use [currency] pay with [method] hosted by [host] »."
-  },
-  "p2pBookFilterAny": "ANY",
-  "@p2pBookFilterAny": {
-    "description": "The « any » value of the four selectors (type, currency, payment method, host), and the value of {currencyCode} in the empty book message."
+    "description": "Start of the filter sentence once an order type is chosen: « I want to [Buy] and use [EUR] pay with [Revolut] hosted by [Temple of Sats] ». While none is chosen it is p2pBookFilterIWant."
   },
   "p2pBookFilterBuy": "Buy",
   "@p2pBookFilterBuy": {
@@ -151,6 +147,82 @@
   "p2pBookFilterSelectHost": "Select Host",
   "@p2pBookFilterSelectHost": {
     "description": "Title of the host (coordinator) selector."
+  },
+  "p2pBookFilterIWant": "I want",
+  "@p2pBookFilterIWant": {
+    "description": "Start of the filter sentence while no order type is chosen: « I want [Any type] and use [Any currency] pay with [Any payment method] hosted by [Any host] ». Once a type is chosen the sentence starts with p2pBookFilterIWantTo (« I want to [Buy] »)."
+  },
+  "p2pBookFilterAnyType": "Any type",
+  "@p2pBookFilterAnyType": {
+    "description": "The order type selector while no type is chosen, and the first entry of its list. It names its subject, since four selectors would otherwise all read « ANY » (#101, owner's request); RoboSats shows « ANY »."
+  },
+  "p2pBookFilterAnyCurrency": "Any currency",
+  "@p2pBookFilterAnyCurrency": {
+    "description": "The currency selector while no currency is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French word for the currency is « Devise »."
+  },
+  "p2pBookFilterAnyMethod": "Any payment method",
+  "@p2pBookFilterAnyMethod": {
+    "description": "The payment method selector while no method is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French words for the payment method are « Mode de paiement »."
+  },
+  "p2pBookFilterAnyHost": "Any host",
+  "@p2pBookFilterAnyHost": {
+    "description": "The host (coordinator) selector while no host is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French word for the host is « Hôte »."
+  },
+  "p2pBookFilterMore": "{first} +{count}",
+  "@p2pBookFilterMore": {
+    "description": "A selector with several choices: the first one chosen, then how many more, as RoboSats shows its hidden payment method tags (« +2 »).",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pBookFilterSubjectType": "Order type",
+  "@p2pBookFilterSubjectType": {
+    "description": "What the order type selector chooses, said by a screen reader before the choice (p2pBookFilterChoices)."
+  },
+  "p2pBookFilterSubjectCurrency": "Currency",
+  "@p2pBookFilterSubjectCurrency": {
+    "description": "What the currency selector chooses, said by a screen reader before the choices."
+  },
+  "p2pBookFilterSubjectMethod": "Payment method",
+  "@p2pBookFilterSubjectMethod": {
+    "description": "What the payment method selector chooses, said by a screen reader before the choices."
+  },
+  "p2pBookFilterSubjectHost": "Host",
+  "@p2pBookFilterSubjectHost": {
+    "description": "What the host selector chooses, said by a screen reader before the choices."
+  },
+  "p2pBookFilterChoices": "{subject}: {choices}",
+  "@p2pBookFilterChoices": {
+    "description": "What a screen reader says of a selector with a choice made: its subject, then every choice (p2pBookFilterOrList), such as « Currency: EUR, USD or CHF ».",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "choices": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookFilterOrList": "{others} or {last}",
+  "@p2pBookFilterOrList": {
+    "description": "Several choices of one selector, any of which an order may match: {others} is every choice but the last, joined with p2pBookFilterListSeparator, such as « EUR, USD or CHF ».",
+    "placeholders": {
+      "others": {
+        "type": "String"
+      },
+      "last": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookFilterListSeparator": ", ",
+  "@p2pBookFilterListSeparator": {
+    "description": "Between two choices of a list of choices but the last two (p2pBookFilterOrList)."
   },
   "p2pBookMakerStatusActive": "Active",
   "@p2pBookMakerStatusActive": {
@@ -199,7 +271,7 @@
   },
   "p2pBookEmptySell": "No orders found to sell BTC for {currencyCode}",
   "@p2pBookEmptySell": {
-    "description": "Empty book when the filter is « Sell ». {currencyCode} is the currency code or « ANY ».",
+    "description": "Empty book when the filter is « Sell ». {currencyCode} is the currency chosen, several joined by p2pBookFilterOrList (« EUR, USD or CHF »), or p2pBookEmptyAnyCurrency when none is.",
     "placeholders": {
       "currencyCode": {
         "type": "String"
@@ -208,12 +280,16 @@
   },
   "p2pBookEmptyBuy": "No orders found to buy BTC for {currencyCode}",
   "@p2pBookEmptyBuy": {
-    "description": "Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency code or « ANY ».",
+    "description": "Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency chosen, several joined by p2pBookFilterOrList (« EUR, USD or CHF »), or p2pBookEmptyAnyCurrency when none is.",
     "placeholders": {
       "currencyCode": {
         "type": "String"
       }
     }
+  },
+  "p2pBookEmptyAnyCurrency": "any currency",
+  "@p2pBookEmptyAnyCurrency": {
+    "description": "The value of {currencyCode} in the empty book messages while no currency is chosen, where RoboSats puts « ANY »."
   },
   "p2pBookEmptyBeFirst": "Be the first one to create an order",
   "@p2pBookEmptyBeFirst": {
