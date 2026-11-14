@@ -9,6 +9,8 @@ sealed class WalletPaymentDecision {
 }
 
 /// The wallet may be asked to pay [invoice], its exact text, after the user's confirmation: at most [accepted] sats, before [invoice] stops being payable less [TradeTolerances.walletPaymentMargin].
+///
+/// The payment pull request builds the wallet port's `CheckedBolt11Invoice` from this decision only, with the invoice's exact text, amount, network, payment hash and `payableUntil` (`AGENTS.md`, the trade's state machine).
 final class WalletPaymentOffered extends WalletPaymentDecision {
   final CheckedInvoice invoice;
 
