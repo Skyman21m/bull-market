@@ -8,6 +8,7 @@ import '../../trade/trade_cancel.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import 'trade_reader.dart';
+import 'trade_take_locks.dart';
 
 /// Cancels a trade as its taker, with the last read the user saw, then reads the order again and keeps what it shows (#87, design note § 1.4, § 2.1).
 ///
@@ -18,8 +19,14 @@ final class CancelTradeUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
+  final TradeTakeLocks _locks;
 
-  const CancelTradeUsecase(this._client, this._reader, this._limiter);
+  const CancelTradeUsecase(
+    this._client,
+    this._reader,
+    this._limiter,
+    this._locks,
+  );
 
   /// Cancels the trade of [record] as [seen] showed it, [bondLoss] given when the user confirmed losing the bond.
   ///
@@ -64,73 +71,76 @@ final class CancelTradeUsecase {
       return const Err(CancelOfAnotherTrade());
     }
 
-    final requests = _limiter.open(trade.robot.identity.sessionKey);
-    try {
-      final sent = await requests.send(
-        record.network,
-        trade.coordinator,
-        () => _client.cancelOrder(
-          identity: trade.robot.identity,
-          lastRead: lastRead,
-        ),
-        isBusy: _answeredBusy,
-      );
-      var current = trade;
-      P2pFailure? problem;
-      Future<void> keep(TradeAnswer answer) async {
-        final step = await _reader.advance(current, answer, at: _reader.now());
-        current = step.trade;
-        problem ??= step.recordProblem;
-      }
+    // One action of an order at a time in the process: its take, its payout, the payment of its bond and this cancel (`TradeTakeLocks`): a cancel waits for a payment of the bond being sent.
+    return _locks.run(record.network, trade.coordinator, record.orderId, () async {
+      final requests = _limiter.open(trade.robot.identity.sessionKey);
+      try {
+        final sent = await requests.send(
+          record.network,
+          trade.coordinator,
+          () => _client.cancelOrder(
+            identity: trade.robot.identity,
+            lastRead: lastRead,
+          ),
+          isBusy: _answeredBusy,
+        );
+        var current = trade;
+        P2pFailure? problem;
+        Future<void> keep(TradeAnswer answer) async {
+          final step = await _reader.advance(current, answer, at: _reader.now());
+          current = step.trade;
+          problem ??= step.recordProblem;
+        }
 
-      // The cancel's own answer first, then a read after it.
-      switch (sent) {
-        case Ok(value: Ok(value: OrderCancelEnded())):
-          await keep(const TradeOrderCancelled());
-        case Ok(value: Ok(value: OrderCancelAccepted(:final order))):
-          await keep(TradeOrderRead(order));
-        case Ok(value: Err()) || Err():
-          break;
-      }
-      final read = await _reader.readOrder(
-        requests,
-        record,
-        trade.robot,
-        trade.coordinator,
-      );
-      if (read case Ok(value: final result)) {
-        if (TradeAnswer.ofRead(result) case final answer?) await keep(answer);
-      }
-      return Ok(switch (sent) {
-        Ok(value: Ok()) => CancelDone(
-          current.record,
-          current.seen,
-          recordProblem: problem,
-        ),
-        Ok(value: Err(failure: OrderActionRefused(:final cause))) =>
-          CancelNotDone(
-            current.record,
-            current.seen,
-            cause: cause,
-            recordProblem: problem,
-          ),
-        Ok(value: Err(failure: OrderActionOutcomeUnknown())) =>
-          CancelOutcomeUnknown(
+        // The cancel's own answer first, then a read after it.
+        switch (sent) {
+          case Ok(value: Ok(value: OrderCancelEnded())):
+            await keep(const TradeOrderCancelled());
+          case Ok(value: Ok(value: OrderCancelAccepted(:final order))):
+            await keep(TradeOrderRead(order));
+          case Ok(value: Err()) || Err():
+            break;
+        }
+        final read = await _reader.readOrder(
+          requests,
+          record,
+          trade.robot,
+          trade.coordinator,
+        );
+        if (read case Ok(value: final result)) {
+          if (TradeAnswer.ofRead(result) case final answer?) await keep(answer);
+        }
+        return Ok(switch (sent) {
+          Ok(value: Ok()) => CancelDone(
             current.record,
             current.seen,
             recordProblem: problem,
           ),
-        // Busy every time, or the robot released: the cancel never reached the coordinator.
-        Err(:final failure) => CancelNotDone(
-          current.record,
-          current.seen,
-          cause: failure,
-          recordProblem: problem,
-        ),
-      });
-    } finally {
-      requests.close();
-    }
+          Ok(value: Err(failure: OrderActionRefused(:final cause))) =>
+            CancelNotDone(
+              current.record,
+              current.seen,
+              cause: cause,
+              recordProblem: problem,
+            ),
+          Ok(value: Err(failure: OrderActionOutcomeUnknown())) =>
+            CancelOutcomeUnknown(
+              current.record,
+              current.seen,
+              recordProblem: problem,
+            ),
+          // Busy every time, or the robot released: the cancel never reached the coordinator.
+          Err(:final failure) => CancelNotDone(
+            current.record,
+            current.seen,
+            cause: failure,
+            recordProblem: problem,
+          ),
+        });
+      } finally {
+        requests.close();
+      }
+    });
   }
 
   /// Whether the transport answered the cancel busy: nothing reached the coordinator.

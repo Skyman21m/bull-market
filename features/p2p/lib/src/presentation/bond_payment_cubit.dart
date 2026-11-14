@@ -178,7 +178,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     unawaited(
       running.whenComplete(() {
         _stillWaiting?.cancel();
-        if (!isClosed) _followAgain();
+        if (!isClosed) _followAgain(leavesSending: true);
       }),
     );
   }
@@ -210,8 +210,12 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   }
 
   /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only.
+  ///
+  /// The follow of an earlier payment stops here: from the quote to the end of the payment, no event of the wallet's records moves the panel (a preparation left by an earlier run that expires meanwhile would offer to pay again while this payment runs).
   Future<void> ask(TradeSeen seen) async {
     if (isClosed || state.step is! BondPayIdle) return;
+    unawaited(_follow?.cancel());
+    _follow = null;
     emit(state._with(step: const BondPayQuoting()));
     final quoted = await _quoter(record, seen);
     if (isClosed) return;
@@ -232,16 +236,32 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   }
 
   /// Pays the quote the confirmation shows: on its tap only, once.
+  ///
+  /// An [Error] of the payment is not caught (AGENTS.md, rule 11): the panel then says it cannot tell where the payment stands, and follows the wallet's records again, before the error goes on.
   Future<void> confirm() async {
     final step = state.step;
     if (isClosed || step is! BondPayConfirming) return;
     _sending();
-    final paid = await _payer(record, accepted: step.walletQuote);
-    _stillWaiting?.cancel();
+    var answered = false;
+    final Result<P2pWalletPayment, BondPayRefusal> paid;
+    try {
+      paid = await _payer(record, accepted: step.walletQuote);
+      answered = true;
+    } finally {
+      _stillWaiting?.cancel();
+      if (!answered && !isClosed) {
+        emit(state._with(step: const BondPayUnreadable()));
+        _followAgain(leavesSending: true, paymentExists: true);
+      }
+    }
     if (isClosed) return;
     switch (paid) {
       case Ok():
-        _followAgain();
+        // The funding was broadcast: the payment is sent, whatever the records say next.
+        emit(
+          state._with(step: const BondPayFollowing(P2pWalletPaymentSent())),
+        );
+        _followAgain(leavesSending: true, paymentExists: true);
       case Err(
         failure: BondPayWalletRefused(
           refusal: P2pWalletPaymentExists(payment: null, :final progress),
@@ -252,7 +272,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
       case Err(failure: BondPayWalletRefused(:final refusal))
           when _carriesPayment(refusal):
         // A payment exists for the invoice (made now or before): it is followed, never made again.
-        _followAgain();
+        _followAgain(leavesSending: true, paymentExists: true);
       case Err(:final failure):
         emit(state._with(step: BondPayIdle(refused: failure)));
     }
@@ -264,25 +284,29 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     _ => false,
   };
 
-  void _followAgain() {
+  /// Follows the payment recorded for the bond. Its events never move the panel out of a quote or a confirmation, nor out of a payment being sent unless [leavesSending] (the follow started once that payment answered or ended); when [paymentExists], finding nothing keeps the payment shown, or says the records cannot tell where it stands.
+  void _followAgain({bool leavesSending = false, bool paymentExists = false}) {
     unawaited(_follow?.cancel());
     _follow = _follower(record).listen((watch) {
       if (isClosed) return;
+      final current = state.step;
+      if (current is BondPayQuoting || current is BondPayConfirming) return;
+      if (current is BondPaySending && !leavesSending) return;
       emit(
         state._with(
           step: switch (watch) {
-            BondPaymentNone() => switch (state.step) {
+            BondPaymentNone() => switch (current) {
               // A payment the wallet started but whose record is not read yet stays as it was shown.
               final BondPayFollowing following => following,
               final BondPaySending sending when _running(record) != null =>
                 sending,
+              _ when paymentExists => const BondPayUnreadable(),
               _ => const BondPayIdle(),
             },
-            // A payment that moved nothing and is not left signed (being prepared after a restart, expired or failed with nothing sent) may be tried again, after a new quote and a new confirmation: the wallet pays it again only while it is provably unspent.
+            // A payment that moved nothing and is not left signed: being prepared by this process now, being sent; left by an earlier run, it may be tried again (the wallet pays it again only while it is provably unspent).
             BondPaymentFollowed(:final progress)
                 when !progress.fundsMayHaveLeft &&
                     progress is! P2pWalletPaymentSigned =>
-              // Being prepared by this process now: being sent; left by an earlier run: may be tried again.
               _running(record) != null
                   ? const BondPaySending()
                   : const BondPayIdle(),

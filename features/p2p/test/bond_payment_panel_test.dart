@@ -16,6 +16,7 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/bond_payment_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:robosats/robosats.dart';
@@ -95,6 +96,7 @@ Future<(BondPaymentCubit, Payments)> _show(
             now: now ?? () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             walletPayment: BondPaymentPanel.slotFor,
+            walletBond: BondPaymentPanel.bondOf,
             walletBondLine: (_, bondHeld) =>
                 BondPaymentLine(bondHeld: bondHeld),
           ),
@@ -325,6 +327,60 @@ void main() {
       await tester.pump();
       expect(find.byType(QrImageView), findsNothing);
       expect(find.text('Copy to clipboard'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    '« Cancel » waits while the payment is sent; once sent, its dialog says a payment is on its way',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      await _confirming(tester, payments);
+      await tester.tap(find.text('Pay 3,357 sats'));
+      await tester.pump();
+      final cancel = find.widgetWithText(TradeButton, 'Cancel');
+      expect(tester.widget<TradeButton>(cancel.last).onPressed, isNull);
+      payments.pays.single.complete(Ok(_payment));
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<TradeButton>(cancel.last).onPressed, isNotNull);
+      await tester.ensureVisible(cancel.last);
+      await tester.pump();
+      await tester.tap(cancel.last);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.textContaining('A payment of this bond is on its way from this wallet.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'a payment followed stays said when the balance can no longer be read; unreadable records keep the panel, the other wallet not opened',
+    (tester) async {
+      final (cubit, payments) = await _show(tester, state: 'bond');
+      _follow(payments, const P2pWalletPaymentSent());
+      await tester.pump();
+      payments.balances.add(const Err(P2pWalletUnavailable()));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Payment sent. Waiting for Temple of Sats to see your bond locked.',
+        ),
+        findsOneWidget,
+      );
+      payments.follows.last.add(
+        const BondPaymentUnreadable(P2pWalletUnavailable()),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Bull Market cannot read where this payment stands.'),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(cubit.state.step, isA<BondPayUnreadable>());
     },
   );
 

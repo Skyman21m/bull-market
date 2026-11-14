@@ -46,6 +46,17 @@ final class WalletPaymentSlot {
   });
 }
 
+/// Where a payment of the bond from this wallet stands, as « Cancel » needs it (#100): [sending] while it is being sent, [sent] once its funds may have left the wallet.
+@immutable
+final class WalletBondState {
+  final bool sending;
+  final bool sent;
+
+  const WalletBondState({required this.sending, required this.sent});
+
+  static const none = WalletBondState(sending: false, sent: false);
+}
+
 /// Builds what the wallet offers for [request], or `null` when it has nothing to offer: then the section is empty and « Pay with another wallet » opens at once.
 typedef WalletPaymentBuilder =
     WalletPaymentSlot? Function(

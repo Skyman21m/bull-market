@@ -325,6 +325,7 @@ final class P2pLocator {
         CoordinatorClient(transport(), clock: clock),
         locator(),
         locator(),
+        locator(),
       ),
     );
     locator.registerFactory<ListActiveTradesUsecase>(

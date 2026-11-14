@@ -2290,5 +2290,9 @@
   "p2pPayUnreadable": "Bull Market cannot read where this payment stands.",
   "@p2pPayUnreadable": {
     "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: the records, or the wallet's, cannot be read; nothing is paid."
+  },
+  "p2pPayCancelNote": "A payment of this bond is on its way from this wallet. Cancelling now costs the swap service’s fees, and its refund may take time.",
+  "@p2pPayCancelNote": {
+    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not the reference's: under the reference's text of the cancel dialogs, when a payment of the bond from this wallet may have left it; the user is informed, the cancel is not stopped."
   }
 }

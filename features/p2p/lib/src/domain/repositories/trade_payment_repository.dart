@@ -23,7 +23,7 @@ abstract interface class TradePaymentRepository {
 
   /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at]: the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt kept until the wallet gives a new one).
   ///
-  /// `false`: nothing was written, since [trade]'s payment of [step] is of another invoice, or [trade] is closed or was never read; the wallet is then not asked.
+  /// `false`: nothing was written, since [trade]'s payment of [step] is of another invoice. A first attempt for a closed or never read trade is refused by the database ([P2pStorageFailure]); a new attempt of the same invoice is written whether the trade is still open or not, the caller paying only from a status it has just read and stored. Either way the wallet is not asked unless this is `true`.
   @useResult
   Future<Result<bool, P2pFailure>> recordStart(
     TradeRecord trade,

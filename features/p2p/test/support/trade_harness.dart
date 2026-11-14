@@ -412,7 +412,7 @@ final class TradeHarness {
       ),
       watchRegistry,
     );
-    cancel = CancelTradeUsecase(client, reader, limiter);
+    cancel = CancelTradeUsecase(client, reader, limiter, locks);
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }
 

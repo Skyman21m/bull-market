@@ -14,6 +14,9 @@ class TradeDialogBody extends StatelessWidget {
   final String backLabel;
   final VoidCallback onBack;
   final String goLabel;
+
+  /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
+  final String? note;
   final VoidCallback onGo;
 
   /// Whether the button that goes back is the emphasized, filled one.
@@ -28,6 +31,7 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.note,
   });
 
   @override
@@ -52,6 +56,10 @@ class TradeDialogBody extends StatelessWidget {
             text,
             style: styles.bodyMedium?.copyWith(color: colors.textMuted),
           ),
+          if (note case final note?) ...[
+            const Gap(BullSpacing.sm),
+            Text(note, style: styles.bodyMedium?.copyWith(color: colors.text)),
+          ],
           const Gap(BullSpacing.lg),
           TradeButton(
             label: backLabel,

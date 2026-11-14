@@ -15,7 +15,7 @@ import 'p2p_database.dart';
 /// This class is the only writer of the table, and opens no transaction.
 /// It returns no row of the database: the records only, and a [P2pStorageFailure] for any [Exception] the database throws; an [Error] is a bug (AGENTS.md, rule 11) and is not caught.
 final class TradePaymentRepositoryImpl implements TradePaymentRepository {
-  /// A new attempt of the payment already recorded for this invoice: its start moved forward, the earlier attempt's id kept until the wallet gives a new one (a payment that may have moved funds is never forgotten); the row comes back only when it is this invoice's.
+  /// A new attempt of the payment already recorded for this invoice: its start moved forward, the earlier attempt's id kept until the wallet gives a new one (a payment that may have moved funds is never forgotten); whether or not its trade is still open (the use case pays only from a status it has just read and stored, so an open trade); the row comes back only when it is this invoice's.
   static const String _restartSql =
       'UPDATE trade_payments SET started_at = max(started_at, ?) '
       'WHERE key_fingerprint = ? AND robot_index = ? AND step = ? '

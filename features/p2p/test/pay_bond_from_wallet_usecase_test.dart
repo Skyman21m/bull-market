@@ -180,10 +180,8 @@ void main() {
         TradeOpened(:final trade) => trade.terms,
         _ => throw StateError('not opened'),
       };
-      expect(
-        terms.bondCeiling.value.toInt(),
-        (terms.expectedBond * 1.02 + 1).floor(),
-      );
+      // Written out: the scripted order's bond at the book's price is about 3,207 sats; with 2 % and 1 sat on it, rounded down, 3,272.
+      expect(terms.bondCeiling.value.toInt(), 3272);
       expect(
         invoice.amount.value.toInt(),
         lessThanOrEqualTo(terms.bondCeiling.value.toInt()),
@@ -425,6 +423,83 @@ void main() {
       expect(setup.fake.paid, hasLength(1));
     },
   );
+
+  test(
+    'a cancel waits while a payment of the bond holds the order: nothing sent to the coordinator meanwhile',
+    () async {
+      final setup = await _Setup.start();
+      final seen = await setup.seen();
+      final release = Completer<void>();
+      final opened = await setup.harness.reader.open(setup.record);
+      final coordinator = switch (opened) {
+        TradeOpened(:final trade) => trade.coordinator,
+        _ => throw StateError('not opened'),
+      };
+      final holding = setup.harness.locks.run(
+        setup.record.network,
+        coordinator,
+        setup.record.orderId,
+        () => release.future,
+      );
+      final cancelling = setup.harness.cancel.execute(setup.record, seen);
+      await setup.harness.settle();
+      expect(
+        setup.harness.coordinator.received.where((r) => r == ScriptedRequest.cancel),
+        isEmpty,
+      );
+      release.complete();
+      await holding;
+      await cancelling;
+      expect(
+        setup.harness.coordinator.received.where((r) => r == ScriptedRequest.cancel),
+        hasLength(1),
+      );
+    },
+  );
+
+  group('the records of the payments', () {
+    test('a start of another invoice for the same step writes nothing, and does not move the first', () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      final first = await setup.payments.recordStart(
+        setup.record,
+        InvoiceStep.bond,
+        paymentHash: quote.invoice.paymentHash,
+        at: setup.harness.now,
+      );
+      expect(first, isA<Ok<bool, P2pFailure>>().having((r) => r.value, 'value', isTrue));
+      final before = await setup.recorded();
+      final other = await setup.payments.recordStart(
+        setup.record,
+        InvoiceStep.bond,
+        paymentHash: 'cd${'0' * 62}',
+        at: setup.harness.now.add(const Duration(minutes: 1)),
+      );
+      expect(other, isA<Ok<bool, P2pFailure>>().having((r) => r.value, 'value', isFalse));
+      expect(await setup.recorded(), before);
+    });
+
+    test('a payment whose start records nothing is not asked of the wallet', () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      final _ = await setup.payments.recordStart(
+        setup.record,
+        InvoiceStep.bond,
+        paymentHash: 'cd${'0' * 62}',
+        at: setup.harness.now,
+      );
+      final paid = await setup.payBond.payBond(setup.record, accepted: quote);
+      expect(
+        paid,
+        isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<BondPayNotRecorded>(),
+        ),
+      );
+      expect(setup.fake.paid, isEmpty);
+    });
+  });
 
   group('followBond', () {
     test('none recorded: none, and nothing asked of the wallet', () async {

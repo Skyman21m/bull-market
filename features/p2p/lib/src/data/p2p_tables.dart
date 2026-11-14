@@ -283,7 +283,9 @@ class StoredTradeTrails extends Table {
   ];
 }
 
-/// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called and completed after, so that a restart finds the payment again (`P2pWalletPort.findPayment`) and nothing pays an invoice twice.
+/// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
+///
+/// `step IN ('bond')` and the trigger that refuses any delete mean that the escrow's panel (#97) rebuilds the table in its schema step (a new table, the rows copied, the old one dropped), the one step allowed to drop it.
 ///
 /// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
 /// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step and payment hash never change, its start never goes back, and a row is written only for an open trade whose trail is recorded.
@@ -307,6 +309,8 @@ class StoredTradePayments extends Table {
   IntColumn get startedAt => integer()();
 
   /// `P2pWalletPayment.id`, the wallet's local id of the swap that pays the invoice, once the port gave one.
+  ///
+  /// Recorded for the record's sake (a support question, a later reading): nothing decides on it, since the payment is found again by its hash (`P2pWalletPort.findPayment`), which the wallet's records key.
   TextColumn get walletPaymentId => text().nullable()();
 
   @override

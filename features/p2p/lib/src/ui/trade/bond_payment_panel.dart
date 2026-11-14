@@ -47,8 +47,11 @@ class BondPaymentPanel extends StatefulWidget {
       return null;
     }
     return switch (step) {
-      // A payment may exist: not read, so the rule of the slot holds (the other way opens), with a line that says so.
-      BondPayUnreadable() => WalletPaymentSlot(panel, othersOpen: true),
+      // A payment may exist: the line says the panel cannot tell where it stands, and nothing invites paying again, the other way not opened.
+      BondPayUnreadable() => WalletPaymentSlot(panel),
+      // The user chose this wallet: the other way closes while the quote is asked and confirmed, and while the payment is sent.
+      BondPayQuoting() ||
+      BondPayConfirming() ||
       BondPaySending() => WalletPaymentSlot(panel, othersHidden: true),
       BondPayFollowing(:final progress) => _following(panel, progress),
       BondPayPaidElsewhere(:final progress) =>
@@ -82,6 +85,16 @@ class BondPaymentPanel extends StatefulWidget {
     ),
     _ => WalletPaymentSlot(panel, othersHidden: true),
   };
+
+  /// Where the payment of the bond stands, for « Cancel »: being sent, or sent (its funds may have left the wallet).
+  static WalletBondState bondOf(BuildContext context) =>
+      switch (context.watch<BondPaymentCubit>().state.step) {
+        BondPaySending() => const WalletBondState(sending: true, sent: false),
+        BondPayFollowing(:final progress) ||
+        BondPayPaidElsewhere(:final progress) when progress.fundsMayHaveLeft =>
+          const WalletBondState(sending: false, sent: true),
+        _ => WalletBondState.none,
+      };
 
   @override
   State<BondPaymentPanel> createState() => _BondPaymentPanelState();

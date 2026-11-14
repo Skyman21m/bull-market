@@ -118,6 +118,9 @@ final class P2pRouter {
                 walletPayment: P2pLocator.paysBondFromWallet(locator)
                     ? BondPaymentPanel.slotFor
                     : null,
+                walletBond: P2pLocator.paysBondFromWallet(locator)
+                    ? BondPaymentPanel.bondOf
+                    : null,
                 walletBondLine: P2pLocator.paysBondFromWallet(locator)
                     ? (_, bondHeld) => BondPaymentLine(bondHeld: bondHeld)
                     : null,

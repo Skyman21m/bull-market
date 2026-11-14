@@ -434,5 +434,6 @@
   "p2pPayCoordinatorUnreachable": "Impossible de joindre {coordinator}. Rien n’a été payé.",
   "p2pPayStillSending": "Envoi toujours en cours : l’ordre est relu par Tor, puis le service d’échange crée le paiement. Cela peut prendre une minute.",
   "p2pPayAskSupportSent": "Le service d’échange n’a pas payé cette caution, et les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.",
-  "p2pPayUnreadable": "Bull Market ne peut pas lire où en est ce paiement."
+  "p2pPayUnreadable": "Bull Market ne peut pas lire où en est ce paiement.",
+  "p2pPayCancelNote": "Un paiement de cette caution est en route depuis ce portefeuille. Annuler maintenant coûte les frais du service d’échange, et son remboursement peut tarder."
 }
