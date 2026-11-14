@@ -94,9 +94,6 @@ class P2pLocalizationsIt extends P2pLocalizations {
   String get p2pBookFilterIWantTo => 'I want to';
 
   @override
-  String get p2pBookFilterAny => 'ANY';
-
-  @override
   String get p2pBookFilterBuy => 'Buy';
 
   @override
@@ -122,6 +119,51 @@ class P2pLocalizationsIt extends P2pLocalizations {
 
   @override
   String get p2pBookFilterSelectHost => 'Select Host';
+
+  @override
+  String get p2pBookFilterIWant => 'I want';
+
+  @override
+  String get p2pBookFilterAnyType => 'Any type';
+
+  @override
+  String get p2pBookFilterAnyCurrency => 'Any currency';
+
+  @override
+  String get p2pBookFilterAnyMethod => 'Any payment method';
+
+  @override
+  String get p2pBookFilterAnyHost => 'Any host';
+
+  @override
+  String p2pBookFilterMore(String first, int count) {
+    return '$first +$count';
+  }
+
+  @override
+  String get p2pBookFilterSubjectType => 'Order type';
+
+  @override
+  String get p2pBookFilterSubjectCurrency => 'Currency';
+
+  @override
+  String get p2pBookFilterSubjectMethod => 'Payment method';
+
+  @override
+  String get p2pBookFilterSubjectHost => 'Host';
+
+  @override
+  String p2pBookFilterChoices(String subject, String choices) {
+    return '$subject: $choices';
+  }
+
+  @override
+  String p2pBookFilterOrList(String others, String last) {
+    return '$others or $last';
+  }
+
+  @override
+  String get p2pBookFilterListSeparator => ', ';
 
   @override
   String get p2pBookMakerStatusActive => 'Active';
@@ -164,6 +206,9 @@ class P2pLocalizationsIt extends P2pLocalizations {
   String p2pBookEmptyBuy(String currencyCode) {
     return 'No orders found to buy BTC for $currencyCode';
   }
+
+  @override
+  String get p2pBookEmptyAnyCurrency => 'any currency';
 
   @override
   String get p2pBookEmptyBeFirst => 'Be the first one to create an order';

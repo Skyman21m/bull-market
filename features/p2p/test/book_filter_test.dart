@@ -29,25 +29,42 @@ void main() {
         bookOrder(id: 1, currency: 2, paymentMethod: 'Revolut Instant SEPA'),
         bookOrder(id: 2, currency: 1, paymentMethod: 'Wise', makerSeed: 2),
         bookOrder(id: 3, currency: 7, paymentMethod: 'Cash F2F', makerSeed: 3),
-        bookOrder(id: 4, type: 0, currency: 2, paymentMethod: 'revolut', makerSeed: 4),
+        bookOrder(
+          id: 4,
+          type: 0,
+          currency: 2,
+          paymentMethod: 'revolut',
+          makerSeed: 4,
+        ),
       ]),
       ...await parseOrders([
         bookOrder(id: 5, currency: 1, paymentMethod: 'Zelle', makerSeed: 5),
         bookOrder(id: 6, currency: 2, paymentMethod: 'SEPA', makerSeed: 6),
       ], alias: 'lake'),
       ...await parseOrders([
-        bookOrder(id: 7, currency: 7, paymentMethod: 'Paypal Friends & Family', makerSeed: 7),
+        bookOrder(
+          id: 7,
+          currency: 7,
+          paymentMethod: 'Paypal Friends & Family',
+          makerSeed: 7,
+        ),
       ], alias: 'freeport'),
       ...await parseOrders([
-        bookOrder(id: 8, currency: 1000, paymentMethod: 'On-Chain BTC', makerSeed: 8),
+        bookOrder(
+          id: 8,
+          currency: 1000,
+          paymentMethod: 'On-Chain BTC',
+          makerSeed: 8,
+        ),
       ]),
     ];
   });
 
   test('the fixture has the currencies it says', () {
-    expect([for (final order in book) order.currency.code], [
-      'EUR', 'USD', 'CHF', 'EUR', 'USD', 'EUR', 'CHF', 'BTC',
-    ]);
+    expect(
+      [for (final order in book) order.currency.code],
+      ['EUR', 'USD', 'CHF', 'EUR', 'USD', 'EUR', 'CHF', 'BTC'],
+    );
   });
 
   group('currencies', () {
@@ -61,10 +78,15 @@ void main() {
 
     test('several keep the orders of any of them', () {
       expect(_kept(BookFilter(currencies: [_usd, _chf]), book), [2, 3, 5, 7]);
-      expect(
-        _kept(BookFilter(currencies: [_eur, _usd, _chf]), book),
-        [1, 2, 3, 4, 5, 6, 7],
-      );
+      expect(_kept(BookFilter(currencies: [_eur, _usd, _chf]), book), [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+      ]);
     });
   });
 
@@ -95,7 +117,15 @@ void main() {
   // The official client's `filterByPayment` (`utils/filterOrders.ts:19` at commit ff1998c): none chosen keeps every order; otherwise an order is kept when `order.payment_method.includes(method)` for at least one method chosen.
   group('payment methods, by the official client\'s rule', () {
     test('none chosen keeps every order', () {
-      expect(_kept(BookFilter(paymentMethods: const []), book), [1, 2, 3, 4, 5, 6, 7]);
+      expect(_kept(BookFilter(paymentMethods: const []), book), [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+      ]);
     });
 
     test('one keeps the orders whose text contains it', () {
@@ -103,7 +133,10 @@ void main() {
     });
 
     test('several keep the orders that contain at least one of them', () {
-      expect(_kept(BookFilter(paymentMethods: ['Wise', 'Zelle']), book), [2, 5]);
+      expect(_kept(BookFilter(paymentMethods: ['Wise', 'Zelle']), book), [
+        2,
+        5,
+      ]);
       expect(
         _kept(BookFilter(paymentMethods: ['Wise', 'Not in the book']), book),
         [2],
@@ -132,14 +165,23 @@ void main() {
     });
 
     test('the swaps stay out whatever the method', () {
-      expect(_kept(BookFilter(paymentMethods: ['On-Chain BTC']), book), isEmpty);
+      expect(
+        _kept(BookFilter(paymentMethods: ['On-Chain BTC']), book),
+        isEmpty,
+      );
     });
 
     test('matchesPaymentMethods is the rule alone', () {
       final swap = book.last;
-      expect(BookFilter(paymentMethods: ['On-Chain']).matchesPaymentMethods(swap), isTrue);
+      expect(
+        BookFilter(paymentMethods: ['On-Chain']).matchesPaymentMethods(swap),
+        isTrue,
+      );
       expect(BookFilter().matchesPaymentMethods(swap), isTrue);
-      expect(BookFilter(paymentMethods: ['Wise']).matchesPaymentMethods(swap), isFalse);
+      expect(
+        BookFilter(paymentMethods: ['Wise']).matchesPaymentMethods(swap),
+        isFalse,
+      );
     });
   });
 
@@ -163,11 +205,17 @@ void main() {
         hosts: [coordinator('temple'), coordinator('lake')],
       );
       expect(
-        [for (final order in book) if (filter.showsInDepthChart(order)) order.id],
+        [
+          for (final order in book)
+            if (filter.showsInDepthChart(order)) order.id,
+        ],
         [1, 2, 4, 5, 6],
       );
       expect(
-        [for (final order in book) if (BookFilter().showsInDepthChart(order)) order.id],
+        [
+          for (final order in book)
+            if (BookFilter().showsInDepthChart(order)) order.id,
+        ],
         [1, 2, 3, 4, 5, 6, 7, 8],
       );
     });
@@ -192,8 +240,14 @@ void main() {
     });
 
     test('not equal when a member differs', () {
-      expect(BookFilter(currencies: [_eur]), isNot(BookFilter(currencies: [_usd])));
-      expect(BookFilter(currencies: [_eur]), isNot(BookFilter(currencies: [_eur, _usd])));
+      expect(
+        BookFilter(currencies: [_eur]),
+        isNot(BookFilter(currencies: [_usd])),
+      );
+      expect(
+        BookFilter(currencies: [_eur]),
+        isNot(BookFilter(currencies: [_eur, _usd])),
+      );
       expect(BookFilter(paymentMethods: ['Wise']), isNot(BookFilter()));
       expect(BookFilter(hosts: [coordinator('lake')]), isNot(BookFilter()));
       expect(BookFilter(side: BookSide.buy), isNot(BookFilter()));
@@ -206,7 +260,10 @@ void main() {
       chosen.add(_usd);
       expect(filter.currencies, {_eur});
       expect(() => filter.currencies.add(_usd), throwsUnsupportedError);
-      expect(() => filter.hosts.add(coordinator('lake')), throwsUnsupportedError);
+      expect(
+        () => filter.hosts.add(coordinator('lake')),
+        throwsUnsupportedError,
+      );
       expect(() => filter.paymentMethods.add('Wise'), throwsUnsupportedError);
     });
 
@@ -346,19 +403,37 @@ void main() {
       expect(en.currenciesSemantics(several), 'Currency: EUR, USD or CHF');
       expect(fr.currenciesSemantics(several), 'Devise : EUR, USD ou CHF');
       expect(en.paymentMethodsSemantics(nothing), 'Any payment method');
-      expect(en.paymentMethodsSemantics(several), 'Payment method: Revolut or Wise');
-      expect(fr.paymentMethodsSemantics(several), 'Mode de paiement : Revolut ou Wise');
+      expect(
+        en.paymentMethodsSemantics(several),
+        'Payment method: Revolut or Wise',
+      );
+      expect(
+        fr.paymentMethodsSemantics(several),
+        'Mode de paiement : Revolut ou Wise',
+      );
       expect(en.hostsSemantics(nothing), 'Any host');
       expect(en.hostsSemantics(several), 'Host: $templeName or $lakeName');
       expect(fr.hostsSemantics(one), 'Hôte : $templeName');
     });
 
     test('the empty book names the currencies', () {
-      expect(en.emptyBook(nothing), 'No orders found to buy BTC for any currency');
-      expect(fr.emptyBook(nothing), "Aucun ordre trouvé pour acheter des BTC contre n'importe quelle devise");
+      expect(
+        en.emptyBook(nothing),
+        'No orders found to buy BTC for any currency',
+      );
+      expect(
+        fr.emptyBook(nothing),
+        "Aucun ordre trouvé pour acheter des BTC contre n'importe quelle devise",
+      );
       expect(en.emptyBook(one), 'No orders found to buy BTC for EUR');
-      expect(en.emptyBook(several), 'No orders found to sell BTC for EUR, USD or CHF');
-      expect(fr.emptyBook(several), 'Aucun ordre trouvé pour vendre des BTC contre EUR, USD ou CHF');
+      expect(
+        en.emptyBook(several),
+        'No orders found to sell BTC for EUR, USD or CHF',
+      );
+      expect(
+        fr.emptyBook(several),
+        'Aucun ordre trouvé pour vendre des BTC contre EUR, USD ou CHF',
+      );
       expect(
         en.emptyBook(BookFilter(currencies: [_usd, _eur])),
         'No orders found to buy BTC for USD or EUR',

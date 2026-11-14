@@ -1110,29 +1110,29 @@ void main() {
       await book.close();
     });
 
-    test('several currencies, methods and hosts each keep any of theirs', () async {
-      final book = await loaded()
-        ..selectCurrencies([
-          _currency('USD'),
-          _currency('EUR'),
-        ]);
-      // Order 4 is in dollars, the others in euros; the swap, order 5, is never in the list.
-      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
-      expect(book.state.filter.currencies.map((c) => c.code), ['USD', 'EUR']);
+    test(
+      'several currencies, methods and hosts each keep any of theirs',
+      () async {
+        final book = await loaded()
+          ..selectCurrencies([_currency('USD'), _currency('EUR')]);
+        // Order 4 is in dollars, the others in euros; the swap, order 5, is never in the list.
+        expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+        expect(book.state.filter.currencies.map((c) => c.code), ['USD', 'EUR']);
 
-      book.selectHosts([coordinator('lake'), coordinator('temple')]);
-      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
-      book.selectHosts([coordinator('lake')]);
-      expect(book.state.orders.map((o) => o.id), [6, 7]);
+        book.selectHosts([coordinator('lake'), coordinator('temple')]);
+        expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+        book.selectHosts([coordinator('lake')]);
+        expect(book.state.orders.map((o) => o.id), [6, 7]);
 
-      book
-        ..selectHosts(const [])
-        ..selectPaymentMethods(['Wise', 'Instant SEPA']);
-      expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
-      book.selectPaymentMethods(['Wise', 'Paypal']);
-      expect(book.state.orders.map((o) => o.id), [7]);
-      await book.close();
-    });
+        book
+          ..selectHosts(const [])
+          ..selectPaymentMethods(['Wise', 'Instant SEPA']);
+        expect(book.state.orders.map((o) => o.id), [1, 2, 3, 4, 6, 7]);
+        book.selectPaymentMethods(['Wise', 'Paypal']);
+        expect(book.state.orders.map((o) => o.id), [7]);
+        await book.close();
+      },
+    );
 
     test('the same choices in another order change nothing', () async {
       final book = await loaded()
@@ -1143,10 +1143,10 @@ void main() {
       book.selectHosts([coordinator('temple'), coordinator('lake')]);
       await settle();
       expect(states, isEmpty);
-      expect(
-        book.state.filter.hosts.map((h) => h.shortAlias),
-        ['lake', 'temple'],
-      );
+      expect(book.state.filter.hosts.map((h) => h.shortAlias), [
+        'lake',
+        'temple',
+      ]);
       await listening.cancel();
       await book.close();
     });

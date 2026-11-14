@@ -773,10 +773,7 @@ void main() {
           caseOrder(3, 1, 2, 1, currency: 1000, price: 1.001),
           caseOrder(4, 1, 2, 1, currency: 1),
         ]);
-        final any = BookFilter(
-          side: BookSide.buy,
-          paymentMethods: ['Revolut'],
-        );
+        final any = BookFilter(side: BookSide.buy, paymentMethods: ['Revolut']);
         expect(orders.where(any.showsInDepthChart).length, 4);
         final euros = BookFilter(currencies: [eur]);
         expect(

@@ -3,18 +3,19 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/book_filter.dart';
+import 'package:p2p/src/presentation/book_cubit.dart';
 import 'package:p2p/src/ui/book_view.dart';
 import 'package:p2p/src/ui/widgets/coordinator_avatar.dart';
 import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:p2p/src/ui/widgets/filter_choice.dart';
 import 'package:p2p/src/ui/widgets/filter_sheet.dart';
-import 'package:p2p/src/ui/widgets/offer_row.dart';
 import 'package:p2p/testing.dart';
 
 import 'support/fakes.dart';
@@ -41,9 +42,7 @@ void main() {
           bookOrder(id: 5, paymentMethod: 'Instant SEPA', makerSeed: 5),
           bookOrder(id: 6, currency: 7, paymentMethod: 'Twint', makerSeed: 6),
         ],
-        'freeport': [
-          bookOrder(id: 7, paymentMethod: 'Revolut', makerSeed: 7),
-        ],
+        'freeport': [bookOrder(id: 7, paymentMethod: 'Revolut', makerSeed: 7)],
       },
     );
     setUpP2pForTesting(
@@ -84,10 +83,15 @@ void main() {
     await settle(tester);
   }
 
-  /// The ids of the offers listed, in their order.
+  /// The open sheet of the filter, whatever the type of its options.
+  final sheet = find.byWidgetPredicate((widget) => widget is FilterSheet);
+
+  /// The ids of the offers the book lists, in their order, those below the screen included: the list builds only the rows on screen.
   List<int> listed(WidgetTester tester) => [
-    for (final row in tester.widgetList<OfferRow>(find.byType(OfferRow)))
-      row.order.id,
+    for (final order in BlocProvider.of<BookCubit>(
+      tester.element(find.byType(BookFilterSentence)),
+    ).state.orders)
+      order.id,
   ];
 
   /// The selector of the sentence that shows [label].
@@ -97,10 +101,8 @@ void main() {
   );
 
   /// The row of the open sheet that shows [label].
-  Finder row(String label) => find.descendant(
-    of: find.byType(FilterSheet),
-    matching: find.text(label),
-  );
+  Finder row(String label) =>
+      find.descendant(of: sheet, matching: find.text(label));
 
   /// Scrolls [target] into view, then taps it.
   Future<void> tapShown(WidgetTester tester, Finder target) async {
@@ -194,7 +196,7 @@ void main() {
       final rows = tester
           .widgetList<Text>(
             find.descendant(
-              of: find.byType(FilterSheet),
+              of: sheet,
               matching: find.byType(Text),
             ),
           )
@@ -203,21 +205,21 @@ void main() {
       expect(rows.take(3), ['Select Payment Currency', 'Any currency', 'USD']);
       expect(
         tester.getSemantics(row('Any currency')),
-        containsSemantics(label: 'Any currency', isChecked: true, hasTapAction: true),
+        isSemantics(label: 'Any currency', isChecked: true, hasTapAction: true),
       );
 
       await tester.tap(row('EUR'));
       await settle(tester);
       // Applied at once, the sheet still open for more.
-      expect(find.byType(FilterSheet), findsOneWidget);
+      expect(sheet, findsOneWidget);
       expect(listed(tester), [1, 2, 4, 5, 7]);
       expect(
         tester.getSemantics(row('EUR')),
-        containsSemantics(label: 'EUR', isChecked: true, hasTapAction: true),
+        isSemantics(label: 'EUR', isChecked: true, hasTapAction: true),
       );
       expect(
         tester.getSemantics(row('Any currency')),
-        containsSemantics(label: 'Any currency', isChecked: false),
+        isSemantics(label: 'Any currency', isChecked: false),
       );
 
       await tester.tap(row('CHF'));
@@ -233,7 +235,7 @@ void main() {
       await settle(tester);
       expect(
         tester.getSemantics(row('CHF')),
-        containsSemantics(label: 'CHF', isChecked: true),
+        isSemantics(label: 'CHF', isChecked: true),
       );
       await tester.tap(row('EUR'));
       await settle(tester);
@@ -242,7 +244,7 @@ void main() {
       await settle(tester);
       expect(
         tester.getSemantics(row('CHF')),
-        containsSemantics(label: 'CHF', isChecked: false),
+        isSemantics(label: 'CHF', isChecked: false),
       );
       await closeSheet(tester);
       expect(choice('Any currency'), findsOneWidget);
@@ -271,48 +273,47 @@ void main() {
     );
   });
 
-  testWidgets(
-    'several payment methods keep the orders that contain one of them',
-    (tester) async {
-      final semantics = tester.ensureSemantics();
-      await open(tester);
+  testWidgets('several payment methods keep the orders that contain one of them', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await open(tester);
 
-      await tester.tap(choice('Any payment method'));
-      await settle(tester);
-      expect(find.text('Select Payment Method'), findsOneWidget);
-      await tester.tap(row('Wise'));
-      await settle(tester);
-      await tester.tap(row('Zelle'));
-      await settle(tester);
-      expect(listed(tester), [2, 3]);
-      // The rule of the official client: « Instant SEPA » keeps every order whose text contains it.
-      await tester.tap(row('Instant SEPA'));
-      await settle(tester);
-      expect(listed(tester), [1, 2, 3, 5]);
-      await closeSheet(tester);
+    await tester.tap(choice('Any payment method'));
+    await settle(tester);
+    expect(find.text('Select Payment Method'), findsOneWidget);
+    await tester.tap(row('Wise'));
+    await settle(tester);
+    await tester.tap(row('Zelle'));
+    await settle(tester);
+    expect(listed(tester), [2, 3]);
+    // The rule of the official client: « Instant SEPA » keeps every order whose text contains it.
+    await tester.tap(row('Instant SEPA'));
+    await settle(tester);
+    expect(listed(tester), [1, 2, 3, 5]);
+    await closeSheet(tester);
 
-      expect(choice('Wise +2'), findsOneWidget);
-      expect(
-        find.bySemanticsLabel('Payment method: Wise, Zelle or Instant SEPA'),
-        findsOneWidget,
-      );
+    expect(choice('Wise +2'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Payment method: Wise, Zelle or Instant SEPA'),
+      findsOneWidget,
+    );
 
-      // A method chosen stays in the list when another choice hides its orders, so that it can be taken back.
-      await tester.tap(choice('Any currency'));
-      await settle(tester);
-      await tester.tap(row('CHF'));
-      await settle(tester);
-      await closeSheet(tester);
-      expect(listed(tester), isEmpty);
-      await tester.tap(choice('Wise +2'));
-      await settle(tester);
-      for (final method in ['Wise', 'Zelle', 'Instant SEPA', 'Twint']) {
-        expect(row(method), findsOneWidget, reason: method);
-      }
-      expect(row('Revolut'), findsNothing);
-      semantics.dispose();
-    },
-  );
+    // A method chosen stays in the list when another choice hides its orders, so that it can be taken back.
+    await tester.tap(choice('Any currency'));
+    await settle(tester);
+    await tester.tap(row('CHF'));
+    await settle(tester);
+    await closeSheet(tester);
+    expect(listed(tester), isEmpty);
+    await tester.tap(choice('Wise +2'));
+    await settle(tester);
+    for (final method in ['Wise', 'Zelle', 'Instant SEPA', 'Twint']) {
+      expect(row(method), findsOneWidget, reason: method);
+    }
+    expect(row('Revolut'), findsNothing);
+    semantics.dispose();
+  });
 
   testWidgets(
     'several hosts keep their orders; every coordinator is still asked and shown',
@@ -331,7 +332,7 @@ void main() {
       }
       expect(
         find.descendant(
-          of: find.byType(FilterSheet),
+          of: sheet,
           matching: find.byType(CoordinatorAvatar),
         ),
         findsNWidgets(6),
@@ -373,76 +374,87 @@ void main() {
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
-        testWidgets('${locale.languageCode} at ×$scale: nothing overflows or is cut', (
-          tester,
-        ) async {
-          await open(tester, locale: locale, size: const Size(320, 568));
-          final l10n = lookupP2pLocalizations(locale);
+        testWidgets(
+          '${locale.languageCode} at ×$scale: nothing overflows or is cut',
+          (tester) async {
+            await open(tester, locale: locale, size: const Size(320, 568));
+            final l10n = lookupP2pLocalizations(locale);
 
-          // Several of each, the longest names of the list.
-          await tester.tap(choice(l10n.p2pBookFilterAnyType));
-          await settle(tester);
-          await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
-          await settle(tester);
-          for (final (any, picks) in [
-            (l10n.p2pBookFilterAnyCurrency, ['EUR', 'USD', 'CHF']),
-            (l10n.p2pBookFilterAnyMethod, ['Instant SEPA', 'Revolut']),
-            (l10n.p2pBookFilterAnyHost, ['Temple of Sats', 'TheBigLake']),
-          ]) {
-            await tapShown(tester, choice(any));
-            for (final pick in picks) {
-              await tapShown(tester, row(pick));
+            // Several of each, the longest names of the list.
+            await tester.tap(choice(l10n.p2pBookFilterAnyType));
+            await settle(tester);
+            await tester.tap(find.text(l10n.p2pBookFilterBuy).last);
+            await settle(tester);
+            for (final (any, picks) in [
+              (l10n.p2pBookFilterAnyCurrency, ['EUR', 'USD', 'CHF']),
+              (l10n.p2pBookFilterAnyMethod, ['Instant SEPA', 'Revolut']),
+              (l10n.p2pBookFilterAnyHost, ['Temple of Sats', 'TheBigLake']),
+            ]) {
+              await tapShown(tester, choice(any));
+              for (final pick in picks) {
+                await tapShown(tester, row(pick));
+              }
+              await closeSheet(tester);
             }
+
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+            await settle(tester);
+            expect(tester.takeException(), isNull);
+
+            final screen = Offset.zero & const Size(320, 568);
+            for (final label in [
+              l10n.p2pBookFilterBuy,
+              l10n.p2pBookFilterMore('EUR', 2),
+              l10n.p2pBookFilterMore('Instant SEPA', 1),
+              l10n.p2pBookFilterMore('Temple of Sats', 1),
+            ]) {
+              final box = find.ancestor(
+                of: choice(label),
+                matching: find.byType(FilterChoice),
+              );
+              final rect = tester.getRect(box);
+              expect(
+                rect.left,
+                greaterThanOrEqualTo(screen.left),
+                reason: label,
+              );
+              expect(
+                rect.right,
+                lessThanOrEqualTo(screen.right),
+                reason: label,
+              );
+              final paragraph = tester.renderObject<RenderParagraph>(
+                choice(label),
+              );
+              expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+            }
+
+            // The sheets too.
+            await tapShown(
+              tester,
+              choice(l10n.p2pBookFilterMore('Temple of Sats', 1)),
+            );
+            expect(tester.takeException(), isNull);
             await closeSheet(tester);
-          }
-
-          tester.platformDispatcher.textScaleFactorTestValue = scale;
-          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-          await settle(tester);
-          expect(tester.takeException(), isNull);
-
-          final screen = Offset.zero & const Size(320, 568);
-          for (final label in [
-            l10n.p2pBookFilterBuy,
-            l10n.p2pBookFilterMore('EUR', 2),
-            l10n.p2pBookFilterMore('Instant SEPA', 1),
-            l10n.p2pBookFilterMore('Temple of Sats', 1),
-          ]) {
-            final box = find.ancestor(
-              of: choice(label),
+            // Nothing chosen, the longest label.
+            await tapShown(
+              tester,
+              choice(l10n.p2pBookFilterMore('Instant SEPA', 1)),
+            );
+            await tapShown(tester, row(l10n.p2pBookFilterAnyMethod));
+            expect(tester.takeException(), isNull);
+            await closeSheet(tester);
+            final any = find.ancestor(
+              of: choice(l10n.p2pBookFilterAnyMethod),
               matching: find.byType(FilterChoice),
             );
-            final rect = tester.getRect(box);
-            expect(rect.left, greaterThanOrEqualTo(screen.left), reason: label);
-            expect(rect.right, lessThanOrEqualTo(screen.right), reason: label);
-            final paragraph = tester.renderObject<RenderParagraph>(
-              choice(label),
-            );
-            expect(paragraph.didExceedMaxLines, isFalse, reason: label);
-          }
-
-          // The sheets too.
-          await tapShown(
-            tester,
-            choice(l10n.p2pBookFilterMore('Temple of Sats', 1)),
-          );
-          expect(tester.takeException(), isNull);
-          await closeSheet(tester);
-          // Nothing chosen, the longest label.
-          await tapShown(
-            tester,
-            choice(l10n.p2pBookFilterMore('Instant SEPA', 1)),
-          );
-          await tapShown(tester, row(l10n.p2pBookFilterAnyMethod));
-          expect(tester.takeException(), isNull);
-          await closeSheet(tester);
-          final any = find.ancestor(
-            of: choice(l10n.p2pBookFilterAnyMethod),
-            matching: find.byType(FilterChoice),
-          );
-          expect(tester.getRect(any).right, lessThanOrEqualTo(320));
-          expect(tester.takeException(), isNull);
-        });
+            expect(tester.getRect(any).right, lessThanOrEqualTo(320));
+            expect(tester.takeException(), isNull);
+          },
+        );
       }
     }
   });

@@ -1324,7 +1324,10 @@ void main() {
       expect(find.text('Using Testnet Bitcoin'), findsOneWidget);
       tor.add(P2pTorState.ready);
       await settle(tester);
-      expect(find.text('No orders found to buy BTC for any currency'), findsOneWidget);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsOneWidget,
+      );
       expect(find.text('Be the first one to create an order'), findsOneWidget);
     });
   });

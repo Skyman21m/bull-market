@@ -454,12 +454,18 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('Sell').last);
       await settle(tester);
-      expect(find.text('No orders found to sell BTC for any currency'), findsOneWidget);
+      expect(
+        find.text('No orders found to sell BTC for any currency'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Chart'));
       await settle(tester);
       expect(chart, findsOneWidget);
-      expect(find.text('No orders found to sell BTC for any currency'), findsNothing);
+      expect(
+        find.text('No orders found to sell BTC for any currency'),
+        findsNothing,
+      );
     },
   );
 
@@ -610,7 +616,10 @@ void main() {
       expect(rowStates(tester).values.toSet(), {CoordinatorRowState.offline});
       expect(shown('6 coordinators offline'), findsOneWidget);
       expect(shown('Retry'), findsOneWidget);
-      expect(find.text('No orders found to buy BTC for any currency'), findsNothing);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsNothing,
+      );
       expect(find.text('Be the first one to create an order'), findsNothing);
 
       // « Retry » from the chart asks every one of them again, and the chart shows what they now give.
@@ -641,7 +650,10 @@ void main() {
     await settleAttempts(tester);
     expect(rowStates(tester).values.toSet(), {CoordinatorRowState.offline});
     expect(shown('Retry'), findsOneWidget);
-    expect(find.text('No orders found to buy BTC for any currency'), findsNothing);
+    expect(
+      find.text('No orders found to buy BTC for any currency'),
+      findsNothing,
+    );
     expect(find.text('Be the first one to create an order'), findsNothing);
   });
 
@@ -658,12 +670,18 @@ void main() {
       await settleAttempts(tester);
       expect(rowStates(tester)['lake'], CoordinatorRowState.offline);
       expect(rowStates(tester)['temple'], CoordinatorRowState.answered);
-      expect(find.text('No orders found to buy BTC for any currency'), findsOneWidget);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Chart'));
       await settle(tester);
       expect(rowStates(tester)['lake'], CoordinatorRowState.offline);
-      expect(find.text('No orders found to buy BTC for any currency'), findsOneWidget);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsOneWidget,
+      );
       expect(find.text('Be the first one to create an order'), findsOneWidget);
     },
   );
@@ -742,7 +760,10 @@ void main() {
     await openChart(tester);
 
     expect(chart, findsNothing);
-    expect(find.text('No orders found to buy BTC for any currency'), findsOneWidget);
+    expect(
+      find.text('No orders found to buy BTC for any currency'),
+      findsOneWidget,
+    );
     expect(find.text('Be the first one to create an order'), findsOneWidget);
   });
 
@@ -761,7 +782,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('No orders found to buy BTC for any currency'), findsNothing);
+    expect(
+      find.text('No orders found to buy BTC for any currency'),
+      findsNothing,
+    );
 
     transport.release('temple');
     await settle(tester);

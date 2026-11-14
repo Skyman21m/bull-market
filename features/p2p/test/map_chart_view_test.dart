@@ -654,7 +654,10 @@ void main() {
     transport = FakeTransport();
     await openMap(tester);
     expect(map, findsNothing);
-    expect(find.text('No orders found to buy BTC for any currency'), findsOneWidget);
+    expect(
+      find.text('No orders found to buy BTC for any currency'),
+      findsOneWidget,
+    );
     expect(find.text('Be the first one to create an order'), findsOneWidget);
   });
 
@@ -694,7 +697,10 @@ void main() {
       expect(map, findsNothing);
       expect(shown('6 coordinators offline'), findsOneWidget);
       expect(shown('Retry'), findsOneWidget);
-      expect(find.text('No orders found to buy BTC for any currency'), findsNothing);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsNothing,
+      );
     },
   );
 
