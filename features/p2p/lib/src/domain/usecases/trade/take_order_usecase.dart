@@ -168,6 +168,13 @@ final class TakeOrderUsecase {
       coordinator.shortAlias,
       shown.id,
     );
+    // A robot kept for the order is used again only while the Garage Key still gives it: one of a key deleted or replaced since is forgotten, and a robot of the key now is reserved instead (second review of #126).
+    if (reserved != null) {
+      if (await _robots.robotOfSlot(reserved.robot.slot) case Err()) {
+        _prepared.releaseOrder(network, coordinator.shortAlias, shown.id);
+        reserved = null;
+      }
+    }
     if (reserved == null) {
       switch (await _freshRobot(network, coordinator)) {
         case Ok(:final value):

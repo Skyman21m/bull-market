@@ -314,12 +314,22 @@ final class P2pLocator {
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
     );
-    // The screens of the trades (#88), their only callers: the take of an order of the book, one trade shown, and the list of the active trades of a network.
+    // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.
+    TakeCalls takeCalls() {
+      final take = locator<TakeOrderUsecase>();
+      return TakeCalls(
+        prepare: take.prepare,
+        confirm: take.confirm,
+        abandon: take.abandon,
+        abandonOrder: take.abandonOrder,
+      );
+    }
+
     locator.registerFactoryParam<TakeOrderCubit, PublicOrder, RobosatsNetwork>(
       (order, network) => TakeOrderCubit(
         order,
         network,
-        locator<TakeOrderUsecase>().execute,
+        takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
       ),
     );
@@ -328,7 +338,7 @@ final class P2pLocator {
       (order, shown) => TakeOrderCubit(
         order,
         shown.network,
-        locator<TakeOrderUsecase>().execute,
+        takeCalls(),
         locator<HasGarageKeyUsecase>().execute,
         shownTrade: shown,
       ),

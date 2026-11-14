@@ -6,6 +6,8 @@ import '../p2p_failure.dart';
 import '../trade_record.dart';
 import 'trade_status.dart';
 import 'trade_terms.dart';
+import 'trade_tolerances.dart';
+import 'trade_warning.dart';
 
 /// The amount chosen in the range of an order, in the order's currency (bitcoin, not sats, for an order in bitcoin), as the take sends it.
 ///
@@ -277,6 +279,12 @@ final class PreparedTake {
 
   /// The bond the terms expect, in sats at the read's price: an estimate; the bond invoice states the amount to lock.
   double get expectedBond => terms.expectedBond;
+
+  /// The largest bond, in sats, that the state machine takes for these terms without a [BondAmountOutsideOrder] warning: [expectedBond] and [TradeTolerances.price] of it, plus [TradeTolerances.roundingSats].
+  int get bondCeiling =>
+      (expectedBond * (1 + TradeTolerances.price) +
+              TradeTolerances.roundingSats)
+          .floor();
 
   @override
   String toString() => 'PreparedTake($terms)';

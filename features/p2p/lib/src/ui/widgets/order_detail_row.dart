@@ -132,6 +132,58 @@ class OrderDetailRow extends StatelessWidget {
   }
 }
 
+/// The maker's description of an order, once the robot that takes it read the order (#119): « Description », then the maker's words, as a quote under it.
+///
+/// The text is the coordinator's word for the maker's: shown as plain text through [CoordinatorText], never as markup, never opened as a link and never offered for copy; nothing in it is acted on.
+class OrderDescriptionRow extends StatelessWidget {
+  final String description;
+
+  const OrderDescriptionRow(this.description, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final label = P2pLocalizations.of(context).p2pOrderDescription;
+    final words = CoordinatorText.of(
+      description,
+      maxCodePoints: CoordinatorText.paragraph,
+    );
+    return Semantics(
+      container: true,
+      label: label,
+      value: words,
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                label,
+                style: text.bodyMedium?.copyWith(color: colors.textMuted),
+              ),
+              const Gap(BullSpacing.xxs),
+              Container(
+                padding: const EdgeInsets.only(left: BullSpacing.sm),
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: colors.outline, width: 2),
+                  ),
+                ),
+                child: Text(
+                  words,
+                  style: text.bodyLarge?.copyWith(color: colors.text),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A sentence of the official client cut where its value starts, so that « You send via Revolut 100 EUR » reads as a label and a value.
 final class OrderSentence {
   final String label;

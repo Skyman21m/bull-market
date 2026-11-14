@@ -1109,6 +1109,28 @@ class P2pLocalizationsHy extends P2pLocalizations {
       'This order changed since it was shown. It was not taken: open it again from the book.';
 
   @override
+  String get p2pOrderDescription => 'Description';
+
+  @override
+  String get p2pTakerBond => 'Taker bond';
+
+  @override
+  String p2pTakeBondEstimate(String estimate, String ceiling) {
+    return '$estimate Sats, at most $ceiling';
+  }
+
+  @override
+  String p2pTakeReadAt(String time) {
+    return 'Read at $time';
+  }
+
+  @override
+  String get p2pTakeConfirm => 'Confirm';
+
+  @override
+  String get p2pTakeOrderChangedRead => 'The order changed.';
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'The amount specified is outside the range specified by the maker';
 

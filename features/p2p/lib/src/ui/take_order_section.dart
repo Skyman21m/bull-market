@@ -14,6 +14,7 @@ import '../presentation/p2p_formats.dart';
 import '../presentation/take_amount_input.dart';
 import '../presentation/take_order_cubit.dart';
 import '../presentation/trade_l10n.dart';
+import 'order_details_screen.dart';
 import 'widgets/no_robot_dialog.dart';
 import 'widgets/store_token_dialog.dart';
 import 'widgets/trade_button.dart';
@@ -21,8 +22,9 @@ import 'widgets/trade_button.dart';
 /// « Take Order » at the foot of the order details, as the official client's take button (`components/OrderDetails/TakeButton.tsx` at commit ff1998c).
 ///
 /// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) ».
-/// - On press: « You do not have a Garage Key » without a key, else « Store your garage key »; its « Done » takes. The reference shows the order's description first when it has one: the book read gives none, so there is none here.
-/// - While the take runs, the button shows that it runs and cannot be pressed again, a bar runs under it and, after 30 s, the panel says it still waits, as the robot panel of the Garage does; when the take was sent, [onTaken] opens its trade. A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
+/// - On press: « You do not have a Garage Key » without a key, else « Store your garage key »; its « Done » prepares the take (#119): the robot that will take the order reads it, while the button shows that it runs, a bar runs under it and, after 30 s, the panel says it still waits, as the robot panel of the Garage does.
+/// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description, which the reference shows before its confirmation, and the fresh figures), and « Take Order » gives way to « Confirm », which sends the take, and « Go back », which abandons it; « The order changed. » says when a confirmation found new figures, which are then shown, never confirmed by themselves. When the take was sent, [onTaken] opens its trade.
+/// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
 /// - A buy order, whose taker sells, is a later version: the button is shown disabled with a short line (#96).
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
@@ -108,34 +110,61 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     final state = widget.canTake
         ? context.watch<TakeOrderCubit>().state
         : const TakeIdle();
-    final running = state is TakeRunning || state is TakeSent;
     final isRange = order.amount is RangeOrderAmount;
     final input = isRange
         ? TakeAmountInput.read(_amount.text, order)
         : const TakeAmountEmpty();
     final ready = !isRange || input is TakeAmountValid;
-    final button = TradeButton(
-      label: l10n.p2pTakeOrder,
-      busy: running,
-      onPressed: ready ? () => unawaited(_press(input)) : null,
-    );
+    final cubit = widget.canTake ? context.read<TakeOrderCubit>() : null;
+    // « Take Order » until the order is read, then « Confirm » and « Go back ».
+    final Widget button = switch (state) {
+      TakeReady() || TakeConfirming() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (state case TakeReady(changed: true)) ...[
+            _Line(l10n.p2pTakeOrderChangedRead, live: true),
+            const Gap(BullSpacing.xs),
+          ],
+          TradeButton(
+            label: l10n.p2pTakeConfirm,
+            busy: state is TakeConfirming,
+            onPressed: () => unawaited(cubit?.confirm()),
+          ),
+          const Gap(BullSpacing.sm),
+          TradeButton(
+            label: l10n.p2pCommonGoBack,
+            outlined: true,
+            onPressed: state is TakeReady ? () => cubit?.back() : null,
+          ),
+        ],
+      ),
+      _ => TradeButton(
+        label: l10n.p2pTakeOrder,
+        busy: state is TakePreparing || state is TakeSent,
+        onPressed: ready ? () => unawaited(_press(input)) : null,
+      ),
+    };
     final coordinator = CoordinatorText.of(
       order.coordinator.longAlias,
       maxCodePoints: CoordinatorText.name,
     );
+    final (bool running, bool slow, String step) = switch (state) {
+      TakePreparing(:final slow) => (true, slow, l10n.p2pTakeOrder),
+      TakeConfirming(:final slow) => (true, slow, l10n.p2pTakeConfirm),
+      _ => (false, false, ''),
+    };
     final under = <Widget>[
-      if (state is TakeRunning) ...[
-        // What a screen reader says of the take while it runs: « Take Order », in progress.
+      if (running) ...[
+        // What a screen reader says of the step while it runs: « Take Order » or « Confirm », in progress.
         Semantics(
           container: true,
           liveRegion: true,
           child: LinearProgressIndicator(
             color: context.bull.primary,
-            semanticsLabel: l10n.p2pTakeOrder,
+            semanticsLabel: step,
           ),
         ),
-        if (state.slow)
-          _Line(l10n.p2pRobotStillWaiting(coordinator), live: true),
+        if (slow) _Line(l10n.p2pRobotStillWaiting(coordinator), live: true),
       ],
       if (state case TakeIdle(:final problem?))
         _Line(
@@ -150,7 +179,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
             controller: _amount,
             input: input,
             takerFee: widget.takerFee,
-            enabled: !running,
+            enabled: state is TakeIdle,
             onChanged: () => setState(() {}),
             button: ready
                 ? button
@@ -170,6 +199,48 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         if (state is TakeSent) widget.onTaken(state.record);
       },
       child: content,
+    );
+  }
+}
+
+/// [PublicOrderDetailsCard] of the order, with the robot's read once the take is prepared (#119): with [canTake], a `TakeOrderCubit` is above it, the one of the [TakeOrderSection] under it; the card is scrolled into view when the read comes, so that its description and figures are seen before « Confirm ».
+class TakeOrderDetailsCard extends StatelessWidget {
+  final PublicOrder order;
+  final TakerEstimate? estimate;
+  final DateTime now;
+  final bool canTake;
+
+  const TakeOrderDetailsCard({
+    super.key,
+    required this.order,
+    required this.estimate,
+    required this.now,
+    required this.canTake,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canTake) {
+      return PublicOrderDetailsCard(order: order, estimate: estimate, now: now);
+    }
+    final read = switch (context.watch<TakeOrderCubit>().state) {
+      TakeReady(:final prepared) || TakeConfirming(:final prepared) => prepared,
+      _ => null,
+    };
+    return BlocListener<TakeOrderCubit, TakeOrderState>(
+      listenWhen: (_, current) => current is TakeReady,
+      listener: (context, _) => unawaited(
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 300),
+        ),
+      ),
+      child: PublicOrderDetailsCard(
+        order: order,
+        estimate: estimate,
+        now: now,
+        read: read,
+      ),
     );
   }
 }

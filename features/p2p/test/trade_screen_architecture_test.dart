@@ -10,7 +10,7 @@ import 'package:test/test.dart';
 /// - Only the cancel's confirmation dialog builds the acknowledgement that a cancel loses the bond: `BondLossAcknowledged.fromConfirmationDialog` is named in `lib/src/ui/trade/confirm_cancel_dialog.dart` and in the file that declares it, nowhere else.
 /// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`; no other file names them but the domain and the locator.
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
-/// - `TakeOrderCubit.take` is called by `TakeOrderSection` only, the single place a take starts (`AGENTS.md`): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method `take` (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
+/// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice) and the trade screen (the order's address) write to the clipboard.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
@@ -76,8 +76,12 @@ void main() {
     expect(offences, isEmpty);
   });
 
-  test('only TakeOrderSection calls TakeOrderCubit.take', () {
-    expect(_callersOfTake(sources), {'lib/src/ui/take_order_section.dart'});
+  test('only TakeOrderSection prepares, confirms or abandons a take', () {
+    for (final method in _takeSteps) {
+      expect(_callersOf(sources, method), {
+        'lib/src/ui/take_order_section.dart',
+      }, reason: method);
+    }
   });
 
   test(
@@ -104,21 +108,27 @@ void main() {
   );
 
   group('the rules bite:', () {
-    test('a second caller of the take is seen', () {
-      expect(
-        _callersOfTake({
-          'lib/src/ui/take_order_section.dart':
-              'void f(TakeOrderCubit c) => c.take();',
-          'lib/src/ui/trade/trade_screen.dart':
-              'void g(TakeOrderCubit c) { c.take(amount: null); }',
-          'lib/src/ui/book.dart': 'final l = [1, 2].take(1);',
-        }),
-        {
-          'lib/src/ui/take_order_section.dart',
-          'lib/src/ui/trade/trade_screen.dart',
-        },
-      );
-    });
+    test(
+      'a second caller of the take, of its confirmation or of going back is seen',
+      () {
+        for (final method in _takeSteps) {
+          expect(
+            _callersOf({
+              'lib/src/ui/take_order_section.dart':
+                  'void f(TakeOrderCubit c) => c.$method();',
+              'lib/src/ui/trade/trade_screen.dart':
+                  'void g(TakeOrderCubit c) { c.$method(); }',
+              'lib/src/ui/book.dart': 'final l = [1, 2].$method(1);',
+            }, method),
+            {
+              'lib/src/ui/take_order_section.dart',
+              'lib/src/ui/trade/trade_screen.dart',
+            },
+            reason: method,
+          );
+        }
+      },
+    );
 
     test('an acknowledgement built elsewhere is seen', () {
       expect(
@@ -157,12 +167,15 @@ const _tradeScreens = [
   'lib/src/ui/widgets/trade_button.dart',
 ];
 
-/// The files of [sources] that name `TakeOrderCubit` and call a method `take`, the cubit's own file aside.
-Set<String> _callersOfTake(Map<String, String> sources) => {
+/// The steps of a take that only its section calls (#119).
+const _takeSteps = ['take', 'confirm', 'back'];
+
+/// The files of [sources] that name `TakeOrderCubit` and call a method [method], the cubit's own file aside.
+Set<String> _callersOf(Map<String, String> sources, String method) => {
   for (final MapEntry(key: path, value: source) in sources.entries)
     if (path != 'lib/src/presentation/take_order_cubit.dart' &&
         _namesIn(source).contains('TakeOrderCubit') &&
-        _callsMethod(source, 'take'))
+        _callsMethod(source, method))
       path,
 };
 

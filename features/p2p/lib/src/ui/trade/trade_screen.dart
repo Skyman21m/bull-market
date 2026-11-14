@@ -23,7 +23,6 @@ import '../../presentation/trade_l10n.dart';
 import '../../presentation/trade_order_page_cubit.dart';
 import '../../presentation/trade_panel.dart';
 import '../coordinator_details_dialog.dart';
-import '../order_details_screen.dart';
 import '../take_order_section.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
@@ -773,37 +772,45 @@ class _PublicAgain extends StatelessWidget {
       if (lookup case PublicOrderFound(
         order: final public,
       ) when public.id == order.id) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            OrderHostRow(
-              coordinator: public.coordinator,
-              orderId: public.id,
-              onTap: onOpenCoordinator,
-            ),
-            const Gap(BullSpacing.sm),
-            OrderFeeRow(info: info),
-            const Gap(BullSpacing.sm),
-            PublicOrderDetailsCard(
-              order: public,
-              estimate: TakerEstimate.of(public, takerFee: info?.takerFee ?? 0),
-              now: now,
-            ),
-            const Gap(BullSpacing.md),
-            OrderMakerRow(maker: public.maker, activity: public.makerActivity),
-            const Gap(BullSpacing.lg),
-            BlocProvider(
-              key: ValueKey(public.id),
-              create: (_) => takeCubitFor(public),
-              child: TakeOrderSection(
+        // The take's cubit is above the order details too, which show the robot's read once the take is prepared (#119).
+        return BlocProvider(
+          key: ValueKey(public.id),
+          create: (_) => takeCubitFor(public),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OrderHostRow(
+                coordinator: public.coordinator,
+                orderId: public.id,
+                onTap: onOpenCoordinator,
+              ),
+              const Gap(BullSpacing.sm),
+              OrderFeeRow(info: info),
+              const Gap(BullSpacing.sm),
+              TakeOrderDetailsCard(
+                order: public,
+                estimate: TakerEstimate.of(
+                  public,
+                  takerFee: info?.takerFee ?? 0,
+                ),
+                now: now,
+                canTake: true,
+              ),
+              const Gap(BullSpacing.md),
+              OrderMakerRow(
+                maker: public.maker,
+                activity: public.makerActivity,
+              ),
+              const Gap(BullSpacing.lg),
+              TakeOrderSection(
                 order: public,
                 takerFee: info?.takerFee ?? 0,
                 canTake: true,
                 onOpenGarage: onOpenGarage,
                 onTaken: onTaken,
               ),
-            ),
-          ],
+            ],
+          ),
         );
       }
     }

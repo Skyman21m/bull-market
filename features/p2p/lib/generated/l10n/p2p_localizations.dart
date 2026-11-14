@@ -1925,6 +1925,42 @@ abstract class P2pLocalizations {
   /// **'This order changed since it was shown. It was not taken: open it again from the book.'**
   String get p2pTakeOrderChanged;
 
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the maker's description of the order, among the order details once the robot that takes it read the order (#119); the reference shows it from a row of its order details.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get p2pOrderDescription;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the bond the take asks, among the order details once the robot that takes it read the order (#119).
+  ///
+  /// In en, this message translates to:
+  /// **'Taker bond'**
+  String get p2pTakerBond;
+
+  /// Not in the RoboSats texts: the project's own: the bond the take asks, at the price the robot read, and the most the app accepts of the coordinator's bond invoice for it (#119). Both are numbers of sats, written already.
+  ///
+  /// In en, this message translates to:
+  /// **'{estimate} Sats, at most {ceiling}'**
+  String p2pTakeBondEstimate(String estimate, String ceiling);
+
+  /// Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it. {time} is hours, minutes and seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Read at {time}'**
+  String p2pTakeReadAt(String time);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button that sends the take of the order as the robot read it and the order details show it (#119).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get p2pTakeConfirm;
+
+  /// Not in the RoboSats texts: the project's own: over « Confirm », when the robot's read again at the confirmation found the order changed: the order details now show its new figures, and nothing was taken (#119).
+  ///
+  /// In en, this message translates to:
+  /// **'The order changed.'**
+  String get p2pTakeOrderChangedRead;
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1011 (`api/errors.py`), which the official client shows under « Take Order »; the French is the project's.
   ///
   /// In en, this message translates to:

@@ -4,10 +4,12 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/taker_estimate.dart';
+import '../domain/trade/trade_take.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/order_details_cubit.dart';
@@ -22,7 +24,7 @@ import 'widgets/testnet_banner.dart';
 /// The details of a public order, in the order of the official client: host and number, fees, then the order details, the maker and « Take Order ».
 ///
 /// The host opens the dialog of its coordinator, as in the official client.
-/// « Take Order » is [TakeOrderSection] (#88): with [canTake], a `TakeOrderCubit` above this screen takes the order, and [onTaken] opens its trade.
+/// « Take Order » is [TakeOrderSection] (#88): with [canTake], a `TakeOrderCubit` above this screen takes the order, and [onTaken] opens its trade; once the robot that takes it read the order, the order details show that read ([TakeOrderDetailsCard], #119).
 class OrderDetailsScreen extends StatefulWidget {
   final DateTime Function() now;
 
@@ -116,10 +118,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   const Gap(BullSpacing.sm),
                   OrderFeeRow(info: state.info),
                   const Gap(BullSpacing.sm),
-                  PublicOrderDetailsCard(
+                  TakeOrderDetailsCard(
                     order: order,
                     estimate: state.estimate,
                     now: _now,
+                    canTake: widget.canTake,
                   ),
                   const Gap(BullSpacing.md),
                   OrderMakerRow(
@@ -145,6 +148,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 }
 
 /// « Order Details » of an order of the book: the amount, what the taker sends and receives, the payment methods, price and premium, expiry and deposit time; also the trade screen's for an order public again, so that what it shows and what « Take Order » takes are the same order.
+///
+/// With [read], the take prepared (#119), the figures are those the robot that takes the order read (`GET /api/order/`): its price and premium, its sats, its expiry and deposit time; the maker's description follows the payment methods when there is one, as plain text, the bond the take asks follows the deposit time, and the time of the read closes the card.
 class PublicOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
 
@@ -152,11 +157,15 @@ class PublicOrderDetailsCard extends StatelessWidget {
   final TakerEstimate? estimate;
   final DateTime now;
 
+  /// The take prepared, whose read the card shows.
+  final PreparedTake? read;
+
   const PublicOrderDetailsCard({
     super.key,
     required this.order,
     required this.estimate,
     required this.now,
+    this.read,
   });
 
   @override
@@ -166,11 +175,16 @@ class PublicOrderDetailsCard extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
     final code = order.currency.code;
+    final read = this.read;
+    final readOrder = read?.order;
     // A swap order is given in BTC, which the official client writes in sats.
     final amount = order.currency.isBitcoin
         ? l10n.p2pAmountSats(formats.btcAmountInSats(order.amount))
         : '${formats.orderAmount(order.amount)} $code';
-    final estimate = this.estimate;
+    // The robot's read: its own sats (the taker fee of the terms), price, premium, expiry and deposit time.
+    final estimate = readOrder == null
+        ? this.estimate
+        : TakerEstimate.ofTrade(readOrder, takerFee: read?.terms.takerFee ?? 0);
     final sats = estimate == null ? '-' : formats.estimate(estimate);
     final methods = order.paymentMethods.text;
     final (send, receive) = switch (order.type) {
@@ -196,28 +210,30 @@ class PublicOrderDetailsCard extends StatelessWidget {
         ),
       ),
     };
-    final total = order.expiresAt.difference(order.createdAt);
-    final left = order.expiresAt.difference(now);
+    final expiresAt = readOrder?.expiresAt ?? order.expiresAt;
+    final total = expiresAt.difference(readOrder?.createdAt ?? order.createdAt);
+    final left = expiresAt.difference(now);
     final share = total.inMilliseconds <= 0 || left.isNegative
         ? 0.0
         : (left.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0);
-    final price = order.price;
-    final explicit = order.explicitSatoshis;
+    final price = readOrder == null ? order.price : readOrder.priceNow;
+    final premium = read?.terms.premium ?? order.premium;
+    final explicit = read == null
+        ? order.explicitSatoshis
+        : read.terms.explicitSatoshis;
+    final description = readOrder?.description;
     final (priceLabel, priceValue) = price != null
         ? (
             l10n.p2pOrderPriceAndPremium,
             l10n.p2pOrderPriceAndPremiumValue(
               formats.price(price),
               code,
-              formats.premiumNumber(order.premium),
+              formats.premiumNumber(premium),
             ),
           )
         : explicit != null
         ? (l10n.p2pOrderAmountOfSatoshis, formats.sats(explicit.value.toInt()))
-        : (
-            l10n.p2pOrderPremiumOverMarket,
-            formats.premiumOverMarket(order.premium),
-          );
+        : (l10n.p2pOrderPremiumOverMarket, formats.premiumOverMarket(premium));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -248,6 +264,8 @@ class PublicOrderDetailsCard extends StatelessWidget {
                     )
                   : null,
             ),
+            if (description != null && description.trim().isNotEmpty)
+              OrderDescriptionRow(description),
             OrderDetailRow(priceLabel, priceValue),
             OrderDetailRow(
               l10n.p2pOrderExpiresIn,
@@ -264,8 +282,18 @@ class PublicOrderDetailsCard extends StatelessWidget {
               children: [
                 OrderDetailRow(
                   l10n.p2pOrderDeposit,
-                  formats.depositTime(order.escrowDuration),
+                  formats.depositTime(
+                    readOrder?.escrowDuration ?? order.escrowDuration,
+                  ),
                 ),
+                if (read != null)
+                  OrderDetailRow(
+                    l10n.p2pTakerBond,
+                    l10n.p2pTakeBondEstimate(
+                      formats.sats(read.expectedBond.round()),
+                      formats.sats(read.bondCeiling),
+                    ),
+                  ),
                 const Gap(BullSpacing.sm),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(BullRadius.xxs),
@@ -280,6 +308,15 @@ class PublicOrderDetailsCard extends StatelessWidget {
             ),
           ],
         ),
+        if (read != null) ...[
+          const Gap(BullSpacing.xs),
+          Text(
+            l10n.p2pTakeReadAt(
+              DateFormat.Hms(l10n.localeName).format(read.readAt.toLocal()),
+            ),
+            style: text.labelMedium?.copyWith(color: colors.textMuted),
+          ),
+        ],
       ],
     );
   }

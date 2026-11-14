@@ -1127,6 +1127,28 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Cet ordre a changé depuis son affichage. Il n’a pas été pris : rouvrez-le depuis le carnet.';
 
   @override
+  String get p2pOrderDescription => 'Description';
+
+  @override
+  String get p2pTakerBond => 'Caution du preneur';
+
+  @override
+  String p2pTakeBondEstimate(String estimate, String ceiling) {
+    return '$estimate sats, au plus $ceiling';
+  }
+
+  @override
+  String p2pTakeReadAt(String time) {
+    return 'Lu à $time';
+  }
+
+  @override
+  String get p2pTakeConfirm => 'Confirmer';
+
+  @override
+  String get p2pTakeOrderChangedRead => 'L’ordre a changé.';
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'Le montant indiqué est en dehors de la plage fixée par le créateur';
 

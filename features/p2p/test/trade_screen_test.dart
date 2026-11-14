@@ -31,6 +31,7 @@ import 'package:robosats/robosats.dart';
 import 'support/fakes.dart' show FakeTransport, bookOrder, coordinator, testNow;
 import 'support/harness.dart';
 import 'support/trade_orders.dart';
+import 'support/prepared_takes.dart';
 import 'support/trade_screens.dart';
 
 /// The watch of the trade, played by the test: what it emits, and what the screen tells it.
@@ -92,12 +93,20 @@ late Map<String, TradeSeen> _seen;
 
 final _record = TradeScreenStatuses.record;
 
+/// The book's order 42 of the tests, of 150 EUR, as the robot that takes it reads it (#119).
+late PreparedTake _prepared;
+
 /// A take cubit whose take the test never expects.
 TakeOrderCubit _neverTaken(PublicOrder order) => TakeOrderCubit(
   order,
   RobosatsNetwork.mainnet,
-  (shown, {required network, amount, password}) =>
-      throw StateError('not taken'),
+  TakeCalls(
+    prepare: (shown, {required network, amount}) =>
+        throw StateError('not prepared'),
+    confirm: (prepared) => throw StateError('not taken'),
+    abandon: (prepared) {},
+    abandonOrder: (shown, {required network}) {},
+  ),
   (network) async => const Ok(true),
 );
 
@@ -214,6 +223,7 @@ void _expectNothingCut(WidgetTester tester, String reason) {
 
 void main() {
   setUpAll(() async {
+    _prepared = await preparedTake(changes: {'amount': '150.00000000'});
     _statuses = await TradeScreenStatuses.make();
     _wrongNetwork = await TradeScreenStatuses.make(
       invoice: bondInvoice(network: Bolt11Network.testnet),
@@ -885,10 +895,15 @@ void main() {
           takeCubitFor: (order) => TakeOrderCubit(
             order,
             RobosatsNetwork.mainnet,
-            (shown, {required network, amount, password}) async {
-              takes.add(shown);
-              return Ok(TakeOutcomeUnknown(_record));
-            },
+            TakeCalls(
+              prepare: (shown, {required network, amount}) async {
+                takes.add(shown);
+                return Ok(_prepared);
+              },
+              confirm: (prepared) async => Ok(TakeOutcomeUnknown(_record)),
+              abandon: (prepared) {},
+              abandonOrder: (shown, {required network}) {},
+            ),
             (network) async => const Ok(true),
           ),
         );
@@ -903,6 +918,12 @@ void main() {
         await tester.tap(find.text('Done'));
         await settle(tester);
         expect(takes.single.id, tradeOrderId);
+        // The order details show the robot's read, then « Confirm » takes it (#119).
+        expect(find.text('Read at 08:00:30'), findsOneWidget);
+        expect(taken, isEmpty);
+        await _reveal(tester, find.text('Confirm'));
+        await tester.tap(find.text('Confirm'));
+        await settle(tester);
         expect(taken, [_record]);
       },
     );
@@ -959,8 +980,13 @@ void main() {
           takeCubitFor: (order) => TakeOrderCubit(
             order,
             RobosatsNetwork.mainnet,
-            (shown, {required network, amount, password}) async =>
-                Err(TakeOrderAlreadyTraded(_record)),
+            TakeCalls(
+              prepare: (shown, {required network, amount}) async =>
+                  Err(TakeOrderAlreadyTraded(_record)),
+              confirm: (prepared) => throw StateError('not taken'),
+              abandon: (prepared) {},
+              abandonOrder: (shown, {required network}) {},
+            ),
             (network) async => const Ok(true),
             shownTrade: _record,
           ),
