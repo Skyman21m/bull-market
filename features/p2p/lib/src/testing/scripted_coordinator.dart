@@ -75,6 +75,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The sats of the order's largest amount at the coordinator's price now: the market moves them (`Logics.satoshis_now`).
   int satoshisNow = bookSats;
 
+  /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
+  String? description;
+
+  /// What the coordinator also says, or says otherwise, to a robot that reads the public order without taking part in it: a coordinator that answers a robot otherwise than the book (#119).
+  final Map<String, Object?> robotView = {};
+
   final Map<RobotSessionKey, Map<String, Object?>> _robotFields = {};
   final List<int> _takeRefusals = [];
   final Map<RobotSessionKey, DateTime> _penalties = {};
@@ -545,14 +551,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           .clamp(0, 1 << 31),
       'maker_nick': _maker.nickname,
       'maker_hash_id': _maker.hex,
-      'description': null,
+      'description': description,
       'maker_status': 'Active',
     };
     if (!participant) {
       data
         ..['price_now'] = 93545.0
         ..['premium_now'] = 2.0
-        ..['satoshis_now'] = satoshisNow;
+        ..['satoshis_now'] = satoshisNow
+        ..addAll(robotView);
       return data;
     }
     final payout = _last - _fee;

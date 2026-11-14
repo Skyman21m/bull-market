@@ -1634,7 +1634,15 @@ const _watched = {
   // What the trade use cases share, which writes trails and closes records, and the acknowledgement of a bond lost (review of #117).
   'TradeReader': (
     'package:p2p/',
-    {'open', 'readOrder', 'advance', 'keep', 'closeAtEnd', 'closeNeverSent'},
+    {
+      'open',
+      'readOrder',
+      'readOrderOf',
+      'advance',
+      'keep',
+      'closeAtEnd',
+      'closeNeverSent',
+    },
   ),
   'BondLossAcknowledged': ('package:p2p/', {'fromConfirmationDialog'}),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
