@@ -8,6 +8,7 @@ import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
 import '../src/domain/p2p_tor_state.dart';
+import '../src/domain/trade/bolt11.dart';
 import '../src/domain/usecases/close_coordinator_sessions_usecase.dart';
 import '../src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import '../src/domain/usecases/request_federation_books_usecase.dart';
@@ -34,11 +35,15 @@ final class P2pFeature {
   ///
   /// [wallet] gives the wallet's port, which only the foreground composition passes too, as a function so that the shell's wallet need not be registered yet: it is called at the first use of the port, and nothing calls the port yet (#100).
   /// Without it (the parameter left out, or `null`), the feature has no wallet: the trade screen will offer only « Pay with another wallet ». It is optional so that a composition written before it, such as the WorkManager isolate's, lends nothing by default.
+  ///
+  /// [bolt11Decoder] gives the shell's BOLT11 decoder (`lib/features/p2p_bolt11/`), with which the trade's checks read every invoice of a coordinator (#86, #87).
+  /// Without it, every invoice is refused, so that none is shown or paid; it is optional for the same reason as [wallet].
   void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
     required Future<Directory> Function()? databaseDirectory,
     P2pWalletPort Function()? wallet,
+    Bolt11Decoder Function()? bolt11Decoder,
   }) {
     if ((garageKeys == null) != (databaseDirectory == null)) {
       throw ArgumentError(
@@ -50,6 +55,7 @@ final class P2pFeature {
       garageKeys: garageKeys,
       databaseDirectory: databaseDirectory,
       wallet: wallet,
+      bolt11Decoder: bolt11Decoder,
     );
     locator.registerLazySingleton<P2pFacade>(
       () => P2pFacade._(locator(), locator(), locator(), locator()),

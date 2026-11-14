@@ -227,7 +227,10 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
               ..._robotVariables(trade.robot),
               ..._robotVariables(trade.robot),
             ],
-            readsFrom: {_database.storedTradeTerms, _database.storedTradeTrails},
+            readsFrom: {
+              _database.storedTradeTerms,
+              _database.storedTradeTrails,
+            },
           )
           .getSingle();
     } on Exception {
@@ -237,8 +240,9 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
   }
 
   @override
-  Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>>
-  watchHistories(RobosatsNetwork network) => _database
+  Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
+    RobosatsNetwork network,
+  ) => _database
       .customSelect(
         _historiesSql,
         variables: [Variable.withString(network.name)],
@@ -305,7 +309,8 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
     return StoredTradeHistory(
       terms: terms,
       trail: trail,
-      unreadable: (termsPresent && terms == null) || (trailPresent && trail == null),
+      unreadable:
+          (termsPresent && terms == null) || (trailPresent && trail == null),
     );
   }
 

@@ -4,6 +4,7 @@ import 'dart:math' show Random;
 
 import 'package:bull_tor/tor.dart';
 import 'package:get_it/get_it.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
@@ -13,16 +14,23 @@ import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
+import 'data/trade_record_repository_impl.dart';
+import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
+import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/repositories/trade_record_repository.dart';
+import 'domain/repositories/trade_trail_repository.dart';
 import 'domain/network_garage_key.dart';
 import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
+import 'domain/trade/bolt11.dart';
+import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
 import 'domain/usecases/close_robot_sessions_usecase.dart';
@@ -44,6 +52,11 @@ import 'domain/usecases/release_robot_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
+import 'domain/usecases/trade/cancel_trade_usecase.dart';
+import 'domain/usecases/trade/list_active_trades_usecase.dart';
+import 'domain/usecases/trade/take_order_usecase.dart';
+import 'domain/usecases/trade/trade_reader.dart';
+import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
@@ -56,11 +69,13 @@ import 'ui/widgets/garage_key_clipboard.dart';
 final class P2pLocator {
   /// [garageKeys] is the vault's handle on the Garage Keys and [databaseDirectory] gives the directory of the feature's database: without them, nothing that reads or writes a Garage Key, a binding or the database is registered.
   /// [wallet] gives the wallet's port: without it, no port is registered.
+  /// [bolt11Decoder] gives the shell's BOLT11 decoder, which the trade's checks read every invoice with: without it, the trade use cases decode no invoice, so that none is ever shown or paid.
   static void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
     required Future<Directory> Function()? databaseDirectory,
     required P2pWalletPort Function()? wallet,
+    Bolt11Decoder Function()? bolt11Decoder,
   }) {
     // `Tor` and its HTTP client factory are read lazily, so this runs whether or not the Tor package is registered yet.
     locator.registerLazySingleton<TorCoordinatorTransport>(
@@ -87,6 +102,9 @@ final class P2pLocator {
         transport: () => locator<TorCoordinatorTransport>(),
         clock: DateTime.now,
       );
+    }
+    if (bolt11Decoder != null) {
+      locator.registerLazySingleton<Bolt11Decoder>(bolt11Decoder);
     }
     if (wallet != null) {
       // Only the trade use cases may read it: `wallet_port_architecture_test.dart`.
@@ -217,6 +235,68 @@ final class P2pLocator {
       GarageKeyClipboard.new,
       dispose: (clipboard) => clipboard.dispose(),
     );
+    registerTrades(locator, transport: transport, clock: clock);
+  }
+
+  /// Registers the trades (#87): their records, terms and trails in the database, the robot layer that reserves a fresh robot for each take, and the trade use cases, the only callers of the coordinator's money members; the trade screens (#88) are their only callers.
+  ///
+  /// The invoices of a trade are decoded by the [Bolt11Decoder] the shell registered ([setup]); without one, every invoice is refused, so that none is shown or paid.
+  static void registerTrades(
+    GetIt locator, {
+    required CoordinatorTransport Function() transport,
+    required DateTime Function() clock,
+  }) {
+    locator.registerLazySingleton<TradeRecordRepository>(
+      () => TradeRecordRepositoryImpl(locator(), clock: clock),
+    );
+    locator.registerLazySingleton<TradeTrailRepository>(
+      () => TradeTrailRepositoryImpl(locator()),
+    );
+    locator.registerLazySingleton<TradeRobots>(
+      () => InterimTradeRobots(locator(), locator()),
+    );
+    Bolt11Reader invoices() => Bolt11Reader(
+      locator.isRegistered<Bolt11Decoder>()
+          ? locator<Bolt11Decoder>()
+          : const _NoBolt11Decoder(),
+    );
+    locator.registerFactory<TradeReader>(
+      () => TradeReader(
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        CoordinatorClient(transport(), clock: clock),
+        Federation.robosats,
+        invoices(),
+        clock: clock,
+      ),
+    );
+    locator.registerFactory<TakeOrderUsecase>(
+      () => TakeOrderUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        invoices(),
+      ),
+    );
+    locator.registerFactory<WatchTradeUsecase>(
+      () => WatchTradeUsecase(locator(), locator(), locator()),
+    );
+    locator.registerFactory<CancelTradeUsecase>(
+      () => CancelTradeUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+      ),
+    );
+    locator.registerFactory<ListActiveTradesUsecase>(
+      () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
+    );
   }
 
   /// Registers the use-cases and the cubits over [transport], [tor], [clock], [waits] and [shuffle], which tests replace.
@@ -279,4 +359,13 @@ final class P2pLocator {
       (request, _) => CoordinatorDetailsCubit(request, locator(), now: clock()),
     );
   }
+}
+
+/// The decoder of a composition that lent none: every invoice is refused, so that the trade's checks never show or pay one.
+final class _NoBolt11Decoder implements Bolt11Decoder {
+  const _NoBolt11Decoder();
+
+  @override
+  Result<Bolt11Invoice, Bolt11Refusal> decode(String invoice) =>
+      const Err(Bolt11Malformed());
 }

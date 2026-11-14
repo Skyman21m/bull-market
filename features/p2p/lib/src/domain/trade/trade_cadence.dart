@@ -38,12 +38,15 @@ abstract final class TradeCadence {
   };
 
   /// How long after a read ends the next one starts, at [position], with the trade's screen shown or not; `null` when the trade is not read again.
-  static Duration? delayAfter(TradePosition position, {required bool onScreen}) {
+  static Duration? delayAfter(
+    TradePosition position, {
+    required bool onScreen,
+  }) {
     final base = referenceDelay(position);
     if (base == null) return null;
     final delay = onScreen ? base : base * offScreenFactor;
-    final ticks = (delay.inMicroseconds + tick.inMicroseconds - 1) ~/
-        tick.inMicroseconds;
+    final ticks =
+        (delay.inMicroseconds + tick.inMicroseconds - 1) ~/ tick.inMicroseconds;
     return tick * ticks;
   }
 }

@@ -71,8 +71,7 @@ final class TradeWatchUnrestorable extends TradeWatchState {
   const TradeWatchUnrestorable(this.record, this.reason);
 
   @override
-  String toString() =>
-      'TradeWatchUnrestorable($record, ${reason.runtimeType})';
+  String toString() => 'TradeWatchUnrestorable($record, ${reason.runtimeType})';
 }
 
 /// The trade cannot be read: [failure] is why, and nothing is sent (the records cannot be read, the Garage Key of the trade is not on this device, the robot's binding does not admit the coordinator any more…).

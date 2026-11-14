@@ -179,21 +179,21 @@ final class TradeReader {
       return const TradeNotRestorable(TradeRecordOfAnotherTrade());
     }
     final TradeTrail trail;
-    switch (history.trail) {
-      case final stored?:
-        switch (TradeTrail.restore(stored, terms: terms, now: now())) {
-          case Ok(:final value):
-            trail = value;
-          case Err(:final failure):
-            return TradeNotRestorable(failure);
-        }
-      case null when record.isPendingTake:
-        // The take sends its request only once this trail is written: none means it never left, and only a take's answers may come first.
-        trail = TradeTrail.forPendingTake(terms, record.takenAt);
-      case null when record.origin == TradeOrigin.recovered:
-        trail = TradeTrail.recovered(terms, now());
-      case null:
-        return const TradeNotRestorable(TradeRecordMalformed());
+    final storedTrail = history.trail;
+    if (storedTrail != null) {
+      switch (TradeTrail.restore(storedTrail, terms: terms, now: now())) {
+        case Ok(:final value):
+          trail = value;
+        case Err(:final failure):
+          return TradeNotRestorable(failure);
+      }
+    } else if (record.isPendingTake) {
+      // The take sends its request only once this trail is written: none means it never left, and only a take's answers may come first.
+      trail = TradeTrail.forPendingTake(terms, record.takenAt);
+    } else if (record.origin == TradeOrigin.recovered) {
+      trail = TradeTrail.recovered(terms, now());
+    } else {
+      return const TradeNotRestorable(TradeRecordMalformed());
     }
     switch (await _robotAndCoordinator(record)) {
       case Ok(value: (final robot, final coordinator)):
@@ -312,7 +312,10 @@ final class TradeReader {
         // An earlier read that ended late, or a trail another call stored first: the stored trail wins, and the status shown is the one it gives.
         switch (TradeTrail.restore(kept, terms: trade.terms, now: now())) {
           case Ok(:final value):
-            current = TradeSeen(TradeStatus.beforeFirstRead(value), order: null);
+            current = TradeSeen(
+              TradeStatus.beforeFirstRead(value),
+              order: null,
+            );
             stored = true;
           case Err():
             problem = const P2pStorageFailure();

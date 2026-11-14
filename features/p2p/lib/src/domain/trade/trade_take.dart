@@ -33,7 +33,8 @@ final class TakeAmount {
   }
 
   @override
-  bool operator ==(Object other) => other is TakeAmount && other.amount == amount;
+  bool operator ==(Object other) =>
+      other is TakeAmount && other.amount == amount;
 
   @override
   int get hashCode => amount.hashCode;
@@ -58,7 +59,8 @@ final class OrderPassword {
       text.isEmpty || text.length > maxLength ? null : OrderPassword._(text);
 
   @override
-  bool operator ==(Object other) => other is OrderPassword && other.text == text;
+  bool operator ==(Object other) =>
+      other is OrderPassword && other.text == text;
 
   @override
   int get hashCode => text.hashCode;
