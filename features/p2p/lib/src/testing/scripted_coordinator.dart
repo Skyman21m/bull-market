@@ -23,11 +23,11 @@ enum ScriptedFault {
 }
 
 /// The kinds of request the scripted coordinator answers, to aim a [ScriptedFault] at.
-enum ScriptedRequest { info, book, robot, order, take, cancel }
+enum ScriptedRequest { info, book, robot, order, take, cancel, payout }
 
 /// One coordinator of the federation list and one order of its book, played for the tests of the trade use cases, as the reference backend at commit ff1998c answers them (`api/views.py`, `api/logics.py`; design note § 1, § 5): never a real coordinator, never money.
 ///
-/// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`) and `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`).
+/// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`), `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`), and the buyer's payout, `update_invoice` and `update_address` (#90: the clear signature checked against the robot's kept public key and split as the coordinator splits it, then the rules of `Logics.update_invoice` and `update_address`, `api/views.py:617-649`, `api/logics.py:752-947`, with the node's and bitcoind's refusals as their bare texts).
 /// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedCoordinator implements CoordinatorTransport {
@@ -74,6 +74,26 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// The sats of the order's largest amount at the coordinator's price now: the market moves them (`Logics.satoshis_now`).
   int satoshisNow = bookSats;
+
+  /// Whether the buyer is offered an on-chain payout at 6 and 8 (`swap_allowed`), with [swapFeeRate] and [suggestedMiningFeeRate]; otherwise the reference's `swap_failure_reason` when swaps are disabled.
+  bool swapAllowed = false;
+  double swapFeeRate = 0.75;
+  double suggestedMiningFeeRate = 3.5;
+
+  /// A coordinator that sends its swap rates with `swap_allowed` false, which the reference never does (it sends them only with a swap offered, `api/logics.py:724-728`).
+  bool swapRatesWithoutSwap = false;
+
+  /// The coordinator's economy estimate, which an address's mining fee rate must reach (`get_minning_fee("minimum")`, at least 2: `api/logics.py:780-793`).
+  double minimumMiningFeeRate = 2;
+
+  /// Whether the buyer's payout at 15 has expired (`invoice_expired`), so that a new invoice is taken.
+  bool payoutExpired = false;
+
+  /// The signed texts of the payouts the coordinator recorded, as it split them out, in order.
+  final List<String> payoutsRecorded = [];
+
+  /// The payment hash of the last invoice recorded as the payout (`order.payout`).
+  String? _payoutHash;
 
   /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
   String? description;
@@ -218,6 +238,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The maker pauses the order, or resumes it: a paused order leaves the book, and its pre-takers get 1044 (`api/views.py:269-275`), their pre-takes kept.
   void pause({bool paused = true}) => _paused = paused;
 
+  /// A hostile coordinator: the deadline of the trade's step (`expires_at`) is moved to [deadline], earlier or later.
+  void moveDeadline(DateTime deadline) => _deadline = deadline.toUtc();
+
   /// A hostile coordinator: the live pre-take of [robot] gets another bond invoice.
   void replaceBondInvoice(RobotIdentity robot) {
     final pre = _preTakes[robot.sessionKey];
@@ -320,7 +343,163 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _orderFor(robot);
       case ScriptedRequest.cancel:
         return _cancel(_robotOf(request), request);
+      case ScriptedRequest.payout:
+        return _payout(_robotOf(request), request);
     }
+  }
+
+  /// `update_invoice` and `update_address` as the reference answers them (`api/views.py:617-649`, `api/logics.py:752-947`).
+  CoordinatorResponse _payout(RobotIdentity robot, CoordinatorRequest request) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final invoice = fields['action'] == 'update_invoice';
+    final key = robot.sessionKey;
+    if (_taker != key) {
+      return _json(403, {
+        'error_code': 1047,
+        'bad_request': 'You are not a participant in this order',
+      });
+    }
+    // The clear signature, checked against the public key the robot gave at its first contact, then split as `verify_signed_message` splits it (`api/utils.py:628-648`).
+    // Checked on the device's clock, as a coordinator's GnuPG checks on its own: the tests' key pairs are dated by it, not by [clock].
+    final signed = fields[invoice ? 'invoice' : 'address'];
+    final publicKey = _kept[key]?['public_key'];
+    final verified = signed is String && publicKey is String
+        ? switch (PgpPublicKey.parse(publicKey)) {
+            Ok(:final value) => value.verifyCleartext(signed),
+            Err(:final failure) => Err<String, PgpFailure>(failure),
+          }
+        : const Err<String, PgpFailure>(PgpArmorMalformed());
+    if (signed is! String || verified is Err) {
+      return _json(400, {
+        'error_code': 1048,
+        'bad_request': 'The PGP signed cleartext message is not valid.',
+      });
+    }
+    const header = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA512\n\n';
+    const footer = '-----BEGIN PGP SIGNATURE-----';
+    final parts = signed.split(header);
+    if (parts.length < 2) {
+      return _json(500, {'detail': 'IndexError'});
+    }
+    final text = parts[1].split(footer).first.trim();
+    if (orderType != 1) {
+      return _json(400, {
+        'error_code': invoice ? 1017 : 1015,
+        'bad_request': 'Only the buyer of this order can provide it.',
+      });
+    }
+    final payout = _last - _fee;
+    if (invoice) {
+      final mayGive =
+          _status == 6 || _status == 8 || (_status == 15 && payoutExpired);
+      if (!mayGive) {
+        return _json(400, {
+          'error_code': 3001,
+          'bad_invoice':
+              'You can only submit an invoice after expiration or 3 failed attempts',
+        });
+      }
+      final ppm = fields['routing_budget_ppm'];
+      final budget = ppm is int ? ppm : 0;
+      final asked = (payout.toDouble() - payout.toDouble() * (budget / 1000000))
+          .truncate();
+      final facts = switch (decoder.decode(text)) {
+        Ok(:final value) when value.network.belongsTo(network) => value,
+        _ => null,
+      };
+      if (facts == null) {
+        return _json(400, {
+          'bad_invoice': 'Does not look like a valid lightning invoice',
+        });
+      }
+      if (facts.amount.value.toInt() != asked) {
+        return _json(400, {
+          'bad_invoice':
+              'The invoice provided is not for ${_grouped(asked)} Sats',
+        });
+      }
+      if (facts.expiresAt.isBefore(clock().toUtc())) {
+        return _json(400, {
+          'bad_invoice': 'The invoice provided has already expired',
+        });
+      }
+      if (_payoutHash == facts.paymentHash) {
+        return _json(400, {
+          'error_code': 3002,
+          'bad_invoice': 'You must submit a NEW invoice',
+        });
+      }
+      _payoutHash = facts.paymentHash;
+    } else {
+      if (_status != 6 && _status != 8) {
+        return _json(400, {
+          'error_code': 1016,
+          'bad_request': 'You cannot submit an address now.',
+        });
+      }
+      // No `OnchainPayment` without a swap offered: the reference fails here with a `500` (`api/logics.py:800-803`).
+      if (!swapAllowed) return _json(500, {'detail': 'AttributeError'});
+      if (BitcoinAddress.check(text, network) is Err) {
+        return _json(400, {'bad_address': 'Invalid address'});
+      }
+      final rateField = fields['mining_fee_rate'];
+      final rate = rateField is num
+          ? rateField.toDouble()
+          : suggestedMiningFeeRate;
+      final minimum = minimumMiningFeeRate < 2 ? 2.0 : minimumMiningFeeRate;
+      if (rate < minimum) {
+        return _json(400, {
+          'error_code': 4001,
+          'bad_address':
+              'The mining fee is too low. Must be higher than $minimum Sat/vbyte',
+        });
+      }
+      if (rate > 500) {
+        return _json(400, {
+          'error_code': 4002,
+          'bad_address':
+              'The mining fee is too high, must be less than 500 Sats/vbyte',
+        });
+      }
+      final miningFee = (rate * 280).truncate();
+      final sent =
+          (payout.toDouble() -
+                  payout.toDouble() * swapFeeRate / 100 -
+                  miningFee)
+              .truncate();
+      if (sent < 20000) {
+        return _json(400, {
+          'error_code': 4003,
+          'bad_address':
+              'The amount remaining after subtracting mining fee is close to dust limit.',
+        });
+      }
+    }
+    payoutsRecorded.add(text);
+    // `Logics.move_state_updated_payout_method` (`api/logics.py:909-947`): 8 → 9, 6 → 7 while the escrow is not locked, 15 → 13.
+    switch (_status) {
+      case 8:
+        moveTo(9);
+      case 6:
+        moveTo(7);
+      case 15:
+        moveTo(13);
+    }
+    return _orderFor(robot);
+  }
+
+  /// [value] with commas between thousands, as Python's `"{:,}".format`.
+  static String _grouped(int value) {
+    final digits = value.toString();
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+    return out.toString();
   }
 
   CoordinatorResponse _cancel(RobotIdentity robot, CoordinatorRequest request) {
@@ -422,6 +601,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       '/api/robot/' => ScriptedRequest.robot,
       _ when action == 'take' => ScriptedRequest.take,
       _ when action == 'cancel' => ScriptedRequest.cancel,
+      _ when action == 'update_invoice' || action == 'update_address' =>
+        ScriptedRequest.payout,
       _ => ScriptedRequest.order,
     };
   }
@@ -602,8 +783,21 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case 6 || 8 when buyer:
         data
           ..['invoice_amount'] = payout
-          ..['swap_allowed'] = false
-          ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
+          ..['swap_allowed'] = swapAllowed;
+        if (swapAllowed || swapRatesWithoutSwap) {
+          data
+            ..['suggested_mining_fee_rate'] = suggestedMiningFeeRate
+            ..['swap_fee_rate'] = swapFeeRate;
+        }
+        if (!swapAllowed) {
+          data['swap_failure_reason'] =
+              'On-the-fly submarine swaps are disabled';
+        }
+      case 15 when buyer:
+        data
+          ..['retries'] = 3
+          ..['next_retry_time'] = clock().toUtc().toIso8601String();
+        if (payoutExpired) data['invoice_expired'] = true;
       case 9 || 10:
         data
           ..['asked_for_cancel'] = false
