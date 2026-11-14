@@ -60,18 +60,24 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     super.dispose();
   }
 
+  /// « You do not have a Garage Key » ([NoRobotDialog], a dialog's content since #121) in a dialog.
+  Future<void> _showNoRobot() => BullDialog.show<void>(
+    context: context,
+    builder: (_) => NoRobotDialog(onOpenGarage: widget.onOpenGarage),
+  );
+
   Future<void> _press(TakeAmountInput input) async {
     if (_asking) return;
     _asking = true;
     try {
       if (!widget.canTake) {
-        await NoRobotDialog.show(context, onOpenGarage: widget.onOpenGarage);
+        await _showNoRobot();
         return;
       }
       final cubit = context.read<TakeOrderCubit>();
       if (!await cubit.hasGarageKey()) {
         if (!mounted) return;
-        await NoRobotDialog.show(context, onOpenGarage: widget.onOpenGarage);
+        await _showNoRobot();
         return;
       }
       if (!mounted) return;

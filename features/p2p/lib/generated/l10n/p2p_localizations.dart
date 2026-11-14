@@ -816,7 +816,7 @@ abstract class P2pLocalizations {
   /// **'Scammers can exploit this vulnerability in the fiat system to take away both your bitcoin and your fiat.'**
   String get p2pReversibleScammers;
 
-  /// Button that closes a warning the user has read.
+  /// Button that closes a warning or a message the user has read.
   ///
   /// In en, this message translates to:
   /// **'Acknowledged'**
@@ -1116,7 +1116,7 @@ abstract class P2pLocalizations {
   /// **'Cancel'**
   String get p2pCommonCancel;
 
-  /// Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book.
+  /// Title of the dialog shown when a page needs a robot and no Garage Key is stored, such as an order searched by its URL that is not in the public book.
   ///
   /// In en, this message translates to:
   /// **'You do not have a Garage Key'**
@@ -1133,6 +1133,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'I have a Garage Key'**
   String get p2pNoRobotHaveKey;
+
+  /// The RoboSats text of a coordinator's refusal to show an order (error 1044), shown when an order searched by its URL is not in the public book and a Garage Key is stored, or cannot be read. Also on the trade screens (#88): the coordinator's message of error 1044 (`api/errors.py`), which the official client shows alone on the order page, an order that left the book just before a take, and an order public again that the book no longer lists.
+  ///
+  /// In en, this message translates to:
+  /// **'This order is not available'**
+  String get p2pOrderNotAvailable;
 
   /// Button that generates a Garage Key, in the no-robot dialog and the Garage; disabled until the Garage exists.
   ///
@@ -1912,12 +1918,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Could not reach {coordinator}. The order was not taken.'**
   String p2pTakeCoordinatorUnreadable(String coordinator);
-
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`): the coordinator's message of error 1044 (`api/errors.py`), which the official client shows alone on the order page. Also when the order left the book just before a take.
-  ///
-  /// In en, this message translates to:
-  /// **'This order is not available'**
-  String get p2pOrderNotAvailable;
 
   /// Not in the RoboSats texts: the project's own: the order read again just before the take differs from the one shown (anything but its price).
   ///

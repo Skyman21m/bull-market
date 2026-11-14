@@ -122,7 +122,7 @@ final class P2pLocator {
 
   /// Registers the Garage Key of each network, kept by the vault behind [garageKeys], the use-cases that create, import, read and delete it, the Garage that shows it, and the bindings of its robots in the database [database] makes, with the request of a robot that checks them over [transport].
   ///
-  /// Registering touches no key and no file: the keystore and the database are read or written only when a use-case runs, and the Garage runs them only once the user opens it.
+  /// Registering touches no key and no file: the keystore and the database are read or written only when a use-case runs, and the Garage runs them only once the user opens it, and the book asks the vault whether a key is stored only when « Search order » found no order in the books received.
   static void registerGarageKeys(
     GetIt locator,
     GarageKeys garageKeys, {
@@ -404,8 +404,17 @@ final class P2pLocator {
       () => CloseCoordinatorSessionsUsecase(sessions()),
     );
     locator.registerFactoryParam<BookCubit, RobosatsNetwork, void>(
-      (network, _) =>
-          BookCubit(network, locator(), locator(), locator(), locator()),
+      (network, _) => BookCubit(
+        network,
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        // Registered with the Garage only, which may come after this: read when a book is made, it touches no key until « Search order » asks it.
+        hasGarageKey: locator.isRegistered<HasGarageKeyUsecase>()
+            ? locator()
+            : null,
+      ),
     );
     locator
         .registerFactoryParam<OrderDetailsCubit, PublicOrder, RobosatsNetwork>(

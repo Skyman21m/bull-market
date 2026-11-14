@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 
-/// « You do not have a Garage Key », what the official client shows when a page needs a robot the user does not have (`components/Dialogs/NoRobot.tsx` at commit ff1998c).
+/// « You do not have a Garage Key », what the official client shows when a page needs a robot the user does not have (`components/Dialogs/NoRobot.tsx` at commit ff1998c), the content of a dialog: `OrderSearchMissDialog` shows it when no Garage Key is stored.
 ///
 /// « I have a Garage Key » closes it and opens the Garage, as in the official client, when [onOpenGarage] is given: the Garage is there only when the feature has the vault's handle.
 /// « Generate Garage Key » is shown disabled: the official client makes a key and a robot on the coordinators from it, which Troc does not do yet.
@@ -12,14 +12,6 @@ class NoRobotDialog extends StatelessWidget {
   final VoidCallback? onOpenGarage;
 
   const NoRobotDialog({super.key, this.onOpenGarage});
-
-  static Future<void> show(
-    BuildContext context, {
-    VoidCallback? onOpenGarage,
-  }) => BullDialog.show<void>(
-    context: context,
-    builder: (_) => NoRobotDialog(onOpenGarage: onOpenGarage),
-  );
 
   @override
   Widget build(BuildContext context) {

@@ -600,6 +600,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pNoRobotHaveKey => 'J\'ai une clé de garage';
 
   @override
+  String get p2pOrderNotAvailable => 'Cet ordre n\'est pas disponible';
+
+  @override
   String get p2pGarageOnboardingGenerateKey => 'Générer une clé de garage';
 
   @override
@@ -1118,9 +1121,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pTakeCoordinatorUnreadable(String coordinator) {
     return 'Impossible de joindre $coordinator. L’ordre n’a pas été pris.';
   }
-
-  @override
-  String get p2pOrderNotAvailable => 'Cet ordre n\'est pas disponible';
 
   @override
   String get p2pTakeOrderChanged =>
