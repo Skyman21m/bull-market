@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart' show Coordinator, RobosatsNetwork;
 
 import 'network_garage_key.dart';
 import 'p2p_failure.dart';
+import 'robot_binding.dart';
 import 'trade_record.dart';
 
 /// What the trades need from the robot layer (design note `docs/design/phase-2-taking-an-order.md` § 3.3): a fresh robot for each new trade, the robot of a recorded trade, and the active trades.
@@ -30,6 +31,12 @@ abstract interface class TradeRobots {
   /// A vault with no key there, or with another key, is a [TradeKeyMissingFailure]; a vault that refuses the read gives the vault's failure.
   @useResult
   Future<Result<NetworkRobot, P2pFailure>> robotOfTrade(TradeRecord record);
+
+  /// The robot of [slot], derived from the Garage Key the vault holds now for the slot's network, as [robotOfTrade] derives a trade's: a robot reserved before the key was deleted or replaced is no longer this key's (#119, review of #126).
+  ///
+  /// A vault with no key there, or with another key, is a [TradeKeyMissingFailure]; a vault that refuses the read gives the vault's failure.
+  @useResult
+  Future<Result<NetworkRobot, P2pFailure>> robotOfSlot(RobotSlot slot);
 
   /// The active trades of [network], pending takes included, oldest first: a new list after each write of the records, never a closed trade.
   Stream<Result<List<TradeRecord>, P2pFailure>> activeTrades(
