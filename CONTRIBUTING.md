@@ -1,8 +1,8 @@
-# Contributing to Troc
+# Contributing to Bull Market
 
 ## How we work
 
-1. **An issue first.** Every task starts from an [issue](https://github.com/Skyman21m/troc/issues), attached to a milestone (phase).
+1. **An issue first.** Every task starts from an [issue](https://github.com/Skyman21m/bull-market/issues), attached to a milestone (phase).
 2. **One branch per task**, created from `main`: `feat/p2p-…`, `fix/…`, `infra/…`, `docs/…`, `spike/…` (throwaway check).
 3. **Commits** in the [Conventional Commits](https://www.conventionalcommits.org/) format (`feat(p2p): …`, `fix(p2p): …`), small and atomic. No `Co-Authored-By` trailer.
 4. **One pull request per task** to `main`, with `Closes #<issue>`, following the provided template.
@@ -28,7 +28,7 @@ The code rules are those of the upstream repository: read [AGENTS.md](AGENTS.md)
 
 On the `develop → main` PR, never click "Update branch" or resolve conflicts in the web editor: that would write to `develop` and break the mirror.
 
-Files specific to Troc, for which we keep our version in case of conflict: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `NOTICE.md`, `.github/`. If Bull changes its `LICENSE` file, we keep ours and carry its change over to `LICENSE-BULL`.
+Files specific to this fork, for which we keep our version in case of conflict: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`, `NOTICE.md`, `.github/`. If Bull changes its `LICENSE` file, we keep ours and carry its change over to `LICENSE-BULL`.
 
 ## Security
 

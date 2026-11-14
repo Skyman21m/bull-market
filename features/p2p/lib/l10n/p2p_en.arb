@@ -1153,7 +1153,7 @@
       }
     }
   },
-  "p2pRobotSendBody": "{coordinator} will know this robot from now on. In Troc a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.",
+  "p2pRobotSendBody": "{coordinator} will know this robot from now on. In Bull Market, a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.",
   "@p2pRobotSendBody": {
     "description": "First paragraph of the confirmation. Not in the RoboSats texts (design note of #29, § 2.2): the official client sends every robot it shows to every coordinator.",
     "placeholders": {
@@ -1284,7 +1284,7 @@
       }
     }
   },
-  "p2pRobotBadAnswer": "{coordinator} sent an answer Troc cannot read.",
+  "p2pRobotBadAnswer": "{coordinator} sent an answer Bull Market cannot read.",
   "@p2pRobotBadAnswer": {
     "description": "An answer of the coordinator that cannot be read. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».",
     "placeholders": {
@@ -1302,7 +1302,7 @@
       }
     }
   },
-  "p2pRobotStorage": "Troc could not read its records on this device. Nothing was sent.",
+  "p2pRobotStorage": "Bull Market could not read its records on this device. Nothing was sent.",
   "@p2pRobotStorage": {
     "description": "The feature's database could not be read or written. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry »."
   },
@@ -1332,7 +1332,7 @@
   "@p2pRobotBoundElsewhere": {
     "description": "A request refused because the robot is bound to another coordinator. Not in the RoboSats texts, nor in the design note of #29: the panel never offers it, and shows where the robot lives instead."
   },
-  "p2pRobotRecordsUnreadable": "Troc could not read its records on this device.",
+  "p2pRobotRecordsUnreadable": "Bull Market could not read its records on this device.",
   "@p2pRobotRecordsUnreadable": {
     "description": "Under the text of a first contact that failed, when the feature's database cannot be read right after it: the request may have left, so, unlike p2pRobotStorage, it does not say that nothing was sent. Not in the RoboSats texts (security review of step 5 of #29). With « Retry »."
   },
@@ -1340,7 +1340,7 @@
   "@p2pRobotHistoryTitle": {
     "description": "Title of the dialog that « Select Host » opens first for a robot of a Garage Key of unknown history (pasted in, or whose draw this device could not record), once per key and network, and again after the key is pasted again. Not in the RoboSats texts (design note of #29, § 2.4): the official client sends every robot it shows to every coordinator, so it asks nothing."
   },
-  "p2pRobotHistoryBody": "This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.",
+  "p2pRobotHistoryBody": "This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.",
   "@p2pRobotHistoryBody": {
     "description": "Body of the dialog « Robots from elsewhere ». Not in the RoboSats texts (design note of #29, § 2.4). Factual: a key from the user's own backup is pasted in too, and nothing here says that a robot must be sent to a coordinator before trading."
   },

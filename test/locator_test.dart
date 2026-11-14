@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart' show P2pFacade;
 import 'package:p2p/testing.dart'
-    show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
+    show
+        hasGarageKeysForTesting,
+        hasP2pDatabaseForTesting,
+        hasWalletPortForTesting;
 import 'package:secrets/secrets.dart';
 import 'package:secrets/testing.dart';
 
@@ -26,12 +29,14 @@ void main() {
 
   for (final withGarageKeys in [true, false]) {
     test(
-      'withGarageKeys: $withGarageKeys alone decides whether P2P gets the handle and its database, and no key or file is touched',
+      'withGarageKeys: $withGarageKeys alone decides whether P2P gets the handle, its database and the wallet\'s port, and no key or file is touched',
       () {
         AppLocator.setupP2p(locator, withGarageKeys: withGarageKeys);
 
         expect(hasGarageKeysForTesting(locator), withGarageKeys);
         expect(hasP2pDatabaseForTesting(locator), withGarageKeys);
+        // The wallet's port is registered without being resolved: the wallet's facade is not registered here, and asking for it would fail.
+        expect(hasWalletPortForTesting(locator), withGarageKeys);
         expect(locator.isRegistered<P2pFacade>(), isTrue);
         expect(storage.reads, 0);
         expect(storage.entries, isEmpty);
