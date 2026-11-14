@@ -1152,6 +1152,23 @@ void main() {
       await tester.tap(find.text(l10n.p2pGarageSeeProfile));
       await settle();
       await capture('garage-profil-historique-non-enregistre');
+
+      // « Search order » with a Garage Key stored, for an order the book does not hold: « This order is not available », nothing about a key.
+      await tester.tap(find.text(l10n.p2pNavOffers));
+      await settle();
+      await tester.tap(find.text(l10n.p2pCommonSearch));
+      await settle();
+      final temple = Federation.robosats.byAlias('temple')?.testnet.onion;
+      await tester.enterText(
+        find.byType(TextField),
+        '$temple/order/temple/1',
+      );
+      await tester.tap(find.text(l10n.p2pCommonSearch).last);
+      await settle();
+      if (find.text(l10n.p2pOrderNotAvailable).evaluate().isEmpty) {
+        throw StateError('the search does not say the order is not available');
+      }
+      await capture('ordre-indisponible');
     });
   }
 
