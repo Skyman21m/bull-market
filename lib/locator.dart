@@ -33,6 +33,7 @@ import 'package:bb_mobile/features/import_mnemonic/locator.dart';
 import 'package:bb_mobile/features/import_watch_only_wallet/import_watch_only_locator.dart';
 import 'package:bb_mobile/features/ledger/ledger_locator.dart';
 import 'package:bb_mobile/features/onboarding/onboarding_locator.dart';
+import 'package:bb_mobile/features/p2p_bolt11/bolt11_decoder_impl.dart';
 import 'package:bb_mobile/features/p2p_wallet/p2p_wallet_locator.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
 import 'package:bb_mobile/features/pay/pay_locator.dart';
@@ -222,6 +223,7 @@ class AppLocator {
   /// The documents directory is kept out of cloud backups on both platforms, as the wallet's databases are there.
   /// Asking for the handle reads and writes nothing, and the directory is asked for only at the first query of the database.
   /// The wallet's port (#100), the balance and quotes of the Instant Payments wallet, goes to P2P under the same flag, as the foreground's alone: the facade is resolved at the port's first use, once every feature is registered, and nothing calls the port yet.
+  /// The BOLT11 decoder of `lib/features/p2p_bolt11/` (#86), pure code with no secret and no I/O, goes to P2P in both compositions: only the trade use cases read it, and they are registered with the database alone.
   @visibleForTesting
   static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
       const P2pFeature().setup(
@@ -231,6 +233,7 @@ class AppLocator {
             ? getApplicationDocumentsDirectory
             : null,
         wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null,
+        bolt11Decoder: () => const Bolt11DecoderImpl(),
       );
 }
 
