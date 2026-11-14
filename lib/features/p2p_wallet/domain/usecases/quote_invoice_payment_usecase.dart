@@ -1,4 +1,5 @@
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/instant_wallet.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/entities/issued_quotes.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/lightning_swap_quote.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/instant_wallet_repository.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/lightning_swap_quote_repository.dart';
@@ -9,12 +10,19 @@ import 'package:p2p/p2p.dart';
 ///
 /// It moves nothing: it reads the wallet, asks the service (the amount and the route only), and builds an unsigned transaction to the wallet's own address to read its fee.
 /// The service is asked only once the invoice, the wallet and its balance allow the payment, so that an invoice that cannot be paid sends the service nothing.
+/// Each quote given is recorded in [IssuedQuotes] with the wallet it was given for, so that a payment takes only a quote this wallet gave, once, from that wallet.
 class QuoteInvoicePaymentUsecase {
   final InstantWalletRepository _wallets;
   final LightningSwapQuoteRepository _quotes;
+  final IssuedQuotes _issued;
   final DateTime Function() _now;
 
-  const QuoteInvoicePaymentUsecase(this._wallets, this._quotes, this._now);
+  const QuoteInvoicePaymentUsecase(
+    this._wallets,
+    this._quotes,
+    this._issued,
+    this._now,
+  );
 
   @useResult
   Future<Result<P2pWalletQuote, P2pWalletRefusal>> execute(
@@ -76,14 +84,14 @@ class QuoteInvoicePaymentUsecase {
         ),
       );
     }
-    return Ok(
-      P2pWalletQuote(
-        invoice: invoice,
-        payin: service.payin,
-        networkFee: networkFee,
-        balance: wallet.balance,
-        quotedAt: _now(),
-      ),
+    final quote = P2pWalletQuote(
+      invoice: invoice,
+      payin: service.payin,
+      networkFee: networkFee,
+      balance: wallet.balance,
+      quotedAt: _now(),
     );
+    _issued.issue(quote, walletId: wallet.id);
+    return Ok(quote);
   }
 }

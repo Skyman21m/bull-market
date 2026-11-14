@@ -7,12 +7,12 @@ import 'package:test/test.dart';
 
 /// Where the wallet's port may be reached in `features/p2p/lib`, and that the feature depends on neither the app nor the wallet's core (#100, design note § 3.9).
 ///
-/// The port is the shell's Instant Payments wallet, lent to the feature: today its balance and the swap service's quote, later its payment, reviewed as money code when it is added.
-/// Only the trade use cases, files `lib/src/domain/usecases/trade/<name>_usecase.dart` that are not a `part`, may name one of its members, as only they may name the coordinator's money members (`trade_money_calls_architecture_test.dart`), so that what reads the wallet and what will pay from it sit in one reviewed place.
+/// The port is the shell's Instant Payments wallet, lent to the feature: its balance, the swap service's quote, and the payment (`payInvoice`, which moves money and triggers a signature, with `watchPayment` and `findPayment`), reviewed as money code.
+/// Only the trade use cases, files `lib/src/domain/usecases/trade/<name>_usecase.dart` that are not a `part`, may name one of its members, as only they may name the coordinator's money members (`trade_money_calls_architecture_test.dart`), so that what reads the wallet and what pays from it sit in one reviewed place. None names them yet: the pull request of the bond's panel (#100, W4) adds the one use case that pays.
 /// The port's type may be named there too, and where the feature declares, exports, receives and registers it, and in its testing seam; nowhere else, so that no cubit or screen takes it from the locator.
-/// The only invoice the port takes, `CheckedBolt11Invoice`, is built by `CheckedBolt11Invoice.of`, which only its own file and the testing seam's helper may call today; the pull request that brings the trade screen's BOLT11 check (#86) adds its one file to that list. No file may declare an alias of the type, through which `of` could be reached under another name.
+/// The only invoice the port takes, `CheckedBolt11Invoice`, is built by `CheckedBolt11Invoice.of`, which only its own file, the trade's `wallet_payment.dart` (where `walletPaymentFor` builds it when it offers « Pay with this wallet », the one source of the type) and the testing seam's helper may call. No file may declare an alias of the type, through which `of` could be reached under another name.
 /// The sources are read as text and parsed without resolution, as in `trade_money_calls_architecture_test.dart`: a name is a use wherever it stands in code, comments and strings are not code, and a declaration of a member with a watched name is no use (the fake of `testing.dart` declares them).
-/// It cannot see what a trade use case hands out (a tear-off, a wrapper), a member added to the port under a name this list does not have yet (the pull request that adds `pay`, `watch` and `find` adds them here), nor code outside `features/p2p/lib`: the shell's side has its own test, `features/p2p/test/wallet_shell_architecture_test.dart`.
+/// It cannot see what a trade use case hands out (a tear-off, a wrapper), a member added to the port under a name this list does not have yet (the pull request that adds one adds it here), nor code outside `features/p2p/lib`: the shell's side has its own test, `features/p2p/test/wallet_shell_architecture_test.dart`.
 void main() {
   // Tests run with the package directory as working directory.
   final sources = {
@@ -31,9 +31,24 @@ void main() {
     );
   });
 
-  test('the members of the port are these two, written out', () {
+  test('the members of the port are these five, written out', () {
     // A member removed from the list would stop being watched without a sign: the list is pinned here, not looped over itself.
-    expect(_portMembers, {'instantBalance', 'quote'});
+    expect(_portMembers, {
+      'instantBalance',
+      'quote',
+      'payInvoice',
+      'watchPayment',
+      'findPayment',
+    });
+  });
+
+  test('no file names a member of the payment yet', () {
+    // The bond's panel (#100, W4) adds the one trade use case that pays; until then nothing in the feature may.
+    expect([
+      for (final MapEntry(key: path, value: source) in sources.entries)
+        if ((_Names(_paymentMembers)..visit(_parse(source))).named.isNotEmpty)
+          path,
+    ], isEmpty);
   });
 
   test('only the trade use cases name a member of the port', () {
@@ -61,15 +76,23 @@ void main() {
 
   group('who builds a checked invoice:', () {
     test(
-      'the files that may call CheckedBolt11Invoice.of are these two, written out',
+      'the files that may call CheckedBolt11Invoice.of are these three, written out',
       () {
-        // The pull request that brings the BOLT11 check of the trade screen (#86) adds its one file here.
         expect(_invoiceBuilders, {
           'lib/src/domain/checked_bolt11_invoice.dart',
+          'lib/src/domain/trade/wallet_payment.dart',
           'lib/testing.dart',
         });
       },
     );
+
+    test('walletPaymentFor calls it, once', () {
+      final finder = _InvoiceBuilds();
+      _parse(
+        sources['lib/src/domain/trade/wallet_payment.dart'] ?? '',
+      ).accept(finder);
+      expect(finder.found, ['calls CheckedBolt11Invoice.of']);
+    });
 
     test('only they call it', () {
       expect(_invoiceOffences(sources), isEmpty);
@@ -96,7 +119,7 @@ void main() {
       ]) {
         expect(_invoiceOffences({cubit: source}), isNotEmpty, reason: label);
       }
-      // A trade use case is no exception: the check builds the invoice, the use cases receive it.
+      // A trade use case is no exception: the state machine builds the invoice, the use cases receive it.
       expect(
         _invoiceOffences({
           'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart':
@@ -136,6 +159,13 @@ void main() {
         _memberOffences({
           'lib/src/domain/usecases/trade/watch_trade_usecase.dart':
               'Stream<void> f(P2pWalletPort wallet) => wallet.instantBalance(network);',
+        }),
+        isEmpty,
+      );
+      expect(
+        _memberOffences({
+          tradeUseCase:
+              'Future<void> pay(P2pWalletPort wallet) async { await wallet.payInvoice(invoice, accepted: quote); wallet.watchPayment(payment); await wallet.findPayment(hash); }',
         }),
         isEmpty,
       );
@@ -191,6 +221,12 @@ void main() {
         ('dynamic call', 'void f() => (wallet as dynamic).quote(invoice);'),
         ('symbol', 'final s = #quote;'),
         ('interpolation', r'''final s = '${wallet.instantBalance}';'''),
+        ('pay', 'void f() => wallet.payInvoice(invoice, accepted: quote);'),
+        ('pay torn off', 'final f = wallet.payInvoice;'),
+        ('watch', 'void f() => wallet.watchPayment(payment);'),
+        ('find', 'void f() => wallet.findPayment(hash);'),
+        ('find in a cascade', 'void f() { wallet..findPayment(hash); }'),
+        ('pay as a symbol', 'final s = #payInvoice;'),
       ]) {
         expect(_memberOffences({cubit: source}), isNotEmpty, reason: label);
       }
@@ -252,9 +288,10 @@ final class TradeCubit {
   });
 }
 
-/// The files of `lib/` that may call `CheckedBolt11Invoice.of`: its own, and the testing seam's helper.
+/// The files of `lib/` that may call `CheckedBolt11Invoice.of`: its own, the trade's offer of a wallet payment (its one source), and the testing seam's helper.
 const _invoiceBuilders = {
   'lib/src/domain/checked_bolt11_invoice.dart',
+  'lib/src/domain/trade/wallet_payment.dart',
   'lib/testing.dart',
 };
 
@@ -316,8 +353,17 @@ final class _InvoiceBuilds extends RecursiveAstVisitor<void> {
   void visitCommentReference(CommentReference node) {}
 }
 
-/// The members of `P2pWalletPort`. `pay`, `watch` and `find` are added here by the pull request that adds them to the port.
-const _portMembers = {'instantBalance', 'quote'};
+/// The members of `P2pWalletPort`: distinct names, since a name is a use wherever it stands (`watch` and `find` would match unrelated code, `context.watch` and drift's `watch` among them).
+const _portMembers = {
+  'instantBalance',
+  'quote',
+  'payInvoice',
+  'watchPayment',
+  'findPayment',
+};
+
+/// The members of the payment, which no file names until the bond's panel (#100, W4) adds its trade use case.
+const _paymentMembers = {'payInvoice', 'watchPayment', 'findPayment'};
 
 /// The files that may name the port's type besides the trade use cases: its declaration, the library that exports it, the setup that receives it, the locator that registers it, and the testing seam that fakes it.
 const _typeAllowed = {
