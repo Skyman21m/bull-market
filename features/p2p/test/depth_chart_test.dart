@@ -55,7 +55,7 @@ void main() {
       () async {
         final chart = DepthChart.of(
           book: await parseOrders(caseA),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.premium,
         );
         expect(
@@ -69,7 +69,7 @@ void main() {
     test('premium axis: the two lines add up the orders from each edge', () async {
       final chart = DepthChart.of(
         book: await parseOrders(caseA),
-        filter: BookFilter(currency: eur),
+        filter: BookFilter(currencies: [eur]),
         axis: DepthAxis.premium,
       );
       final lines = chart.linesIn(chart.window);
@@ -101,7 +101,7 @@ void main() {
     test('premium axis: zooming moves the edges by one step each time', () async {
       final chart = DepthChart.of(
         book: await parseOrders(caseA),
-        filter: BookFilter(currency: eur),
+        filter: BookFilter(currencies: [eur]),
         axis: DepthAxis.premium,
       );
       final narrow = chart.window.zoomedIn().zoomedIn();
@@ -143,7 +143,7 @@ void main() {
       () async {
         final chart = DepthChart.of(
           book: await parseOrders(caseA),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.premium,
         );
         var window = chart.window;
@@ -167,7 +167,7 @@ void main() {
             caseOrder(1, 1, -2.7, 1000000),
             caseOrder(2, 0, -0.4, 1000000),
           ]),
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         // matchMedian gives -1.55, and `~~` cuts it to -1.
@@ -189,7 +189,7 @@ void main() {
         ], alias: 'lake');
         final everything = DepthChart.of(
           book: [...book, ...lake],
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         // The official client takes the median of the four premiums, 2.5; here temple's median, 2, and lake's, 3, give 2.5 too: the centre is 2 either way.
@@ -227,7 +227,7 @@ void main() {
       () async {
         final chart = DepthChart.of(
           book: await parseOrders(caseE),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         expect(chart.priceCurrency, eur);
@@ -266,7 +266,7 @@ void main() {
       () async {
         final chart = DepthChart.of(
           book: await parseOrders(caseE),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         var window = chart.window;
@@ -295,7 +295,7 @@ void main() {
       ], alias: 'lake');
       final narrow = DepthChart.of(
         book: [...book, ...lake],
-        filter: BookFilter(currency: eur, host: coordinator('temple')),
+        filter: BookFilter(currencies: [eur], hosts: [coordinator('temple')]),
         axis: DepthAxis.premium,
       );
       // Only temple's two euro orders are drawn: their median, 4, is the centre (the official client keeps 2, the median of every order).
@@ -425,7 +425,7 @@ void main() {
         ];
         final chart = DepthChart.of(
           book: book,
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         // The mean of the two votes would centre on 499%, between them, where nothing is drawn; the vote nearer zero is lake's.
@@ -460,7 +460,7 @@ void main() {
           ];
           final chart = DepthChart.of(
             book: book,
-            filter: const BookFilter(),
+            filter: const BookFilter.any(),
             axis: DepthAxis.premium,
           );
           expect(chart.window.center, 0, reason: '$premium');
@@ -483,7 +483,7 @@ void main() {
         ];
         final chart = DepthChart.of(
           book: book,
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         expect(chart.window.center, 0);
@@ -504,7 +504,7 @@ void main() {
         expect(DepthChart.impliedMarketPrice(book, eur), 70000);
         final chart = DepthChart.of(
           book: book,
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         // Both orders are placed at the market price of 70000: one price, so ± 8% of it.
@@ -524,7 +524,7 @@ void main() {
         ]);
         final chart = DepthChart.of(
           book: book,
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         // The two euro orders: 50000 and 62500, a centre of 56250 and a half range up to 62500.
@@ -545,7 +545,7 @@ void main() {
         ];
         final chart = DepthChart.of(
           book: book,
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         // Each honest coordinator's median is 1/8: the centre is 0, with the 90 honest orders in the window and the flood outside.
@@ -565,13 +565,13 @@ void main() {
         ];
         final flooded = DepthChart.of(
           book: book,
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         expect(flooded.window.center, 999999999999);
         final honestHost = DepthChart.of(
           book: book,
-          filter: BookFilter(host: coordinator('lake')),
+          filter: BookFilter(hosts: [coordinator('lake')]),
           axis: DepthAxis.premium,
         );
         expect(honestHost.window.center, 0);
@@ -602,7 +602,7 @@ void main() {
         // Temple chosen: its own price, absurd as it is, prices its own orders.
         final templeOnly = DepthChart.of(
           book: book,
-          filter: BookFilter(host: coordinator('temple')),
+          filter: BookFilter(hosts: [coordinator('temple')]),
           axis: DepthAxis.price,
         );
         expect(templeOnly.window.center, 1);
@@ -612,10 +612,43 @@ void main() {
         ], alias: 'freeport');
         final freeport = DepthChart.of(
           book: [...book, ...euros],
-          filter: BookFilter(host: coordinator('freeport')),
+          filter: BookFilter(hosts: [coordinator('freeport')]),
           axis: DepthAxis.price,
         );
         expect(freeport.window.center, 70000);
+      },
+    );
+
+    test(
+      'several hosts chosen: the market price comes from all of their orders',
+      () async {
+        Future<List<PublicOrder>> dollars(String alias, double price) =>
+            parseOrders([
+              caseOrder(1, 1, 0, 1000, currency: 1, price: price),
+            ], alias: alias);
+        final book = [
+          ...await dollars('lake', 70000),
+          ...await dollars('temple', 60000),
+          ...await dollars('bazaar', 40000),
+          ...await dollars('freeport', 45000),
+        ];
+        // Every coordinator: 40000, 45000, 60000 and 70000, the lower of the two middle votes.
+        expect(DepthChart.impliedMarketPrice(book, usd), 45000);
+        // Lake alone would say 70000; lake and temple together say the lower of their two votes, 60000, and their orders, at a premium of 0, sit on it.
+        final both = DepthChart.of(
+          book: book,
+          filter: BookFilter(
+            hosts: [coordinator('lake'), coordinator('temple')],
+          ),
+          axis: DepthAxis.price,
+        );
+        expect(both.window.center, 60000);
+        final lakeOnly = DepthChart.of(
+          book: book,
+          filter: BookFilter(hosts: [coordinator('lake')]),
+          axis: DepthAxis.price,
+        );
+        expect(lakeOnly.window.center, 70000);
       },
     );
 
@@ -627,7 +660,7 @@ void main() {
             caseOrder(1, 1, -0.625, 1000000),
             caseOrder(2, 0, -0.375, 1000000),
           ]),
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         expect(chart.window.center, 0);
@@ -650,7 +683,7 @@ void main() {
       ]);
       final chart = DepthChart.of(
         book: book,
-        filter: const BookFilter(),
+        filter: const BookFilter.any(),
         axis: DepthAxis.price,
       );
       expect(chart.priceCurrency, usd);
@@ -668,6 +701,35 @@ void main() {
       );
     });
 
+    test(
+      'several currencies chosen are priced in US dollars, as every currency is',
+      () async {
+        final chf = currency(7);
+        final book = await parseOrders([
+          caseOrder(1, 1, 0, 1000000, currency: 1, price: 75000),
+          caseOrder(2, 1, 1, 1000000, price: 70000),
+          caseOrder(3, 0, 2, 1000000, currency: 7, price: 66000),
+        ]);
+        final chart = DepthChart.of(
+          book: book,
+          filter: BookFilter(currencies: [eur, chf]),
+          axis: DepthAxis.price,
+        );
+        expect(chart.priceCurrency, usd);
+        // The euro and franc orders are placed on the dollar price with their premiums, 75750 and 76500, the dollar order not being chosen: the window centres between them.
+        expect(chart.window.center, 76125);
+        // One currency chosen prices the axis in it.
+        expect(
+          DepthChart.of(
+            book: book,
+            filter: BookFilter(currencies: [chf]),
+            axis: DepthAxis.price,
+          ).priceCurrency,
+          chf,
+        );
+      },
+    );
+
     test('the market price is the median of the prices the orders imply', () {
       expect(DepthChart.median([3, 1, 2]), 2);
       expect(DepthChart.median([4, 1, 3, 2]), 2.5);
@@ -681,7 +743,7 @@ void main() {
       ]);
       final chart = DepthChart.of(
         book: book,
-        filter: const BookFilter(),
+        filter: const BookFilter.any(),
         axis: DepthAxis.price,
       );
       expect(chart.window.isDrawable, isFalse);
@@ -698,7 +760,7 @@ void main() {
       () async {
         final chart = DepthChart.of(
           book: await parseOrders([caseOrder(1, 1, 0, 1000000, price: 50000)]),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         expect(
@@ -773,14 +835,14 @@ void main() {
           caseOrder(3, 1, 2, 1, currency: 1000, price: 1.001),
           caseOrder(4, 1, 2, 1, currency: 1),
         ]);
-        const any = BookFilter(side: BookSide.buy, paymentMethod: 'Revolut');
+        final any = BookFilter(side: BookSide.buy, paymentMethods: ['Revolut']);
         expect(orders.where(any.showsInDepthChart).length, 4);
-        final euros = BookFilter(currency: eur);
+        final euros = BookFilter(currencies: [eur]);
         expect(
           [for (final o in orders.where(euros.showsInDepthChart)) o.id],
           [1, 2],
         );
-        final lake = BookFilter(host: coordinator('lake'));
+        final lake = BookFilter(hosts: [coordinator('lake')]);
         expect(orders.where(lake.showsInDepthChart), isEmpty);
       },
     );
@@ -790,7 +852,7 @@ void main() {
     test('an empty book gives a premium window on 0 and no line', () {
       final chart = DepthChart.of(
         book: const [],
-        filter: const BookFilter(),
+        filter: const BookFilter.any(),
         axis: DepthAxis.premium,
       );
       expect(
@@ -807,7 +869,7 @@ void main() {
     test('orders of zero sats draw flat lines on the axis', () async {
       final chart = DepthChart.of(
         book: await parseOrders([caseOrder(1, 1, 2, 0), caseOrder(2, 0, 1, 0)]),
-        filter: const BookFilter(),
+        filter: const BookFilter.any(),
         axis: DepthAxis.premium,
       );
       final lines = chart.linesIn(chart.window);
@@ -837,7 +899,7 @@ void main() {
         ]);
         final chart = DepthChart.of(
           book: huge,
-          filter: const BookFilter(),
+          filter: const BookFilter.any(),
           axis: DepthAxis.premium,
         );
         expect(chart.window.center, 999999999999);
@@ -851,7 +913,7 @@ void main() {
     test('a price beyond the bound of the labels is not drawn', () async {
       final chart = DepthChart.of(
         book: await parseOrders([caseOrder(1, 1, 0, 1000, price: 1e308)]),
-        filter: BookFilter(currency: eur),
+        filter: BookFilter(currencies: [eur]),
         axis: DepthAxis.price,
       );
       expect(chart.window.center, 1e308);
@@ -917,7 +979,7 @@ void main() {
             caseOrder(1, 1, 0, 1000000, price: 50000),
             caseOrder(2, 0, -100, 1000000, price: 50000),
           ]),
-          filter: BookFilter(currency: eur),
+          filter: BookFilter(currencies: [eur]),
           axis: DepthAxis.price,
         );
         // The order at -100% implies no market price (its factor is zero), the other gives 50000.
@@ -935,7 +997,7 @@ void main() {
       final watch = Stopwatch()..start();
       final chart = DepthChart.of(
         book: many,
-        filter: const BookFilter(),
+        filter: const BookFilter.any(),
         axis: DepthAxis.premium,
       );
       final lines = chart.linesIn(chart.window);

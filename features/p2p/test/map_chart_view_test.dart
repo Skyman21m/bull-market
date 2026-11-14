@@ -191,7 +191,7 @@ void main() {
 
       expect(map, findsOneWidget);
       // The view replaces the list and its filter sentence, as the chart does.
-      expect(find.text('I want to'), findsNothing);
+      expect(find.text('I want'), findsNothing);
       expect(find.text('Map'), findsNWidgets(2));
       expect(find.text('Show tiles'), findsNothing);
       expect(
@@ -604,17 +604,21 @@ void main() {
       // « I want to sell » with euros, hosted by TheBigLake, in the list: the map still draws both sides, dollars too, and temple's orders.
       await tester.tap(find.text('List'));
       await settle(tester);
-      await tester.tap(find.text('ANY').first);
+      await tester.tap(find.text('Any type'));
       await settle(tester);
       await tester.tap(find.text('Sell').last);
       await settle(tester);
-      await tester.tap(find.text('ANY').first);
+      await tester.tap(find.text('Any currency'));
       await settle(tester);
       await tester.tap(find.text('EUR').last);
       await settle(tester);
-      await tester.tap(find.text('ANY').last);
+      await tester.tap(find.byTooltip('Close'));
+      await settle(tester);
+      await tester.tap(find.text('Any host'));
       await settle(tester);
       await tester.tap(find.text('TheBigLake').last);
+      await settle(tester);
+      await tester.tap(find.byTooltip('Close'));
       await settle(tester);
       await tester.tap(find.text('Map'));
       await settle(tester);
@@ -650,7 +654,10 @@ void main() {
     transport = FakeTransport();
     await openMap(tester);
     expect(map, findsNothing);
-    expect(find.text('No orders found to buy BTC for ANY'), findsOneWidget);
+    expect(
+      find.text('No orders found to buy BTC for any currency'),
+      findsOneWidget,
+    );
     expect(find.text('Be the first one to create an order'), findsOneWidget);
   });
 
@@ -690,7 +697,10 @@ void main() {
       expect(map, findsNothing);
       expect(shown('6 coordinators offline'), findsOneWidget);
       expect(shown('Retry'), findsOneWidget);
-      expect(find.text('No orders found to buy BTC for ANY'), findsNothing);
+      expect(
+        find.text('No orders found to buy BTC for any currency'),
+        findsNothing,
+      );
     },
   );
 
