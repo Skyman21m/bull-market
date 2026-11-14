@@ -98,7 +98,7 @@ final class BookFilter {
 
   /// Whether [order] passes the payment methods chosen, by the official client's rule (`filterByPayment` in `utils/filterOrders.ts`): with none chosen every order does, and otherwise an order does when its text contains the name of at least one of them.
   ///
-  /// « Contains » is the official client's `includes`: case included, anywhere in the text, so `SEPA` keeps an order of `Instant SEPA` and `Revolut` does not keep an order written `revolut`, which the list recognises.
+  /// « Contains » is the official client's `includes`: case included, anywhere in the text, so `SEPA` keeps an order of `Instant SEPA` and `Revolut` does not keep an order written `revolut`, although an offer's row shows that order with the method's name (`PaymentMethods.parse` ignores case).
   bool matchesPaymentMethods(PublicOrder order) =>
       paymentMethods.isEmpty ||
       paymentMethods.any(order.paymentMethods.text.contains);
