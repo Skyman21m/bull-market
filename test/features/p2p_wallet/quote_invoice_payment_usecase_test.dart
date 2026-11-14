@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/instant_wallet.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/entities/issued_quotes.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/lightning_swap_quote.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/instant_wallet_repository.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/lightning_swap_quote_repository.dart';
@@ -15,12 +16,19 @@ import 'support/fakes.dart';
 void main() {
   late _Wallets wallets;
   late _Quotes quotes;
+  late IssuedQuotes issued;
   late QuoteInvoicePaymentUsecase usecase;
 
   setUp(() {
     wallets = _Wallets();
     quotes = _Quotes();
-    usecase = QuoteInvoicePaymentUsecase(wallets, quotes, () => testNow);
+    issued = IssuedQuotes();
+    usecase = QuoteInvoicePaymentUsecase(
+      wallets,
+      quotes,
+      issued,
+      () => testNow,
+    );
   });
 
   P2pWalletRefusal refusalOf(Result<P2pWalletQuote, P2pWalletRefusal> r) =>
@@ -48,6 +56,9 @@ void main() {
         expect(quote.balance, Sats.fromInt(10000));
         expect(quote.remaining, Sats.fromInt(9371));
         expect(quote.quotedAt, testNow);
+        // Given by this wallet: a payment may take it, once.
+        expect(issued.consume(quote), isTrue);
+        expect(issued.consume(quote), isFalse);
         // The service is asked the invoice's amount on its network, and the fee is estimated for the payin.
         expect(quotes.asked, [(RobosatsNetwork.mainnet, Sats.fromInt(600))]);
         expect(wallets.estimated, [Sats.fromInt(603)]);

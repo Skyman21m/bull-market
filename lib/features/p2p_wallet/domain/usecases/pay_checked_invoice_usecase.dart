@@ -174,6 +174,7 @@ class PayCheckedInvoiceUsecase {
     final payinAddress = order?.payinAddressOrNull;
     if (order == null ||
         payinAddress == null ||
+        payinAddress.isEmpty ||
         record.localStatus != OrderSwapLocalStatus.awaitingUserConfirmation ||
         record.purpose != OrderSwapPurpose.sendLightning ||
         record.destination != invoice.bolt11 ||
