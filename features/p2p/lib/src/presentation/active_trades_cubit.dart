@@ -28,9 +28,9 @@ final class ActiveTradesLoading extends ActiveTradesState {
 
 /// The active trades, newest record last as the repository lists them; empty when there is none.
 final class ActiveTradesListed extends ActiveTradesState {
-  final List<ActiveTrade> trades;
+  final List<ActiveTrade> active;
 
-  const ActiveTradesListed(this.trades);
+  const ActiveTradesListed(this.active);
 }
 
 /// The records cannot be read: never shown as « no trade », since a trade may be running (`ListActiveTradesUsecase`).

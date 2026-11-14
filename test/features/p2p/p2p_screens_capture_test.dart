@@ -1773,16 +1773,7 @@ void main() {
         await capture('echange-expire');
         await backToTab();
 
-        // Take 2: another robot's bond locks first.
-        coordinator.backToPublic();
-        await take();
-        coordinator.takenByAnother();
-        await nextRead();
-        await waitFor(find.text(l10n.p2pOrderNotAvailable));
-        await capture('echange-indisponible');
-        await backToTab();
-
-        // Take 3: cancelled at 3, the order public again.
+        // Take 2: cancelled at 3, the order public again.
         coordinator.backToPublic();
         await take();
         await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
@@ -1794,7 +1785,7 @@ void main() {
         await capture('echange-public');
         await backToTab();
 
-        // Take 4: the bond locked, then the maker cancels.
+        // Take 3: the bond locked, then the maker cancels.
         coordinator.backToPublic();
         await take();
         coordinator.lockBond(taker());
@@ -1803,6 +1794,15 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pOrderCancelled));
         await capture('echange-annule');
+        await backToTab();
+
+        // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
+        coordinator.backToPublic();
+        await take();
+        coordinator.takenByAnother();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pOrderNotAvailable));
+        await capture('echange-indisponible');
 
         // The screens gone, their cubits closed: the waits they leave (the release of the robots, 10 s at most) run out.
         await backToTab();

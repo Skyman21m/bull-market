@@ -179,20 +179,20 @@ class _P2pPageState extends State<_P2pPage> {
   }
 
   /// « Order »: the active trade, or the list of them when there are several or the records cannot be read.
-  void _openTrades(BuildContext context, ActiveTradesState trades) {
+  void _openTrades(BuildContext context, ActiveTradesState active) {
     void open(TradeRecord record) => context.pushNamed(
       P2pRouter.tradeName,
       extra: P2pTradeRouteArgs(record),
     );
-    switch (trades) {
-      case ActiveTradesListed(trades: [final only]):
+    switch (active) {
+      case ActiveTradesListed(active: [final only]):
         open(only.record);
-      case ActiveTradesListed(:final trades):
+      case ActiveTradesListed(:final active):
         unawaited(
-          ActiveTradesSheet.show(context, trades: trades, onOpen: open),
+          ActiveTradesSheet.show(context, active: active, onOpen: open),
         );
       case ActiveTradesUnreadable():
-        unawaited(ActiveTradesSheet.show(context, trades: null, onOpen: open));
+        unawaited(ActiveTradesSheet.show(context, active: null, onOpen: open));
       case ActiveTradesLoading():
         break;
     }
@@ -241,11 +241,11 @@ class _P2pPageState extends State<_P2pPage> {
               create: (_) =>
                   locator<ActiveTradesCubit>(param1: current)..start(),
               child: BlocBuilder<ActiveTradesCubit, ActiveTradesState>(
-                builder: (context, trades) => tab(
-                  onOpenTrades: switch (trades) {
-                    ActiveTradesListed(trades: []) ||
+                builder: (context, active) => tab(
+                  onOpenTrades: switch (active) {
+                    ActiveTradesListed(active: []) ||
                     ActiveTradesLoading() => null,
-                    _ => () => _openTrades(context, trades),
+                    _ => () => _openTrades(context, active),
                   },
                 ),
               ),

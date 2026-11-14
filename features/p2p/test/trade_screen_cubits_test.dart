@@ -443,15 +443,15 @@ void main() {
         ..start();
       await harness.settle();
       expect(cubit.state, isA<ActiveTradesListed>());
-      expect((cubit.state as ActiveTradesListed).trades, isEmpty);
+      expect((cubit.state as ActiveTradesListed).active, isEmpty);
       final before = harness.coordinator.requests.length;
 
       await harness.takeShown();
       await harness.settle();
 
-      final trades = (cubit.state as ActiveTradesListed).trades;
-      expect(trades, hasLength(1));
-      expect(trades.single.standing, isA<ActiveTradeAt>());
+      final active = (cubit.state as ActiveTradesListed).active;
+      expect(active, hasLength(1));
+      expect(active.single.standing, isA<ActiveTradeAt>());
       // Listing asks the coordinator nothing: only the take's requests were sent.
       final afterTake = harness.coordinator.requests.length;
       expect(afterTake, greaterThan(before));

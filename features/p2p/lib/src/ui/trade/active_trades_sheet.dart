@@ -10,24 +10,24 @@ import '../widgets/coordinator_avatar.dart';
 
 /// The active trades of the network, when there are several: one line « Active order #{{orderID}} » each (the official client's words in its Garage, `GaragePage/GarageKeyProfile.tsx:209`), with its coordinator; a tap opens the trade.
 ///
-/// The official client follows one robot at a time and its « Order » button opens that robot's order; here each trade has a robot of its own, so the robots' orders are listed (a deviation: the reference's « current robot » does not exist here). With no list ([trades] `null`), the records could not be read, and the sheet says so.
+/// The official client follows one robot at a time and its « Order » button opens that robot's order; here each trade has a robot of its own, so the robots' orders are listed (a deviation: the reference's « current robot » does not exist here). With no list ([active] `null`), the records could not be read, and the sheet says so.
 class ActiveTradesSheet extends StatelessWidget {
-  final List<ActiveTrade>? trades;
+  final List<ActiveTrade>? active;
   final ValueChanged<TradeRecord> onOpen;
 
   const ActiveTradesSheet({
     super.key,
-    required this.trades,
+    required this.active,
     required this.onOpen,
   });
 
   static Future<void> show(
     BuildContext context, {
-    required List<ActiveTrade>? trades,
+    required List<ActiveTrade>? active,
     required ValueChanged<TradeRecord> onOpen,
   }) => BullBottomSheet.show<void>(
     context: context,
-    child: ActiveTradesSheet(trades: trades, onOpen: onOpen),
+    child: ActiveTradesSheet(active: active, onOpen: onOpen),
   );
 
   @override
@@ -35,7 +35,7 @@ class ActiveTradesSheet extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    final trades = this.trades;
+    final active = this.active;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(BullSpacing.lg),
       child: Column(
@@ -51,13 +51,13 @@ class ActiveTradesSheet extends StatelessWidget {
             ),
           ),
           const Gap(BullSpacing.sm),
-          if (trades == null)
+          if (active == null)
             Text(
               l10n.p2pRobotRecordsUnreadable,
               style: text.bodyMedium?.copyWith(color: colors.error),
             )
           else
-            for (final trade in trades) _Line(trade: trade, onOpen: onOpen),
+            for (final trade in active) _Line(trade: trade, onOpen: onOpen),
         ],
       ),
     );
