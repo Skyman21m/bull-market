@@ -150,8 +150,9 @@ final class PgpPublicKey {
   @override
   int get hashCode => fingerprint.hashCode;
 
+  /// The fingerprint only: [userId] is text whoever made the key chose, a coordinator or a peer.
   @override
-  String toString() => 'PgpPublicKey($fingerprint, $userId)';
+  String toString() => 'PgpPublicKey($fingerprint)';
 }
 
 /// The OpenPGP key pair of a robot, as the two armored blocks a coordinator stores: the public key and the private key locked by the robot token.
@@ -582,12 +583,15 @@ final class UnlockedRobotPgpKey {
   /// [encryptChatMessage] for `CoordinatorClient.postChat`: the message as the one value that call sends, bound to this robot and to [peer].
   ///
   /// Encrypt to the peer key pinned for the trade, never to a key read again without comparing it.
-  /// Fails as [encryptChatMessage], and with [ChatRefused] of [ChatRefusal.messageTooLong] when the message would take more than [OutgoingChatMessage.maxWireChars] characters on the wire.
-  Result<OutgoingChatMessage, RobosatsFailure> encryptChatMessageToPost(
+  /// Fails with [PgpChatTextTooLong], before anything is encrypted, when [plaintext] takes more than [OutgoingChatMessage.maxTextBytes] bytes ([OutgoingChatMessage.textBytesOf]), and otherwise as [encryptChatMessage].
+  Result<OutgoingChatMessage, PgpFailure> encryptChatMessageToPost(
     String plaintext, {
     required PgpPublicKey peer,
     DateTime? now,
-  }) => switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
+  }) => OutgoingChatMessage.textBytesOf(plaintext) >
+          OutgoingChatMessage.maxTextBytes
+      ? const Err(PgpChatTextTooLong())
+      : switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
     Err(:final failure) => Err(failure),
     Ok(value: final armored) => OutgoingChatMessage.fromArmored(
       armored,

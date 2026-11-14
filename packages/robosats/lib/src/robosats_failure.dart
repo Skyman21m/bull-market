@@ -617,13 +617,13 @@ enum ChatRefusal {
   /// A post never gets it from the reference, whose serializer refuses a missing order number first with 6003 (`:121-129`).
   orderIdMissing,
 
-  /// The robot is neither the maker nor the taker of the order (error 6001, `:53-54`, `:133-134`), or the last read of the order does not show it as one of them with a named peer.
+  /// The robot is neither the maker nor the taker of the order (error 6001, `:53-54`, `:133-134`), or the last read of the order does not show it as one of them with a named peer ([ChatRefused.fromLastRead]).
   notParticipant,
 
-  /// The order is not at a status where the coordinator takes this request (error 6002, `:56-62`, `:136-137`), or the last read is not at one: reading at 9, 10, 11 and 16, posting at 9 and 10.
+  /// The order is not at a status where the coordinator takes this request (error 6002, `:56-62`, `:136-137`), or the last read is not at one ([ChatRefused.fromLastRead]): reading at 9, 10, 11 and 16, posting at 9 and 10.
   notInChat,
 
-  /// The coordinator's serializer refused the body of a post (error 6003, `:121-124`, `chat/serializers.py:279-302`), which a body built by this package always passes.
+  /// The coordinator's serializer refused the body of a post (error 6003, `:121-124`, `chat/serializers.py:61-84`), which a body built by this package always passes.
   invalidRequest,
 
   /// The offset is not between 0 and `ChatPage.maxIndex`: refused by this package before anything is sent.
@@ -631,16 +631,37 @@ enum ChatRefusal {
 
   /// The message was encrypted and signed by another robot's key than the one posting it: refused by this package before anything is sent.
   messageOfAnotherRobot,
-
-  /// The encrypted message would take more than `OutgoingChatMessage.maxWireChars` characters on the wire: refused by this package when encrypting it.
-  messageTooLong,
 }
 
-/// A request about the chat of an order was refused for [reason]: nothing was stored (see `CoordinatorClient.postChat`).
+/// A request about the chat of an order was refused for [reason], by the coordinator or by this package (see `CoordinatorClient.postChat`).
 ///
+/// From the coordinator, it is the coordinator's word that nothing was stored: the reference answers each of these codes before it stores a message (`chat/views.py:121-137`).
+/// From this package, nothing was sent.
 /// Only the code is read, never the coordinator's text.
 final class ChatRefused extends CoordinatorOrderFailure {
   final ChatRefusal reason;
 
-  const ChatRefused(this.reason);
+  /// Whether this package refused from the last read of the order, sending nothing, rather than the coordinator: [ChatRefusal.notParticipant] and [ChatRefusal.notInChat] decided locally.
+  ///
+  /// A last read may be stale: after such a refusal, read the order again and decide from the fresh read before telling the user anything.
+  final bool fromLastRead;
+
+  const ChatRefused(this.reason, {this.fromLastRead = false});
+}
+
+/// A chat page is larger than `CoordinatorReadBounds.chatBytes` and was not read: the messages above [offset] take more than the bound.
+///
+/// Nothing bounds what a peer posts (`chat/serializers.py:62-65`), so a peer can make the history too large to read from the start: the chat is then not readable from [offset], and this package has no way to read part of it, since the coordinator answers every message above an offset at once and takes no upper bound.
+/// A later offset reads only the messages above it, those of the order's `chat_last_index` and below left out: never move to it without the user's explicit choice, since the earlier messages may hold the payment details.
+/// After a post, it is the cause of an outcome unknown: the message may have been stored.
+final class ChatPageTooLarge extends CoordinatorOrderFailure {
+  /// The offset the page was asked from.
+  final int offset;
+
+  const ChatPageTooLarge(this.offset);
+}
+
+/// The text of a chat message takes more than `OutgoingChatMessage.maxTextBytes` bytes (`OutgoingChatMessage.textBytesOf`): its encrypted message would not fit in the 5,000 characters this package posts, and it was refused before anything was encrypted.
+final class PgpChatTextTooLong extends PgpFailure {
+  const PgpChatTextTooLong();
 }

@@ -13,14 +13,39 @@ import 'package:robosats/src/robot_pgp_key.dart';
 ///
 /// Only `UnlockedRobotPgpKey.encryptChatMessageToPost` makes one, so that no plaintext and no text of unknown origin can be posted by mistake.
 /// It is encrypted to the robot itself and to one peer key, and signed by the robot, as the official client's `encryptMessage` (`frontend/src/pgp/index.ts:39-62`, commit ff1998c).
-/// Posting the same value twice posts the same ciphertext twice, which a reader can tell from two messages ([ChatPage.indexOf]).
+/// Posting the same value twice posts the same ciphertext twice, which a reader can tell from two messages ([ChatPage.indexOf], [ChatPage.repeatsACiphertext]).
 @immutable
 final class OutgoingChatMessage {
-  /// The most characters this package posts in `PGP_message`: the `max_length` the coordinator's model declares (`chat/models.py:389`).
+  /// The most characters this package posts in `PGP_message`: the `max_length` the coordinator's model declares (`chat/models.py:87`).
   ///
-  /// The reference coordinator does not enforce it (its serializer declares the field without it, `chat/serializers.py:280-283`, and the column is a PostgreSQL `text`), nor does the official client; this package keeps to it all the same.
-  /// A message of a robot's key to one peer takes 574 characters for an empty text and about 1.34 more per byte of UTF-8 text: 3,250 bytes always fit, 3,300 never do (measured in the tests).
+  /// The reference coordinator does not enforce it (its serializer declares the field again without it, `chat/serializers.py:62-65`, and the column is a PostgreSQL `text`), nor does the official client; this package keeps to it all the same.
   static const maxWireChars = 5000;
+
+  /// The most bytes of text a message may hold, counted by [textBytesOf]: a text within it always fits in [maxWireChars].
+  ///
+  /// A message of a robot's key to one peer takes 574 characters for an empty text and about 1.36 more per byte (base64, and a line feed every 60 characters): 3,250 bytes take 4,982 characters, 3,300 take 5,051 (measured in the tests).
+  /// The signature's two integers can only make a message a few characters shorter, never longer, so the bound holds for every message.
+  static const maxTextBytes = 3250;
+
+  /// The bytes [plaintext] takes inside a message, compared with [maxTextBytes]: its UTF-8 bytes, a line feed counting two since a text signature covers it as CR LF (`canonicalizeEOL` of OpenPGP.js), one already preceded by a carriage return counting one.
+  ///
+  /// For a screen: show how much is left before the text is refused.
+  static int textBytesOf(String plaintext) {
+    var bytes = 0;
+    var previous = 0;
+    for (final rune in plaintext.runes) {
+      bytes += rune < 0x80
+          ? 1
+          : rune < 0x800
+          ? 2
+          : rune < 0x10000
+          ? 3
+          : 4;
+      if (rune == 0x0a && previous != 0x0d) bytes++;
+      previous = rune;
+    }
+    return bytes;
+  }
 
   /// The armored `PGP MESSAGE`, with line feeds, as this package armors it: no armor header, no backslash, no carriage return.
   final String armored;
@@ -43,9 +68,9 @@ final class OutgoingChatMessage {
 
   /// The message armored as [armored], encrypted by the robot [sender] to the key of fingerprint [peerFingerprint].
   ///
-  /// Fails with [ChatRefused] of [ChatRefusal.messageTooLong] when it would take more than [maxWireChars] on the wire, and with [PgpArmorMalformed] when [armored] holds a backslash or a carriage return, which the one-line form could not carry both ways: neither happens with the armor of this package.
+  /// Fails with [PgpArmorMalformed] when [armored] holds a backslash or a carriage return, which the one-line form could not carry both ways, and with [PgpChatTextTooLong] when it would take more than [maxWireChars] on the wire: neither happens with the armor of this package and a text within [maxTextBytes], which `UnlockedRobotPgpKey.encryptChatMessageToPost` checks before encrypting.
   @internal
-  static Result<OutgoingChatMessage, RobosatsFailure> fromArmored(
+  static Result<OutgoingChatMessage, PgpFailure> fromArmored(
     String armored, {
     required RobotHashId sender,
     required String peerFingerprint,
@@ -54,9 +79,7 @@ final class OutgoingChatMessage {
       return const Err(PgpArmorMalformed());
     }
     final wire = pgpArmorToWire(armored);
-    if (wire.length > maxWireChars) {
-      return const Err(ChatRefused(ChatRefusal.messageTooLong));
-    }
+    if (wire.length > maxWireChars) return const Err(PgpChatTextTooLong());
     return Ok(OutgoingChatMessage._(armored, wire, sender, peerFingerprint));
   }
 
@@ -133,13 +156,18 @@ final class ChatMessage {
 /// The peer's public key as a chat page gives it (`peer_pubkey`, `chat/views.py:84,91,110`): the coordinator's word, which a coordinator can replace.
 ///
 /// Pin the key of the first page for the trade and compare every later one with it (`PgpPublicKey` equality, or its fingerprint): this package keeps nothing from one page to the next.
+/// No check here can tell that a key is the peer's: a coordinator that gives each side, from the first page, a key it made in the other's name can decrypt, read, change, encrypt again and sign again every message both ways, and every message then verifies.
+/// Only comparing the keys outside the app, with the peer, tells that: the official client's « Don't trust, verify » dialog shows both public keys for that (`frontend/src/components/Dialogs/AuditPGP.tsx:107-151`).
+/// What it needs is here: the peer's [PgpPublicKey.armored] and [PgpPublicKey.fingerprint] from [ChatPeerKeyOfPeer.key], and this robot's own from `RobotPgpKey.publicKey` (the robot read back, or `UnlockedRobotPgpKey.key`).
 sealed class ChatPeerKey {
   const ChatPeerKey();
 }
 
-/// A key named after the peer of the last read of the order (`RoboSats ID <hash id>`, the user ID the official client gives a robot's key, `frontend/src/pgp/index.ts:26`).
+/// A key whose user ID is exactly `RoboSats ID ` followed by the hash id of the peer of the last read of the order, in lowercase hexadecimal: the only form the official client writes (`userIDs: [{ name: 'RoboSats ID ' + sha256(sha256(token)) }]`, `frontend/src/pgp/index.ts:26`, which OpenPGP.js writes as the name alone), and the one the reference's own test robots carry (`tests/robots/*/pub_key`); no other client in the reference makes robot keys.
 ///
-/// A coordinator knows the peer's hash id and can make such a key itself: only pinning tells a key replaced after the first page.
+/// What the name proves: the coordinator did not hand over a key that is plainly another robot's or its own under its own name.
+/// What it does not prove: that the key is the peer's.
+/// The hash id comes from the coordinator too, and a coordinator can make a key in the peer's name: pinning tells a key replaced after the first page, and only comparing the keys outside the app tells a key replaced from the first page (see [ChatPeerKey]).
 final class ChatPeerKeyOfPeer extends ChatPeerKey {
   final PgpPublicKey key;
 
@@ -180,16 +208,14 @@ final class ChatPeerKeyUnreadable extends ChatPeerKey {
 /// The messages of the chat of an order above an offset, with the peer's connection and key: the answer of `GET /api/chat/` and of `POST /api/chat/` with an offset (`chat/views.py:107-113`, `:194-214`).
 ///
 /// [messages] are as the coordinator sent them, in its order, none dropped: the coordinator chooses which and in which order, and the reference's own numbering is not reliable either.
-/// Its query has no `order_by` (`chat/models.py:358-360`), and it numbers a post `count + 1` without a lock or a unique constraint (`chat/views.py:158-166`), so two posts at once can share an index and the next one skips an index.
-/// So the order, a repeated index and a gap are facts given to the caller ([inIndexOrder], [repeatsAnIndex], [isContiguous]), not reasons to refuse the page: key messages by index, keep the first one seen, as the official client does (`EncryptedApiChat/index.tsx:174-178`), and say when a page is not contiguous.
-/// What no honest coordinator sends refuses the whole page with [CoordinatorResponseMalformed]: a field of the wrong type, an index not above the offset or above [maxIndex], a time out of range, a nickname that no robot can have, more than [maxMessages] messages.
-/// What a peer chooses never refuses a page, so that a peer cannot stop this robot from reading the chat: the text of a message, whatever its length or form, is classified per message ([ChatMessageContent]).
+/// Its model has no `ordering` (`chat/models.py:56-58`) and its query no `order_by` (`chat/views.py:64`), and it numbers a post `count + 1` without a lock or a unique constraint (`chat/views.py:158-166`), so two posts at once can share an index and the next one skips an index.
+/// So the order, a repeated index, a gap and a repeated message are facts given to the caller ([inIndexOrder], [repeatsAnIndex], [isContiguous], [contiguousIndex], [repeatsACiphertext]), not reasons to refuse the page: key messages by index, keep the first one seen, as the official client does (`EncryptedApiChat/index.tsx:174-178`), and say when a page is not contiguous or shows a message again.
+/// What no honest coordinator sends refuses the whole page with [CoordinatorResponseMalformed]: a field of the wrong type, an index not above the offset or above [maxIndex], a time out of range, a nickname that no robot can have.
+/// What a peer chooses never refuses a page, so that a peer cannot stop this robot from reading the chat: the text of a message, whatever its length or form, is classified per message ([ChatMessageContent]), and the number of messages is not bounded but by the size of the body.
+/// The size is the one thing a peer can push past a bound: a page over `CoordinatorReadBounds.chatBytes` is [ChatPageTooLarge], for the caller to say so (see there).
 @immutable
 final class ChatPage {
-  /// The most messages a page may hold: a trade's chat holds tens.
-  static const maxMessages = 2000;
-
-  /// The largest index: the coordinator's `PositiveIntegerField` on PostgreSQL (`chat/models.py:373`).
+  /// The largest index: the coordinator's `PositiveIntegerField` on PostgreSQL (`chat/models.py:71`).
   static const maxIndex = 2147483647;
 
   /// The offset the page was asked from: every index is above it.
@@ -210,9 +236,9 @@ final class ChatPage {
     required this.messages,
   });
 
-  /// The highest index of the page, or [offset] when it has none: the offset to ask the next page from.
+  /// The highest index of the page, or [offset] when it has none.
   ///
-  /// It counts every message, those whose text was dropped included, so that a message this package cannot read is not asked for again and again (the official client asks again for every message it did not decrypt).
+  /// Not the offset to poll from after a gap: one message at index 2,147,483,647 would make every later index of an honest coordinator fall at or below it, and nothing more would ever be read; poll from [contiguousIndex].
   int get lastIndex {
     var last = offset;
     for (final message in messages) {
@@ -244,9 +270,35 @@ final class ChatPage {
     return true;
   }
 
+  /// The highest index reached from [offset] without a gap, whatever the order of the page: `offset + n` when every index from `offset + 1` to `offset + n` is in the page and `offset + n + 1` is not; [offset] when `offset + 1` is missing.
+  ///
+  /// It counts every message, those whose text was dropped included, so that a message this package cannot read is not asked for again and again (the official client asks again for every message it did not decrypt).
+  /// The offset to poll from next: messages beyond a gap are read again at each poll until the gap fills, or for good when the gap is one the reference's numbering skipped.
+  int get contiguousIndex {
+    final indexes = {for (final message in messages) message.index};
+    var reached = offset;
+    while (indexes.contains(reached + 1)) {
+      reached++;
+    }
+    return reached;
+  }
+
+  /// Whether two messages of the page carry exactly the same encrypted text: one message shown again at another index, by a coordinator that replays it, or sent again by its sender after a post whose outcome was unknown.
+  ///
+  /// The indexes say nothing of it: a message shown again at a new index leaves the page in order and contiguous.
+  /// Across pages, the caller compares the texts it keeps ([ChatMessage.armored]).
+  bool get repeatsACiphertext {
+    final seen = <String>{};
+    for (final message in messages) {
+      final armored = message.armored;
+      if (armored != null && !seen.add(armored)) return true;
+    }
+    return false;
+  }
+
   /// The index of the first message of the page attributed to this robot whose text is exactly [message], or `null`.
   ///
-  /// After a post whose outcome is unknown, it tells whether a later page holds the message: a coordinator stores a post's text as it was sent.
+  /// After a post whose outcome is unknown, an index found means the coordinator shows the message as stored; `null` proves nothing: it means not confirmed, never not sent, since a coordinator can leave the message out of this robot's pages and still show it to the peer, give it the peer's nickname, or change one character of it.
   int? indexOf(OutgoingChatMessage message) {
     for (final candidate in messages) {
       if (candidate.sender == ChatSender.self &&
@@ -280,7 +332,7 @@ final class ChatPage {
       return Err(CoordinatorResponseMalformed(field));
     }
     final list = body['messages'];
-    if (list is! List<Object?> || list.length > maxMessages) {
+    if (list is! List<Object?>) {
       return const Err(CoordinatorResponseMalformed('messages'));
     }
     final peer = lastRead.isMaker ? lastRead.taker : lastRead.maker;

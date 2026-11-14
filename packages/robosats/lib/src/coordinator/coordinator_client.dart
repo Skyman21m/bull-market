@@ -885,9 +885,10 @@ final class CoordinatorClient {
   /// `GET /api/chat/?order_id=&offset=`, the messages of the chat of the order of [lastRead] above [offset], as its coordinator gives them to the robot [identity], with the peer's connection and key.
   ///
   /// The request is the reference client's poll (`frontend/src/components/TradeBox/EncryptedChat/EncryptedApiChat/index.tsx:133-136`, commit ff1998c), with the robot's short header and session; the coordinator answers it for the maker and the taker at 9, 10, 11 and 16 (`chat/views.py:40-113`).
-  /// The coordinator, the network and the order come from [lastRead], which must be this robot's read, show it as the maker or the taker with a named peer, and be at one of those statuses: otherwise nothing is sent and the failure is [OrderReadElsewhere] or a [ChatRefused] ([ChatRefusal.notParticipant], [ChatRefusal.notInChat]); an [offset] outside 0 to [ChatPage.maxIndex] is [ChatRefusal.offsetOutOfRange].
+  /// The coordinator, the network and the order come from [lastRead], which must be this robot's read, show it as the maker or the taker with a named peer, and be at one of those statuses: otherwise nothing is sent and the failure is [OrderReadElsewhere] or a [ChatRefused] with [ChatRefused.fromLastRead] ([ChatRefusal.notParticipant], [ChatRefusal.notInChat]: read the order again before telling the user); an [offset] outside 0 to [ChatPage.maxIndex] is [ChatRefusal.offsetOutOfRange].
   /// See [ChatPage] for what is read, what refuses the page and what is only stated; the peer's key is the coordinator's word: pin it for the trade.
   /// The coordinator's refusals are [ChatRefused] kinds (6000 to 6002) and the authentication's ([RobotUnknown], [RobotCredentialsRejected]), never its text; an unknown order is a `500` at the reference (`chat/views.py:51`), read as [CoordinatorUnexpectedStatus].
+  /// A page over [CoordinatorReadBounds.chatBytes] is [ChatPageTooLarge], which a peer can cause by posting enough: see there for what the caller can do.
   /// A `GET`, so the transport may send it again after a connection failure.
   /// Poll it through the app's robot request limiter, as every request of a robot.
   Future<Result<ChatPage, CoordinatorFailure>> fetchChat({
@@ -915,7 +916,7 @@ final class CoordinatorClient {
         authorization: identity.authorizationHeader(),
       ),
     );
-    return switch (_chatAnswer(response)) {
+    return switch (_chatAnswer(_chatPageBounded(response, offset))) {
       Err(:final failure) => Err(failure),
       Ok(:final value) => ChatPage.parse(
         value,
@@ -930,11 +931,12 @@ final class CoordinatorClient {
   ///
   /// The body is the reference client's (`frontend/src/components/TradeBox/EncryptedChat/index.tsx:259-267`, commit ff1998c), `PGP_message` being [OutgoingChatMessage.wire], with the robot's short header and session.
   /// [offset] is always sent, so the answer is a [ChatPage] (`chat/views.py:194-214`): pass the last index read, and [ChatPage.indexOf] gives the index the coordinator gave the message when the page holds it.
-  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), when [message] was encrypted by another robot's key ([ChatRefusal.messageOfAnotherRobot]), when [lastRead] does not show this robot as the maker or the taker with a named peer ([ChatRefusal.notParticipant]) or is not at 9 or 10, the statuses where the coordinator stores a message ([ChatRefusal.notInChat], `chat/views.py:136-137`), or when [offset] is outside 0 to [ChatPage.maxIndex].
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), when [message] was encrypted by another robot's key ([ChatRefusal.messageOfAnotherRobot]), when [lastRead] does not show this robot as the maker or the taker with a named peer ([ChatRefusal.notParticipant]) or is not at 9 or 10, the statuses where the coordinator stores a message ([ChatRefusal.notInChat], `chat/views.py:136-137`), both with [ChatRefused.fromLastRead] (read the order again before telling the user), or when [offset] is outside 0 to [ChatPage.maxIndex].
   ///
-  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [ChatRefused] kind (6000 to 6003) or one of the authentication's: each comes before the message is stored (`chat/views.py:121-137`).
+  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [ChatRefused] kind (6000 to 6003) or one of the authentication's: the reference answers each before it stores the message (`chat/views.py:121-137`), so it is the coordinator's word that nothing was stored.
   /// Every other failure is an [OrderActionOutcomeUnknown]: the message may have been stored, since the reference stores it before it notifies and answers, and a `500` after storing is possible (`chat/views.py:158-192`, `:203`).
-  /// The caller then reads the chat again from the offset it posted with, and looks for the message with [ChatPage.indexOf] before it shows it as failed or offers to send it again; if it sends it again, it sends this same value, so that a reader can tell a duplicate by its text.
+  /// The caller then reads the chat again from the offset it posted with and looks for the message with [ChatPage.indexOf]: found, the coordinator shows it as stored; not found, it is not confirmed, never « not sent » nor « failed », since a hostile coordinator can keep it out of this robot's pages and still deliver it to the peer.
+  /// If the user sends it again, send this same value, so that a reader can tell the duplicate by its text ([ChatPage.repeatsACiphertext]).
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included; the transport never retries a request that is not a `GET`.
   Future<Result<ChatPage, OrderActionFailure>> postChat({
@@ -979,7 +981,7 @@ final class CoordinatorClient {
       ),
       catchErrors: true,
     );
-    return switch (_chatAnswer(response)) {
+    return switch (_chatAnswer(_chatPageBounded(response, offset))) {
       Err(:final failure) => Err(_afterChatPost(failure)),
       Ok(:final value) => ChatPage.parse(
         value,
@@ -1012,10 +1014,10 @@ final class CoordinatorClient {
     if (!lastRead.wasReadBy(identity)) return const OrderReadElsewhere();
     final peer = lastRead.isMaker ? lastRead.taker : lastRead.maker;
     if (!(lastRead.isMaker || lastRead.isTaker) || peer == null) {
-      return const ChatRefused(ChatRefusal.notParticipant);
+      return const ChatRefused(ChatRefusal.notParticipant, fromLastRead: true);
     }
     if (!statuses.contains(lastRead.status)) {
-      return const ChatRefused(ChatRefusal.notInChat);
+      return const ChatRefused(ChatRefusal.notInChat, fromLastRead: true);
     }
     if (offset < 0 || offset > ChatPage.maxIndex) {
       return const ChatRefused(ChatRefusal.offsetOutOfRange);
@@ -1037,6 +1039,15 @@ final class CoordinatorClient {
         CoordinatorTransportBusy() => OrderActionRefused(failure),
         _ => OrderActionOutcomeUnknown(failure),
       };
+
+  /// [response], with a body over [CoordinatorReadBounds.chatBytes] as [ChatPageTooLarge] for [offset] rather than the transport's [CoordinatorResponseTooLarge].
+  static Result<CoordinatorResponse, CoordinatorFailure> _chatPageBounded(
+    Result<CoordinatorResponse, CoordinatorFailure> response,
+    int offset,
+  ) => switch (response) {
+    Err(failure: CoordinatorResponseTooLarge()) => Err(ChatPageTooLarge(offset)),
+    _ => response,
+  };
 
   /// The decoded JSON of a `200` answer about a chat, or why the coordinator refused.
   static Result<Object?, CoordinatorFailure> _chatAnswer(
