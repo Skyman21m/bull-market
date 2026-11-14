@@ -200,13 +200,13 @@ class StoredTradeTerms extends Table {
     // Taking a sell order makes a buyer, taking a buy order a seller.
     "CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller'))",
     'CHECK (currency_id > 0)',
-    // The doubles as `TradeTerms` holds them: real numbers, finite, in the bounds its checks give (a text or an infinity is refused; SQLite stores no NaN).
-    "CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1e308)",
-    "CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1e308)",
+    // The doubles as `TradeTerms` holds them: real numbers, finite, in the bounds its checks give (a text or an infinity is refused; SQLite stores no NaN); the upper bound is written out, since drift's snapshot reads an exponent as 0.
+    "CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000)",
+    "CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000)",
     'CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000)',
     "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
     'CHECK (escrow_seconds BETWEEN 1800 AND 36000)',
-    "CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1e308)",
+    "CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000)",
     "CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01)",
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];

@@ -360,7 +360,10 @@ void main() {
         // And through the robot's places only: the file holds a limiter.
         expect(
           references[path],
-          anyOf(contains('type RobotRequestLimiter'), contains('type RobotRequests')),
+          anyOf(
+            contains('type RobotRequestLimiter'),
+            contains('type RobotRequests'),
+          ),
           reason: path,
         );
       }
@@ -594,10 +597,10 @@ void main() {
           expect(referring((r) => r == member), {cubit}, reason: member);
         }
         // And the take (#87), which puts the fresh robot it reserved on the order's coordinator before its pending take: its first contact, through the same use case.
-        expect(
-          referring((r) => r == 'PutRobotOnCoordinatorUsecase.execute'),
-          {cubit, _takeOrderUseCase},
-        );
+        expect(referring((r) => r == 'PutRobotOnCoordinatorUsecase.execute'), {
+          cubit,
+          _takeOrderUseCase,
+        });
         // The cubit, its states and every widget reach a robot request only through those use cases: never the use case that binds, the coordinator client, the limiter, the bindings, the database, a credential or a raw client.
         final panel = [
           for (final path in references.keys)
@@ -962,135 +965,146 @@ class RobotCoordinatorCubit {
     );
   });
 
-  test('the terms and trails of the trades are written by their repository alone, one statement each, a trail only after whyNotReplace', () {
-    // No other file holds SQL that writes either table, but the triggers as drift copies them (#87).
-    expect(
-      where(
-        (facts) => facts.strings.any(
+  test(
+    'the terms and trails of the trades are written by their repository alone, one statement each, a trail only after whyNotReplace',
+    () {
+      // No other file holds SQL that writes either table, but the triggers as drift copies them (#87).
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) =>
+                RegExp(
+                  r'\b(into|update|delete\s+from)\s+"?trade_(terms|trails)\b',
+                  caseSensitive: false,
+                ).hasMatch(text) &&
+                !_driftTriggers.contains(_squeezed(text)),
+          ),
+        ),
+        {'lib/src/data/trade_trail_repository_impl.dart'},
+      );
+      // The tables are named by the database, its repository and drift's code only.
+      expect(
+        where(
+          (facts) =>
+              facts.names.contains('storedTradeTerms') ||
+              facts.names.contains('storedTradeTrails'),
+        ),
+        {
+          'lib/src/data/trade_trail_repository_impl.dart',
+          if (File('lib/src/data/p2p_database.g.dart').existsSync())
+            'lib/src/data/p2p_database.g.dart',
+        },
+      );
+      final trails =
+          libraries['lib/src/data/trade_trail_repository_impl.dart'] ??
+          fail('no trails');
+      expect(
+        trails.invoked.intersection({
+          'delete',
+          'deleteWhere',
+          'deleteAll',
+          'update',
+          'replace',
+          'write',
+          'into',
+          'batch',
+          'customInsert',
+          'customUpdate',
+          'customStatement',
+          'insertOnConflictUpdate',
+          'insertAllOnConflictUpdate',
+          'transaction',
+        }),
+        isEmpty,
+      );
+      for (final text in trails.strings) {
+        expect(
+          RegExp(
+            r'\b(delete|drop|replace|alter|pragma)\b',
+            caseSensitive: false,
+          ).hasMatch(text),
+          isFalse,
+          reason: text,
+        );
+      }
+      // Its three writes, as written: the terms and a first trail inserted once, a later trail only over the one compared, every column of it.
+      expect(
+        trails.constants['_recordTermsSql'],
+        'INSERT INTO trade_terms (key_fingerprint, robot_index, version, '
+        'network, coordinator_alias, order_id, role, order_type, currency_id, '
+        'amount, is_range, premium_percent, explicit_satoshis, '
+        'bond_size_percent, escrow_seconds, book_price, taker_fee) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trails.constants['_insertTrailSql'],
+        'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
+        'network, coordinator_alias, order_id, role, position, read_at, '
+        'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
+        'bond_step_deadline, breached, history_unknown) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trails.constants['_replaceTrailSql'],
+        'UPDATE trade_trails SET version = ?, position = ?, read_at = ?, '
+        'bond_hash = ?, escrow_hash = ?, deadline = ?, bond_step_seen_at = ?, '
+        'bond_step_deadline = ?, breached = ?, history_unknown = ? '
+        'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
+        'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
+        'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
+        'AND escrow_hash IS ? AND deadline IS ? AND bond_step_seen_at IS ? '
+        'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
+        'RETURNING robot_index',
+      );
+      final pinned = [
+        for (final name in [
+          '_recordTermsSql',
+          '_insertTrailSql',
+          '_replaceTrailSql',
+        ])
+          trails.constants[name] ?? fail('no $name'),
+      ];
+      expect(
+        trails.strings.where(
           (text) =>
               RegExp(
-                r'\b(into|update|delete\s+from)\s+"?trade_(terms|trails)\b',
+                r'\b(insert|update)\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_driftTriggers.contains(_squeezed(text)),
+              !pinned.any((statement) => statement.contains(text)),
         ),
-      ),
-      {'lib/src/data/trade_trail_repository_impl.dart'},
-    );
-    // The tables are named by the database, its repository and drift's code only.
-    expect(
-      where(
-        (facts) =>
-            facts.names.contains('storedTradeTerms') ||
-            facts.names.contains('storedTradeTrails'),
-      ),
-      {
-        'lib/src/data/trade_trail_repository_impl.dart',
-        if (File('lib/src/data/p2p_database.g.dart').existsSync())
-          'lib/src/data/p2p_database.g.dart',
-      },
-    );
-    final trails =
-        libraries['lib/src/data/trade_trail_repository_impl.dart'] ??
-        fail('no trails');
-    expect(
-      trails.invoked.intersection({
-        'delete',
-        'deleteWhere',
-        'deleteAll',
-        'update',
-        'replace',
-        'write',
-        'into',
-        'batch',
-        'customInsert',
-        'customUpdate',
-        'customStatement',
-        'insertOnConflictUpdate',
-        'insertAllOnConflictUpdate',
-        'transaction',
-      }),
-      isEmpty,
-    );
-    for (final text in trails.strings) {
-      expect(
-        RegExp(r'\b(delete|drop|replace|alter|pragma)\b', caseSensitive: false)
-            .hasMatch(text),
-        isFalse,
-        reason: text,
+        isEmpty,
       );
-    }
-    // Its three writes, as written: the terms and a first trail inserted once, a later trail only over the one compared, every column of it.
-    expect(
-      trails.constants['_recordTermsSql'],
-      'INSERT INTO trade_terms (key_fingerprint, robot_index, version, '
-      'network, coordinator_alias, order_id, role, order_type, currency_id, '
-      'amount, is_range, premium_percent, explicit_satoshis, '
-      'bond_size_percent, escrow_seconds, book_price, taker_fee) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
-      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
-      'RETURNING robot_index',
-    );
-    expect(
-      trails.constants['_insertTrailSql'],
-      'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
-      'network, coordinator_alias, order_id, role, position, read_at, '
-      'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
-      'bond_step_deadline, breached, history_unknown) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
-      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
-      'RETURNING robot_index',
-    );
-    expect(
-      trails.constants['_replaceTrailSql'],
-      'UPDATE trade_trails SET version = ?, position = ?, read_at = ?, '
-      'bond_hash = ?, escrow_hash = ?, deadline = ?, bond_step_seen_at = ?, '
-      'bond_step_deadline = ?, breached = ?, history_unknown = ? '
-      'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
-      'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
-      'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
-      'AND escrow_hash IS ? AND deadline IS ? AND bond_step_seen_at IS ? '
-      'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
-      'RETURNING robot_index',
-    );
-    final pinned = [
-      for (final name in ['_recordTermsSql', '_insertTrailSql', '_replaceTrailSql'])
-        trails.constants[name] ?? fail('no $name'),
-    ];
-    expect(
-      trails.strings.where(
-        (text) =>
-            RegExp(r'\b(insert|update)\b', caseSensitive: false).hasMatch(text) &&
-            !pinned.any((statement) => statement.contains(text)),
-      ),
-      isEmpty,
-    );
-    // The terms by `recordTerms` alone; the trails by `storeTrail` alone, which asks `whyNotReplace` of the stored trail before either write.
-    final writes = trails.calls.where(
-      (call) => call.startsWith('customWriteReturning('),
-    );
-    expect(writes, hasLength(3));
-    expect(
-      trails.callsByMethod['recordTerms']?.where(
+      // The terms by `recordTerms` alone; the trails by `storeTrail` alone, which asks `whyNotReplace` of the stored trail before either write.
+      final writes = trails.calls.where(
         (call) => call.startsWith('customWriteReturning('),
-      ),
-      [startsWith('customWriteReturning(_recordTermsSql,')],
-    );
-    final store = trails.callsByMethod['storeTrail'] ?? fail('no storeTrail');
-    final asked = store.indexWhere((call) => call.startsWith('whyNotReplace('));
-    final firstWrite = store.indexWhere(
-      (call) => call.startsWith('customWriteReturning('),
-    );
-    expect(asked, isNonNegative);
-    expect(firstWrite, greaterThan(asked));
-    expect(
-      store.where((call) => call.startsWith('customWriteReturning(')),
-      [
+      );
+      expect(writes, hasLength(3));
+      expect(
+        trails.callsByMethod['recordTerms']?.where(
+          (call) => call.startsWith('customWriteReturning('),
+        ),
+        [startsWith('customWriteReturning(_recordTermsSql,')],
+      );
+      final store = trails.callsByMethod['storeTrail'] ?? fail('no storeTrail');
+      final asked = store.indexWhere(
+        (call) => call.startsWith('whyNotReplace('),
+      );
+      final firstWrite = store.indexWhere(
+        (call) => call.startsWith('customWriteReturning('),
+      );
+      expect(asked, isNonNegative);
+      expect(firstWrite, greaterThan(asked));
+      expect(store.where((call) => call.startsWith('customWriteReturning(')), [
         startsWith('customWriteReturning(_insertTrailSql,'),
         startsWith('customWriteReturning(_replaceTrailSql,'),
-      ],
-    );
-  });
+      ]);
+    },
+  );
 
   test('nothing in the feature opens a database transaction', () {
     // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).

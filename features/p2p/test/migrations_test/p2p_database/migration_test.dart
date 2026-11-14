@@ -813,11 +813,7 @@ void main() {
     };
 
     // What schema 3 holds: a key drawn here, three bound robots, a pending take, a taken trade and a closed one.
-    final trades = [
-      (0, 41, null, null),
-      (1, 42, 20, null),
-      (2, 43, 20, 30),
-    ];
+    final trades = [(0, 41, null, null), (1, 42, 20, null), (2, 43, 20, 30)];
 
     late Directory directory;
     late File file;
@@ -944,7 +940,11 @@ void main() {
         await writeSchema3();
         final old = v3.DatabaseAtV3(NativeDatabase(file));
         final before = {
-          for (final table in ['garage_key_histories', 'robot_bindings', 'trades'])
+          for (final table in [
+            'garage_key_histories',
+            'robot_bindings',
+            'trades',
+          ])
             table: [
               for (final row
                   in await old
@@ -958,9 +958,7 @@ void main() {
         final first = P2pDatabase.open(() async => directory);
         final rows = await rowsOf(first);
         expect(await versionOf(first), 4);
-        expect({
-          for (final table in before.keys) table: rows[table],
-        }, before);
+        expect({for (final table in before.keys) table: rows[table]}, before);
         expect(rows['trade_terms'], isEmpty);
         expect(rows['trade_trails'], isEmpty);
         await first.validateDatabaseSchema();
@@ -980,66 +978,82 @@ void main() {
       },
     );
 
-    test('its open trades take terms and a trail, its closed one neither', () async {
-      await writeSchema3();
-      final database = P2pDatabase.open(() async => directory);
-      final records = TradeRecordRepositoryImpl(database, clock: () => testNow);
-      final trails = TradeTrailRepositoryImpl(database);
-      final active = switch (await records.watchActiveTrades(testnet).first) {
-        Ok(:final value) => value,
-        Err(:final failure) => fail('$failure'),
-      };
-      expect(active.map((record) => record.orderId), [41, 42]);
-      for (final record in active) {
-        expect(await trails.recordTerms(record, termsOf(record.orderId)), isA<Ok>());
-        expect(
-          await trails.storeTrail(
-            record,
-            TradeTrailRecord(
-              version: 1,
-              network: 'testnet',
-              coordinatorAlias: 'temple',
-              orderId: record.orderId,
-              role: 'buyer',
-              position: 'start',
-              readAtMicros: 15000,
-              bondHash: null,
-              escrowHash: null,
-              deadlineMicros: null,
-              bondStepSeenAtMicros: null,
-              bondStepDeadlineMicros: null,
-              breached: false,
-              historyUnknown: false,
-            ),
-          ),
-          isA<Ok<TrailStoreOutcome, P2pFailure>>(),
+    test(
+      'its open trades take terms and a trail, its closed one neither',
+      () async {
+        await writeSchema3();
+        final database = P2pDatabase.open(() async => directory);
+        final records = TradeRecordRepositoryImpl(
+          database,
+          clock: () => testNow,
         );
-      }
-      // The closed trade, written by hand with schema 3's own columns: the database refuses terms for it.
-      await expectLater(
-        database.customStatement(
-          "INSERT INTO trade_terms VALUES (?, 2, 1, 'testnet', 'temple', 43, "
-          "'buyer', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175)",
-          [drawn.hex],
-        ),
-        throwsA(predicate((error) => '$error'.contains('SqliteException(1811)'))),
-      );
-      await database.close();
-    });
+        final trails = TradeTrailRepositoryImpl(database);
+        final active = switch (await records.watchActiveTrades(testnet).first) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(active.map((record) => record.orderId), [41, 42]);
+        for (final record in active) {
+          expect(
+            await trails.recordTerms(record, termsOf(record.orderId)),
+            isA<Ok>(),
+          );
+          expect(
+            await trails.storeTrail(
+              record,
+              TradeTrailRecord(
+                version: 1,
+                network: 'testnet',
+                coordinatorAlias: 'temple',
+                orderId: record.orderId,
+                role: 'buyer',
+                position: 'start',
+                readAtMicros: 15000,
+                bondHash: null,
+                escrowHash: null,
+                deadlineMicros: null,
+                bondStepSeenAtMicros: null,
+                bondStepDeadlineMicros: null,
+                breached: false,
+                historyUnknown: false,
+              ),
+            ),
+            isA<Ok<TrailStoreOutcome, P2pFailure>>(),
+          );
+        }
+        // The closed trade, written by hand with schema 3's own columns: the database refuses terms for it.
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trade_terms VALUES (?, 2, 1, 'testnet', 'temple', 43, "
+            "'buyer', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175)",
+            [drawn.hex],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('SqliteException(1811)')),
+          ),
+        );
+        await database.close();
+      },
+    );
 
-    test('a file migrated holds the same objects as a new file of schema 4', () async {
-      final freshDirectory = await Directory.systemTemp.createTemp('p2p-fresh-');
-      addTearDown(() => freshDirectory.delete(recursive: true));
-      final fresh = P2pDatabase.open(() async => freshDirectory);
-      final expected = await objectsOf(fresh);
-      await fresh.close();
-      expect(expected.keys, unorderedEquals(_schema4Objects));
+    test(
+      'a file migrated holds the same objects as a new file of schema 4',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await objectsOf(fresh);
+        await fresh.close();
+        expect(expected.keys, unorderedEquals(_schema4Objects));
 
-      await writeSchema3();
-      final migrated = P2pDatabase.open(() async => directory);
-      expect(await objectsOf(migrated), expected);
-      await migrated.close();
-    });
+        await writeSchema3();
+        final migrated = P2pDatabase.open(() async => directory);
+        expect(await objectsOf(migrated), expected);
+        await migrated.close();
+      },
+    );
 
     test(
       'a step that stopped after any of its parts runs again over the file it left',

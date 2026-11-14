@@ -33,7 +33,10 @@ void main() {
     },
     Err(:final failure) => throw StateError('$failure'),
   };
-  final temple = switch (CoordinatorIdentity.of(coordinator('temple'), testnet)) {
+  final temple = switch (CoordinatorIdentity.of(
+    coordinator('temple'),
+    testnet,
+  )) {
     final identity? => identity,
     null => throw StateError('temple is not on testnet'),
   };
@@ -174,7 +177,10 @@ void main() {
   group('the terms', () {
     test('are written once, read back as they were, and never again', () async {
       final trade = await pendingTake();
-      expect(await historyOf(trade), const StoredTradeHistory(terms: null, trail: null));
+      expect(
+        await historyOf(trade),
+        const StoredTradeHistory(terms: null, trail: null),
+      );
 
       expect(await trails.recordTerms(trade, termsOf()), isA<Ok>());
       expect((await historyOf(trade)).terms, termsOf());
@@ -186,22 +192,25 @@ void main() {
       expect((await historyOf(trade)).terms, termsOf());
     });
 
-    test('of another order, or of a closed trade, are refused by the database', () async {
-      final trade = await pendingTake();
-      expect(
-        await trails.recordTerms(trade, termsOf(orderId: 8)),
-        refusedWith<P2pStorageFailure>(),
-      );
-      final closed = switch (await trades.closeTrade(trade)) {
-        Ok(:final value) => value,
-        Err(:final failure) => fail('$failure'),
-      };
-      expect(
-        await trails.recordTerms(closed, termsOf()),
-        refusedWith<P2pStorageFailure>(),
-      );
-      expect((await historyOf(trade)).terms, isNull);
-    });
+    test(
+      'of another order, or of a closed trade, are refused by the database',
+      () async {
+        final trade = await pendingTake();
+        expect(
+          await trails.recordTerms(trade, termsOf(orderId: 8)),
+          refusedWith<P2pStorageFailure>(),
+        );
+        final closed = switch (await trades.closeTrade(trade)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(
+          await trails.recordTerms(closed, termsOf()),
+          refusedWith<P2pStorageFailure>(),
+        );
+        expect((await historyOf(trade)).terms, isNull);
+      },
+    );
   });
 
   group('the trail', () {
@@ -235,172 +244,184 @@ void main() {
       expect((await historyOf(trade)).trail, locked);
     });
 
-    test('is never replaced as whyNotReplace refuses, and nothing is written', () async {
-      final bondStep = trailOf(
-        position: 'bondStep',
-        readAt: at(10),
-        bondHash: hashA,
-        bondStepSeenAt: at(10),
-        bondStepDeadline: at(200),
-        breached: true,
-      );
-      final trade = await recorded(bondStep);
-      for (final (label, trail, reason) in [
-        (
-          'an earlier read',
-          trailOf(
-            position: 'bondStep',
-            readAt: at(5),
-            bondHash: hashA,
-            bondStepSeenAt: at(5),
-            bondStepDeadline: at(200),
-            breached: true,
-          ),
-          TrailReplacementRefusal.earlierRead,
-        ),
-        (
-          'a breach cleared',
-          trailOf(
-            position: 'bondStep',
-            readAt: at(20),
-            bondHash: hashA,
-            bondStepSeenAt: at(20),
-            bondStepDeadline: at(200),
-          ),
-          TrailReplacementRefusal.breachCleared,
-        ),
-        (
-          'another bond invoice',
-          trailOf(
-            position: 'bondStep',
-            readAt: at(20),
-            bondHash: hashB,
-            bondStepSeenAt: at(20),
-            bondStepDeadline: at(200),
-            breached: true,
-          ),
-          TrailReplacementRefusal.hashChanged,
-        ),
-        (
-          'the history made unknown',
-          trailOf(
-            position: 'bondStep',
-            readAt: at(20),
-            bondHash: hashA,
-            bondStepSeenAt: at(20),
-            bondStepDeadline: at(200),
-            breached: true,
-            historyUnknown: true,
-          ),
-          TrailReplacementRefusal.historyChanged,
-        ),
-        (
-          'another order',
-          trailOf(
-            position: 'bondStep',
-            readAt: at(20),
-            bondHash: hashA,
-            bondStepSeenAt: at(20),
-            bondStepDeadline: at(200),
-            breached: true,
-            orderId: 8,
-          ),
-          TrailReplacementRefusal.otherTrade,
-        ),
-      ]) {
-        expect(
-          await trails.storeTrail(trade, trail),
-          keptTrail(bondStep, reason: reason),
-          reason: label,
+    test(
+      'is never replaced as whyNotReplace refuses, and nothing is written',
+      () async {
+        final bondStep = trailOf(
+          position: 'bondStep',
+          readAt: at(10),
+          bondHash: hashA,
+          bondStepSeenAt: at(10),
+          bondStepDeadline: at(200),
+          breached: true,
         );
-        expect((await historyOf(trade)).trail, bondStep, reason: label);
-      }
-    });
+        final trade = await recorded(bondStep);
+        for (final (label, trail, reason) in [
+          (
+            'an earlier read',
+            trailOf(
+              position: 'bondStep',
+              readAt: at(5),
+              bondHash: hashA,
+              bondStepSeenAt: at(5),
+              bondStepDeadline: at(200),
+              breached: true,
+            ),
+            TrailReplacementRefusal.earlierRead,
+          ),
+          (
+            'a breach cleared',
+            trailOf(
+              position: 'bondStep',
+              readAt: at(20),
+              bondHash: hashA,
+              bondStepSeenAt: at(20),
+              bondStepDeadline: at(200),
+            ),
+            TrailReplacementRefusal.breachCleared,
+          ),
+          (
+            'another bond invoice',
+            trailOf(
+              position: 'bondStep',
+              readAt: at(20),
+              bondHash: hashB,
+              bondStepSeenAt: at(20),
+              bondStepDeadline: at(200),
+              breached: true,
+            ),
+            TrailReplacementRefusal.hashChanged,
+          ),
+          (
+            'the history made unknown',
+            trailOf(
+              position: 'bondStep',
+              readAt: at(20),
+              bondHash: hashA,
+              bondStepSeenAt: at(20),
+              bondStepDeadline: at(200),
+              breached: true,
+              historyUnknown: true,
+            ),
+            TrailReplacementRefusal.historyChanged,
+          ),
+          (
+            'another order',
+            trailOf(
+              position: 'bondStep',
+              readAt: at(20),
+              bondHash: hashA,
+              bondStepSeenAt: at(20),
+              bondStepDeadline: at(200),
+              breached: true,
+              orderId: 8,
+            ),
+            TrailReplacementRefusal.otherTrade,
+          ),
+        ]) {
+          expect(
+            await trails.storeTrail(trade, trail),
+            keptTrail(bondStep, reason: reason),
+            reason: label,
+          );
+          expect((await historyOf(trade)).trail, bondStep, reason: label);
+        }
+      },
+    );
 
-    test('moves along no edge only with a breach, and never out of an end', () async {
-      final bondStep = trailOf(
-        position: 'bondStep',
-        readAt: at(10),
-        bondHash: hashA,
-        bondStepSeenAt: at(10),
-        bondStepDeadline: at(200),
-      );
-      final trade = await recorded(bondStep);
-      // Back to the start, which no edge reaches: refused without a breach.
-      final skipped = trailOf(
-        position: 'start',
-        readAt: at(20),
-        bondHash: hashA,
-        bondStepSeenAt: at(10),
-        bondStepDeadline: at(200),
-      );
-      expect(
-        await trails.storeTrail(trade, skipped),
-        keptTrail(bondStep, reason: TrailReplacementRefusal.positionMoved),
-      );
-      final ended = trailOf(
-        position: 'publicAgain',
-        readAt: at(30),
-        bondHash: hashA,
-        bondStepSeenAt: at(10),
-        bondStepDeadline: at(200),
-      );
-      expect(await trails.storeTrail(trade, ended), storedTrail(ended));
-      final revived = trailOf(
-        position: 'bondStep',
-        readAt: at(40),
-        bondHash: hashA,
-        bondStepSeenAt: at(40),
-        bondStepDeadline: at(200),
-        breached: true,
-      );
-      expect(
-        await trails.storeTrail(trade, revived),
-        keptTrail(ended, reason: TrailReplacementRefusal.positionMoved),
-      );
-    });
+    test(
+      'moves along no edge only with a breach, and never out of an end',
+      () async {
+        final bondStep = trailOf(
+          position: 'bondStep',
+          readAt: at(10),
+          bondHash: hashA,
+          bondStepSeenAt: at(10),
+          bondStepDeadline: at(200),
+        );
+        final trade = await recorded(bondStep);
+        // Back to the start, which no edge reaches: refused without a breach.
+        final skipped = trailOf(
+          position: 'start',
+          readAt: at(20),
+          bondHash: hashA,
+          bondStepSeenAt: at(10),
+          bondStepDeadline: at(200),
+        );
+        expect(
+          await trails.storeTrail(trade, skipped),
+          keptTrail(bondStep, reason: TrailReplacementRefusal.positionMoved),
+        );
+        final ended = trailOf(
+          position: 'publicAgain',
+          readAt: at(30),
+          bondHash: hashA,
+          bondStepSeenAt: at(10),
+          bondStepDeadline: at(200),
+        );
+        expect(await trails.storeTrail(trade, ended), storedTrail(ended));
+        final revived = trailOf(
+          position: 'bondStep',
+          readAt: at(40),
+          bondHash: hashA,
+          bondStepSeenAt: at(40),
+          bondStepDeadline: at(200),
+          breached: true,
+        );
+        expect(
+          await trails.storeTrail(trade, revived),
+          keptTrail(ended, reason: TrailReplacementRefusal.positionMoved),
+        );
+      },
+    );
 
-    test('a write that lost a race to another is refused, not applied', () async {
-      final trade = await recorded();
-      final first = trailOf(
-        position: 'bondStep',
-        readAt: at(10),
-        bondHash: hashA,
-        bondStepSeenAt: at(10),
-        bondStepDeadline: at(200),
-      );
-      final second = trailOf(
-        position: 'bondStep',
-        readAt: at(20),
-        bondHash: hashA,
-        bondStepSeenAt: at(20),
-        bondStepDeadline: at(200),
-      );
-      // Both read the same stored trail before either writes.
-      final outcomes = await Future.wait([
-        trails.storeTrail(trade, first),
-        trails.storeTrail(trade, second),
-      ]);
-      final stored = [
-        for (final outcome in outcomes)
-          if (outcome case Ok(value: TrailStored(:final stored))) stored,
-      ];
-      final kept = [
-        for (final outcome in outcomes)
-          if (outcome case Ok(value: final TrailKept kept)) kept,
-      ];
-      expect(stored, hasLength(1));
-      expect(kept, hasLength(1));
-      expect(kept.single.reason, isNull);
-      expect(kept.single.stored, stored.single);
-      expect((await historyOf(trade)).trail, stored.single);
-    });
+    test(
+      'a write that lost a race to another is refused, not applied',
+      () async {
+        final trade = await recorded();
+        final first = trailOf(
+          position: 'bondStep',
+          readAt: at(10),
+          bondHash: hashA,
+          bondStepSeenAt: at(10),
+          bondStepDeadline: at(200),
+        );
+        final second = trailOf(
+          position: 'bondStep',
+          readAt: at(20),
+          bondHash: hashA,
+          bondStepSeenAt: at(20),
+          bondStepDeadline: at(200),
+        );
+        // Both read the same stored trail before either writes.
+        final outcomes = await Future.wait([
+          trails.storeTrail(trade, first),
+          trails.storeTrail(trade, second),
+        ]);
+        final stored = [
+          for (final outcome in outcomes)
+            if (outcome case Ok(value: TrailStored(:final stored))) stored,
+        ];
+        final kept = [
+          for (final outcome in outcomes)
+            if (outcome case Ok(value: final TrailKept kept)) kept,
+        ];
+        expect(stored, hasLength(1));
+        expect(kept, hasLength(1));
+        expect(kept.single.reason, isNull);
+        expect(kept.single.stored, stored.single);
+        expect((await historyOf(trade)).trail, stored.single);
+      },
+    );
 
     test('of a closed trade is never written again', () async {
       final trade = await recorded();
       expect(await trades.closeTrade(trade), isA<Ok>());
       final later = trailOf(position: 'publicAgain', readAt: at(10));
-      expect(await trails.storeTrail(trade, later), keptTrail(trailOf(), reason: null));
+      expect(
+        await trails.storeTrail(trade, later),
+        keptTrail(trailOf(), reason: null),
+      );
       expect((await historyOf(trade)).trail, trailOf());
     });
 
@@ -425,26 +446,30 @@ void main() {
       );
     });
 
-    test('a row of another type than this code writes is read as unreadable', () async {
-      final trade = await recorded();
-      // A REAL in an INTEGER column passes the bounds, and is not a time this code writes.
-      await database.customStatement(
-        'UPDATE trade_trails SET read_at = ? WHERE robot_index = 0',
-        [at(10) + 0.5],
-      );
-      final history = await historyOf(trade);
-      expect(history.unreadable, isTrue);
-      expect(history.trail, isNull);
-      expect(
-        await trails.storeTrail(trade, trailOf(readAt: at(20))),
-        refusedWith<P2pStorageFailure>(),
-      );
-    });
+    test(
+      'a row of another type than this code writes is read as unreadable',
+      () async {
+        final trade = await recorded();
+        // A REAL in an INTEGER column passes the bounds, and is not a time this code writes.
+        await database.customStatement(
+          'UPDATE trade_trails SET read_at = ? WHERE robot_index = 0',
+          [at(10) + 0.5],
+        );
+        final history = await historyOf(trade);
+        expect(history.unreadable, isTrue);
+        expect(history.trail, isNull);
+        expect(
+          await trails.storeTrail(trade, trailOf(readAt: at(20))),
+          refusedWith<P2pStorageFailure>(),
+        );
+      },
+    );
   });
 
   group('the database refuses, whatever the code,', () {
-    Matcher refusedBy(String code) =>
-        throwsA(predicate((error) => '$error'.contains('SqliteException($code)')));
+    Matcher refusedBy(String code) => throwsA(
+      predicate((error) => '$error'.contains('SqliteException($code)')),
+    );
     const trigger = '1811';
     const check = '275';
 
@@ -498,10 +523,22 @@ void main() {
       final trade = await pendingTake();
       for (final (label, values) in [
         ('a text amount', "'many', 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175"),
-        ('an infinite amount', '9e999, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175'),
-        ('a taker fee above 1 %', '100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.02'),
-        ('a bond of 20 %', '100.0, 0, 2.0, NULL, 20.0, 10800, 93545.0, 0.00175'),
-        ('an escrow of a minute', '100.0, 0, 2.0, NULL, 3.0, 60, 93545.0, 0.00175'),
+        (
+          'an infinite amount',
+          '9e999, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175',
+        ),
+        (
+          'a taker fee above 1 %',
+          '100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.02',
+        ),
+        (
+          'a bond of 20 %',
+          '100.0, 0, 2.0, NULL, 20.0, 10800, 93545.0, 0.00175',
+        ),
+        (
+          'an escrow of a minute',
+          '100.0, 0, 2.0, NULL, 3.0, 60, 93545.0, 0.00175',
+        ),
         ('a price of zero', '100.0, 0, 2.0, NULL, 3.0, 10800, 0.0, 0.00175'),
         ('no sats', '100.0, 0, 2.0, 0, 3.0, 10800, 93545.0, 0.00175'),
       ]) {
@@ -614,11 +651,23 @@ void main() {
       final trade = await pendingTake();
       expect(await trails.recordTerms(trade, termsOf()), isA<Ok>());
       for (final (label, values) in [
-        ('an unknown position', "'nowhere', 0, NULL, NULL, NULL, NULL, NULL, 0, 0"),
-        ('an uppercase hash', "'start', 0, '${hashA.toUpperCase()}', NULL, NULL, NULL, NULL, 0, 0"),
+        (
+          'an unknown position',
+          "'nowhere', 0, NULL, NULL, NULL, NULL, NULL, 0, 0",
+        ),
+        (
+          'an uppercase hash',
+          "'start', 0, '${hashA.toUpperCase()}', NULL, NULL, NULL, NULL, 0, 0",
+        ),
         ('a short hash', "'start', 0, 'abc', NULL, NULL, NULL, NULL, 0, 0"),
-        ('a read before the epoch', "'start', -1, NULL, NULL, NULL, NULL, NULL, 0, 0"),
-        ('the pre-take seen after the read', "'start', 5, NULL, NULL, NULL, 6, NULL, 0, 0"),
+        (
+          'a read before the epoch',
+          "'start', -1, NULL, NULL, NULL, NULL, NULL, 0, 0",
+        ),
+        (
+          'the pre-take seen after the read',
+          "'start', 5, NULL, NULL, NULL, 6, NULL, 0, 0",
+        ),
         ('a flag of 2', "'start', 0, NULL, NULL, NULL, NULL, NULL, 2, 0"),
       ]) {
         await expectLater(

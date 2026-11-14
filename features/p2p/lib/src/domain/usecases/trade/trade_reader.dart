@@ -276,6 +276,8 @@ final class TradeReader {
     TradeAnswer answer, {
     required DateTime at,
   }) {
+    // A terminal status is never left, and its trail and record are kept already: nothing to write.
+    if (trade.seen.status.isTerminal) return Future.value(TradeStep(trade));
     final status = TradeStatus.from(
       previous: trade.seen.status,
       answer: answer,

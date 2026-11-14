@@ -96,8 +96,9 @@ final class _Vault implements GarageKeyRepository {
       network == key.network ? Ok(key) : const Err(GarageKeyMissingFailure());
 
   @override
-  Future<Result<NetworkGarageKey, P2pFailure>> create(RobosatsNetwork network) =>
-      throw UnimplementedError();
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) => throw UnimplementedError();
 
   @override
   Future<Result<void, P2pFailure>> import(
@@ -221,8 +222,9 @@ final class TestTrails implements TradeTrailRepository {
       _inner.historyOf(trade);
 
   @override
-  Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>>
-  watchHistories(RobosatsNetwork network) => _inner.watchHistories(network);
+  Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
+    RobosatsNetwork network,
+  ) => _inner.watchHistories(network);
 }
 
 /// A timer of the watch, which the harness fires when its time comes.
@@ -433,7 +435,8 @@ final class TradeHarness {
   /// Takes the order shown, and returns what the take gave.
   Future<Result<TakeOutcome, TakeRefusal>> takeShown({
     TakeAmount? amount,
-  }) async => take.execute(await shownOrder(), network: network, amount: amount);
+  }) async =>
+      take.execute(await shownOrder(), network: network, amount: amount);
 
   /// The record of a take that was sent.
   static TradeRecord recordOf(Result<TakeOutcome, TakeRefusal> taken) =>
@@ -451,9 +454,10 @@ final class TradeHarness {
 
   /// Every record, closed ones included.
   Future<List<Map<String, Object?>>> allTrades() async => [
-    for (final row in await database
-        .customSelect('SELECT * FROM trades ORDER BY robot_index')
-        .get())
+    for (final row
+        in await database
+            .customSelect('SELECT * FROM trades ORDER BY robot_index')
+            .get())
       row.data,
   ];
 

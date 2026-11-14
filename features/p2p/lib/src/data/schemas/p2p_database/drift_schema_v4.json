@@ -463,12 +463,12 @@
           "CHECK (role IN ('buyer', 'seller'))",
           "CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller'))",
           "CHECK (currency_id > 0)",
-          "CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1e308)",
-          "CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1e308)",
+          "CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000)",
+          "CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000)",
           "CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000)",
           "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
           "CHECK (escrow_seconds BETWEEN 1800 AND 36000)",
-          "CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1e308)",
+          "CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000)",
           "CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01)",
           "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
         ],
@@ -971,7 +971,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"trade_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NOT NULL, \"is_range\" INTEGER NOT NULL CHECK (\"is_range\" IN (0, 1)), \"premium_percent\" REAL NOT NULL, \"explicit_satoshis\" INTEGER NULL, \"bond_size_percent\" REAL NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"book_price\" REAL NOT NULL, \"taker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller')), CHECK (currency_id > 0), CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1e308), CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1e308), CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1e308), CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NOT NULL, \"is_range\" INTEGER NOT NULL CHECK (\"is_range\" IN (0, 1)), \"premium_percent\" REAL NOT NULL, \"explicit_satoshis\" INTEGER NULL, \"bond_size_percent\" REAL NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"book_price\" REAL NOT NULL, \"taker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller')), CHECK (currency_id > 0), CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000), CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000), CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000), CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
         }
       ]
     },
