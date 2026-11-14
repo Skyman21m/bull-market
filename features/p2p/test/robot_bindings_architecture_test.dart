@@ -263,6 +263,11 @@ void main() {
             'fetchByUseCaseTearOff': {'FetchRobotUsecase.execute'},
             'closeByPort': {'CoordinatorSessionsPort.closeRobotSessions'},
             'firstContactOutsidePut': {'RobotContact.firstContact'},
+            'reserveByTearOff': {'TradeRecordRepository.reserveForNewTrade'},
+            'pendingTakeInClosure': {'TradeRecordRepository.recordPendingTake'},
+            'recoveredTradeInVariable': {
+              'TradeRecordRepository.recordRecoveredTrade',
+            },
           },
         );
       },
@@ -329,6 +334,63 @@ void main() {
       });
       expect(referring((r) => r == 'CoordinatorTransport.send'), isEmpty);
     });
+
+    test(
+      'only the robot layer reserves a robot for a new trade, and only the take and the recovery write a trade',
+      () {
+        // A reservation binds a robot for good: only the robot layer, which returns the robot it reserved, makes one (#85).
+        expect(
+          referring((r) => r == 'TradeRecordRepository.reserveForNewTrade'),
+          {'lib/src/domain/interim_trade_robots.dart'},
+        );
+        // A record of origin `takenHere` comes only from the take use case, and one of origin `recovered` only from the user's take-over: no file of this pull request writes either (#87, #79).
+        expect(
+          referring(
+            (r) => r == 'TradeRecordRepository.recordPendingTake',
+          ).difference({_takeOrderUseCase}),
+          isEmpty,
+        );
+        expect(
+          referring(
+            (r) => r == 'TradeRecordRepository.recordRecoveredTrade',
+          ).difference({_recoverTradeUseCase}),
+          isEmpty,
+        );
+        // The state of a record follows what the coordinator says: only the trade use cases change it.
+        for (final member in [
+          'TradeRecordRepository.confirmTake',
+          'TradeRecordRepository.closeTrade',
+        ]) {
+          expect(
+            referring((r) => r == member),
+            everyElement(startsWith(_tradeUseCases)),
+            reason: member,
+          );
+        }
+        // The records are reached through their repository only: its interface, its implementation, the robot layer, and later the composition and the trade use cases.
+        final holders = referring((r) => r == 'type TradeRecordRepository');
+        expect(
+          holders,
+          containsAll([
+            'lib/src/data/trade_record_repository_impl.dart',
+            'lib/src/domain/interim_trade_robots.dart',
+          ]),
+        );
+        expect(
+          holders.where(
+            (path) =>
+                !path.startsWith(_tradeUseCases) &&
+                !{
+                  'lib/src/domain/repositories/trade_record_repository.dart',
+                  'lib/src/data/trade_record_repository_impl.dart',
+                  'lib/src/domain/interim_trade_robots.dart',
+                  'lib/src/p2p_locator.dart',
+                }.contains(path),
+          ),
+          isEmpty,
+        );
+      },
+    );
 
     test(
       'only the key work in its own isolate proves a robot, or makes or unlocks a pair',
@@ -488,11 +550,13 @@ void main() {
                   r.startsWith('dynamic ') ||
                   r.startsWith('FetchRobotUsecase.') ||
                   r.startsWith('RobotBindingRepository.') ||
+                  r.startsWith('TradeRecordRepository.') ||
                   {
                     'type FetchRobotUsecase',
                     'type CoordinatorClient',
                     'type RobotRequestLimiter',
                     'type RobotBindingRepository',
+                    'type TradeRecordRepository',
                     'type P2pDatabase',
                   }.contains(r),
             ),
@@ -621,6 +685,7 @@ class RobotCoordinatorCubit {
       ),
       {
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_record_repository_impl.dart',
         'lib/src/p2p_locator.dart',
         'lib/testing.dart',
       },
@@ -631,9 +696,12 @@ class RobotCoordinatorCubit {
       ),
       {
         'lib/src/data/p2p_database.dart',
+        // The tables of the database, apart so that `trades.drift` can import them.
+        'lib/src/data/p2p_tables.dart',
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_record_repository_impl.dart',
         'lib/testing.dart',
       },
     );
@@ -651,6 +719,35 @@ class RobotCoordinatorCubit {
       where((facts) => facts.constructed.contains('P2pDatabase.forTesting')),
       {'lib/testing.dart'},
     );
+    // The trade records' implementation is made by the composition only, when a pull request registers it.
+    expect(
+      where(
+        (facts) => facts.constructed.contains('TradeRecordRepositoryImpl'),
+      ).difference({'lib/src/p2p_locator.dart'}),
+      isEmpty,
+    );
+    // And the table of the trades is named by its repository, the database and drift's code only.
+    expect(where((facts) => facts.names.contains('trades')), {
+      'lib/src/data/p2p_database.dart',
+      'lib/src/data/p2p_database.steps.dart',
+      'lib/src/data/trade_record_repository_impl.dart',
+      if (File('lib/src/data/p2p_database.g.dart').existsSync())
+        'lib/src/data/p2p_database.g.dart',
+    });
+    // No SQL text of another file reads or writes the trades, but the triggers as drift copies them.
+    expect(
+      where(
+        (facts) => facts.strings.any(
+          (text) =>
+              RegExp(
+                r'\b(from|into|update|join)\s+"?trades\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !_tradeTriggers.contains(_squeezed(text)),
+        ),
+      ),
+      {'lib/src/data/trade_record_repository_impl.dart'},
+    );
   });
 
   test('nothing changes or deletes a binding', () {
@@ -662,10 +759,18 @@ class RobotCoordinatorCubit {
     final steps =
         libraries['lib/src/data/p2p_database.steps.dart'] ??
         fail('no migration steps');
+    final tables =
+        libraries['lib/src/data/p2p_tables.dart'] ?? fail('no tables');
 
-    for (final facts in [repository, database, steps]) {
+    for (final (facts, allowed) in [
+      (repository, const <String>{}),
+      // The database turns its foreign keys on at each opening, with the one statement pinned below.
+      (database, const {'customStatement'}),
+      (steps, const <String>{}),
+      (tables, const <String>{}),
+    ]) {
       expect(
-        facts.invoked.intersection({
+        facts.invoked.difference(allowed).intersection({
           'delete',
           'deleteWhere',
           'deleteAll',
@@ -687,6 +792,11 @@ class RobotCoordinatorCubit {
       );
       expect(facts.names, isNot(contains('InsertMode')));
       for (final text in facts.strings) {
+        // The steps hold the triggers of `trades.drift` as written, which name an update and a delete only to refuse them (pinned below).
+        if (identical(facts, steps) &&
+            _tradeTriggers.contains(_squeezed(text))) {
+          continue;
+        }
         expect(
           RegExp(
             r'\b(delete|update|drop|replace|alter)\b',
@@ -715,12 +825,276 @@ class RobotCoordinatorCubit {
     expect(database.calls.where((call) => call.startsWith('addColumn(')), [
       'addColumn(schema.robotBindings, schema.robotBindings.provenance)',
     ]);
-    // Every call of the migrator, in order: nothing else changes a table.
+    // Every call of the migrator, in order: nothing else changes a table; schema 3 adds the table of the trades, the unique index its foreign key needs on the bindings, and its two triggers.
     expect(database.qualifiedCalls.where((call) => call.startsWith('m.')), [
       'm.alterTable(TableMigration(schema.garageKeyHistories))',
       'm.addColumn(schema.robotBindings, schema.robotBindings.provenance)',
+      'm.createTable(schema.trades)',
+      'm.createIndex(schema.robotBindingsNetwork)',
+      'm.createTrigger(schema.tradesNeverDeleted)',
+      'm.createTrigger(schema.tradesSetOnce)',
+      'm.createTrigger(schema.tradesInsertedOnce)',
     ]);
+    // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
+    expect(
+      database.calls.where((call) => call.startsWith('customStatement(')),
+      ['customStatement(_foreignKeysOn)'],
+    );
+    expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
+    // Its one `customSelect`, the step's look at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
+    expect(database.calls.where((call) => call.startsWith('customSelect(')), [
+      startsWith(
+        "customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',",
+      ),
+    ]);
+    expect(
+      database.strings.where(
+        (text) => RegExp(r'\bpragma\b', caseSensitive: false).hasMatch(text),
+      ),
+      [
+        'PRAGMA foreign_keys = ON',
+        // The setup of the app's connection, before any statement.
+        'PRAGMA busy_timeout = 2000;',
+        'PRAGMA journal_mode = WAL;',
+        'PRAGMA synchronous = FULL;',
+      ],
+    );
+    // The database's own rules on the trades, as written in `trades.drift`: the parent key of their foreign key, and the triggers that refuse a delete and any change but the two times set once.
+    expect(
+      _drifted(File('lib/src/data/trades.drift').readAsStringSync()),
+      '${_tradeRules.join(';')};',
+    );
   });
+
+  test('nothing in the feature opens a database transaction', () {
+    // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
+    // By name, so that a torn-off `transaction` counts as a call (second review of #102).
+    bool opensOne(_Facts facts) => facts.names.any(
+      {'transaction', 'beginTransaction', 'TransactionExecutor'}.contains,
+    );
+    expect(where(opensOne), isEmpty);
+    // The check sees a call, a tear-off and the lower-level way in.
+    for (final source in [
+      'Future<void> f(GeneratedDatabase d) => d.transaction(() async {});',
+      'Future<void> f(GeneratedDatabase d) { final run = d.transaction; return run(() async {}); }',
+      'Object f(QueryExecutor e) => e.beginTransaction();',
+      'Object f(TransactionExecutor e) => e;',
+    ]) {
+      expect(opensOne(_Facts.of(source)), isTrue, reason: source);
+    }
+  });
+
+  test('a trade record is changed only by its two changes, and never deleted', () {
+    // A record is written before the take's request and kept: only a pending take turns taken or closed, and a taken trade closed, each time set once (#85, design note § 3.5, § 4.5).
+    final trades =
+        libraries['lib/src/data/trade_record_repository_impl.dart'] ??
+        fail('no trade records');
+    expect(
+      trades.invoked.intersection({
+        'delete',
+        'deleteWhere',
+        'deleteAll',
+        'update',
+        'replace',
+        'write',
+        'into',
+        'batch',
+        'customInsert',
+        'customStatement',
+        'insertOnConflictUpdate',
+        'insertAllOnConflictUpdate',
+        'deleteTable',
+        'drop',
+        'dropColumn',
+        'renameColumn',
+        'renameTable',
+        'alterTable',
+      }),
+      isEmpty,
+    );
+    expect(trades.names, isNot(contains('InsertMode')));
+    expect(trades.names, isNot(contains('DoUpdate')));
+    for (final text in trades.strings) {
+      expect(
+        RegExp(
+          r'\b(delete|drop|replace|alter|pragma)\b',
+          caseSensitive: false,
+        ).hasMatch(text),
+        isFalse,
+        reason: text,
+      );
+    }
+    // Its only SQL that changes a row: the two changes of a record, on the trades, each setting one time that is still unset.
+    final confirm = trades.constants['_confirmSql'] ?? fail('no _confirmSql');
+    final close = trades.constants['_closeSql'] ?? fail('no _closeSql');
+    expect(
+      confirm,
+      'UPDATE trades SET confirmed_at = ? WHERE key_fingerprint = ? '
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
+      'AND confirmed_at IS NULL AND closed_at IS NULL',
+    );
+    expect(
+      close,
+      'UPDATE trades SET closed_at = ? WHERE key_fingerprint = ? '
+      'AND robot_index = ? AND network = ? AND order_id = ? AND origin = ? '
+      'AND closed_at IS NULL',
+    );
+    expect(
+      trades.strings.where(
+        (text) =>
+            RegExp(r'\bupdate\b', caseSensitive: false).hasMatch(text) &&
+            !confirm.contains(text) &&
+            !close.contains(text),
+      ),
+      isEmpty,
+    );
+    // Run by one helper, from the two methods that name them.
+    expect(
+      trades.calls.where((call) => call.startsWith('customUpdate(')),
+      hasLength(1),
+    );
+    expect(
+      trades.callsByMethod['_change']?.where(
+        (call) => call.startsWith('customUpdate(sql,'),
+      ),
+      hasLength(1),
+    );
+    expect(trades.calls.where((call) => call.startsWith('_change(')), [
+      '_change(_confirmSql, record)',
+      '_change(_closeSql, record)',
+    ]);
+    expect(
+      trades.callsByMethod['confirmTake'],
+      contains('_change(_confirmSql, record)'),
+    );
+    expect(trades.callsByMethod['closeTrade'], ['_change(_closeSql, record)']);
+    // No other file of the feature holds SQL that changes or deletes a trade, but the triggers that refuse it, as drift copies them.
+    expect(
+      where(
+        (facts) => facts.strings.any(
+          (text) =>
+              RegExp(
+                r'\b(update|delete)\b[^;]*\btrades\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !_tradeTriggers.contains(_squeezed(text)),
+        ),
+      ),
+      {'lib/src/data/trade_record_repository_impl.dart'},
+    );
+  });
+
+  test(
+    'a robot is reserved, and a trade written, by one statement each that reads what decides it',
+    () {
+      // Each write reads in the same statement the history of the key, the robot's binding and its record: a read followed by a write would let another connection's write land in between (#85).
+      final trades =
+          libraries['lib/src/data/trade_record_repository_impl.dart'] ??
+          fail('no trade records');
+      final writes = trades.calls.where(
+        (call) => call.startsWith('customWriteReturning('),
+      );
+      expect(writes, hasLength(3));
+      for (final (method, statement) in [
+        ('reserveForNewTrade', '_reserveSql'),
+        ('recordPendingTake', '_recordPendingTakeSql'),
+        ('recordRecoveredTrade', '_recordRecoveredTradeSql'),
+      ]) {
+        expect(
+          trades.callsByMethod[method]?.where(
+            (call) => call.startsWith('customWriteReturning('),
+          ),
+          [startsWith('customWriteReturning($statement,')],
+          reason: method,
+        );
+      }
+      // The statements, as written: the reservation binds only a free index of a key drawn here and nothing else anywhere, with no trade; a pending take is `takenHere` and needs a binding drawn here on the reservation's network to that coordinator, under a key still recorded as drawn here only; a recovered trade is `recovered`, confirmed at once, and needs a binding to that coordinator.
+      expect(
+        trades.constants['_reserveSql'],
+        'INSERT INTO robot_bindings (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, coordinator_node_keys, '
+        'coordinator_nostr_key, bound_at, provenance) '
+        'SELECT ?, ?, ?, ?, ?, ?, ?, ?, origin FROM garage_key_histories '
+        'WHERE network = ? AND key_fingerprint = ? AND origin = ? '
+        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+        'WHERE key_fingerprint = ? AND origin <> ?) '
+        'AND NOT EXISTS (SELECT 1 FROM trades '
+        'WHERE key_fingerprint = ? AND robot_index = ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trades.constants['_recordPendingTakeSql'],
+        'INSERT INTO trades (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, order_id, role, origin, '
+        'taken_at, confirmed_at, closed_at) '
+        "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+        "coordinator_onion, ?, ?, 'takenHere', ?, NULL, NULL "
+        'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+        'AND network = ? AND provenance = ? AND coordinator_alias = ? '
+        'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+        'AND coordinator_nostr_key = ? '
+        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+        'WHERE key_fingerprint = ? AND origin <> ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING *',
+      );
+      expect(
+        trades.constants['_recordRecoveredTradeSql'],
+        'INSERT INTO trades (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, order_id, role, origin, '
+        'taken_at, confirmed_at, closed_at) '
+        "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+        "coordinator_onion, ?, ?, 'recovered', ?, ?, NULL "
+        'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+        'AND network = ? AND coordinator_alias = ? '
+        'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+        'AND coordinator_nostr_key = ? '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING *',
+      );
+      final pinned = [
+        for (final name in [
+          '_reserveSql',
+          '_recordPendingTakeSql',
+          '_recordRecoveredTradeSql',
+        ])
+          trades.constants[name] ?? fail('no $name'),
+      ];
+      // No other SQL text inserts, and an origin is written by its own statement only.
+      expect(
+        trades.strings.where(
+          (text) =>
+              RegExp(r'\binsert\b', caseSensitive: false).hasMatch(text) &&
+              !pinned.any((statement) => statement.contains(text)),
+        ),
+        isEmpty,
+      );
+      expect(
+        trades.strings.where((text) => text.contains("'takenHere'")),
+        everyElement(predicate<String>((text) => pinned[1].contains(text))),
+      );
+      expect(
+        trades.strings.where((text) => text.contains("'recovered'")),
+        everyElement(predicate<String>((text) => pinned[2].contains(text))),
+      );
+      // And no other file of the feature inserts into the bindings or the trades but the two repositories.
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) => RegExp(
+              r'\binsert\s+into\s+(robot_bindings|trades)\b',
+              caseSensitive: false,
+            ).hasMatch(text),
+          ),
+        ),
+        {
+          'lib/src/data/robot_binding_repository_impl.dart',
+          'lib/src/data/trade_record_repository_impl.dart',
+        },
+      );
+    },
+  );
 
   test('a robot is bound by one statement that reads the history itself', () {
     // The binding may be written only while the key's history allows it: a read of the history followed by a write would let an import of the key, from another connection, land in between (review of #72).
@@ -968,6 +1342,17 @@ const _watched = {
       'recordGeneratedKey',
       'recordImportedKey',
       'recordAcknowledgedKey',
+    },
+  ),
+  // The trade records and the reservation of a robot for a new trade (#85): who may reserve a robot, write a record of each origin, or change one.
+  'TradeRecordRepository': (
+    'package:p2p/',
+    {
+      'reserveForNewTrade',
+      'recordPendingTake',
+      'recordRecoveredTrade',
+      'confirmTake',
+      'closeTrade',
     },
   ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
@@ -1270,6 +1655,11 @@ String _dartSdkPath() {
 /// The file of the robot panel of the Garage.
 const _panel = 'lib/src/ui/garage/robot_coordinator_panel.dart';
 
+/// The folder of the trade use cases, and the two that may write a trade record (#87, #79).
+const _tradeUseCases = 'lib/src/domain/usecases/trade/';
+const _takeOrderUseCase = '${_tradeUseCases}take_order_usecase.dart';
+const _recoverTradeUseCase = '${_tradeUseCases}recover_trade_usecase.dart';
+
 /// The public members of [declaration] (constructors, fields, methods, getters and setters whose names do not start with `_`), each as `<kind> <source without body>`.
 List<String> _publicSurface(ClassDeclaration declaration) => [
   for (final member in switch (declaration.body) {
@@ -1297,4 +1687,38 @@ List<String> _publicSurface(ClassDeclaration declaration) => [
       ],
       _ => const <String>[],
     },
+];
+
+/// [text] without its white space, so that a statement compares the same however drift lays it out (drift writes `RAISE (ABORT, …);END` for `RAISE(ABORT, …); END`).
+String _squeezed(String text) => text.replaceAll(RegExp(r'\s+'), '');
+
+/// The statements of a `.drift` file, comments and the import left out, squeezed and joined, each ended by `;`.
+String _drifted(String source) => _squeezed(
+  source
+      .split('\n')
+      .where((line) {
+        final trimmed = line.trimLeft();
+        return !trimmed.startsWith('--') && !trimmed.startsWith('import ');
+      })
+      .join('\n'),
+);
+
+/// The two triggers of the trades, as `trades.drift` writes them.
+final _tradeTriggers = {
+  for (final trigger in _tradeTriggersAsWritten) _squeezed(trigger),
+};
+
+/// The two triggers, as `trades.drift` writes them.
+const _tradeTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+];
+
+/// The statements of `trades.drift`, in order.
+final _tradeRules = [
+  _squeezed(
+    'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  ),
+  ..._tradeTriggers,
 ];

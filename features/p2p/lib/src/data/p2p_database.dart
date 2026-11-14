@@ -4,96 +4,26 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
 import 'p2p_database.steps.dart';
+import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// What this device knows of the history of each Garage Key, per network: absent, the history is unknown.
-@DataClassName('GarageKeyHistoryRow')
-class GarageKeyHistories extends Table {
-  /// `mainnet` or `testnet`.
-  TextColumn get network => text()();
-
-  /// The `GarageKeyFingerprint` of the key, 64 hexadecimal characters.
-  TextColumn get keyFingerprint => text()();
-
-  /// `generated` for a key drawn on this device, `imported` for a key pasted in, `acknowledged` (since schema 2) for a key of unknown history whose robots the user accepted to bind: only `generated` and `acknowledged` let a robot of the key be bound to a coordinator for the first time.
-  TextColumn get origin => text()();
-
-  /// When the origin was recorded, in milliseconds since the epoch.
-  IntColumn get recordedAt => integer()();
-
-  @override
-  Set<Column<Object>> get primaryKey => {network, keyFingerprint};
-
-  @override
-  List<String> get customConstraints => const [
-    "CHECK (network IN ('mainnet', 'testnet'))",
-    'CHECK (length(key_fingerprint) = 64)',
-    "CHECK (origin IN ('generated', 'imported', 'acknowledged'))",
-  ];
-}
-
-/// The coordinator each robot index of each Garage Key is bound to, as the federation list gave it at binding time.
-///
-/// One row per key fingerprint and robot index, whatever the network: a robot's token does not depend on the network (`GarageKey.deriveToken` takes none), so the same key in both slots gives the same credential on testnet and mainnet, and an index bound on one network is bound on the other too.
-/// The network of the coordinator is a column of the row, recorded and checked like the rest.
-/// A row is never changed or deleted.
-@DataClassName('RobotBindingRow')
-class RobotBindings extends Table {
-  /// The network of the coordinator, `mainnet` or `testnet`.
-  TextColumn get network => text()();
-
-  /// The `GarageKeyFingerprint` of the key, 64 hexadecimal characters.
-  TextColumn get keyFingerprint => text()();
-
-  /// The index of the robot in its key, a hardened BIP32 child number.
-  IntColumn get robotIndex => integer()();
-
-  /// The short alias of the coordinator in the federation list.
-  TextColumn get coordinatorAlias => text()();
-
-  /// The onion origin of the coordinator's instance on the network.
-  TextColumn get coordinatorOnion => text()();
-
-  /// The public keys of the Lightning nodes of that instance, sorted and joined with commas.
-  TextColumn get coordinatorNodeKeys => text()();
-
-  /// The Nostr public key of the coordinator, in hexadecimal.
-  TextColumn get coordinatorNostrKey => text()();
-
-  /// When the binding was written, in milliseconds since the epoch.
-  IntColumn get boundAt => integer()();
-
-  /// The origin of the key on [network] when the robot was bound, copied from `garage_key_histories` by the statement that binds: `generated` or `acknowledged` (since schema 2).
-  ///
-  /// Its constraints are the column's own, so that schema 2 adds it to the table without rebuilding it; its default is for the bindings of schema 1, all made under a key drawn here.
-  TextColumn get provenance => text().customConstraint(
-    "NOT NULL DEFAULT 'generated' "
-    "CHECK (provenance IN ('generated', 'acknowledged'))",
-  )();
-
-  @override
-  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
-
-  @override
-  List<String> get customConstraints => const [
-    "CHECK (network IN ('mainnet', 'testnet'))",
-    'CHECK (length(key_fingerprint) = 64)',
-    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
-    'CHECK (length(coordinator_alias) > 0)',
-    'CHECK (length(coordinator_onion) > 0)',
-    'CHECK (length(coordinator_nostr_key) > 0)',
-  ];
-}
-
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots and the history of the Garage Keys.
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys and the trades of the robots.
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
-@DriftDatabase(tables: [GarageKeyHistories, RobotBindings])
+@DriftDatabase(
+  tables: [GarageKeyHistories, RobotBindings, Trades],
+  include: {'trades.drift'},
+)
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 2;
+  static const int schema = 3;
+
+  /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
+  ///
+  /// It runs at each opening, after any migration step, outside a transaction, where SQLite takes it.
+  static const String _foreignKeysOn = 'PRAGMA foreign_keys = ON';
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -143,7 +73,18 @@ final class P2pDatabase extends _$P2pDatabase {
           );
         }
       },
+      from2To3: (m, schema) async {
+        // A new table, the unique index its foreign key needs on the bindings, and the three triggers that keep its rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // The index adds no rule to the bindings, which the primary key (key fingerprint, robot index) already makes unique; no binding and no history is copied, changed or dropped.
+        await m.createTable(schema.trades);
+        await m.createIndex(schema.robotBindingsNetwork);
+        await m.createTrigger(schema.tradesNeverDeleted);
+        await m.createTrigger(schema.tradesSetOnce);
+        await m.createTrigger(schema.tradesInsertedOnce);
+      },
     ),
+    // Every connection, the app's and the tests', enforces the foreign key of the trades.
+    beforeOpen: (details) => customStatement(_foreignKeysOn),
   );
 
   /// Whether [table] has a column named [column], read from SQLite's own description of the table.

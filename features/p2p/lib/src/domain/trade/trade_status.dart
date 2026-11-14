@@ -7,7 +7,7 @@ import 'package:robosats/robosats.dart';
 import 'bolt11.dart';
 import 'trade_answer.dart';
 import 'trade_edges.dart';
-import 'trade_record.dart';
+import 'trade_storable.dart';
 import 'trade_terms.dart';
 import 'trade_tolerances.dart';
 import 'trade_warning.dart';

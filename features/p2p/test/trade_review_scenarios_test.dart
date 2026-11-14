@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
-import 'package:p2p/src/domain/trade/trade_record.dart';
+import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';

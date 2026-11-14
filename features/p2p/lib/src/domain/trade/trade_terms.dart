@@ -2,20 +2,17 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
-import 'trade_record.dart';
+import '../trade_record.dart' show TradeRole;
+import 'trade_storable.dart';
 import 'trade_tolerances.dart';
 
-/// What this robot is to the trade it took: taking a sell order makes a buyer, taking a buy order a seller (`Logics.is_buyer`, `api/logics.py`, commit ff1998c).
-enum TradeRole {
-  buyer,
-  seller;
+export '../trade_record.dart' show TradeRole;
 
-  /// The role of the robot that takes an order of [type].
-  static TradeRole takingOrderOf(OrderType type) => switch (type) {
-    OrderType.sell => buyer,
-    OrderType.buy => seller,
-  };
-}
+/// The role of the robot that takes an order of [type]: taking a sell order makes a buyer, taking a buy order a seller (`Logics.is_buyer`, `api/logics.py`, commit ff1998c).
+TradeRole tradeRoleTaking(OrderType type) => switch (type) {
+  OrderType.sell => TradeRole.buyer,
+  OrderType.buy => TradeRole.seller,
+};
 
 /// Why a take cannot be checked, so is not made: a type, the take use case gives the user its text (#87, #88).
 sealed class TradeTermsRefusal extends Failure {
@@ -179,7 +176,7 @@ final class TradeTerms {
         network: network,
         coordinator: coordinator,
         orderId: orderId,
-        role: TradeRole.takingOrderOf(type),
+        role: tradeRoleTaking(type),
         type: type,
         currency: currency,
         amount: amount,
@@ -239,7 +236,7 @@ final class TradeTerms {
         !coordinator.isOn(network) ||
         type == null ||
         role == null ||
-        role != TradeRole.takingOrderOf(type) ||
+        role != tradeRoleTaking(type) ||
         currency == null ||
         amount == null ||
         premium == null ||

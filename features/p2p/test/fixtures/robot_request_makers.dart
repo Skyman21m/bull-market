@@ -7,6 +7,9 @@ import 'package:dio/dio.dart';
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
+import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
@@ -133,4 +136,29 @@ extension AcknowledgeWrapper on RobotCoordinatorCubit {
 /// The same, in a top-level variable.
 final acknowledgeInVariable = [
   (RobotCoordinatorCubit cubit) => cubit.acknowledge(),
+];
+
+/// A robot reserved for a new trade elsewhere than in the robot layer, torn off (#85).
+Object reserveByTearOff(TradeRecordRepository records) =>
+    records.reserveForNewTrade;
+
+/// A pending take, of origin `takenHere`, written through a local function elsewhere than in the take use case.
+Object pendingTakeInClosure(
+  TradeRecordRepository records,
+  TradeReservation reservation,
+) {
+  Object write() =>
+      records.recordPendingTake(reservation, orderId: 1, role: TradeRole.buyer);
+  return write;
+}
+
+/// A recovered trade written from a top-level variable, elsewhere than in the recovery.
+final recoveredTradeInVariable = [
+  (TradeRecordRepository records, RobotSlot robot, CoordinatorIdentity at) =>
+      records.recordRecoveredTrade(
+        robot,
+        at,
+        orderId: 1,
+        role: TradeRole.seller,
+      ),
 ];
