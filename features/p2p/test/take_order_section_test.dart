@@ -248,14 +248,9 @@ void main() {
       final words = tester.widget<Text>(find.text(_description));
       expect(words.textSpan, isNull);
       expect(find.textContaining('95,000'), findsOneWidget);
-      // The robot's sats: 100 EUR at 95,000 EUR per bitcoin.
+      // The bond at the robot's read: 3 % of its 105,263 sats, 3,157.89, and at most that and 2 % of it, plus one sat (the state machine's tolerance).
       expect(find.text('Taker bond'), findsOneWidget);
-      expect(
-        find.text(
-          '${_readFresh.expectedBond.round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')} Sats, at most ${_readFresh.bondCeiling.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('3,158 Sats, at most 3,222'), findsOneWidget);
       expect(find.text('Read at 08:00:30'), findsOneWidget);
     },
   );

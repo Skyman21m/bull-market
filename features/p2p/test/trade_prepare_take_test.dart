@@ -59,6 +59,8 @@ void main() {
         expect(prepared.terms.orderId, 42);
         expect(prepared.readAt, app.now);
         expect(prepared.expectedBond, closeTo(3207, 1));
+        // The most the state machine takes of the bond invoice: 3,207 and 2 % of it, plus one sat (3,272.14).
+        expect(prepared.bondCeiling, 3272);
         // The page's book, the fresh book and info, the robot read back then its first contact, the robot's read of the order: no take.
         expect(app.coordinator.received, [
           ScriptedRequest.book,
