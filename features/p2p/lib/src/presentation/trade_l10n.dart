@@ -90,6 +90,20 @@ extension TakeProblemL10n on TakeProblem {
   }
 }
 
+/// What the wait of a take says it is doing (#119): one short line per step, naming the coordinator where it is the one asked.
+extension TakeStepL10n on TakeStep {
+  String toText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      TakeStep.checkingOrder => l10n.p2pTakeStepCheckingOrder(coordinator),
+      TakeStep.creatingRobot => l10n.p2pTakeStepCreatingRobot,
+      TakeStep.readingOrder => l10n.p2pTakeStepReadingOrder,
+      TakeStep.readingOrderAgain => l10n.p2pTakeStepReadingOrderAgain,
+      TakeStep.sendingTake => l10n.p2pTakeStepSendingTake(coordinator),
+    };
+  }
+}
+
 /// The words of the trade screen for what the state machine (#86) and the watch (#87) give: a text of the app for each, naming the coordinator where it helps, never the coordinator's own text.
 extension TradeWarningL10n on TradeWarning {
   String toText(BuildContext context, {required String coordinator}) {

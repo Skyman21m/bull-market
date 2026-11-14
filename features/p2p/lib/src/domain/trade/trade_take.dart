@@ -106,6 +106,29 @@ final class TakePreparationGone extends TakeRefusal {
   const TakePreparationGone();
 }
 
+/// What a take in two steps is doing while it runs (#119), for the screen to say: a step, never anything of the robot or of its token.
+///
+/// Only the parts that take real time are steps: requests over Tor, and the making of a robot's key pair; the checks and the writes on the device are not.
+enum TakeStep {
+  /// The order read again from the coordinator's book, with its taker fee: two anonymous requests, at once.
+  checkingOrder,
+
+  /// A fresh robot for the take: reserved on the device, then put on the coordinator over a Tor session of its own (read back, its key pair made away from the UI isolate, its first contact).
+  creatingRobot,
+
+  /// The order read by the robot that will take it.
+  readingOrder,
+
+  /// At the confirmation, the order read again by the same robot.
+  readingOrderAgain,
+
+  /// The take sent, once its records are written, and its answer awaited.
+  sendingTake,
+}
+
+/// Told each [TakeStep] as it starts.
+typedef TakeProgress = void Function(TakeStep step);
+
 /// The order is no longer in the coordinator's book read just before the take: taken, paused, cancelled or expired.
 final class TakeOrderGone extends TakeRefusal {
   const TakeOrderGone();

@@ -1149,6 +1149,25 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pTakeOrderChangedRead => 'L’ordre a changé.';
 
   @override
+  String p2pTakeStepCheckingOrder(String coordinator) {
+    return 'Vérification de l’ordre auprès de $coordinator';
+  }
+
+  @override
+  String get p2pTakeStepCreatingRobot => 'Construction de votre robot !';
+
+  @override
+  String get p2pTakeStepReadingOrder => 'Votre robot lit l’ordre';
+
+  @override
+  String get p2pTakeStepReadingOrderAgain => 'Votre robot relit l’ordre';
+
+  @override
+  String p2pTakeStepSendingTake(String coordinator) {
+    return 'Prise de l’ordre auprès de $coordinator';
+  }
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'Le montant indiqué est en dehors de la plage fixée par le créateur';
 

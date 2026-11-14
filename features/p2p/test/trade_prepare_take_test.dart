@@ -322,6 +322,63 @@ void main() {
     );
   });
 
+  group('the steps a take says (#119)', () {
+    test(
+      'a first preparation: the order checked, the robot built, the order read; a confirmation: read again, the take sent',
+      () async {
+        final app = await TradeHarness.start();
+        final steps = <TakeStep>[];
+        final prepared = switch (await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+          onStep: steps.add,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(steps, [
+          TakeStep.checkingOrder,
+          TakeStep.creatingRobot,
+          TakeStep.readingOrder,
+        ]);
+        steps.clear();
+        await app.take.confirm(prepared, onStep: steps.add);
+        expect(steps, [TakeStep.readingOrderAgain, TakeStep.sendingTake]);
+      },
+    );
+
+    test('a preparation that reuses its robot builds none', () async {
+      final (app, _) = await prepareOne();
+      final steps = <TakeStep>[];
+      await app.take.prepare(
+        await app.shownOrder(),
+        network: app.network,
+        onStep: steps.add,
+      );
+      expect(steps, [TakeStep.checkingOrder, TakeStep.readingOrder]);
+    });
+
+    test(
+      'a take refused before its robot says no later step; a confirmation refused at its read sends no take step',
+      () async {
+        final app = await TradeHarness.start(takerFee: 0.05);
+        final steps = <TakeStep>[];
+        await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+          onStep: steps.add,
+        );
+        expect(steps, [TakeStep.checkingOrder]);
+
+        final (other, prepared) = await prepareOne();
+        other.coordinator.takenByAnother();
+        steps.clear();
+        await other.take.confirm(prepared, onStep: steps.add);
+        expect(steps, [TakeStep.readingOrderAgain]);
+      },
+    );
+  });
+
   group('abandon', () {
     test(
       'sends nothing; the robot is never used again; a later take uses another',

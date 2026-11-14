@@ -1961,6 +1961,36 @@ abstract class P2pLocalizations {
   /// **'The order changed.'**
   String get p2pTakeOrderChangedRead;
 
+  /// Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read again from the coordinator's book, with its fees, anonymously. The reference has no such line, its robot existing before the take.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking the order with {coordinator}'**
+  String p2pTakeStepCheckingOrder(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). The reference shows it while a robot is generated; here, a step of the wait of a take (#119): a fresh robot made and put on the coordinator.
+  ///
+  /// In en, this message translates to:
+  /// **'Building your robot!'**
+  String get p2pTakeStepCreatingRobot;
+
+  /// Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read by the robot that will take it.
+  ///
+  /// In en, this message translates to:
+  /// **'Your robot reads the order'**
+  String get p2pTakeStepReadingOrder;
+
+  /// Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the order read again by the same robot, before the take.
+  ///
+  /// In en, this message translates to:
+  /// **'Your robot reads the order again'**
+  String get p2pTakeStepReadingOrderAgain;
+
+  /// Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the take sent, and its answer awaited.
+  ///
+  /// In en, this message translates to:
+  /// **'Taking the order with {coordinator}'**
+  String p2pTakeStepSendingTake(String coordinator);
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1011 (`api/errors.py`), which the official client shows under « Take Order »; the French is the project's.
   ///
   /// In en, this message translates to:

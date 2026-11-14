@@ -101,9 +101,9 @@ TakeOrderCubit _neverTaken(PublicOrder order) => TakeOrderCubit(
   order,
   RobosatsNetwork.mainnet,
   TakeCalls(
-    prepare: (shown, {required network, amount}) =>
+    prepare: (shown, {required network, amount, onStep}) =>
         throw StateError('not prepared'),
-    confirm: (prepared) => throw StateError('not taken'),
+    confirm: (prepared, {onStep}) => throw StateError('not taken'),
     abandon: (prepared) {},
     abandonOrder: (shown, {required network}) {},
   ),
@@ -896,11 +896,12 @@ void main() {
             order,
             RobosatsNetwork.mainnet,
             TakeCalls(
-              prepare: (shown, {required network, amount}) async {
+              prepare: (shown, {required network, amount, onStep}) async {
                 takes.add(shown);
                 return Ok(_prepared);
               },
-              confirm: (prepared) async => Ok(TakeOutcomeUnknown(_record)),
+              confirm: (prepared, {onStep}) async =>
+                  Ok(TakeOutcomeUnknown(_record)),
               abandon: (prepared) {},
               abandonOrder: (shown, {required network}) {},
             ),
@@ -981,9 +982,9 @@ void main() {
             order,
             RobosatsNetwork.mainnet,
             TakeCalls(
-              prepare: (shown, {required network, amount}) async =>
+              prepare: (shown, {required network, amount, onStep}) async =>
                   Err(TakeOrderAlreadyTraded(_record)),
-              confirm: (prepared) => throw StateError('not taken'),
+              confirm: (prepared, {onStep}) => throw StateError('not taken'),
               abandon: (prepared) {},
               abandonOrder: (shown, {required network}) {},
             ),

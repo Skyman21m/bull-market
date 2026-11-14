@@ -108,7 +108,7 @@ void main() {
         await cubit.confirm();
         await harness.settle();
 
-        expect(states.whereType<TakeConfirming>(), hasLength(1));
+        expect(states.whereType<TakeConfirming>(), isNotEmpty);
         final sent = states.last;
         expect(sent, isA<TakeSent>());
         expect((sent as TakeSent).record.orderId, harness.coordinator.orderId);
@@ -128,13 +128,18 @@ void main() {
         harness,
         await harness.shownOrder(),
         calls: TakeCalls(
-          prepare: (shown, {required network, amount}) {
+          prepare: (shown, {required network, amount, onStep}) {
             prepares++;
-            return take.prepare(shown, network: network, amount: amount);
+            return take.prepare(
+              shown,
+              network: network,
+              amount: amount,
+              onStep: onStep,
+            );
           },
-          confirm: (prepared) {
+          confirm: (prepared, {onStep}) {
             confirms++;
-            return take.confirm(prepared);
+            return take.confirm(prepared, onStep: onStep);
           },
           abandon: take.abandon,
           abandonOrder: take.abandonOrder,
@@ -455,6 +460,82 @@ void main() {
 
         expect(_requestsOf(harness, ScriptedRequest.take), 1);
         expect(await harness.activeRecords(), hasLength(1));
+      },
+    );
+
+    test(
+      'the wait says each step as it starts, in order, and never one that has not started',
+      () async {
+        final harness = await TradeHarness.start();
+        final cubit = _takeCubit(harness, await harness.shownOrder());
+        TakeStep? stepOf() => switch (cubit.state) {
+          TakePreparing(:final step) => step,
+          TakeConfirming(:final step) => step,
+          _ => null,
+        };
+        // Every request waits for its gate: the test lets one go at a time.
+        var gate = Completer<void>();
+        harness.coordinator.hold = gate.future;
+        Future<void> letGo() async {
+          final passing = gate;
+          gate = Completer<void>();
+          harness.coordinator.hold = gate.future;
+          passing.complete();
+          await harness.settle();
+        }
+
+        final taking = cubit.take();
+        await harness.settle();
+        // The book and the fees asked at once: the order is checked.
+        expect(stepOf(), TakeStep.checkingOrder);
+        await letGo();
+        // The robot read back, on its own session.
+        expect(stepOf(), TakeStep.creatingRobot);
+        await letGo();
+        // Its first contact.
+        expect(stepOf(), TakeStep.creatingRobot);
+        await letGo();
+        // The robot reads the order.
+        expect(stepOf(), TakeStep.readingOrder);
+        await letGo();
+        await taking;
+        expect(cubit.state, isA<TakeReady>());
+
+        final confirming = cubit.confirm();
+        await harness.settle();
+        expect(stepOf(), TakeStep.readingOrderAgain);
+        await letGo();
+        expect(stepOf(), TakeStep.sendingTake);
+        harness.coordinator.hold = null;
+        gate.complete();
+        await confirming;
+        expect(cubit.state, isA<TakeSent>());
+        await cubit.close();
+      },
+    );
+
+    test(
+      'a robot kept for the order is not built again: no such step at a new preparation',
+      () async {
+        final harness = await TradeHarness.start();
+        final cubit = _takeCubit(harness, await harness.shownOrder());
+        await cubit.take();
+        harness.coordinator.description = 'Now pay first.';
+        final steps = <TakeStep>[];
+        final listening = cubit.stream.listen((state) {
+          if (state case TakePreparing(
+            :final step?,
+          ) when steps.lastOrNull != step) {
+            steps.add(step);
+          }
+        });
+
+        await cubit.confirm();
+        await harness.settle();
+
+        expect(steps, [TakeStep.checkingOrder, TakeStep.readingOrder]);
+        await listening.cancel();
+        await cubit.close();
       },
     );
 

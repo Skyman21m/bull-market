@@ -1131,6 +1131,25 @@ class P2pLocalizationsCs extends P2pLocalizations {
   String get p2pTakeOrderChangedRead => 'The order changed.';
 
   @override
+  String p2pTakeStepCheckingOrder(String coordinator) {
+    return 'Checking the order with $coordinator';
+  }
+
+  @override
+  String get p2pTakeStepCreatingRobot => 'Building your robot!';
+
+  @override
+  String get p2pTakeStepReadingOrder => 'Your robot reads the order';
+
+  @override
+  String get p2pTakeStepReadingOrderAgain => 'Your robot reads the order again';
+
+  @override
+  String p2pTakeStepSendingTake(String coordinator) {
+    return 'Taking the order with $coordinator';
+  }
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'The amount specified is outside the range specified by the maker';
 

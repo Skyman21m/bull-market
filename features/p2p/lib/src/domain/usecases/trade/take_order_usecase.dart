@@ -85,15 +85,22 @@ final class TakeOrderUsecase {
   ///
   /// A robot reserved stays the order's until the take is confirmed or abandoned, the order is gone or refused for good ([TakeOrderGone], [TakeTermsRefused], [TakeOfBuyOrderRefused], [TakeOrderAlreadyTraded]: then it is forgotten), or another order is prepared: a new preparation of the order (a second tap, a read that failed, figures that changed, another amount) reuses it. A robot reserved and put on the coordinator is a robot the coordinator now knows, without an order, whatever comes next.
   /// [TakePreparationGone] when the order was abandoned or another order prepared while this preparation ran.
+  /// [onStep] is told [TakeStep.checkingOrder], [TakeStep.creatingRobot] when a fresh robot is reserved, then [TakeStep.readingOrder], each as it starts.
   /// Orders protected by a password are not in the public book: not prepared here.
   Future<Result<PreparedTake, TakeRefusal>> prepare(
     PublicOrder shown, {
     required RobosatsNetwork network,
     TakeAmount? amount,
+    TakeProgress? onStep,
   }) async {
     if (shown.type == OrderType.buy) return const Err(TakeOfBuyOrderRefused());
     return _locks.run(network, shown.coordinator, shown.id, () async {
-      final prepared = await _prepare(shown, network: network, amount: amount);
+      final prepared = await _prepare(
+        shown,
+        network: network,
+        amount: amount,
+        onStep: onStep ?? _noStep,
+      );
       if (prepared case Err(
         failure: TakeOrderGone() ||
             TakeTermsRefused() ||
@@ -112,15 +119,21 @@ final class TakeOrderUsecase {
   /// [TakePreparationGone] when [prepared] is not the current preparation of its order (confirmed already, abandoned, replaced, prepared before a restart, or abandoned while this confirmation read the order), or when the Garage Key that gave its robot was deleted or replaced since; [TakeOrderAlreadyTraded] when the order has an open trade here.
   /// The read again, by the robot, must still be of a public order without a password that it takes no part in ([TakeOrderGone] otherwise), and agree with [prepared]'s read as [prepare] checks the book's, sats within `TradeTolerances.price` of those the user saw, the description the same ([TakeOrderChanged] otherwise: prepare again, with the same robot, to show the new figures): a preparation grown old is never sent, whatever the time it took.
   /// Then the pending take, its terms ([PreparedTake.terms]) and its first trail are written, the take is sent once, and its answer kept, as [execute] does; the order's robot is then the trade's, or spent. An [abandon] after that point does not stop the take.
-  Future<Result<TakeOutcome, TakeRefusal>> confirm(PreparedTake prepared) {
+  /// [onStep] is told [TakeStep.readingOrderAgain], then [TakeStep.sendingTake], each as it starts.
+  Future<Result<TakeOutcome, TakeRefusal>> confirm(
+    PreparedTake prepared, {
+    TakeProgress? onStep,
+  }) {
     final terms = prepared.terms;
     return _locks.run(
       terms.network,
       terms.coordinator,
       terms.orderId,
-      () => _confirm(prepared),
+      () => _confirm(prepared, onStep ?? _noStep),
     );
   }
+
+  static void _noStep(TakeStep step) {}
 
   /// Abandons [prepared] (#119) when it is still its order's latest preparation: nothing is sent; its robot stays bound to that coordinator, without a trade, and is never used again.
   ///
@@ -135,6 +148,7 @@ final class TakeOrderUsecase {
     PublicOrder shown, {
     required RobosatsNetwork network,
     required TakeAmount? amount,
+    required TakeProgress onStep,
   }) async {
     final coordinator = shown.coordinator;
     if (await _noOpenTrade(network, coordinator, shown.id) case Err(
@@ -142,6 +156,7 @@ final class TakeOrderUsecase {
     )) {
       return Err(failure);
     }
+    onStep(TakeStep.checkingOrder);
     final _FreshRead fresh;
     switch (await _freshRead(shown, network: network, amount: amount)) {
       case Ok(:final value):
@@ -176,6 +191,7 @@ final class TakeOrderUsecase {
       }
     }
     if (reserved == null) {
+      onStep(TakeStep.creatingRobot);
       switch (await _freshRobot(network, coordinator)) {
         case Ok(:final value):
           reserved = value;
@@ -184,6 +200,7 @@ final class TakeOrderUsecase {
       }
       _prepared.keepRobot(network, coordinator.shortAlias, shown.id, reserved);
     }
+    onStep(TakeStep.readingOrder);
     final CoordinatorOrder read;
     switch (await _robotRead(reserved, network, coordinator, shown.id)) {
       case Ok(:final value):
@@ -228,6 +245,7 @@ final class TakeOrderUsecase {
 
   Future<Result<TakeOutcome, TakeRefusal>> _confirm(
     PreparedTake prepared,
+    TakeProgress onStep,
   ) async {
     final terms = prepared.terms;
     final coordinator = terms.coordinator;
@@ -240,6 +258,7 @@ final class TakeOrderUsecase {
     }
     final reserved = _prepared.robotOf(prepared);
     if (reserved == null) return const Err(TakePreparationGone());
+    onStep(TakeStep.readingOrderAgain);
     final CoordinatorOrder again;
     switch (await _robotRead(reserved, network, coordinator, terms.orderId)) {
       case Ok(:final value):
@@ -272,6 +291,7 @@ final class TakeOrderUsecase {
     }
     // From here the robot is the trade's, or spent: never prepared again.
     _prepared.release(prepared);
+    onStep(TakeStep.sendingTake);
     return _recordAndSend(
       reserved,
       coordinator: coordinator,

@@ -1573,6 +1573,36 @@
   "@p2pTakeOrderChangedRead": {
     "description": "Not in the RoboSats texts: the project's own: over « Confirm », when the robot's read again at the confirmation found the order changed: the order details now show its new figures, and nothing was taken (#119)."
   },
+  "p2pTakeStepCheckingOrder": "Checking the order with {coordinator}",
+  "@p2pTakeStepCheckingOrder": {
+    "description": "Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read again from the coordinator's book, with its fees, anonymously. The reference has no such line, its robot existing before the take.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTakeStepCreatingRobot": "Building your robot!",
+  "@p2pTakeStepCreatingRobot": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). The reference shows it while a robot is generated; here, a step of the wait of a take (#119): a fresh robot made and put on the coordinator."
+  },
+  "p2pTakeStepReadingOrder": "Your robot reads the order",
+  "@p2pTakeStepReadingOrder": {
+    "description": "Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read by the robot that will take it."
+  },
+  "p2pTakeStepReadingOrderAgain": "Your robot reads the order again",
+  "@p2pTakeStepReadingOrderAgain": {
+    "description": "Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the order read again by the same robot, before the take."
+  },
+  "p2pTakeStepSendingTake": "Taking the order with {coordinator}",
+  "@p2pTakeStepSendingTake": {
+    "description": "Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the take sent, and its answer awaited.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
   "p2pTakeAmountOutOfRange": "The amount specified is outside the range specified by the maker",
   "@p2pTakeAmountOutOfRange": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1011 (`api/errors.py`), which the official client shows under « Take Order »; the French is the project's."

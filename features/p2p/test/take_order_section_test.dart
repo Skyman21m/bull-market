@@ -40,6 +40,10 @@ final class _Take {
   final List<PreparedTake> abandoned = [];
   int abandonedOrders = 0;
 
+  /// The steps each preparation and confirmation says, before it waits for [preparing] or [confirming].
+  List<TakeStep> preparingSteps = const [];
+  List<TakeStep> confirmingSteps = const [];
+
   /// The answers of the preparations, in turn; the last one stays.
   List<Result<PreparedTake, TakeRefusal>> prepared;
   Completer<Result<PreparedTake, TakeRefusal>>? preparing;
@@ -50,14 +54,16 @@ final class _Take {
     : prepared = prepared ?? [Ok(_read)];
 
   TakeCalls get calls => TakeCalls(
-    prepare: (shown, {required network, amount}) async {
+    prepare: (shown, {required network, amount, onStep}) async {
       amounts.add(amount);
+      preparingSteps.forEach(onStep ?? (_) {});
       final waiting = preparing;
       if (waiting != null) return waiting.future;
       return prepared.length > 1 ? prepared.removeAt(0) : prepared.single;
     },
-    confirm: (prepared) async {
+    confirm: (prepared, {onStep}) async {
       confirmed.add(prepared);
+      confirmingSteps.forEach(onStep ?? (_) {});
       final waiting = confirming;
       if (waiting != null) return waiting.future;
       return (answer ??
@@ -466,6 +472,107 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the wait says the step that runs under the bar, and none that has not started',
+    (tester) async {
+      final take = _Take()
+        ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
+      await _show(tester, await _order(), take: take);
+      await _press(tester);
+      await tester.tap(find.text('Done'));
+      await tester.pump();
+      // Before any step starts: the bar only.
+      expect(find.text('Checking the order with Temple of Sats'), findsNothing);
+      expect(find.text('Building your robot!'), findsNothing);
+      expect(find.text('Your robot reads the order'), findsNothing);
+      await tester.runAsync(() async {});
+      take.preparing?.complete(Ok(_read));
+      take.preparing = null;
+      await settle(tester);
+
+      // The steps a preparation says are shown one at a time, the latest only.
+      final steps = Completer<Result<PreparedTake, TakeRefusal>>();
+      take
+        ..preparing = steps
+        ..preparingSteps = [TakeStep.checkingOrder];
+      await _tap(tester, _backButton);
+      await _press(tester);
+      await tester.tap(find.text('Done'));
+      await tester.pump();
+      await _reveal(
+        tester,
+        find.text('Checking the order with Temple of Sats'),
+      );
+      expect(
+        find.text('Checking the order with Temple of Sats'),
+        findsOneWidget,
+      );
+      expect(find.text('Building your robot!'), findsNothing);
+      expect(find.text('Your robot reads the order'), findsNothing);
+      steps.complete(Ok(_read));
+      await settle(tester);
+      expect(find.text('Checking the order with Temple of Sats'), findsNothing);
+
+      final confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
+      take
+        ..confirming = confirming
+        ..confirmingSteps = [TakeStep.readingOrderAgain, TakeStep.sendingTake];
+      await _tap(tester, _confirmButton);
+      await _reveal(tester, find.text('Taking the order with Temple of Sats'));
+      expect(find.text('Taking the order with Temple of Sats'), findsOneWidget);
+      expect(find.text('Your robot reads the order again'), findsNothing);
+      confirming.complete(Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)));
+      await settle(tester);
+    },
+  );
+
+  for (final (step, en, fr) in [
+    (
+      TakeStep.checkingOrder,
+      'Checking the order with Temple of Sats',
+      'Vérification de l’ordre auprès de Temple of Sats',
+    ),
+    (
+      TakeStep.creatingRobot,
+      'Building your robot!',
+      'Construction de votre robot !',
+    ),
+    (
+      TakeStep.readingOrder,
+      'Your robot reads the order',
+      'Votre robot lit l’ordre',
+    ),
+  ]) {
+    testWidgets('« $en » / « $fr », read out when it shows', (tester) async {
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        final semantics = tester.ensureSemantics();
+        final take = _Take()
+          ..preparingSteps = [step]
+          ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
+        await _show(tester, await _order(), take: take, locale: locale);
+        final fr0 = locale.languageCode == 'fr';
+        await _reveal(
+          tester,
+          find.text(fr0 ? 'Prendre l\'ordre' : 'Take Order'),
+        );
+        await tester.tap(find.text(fr0 ? 'Prendre l\'ordre' : 'Take Order'));
+        await settle(tester);
+        await tester.tap(find.text(fr0 ? 'Fait' : 'Done'));
+        await tester.pump();
+        final line = find.text(fr0 ? fr : en);
+        await _reveal(tester, line);
+        expect(line, findsOneWidget);
+        expect(
+          tester.getSemantics(line),
+          isSemantics(isLiveRegion: true),
+        );
+        take.preparing?.complete(Ok(_read));
+        await settle(tester);
+        semantics.dispose();
+      }
+    });
+  }
+
   testWidgets('a read that runs long says it still waits', (tester) async {
     final take = _Take()
       ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
@@ -631,11 +738,11 @@ void main() {
       await _reveal(tester, _backButton);
       expect(
         tester.getSemantics(_confirmButton),
-        containsSemantics(label: 'Confirm', isButton: true, isEnabled: true),
+        isSemantics(label: 'Confirm', isButton: true, isEnabled: true),
       );
       expect(
         tester.getSemantics(_backButton),
-        containsSemantics(label: 'Go back', isButton: true, isEnabled: true),
+        isSemantics(label: 'Go back', isButton: true, isEnabled: true),
       );
       semantics.dispose();
     },

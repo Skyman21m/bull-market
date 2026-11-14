@@ -8,6 +8,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/taker_estimate.dart';
+import '../domain/trade/trade_take.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_text.dart';
 import '../presentation/p2p_formats.dart';
@@ -23,6 +24,7 @@ import 'widgets/trade_button.dart';
 ///
 /// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) ».
 /// - On press: « You do not have a Garage Key » without a key, else « Store your garage key »; its « Done » prepares the take (#119): the robot that will take the order reads it, while the button shows that it runs, a bar runs under it and, after 30 s, the panel says it still waits, as the robot panel of the Garage does.
+/// - Each step of the wait says what it does under the bar (#119): the order checked with the coordinator, the robot built (« Building your robot! », the reference's words), the order read by the robot; at « Confirm », the order read again, the take sent.
 /// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description, which the reference shows before its confirmation, and the fresh figures), and « Take Order » gives way to « Confirm », which sends the take, and « Go back », which abandons it; « The order changed. » says when a confirmation found new figures, which are then shown, never confirmed by themselves. When the take was sent, [onTaken] opens its trade.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
 /// - A buy order, whose taker sells, is a later version: the button is shown disabled with a short line (#96).
@@ -148,10 +150,25 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       order.coordinator.longAlias,
       maxCodePoints: CoordinatorText.name,
     );
-    final (bool running, bool slow, String step) = switch (state) {
-      TakePreparing(:final slow) => (true, slow, l10n.p2pTakeOrder),
-      TakeConfirming(:final slow) => (true, slow, l10n.p2pTakeConfirm),
-      _ => (false, false, ''),
+    final (
+      bool running,
+      bool slow,
+      String label,
+      TakeStep? step,
+    ) = switch (state) {
+      TakePreparing(:final slow, :final step) => (
+        true,
+        slow,
+        l10n.p2pTakeOrder,
+        step,
+      ),
+      TakeConfirming(:final slow, :final step) => (
+        true,
+        slow,
+        l10n.p2pTakeConfirm,
+        step,
+      ),
+      _ => (false, false, '', null),
     };
     final under = <Widget>[
       if (running) ...[
@@ -161,9 +178,12 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
           liveRegion: true,
           child: LinearProgressIndicator(
             color: context.bull.primary,
-            semanticsLabel: step,
+            semanticsLabel: label,
           ),
         ),
+        // What the step that runs is doing, read out when it changes.
+        if (step != null)
+          _Line(step.toText(context, coordinator: coordinator), live: true),
         if (slow) _Line(l10n.p2pRobotStillWaiting(coordinator), live: true),
       ],
       if (state case TakeIdle(:final problem?))

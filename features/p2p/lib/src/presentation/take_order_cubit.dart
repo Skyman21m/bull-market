@@ -17,11 +17,15 @@ typedef PrepareTake =
       PublicOrder shown, {
       required RobosatsNetwork network,
       TakeAmount? amount,
+      TakeProgress? onStep,
     });
 
 /// [TakeOrderUsecase.confirm], which the locator gives the cubit.
 typedef ConfirmTake =
-    Future<Result<TakeOutcome, TakeRefusal>> Function(PreparedTake prepared);
+    Future<Result<TakeOutcome, TakeRefusal>> Function(
+      PreparedTake prepared, {
+      TakeProgress? onStep,
+    });
 
 /// [TakeOrderUsecase.abandon], which the locator gives the cubit.
 typedef AbandonTake = void Function(PreparedTake prepared);
@@ -63,11 +67,12 @@ final class TakeIdle extends TakeOrderState {
   const TakeIdle({this.problem});
 }
 
-/// The order is read by the robot that will take it (the order read again, a robot put on the coordinator, its read of the order): it can take a minute over Tor, and [slow] says it has run for a while.
+/// The order is read by the robot that will take it (the order read again, a robot put on the coordinator, its read of the order): it can take a minute over Tor; [step] is what it does now, `null` until the first one starts, and [slow] says it has run for a while.
 final class TakePreparing extends TakeOrderState {
+  final TakeStep? step;
   final bool slow;
 
-  const TakePreparing({this.slow = false});
+  const TakePreparing({this.step, this.slow = false});
 }
 
 /// The robot read the order: the order details show [prepared], and the user confirms the take or goes back; [changed] says that the order changed since the read the user had seen, and these are its new figures.
@@ -78,12 +83,13 @@ final class TakeReady extends TakeOrderState {
   const TakeReady(this.prepared, {this.changed = false});
 }
 
-/// The take of [prepared] is confirmed and runs (the order read again by the same robot, then the take sent); [slow] says it has run for a while.
+/// The take of [prepared] is confirmed and runs (the order read again by the same robot, then the take sent); [step] is what it does now, and [slow] says it has run for a while.
 final class TakeConfirming extends TakeOrderState {
   final PreparedTake prepared;
+  final TakeStep? step;
   final bool slow;
 
-  const TakeConfirming(this.prepared, {this.slow = false});
+  const TakeConfirming(this.prepared, {this.step, this.slow = false});
 }
 
 /// The take was sent and started a trade, resumed one, or its outcome is unknown, or the order already had an open trade here: the trade of [record] is the screen to show (the watch of the trade resolves an unknown outcome).
@@ -136,6 +142,9 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   final Duration _stillWaitingAfter;
   Timer? _stillWaiting;
 
+  /// Whether the step that runs has run for [stillWaitingAfter]: kept across its steps.
+  bool _slow = false;
+
   /// The amount of the range the take is for, kept for a preparation made again.
   TakeAmount? _amount;
 
@@ -168,8 +177,15 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     if (isClosed || current is! TakeReady) return;
     final prepared = current.prepared;
     emit(TakeConfirming(prepared));
-    _waitFor(() => TakeConfirming(prepared, slow: true));
-    final result = await _calls.confirm(prepared);
+    _startWaiting();
+    final result = await _calls.confirm(
+      prepared,
+      onStep: (step) {
+        if (!isClosed && state is TakeConfirming) {
+          emit(TakeConfirming(prepared, step: step, slow: _slow));
+        }
+      },
+    );
     _stillWaiting?.cancel();
     if (isClosed) return;
     switch (result) {
@@ -206,11 +222,16 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   /// The state after a preparation: [TakePreparing] meanwhile.
   Future<TakeOrderState> _prepared({required bool changed}) async {
     emit(const TakePreparing());
-    _waitFor(() => const TakePreparing(slow: true));
+    _startWaiting();
     final result = await _calls.prepare(
       order,
       network: network,
       amount: _amount,
+      onStep: (step) {
+        if (!isClosed && state is TakePreparing) {
+          emit(TakePreparing(step: step, slow: _slow));
+        }
+      },
     );
     _stillWaiting?.cancel();
     if (isClosed) {
@@ -237,12 +258,21 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     _ => TakeIdle(problem: TakeWasRefused(refusal)),
   };
 
-  /// Says, after [stillWaitingAfter], that the step that runs still waits.
-  void _waitFor(TakeOrderState Function() slow) {
+  /// Says, after [stillWaitingAfter], that the preparation or the confirmation that runs still waits, whatever its step.
+  void _startWaiting() {
     _stillWaiting?.cancel();
-    final running = state;
+    _slow = false;
     _stillWaiting = Timer(_stillWaitingAfter, () {
-      if (!isClosed && identical(state, running)) emit(slow());
+      _slow = true;
+      if (isClosed) return;
+      switch (state) {
+        case TakePreparing(:final step):
+          emit(TakePreparing(step: step, slow: true));
+        case TakeConfirming(:final prepared, :final step):
+          emit(TakeConfirming(prepared, step: step, slow: true));
+        case _:
+          break;
+      }
     });
   }
 
