@@ -206,8 +206,8 @@ class _SheetFrame extends StatelessWidget {
           if (_SheetFrame.isLargeText(context)) {
             return Padding(
               padding: const EdgeInsets.only(
-                left: BullSpacing.md,
-                right: BullSpacing.md,
+                left: BullSpacing.xs,
+                right: BullSpacing.xs,
                 bottom: BullSpacing.md,
               ),
               child: Column(
@@ -264,6 +264,9 @@ class _FilterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final leading = this.leading;
+    final large = _SheetFrame.isLargeText(context);
+    // Narrower with very large text, so that more of a word fits on a line.
+    final gap = large ? BullSpacing.xs : BullSpacing.sm;
     return MergeSemantics(
       child: Semantics(
         checked: checked,
@@ -271,16 +274,16 @@ class _FilterRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            // The padding of the rows of `BullPickerSheet`, narrower with very large text, so that more of a word fits on a line.
+            // The padding of the rows of `BullPickerSheet`, narrower with very large text.
             padding: EdgeInsets.symmetric(
               vertical: BullSpacing.md + BullSpacing.xxs,
-              horizontal: _SheetFrame.isLargeText(context)
+              horizontal: large
                   ? BullSpacing.lg
                   : BullSpacing.xl + BullSpacing.xs,
             ),
             child: Row(
               children: [
-                if (leading != null) ...[leading, const Gap(BullSpacing.sm)],
+                if (leading != null) ...[leading, Gap(gap)],
                 Expanded(
                   child: Text(
                     label,
@@ -290,7 +293,7 @@ class _FilterRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Gap(BullSpacing.sm),
+                Gap(gap),
                 // The place of the check is kept on every row, so that a label does not move when it is checked.
                 Icon(
                   Icons.check,
