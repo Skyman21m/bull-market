@@ -379,6 +379,7 @@ void main() {
           final other => fail('$other'),
         };
         expect(started.recordProblem, isA<P2pStorageFailure>());
+        expect(started.stored, isFalse);
         expect(started.status, isA<StatusUnknown>());
         expect(started.status.invoice, isNull);
         expect(
@@ -461,7 +462,10 @@ void main() {
         app.coordinator.backToPublic();
         await app.elapse(const Duration(seconds: 10));
         expect(run.lastStatus.recordProblem, isA<P2pStorageFailure>());
-        expect(run.lastStatus.seen.status, isA<WaitingForBoth>());
+        // The trail on disk's own status, at 6, unmarked: never the end the read computed, nor the last status with its order.
+        expect(run.lastStatus.seen.status, isA<StatusUnknown>());
+        expect(run.lastStatus.seen.status.position.name, 'waitingForBoth');
+        expect(run.lastStatus.stored, isFalse);
         expect(await app.activeRecords(), hasLength(1));
         await run.subscription.cancel();
       },
@@ -800,18 +804,21 @@ void main() {
   );
 
   group('the minors', () {
-    test('P6: a second subscription takes the trade over, the first is superseded, one read', () async {
-      final (app, record) = await takenTrade();
-      final before = reads(app);
-      final a = app.watchOf(record);
-      final b = app.watchOf(record);
-      await app.settle();
-      expect(reads(app), before + 1);
-      expect(a.last, isA<TradeWatchSuperseded>());
-      expect(a.done, isTrue);
-      expect(b.last, isA<TradeWatchStatus>());
-      await b.subscription.cancel();
-    });
+    test(
+      'P6: a second subscription takes the trade over, the first is superseded, one read',
+      () async {
+        final (app, record) = await takenTrade();
+        final before = reads(app);
+        final a = app.watchOf(record);
+        final b = app.watchOf(record);
+        await app.settle();
+        expect(reads(app), before + 1);
+        expect(a.last, isA<TradeWatchSuperseded>());
+        expect(a.done, isTrue);
+        expect(b.last, isA<TradeWatchStatus>());
+        await b.subscription.cancel();
+      },
+    );
 
     test(
       'P7: a watch left open across a cancel at 6 ends on the forfeited bond',

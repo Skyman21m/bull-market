@@ -342,7 +342,11 @@ final class TradeReader {
     for (var round = 0; round < 2; round++) {
       switch (await _trails.storeTrail(record, attempt.status.trail.record)) {
         case Ok(value: TrailStored()):
-          current = TradeSeen(attempt.status, order: attempt.order, stored: true);
+          current = TradeSeen(
+            attempt.status,
+            order: attempt.order,
+            stored: true,
+          );
           onDisk = true;
         case Err(:final failure):
           problem = failure;
