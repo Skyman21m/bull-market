@@ -246,6 +246,9 @@ void main() {
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
         await cubit.submit(PayoutKind.lightning);
         expect(sender.sent, hasLength(1));
+        // A status read no later than what it told (an older read shown late) offers nothing.
+        cubit.show(TradeSeen(six.status, order: six.order, stored: true));
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
         // A read made after it, at 6 still: the payout is asked again, and offered.
         cubit.show(
           await statuses.read(
