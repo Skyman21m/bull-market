@@ -73,6 +73,16 @@ sealed class TradeView {
       StatusUnknown() when takePending => const TradeMessage(
         TradeMessageKind.takePending,
       ),
+      // An end the stored trail holds, with no read of it to show: the trade is over for this robot, and nothing is read again.
+      StatusUnknown(position: TradePosition.cancelled) => const TradeMessage(
+        TradeMessageKind.cancelled,
+      ),
+      StatusUnknown(position: TradePosition.notAvailable) => const TradeMessage(
+        TradeMessageKind.notAvailable,
+      ),
+      StatusUnknown(isTerminal: true) => const TradeMessage(
+        TradeMessageKind.ended,
+      ),
       StatusUnknown() => const TradeWaiting(),
       Cancelled() => const TradeMessage(TradeMessageKind.cancelled),
       TakenByAnother() ||
@@ -104,6 +114,7 @@ final class TradeMessage extends TradeView {
 
 enum TradeMessageKind {
   cancelled,
+  ended,
   notAvailable,
   takePending,
   takeNeverSent,

@@ -388,5 +388,6 @@
   "p2pTradeWarnExpiringSoon": "Cette facture expire dans moins d’une minute.",
   "p2pTradeWarnHashChanged": "{coordinator} a envoyé une nouvelle facture pour la même étape. Ne la payez pas.",
   "p2pTradeWarnPayee": "Cette facture ne vient pas du nœud Lightning connu de {coordinator}. Ne la payez pas.",
-  "p2pActiveOrder": "Ordre actif #{orderId}"
+  "p2pActiveOrder": "Ordre actif #{orderId}",
+  "p2pTradeEnded": "Cet échange est terminé pour ce robot."
 }

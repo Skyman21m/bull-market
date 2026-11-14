@@ -121,6 +121,7 @@ extension TradeMessageKindL10n on TradeMessageKind {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
       TradeMessageKind.cancelled => l10n.p2pOrderCancelled,
+      TradeMessageKind.ended => l10n.p2pTradeEnded,
       TradeMessageKind.notAvailable => l10n.p2pOrderNotAvailable,
       TradeMessageKind.takePending => l10n.p2pTradeTakePending(coordinator),
       TradeMessageKind.takeNeverSent => l10n.p2pTradeTakeNeverSent(coordinator),

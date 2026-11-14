@@ -1477,4 +1477,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pActiveOrder(String orderId) {
     return 'Ordre actif #$orderId';
   }
+
+  @override
+  String get p2pTradeEnded => 'Cet échange est terminé pour ce robot.';
 }

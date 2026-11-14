@@ -4,7 +4,6 @@ import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
-import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -23,31 +22,39 @@ final class TradeScreenStatuses {
   final Bolt11TestInvoice invoice;
   final Bolt11Reader reader;
 
-  TradeScreenStatuses._(this.terms, this.invoice, this.reader);
+  /// The bond the order says at 3 (`bond_satoshis`), the invoice's amount unless given.
+  final int? bondSatoshis;
+
+  TradeScreenStatuses._(
+    this.terms,
+    this.invoice,
+    this.reader,
+    this.bondSatoshis,
+  );
 
   /// The statuses of a take whose bond invoice is [invoice] (the book's bond on mainnet by default); with [decodable] `false`, the decoder cannot read it.
   static Future<TradeScreenStatuses> make({
     Bolt11TestInvoice? invoice,
     bool decodable = true,
+    int? bondSatoshis,
   }) async {
     final bond = invoice ?? bondInvoice();
     return TradeScreenStatuses._(
       await tradeTerms(),
       bond,
       Bolt11Reader(Bolt11TestDecoder([if (decodable) bond])),
+      bondSatoshis,
     );
   }
 
   /// The record of the trade, as the repository would give it.
   static final TradeRecord record = TradeRecord(
-    robot: RobotSlot(
-      RobosatsNetwork.mainnet,
-      switch (GarageKeyFingerprint.of(tradeKey)) {
-        Ok(:final value) => value,
-        Err(:final failure) => throw StateError('$failure'),
-      },
-      0,
-    ),
+    robot: RobotSlot(RobosatsNetwork.mainnet, switch (GarageKeyFingerprint.of(
+      tradeKey,
+    )) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    }, 0),
     coordinatorAlias: 'temple',
     coordinatorOnion: switch (Federation.robosats.byAlias('temple')) {
       final temple? => temple.mainnet.onion ?? '',
@@ -63,7 +70,9 @@ final class TradeScreenStatuses {
 
   /// 3: the take's own answer, the pre-take with its bond.
   Future<TradeSeen> bondStep() async {
-    final started = await takeStarted(orderJson(3, bond: invoice));
+    final started = await takeStarted(
+      orderJson(3, bond: invoice, changes: {'bond_satoshis': ?bondSatoshis}),
+    );
     return TradeSeen(
       TradeStatus.afterTake(
         started,
@@ -150,8 +159,7 @@ final class TradeScreenStatuses {
   );
 
   /// The order public again after the pre-take, this robot no longer its taker.
-  Future<TradeSeen> publicAgain() async =>
-      read(await bondStep(), orderJson(1));
+  Future<TradeSeen> publicAgain() async => read(await bondStep(), orderJson(1));
 
   /// The order public again after the bond locked: the bond is lost.
   Future<TradeSeen> bondForfeited() async =>

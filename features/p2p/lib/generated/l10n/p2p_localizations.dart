@@ -2488,6 +2488,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Active order #{orderId}'**
   String p2pActiveOrder(String orderId);
+
+  /// Not in the RoboSats texts: the project's own: the stored records of the trade hold an end, and no read of it is there to show (#87, #88). No action.
+  ///
+  /// In en, this message translates to:
+  /// **'This trade is over for this robot.'**
+  String get p2pTradeEnded;
 }
 
 class _P2pLocalizationsDelegate

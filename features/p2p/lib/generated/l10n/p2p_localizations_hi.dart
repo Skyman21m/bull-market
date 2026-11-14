@@ -1453,6 +1453,9 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String p2pActiveOrder(String orderId) {
     return 'Active order #$orderId';
   }
+
+  @override
+  String get p2pTradeEnded => 'This trade is over for this robot.';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

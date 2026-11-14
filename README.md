@@ -84,7 +84,7 @@ A few notes on what the mock-up shows:
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/en-search-order.png" width="170" alt="App screen: Search order dialog asking for an order URL"><br><sub>Search order</sub></td>
-    <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of an order, with the Take Order button disabled"><br><sub>Order details</sub></td>
+    <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of an order, with the Take Order button"><br><sub>Order details</sub></td>
     <td align="center"><img src="docs/screenshots/en-reversible-payments.png" width="170" alt="App screen: warning about reversible payment methods"><br><sub>Reversible payments warning</sub></td>
     <td align="center"><img src="docs/screenshots/en-coordinator-details.png" width="170" alt="App screen: details of the coordinator that hosts the order"><br><sub>Coordinator details</sub></td>
   </tr>
@@ -128,7 +128,7 @@ The Garage (RoboSats' name for the screen that holds the Garage Key and its robo
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/fr-search-order.png" width="170" alt="Écran de l'application : fenêtre « Rechercher un ordre » qui demande l'URL d'un ordre"><br><sub>Rechercher un ordre</sub></td>
-    <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre, bouton « Prendre l'ordre » inactif"><br><sub>La fiche d'un ordre</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre, avec le bouton « Prendre l'ordre »"><br><sub>La fiche d'un ordre</sub></td>
     <td align="center"><img src="docs/screenshots/fr-reversible-payments.png" width="170" alt="Écran de l'application : avertissement sur les paiements réversibles"><br><sub>Avertissement « Paiements réversibles »</sub></td>
     <td align="center"><img src="docs/screenshots/fr-coordinator-details.png" width="170" alt="Écran de l'application : fiche du coordinateur qui héberge l'ordre"><br><sub>La fiche du coordinateur</sub></td>
   </tr>

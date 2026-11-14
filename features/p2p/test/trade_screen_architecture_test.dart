@@ -14,7 +14,8 @@ import 'package:test/test.dart';
 void main() {
   final sources = {
     for (final path in _dartFilesUnder('lib'))
-      if (!path.startsWith('lib/generated/')) path: File(path).readAsStringSync(),
+      if (!path.startsWith('lib/generated/'))
+        path: File(path).readAsStringSync(),
   };
 
   test('the scan reads the files it rules', () {
@@ -36,26 +37,29 @@ void main() {
     });
   });
 
-  test('each trade use case is named by its cubit, the domain and the locator only', () {
-    for (final (useCase, cubit) in [
-      ('TakeOrderUsecase', 'lib/src/presentation/take_order_cubit.dart'),
-      ('WatchTradeUsecase', 'lib/src/presentation/trade_cubit.dart'),
-      ('CancelTradeUsecase', 'lib/src/presentation/trade_cubit.dart'),
-      (
-        'ListActiveTradesUsecase',
-        'lib/src/presentation/active_trades_cubit.dart',
-      ),
-    ]) {
-      final outside = {
-        for (final path in _whereNamed(sources, useCase))
-          if (!path.startsWith('lib/src/domain/') &&
-              path != 'lib/src/p2p_locator.dart' &&
-              path != cubit)
-            path,
-      };
-      expect(outside, isEmpty, reason: useCase);
-    }
-  });
+  test(
+    'each trade use case is named by its cubit, the domain and the locator only',
+    () {
+      for (final (useCase, cubit) in [
+        ('TakeOrderUsecase', 'lib/src/presentation/take_order_cubit.dart'),
+        ('WatchTradeUsecase', 'lib/src/presentation/trade_cubit.dart'),
+        ('CancelTradeUsecase', 'lib/src/presentation/trade_cubit.dart'),
+        (
+          'ListActiveTradesUsecase',
+          'lib/src/presentation/active_trades_cubit.dart',
+        ),
+      ]) {
+        final outside = {
+          for (final path in _whereNamed(sources, useCase))
+            if (!path.startsWith('lib/src/domain/') &&
+                path != 'lib/src/p2p_locator.dart' &&
+                path != cubit)
+              path,
+        };
+        expect(outside, isEmpty, reason: useCase);
+      }
+    },
+  );
 
   test('the screens call their cubits only', () {
     final offences = <String>{

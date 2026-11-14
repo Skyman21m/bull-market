@@ -34,6 +34,7 @@ class TradeDialogBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
+            container: true,
             header: true,
             child: Text(
               title,

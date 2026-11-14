@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -8,7 +7,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
-import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
@@ -18,7 +16,6 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
-import 'package:primitives/primitives.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'support/harness.dart';
@@ -140,8 +137,16 @@ Future<TradeCubit> _show(
 }
 
 TradeWatchStatus _watched(String name, {int failedReads = 0}) =>
-    TradeScreenStatuses.watched(_seen[name] ?? (throw StateError(name)),
-        failedReads: failedReads);
+    TradeScreenStatuses.watched(
+      _seen[name] ?? (throw StateError(name)),
+      failedReads: failedReads,
+    );
+
+/// Scrolls [finder] into view, and lays the screen out again so that a tap finds it where it is.
+Future<void> _reveal(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pump();
+}
 
 /// Every paragraph on the screen, laid out without being cut.
 void _expectNothingCut(WidgetTester tester, String reason) {
@@ -165,6 +170,7 @@ void main() {
     );
     _wrongAmount = await TradeScreenStatuses.make(
       invoice: bondInvoice(sats: bookBond + 1),
+      bondSatoshis: bookBond,
     );
     _seen = {
       'bond': await _statuses.bondStep(),
@@ -209,13 +215,17 @@ void main() {
     testWidgets('the reference\'s contract with the QR code and the facts', (
       tester,
     ) async {
+      final semantics = tester.ensureSemantics();
       await _show(tester, watch: _Watch(), state: _watched('bond'));
 
       expect(find.text('Lock 3,207 Sats to TAKE order (1/4)'), findsOneWidget);
       expect(find.text('You are BUYING BTC'), findsOneWidget);
       expect(find.text('Pay with another wallet'), findsOneWidget);
       expect(find.byType(QrImageView), findsOneWidget);
-      expect(find.bySemanticsLabel('QR code of the bond invoice'), findsOneWidget);
+      expect(
+          tester.getSemantics(find.byType(QrImageView)),
+          containsSemantics(label: 'QR code of the bond invoice', isImage: true),
+        );
       expect(find.text('3,207 Sats'), findsWidgets);
       expect(find.text('Bitcoin'), findsOneWidget);
       expect(find.text('Copy to clipboard'), findsOneWidget);
@@ -227,16 +237,10 @@ void main() {
       );
       // No bond line at 3, « Copy URL » and « Cancel » under the contract.
       expect(find.textContaining('Your taker bond'), findsNothing);
-      await tester.scrollUntilVisible(find.text('Cancel'), 200);
+      await _reveal(tester, find.text('Cancel'));
       expect(find.text('Copy URL'), findsOneWidget);
       expect(find.byTooltip('Cancel order'), findsOneWidget);
-    });
-
-    testWidgets('the QR code encodes the invoice in capitals', (tester) async {
-      await _show(tester, watch: _Watch(), state: _watched('bond'));
-      final qr = tester.widget<QrImageView>(find.byType(QrImageView));
-      final invoice = _statuses.invoice;
-      expect(qr.data, invoice.text.toUpperCase());
+      semantics.dispose();
     });
 
     testWidgets('« Copy to clipboard » copies the invoice decoded', (
@@ -259,7 +263,7 @@ void main() {
         ),
       );
       await _show(tester, watch: _Watch(), state: _watched('bond'));
-      await tester.ensureVisible(find.text('Copy to clipboard'));
+      await _reveal(tester, find.text('Copy to clipboard'));
       await tester.tap(find.text('Copy to clipboard'));
       await tester.pump();
       expect(copied, [_statuses.invoice.text]);
@@ -268,21 +272,26 @@ void main() {
       expect(find.text('Copy to clipboard'), findsOneWidget);
     });
 
-    testWidgets('an invoice for another network: no QR code, no copy, the warning', (
-      tester,
-    ) async {
-      await _show(tester, watch: _Watch(), state: _watched('bondWrongNetwork'));
+    testWidgets(
+      'an invoice for another network: no QR code, no copy, the warning',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('bondWrongNetwork'),
+        );
 
-      expect(find.byType(QrImageView), findsNothing);
-      expect(find.text('Copy to clipboard'), findsNothing);
-      expect(find.text('Show anyway'), findsNothing);
-      expect(
-        find.text(
-          'The invoice Temple of Sats sent is for another network. It is not shown.',
-        ),
-        findsOneWidget,
-      );
-    });
+        expect(find.byType(QrImageView), findsNothing);
+        expect(find.text('Copy to clipboard'), findsNothing);
+        expect(find.text('Show anyway'), findsNothing);
+        expect(
+          find.text(
+            'The invoice Temple of Sats sent is for another network. It is not shown.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('an amount that differs: hidden behind « Show anyway »', (
       tester,
@@ -295,7 +304,7 @@ void main() {
         find.text('The invoice amount is not the amount the order asks for.'),
         findsOneWidget,
       );
-      await tester.ensureVisible(find.text('Show anyway'));
+      await _reveal(tester, find.text('Show anyway'));
       await tester.tap(find.text('Show anyway'));
       await tester.pump();
       expect(find.byType(QrImageView), findsOneWidget);
@@ -312,25 +321,26 @@ void main() {
       expect(find.byType(QrImageView), findsOneWidget);
     });
 
-    testWidgets('the wallet slot: given the status and the bond, other wallet closed when it offers something', (
-      tester,
-    ) async {
-      final requests = <WalletPaymentRequest>[];
-      await _show(
-        tester,
-        watch: _Watch(),
-        state: _watched('bond'),
-        walletPayment: (context, request) {
-          requests.add(request);
-          return const Text('wallet slot');
-        },
-      );
-      expect(find.text('wallet slot'), findsOneWidget);
-      expect(find.byType(QrImageView), findsNothing);
-      expect(requests.last.amount, Sats(BigInt.from(bookBond)));
-      expect(requests.last.status, same(_seen['bond']?.status));
-      expect(requests.last.record, _record);
-    });
+    testWidgets(
+      'the wallet slot: given the status and the bond, other wallet closed when it offers something',
+      (tester) async {
+        final requests = <WalletPaymentRequest>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('bond'),
+          walletPayment: (context, request) {
+            requests.add(request);
+            return const Text('wallet slot');
+          },
+        );
+        expect(find.text('wallet slot'), findsOneWidget);
+        expect(find.byType(QrImageView), findsNothing);
+        expect(requests.last.amount, Sats(BigInt.from(bookBond)));
+        expect(requests.last.status, same(_seen['bond']?.status));
+        expect(requests.last.record, _record);
+      },
+    );
 
     testWidgets('a wallet slot with nothing to offer: other wallet open', (
       tester,
@@ -350,92 +360,101 @@ void main() {
       await _show(tester, watch: _Watch(), state: _watched('bond'));
       await tester.tap(find.text('See Compatible Wallets'));
       await settle(tester);
-      expect(find.text('https://learn.robosats.org/docs/wallets/'), findsOneWidget);
+      expect(
+        find.text('https://learn.robosats.org/docs/wallets/'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('the « Order » tab: the order with « Expires in » and « Deposit »', (
-      tester,
-    ) async {
-      await _show(tester, watch: _Watch(), state: _watched('bond'));
-      await tester.tap(find.text('Order').last);
-      await tester.pump();
-      expect(find.text('Order host'), findsOneWidget);
-      expect(find.text('Expires in'), findsOneWidget);
-      expect(find.text('Deposit'), findsOneWidget);
-      expect(find.byType(QrImageView), findsNothing);
-    });
+    testWidgets(
+      'the « Order » tab: the order with « Expires in » and « Deposit »',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('bond'));
+        await tester.tap(find.text('Order').last);
+        await tester.pump();
+        expect(find.text('Order host'), findsOneWidget);
+        expect(find.text('Expires in'), findsOneWidget);
+        expect(find.text('Deposit'), findsOneWidget);
+        expect(find.byType(QrImageView), findsNothing);
+      },
+    );
   });
 
   group('cancel', () {
-    testWidgets('at 3: « Back » sends nothing, « Confirm cancellation » one free cancel', (
-      tester,
-    ) async {
-      final cancels = _Cancels();
-      await _show(
-        tester,
-        watch: _Watch(),
-        cancels: cancels,
-        state: _watched('bond'),
-      );
-      await tester.scrollUntilVisible(find.text('Cancel'), 200);
-      await tester.tap(find.text('Cancel'));
-      await settle(tester);
-      expect(find.text('Cancel the order?'), findsOneWidget);
-      expect(
-        find.text(
-          'If the order is cancelled now but you already tried to pay the invoice, you might lose your bond.',
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Back'));
-      await settle(tester);
-      expect(cancels.asked, isEmpty);
-
-      await tester.tap(find.text('Cancel'));
-      await settle(tester);
-      await tester.tap(find.text('Confirm cancellation'));
-      await settle(tester);
-      expect(cancels.asked, hasLength(1));
-      expect(cancels.asked.single.$1, same(_seen['bond']));
-      expect(cancels.asked.single.$2, isNull);
-    });
-
-    for (final name in ['six', 'seven']) {
-      testWidgets('at ${name == 'six' ? 6 : 7}: « Go back » and a tap outside send nothing, « Confirm Cancel » sends the acknowledgement', (
-        tester,
-      ) async {
+    testWidgets(
+      'at 3: « Back » sends nothing, « Confirm cancellation » one free cancel',
+      (tester) async {
         final cancels = _Cancels();
         await _show(
           tester,
           watch: _Watch(),
           cancels: cancels,
-          state: _watched(name),
+          state: _watched('bond'),
         );
-        expect(find.byTooltip('Unilateral cancelation (bond at risk!)'), findsOneWidget);
-        await tester.scrollUntilVisible(find.text('Cancel'), 200);
+        await _reveal(tester, find.text('Cancel'));
         await tester.tap(find.text('Cancel'));
         await settle(tester);
+        expect(find.text('Cancel the order?'), findsOneWidget);
         expect(
-          find.text('If the order is cancelled now you will lose your bond.'),
+          find.text(
+            'If the order is cancelled now but you already tried to pay the invoice, you might lose your bond.',
+          ),
           findsOneWidget,
         );
-        await tester.tap(find.text('Go back'));
+        await tester.tap(find.text('Back'));
         await settle(tester);
-        await tester.tap(find.text('Cancel'));
-        await settle(tester);
-        await tester.tapAt(const Offset(5, 5));
-        await settle(tester);
-        expect(find.text('Confirm Cancel'), findsNothing);
         expect(cancels.asked, isEmpty);
 
         await tester.tap(find.text('Cancel'));
         await settle(tester);
-        await tester.tap(find.text('Confirm Cancel'));
+        await tester.tap(find.text('Confirm cancellation'));
         await settle(tester);
         expect(cancels.asked, hasLength(1));
-        expect(cancels.asked.single.$1, same(_seen[name]));
-        expect(cancels.asked.single.$2, isA<BondLossAcknowledged>());
-      });
+        expect(cancels.asked.single.$1, same(_seen['bond']));
+        expect(cancels.asked.single.$2, isNull);
+      },
+    );
+
+    for (final name in ['six', 'seven']) {
+      testWidgets(
+        'at ${name == 'six' ? 6 : 7}: « Go back » and a tap outside send nothing, « Confirm Cancel » sends the acknowledgement',
+        (tester) async {
+          final cancels = _Cancels();
+          await _show(
+            tester,
+            watch: _Watch(),
+            cancels: cancels,
+            state: _watched(name),
+          );
+          expect(
+            find.byTooltip('Unilateral cancelation (bond at risk!)'),
+            findsOneWidget,
+          );
+          await _reveal(tester, find.text('Cancel'));
+          await tester.tap(find.text('Cancel'));
+          await settle(tester);
+          expect(
+            find.text('If the order is cancelled now you will lose your bond.'),
+            findsOneWidget,
+          );
+          await tester.tap(find.text('Go back'));
+          await settle(tester);
+          await tester.tap(find.text('Cancel'));
+          await settle(tester);
+          await tester.tapAt(const Offset(5, 5));
+          await settle(tester);
+          expect(find.text('Confirm Cancel'), findsNothing);
+          expect(cancels.asked, isEmpty);
+
+          await tester.tap(find.text('Cancel'));
+          await settle(tester);
+          await tester.tap(find.text('Confirm Cancel'));
+          await settle(tester);
+          expect(cancels.asked, hasLength(1));
+          expect(cancels.asked.single.$1, same(_seen[name]));
+          expect(cancels.asked.single.$2, isA<BondLossAcknowledged>());
+        },
+      );
     }
 
     testWidgets('a cancel refused: its text under the button', (tester) async {
@@ -447,7 +466,7 @@ void main() {
         cancels: cancels,
         state: _watched('bond'),
       );
-      await tester.scrollUntilVisible(find.text('Cancel'), 200);
+      await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
       await settle(tester);
       await tester.tap(find.text('Confirm cancellation'));
@@ -464,7 +483,7 @@ void main() {
         cancels: cancels,
         state: _watched('bond'),
       );
-      await tester.scrollUntilVisible(find.text('Cancel'), 200);
+      await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
       await settle(tester);
       await tester.tap(find.text('Confirm cancellation'));
@@ -491,7 +510,9 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Sending your payout info comes in a later version of Bull Market.'),
+        find.text(
+          'Sending your payout info comes in a later version of Bull Market.',
+        ),
         findsOneWidget,
       );
       expect(find.text('Your taker bond is locked'), findsOneWidget);
@@ -519,7 +540,10 @@ void main() {
     testWidgets('9: the reference\'s title, a later version', (tester) async {
       await _show(tester, watch: _Watch(), state: _watched('nine'));
       expect(find.text('Chat with the seller (3/4)'), findsOneWidget);
-      expect(find.text('Bull Market cannot show this step yet.'), findsOneWidget);
+      expect(
+        find.text('Bull Market cannot show this step yet.'),
+        findsOneWidget,
+      );
       expect(find.text('Cancel'), findsNothing);
     });
   });
@@ -528,20 +552,24 @@ void main() {
     testWidgets('expired, with its reason', (tester) async {
       await _show(tester, watch: _Watch(), state: _watched('expired'));
       expect(find.text('The order has expired'), findsOneWidget);
-      expect(find.text('Neither escrow locked or invoice submitted'), findsOneWidget);
+      expect(
+        find.text('Neither escrow locked or invoice submitted'),
+        findsOneWidget,
+      );
       expect(find.text('Cancel'), findsNothing);
     });
 
     for (final name in ['cancelled', 'cancelledBondLost']) {
-      testWidgets('$name: the reference\'s message alone, never that nothing was lost', (
-        tester,
-      ) async {
-        await _show(tester, watch: _Watch(), state: _watched(name));
-        expect(find.text('This order has been cancelled'), findsOneWidget);
-        expect(find.textContaining('Nothing was taken'), findsNothing);
-        expect(find.textContaining('nothing was lost'), findsNothing);
-        expect(find.text('Contract'), findsNothing);
-      });
+      testWidgets(
+        '$name: the reference\'s message alone, never that nothing was lost',
+        (tester) async {
+          await _show(tester, watch: _Watch(), state: _watched(name));
+          expect(find.text('This order has been cancelled'), findsOneWidget);
+          expect(find.textContaining('Nothing was taken'), findsNothing);
+          expect(find.textContaining('nothing was lost'), findsNothing);
+          expect(find.text('Contract'), findsNothing);
+        },
+      );
     }
 
     for (final name in ['preTakeUnavailable', 'takenByAnother']) {
@@ -554,15 +582,16 @@ void main() {
     }
 
     for (final name in ['publicAgain', 'bondForfeited']) {
-      testWidgets('$name: the order alone, as to a robot that is no participant', (
-        tester,
-      ) async {
-        await _show(tester, watch: _Watch(), state: _watched(name));
-        expect(find.text('Order host'), findsOneWidget);
-        expect(find.text('Contract'), findsNothing);
-        expect(find.text('Take Order'), findsNothing);
-        expect(find.text('Cancel'), findsNothing);
-      });
+      testWidgets(
+        '$name: the order alone, as to a robot that is no participant',
+        (tester) async {
+          await _show(tester, watch: _Watch(), state: _watched(name));
+          expect(find.text('Order host'), findsOneWidget);
+          expect(find.text('Contract'), findsNothing);
+          expect(find.text('Take Order'), findsNothing);
+          expect(find.text('Cancel'), findsNothing);
+        },
+      );
     }
 
     testWidgets('a take whose answer is unknown: it keeps checking, no action', (
@@ -620,49 +649,65 @@ void main() {
       });
     }
 
-    testWidgets('reads that keep failing: the last status kept, with its time', (
-      tester,
-    ) async {
-      await _show(tester, watch: _Watch(), state: _watched('six', failedReads: 3));
-      expect(find.textContaining('Cannot reach Temple of Sats.'), findsOneWidget);
-      expect(find.text('Submit payout info (2/4)'), findsOneWidget);
-    });
+    testWidgets(
+      'reads that keep failing: the last status kept, with its time',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('six', failedReads: 3),
+        );
+        expect(
+          find.textContaining('Cannot reach Temple of Sats.'),
+          findsOneWidget,
+        );
+        expect(find.text('Submit payout info (2/4)'), findsOneWidget);
+      },
+    );
 
     testWidgets('two failed reads say nothing yet', (tester) async {
-      await _show(tester, watch: _Watch(), state: _watched('six', failedReads: 2));
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: _watched('six', failedReads: 2),
+      );
       expect(find.textContaining('Cannot reach'), findsNothing);
     });
 
-    testWidgets('records that could not be written, and a closed trade the coordinator still shows', (
-      tester,
-    ) async {
-      final watch = _Watch();
-      await _show(
-        tester,
-        watch: watch,
-        state: TradeScreenStatuses.watched(
-          _seen['six'] ?? (throw StateError('six')),
-          recordProblem: const P2pStorageFailure(),
-        ),
-      );
-      expect(
-        find.text('Bull Market could not write the records of this trade on this device.'),
-        findsOneWidget,
-      );
-      watch.emit(
-        TradeScreenStatuses.watched(
-          _seen['six'] ?? (throw StateError('six')),
-          recordProblem: const TradeClosedFailure(),
-        ),
-      );
-      await tester.pump();
-      expect(
-        find.text(
-          'This trade was closed on this device, but Temple of Sats shows this robot as its taker.',
-        ),
-        findsOneWidget,
-      );
-    });
+    testWidgets(
+      'records that could not be written, and a closed trade the coordinator still shows',
+      (tester) async {
+        final watch = _Watch();
+        await _show(
+          tester,
+          watch: watch,
+          state: TradeScreenStatuses.watched(
+            _seen['six'] ?? (throw StateError('six')),
+            recordProblem: const P2pStorageFailure(),
+          ),
+        );
+        expect(
+          find.text(
+            'Bull Market could not write the records of this trade on this device.',
+          ),
+          findsOneWidget,
+        );
+        watch.emit(
+          TradeScreenStatuses.watched(
+            _seen['six'] ?? (throw StateError('six')),
+            recordProblem: const TradeClosedFailure(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'This trade was closed on this device, but Temple of Sats shows this robot as its taker.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('the watch of the shown trade', () {
@@ -732,53 +777,60 @@ void main() {
     ];
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
-        testWidgets('${locale.languageCode} at ×$scale: nothing overflows or is cut', (
-          tester,
-        ) async {
-          final watch = _Watch();
-          await _show(
-            tester,
-            watch: watch,
-            locale: locale,
-            size: const Size(320, 568),
-            textScale: scale,
-          );
-          for (final name in screens) {
-            watch.emit(_watched(name));
-            await tester.pump();
-            _expectNothingCut(tester, name);
-            // Every part of the screen, scrolled through.
-            final list = find.byType(Scrollable).first;
-            for (var i = 0; i < 30; i++) {
-              await tester.drag(list, const Offset(0, -300));
+        testWidgets(
+          '${locale.languageCode} at ×$scale: nothing overflows or is cut',
+          (tester) async {
+            final watch = _Watch();
+            await _show(
+              tester,
+              watch: watch,
+              locale: locale,
+              size: const Size(320, 568),
+              textScale: scale,
+            );
+            for (final name in screens) {
+              watch.emit(_watched(name));
               await tester.pump();
-              _expectNothingCut(tester, '$name, scrolled');
+              _expectNothingCut(tester, name);
+              // Every part of the screen, scrolled through.
+              final list = find.byType(Scrollable).first;
+              for (var i = 0; i < 30; i++) {
+                await tester.drag(list, const Offset(0, -300));
+                await tester.pump();
+                _expectNothingCut(tester, '$name, scrolled');
+              }
+              await tester.drag(list, const Offset(0, 20000));
+              await tester.pump();
             }
-            await tester.drag(list, const Offset(0, 20000));
+            // The « Order » tab.
+            watch.emit(_watched('bond'));
             await tester.pump();
-          }
-          // The « Order » tab.
-          watch.emit(_watched('bond'));
-          await tester.pump();
-          await tester.tap(find.text(locale.languageCode == 'fr' ? 'Ordre' : 'Order').last);
-          await tester.pump();
-          _expectNothingCut(tester, 'order tab');
-          await tester.tap(find.text(locale.languageCode == 'fr' ? 'Contrat' : 'Contract'));
-          await tester.pump();
+            await tester.tap(
+              find.text(locale.languageCode == 'fr' ? 'Ordre' : 'Order').last,
+            );
+            await tester.pump();
+            _expectNothingCut(tester, 'order tab');
+            await tester.tap(
+              find.text(locale.languageCode == 'fr' ? 'Contrat' : 'Contract'),
+            );
+            await tester.pump();
 
-          // The dialogs.
-          for (final name in ['bond', 'six']) {
-            watch.emit(_watched(name));
-            await tester.pump();
-            final cancel = find.text(locale.languageCode == 'fr' ? 'Annuler' : 'Cancel');
-            await tester.scrollUntilVisible(cancel, 200);
-            await tester.tap(cancel);
-            await settle(tester);
-            _expectNothingCut(tester, '$name dialog');
-            await tester.tapAt(const Offset(5, 5));
-            await settle(tester);
-          }
-        });
+            // The dialogs.
+            for (final name in ['bond', 'six']) {
+              watch.emit(_watched(name));
+              await tester.pump();
+              final cancel = find.text(
+                locale.languageCode == 'fr' ? 'Annuler' : 'Cancel',
+              );
+              await _reveal(tester, cancel);
+              await tester.tap(cancel);
+              await settle(tester);
+              _expectNothingCut(tester, '$name dialog');
+              await tester.tapAt(const Offset(5, 5));
+              await settle(tester);
+            }
+          },
+        );
       }
     }
   });

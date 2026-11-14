@@ -1453,4 +1453,7 @@ class P2pLocalizationsKa extends P2pLocalizations {
   String p2pActiveOrder(String orderId) {
     return 'Active order #$orderId';
   }
+
+  @override
+  String get p2pTradeEnded => 'This trade is over for this robot.';
 }

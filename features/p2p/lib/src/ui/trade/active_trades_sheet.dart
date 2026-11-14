@@ -43,6 +43,7 @@ class ActiveTradesSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
+            container: true,
             header: true,
             child: Text(
               l10n.p2pNavOrder,

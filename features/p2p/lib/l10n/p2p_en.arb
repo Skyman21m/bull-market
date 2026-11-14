@@ -2019,5 +2019,9 @@
         "type": "String"
       }
     }
+  },
+  "p2pTradeEnded": "This trade is over for this robot.",
+  "@p2pTradeEnded": {
+    "description": "Not in the RoboSats texts: the project's own: the stored records of the trade hold an end, and no read of it is there to show (#87, #88). No action."
   }
 }

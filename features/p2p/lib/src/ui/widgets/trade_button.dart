@@ -35,6 +35,7 @@ class TradeButton extends StatelessWidget {
       context,
     ).textTheme.headlineLarge?.copyWith(color: foreground);
     return Semantics(
+      container: true,
       button: true,
       enabled: enabled,
       child: Opacity(

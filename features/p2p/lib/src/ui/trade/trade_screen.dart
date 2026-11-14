@@ -285,6 +285,7 @@ class _Message extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
+            container: true,
             liveRegion: true,
             child: Text(
               text,
@@ -342,6 +343,7 @@ class _Contract extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
+          container: true,
           header: true,
           child: Text(
             step == null
@@ -586,6 +588,7 @@ class _Line extends StatelessWidget {
       style: style,
     );
     return Semantics(
+      container: true,
       liveRegion: true,
       child: icon == null
           ? line

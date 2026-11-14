@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 
 import '../domain/trade/trade_cancel.dart';
+import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade_record.dart';
 import '../domain/usecases/trade/cancel_trade_usecase.dart';
@@ -122,14 +123,14 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (isClosed || _subscription != null) return;
     final signals = StreamController<TradeWatchSignal>();
     _signals = signals;
-    _subscription = _watch(
+    _subscription =
+        _watch(
           state.record,
           signals: signals.stream,
           onScreen: _onScreen,
-        )
-        .listen(
+        ).listen(
           (watch) {
-            if (!isClosed) emit(state._with(watch: watch));
+            if (!isClosed) emit(state._with(watch: _keepingWhatWasRead(watch)));
           },
           onDone: () {
             _subscription = null;
@@ -137,6 +138,26 @@ class TradeCubit extends Cubit<TradeScreenState> {
             if (identical(_signals, signals)) _signals = null;
           },
         );
+  }
+
+  /// [watch], or, when it is a status not understood yet ([StatusUnknown], as the watch gives when it opens a trade again from its stored trail, or when the stored trail won over its read) at the very position of the status shown, that status with what [watch] says of its reads and records: the screen does not fall back to its wait for a status it has already shown at that position.
+  TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
+    final shown = state.seen;
+    if (watch is! TradeWatchStatus ||
+        shown == null ||
+        watch.seen.status is! StatusUnknown ||
+        shown.status is StatusUnknown ||
+        shown.status.position != watch.seen.status.position) {
+      return watch;
+    }
+    return TradeWatchStatus(
+      watch.record,
+      shown,
+      failedReads: watch.failedReads,
+      lastReadFailure: watch.lastReadFailure,
+      recordProblem: watch.recordProblem,
+      takePending: watch.takePending,
+    );
   }
 
   /// Stops following the trade while the app is hidden or paused: nothing runs in the background.

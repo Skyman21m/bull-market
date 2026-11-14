@@ -135,6 +135,7 @@ class _OtherWalletState extends State<_OtherWallet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
+            container: true,
             button: true,
             expanded: _open,
             child: InkWell(
@@ -236,6 +237,7 @@ class _Qr extends StatelessWidget {
         final size = math.min(constraints.maxWidth, 300.0);
         return Center(
           child: Semantics(
+            container: true,
             label: l10n.p2pTradeInvoiceQr,
             image: true,
             child: Container(
