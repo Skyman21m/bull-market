@@ -104,7 +104,12 @@ Future<CoordinatorOrder> readChatOrder(
   RobotIdentity reader,
 ) async {
   final transport = FakeCoordinatorTransport()
-    ..answer(chatCoordinator, chatNetwork, '/api/order/', Ok(jsonResponse(answer)));
+    ..answer(
+      chatCoordinator,
+      chatNetwork,
+      '/api/order/',
+      Ok(jsonResponse(answer)),
+    );
   return switch (await CoordinatorClient(transport).fetchOrder(
     chatCoordinator,
     chatNetwork,

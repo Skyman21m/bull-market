@@ -336,11 +336,16 @@ final class ChatPage {
     final fields = JsonFields(item);
     final index = fields.requiredInt('index', min: 0, max: maxIndex);
     final time = fields.requiredDate('time');
-    final nick = fields.requiredString('nick', maxLength: ChatMessage.maxNickLength);
+    final nick = fields.requiredString(
+      'nick',
+      maxLength: ChatMessage.maxNickLength,
+    );
     if (fields.rejected case final field?) {
       return Err(CoordinatorResponseMalformed(field));
     }
-    if (index <= offset) return const Err(CoordinatorResponseMalformed('index'));
+    if (index <= offset) {
+      return const Err(CoordinatorResponseMalformed('index'));
+    }
     if (time == null) return const Err(CoordinatorResponseMalformed('time'));
     if (!_nick.hasMatch(nick)) {
       return const Err(CoordinatorResponseMalformed('nick'));

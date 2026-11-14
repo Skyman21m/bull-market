@@ -654,7 +654,10 @@ final class CoordinatorClient {
       '/api/chat/',
       {'order_id': '${lastRead.id}', 'offset': '$offset'},
       CoordinatorReadBounds.chatBytes,
-      robot: (identity: identity, authorization: identity.authorizationHeader()),
+      robot: (
+        identity: identity,
+        authorization: identity.authorizationHeader(),
+      ),
     );
     return switch (_chatAnswer(response)) {
       Err(:final failure) => Err(failure),
