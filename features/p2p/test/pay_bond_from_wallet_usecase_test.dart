@@ -395,7 +395,12 @@ void main() {
       final setup = await _Setup.start();
       final quote = await setup.quoted();
       setup.fake.scriptPayment(
-        Ok(P2pWalletPayment(id: 'swap-6', paymentHash: quote.invoice.paymentHash)),
+        Ok(
+          P2pWalletPayment(
+            id: 'swap-6',
+            paymentHash: quote.invoice.paymentHash,
+          ),
+        ),
       );
       final release = Completer<void>();
       final opened = await setup.harness.reader.open(setup.record);
