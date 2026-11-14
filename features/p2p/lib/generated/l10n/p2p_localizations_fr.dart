@@ -869,7 +869,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pRobotSendBody(String coordinator) {
-    return '$coordinator connaîtra ce robot désormais. Dans Troc, un robot ne vit que chez un seul coordinateur : ce robot ne sera jamais envoyé à un autre. Pour échanger ailleurs, utilisez un autre robot.';
+    return '$coordinator connaîtra ce robot désormais. Dans Bull Market, un robot ne vit que chez un seul coordinateur : ce robot ne sera jamais envoyé à un autre. Pour échanger ailleurs, utilisez un autre robot.';
   }
 
   @override
@@ -956,7 +956,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pRobotBadAnswer(String coordinator) {
-    return '$coordinator a envoyé une réponse que Troc ne peut pas lire.';
+    return '$coordinator a envoyé une réponse que Bull Market ne peut pas lire.';
   }
 
   @override
@@ -966,7 +966,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pRobotStorage =>
-      'Troc n’a pas pu lire ses enregistrements sur cet appareil. Rien n’a été envoyé.';
+      'Bull Market n’a pas pu lire ses enregistrements sur cet appareil. Rien n’a été envoyé.';
 
   @override
   String p2pRobotNostrOld(String coordinator) {
@@ -988,14 +988,14 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pRobotRecordsUnreadable =>
-      'Troc n’a pas pu lire ses enregistrements sur cet appareil.';
+      'Bull Market n’a pas pu lire ses enregistrements sur cet appareil.';
 
   @override
   String get p2pRobotHistoryTitle => 'Robots venus d’ailleurs';
 
   @override
   String get p2pRobotHistoryBody =>
-      'Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs : l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Troc, un robot ne vit que chez un seul coordinateur : si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.';
+      'Cette clé de garage a été collée, ou cet appareil n’a pas pu enregistrer qu’il l’a générée. Ses robots existent peut-être déjà chez des coordinateurs : l’application officielle RoboSats envoie chaque robot qu’elle affiche à tous les coordinateurs. Dans Bull Market, un robot ne vit que chez un seul coordinateur : si vous avez déjà utilisé cette clé, placez chaque robot chez le coordinateur où vous l’avez utilisé. Pour repartir de zéro, générez une nouvelle clé de garage.';
 
   @override
   String get p2pRobotHistoryConfirm => 'Je comprends';
