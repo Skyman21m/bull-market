@@ -361,6 +361,65 @@ void main() {
           }
         },
       );
+
+      test(
+        'a write that met the lock of another connection leaves the next writes of its own committed (#128)',
+        () async {
+          driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+          final directory = await Directory.systemTemp.createTemp('p2p-busy-');
+          addTearDown(() => directory.delete(recursive: true));
+          final a = P2pDatabase.open(() async => directory);
+          final b = P2pDatabase.open(() async => directory);
+          await openInTurn([a, b]);
+          addTearDown(a.close);
+          addTearDown(b.close);
+          expect(
+            await RobotBindingRepositoryImpl(
+              a,
+              clock: () => testNow,
+            ).recordGeneratedKey(RobosatsNetwork.testnet, fingerprint),
+            isA<Ok>(),
+          );
+          final trades = TradeRecordRepositoryImpl(a, clock: () => testNow);
+          final first = await reserve(trades, 0);
+          Future<int> rowsSeenByB(String sql) async =>
+              (await b.customSelect(sql).get()).length;
+          // b holds the write lock: a's take meets it, waits SQLite's busy timeout and gives up, nothing written.
+          await b.customStatement('BEGIN IMMEDIATE');
+          expect(
+            await trades.recordPendingTake(
+              first,
+              orderId: 42,
+              role: TradeRole.buyer,
+            ),
+            isA<Err<TradeRecord, P2pFailure>>(),
+          );
+          await b.customStatement('ROLLBACK');
+          // a's next write, reported written, is on disk for every connection, and a holds no lock after it: with prepared statements cached, the take's statement stayed active, the binding stayed uncommitted under a's write lock, and was rolled back when that statement ran again.
+          await reserve(trades, 1);
+          expect(await rowsSeenByB('SELECT 1 FROM robot_bindings'), 2);
+          await b.customStatement('BEGIN IMMEDIATE');
+          await b.customStatement('ROLLBACK');
+          // The take asked again is recorded, once, and the binding stays.
+          expect(
+            await untilNotBusy(
+              () => trades.recordPendingTake(
+                first,
+                orderId: 42,
+                role: TradeRole.buyer,
+              ),
+            ),
+            isA<Ok<TradeRecord, P2pFailure>>(),
+          );
+          expect(await rowsSeenByB('SELECT 1 FROM robot_bindings'), 2);
+          expect(
+            await rowsSeenByB(
+              'SELECT 1 FROM trades WHERE order_id = 42 AND closed_at IS NULL',
+            ),
+            1,
+          );
+        },
+      );
     });
   });
 

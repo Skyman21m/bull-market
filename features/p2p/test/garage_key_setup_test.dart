@@ -129,6 +129,16 @@ void main() {
     expect(directoryAsked, 0);
   });
 
+  test('with both, the database is one object, so one connection (#128)', () {
+    setUpWithGarage();
+
+    expect(
+      identical(locator<P2pDatabase>(), locator<P2pDatabase>()),
+      isTrue,
+      reason: 'a second connection to p2p.sqlite needs its own review',
+    );
+  });
+
   test(
     'with both, setting up and resolving the use-cases touch no key and no file',
     () {
