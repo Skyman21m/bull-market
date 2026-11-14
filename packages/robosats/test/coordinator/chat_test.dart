@@ -388,23 +388,53 @@ void main() {
       },
     );
 
-    test('a refusal decided from the last read says so; the coordinator\'s does not', () async {
-      final transport = _answering(Ok(jsonResponse(chatError(6002), statusCode: 400)));
-      final stale = expectErr(await _fetch(transport, lastRead: await _readAt(13)));
-      expect(stale, isA<ChatRefused>().having((f) => f.fromLastRead, 'fromLastRead', isTrue));
-      final staleParticipant = expectErr(await _postWith(transport, lastRead: await _readAt(11)));
-      expect(staleParticipant.cause, isA<ChatRefused>().having((f) => f.fromLastRead, 'fromLastRead', isTrue));
-      expect(transport.requests, isEmpty);
-      final told = expectErr(await _fetch(transport));
-      expect(
-        told,
-        isA<ChatRefused>()
-            .having((f) => f.reason, 'reason', ChatRefusal.notInChat)
-            .having((f) => f.fromLastRead, 'fromLastRead', isFalse),
-      );
-      final offset = expectErr(await _fetch(transport, offset: -1));
-      expect(offset, isA<ChatRefused>().having((f) => f.fromLastRead, 'fromLastRead', isFalse));
-    });
+    test(
+      'a refusal decided from the last read says so; the coordinator\'s does not',
+      () async {
+        final transport = _answering(
+          Ok(jsonResponse(chatError(6002), statusCode: 400)),
+        );
+        final stale = expectErr(
+          await _fetch(transport, lastRead: await _readAt(13)),
+        );
+        expect(
+          stale,
+          isA<ChatRefused>().having(
+            (f) => f.fromLastRead,
+            'fromLastRead',
+            isTrue,
+          ),
+        );
+        final staleParticipant = expectErr(
+          await _postWith(transport, lastRead: await _readAt(11)),
+        );
+        expect(
+          staleParticipant.cause,
+          isA<ChatRefused>().having(
+            (f) => f.fromLastRead,
+            'fromLastRead',
+            isTrue,
+          ),
+        );
+        expect(transport.requests, isEmpty);
+        final told = expectErr(await _fetch(transport));
+        expect(
+          told,
+          isA<ChatRefused>()
+              .having((f) => f.reason, 'reason', ChatRefusal.notInChat)
+              .having((f) => f.fromLastRead, 'fromLastRead', isFalse),
+        );
+        final offset = expectErr(await _fetch(transport, offset: -1));
+        expect(
+          offset,
+          isA<ChatRefused>().having(
+            (f) => f.fromLastRead,
+            'fromLastRead',
+            isFalse,
+          ),
+        );
+      },
+    );
 
     test('a message encrypted by another robot is refused', () async {
       final theirs = _outgoing('Hello', key: _peerKey.unlockedFor(_peer));
@@ -665,54 +695,68 @@ void main() {
       },
     );
 
-    test('a body over the bound is a page too large, the transport\'s too large as well; at the bound it is read', () async {
-      expect(
-        expectErr(
-          await _fetch(_answering(const Err(CoordinatorResponseTooLarge())), offset: 2),
-        ),
-        isA<ChatPageTooLarge>().having((f) => f.offset, 'offset', 2),
-      );
-      expect(
-        expectErr(await _postWith(_answering(const Err(CoordinatorResponseTooLarge())))),
-        isA<OrderActionOutcomeUnknown>().having((f) => f.cause, 'cause', isA<ChatPageTooLarge>()),
-      );
-      final over = jsonResponse(_page());
-      final padded = CoordinatorResponse(
-        statusCode: 200,
-        headers: over.headers,
-        body: Uint8List.fromList([
-          ...over.body,
-          ...List.filled(
-            CoordinatorReadBounds.chatBytes - over.body.length + 1,
-            0x20,
+    test(
+      'a body over the bound is a page too large, the transport\'s too large as well; at the bound it is read',
+      () async {
+        expect(
+          expectErr(
+            await _fetch(
+              _answering(const Err(CoordinatorResponseTooLarge())),
+              offset: 2,
+            ),
           ),
-        ]),
-      );
-      expect(
-        expectErr(await _fetch(_answering(Ok(padded)))),
-        isA<ChatPageTooLarge>().having((f) => f.offset, 'offset', 0),
-      );
-      expect(
-        expectErr(await _postWith(_answering(Ok(padded)))),
-        isA<OrderActionOutcomeUnknown>().having(
-          (f) => f.cause,
-          'cause',
-          isA<ChatPageTooLarge>(),
-        ),
-      );
-      final exact = CoordinatorResponse(
-        statusCode: 200,
-        headers: over.headers,
-        body: Uint8List.fromList([
-          ...over.body,
-          ...List.filled(
-            CoordinatorReadBounds.chatBytes - over.body.length,
-            0x20,
+          isA<ChatPageTooLarge>().having((f) => f.offset, 'offset', 2),
+        );
+        expect(
+          expectErr(
+            await _postWith(
+              _answering(const Err(CoordinatorResponseTooLarge())),
+            ),
           ),
-        ]),
-      );
-      expectOk(await _fetch(_answering(Ok(exact))));
-    });
+          isA<OrderActionOutcomeUnknown>().having(
+            (f) => f.cause,
+            'cause',
+            isA<ChatPageTooLarge>(),
+          ),
+        );
+        final over = jsonResponse(_page());
+        final padded = CoordinatorResponse(
+          statusCode: 200,
+          headers: over.headers,
+          body: Uint8List.fromList([
+            ...over.body,
+            ...List.filled(
+              CoordinatorReadBounds.chatBytes - over.body.length + 1,
+              0x20,
+            ),
+          ]),
+        );
+        expect(
+          expectErr(await _fetch(_answering(Ok(padded)))),
+          isA<ChatPageTooLarge>().having((f) => f.offset, 'offset', 0),
+        );
+        expect(
+          expectErr(await _postWith(_answering(Ok(padded)))),
+          isA<OrderActionOutcomeUnknown>().having(
+            (f) => f.cause,
+            'cause',
+            isA<ChatPageTooLarge>(),
+          ),
+        );
+        final exact = CoordinatorResponse(
+          statusCode: 200,
+          headers: over.headers,
+          body: Uint8List.fromList([
+            ...over.body,
+            ...List.filled(
+              CoordinatorReadBounds.chatBytes - over.body.length,
+              0x20,
+            ),
+          ]),
+        );
+        expectOk(await _fetch(_answering(Ok(exact))));
+      },
+    );
   });
 
   group('malformed answers', () {
@@ -1129,114 +1173,189 @@ void main() {
       },
     );
 
-    test('the contiguous index: the highest index reached from the offset without a gap, whatever the order', () async {
-      expect((await pageOf([4, 5, 6], offset: 3)).contiguousIndex, 6);
-      expect((await pageOf([], offset: 9)).contiguousIndex, 9);
-      expect((await pageOf([3, 1, 2])).contiguousIndex, 3);
-      expect((await pageOf([1, 3])).contiguousIndex, 1);
-      expect((await pageOf([1, 2, 2, 4])).contiguousIndex, 2);
-      expect((await pageOf([5, 6], offset: 3)).contiguousIndex, 3);
-      expect((await pageOf([2, 3])).contiguousIndex, 0);
-    });
+    test(
+      'the contiguous index: the highest index reached from the offset without a gap, whatever the order',
+      () async {
+        expect((await pageOf([4, 5, 6], offset: 3)).contiguousIndex, 6);
+        expect((await pageOf([], offset: 9)).contiguousIndex, 9);
+        expect((await pageOf([3, 1, 2])).contiguousIndex, 3);
+        expect((await pageOf([1, 3])).contiguousIndex, 1);
+        expect((await pageOf([1, 2, 2, 4])).contiguousIndex, 2);
+        expect((await pageOf([5, 6], offset: 3)).contiguousIndex, 3);
+        expect((await pageOf([2, 3])).contiguousIndex, 0);
+      },
+    );
 
-    test('one message at the largest index does not blind the chat: polling from the contiguous index reads what comes next', () async {
-      final jumped = await pageOf([1, ChatPage.maxIndex]);
-      expect(jumped.lastIndex, ChatPage.maxIndex);
-      expect(jumped.isContiguous, isFalse);
-      expect(jumped.contiguousIndex, 1);
-      // From the last index, an honest message 3 would be at or below the offset: the page is refused, and nothing is read again.
-      expect(
-        expectErr(
+    test(
+      'one message at the largest index does not blind the chat: polling from the contiguous index reads what comes next',
+      () async {
+        final jumped = await pageOf([1, ChatPage.maxIndex]);
+        expect(jumped.lastIndex, ChatPage.maxIndex);
+        expect(jumped.isContiguous, isFalse);
+        expect(jumped.contiguousIndex, 1);
+        // From the last index, an honest message 3 would be at or below the offset: the page is refused, and nothing is read again.
+        expect(
+          expectErr(
+            await _fetch(
+              _answering(
+                Ok(
+                  jsonResponse(
+                    _page(messages: [chatMessageJson(3, 'x', _peer.nickname)]),
+                  ),
+                ),
+              ),
+              offset: jumped.lastIndex,
+            ),
+          ),
+          isA<CoordinatorResponseMalformed>(),
+        );
+        final next = await pageOf([3], offset: jumped.contiguousIndex);
+        expect(next.messages.single.index, 3);
+      },
+    );
+
+    test(
+      'a flood of messages from the peer is read: the number of messages is not bounded',
+      () async {
+        final page = await pageOf([for (var i = 1; i <= 3000; i++) i]);
+        expect(page.messages, hasLength(3000));
+        expect(page.contiguousIndex, 3000);
+      },
+    );
+
+    test(
+      'a message shown again at a new index: the indexes say nothing, the repeated ciphertext does',
+      () async {
+        final peerKey = _peerKey.unlockedFor(_peer);
+        final a = expectOk(
+          peerKey.encryptChatMessageToPost(
+            'IBAN A',
+            peer: _usKey.publicKey,
+            now: _now,
+          ),
+        );
+        final b = expectOk(
+          peerKey.encryptChatMessageToPost(
+            'changed: IBAN B',
+            peer: _usKey.publicKey,
+            now: _now,
+          ),
+        );
+        final page = _pageOk(
           await _fetch(
-            _answering(Ok(jsonResponse(_page(messages: [chatMessageJson(3, 'x', _peer.nickname)])))),
-            offset: jumped.lastIndex,
-          ),
-        ),
-        isA<CoordinatorResponseMalformed>(),
-      );
-      final next = await pageOf([3], offset: jumped.contiguousIndex);
-      expect(next.messages.single.index, 3);
-    });
-
-    test('a flood of messages from the peer is read: the number of messages is not bounded', () async {
-      final page = await pageOf([for (var i = 1; i <= 3000; i++) i]);
-      expect(page.messages, hasLength(3000));
-      expect(page.contiguousIndex, 3000);
-    });
-
-    test('a message shown again at a new index: the indexes say nothing, the repeated ciphertext does', () async {
-      final peerKey = _peerKey.unlockedFor(_peer);
-      final a = expectOk(peerKey.encryptChatMessageToPost('IBAN A', peer: _usKey.publicKey, now: _now));
-      final b = expectOk(peerKey.encryptChatMessageToPost('changed: IBAN B', peer: _usKey.publicKey, now: _now));
-      final page = _pageOk(
-        await _fetch(
-          _answering(
-            Ok(
-              jsonResponse(
-                _page(
-                  messages: [
-                    chatMessageJson(1, a.wire, _peer.nickname),
-                    chatMessageJson(2, b.wire, _peer.nickname),
-                    chatMessageJson(3, a.wire, _peer.nickname),
-                  ],
+            _answering(
+              Ok(
+                jsonResponse(
+                  _page(
+                    messages: [
+                      chatMessageJson(1, a.wire, _peer.nickname),
+                      chatMessageJson(2, b.wire, _peer.nickname),
+                      chatMessageJson(3, a.wire, _peer.nickname),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      expect(page.inIndexOrder, isTrue);
-      expect(page.isContiguous, isTrue);
-      expect(page.repeatsAnIndex, isFalse);
-      expect(page.repeatsACiphertext, isTrue);
-      // The replay verifies: only its text, and its signature time, tell it.
-      final unlocked = _usKey.unlockedFor(_us);
-      final first = expectOk(unlocked.decryptChatMessage(page.messages[0].armored ?? '', sender: _peerKey.publicKey, now: _now));
-      final replay = expectOk(unlocked.decryptChatMessage(page.messages[2].armored ?? '', sender: _peerKey.publicKey, now: _now));
-      expect(replay.validSignature, isTrue);
-      expect(replay.signedAt, first.signedAt);
-      final distinct = await pageOf([1, 2, 3]);
-      expect(distinct.repeatsACiphertext, isFalse, reason: 'texts that are not PGP messages are not compared');
-      final notRepeated = _pageOk(
-        await _fetch(
-          _answering(Ok(jsonResponse(_page(messages: [chatMessageJson(1, a.wire, _peer.nickname), chatMessageJson(2, b.wire, _peer.nickname)])))),
-        ),
-      );
-      expect(notRepeated.repeatsACiphertext, isFalse);
-    });
-
-    test('indexOf finds the first copy of a message sent again, and nothing for a copy altered or given to the peer', () async {
-      final message = _outgoing('sent twice');
-      final altered = message.wire.replaceRange(70, 71, message.wire[70] == 'A' ? 'B' : 'A');
-      final page = _pageOk(
-        await _fetch(
-          _answering(
-            Ok(
-              jsonResponse(
-                _page(
-                  messages: [
-                    chatMessageJson(4, altered, _us.nickname),
-                    chatMessageJson(5, message.wire, _peer.nickname),
-                    chatMessageJson(6, message.wire, _us.nickname),
-                    chatMessageJson(8, message.wire, _us.nickname),
-                  ],
+        );
+        expect(page.inIndexOrder, isTrue);
+        expect(page.isContiguous, isTrue);
+        expect(page.repeatsAnIndex, isFalse);
+        expect(page.repeatsACiphertext, isTrue);
+        // The replay verifies: only its text, and its signature time, tell it.
+        final unlocked = _usKey.unlockedFor(_us);
+        final first = expectOk(
+          unlocked.decryptChatMessage(
+            page.messages[0].armored ?? '',
+            sender: _peerKey.publicKey,
+            now: _now,
+          ),
+        );
+        final replay = expectOk(
+          unlocked.decryptChatMessage(
+            page.messages[2].armored ?? '',
+            sender: _peerKey.publicKey,
+            now: _now,
+          ),
+        );
+        expect(replay.validSignature, isTrue);
+        expect(replay.signedAt, first.signedAt);
+        final distinct = await pageOf([1, 2, 3]);
+        expect(
+          distinct.repeatsACiphertext,
+          isFalse,
+          reason: 'texts that are not PGP messages are not compared',
+        );
+        final notRepeated = _pageOk(
+          await _fetch(
+            _answering(
+              Ok(
+                jsonResponse(
+                  _page(
+                    messages: [
+                      chatMessageJson(1, a.wire, _peer.nickname),
+                      chatMessageJson(2, b.wire, _peer.nickname),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-          offset: 3,
-        ),
-      );
-      expect(page.indexOf(message), 6);
-      expect(page.repeatsACiphertext, isTrue);
-      final hidden = _pageOk(
-        await _fetch(
-          _answering(Ok(jsonResponse(_page(messages: [chatMessageJson(4, altered, _us.nickname), chatMessageJson(5, message.wire, _peer.nickname)])))),
-          offset: 3,
-        ),
-      );
-      expect(hidden.indexOf(message), isNull);
-    });
+        );
+        expect(notRepeated.repeatsACiphertext, isFalse);
+      },
+    );
+
+    test(
+      'indexOf finds the first copy of a message sent again, and nothing for a copy altered or given to the peer',
+      () async {
+        final message = _outgoing('sent twice');
+        final altered = message.wire.replaceRange(
+          70,
+          71,
+          message.wire[70] == 'A' ? 'B' : 'A',
+        );
+        final page = _pageOk(
+          await _fetch(
+            _answering(
+              Ok(
+                jsonResponse(
+                  _page(
+                    messages: [
+                      chatMessageJson(4, altered, _us.nickname),
+                      chatMessageJson(5, message.wire, _peer.nickname),
+                      chatMessageJson(6, message.wire, _us.nickname),
+                      chatMessageJson(8, message.wire, _us.nickname),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            offset: 3,
+          ),
+        );
+        expect(page.indexOf(message), 6);
+        expect(page.repeatsACiphertext, isTrue);
+        final hidden = _pageOk(
+          await _fetch(
+            _answering(
+              Ok(
+                jsonResponse(
+                  _page(
+                    messages: [
+                      chatMessageJson(4, altered, _us.nickname),
+                      chatMessageJson(5, message.wire, _peer.nickname),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            offset: 3,
+          ),
+        );
+        expect(hidden.indexOf(message), isNull);
+      },
+    );
 
     test('the messages cannot be changed', () async {
       final page = await pageOf([1]);
@@ -1373,48 +1492,78 @@ void main() {
       },
     );
 
-    test('only the exact form the official client writes is the peer\'s: `RoboSats ID ` and the hash id, nothing around it', () async {
-      final hex = _peer.hashId.hex;
-      for (final name in [
-        'RoboSats ID <$hex>',
-        'RoboSats ID $hex extra',
-        'xRoboSats ID $hex',
-        'RoboSats ID ${hex.toUpperCase()}',
-        'RoboSats ID  $hex',
-        'RoboSats ID ${hex.substring(1)}',
-        hex,
-      ]) {
-        expect(
-          await keyOf(CraftedKey(label: 'chat-name-$name', userId: name).publicArmored),
-          isA<ChatPeerKeyMisnamed>(),
-          reason: name,
+    test(
+      'only the exact form the official client writes is the peer\'s: `RoboSats ID ` and the hash id, nothing around it',
+      () async {
+        final hex = _peer.hashId.hex;
+        for (final name in [
+          'RoboSats ID <$hex>',
+          'RoboSats ID $hex extra',
+          'xRoboSats ID $hex',
+          'RoboSats ID ${hex.toUpperCase()}',
+          'RoboSats ID  $hex',
+          'RoboSats ID ${hex.substring(1)}',
+          hex,
+        ]) {
+          expect(
+            await keyOf(
+              CraftedKey(label: 'chat-name-$name', userId: name).publicArmored,
+            ),
+            isA<ChatPeerKeyMisnamed>(),
+            reason: name,
+          );
+        }
+      },
+    );
+
+    test(
+      'keys made by the official client (the reference\'s test robots) are named as the package expects',
+      () async {
+        // Test robots 1 and 2 of the RoboSats repository (`tests/robots/`, published tokens): keys made by OpenPGP.js in the official client.
+        final one = repositoryRobotIdentity(1);
+        final two = repositoryRobotIdentity(2);
+        final lastRead = await readChatOrder(
+          chatOrderAnswer(9, reader: one, maker: two, taker: one),
+          one,
         );
-      }
-    });
+        final page = _pageOk(
+          await _fetch(
+            _answering(
+              Ok(
+                jsonResponse(
+                  _page(peerPubkey: repositoryRobotKey(2).publicKey.armored),
+                ),
+              ),
+            ),
+            lastRead: lastRead,
+            identity: one,
+          ),
+        );
+        expect(
+          page.peerKey,
+          isA<ChatPeerKeyOfPeer>().having(
+            (k) => k.key,
+            'key',
+            repositoryRobotKey(2).publicKey,
+          ),
+        );
+      },
+    );
 
-    test('keys made by the official client (the reference\'s test robots) are named as the package expects', () async {
-      // Test robots 1 and 2 of the RoboSats repository (`tests/robots/`, published tokens): keys made by OpenPGP.js in the official client.
-      final one = repositoryRobotIdentity(1);
-      final two = repositoryRobotIdentity(2);
-      final lastRead = await readChatOrder(chatOrderAnswer(9, reader: one, maker: two, taker: one), one);
-      final page = _pageOk(
-        await _fetch(
-          _answering(Ok(jsonResponse(_page(peerPubkey: repositoryRobotKey(2).publicKey.armored)))),
-          lastRead: lastRead,
-          identity: one,
-        ),
-      );
-      expect(page.peerKey, isA<ChatPeerKeyOfPeer>().having((k) => k.key, 'key', repositoryRobotKey(2).publicKey));
-    });
-
-    test('a key prints its fingerprint only, never the user ID its maker chose', () async {
-      final marked = CraftedKey(label: 'chat-marked-name', userId: 'RoboSats ID MARK \u202E');
-      final key = await keyOf(marked.publicArmored);
-      expect(key, isA<ChatPeerKeyMisnamed>());
-      final inner = (key as ChatPeerKeyMisnamed).key;
-      expect('$inner', 'PgpPublicKey(${inner.fingerprint})');
-      expect('$key', isNot(contains('MARK')));
-    });
+    test(
+      'a key prints its fingerprint only, never the user ID its maker chose',
+      () async {
+        final marked = CraftedKey(
+          label: 'chat-marked-name',
+          userId: 'RoboSats ID MARK \u202E',
+        );
+        final key = await keyOf(marked.publicArmored);
+        expect(key, isA<ChatPeerKeyMisnamed>());
+        final inner = (key as ChatPeerKeyMisnamed).key;
+        expect('$inner', 'PgpPublicKey(${inner.fingerprint})');
+        expect('$key', isNot(contains('MARK')));
+      },
+    );
 
     test('absent, null or empty: missing', () async {
       expect(await keyOf(null), isA<ChatPeerKeyMissing>());
@@ -1609,66 +1758,118 @@ void main() {
       );
     });
 
-    test('the bytes a text takes: UTF-8, a line feed counting two, CR LF two', () {
-      expect(OutgoingChatMessage.textBytesOf(''), 0);
-      expect(OutgoingChatMessage.textBytesOf('abc'), 3);
-      expect(OutgoingChatMessage.textBytesOf('é'), 2);
-      expect(OutgoingChatMessage.textBytesOf('€'), 3);
-      expect(OutgoingChatMessage.textBytesOf('⚡'), 3);
-      expect(OutgoingChatMessage.textBytesOf('🙂'), 4);
-      expect(OutgoingChatMessage.textBytesOf('a\nb'), 4);
-      expect(OutgoingChatMessage.textBytesOf('a\r\nb'), 4);
-      expect(OutgoingChatMessage.textBytesOf('\n\n'), 4);
-      expect(OutgoingChatMessage.textBytesOf('\r'), 1);
-      final random = Random(3250);
-      for (var i = 0; i < 300; i++) {
-        final text = String.fromCharCodes([
-          for (var j = random.nextInt(60); j > 0; j--)
-            const [0x61, 0x0a, 0x0d, 0xe9, 0x20ac, 0x1f642][random.nextInt(6)],
-        ]);
-        final lineFeeds = RegExp('(?<!\r)\n').allMatches(text).length;
-        expect(OutgoingChatMessage.textBytesOf(text), utf8.encode(text).length + lineFeeds, reason: jsonEncode(text));
-      }
-    });
+    test(
+      'the bytes a text takes: UTF-8, a line feed counting two, CR LF two',
+      () {
+        expect(OutgoingChatMessage.textBytesOf(''), 0);
+        expect(OutgoingChatMessage.textBytesOf('abc'), 3);
+        expect(OutgoingChatMessage.textBytesOf('é'), 2);
+        expect(OutgoingChatMessage.textBytesOf('€'), 3);
+        expect(OutgoingChatMessage.textBytesOf('⚡'), 3);
+        expect(OutgoingChatMessage.textBytesOf('🙂'), 4);
+        expect(OutgoingChatMessage.textBytesOf('a\nb'), 4);
+        expect(OutgoingChatMessage.textBytesOf('a\r\nb'), 4);
+        expect(OutgoingChatMessage.textBytesOf('\n\n'), 4);
+        expect(OutgoingChatMessage.textBytesOf('\r'), 1);
+        final random = Random(3250);
+        for (var i = 0; i < 300; i++) {
+          final text = String.fromCharCodes([
+            for (var j = random.nextInt(60); j > 0; j--)
+              const [0x61, 0x0a, 0x0d, 0xe9, 0x20ac, 0x1f642][random.nextInt(
+                6,
+              )],
+          ]);
+          final lineFeeds = RegExp('(?<!\r)\n').allMatches(text).length;
+          expect(
+            OutgoingChatMessage.textBytesOf(text),
+            utf8.encode(text).length + lineFeeds,
+            reason: jsonEncode(text),
+          );
+        }
+      },
+    );
 
-    test('a text of the most bytes always fits in 5,000 characters; one byte more is refused before encrypting', () {
-      final unlocked = _usKey.unlockedFor(_us);
-      final random = Random(5000);
-      const max = OutgoingChatMessage.maxTextBytes;
-      expect(max, _longestFittingBytes);
-      String asciiText(int length) => String.fromCharCodes([
-        for (var i = 0; i < length; i++) 0x21 + random.nextInt(94),
-      ]);
-      final texts = [
-        for (var round = 0; round < 6; round++) asciiText(max),
-        '\n' * (max ~/ 2),
-        '€' * (max ~/ 3) + 'a' * (max % 3),
-        '${asciiText(max - 10)}\n\n\n\n\n',
-      ];
-      for (final text in texts) {
-        expect(OutgoingChatMessage.textBytesOf(text), max);
-        final fits = expectOk(unlocked.encryptChatMessageToPost(text, peer: _peerKey.publicKey, now: _now));
-        expect(fits.wire.length, lessThanOrEqualTo(OutgoingChatMessage.maxWireChars));
-        final read = expectOk(_peerKey.unlockedFor(_peer).decryptChatMessage(fits.armored, sender: _usKey.publicKey, now: _now));
-        expect(read.text, text);
-      }
-      for (final text in [asciiText(max + 1), '\n' * (max ~/ 2) + 'a', 'a' * (max - 1) + '\n', asciiText(4000)]) {
+    test(
+      'a text of the most bytes always fits in 5,000 characters; one byte more is refused before encrypting',
+      () {
+        final unlocked = _usKey.unlockedFor(_us);
+        final random = Random(5000);
+        const max = OutgoingChatMessage.maxTextBytes;
+        expect(max, _longestFittingBytes);
+        String asciiText(int length) => String.fromCharCodes([
+          for (var i = 0; i < length; i++) 0x21 + random.nextInt(94),
+        ]);
+        final texts = [
+          for (var round = 0; round < 6; round++) asciiText(max),
+          '\n' * (max ~/ 2),
+          '€' * (max ~/ 3) + 'a' * (max % 3),
+          '${asciiText(max - 10)}\n\n\n\n\n',
+        ];
+        for (final text in texts) {
+          expect(OutgoingChatMessage.textBytesOf(text), max);
+          final fits = expectOk(
+            unlocked.encryptChatMessageToPost(
+              text,
+              peer: _peerKey.publicKey,
+              now: _now,
+            ),
+          );
+          expect(
+            fits.wire.length,
+            lessThanOrEqualTo(OutgoingChatMessage.maxWireChars),
+          );
+          final read = expectOk(
+            _peerKey
+                .unlockedFor(_peer)
+                .decryptChatMessage(
+                  fits.armored,
+                  sender: _usKey.publicKey,
+                  now: _now,
+                ),
+          );
+          expect(read.text, text);
+        }
+        for (final text in [
+          asciiText(max + 1),
+          '\n' * (max ~/ 2) + 'a',
+          'a' * (max - 1) + '\n',
+          asciiText(4000),
+        ]) {
+          expect(
+            expectErr(
+              unlocked.encryptChatMessageToPost(
+                text,
+                peer: _peerKey.publicKey,
+                now: _now,
+              ),
+            ),
+            isA<PgpChatTextTooLong>(),
+          );
+          // Before encrypting: with a key out of date, the length is what fails, not the encryption.
+          expect(
+            expectErr(
+              unlocked.encryptChatMessageToPost(
+                text,
+                peer: _peerKey.publicKey,
+                now: DateTime.utc(2026, 11, 1),
+              ),
+            ),
+            isA<PgpChatTextTooLong>(),
+          );
+        }
+        // The design note's 4,000 characters, and 3,300 bytes, would not fit.
         expect(
-          expectErr(unlocked.encryptChatMessageToPost(text, peer: _peerKey.publicKey, now: _now)),
-          isA<PgpChatTextTooLong>(),
+          expectOk(
+            unlocked.encryptChatMessage(
+              asciiText(3300),
+              peer: _peerKey.publicKey,
+              now: _now,
+            ),
+          ).length,
+          greaterThan(5000),
         );
-        // Before encrypting: with a key out of date, the length is what fails, not the encryption.
-        expect(
-          expectErr(unlocked.encryptChatMessageToPost(text, peer: _peerKey.publicKey, now: DateTime.utc(2026, 11, 1))),
-          isA<PgpChatTextTooLong>(),
-        );
-      }
-      // The design note's 4,000 characters, and 3,300 bytes, would not fit.
-      expect(
-        expectOk(unlocked.encryptChatMessage(asciiText(3300), peer: _peerKey.publicKey, now: _now)).length,
-        greaterThan(5000),
-      );
-    });
+      },
+    );
 
     test('exactly 5,000 characters is the bound', () {
       String armorOfWireLength(int length) {
@@ -1852,16 +2053,29 @@ void main() {
       },
     );
 
-    test('with the keys this package generates, a text of the most bytes fits too', () {
-      final random = Random(3251);
-      for (var round = 0; round < 3; round++) {
-        final text = String.fromCharCodes([
-          for (var i = 0; i < OutgoingChatMessage.maxTextBytes; i++) 0x21 + random.nextInt(94),
-        ]);
-        final message = expectOk(usUnlocked.encryptChatMessageToPost(text, peer: peerPair.publicKey, now: interopReplayTime));
-        expect(message.wire.length, lessThanOrEqualTo(OutgoingChatMessage.maxWireChars));
-      }
-    });
+    test(
+      'with the keys this package generates, a text of the most bytes fits too',
+      () {
+        final random = Random(3251);
+        for (var round = 0; round < 3; round++) {
+          final text = String.fromCharCodes([
+            for (var i = 0; i < OutgoingChatMessage.maxTextBytes; i++)
+              0x21 + random.nextInt(94),
+          ]);
+          final message = expectOk(
+            usUnlocked.encryptChatMessageToPost(
+              text,
+              peer: peerPair.publicKey,
+              now: interopReplayTime,
+            ),
+          );
+          expect(
+            message.wire.length,
+            lessThanOrEqualTo(OutgoingChatMessage.maxWireChars),
+          );
+        }
+      },
+    );
 
     test(
       'the coordinator refuses as the reference: 6002 past the chat, 6001 for a robot it does not know as a participant',
@@ -2068,8 +2282,8 @@ void main() {
         ];
         expect(texts, ['two', 'one', 'one', 'two']);
         expect(page.messages[2].armored, page.messages[1].armored);
-      expect(page.repeatsACiphertext, isTrue);
-      expect(page.repeatsAnIndex, isFalse);
+        expect(page.repeatsACiphertext, isTrue);
+        expect(page.repeatsAnIndex, isFalse);
       },
     );
 

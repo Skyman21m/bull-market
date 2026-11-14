@@ -1045,7 +1045,9 @@ final class CoordinatorClient {
     Result<CoordinatorResponse, CoordinatorFailure> response,
     int offset,
   ) => switch (response) {
-    Err(failure: CoordinatorResponseTooLarge()) => Err(ChatPageTooLarge(offset)),
+    Err(failure: CoordinatorResponseTooLarge()) => Err(
+      ChatPageTooLarge(offset),
+    ),
     _ => response,
   };
 

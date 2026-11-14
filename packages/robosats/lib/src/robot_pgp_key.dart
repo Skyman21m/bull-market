@@ -588,17 +588,18 @@ final class UnlockedRobotPgpKey {
     String plaintext, {
     required PgpPublicKey peer,
     DateTime? now,
-  }) => OutgoingChatMessage.textBytesOf(plaintext) >
+  }) =>
+      OutgoingChatMessage.textBytesOf(plaintext) >
           OutgoingChatMessage.maxTextBytes
       ? const Err(PgpChatTextTooLong())
       : switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
-    Err(:final failure) => Err(failure),
-    Ok(value: final armored) => OutgoingChatMessage.fromArmored(
-      armored,
-      sender: _identity.hashId,
-      peerFingerprint: peer.fingerprint,
-    ),
-  };
+          Err(:final failure) => Err(failure),
+          Ok(value: final armored) => OutgoingChatMessage.fromArmored(
+            armored,
+            sender: _identity.hashId,
+            peerFingerprint: peer.fingerprint,
+          ),
+        };
 }
 
 /// A chat message once decrypted.
