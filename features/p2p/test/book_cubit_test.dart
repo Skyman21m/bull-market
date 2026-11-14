@@ -5,6 +5,10 @@ import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/order_search.dart';
 import 'package:p2p/src/domain/tor_wait.dart';
 import 'package:p2p/src/domain/book_requests_in_flight.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
+import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/load_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/request_federation_books_usecase.dart';
 import 'package:p2p/src/domain/usecases/retry_p2p_tor_usecase.dart';
@@ -12,6 +16,7 @@ import 'package:p2p/src/domain/usecases/start_p2p_tor_usecase.dart';
 import 'package:p2p/src/domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'package:p2p/src/presentation/book_cubit.dart';
 import 'package:p2p/src/presentation/book_state.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/book_attempts.dart';
@@ -29,6 +34,7 @@ void main() {
   BookCubit cubit({
     RobosatsNetwork network = RobosatsNetwork.mainnet,
     ScriptedTransport? scripted,
+    HasGarageKeyUsecase? hasGarageKey,
   }) => BookCubit(
     network,
     WatchP2pTorStateUsecase(() => tor),
@@ -42,6 +48,7 @@ void main() {
       inFlight,
       waits.waits,
     ),
+    hasGarageKey: hasGarageKey,
   );
 
   /// Lets the stream events and the request futures run.
@@ -1212,6 +1219,93 @@ void main() {
       await book.close();
     });
   });
+
+  group('« Search order » and the Garage Key', () {
+    for (final (name, answer, lacks)
+        in <(String, Result<bool, P2pFailure>, bool)>[
+          ('no key stored', const Ok(false), true),
+          ('a key stored', const Ok(true), false),
+          ('the keystore locked', const Err(GarageKeyLockedFailure()), false),
+          (
+            'an entry unreadable',
+            const Err(GarageKeyUnreadableFailure()),
+            false,
+          ),
+          ('a key unusable', const Err(GarageKeyUnusableFailure()), false),
+        ]) {
+      test('$name: lacks a Garage Key is $lacks', () async {
+        final keys = _KeyStore(answer);
+        final book = cubit(
+          network: RobosatsNetwork.testnet,
+          hasGarageKey: HasGarageKeyUsecase(keys),
+        );
+
+        expect(await book.lacksGarageKey(), lacks);
+        // Whether the key of the book's network is stored, asked once: no key read, no robot, nothing sent.
+        expect(keys.calls, ['exists testnet']);
+        expect(transport.requested, isEmpty);
+        await book.close();
+      });
+    }
+
+    test('without the vault\'s handle, no Garage Key can be stored', () async {
+      final book = cubit();
+
+      expect(await book.lacksGarageKey(), isTrue);
+      expect(transport.requested, isEmpty);
+      await book.close();
+    });
+
+    test('the vault is asked only when the screen asks', () async {
+      final keys = _KeyStore(const Ok(true));
+      final book = cubit(hasGarageKey: HasGarageKeyUsecase(keys))..start();
+      tor.embedded.ready();
+      await settle();
+      await settle();
+      book.searchOrder('http://example.onion/order/temple/1');
+
+      expect(keys.calls, isEmpty);
+      await book.close();
+    });
+  });
+}
+
+/// A vault that answers whether a key is stored with [answer], records each question, and fails the test on anything else: « Search order » never reads a key.
+final class _KeyStore implements GarageKeyRepository {
+  final Result<bool, P2pFailure> answer;
+  final List<String> calls = [];
+
+  _KeyStore(this.answer);
+
+  @override
+  Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network) async {
+    calls.add('exists ${network.name}');
+    return answer;
+  }
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) => throw StateError('create');
+
+  @override
+  Future<Result<void, P2pFailure>> import(
+    RobosatsNetwork network,
+    GarageKey key,
+  ) => throw StateError('import');
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> read(RobosatsNetwork network) =>
+      throw StateError('read');
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
+    RobosatsNetwork network,
+  ) => throw StateError('firstUsableRobot');
+
+  @override
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
+      throw StateError('delete');
 }
 
 /// The currency of the RoboSats list with this code.
