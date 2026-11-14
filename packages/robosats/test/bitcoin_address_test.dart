@@ -72,10 +72,7 @@ final _bip350Invalid = <String, (Matcher, String)>{
     'invalid program length (1 byte)',
   ),
   'bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav':
-      (
-        isA<PayoutDestinationMalformed>(),
-        'invalid program length (41 bytes)',
-      ),
+      (isA<PayoutDestinationMalformed>(), 'invalid program length (41 bytes)'),
   'BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P': (
     isA<PayoutDestinationMalformed>(),
     'invalid program length for witness version 0',
@@ -289,7 +286,11 @@ void main() {
         (_base58Check(0x6f, _hash160), _testnet, BitcoinAddressKind.p2pkh),
         (_base58Check(0xc4, _hash160), _testnet, BitcoinAddressKind.p2sh),
         // A hash of zero bytes, written with leading `1`s for the zero version byte.
-        (_base58Check(0x00, List.filled(20, 0)), _mainnet, BitcoinAddressKind.p2pkh),
+        (
+          _base58Check(0x00, List.filled(20, 0)),
+          _mainnet,
+          BitcoinAddressKind.p2pkh,
+        ),
       ];
       expect(built.map((entry) => entry.$1.substring(0, 1)), [
         '1',
@@ -435,7 +436,9 @@ void main() {
           for (final replacement in alphabet.split('')) {
             if (replacement == address[i]) continue;
             final changed =
-                address.substring(0, i) + replacement + address.substring(i + 1);
+                address.substring(0, i) +
+                replacement +
+                address.substring(i + 1);
             for (final network in RobosatsNetwork.values) {
               tried++;
               expect(
@@ -450,38 +453,41 @@ void main() {
       expect(tried, greaterThan(40000));
     });
 
-    test('a swap of two neighbours, a character dropped or added is refused', () {
-      for (final (address, network) in valid) {
-        for (var i = 0; i + 1 < address.length; i++) {
-          if (address[i] == address[i + 1]) continue;
-          final swapped =
-              address.substring(0, i) +
-              address[i + 1] +
-              address[i] +
-              address.substring(i + 2);
-          expect(
-            BitcoinAddress.check(swapped, network),
-            isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
-            reason: '$address swapped at $i',
-          );
+    test(
+      'a swap of two neighbours, a character dropped or added is refused',
+      () {
+        for (final (address, network) in valid) {
+          for (var i = 0; i + 1 < address.length; i++) {
+            if (address[i] == address[i + 1]) continue;
+            final swapped =
+                address.substring(0, i) +
+                address[i + 1] +
+                address[i] +
+                address.substring(i + 2);
+            expect(
+              BitcoinAddress.check(swapped, network),
+              isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
+              reason: '$address swapped at $i',
+            );
+          }
+          for (var i = 0; i < address.length; i++) {
+            final dropped = address.substring(0, i) + address.substring(i + 1);
+            expect(
+              BitcoinAddress.check(dropped, network),
+              isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
+              reason: '$address without $i',
+            );
+          }
+          for (final extra in ['q', 'p', '1', 'z']) {
+            expect(
+              BitcoinAddress.check(address + extra, network),
+              isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
+              reason: '$address + $extra',
+            );
+          }
         }
-        for (var i = 0; i < address.length; i++) {
-          final dropped = address.substring(0, i) + address.substring(i + 1);
-          expect(
-            BitcoinAddress.check(dropped, network),
-            isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
-            reason: '$address without $i',
-          );
-        }
-        for (final extra in ['q', 'p', '1', 'z']) {
-          expect(
-            BitcoinAddress.check(address + extra, network),
-            isA<Err<BitcoinAddress, PayoutDestinationFailure>>(),
-            reason: '$address + $extra',
-          );
-        }
-      }
-    });
+      },
+    );
 
     test('the network is never confused', () {
       for (final (address, network) in valid) {

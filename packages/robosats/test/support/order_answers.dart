@@ -266,4 +266,3 @@ CoordinatorOrder readOrder(
 /// The order read at [status], as [orderAnswer] builds it.
 CoordinatorOrder readOrderAt(int status, {OrderRole role = OrderRole.taker}) =>
     readOrder(orderAnswer(status, role: role));
-
