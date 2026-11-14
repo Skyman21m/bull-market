@@ -1536,15 +1536,15 @@
   "@p2pTakeOrderChanged": {
     "description": "Not in the RoboSats texts: the project's own: the order read again just before the take differs from the one shown (anything but its price)."
   },
-  "p2pOrderDescription": "Description",
+  "p2pOrderDescription": "Order description",
   "@p2pOrderDescription": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the maker's description of the order, among the order details once the robot that takes it read the order (#119); the reference shows it from a row of its order details."
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, the French is the project's text list's (`docs/textes-p2p-phase1.json`). Label of the maker's description among the order details once the robot that takes the order read it (#119)."
   },
   "p2pTakerBond": "Taker bond",
   "@p2pTakerBond": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the bond the take asks, among the order details once the robot that takes it read the order (#119)."
   },
-  "p2pTakeBondEstimate": "{estimate} Sats, at most {ceiling}",
+  "p2pTakeBondEstimate": "{estimate} Sats, at most {ceiling} Sats",
   "@p2pTakeBondEstimate": {
     "description": "Not in the RoboSats texts: the project's own: the bond the take asks, at the price the robot read, and the most the app accepts of the coordinator's bond invoice for it (#119). Both are numbers of sats, written already.",
     "placeholders": {
@@ -1556,22 +1556,18 @@
       }
     }
   },
-  "p2pTakeReadAt": "Read at {time}",
+  "p2pTakeReadAt": "Read by your robot at {time}",
   "@p2pTakeReadAt": {
-    "description": "Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it. {time} is hours, minutes and seconds.",
+    "description": "Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it; read out when it arrives. {time} is hours, minutes and seconds.",
     "placeholders": {
       "time": {
         "type": "String"
       }
     }
   },
-  "p2pTakeConfirm": "Confirm",
-  "@p2pTakeConfirm": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button that sends the take of the order as the robot read it and the order details show it (#119)."
-  },
   "p2pTakeOrderChangedRead": "The order changed.",
   "@p2pTakeOrderChangedRead": {
-    "description": "Not in the RoboSats texts: the project's own: over « Confirm », when the robot's read again at the confirmation found the order changed: the order details now show its new figures, and nothing was taken (#119)."
+    "description": "Not in the RoboSats texts: the project's own: over « Continue », from the start of the read made again when a confirmation found the order changed, then with the new read, whose changed rows are marked: nothing was taken (#119, review of #133)."
   },
   "p2pTakeStepCheckingOrder": "Checking the order with {coordinator}",
   "@p2pTakeStepCheckingOrder": {
@@ -1586,17 +1582,26 @@
   "@p2pTakeStepCreatingRobot": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). The reference shows it while a robot is generated; here, a step of the wait of a take (#119): a fresh robot made and put on the coordinator."
   },
-  "p2pTakeStepReadingOrder": "Your robot reads the order",
+  "p2pTakeStepReadingOrder": "Your robot is reading the order",
   "@p2pTakeStepReadingOrder": {
     "description": "Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read by the robot that will take it."
   },
-  "p2pTakeStepReadingOrderAgain": "Your robot reads the order again",
+  "p2pTakeStepReadingOrderAgain": "Your robot is reading the order again",
   "@p2pTakeStepReadingOrderAgain": {
-    "description": "Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the order read again by the same robot, before the take."
+    "description": "Not in the RoboSats texts: the project's own: a step of the wait after « Done » of « Store your garage key » (#119): the order read again by the same robot, before the take."
   },
   "p2pTakeStepSendingTake": "Taking the order with {coordinator}",
   "@p2pTakeStepSendingTake": {
     "description": "Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the take sent, and its answer awaited.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeFirstRead": "Your robot is reading the order from {coordinator}",
+  "@p2pTradeFirstRead": {
+    "description": "Not in the RoboSats texts: the project's own: under the spinner of the trade screen before its first read, right after the take (review of #133): what it waits for. The reference has no such line, its trade page opening on an order it has already read.",
     "placeholders": {
       "coordinator": {
         "type": "String"

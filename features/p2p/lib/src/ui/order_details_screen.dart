@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:primitives/primitives.dart' show Sats;
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
@@ -125,10 +126,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     canTake: widget.canTake,
                   ),
                   const Gap(BullSpacing.md),
-                  OrderMakerRow(
-                    maker: order.maker,
-                    activity: order.makerActivity,
-                  ),
+                  TakeOrderMakerRow(order: order, canTake: widget.canTake),
                   const Gap(BullSpacing.md),
                   TakeOrderSection(
                     order: order,
@@ -149,7 +147,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
 /// « Order Details » of an order of the book: the amount, what the taker sends and receives, the payment methods, price and premium, expiry and deposit time; also the trade screen's for an order public again, so that what it shows and what « Take Order » takes are the same order.
 ///
-/// With [read], the take prepared (#119), the figures are those the robot that takes the order read (`GET /api/order/`): its price and premium, its sats, its expiry and deposit time; the maker's description follows the payment methods when there is one, as plain text, the bond the take asks follows the deposit time, and the time of the read closes the card.
+/// With [read], the take prepared (#119), the figures are those the robot that takes the order read (`GET /api/order/`): its price and premium, its sats, its expiry and deposit time; the maker's description follows the payment methods when there is one, as plain text, the bond the take asks follows the price, and the time of the read, read out when it arrives, closes the card.
+/// With [previous], the read the user saw before, when the order changed at the confirmation, the rows that differ from it are marked as the official client marks the time left: in colour and bold.
 class PublicOrderDetailsCard extends StatelessWidget {
   final PublicOrder order;
 
@@ -160,12 +159,16 @@ class PublicOrderDetailsCard extends StatelessWidget {
   /// The take prepared, whose read the card shows.
   final PreparedTake? read;
 
+  /// The read the user saw before [read], when the order changed.
+  final PreparedTake? previous;
+
   const PublicOrderDetailsCard({
     super.key,
     required this.order,
     required this.estimate,
     required this.now,
     this.read,
+    this.previous,
   });
 
   @override
@@ -181,11 +184,21 @@ class PublicOrderDetailsCard extends StatelessWidget {
     final amount = order.currency.isBitcoin
         ? l10n.p2pAmountSats(formats.btcAmountInSats(order.amount))
         : '${formats.orderAmount(order.amount)} $code';
-    // The robot's read: its own sats (the taker fee of the terms), price, premium, expiry and deposit time.
-    final estimate = readOrder == null
-        ? this.estimate
-        : TakerEstimate.ofTrade(readOrder, takerFee: read?.terms.takerFee ?? 0);
-    final sats = estimate == null ? '-' : formats.estimate(estimate);
+    final shown = read == null
+        ? _Figures.ofBook(order, estimate, l10n, formats)
+        : _Figures.ofRead(read, l10n, formats);
+    final before = switch (previous) {
+      final previous? when read != null => _Figures.ofRead(
+        previous,
+        l10n,
+        formats,
+      ),
+      _ => null,
+    };
+    // A row whose value differs from the read the user saw before is marked as the reference marks the time left: in colour and bold.
+    bool differs(Object? Function(_Figures figures) of) =>
+        before != null && of(before) != of(shown);
+    final changedColor = colors.warning;
     final methods = order.paymentMethods.text;
     final (send, receive) = switch (order.type) {
       // The taker of a sell order buys bitcoin: pays fiat, receives sats.
@@ -196,13 +209,13 @@ class PublicOrderDetailsCard extends StatelessWidget {
         ),
         OrderSentence.split(
           l10n.p2pOrderYouReceiveSats(OrderSentence.mark),
-          sats,
+          shown.sats,
         ),
       ),
       OrderType.buy => (
         OrderSentence.split(
           l10n.p2pOrderYouSendLightning(OrderSentence.mark),
-          sats,
+          shown.sats,
         ),
         OrderSentence.split(
           l10n.p2pOrderYouReceiveVia(methods, OrderSentence.mark),
@@ -210,30 +223,16 @@ class PublicOrderDetailsCard extends StatelessWidget {
         ),
       ),
     };
-    final expiresAt = readOrder?.expiresAt ?? order.expiresAt;
-    final total = expiresAt.difference(readOrder?.createdAt ?? order.createdAt);
-    final left = expiresAt.difference(now);
+    final satsChanged = differs((f) => f.sats);
+    final total = shown.expiresAt.difference(
+      readOrder?.createdAt ?? order.createdAt,
+    );
+    final left = shown.expiresAt.difference(now);
     final share = total.inMilliseconds <= 0 || left.isNegative
         ? 0.0
         : (left.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0);
-    final price = readOrder == null ? order.price : readOrder.priceNow;
-    final premium = read?.terms.premium ?? order.premium;
-    final explicit = read == null
-        ? order.explicitSatoshis
-        : read.terms.explicitSatoshis;
-    final description = readOrder?.description;
-    final (priceLabel, priceValue) = price != null
-        ? (
-            l10n.p2pOrderPriceAndPremium,
-            l10n.p2pOrderPriceAndPremiumValue(
-              formats.price(price),
-              code,
-              formats.premiumNumber(premium),
-            ),
-          )
-        : explicit != null
-        ? (l10n.p2pOrderAmountOfSatoshis, formats.sats(explicit.value.toInt()))
-        : (l10n.p2pOrderPremiumOverMarket, formats.premiumOverMarket(premium));
+    final expiryChanged = differs((f) => f.expiresAt);
+    final description = shown.description;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -250,8 +249,22 @@ class PublicOrderDetailsCard extends StatelessWidget {
                   : l10n.p2pBookColumnAmount,
               amount,
             ),
-            OrderDetailRow(send.label, send.value),
-            OrderDetailRow(receive.label, receive.value),
+            OrderDetailRow(
+              send.label,
+              send.value,
+              color: order.type == OrderType.buy && satsChanged
+                  ? changedColor
+                  : null,
+              bold: order.type == OrderType.buy && satsChanged,
+            ),
+            OrderDetailRow(
+              receive.label,
+              receive.value,
+              color: order.type == OrderType.sell && satsChanged
+                  ? changedColor
+                  : null,
+              bold: order.type == OrderType.sell && satsChanged,
+            ),
             OrderDetailRow(
               order.currency.isBitcoin
                   ? l10n.p2pOrderSwapDestination
@@ -265,35 +278,42 @@ class PublicOrderDetailsCard extends StatelessWidget {
                   : null,
             ),
             if (description != null && description.trim().isNotEmpty)
-              OrderDescriptionRow(description),
-            OrderDetailRow(priceLabel, priceValue),
+              OrderDescriptionRow(
+                description,
+                changed: differs((f) => f.description),
+              ),
+            OrderDetailRow(
+              shown.priceLabel,
+              shown.priceValue,
+              color: differs((f) => f.priceValue) ? changedColor : null,
+              bold: differs((f) => f.priceValue),
+            ),
+            if (read != null)
+              OrderDetailRow(
+                l10n.p2pTakerBond,
+                shown.bond ?? '',
+                color: differs((f) => f.bond) ? changedColor : null,
+                bold: differs((f) => f.bond),
+              ),
             OrderDetailRow(
               l10n.p2pOrderExpiresIn,
               left.isNegative ? l10n.p2pOrderExpired : formats.countdown(left),
               color: share < 0.10
                   ? colors.error
-                  : share < 0.25
+                  : share < 0.25 || expiryChanged
                   ? colors.warning
                   : null,
-              bold: share < 0.25,
+              bold: share < 0.25 || expiryChanged,
             ),
             // The time left closes the card, under its last row, as in the official client.
             Column(
               children: [
                 OrderDetailRow(
                   l10n.p2pOrderDeposit,
-                  formats.depositTime(
-                    readOrder?.escrowDuration ?? order.escrowDuration,
-                  ),
+                  shown.deposit,
+                  color: differs((f) => f.deposit) ? changedColor : null,
+                  bold: differs((f) => f.deposit),
                 ),
-                if (read != null)
-                  OrderDetailRow(
-                    l10n.p2pTakerBond,
-                    l10n.p2pTakeBondEstimate(
-                      formats.sats(read.expectedBond.round()),
-                      formats.sats(read.bondCeiling),
-                    ),
-                  ),
                 const Gap(BullSpacing.sm),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(BullRadius.xxs),
@@ -310,14 +330,118 @@ class PublicOrderDetailsCard extends StatelessWidget {
         ),
         if (read != null) ...[
           const Gap(BullSpacing.xs),
-          Text(
-            l10n.p2pTakeReadAt(
-              DateFormat.Hms(l10n.localeName).format(read.readAt.toLocal()),
+          // Read out when a read arrives, so that a screen reader hears that the order details now show it.
+          Semantics(
+            container: true,
+            liveRegion: true,
+            child: Text(
+              l10n.p2pTakeReadAt(
+                DateFormat.Hms(l10n.localeName).format(read.readAt.toLocal()),
+              ),
+              style: text.labelMedium?.copyWith(color: colors.textMuted),
             ),
-            style: text.labelMedium?.copyWith(color: colors.textMuted),
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The values the order details show of the book's order, or of a robot's read, as text: what tells two reads apart.
+final class _Figures {
+  final String sats;
+  final String priceLabel;
+  final String priceValue;
+  final DateTime expiresAt;
+  final String deposit;
+  final String? description;
+  final String? bond;
+
+  const _Figures({
+    required this.sats,
+    required this.priceLabel,
+    required this.priceValue,
+    required this.expiresAt,
+    required this.deposit,
+    required this.description,
+    required this.bond,
+  });
+
+  static (String, String) _price(
+    double? price,
+    Premium premium,
+    Sats? explicit,
+    String code,
+    P2pLocalizations l10n,
+    P2pFormats formats,
+  ) => price != null
+      ? (
+          l10n.p2pOrderPriceAndPremium,
+          l10n.p2pOrderPriceAndPremiumValue(
+            formats.price(price),
+            code,
+            formats.premiumNumber(premium),
+          ),
+        )
+      : explicit != null
+      ? (l10n.p2pOrderAmountOfSatoshis, formats.sats(explicit.value.toInt()))
+      : (l10n.p2pOrderPremiumOverMarket, formats.premiumOverMarket(premium));
+
+  static _Figures ofBook(
+    PublicOrder order,
+    TakerEstimate? estimate,
+    P2pLocalizations l10n,
+    P2pFormats formats,
+  ) {
+    final (label, value) = _price(
+      order.price,
+      order.premium,
+      order.explicitSatoshis,
+      order.currency.code,
+      l10n,
+      formats,
+    );
+    return _Figures(
+      sats: estimate == null ? '-' : formats.estimate(estimate),
+      priceLabel: label,
+      priceValue: value,
+      expiresAt: order.expiresAt,
+      deposit: formats.depositTime(order.escrowDuration),
+      description: null,
+      bond: null,
+    );
+  }
+
+  /// The robot's read (#119): its own sats (the taker fee of the terms), price, premium, expiry, deposit time, description and the bond the take asks.
+  static _Figures ofRead(
+    PreparedTake read,
+    P2pLocalizations l10n,
+    P2pFormats formats,
+  ) {
+    final order = read.order;
+    final estimate = TakerEstimate.ofTrade(
+      order,
+      takerFee: read.terms.takerFee,
+    );
+    final (label, value) = _price(
+      order.priceNow,
+      read.terms.premium,
+      read.terms.explicitSatoshis,
+      order.currency.code,
+      l10n,
+      formats,
+    );
+    return _Figures(
+      sats: estimate == null ? '-' : formats.estimate(estimate),
+      priceLabel: label,
+      priceValue: value,
+      expiresAt: order.expiresAt,
+      deposit: formats.depositTime(order.escrowDuration),
+      description: order.description,
+      bond: l10n.p2pTakeBondEstimate(
+        formats.sats(read.expectedBond.round()),
+        formats.sats(read.bondCeiling),
+      ),
     );
   }
 }

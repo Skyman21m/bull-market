@@ -60,27 +60,45 @@ sealed class TakeOrderState {
   const TakeOrderState();
 }
 
-/// Nothing runs: « Take Order » can be pressed; [problem] says why the last take did not happen, when one was tried.
+/// Nothing runs: « Take Order » can be pressed, unless the order is gone ([orderGone]); [problem] says why the last take did not happen, when one was tried.
 final class TakeIdle extends TakeOrderState {
   final TakeProblem? problem;
 
   const TakeIdle({this.problem});
+
+  /// Whether the last try found the order no longer available: the page offers no take of it any more (review of #133).
+  bool get orderGone => switch (problem) {
+    TakeWasRefused(refusal: TakeOrderGone()) => true,
+    TakeWasNotMade(
+      refusal: OrderNotAvailable() || OrderNotPublic() || OrderCancelled(),
+    ) =>
+      true,
+    _ => false,
+  };
 }
 
 /// The order is read by the robot that will take it (the order read again, a robot put on the coordinator, its read of the order): it can take a minute over Tor; [step] is what it does now, `null` until the first one starts, and [slow] says it has run for a while.
+///
+/// [previous] is the read the user saw, when the order changed at the confirmation and is read again: it stays shown meanwhile.
 final class TakePreparing extends TakeOrderState {
   final TakeStep? step;
   final bool slow;
+  final PreparedTake? previous;
 
-  const TakePreparing({this.step, this.slow = false});
+  const TakePreparing({this.step, this.slow = false, this.previous});
 }
 
-/// The robot read the order: the order details show [prepared], and the user confirms the take or goes back; [changed] says that the order changed since the read the user had seen, and these are its new figures.
+/// The robot read the order: the order details show [prepared], and the user goes on (« Continue », then « Store your garage key » and its « Done ») or goes back.
+///
+/// [previous] is the read the user saw before, when the order changed at the confirmation: the rows that differ from it are marked.
 final class TakeReady extends TakeOrderState {
   final PreparedTake prepared;
-  final bool changed;
+  final PreparedTake? previous;
 
-  const TakeReady(this.prepared, {this.changed = false});
+  const TakeReady(this.prepared, {this.previous});
+
+  /// Whether the order changed since the read the user had seen.
+  bool get changed => previous != null;
 }
 
 /// The take of [prepared] is confirmed and runs (the order read again by the same robot, then the take sent); [step] is what it does now, and [slow] says it has run for a while.
@@ -93,10 +111,13 @@ final class TakeConfirming extends TakeOrderState {
 }
 
 /// The take was sent and started a trade, resumed one, or its outcome is unknown, or the order already had an open trade here: the trade of [record] is the screen to show (the watch of the trade resolves an unknown outcome).
+///
+/// [prepared] is the read the take was sent on, which stays shown until the trade's screen opens.
 final class TakeSent extends TakeOrderState {
   final TradeRecord record;
+  final PreparedTake? prepared;
 
-  const TakeSent(this.record);
+  const TakeSent(this.record, {this.prepared});
 }
 
 /// Why a take did not happen, as a type: the screen words it, never with a coordinator's text.
@@ -121,9 +142,9 @@ final class TakeWasNotMade extends TakeProblem {
 
 /// Takes one order of the book for a fresh robot of this device, in two steps (#88, #119): the only caller of [TakeOrderUsecase], which the locator gives it as [TakeCalls].
 ///
-/// [take] prepares: the order read by the robot that will take it, which the order details then show ([TakeReady]); [confirm] sends the take of what the user saw; [back] abandons it.
-/// One step runs at a time: a second [take] or [confirm] while one runs, or after the take was sent, does nothing, so a double tap sends one request.
-/// Nothing is confirmed by itself: when the confirmation finds the order changed ([TakeOrderChanged]) or its preparation gone ([TakePreparationGone]), the order is prepared again, once, and its new figures wait for the user.
+/// [take] prepares (« Take Order »): the order read by the robot that will take it, which the order details then show ([TakeReady]); [confirm] sends the take of what the user saw (« Done » of « Store your garage key », after « Continue »); [back] abandons it (« Go back », of either).
+/// One step runs at a time: a second [take] or [confirm] while one runs, or after the take was sent, does nothing, so a double tap sends one request; an order found gone is not prepared again.
+/// Nothing is confirmed by itself: when the confirmation finds the order changed ([TakeOrderChanged]) or its preparation gone ([TakePreparationGone]), the order is prepared again, once, and its new figures wait for the user, the read the user saw shown meanwhile when the order changed.
 /// Closing the cubit (the page left, a system back) abandons what is prepared, or the order when the last preparation failed, so that no robot stays kept for it; a confirmation that runs then is left to finish, the user having confirmed it.
 class TakeOrderCubit extends Cubit<TakeOrderState> {
   /// After how long a step that runs is said to be still waiting, as the robot panel of the Garage does (`RobotCoordinatorCubit.stillWaitingAfter`).
@@ -157,21 +178,22 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     this.shownTrade,
   }) : super(const TakeIdle());
 
-  /// Whether a Garage Key is stored for the network, which decides between « Store your garage key » and « You do not have a Garage Key » (`Dialogs/Confirmation.tsx`): `false` only when the vault says there is none; a key that cannot be read goes on, and the take says why it fails.
+  /// Whether a Garage Key is stored for the network, which decides between preparing the take and « You do not have a Garage Key » (`Dialogs/Confirmation.tsx`): `false` only when the vault says there is none; a key that cannot be read goes on, and the take says why it fails.
   Future<bool> hasGarageKey() async => switch (await _hasKey(network)) {
     Ok(:final value) => value,
     Err() => true,
   };
 
-  /// Prepares the take of the order, for [amount] when it has a range: the robot that will take it reads the order, which the order details then show.
+  /// Prepares the take of the order (« Take Order »), for [amount] when it has a range: the robot that will take it reads the order, which the order details then show.
   Future<void> take({TakeAmount? amount}) async {
-    if (isClosed || state is! TakeIdle) return;
+    final current = state;
+    if (isClosed || current is! TakeIdle || current.orderGone) return;
     _amount = amount;
-    final next = await _prepared(changed: false);
+    final next = await _prepared(previous: null);
     if (!isClosed) emit(next);
   }
 
-  /// Sends the take of the order as it was read and shown ([TakeReady]).
+  /// Sends the take of the order as it was read and shown ([TakeReady]): « Done » of « Store your garage key ».
   Future<void> confirm() async {
     final current = state;
     if (isClosed || current is! TakeReady) return;
@@ -189,29 +211,28 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     _stillWaiting?.cancel();
     if (isClosed) return;
     switch (result) {
-      // Read again by the robot, the order is no longer the one shown, or the preparation is gone: prepared again, once, and its new figures shown; never confirmed by itself.
-      case Err(failure: TakeOrderChanged() || TakePreparationGone()):
-        final next = await _prepared(
-          changed: switch (result) {
-            Err(failure: TakeOrderChanged()) => true,
-            _ => false,
-          },
-        );
+      // Read again by the robot, the order is no longer the one shown: prepared again, once, the read the user saw kept on screen meanwhile; never confirmed by itself.
+      case Err(failure: TakeOrderChanged()):
+        final next = await _prepared(previous: prepared);
+        if (!isClosed) emit(next);
+      // The preparation is gone (its key changed, or another one replaced it): prepared again, once.
+      case Err(failure: TakePreparationGone()):
+        final next = await _prepared(previous: null);
         if (!isClosed) emit(next);
       case Err(failure: final refusal):
         emit(_refused(refusal));
       case Ok(value: TakeNotMade(:final refusal)):
         emit(TakeIdle(problem: TakeWasNotMade(refusal)));
       case Ok(value: final TakeStarted sent):
-        emit(TakeSent(sent.record));
+        emit(TakeSent(sent.record, prepared: prepared));
       case Ok(value: final TakeResumed sent):
-        emit(TakeSent(sent.record));
+        emit(TakeSent(sent.record, prepared: prepared));
       case Ok(value: final TakeOutcomeUnknown sent):
-        emit(TakeSent(sent.record));
+        emit(TakeSent(sent.record, prepared: prepared));
     }
   }
 
-  /// Goes back from the order as it was read: its preparation is abandoned, nothing is sent.
+  /// Goes back from the order as it was read (« Go back », or « Go back » of « Store your garage key »): its preparation is abandoned, nothing is sent.
   void back() {
     final current = state;
     if (isClosed || current is! TakeReady) return;
@@ -219,9 +240,9 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     emit(const TakeIdle());
   }
 
-  /// The state after a preparation: [TakePreparing] meanwhile.
-  Future<TakeOrderState> _prepared({required bool changed}) async {
-    emit(const TakePreparing());
+  /// The state after a preparation: [TakePreparing] meanwhile, with [previous], the read the user saw, when the order is read again because it changed.
+  Future<TakeOrderState> _prepared({required PreparedTake? previous}) async {
+    emit(TakePreparing(previous: previous));
     _startWaiting();
     final result = await _calls.prepare(
       order,
@@ -229,7 +250,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       amount: _amount,
       onStep: (step) {
         if (!isClosed && state is TakePreparing) {
-          emit(TakePreparing(step: step, slow: _slow));
+          emit(TakePreparing(step: step, slow: _slow, previous: previous));
         }
       },
     );
@@ -240,7 +261,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       return state;
     }
     return switch (result) {
-      Ok(value: final prepared) => TakeReady(prepared, changed: changed),
+      Ok(value: final prepared) => TakeReady(prepared, previous: previous),
       // Abandoned while it ran, or another order prepared meanwhile: nothing to say.
       Err(failure: TakePreparationGone()) => const TakeIdle(),
       Err(failure: final refusal) => _refused(refusal),
@@ -266,8 +287,8 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       _slow = true;
       if (isClosed) return;
       switch (state) {
-        case TakePreparing(:final step):
-          emit(TakePreparing(step: step, slow: true));
+        case TakePreparing(:final step, :final previous):
+          emit(TakePreparing(step: step, slow: true, previous: previous));
         case TakeConfirming(:final prepared, :final step):
           emit(TakeConfirming(prepared, step: step, slow: true));
         case _:

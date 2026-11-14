@@ -24,6 +24,7 @@ import '../../presentation/trade_order_page_cubit.dart';
 import '../../presentation/trade_panel.dart';
 import '../coordinator_details_dialog.dart';
 import '../take_order_section.dart';
+import 'trade_first_read_wait.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
@@ -203,13 +204,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {
-                      TradeWaiting() => Padding(
-                        padding: const EdgeInsets.all(BullSpacing.xl),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: colors.primary,
-                          ),
-                        ),
+                      TradeWaiting() => TradeFirstReadWait(
+                        coordinator: coordinator,
                       ),
                       TradeMessage(:final kind) => _Message(
                         text: kind.toText(context, coordinator: coordinator),
@@ -797,10 +793,7 @@ class _PublicAgain extends StatelessWidget {
                 canTake: true,
               ),
               const Gap(BullSpacing.md),
-              OrderMakerRow(
-                maker: public.maker,
-                activity: public.makerActivity,
-              ),
+              TakeOrderMakerRow(order: public, canTake: true),
               const Gap(BullSpacing.lg),
               TakeOrderSection(
                 order: public,

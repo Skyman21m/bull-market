@@ -132,13 +132,20 @@ class OrderDetailRow extends StatelessWidget {
   }
 }
 
-/// The maker's description of an order, once the robot that takes it read the order (#119): « Description », then the maker's words, as a quote under it.
+/// The maker's description of an order, once the robot that takes it read the order (#119): « Order description », the title of the reference's dialog, then the maker's words, as a quote under it.
 ///
 /// The text is the coordinator's word for the maker's: shown as plain text through [CoordinatorText], never as markup, never opened as a link and never offered for copy; nothing in it is acted on.
 class OrderDescriptionRow extends StatelessWidget {
   final String description;
 
-  const OrderDescriptionRow(this.description, {super.key});
+  /// Whether it differs from the read the user saw before: marked in colour and bold, as the other rows.
+  final bool changed;
+
+  const OrderDescriptionRow(
+    this.description, {
+    super.key,
+    this.changed = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +180,10 @@ class OrderDescriptionRow extends StatelessWidget {
                 ),
                 child: Text(
                   words,
-                  style: text.bodyLarge?.copyWith(color: colors.text),
+                  style: text.bodyLarge?.copyWith(
+                    color: changed ? colors.warning : colors.text,
+                    fontWeight: changed ? FontWeight.w700 : null,
+                  ),
                 ),
               ),
             ],

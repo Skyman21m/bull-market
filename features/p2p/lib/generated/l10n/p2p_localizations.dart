@@ -1925,10 +1925,10 @@ abstract class P2pLocalizations {
   /// **'This order changed since it was shown. It was not taken: open it again from the book.'**
   String get p2pTakeOrderChanged;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the maker's description of the order, among the order details once the robot that takes it read the order (#119); the reference shows it from a row of its order details.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, the French is the project's text list's (`docs/textes-p2p-phase1.json`). Label of the maker's description among the order details once the robot that takes the order read it (#119).
   ///
   /// In en, this message translates to:
-  /// **'Description'**
+  /// **'Order description'**
   String get p2pOrderDescription;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Label of the bond the take asks, among the order details once the robot that takes it read the order (#119).
@@ -1940,22 +1940,16 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the bond the take asks, at the price the robot read, and the most the app accepts of the coordinator's bond invoice for it (#119). Both are numbers of sats, written already.
   ///
   /// In en, this message translates to:
-  /// **'{estimate} Sats, at most {ceiling}'**
+  /// **'{estimate} Sats, at most {ceiling} Sats'**
   String p2pTakeBondEstimate(String estimate, String ceiling);
 
-  /// Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it. {time} is hours, minutes and seconds.
+  /// Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it; read out when it arrives. {time} is hours, minutes and seconds.
   ///
   /// In en, this message translates to:
-  /// **'Read at {time}'**
+  /// **'Read by your robot at {time}'**
   String p2pTakeReadAt(String time);
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Button that sends the take of the order as the robot read it and the order details show it (#119).
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm'**
-  String get p2pTakeConfirm;
-
-  /// Not in the RoboSats texts: the project's own: over « Confirm », when the robot's read again at the confirmation found the order changed: the order details now show its new figures, and nothing was taken (#119).
+  /// Not in the RoboSats texts: the project's own: over « Continue », from the start of the read made again when a confirmation found the order changed, then with the new read, whose changed rows are marked: nothing was taken (#119, review of #133).
   ///
   /// In en, this message translates to:
   /// **'The order changed.'**
@@ -1976,13 +1970,13 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: a step of the wait of a take (#119): the order read by the robot that will take it.
   ///
   /// In en, this message translates to:
-  /// **'Your robot reads the order'**
+  /// **'Your robot is reading the order'**
   String get p2pTakeStepReadingOrder;
 
-  /// Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the order read again by the same robot, before the take.
+  /// Not in the RoboSats texts: the project's own: a step of the wait after « Done » of « Store your garage key » (#119): the order read again by the same robot, before the take.
   ///
   /// In en, this message translates to:
-  /// **'Your robot reads the order again'**
+  /// **'Your robot is reading the order again'**
   String get p2pTakeStepReadingOrderAgain;
 
   /// Not in the RoboSats texts: the project's own: a step of the wait after « Confirm » (#119): the take sent, and its answer awaited.
@@ -1990,6 +1984,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Taking the order with {coordinator}'**
   String p2pTakeStepSendingTake(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: under the spinner of the trade screen before its first read, right after the take (review of #133): what it waits for. The reference has no such line, its trade page opening on an order it has already read.
+  ///
+  /// In en, this message translates to:
+  /// **'Your robot is reading the order from {coordinator}'**
+  String p2pTradeFirstRead(String coordinator);
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1011 (`api/errors.py`), which the official client shows under « Take Order »; the French is the project's.
   ///
