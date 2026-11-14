@@ -1279,6 +1279,85 @@ void main() {
       },
     );
 
+    test(
+      'an offer carries the wallet\'s invoice: the exact text, amount, network, hash and deadline',
+      () async {
+        final bond = await preTake();
+        final offer = walletPaymentFor(
+          accepted: Sats.fromInt(bookBond),
+          status: bond,
+          step: InvoiceStep.bond,
+          now: tradeNow,
+        );
+        if (offer is! WalletPaymentOffered) fail('not offered: $offer');
+        final checked = checkedOf(bond);
+        final wallet = offer.walletInvoice;
+        expect(wallet.bolt11, checked.bolt11);
+        expect(wallet.bolt11, bondInvoice().text);
+        expect(wallet.amount, checked.amount);
+        expect(wallet.network, RobosatsNetwork.mainnet);
+        expect(wallet.paymentHash, checked.paymentHash);
+        expect(wallet.paymentHash, bondInvoice().facts.paymentHash);
+        expect(wallet.expiresAt, checked.expiresAt);
+        expect(wallet.payableUntil, checked.payableUntil);
+        // The step ends before the invoice here: the earlier of the two.
+        final shortStep = next(
+          null,
+          await answer(
+            orderJson(3, expiresAt: tradeNow.add(const Duration(seconds: 90))),
+            invoices: [bondInvoice()],
+          ),
+        );
+        final short = walletPaymentFor(
+          accepted: Sats.fromInt(bookBond),
+          status: shortStep,
+          step: InvoiceStep.bond,
+          now: tradeNow,
+        );
+        if (short is! WalletPaymentOffered) fail('not offered: $short');
+        expect(
+          short.walletInvoice.payableUntil,
+          tradeNow.add(const Duration(seconds: 90)),
+        );
+        expect(
+          short.walletInvoice.payableUntil.isBefore(
+            short.walletInvoice.expiresAt,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'the wallet invoice\'s own strict reading is a second check: an amount written with a leading zero is never offered',
+      () async {
+        // The decoder of the test reads it as the bond's amount, as a lenient decoder would; the wallet's type refuses its text.
+        final lenient = Bolt11TestInvoice(
+          network: Bolt11Network.mainnet,
+          sats: bookBond,
+          seed: 1,
+          createdAt: tradeNow.subtract(const Duration(seconds: 10)),
+          expiry: const Duration(seconds: 200),
+          amountText: '0${bookBond * 10}n',
+        );
+        final status = await preTake(bond: lenient);
+        expect(checkedOf(status).passedEveryCheck, isTrue);
+        expect(
+          walletPaymentFor(
+            accepted: Sats.fromInt(bookBond),
+            status: status,
+            step: InvoiceStep.bond,
+            now: tradeNow,
+          ),
+          isA<WalletPaymentRefused>().having(
+            (r) => r.reason,
+            'reason',
+            WalletPaymentRefusal.walletRefused,
+          ),
+        );
+      },
+    );
+
     test('a refused answer forbids it on the status left in place', () async {
       final bond = await preTake();
       final refused = next(
