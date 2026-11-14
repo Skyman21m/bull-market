@@ -20,6 +20,7 @@ import 'package:p2p/src/ui/widgets/coordinator_mark.dart';
 import 'package:p2p/src/ui/widgets/coordinators_row.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/robot_avatar.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/src/ui/tor_wait_view.dart';
 import 'package:p2p/testing.dart';
 
@@ -872,7 +873,7 @@ void main() {
       expect(find.text('Deposit'), findsOneWidget);
       expect(find.text('3h'), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.byType(BullButton),
+        find.byType(TradeButton),
         200,
         scrollable: details,
       );
@@ -885,9 +886,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      final take = tester.widget<BullButton>(find.byType(BullButton));
+      // « Take Order » is enabled (#88): without the vault's handle, as here, a press says that a Garage Key is needed, as the official client does without a robot.
+      final take = tester.widget<TradeButton>(find.byType(TradeButton));
       expect(take.label, 'Take Order');
-      expect(take.disabled, isTrue);
+      expect(take.onPressed, isNotNull);
+      await tester.tap(find.byType(TradeButton));
+      await settle(tester);
+      expect(find.byType(NoRobotDialog), findsOneWidget);
     });
 
     testWidgets('the host opens the dialog of its coordinator', (tester) async {
