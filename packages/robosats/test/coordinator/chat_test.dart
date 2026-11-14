@@ -333,11 +333,9 @@ void main() {
       final transport = _answering(Ok(jsonResponse(_page())));
       expect(
         expectErr(await _fetch(transport, lastRead: outsider)),
-        isA<ChatRefused>().having(
-          (f) => f.reason,
-          'reason',
-          ChatRefusal.notParticipant,
-        ),
+        isA<ChatRefused>()
+            .having((f) => f.reason, 'reason', ChatRefusal.notParticipant)
+            .having((f) => f.fromLastRead, 'fromLastRead', isTrue),
       );
       expect(
         expectErr(await _postWith(transport, lastRead: outsider)),
@@ -1051,6 +1049,26 @@ void main() {
         expect(page.lastIndex, 3);
       },
     );
+
+    test('a text over the bound that is not a PGP message either is too long, unread', () async {
+      final page = _pageOk(
+        await _fetch(
+          _answering(Ok(jsonResponse(_page(messages: [chatMessageJson(1, 'x' * (ChatMessage.maxReadChars + 1), _peer.nickname)])))),
+        ),
+      );
+      expect(page.messages.single.content, ChatMessageContent.tooLong);
+    });
+
+    test('a received message with CR LF line ends is given with line feeds, which decryption reads the same', () async {
+      final message = _outgoing('crlf');
+      final page = _pageOk(
+        await _fetch(
+          _answering(Ok(jsonResponse(_page(messages: [chatMessageJson(1, message.armored.replaceAll('\n', '\r\n'), _us.nickname)])))),
+        ),
+      );
+      expect(page.messages.single.armored, message.armored);
+      expect(page.indexOf(message), 1);
+    });
 
     test(
       'a malformed PGP message is given as it is: decryption tells',
