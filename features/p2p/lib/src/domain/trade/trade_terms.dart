@@ -289,6 +289,14 @@ final class TradeTerms {
   /// The bond the order implies at the book's price: its bond size of [expectedSatoshis] (`Logics.gen_taker_hold_invoice`, `api/logics.py:1402-1404`).
   double get expectedBond => expectedSatoshis * bondSize.percent / 100;
 
+  /// The most a bond invoice of this trade may ask: [expectedBond] with the state machine's tolerance on it ([TradeTolerances.price] and [TradeTolerances.roundingSats], as `BondAmountOutsideOrder` checks the order's bond), rounded down to the sat.
+  ///
+  /// It is what the user accepts by taking the order (#100): the wallet pays the invoice's own decoded amount, never more than this, and never the coordinator's `bond_satoshis`.
+  Sats get bondCeiling => Sats(
+    (expectedBond * (1 + TradeTolerances.price) + TradeTolerances.roundingSats)
+        .floor(),
+  );
+
   /// The Lightning node keys the federation list gives [coordinator] on [network]: an invoice of the trade must be one of theirs.
   List<String> get nodeKeys => coordinator.nodesPubkeys(network);
 

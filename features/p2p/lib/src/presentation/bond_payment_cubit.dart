@@ -1,0 +1,248 @@
+import 'dart:async';
+
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:meta/meta.dart';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+
+import '../../public/p2p_wallet_port.dart';
+import '../domain/trade/bond_payment.dart';
+import '../domain/trade/trade_watch.dart';
+import '../domain/trade/wallet_payment.dart';
+import '../domain/trade_record.dart';
+import '../domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
+
+/// [PayBondFromWalletUsecase.watchBalance], which the locator gives the cubit.
+typedef BondBalanceReader =
+    Stream<Result<Sats, P2pWalletRefusal>> Function(RobosatsNetwork network);
+
+/// [PayBondFromWalletUsecase.checkBond].
+typedef BondOfferChecker =
+    Future<Result<WalletPaymentOffered, BondPayRefusal>> Function(
+      TradeRecord record,
+      TradeSeen seen,
+    );
+
+/// [PayBondFromWalletUsecase.quoteBond].
+typedef BondQuoter =
+    Future<Result<P2pWalletQuote, BondPayRefusal>> Function(
+      TradeRecord record,
+      TradeSeen seen,
+    );
+
+/// [PayBondFromWalletUsecase.payBond].
+typedef BondPayer =
+    Future<Result<P2pWalletPayment, BondPayRefusal>> Function(
+      TradeRecord record, {
+      required P2pWalletQuote accepted,
+    });
+
+/// [PayBondFromWalletUsecase.followBond].
+typedef BondFollower = Stream<BondPaymentWatch> Function(TradeRecord record);
+
+/// What the panel of « Pay with this wallet » shows of one trade's bond (#100): the Instant Payments balance, whether the wallet is offered for the invoice shown, and where a payment stands.
+@immutable
+final class BondPaymentState {
+  /// The Instant Payments balance, `null` until the wallet answers.
+  final Result<Sats, P2pWalletRefusal>? balance;
+
+  /// Whether the wallet is offered for the invoice shown, `null` until checked.
+  final Result<void, BondPayRefusal>? offer;
+
+  final BondPayStep step;
+
+  const BondPaymentState({
+    this.balance,
+    this.offer,
+    this.step = const BondPayLooking(),
+  });
+
+  BondPaymentState _with({
+    Result<Sats, P2pWalletRefusal>? balance,
+    Result<void, BondPayRefusal>? offer,
+    BondPayStep? step,
+  }) => BondPaymentState(
+    balance: balance ?? this.balance,
+    offer: offer ?? this.offer,
+    step: step ?? this.step,
+  );
+}
+
+/// Where the user stands with the wallet's payment of the bond.
+@immutable
+sealed class BondPayStep {
+  const BondPayStep();
+}
+
+/// Looking in the records and the wallet's for a payment of the bond made earlier: nothing is offered meanwhile.
+final class BondPayLooking extends BondPayStep {
+  const BondPayLooking();
+}
+
+/// Nothing paid from this wallet: « Pay with this wallet » is offered when [BondPaymentState.offer] allows it; [refused] says why the last attempt did not pay (nothing left the wallet).
+final class BondPayIdle extends BondPayStep {
+  final BondPayRefusal? refused;
+
+  const BondPayIdle({this.refused});
+}
+
+/// The swap service is being asked for its quote, after the user's tap.
+final class BondPayQuoting extends BondPayStep {
+  const BondPayQuoting();
+}
+
+/// The quote, which the user confirms or cancels.
+final class BondPayConfirming extends BondPayStep {
+  final P2pWalletQuote walletQuote;
+
+  const BondPayConfirming(this.walletQuote);
+}
+
+/// The payment is being made, after the user's confirmation.
+final class BondPaySending extends BondPayStep {
+  const BondPaySending();
+}
+
+/// A payment of the bond by this wallet exists, and stands at [progress].
+final class BondPayFollowing extends BondPayStep {
+  final P2pWalletPaymentProgress progress;
+
+  const BondPayFollowing(this.progress);
+}
+
+/// The records, or the wallet's, could not be read: nothing is offered, since a payment may exist.
+final class BondPayUnreadable extends BondPayStep {
+  const BondPayUnreadable();
+}
+
+/// The wallet's payment of one trade's bond, as the trade screen shows it (#100): one per shown trade, which only the user's taps make pay.
+///
+/// [start] reads the balance and looks for a payment made earlier ([BondFollower]): a payment found is followed, never made again. [ask] asks the swap service for its quote, on the tap of « Pay with this wallet » only; [confirm] pays that quote, on the tap of its confirmation only; [dismiss] leaves the confirmation. A tap while a quote or a payment runs does nothing.
+/// It names neither the wallet's port nor its payment: the functions of [PayBondFromWalletUsecase] are given by the locator.
+class BondPaymentCubit extends Cubit<BondPaymentState> {
+  final TradeRecord record;
+  final BondBalanceReader _balance;
+  final BondOfferChecker _check;
+  final BondQuoter _quoter;
+  final BondPayer _payer;
+  final BondFollower _follower;
+
+  StreamSubscription<Result<Sats, P2pWalletRefusal>>? _balances;
+  StreamSubscription<BondPaymentWatch>? _follow;
+
+  /// The status the last check was made for: a check is made again only for another invoice or another status.
+  TradeSeen? _checked;
+
+  BondPaymentCubit(
+    this.record,
+    this._balance,
+    this._check,
+    this._quoter,
+    this._payer,
+    this._follower,
+  ) : super(const BondPaymentState());
+
+  /// Reads the balance and looks for a payment of the bond made earlier: once.
+  void start() {
+    if (isClosed || _balances != null) return;
+    _balances = _balance(record.network).listen((balance) {
+      if (!isClosed) emit(state._with(balance: balance));
+    });
+    _followAgain();
+  }
+
+  /// Checks, without asking the swap service, whether the wallet is offered for the bond as [seen] shows it: once per status shown.
+  Future<void> offerFor(TradeSeen seen) async {
+    if (isClosed || identical(seen, _checked)) return;
+    _checked = seen;
+    final offer = await _check(record, seen);
+    if (isClosed || !identical(seen, _checked)) return;
+    emit(
+      state._with(
+        offer: switch (offer) {
+          Ok() => const Ok(null),
+          Err(:final failure) => Err(failure),
+        },
+      ),
+    );
+  }
+
+  /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only.
+  Future<void> ask(TradeSeen seen) async {
+    if (isClosed || state.step is! BondPayIdle) return;
+    emit(state._with(step: const BondPayQuoting()));
+    final quoted = await _quoter(record, seen);
+    if (isClosed) return;
+    emit(
+      state._with(
+        step: switch (quoted) {
+          Ok(:final value) => BondPayConfirming(value),
+          Err(:final failure) => BondPayIdle(refused: failure),
+        },
+      ),
+    );
+  }
+
+  /// Leaves the confirmation without paying.
+  void dismiss() {
+    if (isClosed || state.step is! BondPayConfirming) return;
+    emit(state._with(step: const BondPayIdle()));
+  }
+
+  /// Pays the quote the confirmation shows: on its tap only, once.
+  Future<void> confirm() async {
+    final step = state.step;
+    if (isClosed || step is! BondPayConfirming) return;
+    emit(state._with(step: const BondPaySending()));
+    final paid = await _payer(record, accepted: step.walletQuote);
+    if (isClosed) return;
+    switch (paid) {
+      case Ok():
+        _followAgain();
+      case Err(failure: BondPayWalletRefused(:final refusal))
+          when _carriesPayment(refusal):
+        // A payment exists for the invoice (made now or before): it is followed, never made again.
+        _followAgain();
+      case Err(:final failure):
+        emit(state._with(step: BondPayIdle(refused: failure)));
+    }
+  }
+
+  static bool _carriesPayment(P2pWalletRefusal refusal) => switch (refusal) {
+    P2pWalletBroadcastUnknown() || P2pWalletPaymentInterrupted() => true,
+    P2pWalletPaymentExists(:final payment) => payment != null,
+    _ => false,
+  };
+
+  void _followAgain() {
+    unawaited(_follow?.cancel());
+    _follow = _follower(record).listen((watch) {
+      if (isClosed) return;
+      emit(
+        state._with(
+          step: switch (watch) {
+            BondPaymentNone() => switch (state.step) {
+              // A payment the wallet started but whose record is not read yet stays as it was shown.
+              final BondPayFollowing following => following,
+              _ => const BondPayIdle(),
+            },
+            // A payment that moved nothing and is not left signed (being prepared after a restart, expired or failed with nothing sent) may be tried again, after a new quote and a new confirmation: the wallet pays it again only while it is provably unspent.
+            BondPaymentFollowed(:final progress)
+                when !progress.fundsMayHaveLeft &&
+                    progress is! P2pWalletPaymentSigned =>
+              const BondPayIdle(),
+            BondPaymentFollowed(:final progress) => BondPayFollowing(progress),
+            BondPaymentUnreadable() => const BondPayUnreadable(),
+          },
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> close() async {
+    await _balances?.cancel();
+    await _follow?.cancel();
+    return super.close();
+  }
+}

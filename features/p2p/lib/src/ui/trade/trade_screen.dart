@@ -52,6 +52,9 @@ class TradeScreen extends StatefulWidget {
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
+  /// The line that says, after status 3, where the payment of a bond paid by this wallet stands: `null` without the wallet's port (#100).
+  final WidgetBuilder? walletBondLine;
+
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
@@ -66,6 +69,7 @@ class TradeScreen extends StatefulWidget {
     required this.now,
     required this.coordinatorDetails,
     this.walletPayment,
+    this.walletBondLine,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -201,6 +205,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                   children: [
                     for (final line in lines) ...[
                       line,
+                      const Gap(BullSpacing.sm),
+                    ],
+                    // After status 3, where a bond paid by this wallet stands (held by the swap service, refunded, kept); at status 3 the panel itself says it.
+                    if (widget.walletBondLine case final bondLine?
+                        when view is! TradeWaiting &&
+                            !(view is TradeContract &&
+                                view.status is WaitingForTakerBond)) ...[
+                      bondLine(context),
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {
@@ -452,6 +464,7 @@ class _Contract extends StatelessWidget {
       (TradePrompt.lockInvoice, final WaitingForTakerBond bond) => BondPanel(
         record: record,
         status: bond,
+        seen: contract.seen,
         walletPayment: walletPayment,
         now: now,
         swap: order?.currency.isBitcoin ?? false,

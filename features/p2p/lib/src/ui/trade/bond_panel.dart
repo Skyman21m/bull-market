@@ -10,6 +10,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_status.dart';
+import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
@@ -28,6 +29,9 @@ import 'wallet_payment_section.dart';
 class BondPanel extends StatelessWidget {
   final TradeRecord record;
   final WaitingForTakerBond status;
+
+  /// [status] as the screen shows it, which the wallet's slot is given.
+  final TradeSeen seen;
   final WalletPaymentBuilder? walletPayment;
 
   /// Whether the order is in bitcoin, a swap into Lightning, as the order read says.
@@ -43,6 +47,7 @@ class BondPanel extends StatelessWidget {
     super.key,
     required this.record,
     required this.status,
+    required this.seen,
     required this.walletPayment,
     required this.now,
     this.swap = false,
@@ -60,12 +65,14 @@ class BondPanel extends StatelessWidget {
     final request = WalletPaymentRequest(
       record: record,
       status: status,
+      seen: seen,
       amount: status.bond.orderAmount,
     );
     final invoice = status.bond;
-    final wallet = payable && !invoiceExpiredAt(invoice, now)
+    final slot = payable && !invoiceExpiredAt(invoice, now)
         ? WalletPaymentSection.offer(context, walletPayment, request)
         : null;
+    final wallet = slot?.child;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -84,7 +91,8 @@ class BondPanel extends StatelessWidget {
             UnusableInvoice() => '',
           }),
           invoice: invoice,
-          initiallyOpen: wallet == null,
+          initiallyOpen: wallet == null || slot?.othersOpen == true,
+          opensNow: slot?.othersOpen ?? false,
           payable: payable,
           now: now,
         ),
@@ -103,6 +111,9 @@ class BondPanel extends StatelessWidget {
 class _OtherWallet extends StatefulWidget {
   final StepInvoice invoice;
   final bool initiallyOpen;
+
+  /// Whether the wallet's slot asks it open now: it opens when this turns true, and stays as the user leaves it.
+  final bool opensNow;
   final bool payable;
   final DateTime now;
 
@@ -110,6 +121,7 @@ class _OtherWallet extends StatefulWidget {
     super.key,
     required this.invoice,
     required this.initiallyOpen,
+    this.opensNow = false,
     required this.payable,
     required this.now,
   });
@@ -120,6 +132,12 @@ class _OtherWallet extends StatefulWidget {
 
 class _OtherWalletState extends State<_OtherWallet> {
   late bool _open = widget.initiallyOpen;
+
+  @override
+  void didUpdateWidget(_OtherWallet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.opensNow && !oldWidget.opensNow) _open = true;
+  }
   bool _shownAnyway = false;
   bool _copied = false;
   Timer? _copiedTimer;
