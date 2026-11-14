@@ -314,29 +314,30 @@ class PayCheckedInvoiceUsecase {
     InstantWallet wallet,
     String refund,
   ) async {
-    Future<Result<OrderSwapRecord, SwapFailure>> create() =>
-        _swaps.createOrder(
-          amountSat: invoice.amount.value,
-          // The invoice's amount is what the service pays out; the payin is its own, checked against the cap.
-          isInAmountFixed: false,
-          inNetwork: OrderSwapNetwork.liquid,
-          outNetwork: OrderSwapNetwork.lightning,
-          destinationAddress: invoice.bolt11,
-          fallbackAddress: refund,
-          purpose: OrderSwapPurpose.sendLightning,
-          environment: switch (invoice.network) {
-            RobosatsNetwork.mainnet => OrderSwapEnvironment.mainnet,
-            RobosatsNetwork.testnet => OrderSwapEnvironment.testnet,
-          },
-          sourceWalletId: wallet.id,
-          note: WalletPaymentRepository.note,
-          quotedCounterpartAmountSat: accepted.payin.value,
-        );
+    Future<Result<OrderSwapRecord, SwapFailure>> create() => _swaps.createOrder(
+      amountSat: invoice.amount.value,
+      // The invoice's amount is what the service pays out; the payin is its own, checked against the cap.
+      isInAmountFixed: false,
+      inNetwork: OrderSwapNetwork.liquid,
+      outNetwork: OrderSwapNetwork.lightning,
+      destinationAddress: invoice.bolt11,
+      fallbackAddress: refund,
+      purpose: OrderSwapPurpose.sendLightning,
+      environment: switch (invoice.network) {
+        RobosatsNetwork.mainnet => OrderSwapEnvironment.mainnet,
+        RobosatsNetwork.testnet => OrderSwapEnvironment.testnet,
+      },
+      sourceWalletId: wallet.id,
+      note: WalletPaymentRepository.note,
+      quotedCounterpartAmountSat: accepted.payin.value,
+    );
 
     try {
       var created = await create();
       // The quote may just have used the service's slot, so the creation is the call refused; nothing was created, so one new try is safe.
-      if (created case Err(failure: SwapRateLimitedFailure(:final retryAfter))) {
+      if (created case Err(
+        failure: SwapRateLimitedFailure(:final retryAfter),
+      )) {
         final wait = retryAfter ?? _createRetryDelay;
         if (wait.isNegative ||
             wait > _maxCreateRetryDelay ||
@@ -408,9 +409,7 @@ class PayCheckedInvoiceUsecase {
   };
 
   static Sats? _sats(BigInt? value) =>
-      value == null ||
-          value.isNegative ||
-          value > CheckedBolt11Invoice.maxSats
+      value == null || value.isNegative || value > CheckedBolt11Invoice.maxSats
       ? null
       : Sats(value);
 

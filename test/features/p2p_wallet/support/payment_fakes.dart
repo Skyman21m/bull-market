@@ -40,8 +40,7 @@ String payBolt11({
 }
 
 /// An obviously fake payment hash of [seed].
-String payHash([int seed = 1]) =>
-    seed.toRadixString(16).padLeft(2, '0') * 32;
+String payHash([int seed = 1]) => seed.toRadixString(16).padLeft(2, '0') * 32;
 
 /// A checked invoice, as `walletPaymentFor` would give it, payable until [payableIn] after [testNow].
 CheckedBolt11Invoice payInvoice({
@@ -427,7 +426,10 @@ final class FakePayingLiquid implements LiquidWalletRepository {
   }
 
   @override
-  Future<String> signPset({required String pset, required String walletId}) async {
+  Future<String> signPset({
+    required String pset,
+    required String walletId,
+  }) async {
     journal.add('sign:$pset');
     if (signError case final error?) throw error;
     return 'signed-$pset';

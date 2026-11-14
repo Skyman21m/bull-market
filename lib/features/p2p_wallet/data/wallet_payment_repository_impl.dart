@@ -185,8 +185,7 @@ class WalletPaymentRepositoryImpl implements WalletPaymentRepository {
     OrderSwapRecord record,
     P2pWalletPayment payment,
   ) async =>
-      _isOurs(record) &&
-      await _paymentHashOf(record) == payment.paymentHash;
+      _isOurs(record) && await _paymentHashOf(record) == payment.paymentHash;
 
   /// The payment hash of the invoice [record] pays, as the wallet's decoder reads it, or `null`.
   Future<String?> _paymentHashOf(OrderSwapRecord record) async =>

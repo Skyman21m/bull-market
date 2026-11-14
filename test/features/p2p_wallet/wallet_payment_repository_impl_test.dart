@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:bb_mobile/features/p2p_wallet/data/wallet_payment_repository_impl.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/repositories/wallet_payment_repository.dart';
 import 'package:bb_mobile/features/swap/public/swap_facade.dart';
@@ -44,7 +42,8 @@ void main() {
     withOrder:
         status != OrderSwapLocalStatus.creating &&
         status != OrderSwapLocalStatus.creationUnknown &&
-        !(status == OrderSwapLocalStatus.failed && signed == null &&
+        !(status == OrderSwapLocalStatus.failed &&
+            signed == null &&
             transactionId == null),
   );
 
@@ -169,7 +168,8 @@ void main() {
         expect(
           WalletPaymentRepositoryImpl.progressOf(record),
           matcher,
-          reason: '${record.localStatus.name} ${record.hasPreparedPayin} ${record.hasFundsMoved}',
+          reason:
+              '${record.localStatus.name} ${record.hasPreparedPayin} ${record.hasFundsMoved}',
         );
       }
     });
@@ -288,7 +288,11 @@ void main() {
           ),
           // Another hash.
           (
-            recordOf(OrderSwapLocalStatus.payinBroadcast, signed: 's', transactionId: 't'),
+            recordOf(
+              OrderSwapLocalStatus.payinBroadcast,
+              signed: 's',
+              transactionId: 't',
+            ),
             P2pWalletPayment(id: 'local-1', paymentHash: payHash(9)),
           ),
           // An order of the wallet's own Send.
@@ -373,93 +377,98 @@ void main() {
                 ),
             reason: record.localStatus.name,
           );
-          expect(
-            await afterRestart.holdsPaymentOf(invoice),
-            _isOk(isTrue),
-          );
+          expect(await afterRestart.holdsPaymentOf(invoice), _isOk(isTrue));
           await store.close();
         }
       },
     );
 
-    test('finds the latest of this feature\'s orders for a hash, none for another', () async {
-      final invoice = payInvoice();
-      final other = payInvoice(tag: 'p');
-      invoices
-        ..learn(invoice)
-        ..learn(other);
-      swaps
-        ..hold(
-          paymentRecord(
-            localId: 'older',
-            destination: invoice.bolt11,
-            status: OrderSwapLocalStatus.refunded,
-            signed: 's',
-            transactionId: 't',
-            createdAt: testNow.subtract(const Duration(hours: 1)),
-          ),
-        )
-        ..hold(
-          paymentRecord(
-            localId: 'newer',
-            destination: other.bolt11,
-            createdAt: testNow,
-          ),
-        )
-        ..hold(
-          paymentRecord(
-            localId: 'send',
-            destination: invoice.bolt11,
-            note: 'my own note',
-            createdAt: testNow.add(const Duration(hours: 1)),
+    test(
+      'finds the latest of this feature\'s orders for a hash, none for another',
+      () async {
+        final invoice = payInvoice();
+        final other = payInvoice(tag: 'p');
+        invoices
+          ..learn(invoice)
+          ..learn(other);
+        swaps
+          ..hold(
+            paymentRecord(
+              localId: 'older',
+              destination: invoice.bolt11,
+              status: OrderSwapLocalStatus.refunded,
+              signed: 's',
+              transactionId: 't',
+              createdAt: testNow.subtract(const Duration(hours: 1)),
+            ),
+          )
+          ..hold(
+            paymentRecord(
+              localId: 'newer',
+              destination: other.bolt11,
+              createdAt: testNow,
+            ),
+          )
+          ..hold(
+            paymentRecord(
+              localId: 'send',
+              destination: invoice.bolt11,
+              note: 'my own note',
+              createdAt: testNow.add(const Duration(hours: 1)),
+            ),
+          );
+        final found = await payments.find(invoice.paymentHash);
+        expect(
+          found,
+          isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (ok) => ok.value?.payment.id,
+            'id',
+            'newer',
           ),
         );
-      final found = await payments.find(invoice.paymentHash);
-      expect(
-        found,
-        isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
-          (ok) => ok.value?.payment.id,
-          'id',
-          'newer',
-        ),
-      );
-      expect(
-        await payments.find(payHash(9)),
-        _isOk(isNull),
-      );
-      // An invoice the wallet's decoder no longer reads is not found by its hash, but its text still refuses a second payment.
-      invoices.known.clear();
-      expect(
-        await payments.find(invoice.paymentHash),
-        _isOk(isNull),
-      );
-      expect(
-        await payments.holdsPaymentOf(invoice),
-        _isOk(isTrue),
-      );
-    });
+        expect(await payments.find(payHash(9)), _isOk(isNull));
+        // An invoice the wallet's decoder no longer reads is not found by its hash, but its text still refuses a second payment.
+        invoices.known.clear();
+        expect(await payments.find(invoice.paymentHash), _isOk(isNull));
+        expect(await payments.holdsPaymentOf(invoice), _isOk(isTrue));
+      },
+    );
 
-    test('records that cannot be read are Unavailable, never « none »', () async {
-      swaps.ordersFailure = const SwapStorageFailure('disk');
-      expect(
-        await payments.find(payHash()),
-        isA<Err<P2pWalletPaymentFound?, P2pWalletRefusal>>(),
-      );
-      expect(
-        await payments.holdsPaymentOf(payInvoice()),
-        isA<Err<bool, P2pWalletRefusal>>(),
-      );
-    });
+    test(
+      'records that cannot be read are Unavailable, never « none »',
+      () async {
+        swaps.ordersFailure = const SwapStorageFailure('disk');
+        expect(
+          await payments.find(payHash()),
+          isA<Err<P2pWalletPaymentFound?, P2pWalletRefusal>>(),
+        );
+        expect(
+          await payments.holdsPaymentOf(payInvoice()),
+          isA<Err<bool, P2pWalletRefusal>>(),
+        );
+      },
+    );
   });
 
   test('it creates, changes and refreshes nothing', () async {
     final invoice = payInvoice();
     invoices.learn(invoice);
-    swaps.hold(recordOf(OrderSwapLocalStatus.payinBroadcast, signed: 's', transactionId: 't'));
-    await payments.find(invoice.paymentHash);
-    await payments.holdsPaymentOf(invoice);
+    swaps.hold(
+      recordOf(
+        OrderSwapLocalStatus.payinBroadcast,
+        signed: 's',
+        transactionId: 't',
+      ),
+    );
+    expect(
+      await payments.find(invoice.paymentHash),
+      isA<Ok<Object?, P2pWalletRefusal>>(),
+    );
+    expect(await payments.holdsPaymentOf(invoice), _isOk(isTrue));
     await payments
-        .watch(P2pWalletPayment(id: 'local-1', paymentHash: invoice.paymentHash))
+        .watch(
+          P2pWalletPayment(id: 'local-1', paymentHash: invoice.paymentHash),
+        )
         .first;
     expect(journal.events, isEmpty);
   });

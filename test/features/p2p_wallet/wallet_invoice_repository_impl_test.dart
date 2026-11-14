@@ -17,61 +17,67 @@ void main() {
           throw answer;
         });
 
-    test('maps a BOLT11 request: amount, hash in lower case, expiry, network', () async {
-      final read = await over(
-        PaymentRequest.bolt11(
-          invoice: payBolt11(),
-          amountSat: 600,
-          paymentHash: payHash().toUpperCase(),
-          description: 'not carried',
-          expiresAt: testNow.millisecondsSinceEpoch ~/ 1000 + 180,
-          isTestnet: true,
-        ),
-      ).read(payBolt11());
-      final invoice = switch (read) {
-        Ok(:final value) => value,
-        Err(:final failure) => fail('$failure'),
-      };
-      expect(invoice.amount, Sats.fromInt(600));
-      expect(invoice.paymentHash, payHash());
-      expect(invoice.expiresAt, testNow.add(const Duration(seconds: 180)));
-      expect(invoice.expiresAt.isUtc, isTrue);
-      expect(invoice.isTestnet, isTrue);
-      expect('$invoice', 'WalletInvoice');
-    });
-
-    test('anything else, an error, no amount or no expiry is unreadable', () async {
-      for (final answer in <Object>[
-        const PaymentRequest.liquid(address: 'lq1x', isTestnet: false),
-        const PaymentRequest.lnAddress(address: 'a@b.c'),
-        PaymentRequest.bolt11(
-          invoice: payBolt11(),
-          amountSat: 0,
-          paymentHash: payHash(),
-          expiresAt: 1,
-          isTestnet: false,
-        ),
-        PaymentRequest.bolt11(
-          invoice: payBolt11(),
-          amountSat: 600,
-          paymentHash: payHash(),
-          expiresAt: 0,
-          isTestnet: false,
-        ),
-        'Invalid payment request',
-        StateError('rust panic'),
-      ]) {
-        expect(
-          await over(answer).read(payBolt11()),
-          isA<Err<WalletInvoice, P2pWalletRefusal>>().having(
-            (e) => e.failure,
-            'failure',
-            isA<P2pWalletInvoiceUnreadable>(),
+    test(
+      'maps a BOLT11 request: amount, hash in lower case, expiry, network',
+      () async {
+        final read = await over(
+          PaymentRequest.bolt11(
+            invoice: payBolt11(),
+            amountSat: 600,
+            paymentHash: payHash().toUpperCase(),
+            description: 'not carried',
+            expiresAt: testNow.millisecondsSinceEpoch ~/ 1000 + 180,
+            isTestnet: true,
           ),
-          reason: '$answer',
-        );
-      }
-    });
+        ).read(payBolt11());
+        final invoice = switch (read) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(invoice.amount, Sats.fromInt(600));
+        expect(invoice.paymentHash, payHash());
+        expect(invoice.expiresAt, testNow.add(const Duration(seconds: 180)));
+        expect(invoice.expiresAt.isUtc, isTrue);
+        expect(invoice.isTestnet, isTrue);
+        expect('$invoice', 'WalletInvoice');
+      },
+    );
+
+    test(
+      'anything else, an error, no amount or no expiry is unreadable',
+      () async {
+        for (final answer in <Object>[
+          const PaymentRequest.liquid(address: 'lq1x', isTestnet: false),
+          const PaymentRequest.lnAddress(address: 'a@b.c'),
+          PaymentRequest.bolt11(
+            invoice: payBolt11(),
+            amountSat: 0,
+            paymentHash: payHash(),
+            expiresAt: 1,
+            isTestnet: false,
+          ),
+          PaymentRequest.bolt11(
+            invoice: payBolt11(),
+            amountSat: 600,
+            paymentHash: payHash(),
+            expiresAt: 0,
+            isTestnet: false,
+          ),
+          'Invalid payment request',
+          StateError('rust panic'),
+        ]) {
+          expect(
+            await over(answer).read(payBolt11()),
+            isA<Err<WalletInvoice, P2pWalletRefusal>>().having(
+              (e) => e.failure,
+              'failure',
+              isA<P2pWalletInvoiceUnreadable>(),
+            ),
+            reason: '$answer',
+          );
+        }
+      },
+    );
   });
 
   group('the quotes given', () {
@@ -94,13 +100,16 @@ void main() {
       expect(issued.consume(one), isFalse);
     });
 
-    test('an equal quote that was not given is refused: identity, not equality', () {
-      final issued = IssuedQuotes();
-      final given = quote();
-      issued.issue(given);
-      expect(issued.consume(quote()), isFalse);
-      expect(issued.consume(given), isTrue);
-      expect(IssuedQuotes().consume(given), isFalse);
-    });
+    test(
+      'an equal quote that was not given is refused: identity, not equality',
+      () {
+        final issued = IssuedQuotes();
+        final given = quote();
+        issued.issue(given);
+        expect(issued.consume(quote()), isFalse);
+        expect(issued.consume(given), isTrue);
+        expect(IssuedQuotes().consume(given), isFalse);
+      },
+    );
   });
 }

@@ -231,15 +231,9 @@ void main() {
       expect(of('lnbc210000001', most), isNotNull);
       expect(of('lnbc21000000000m1', most), isNotNull);
       expect(of('lnbc210000011', most + BigInt.from(100000000)), isNull);
-      expect(
-        of('lnbc21000000001m1', most + BigInt.from(100000)),
-        isNull,
-      );
+      expect(of('lnbc21000000001m1', most + BigInt.from(100000)), isNull);
       // The value of #113's report: 60,708,632 BTC.
-      expect(
-        of('lnbc607086321', BigInt.from(6070863200000000)),
-        isNull,
-      );
+      expect(of('lnbc607086321', BigInt.from(6070863200000000)), isNull);
     });
 
     test('refuses an amount below a satoshi, with a leading zero, or zero', () {
@@ -473,7 +467,10 @@ void main() {
   });
 
   test('a payment and its progress print no id, hash or text', () {
-    const payment = P2pWalletPayment(id: 'local-1', paymentHash: testPaymentHash);
+    const payment = P2pWalletPayment(
+      id: 'local-1',
+      paymentHash: testPaymentHash,
+    );
     expect('$payment', 'P2pWalletPayment');
     expect(
       payment,
@@ -481,7 +478,9 @@ void main() {
     );
     expect(
       payment,
-      isNot(const P2pWalletPayment(id: 'local-2', paymentHash: testPaymentHash)),
+      isNot(
+        const P2pWalletPayment(id: 'local-2', paymentHash: testPaymentHash),
+      ),
     );
     final progress = <P2pWalletPaymentProgress, (bool, bool)>{
       const P2pWalletPaymentPreparing(): (false, false),
@@ -690,52 +689,58 @@ void main() {
       );
     });
 
-    test('gives a payment\'s progress, then each change, until a refusal', () async {
-      final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
-      const payment = P2pWalletPayment(
-        id: 'local-1',
-        paymentHash: testPaymentHash,
-      );
-      port.setProgress(payment, const Ok(P2pWalletPaymentSent()));
-      final seen = <Result<P2pWalletPaymentProgress, P2pWalletRefusal>>[];
-      final done = Completer<void>();
-      port.watchPayment(payment).listen(seen.add, onDone: done.complete);
-      await pumpEventQueue();
-      port
-        ..setProgress(payment, const Ok(P2pWalletPaymentPending()))
-        ..setProgress(
-          const P2pWalletPayment(id: 'other', paymentHash: testPaymentHash),
-          const Ok(P2pWalletPaymentPaid()),
-        )
-        ..setProgress(payment, const Err(P2pWalletUnavailable()));
-      await done.future;
-      expect(seen, hasLength(3));
-      expect(seen.last, isA<Err<P2pWalletPaymentProgress, P2pWalletRefusal>>());
-      port.setFound(
-        testPaymentHash,
-        const P2pWalletPaymentFound(
-          payment: payment,
-          progress: P2pWalletPaymentRefunded(),
-        ),
-      );
-      expect(
-        await port.findPayment(testPaymentHash),
-        isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
-          (ok) => ok.value?.payment,
-          'payment',
-          payment,
-        ),
-      );
-      expect(
-        await port.findPayment('cd' * 32),
-        isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
-          (ok) => ok.value,
-          'value',
-          isNull,
-        ),
-      );
-      expect(port.found, [testPaymentHash, 'cd' * 32]);
-    });
+    test(
+      'gives a payment\'s progress, then each change, until a refusal',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+        const payment = P2pWalletPayment(
+          id: 'local-1',
+          paymentHash: testPaymentHash,
+        );
+        port.setProgress(payment, const Ok(P2pWalletPaymentSent()));
+        final seen = <Result<P2pWalletPaymentProgress, P2pWalletRefusal>>[];
+        final done = Completer<void>();
+        port.watchPayment(payment).listen(seen.add, onDone: done.complete);
+        await pumpEventQueue();
+        port
+          ..setProgress(payment, const Ok(P2pWalletPaymentPending()))
+          ..setProgress(
+            const P2pWalletPayment(id: 'other', paymentHash: testPaymentHash),
+            const Ok(P2pWalletPaymentPaid()),
+          )
+          ..setProgress(payment, const Err(P2pWalletUnavailable()));
+        await done.future;
+        expect(seen, hasLength(3));
+        expect(
+          seen.last,
+          isA<Err<P2pWalletPaymentProgress, P2pWalletRefusal>>(),
+        );
+        port.setFound(
+          testPaymentHash,
+          const P2pWalletPaymentFound(
+            payment: payment,
+            progress: P2pWalletPaymentRefunded(),
+          ),
+        );
+        expect(
+          await port.findPayment(testPaymentHash),
+          isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (ok) => ok.value?.payment,
+            'payment',
+            payment,
+          ),
+        );
+        expect(
+          await port.findPayment('cd' * 32),
+          isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (ok) => ok.value,
+            'value',
+            isNull,
+          ),
+        );
+        expect(port.found, [testPaymentHash, 'cd' * 32]);
+      },
+    );
   });
 }
 

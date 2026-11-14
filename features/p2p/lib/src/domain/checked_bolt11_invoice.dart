@@ -114,8 +114,14 @@ final class CheckedBolt11Invoice {
       other.payableUntil == payableUntil;
 
   @override
-  int get hashCode =>
-      Object.hash(bolt11, amount, network, paymentHash, expiresAt, payableUntil);
+  int get hashCode => Object.hash(
+    bolt11,
+    amount,
+    network,
+    paymentHash,
+    expiresAt,
+    payableUntil,
+  );
 
   @override
   String toString() => 'CheckedBolt11Invoice';

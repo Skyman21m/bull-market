@@ -97,15 +97,18 @@ void main() {
       }
     });
 
-    test('a per-file name is not shared, so that it is allowed in its file only', () {
-      for (final MapEntry(key: path, value: names) in _perFile.entries) {
-        expect(names.intersection(_shellVocabulary), isEmpty, reason: path);
-        expect(sources.keys, contains(path));
-      }
-      for (final path in _perFileImports.keys) {
-        expect(_perFile.keys, contains(path));
-      }
-    });
+    test(
+      'a per-file name is not shared, so that it is allowed in its file only',
+      () {
+        for (final MapEntry(key: path, value: names) in _perFile.entries) {
+          expect(names.intersection(_shellVocabulary), isEmpty, reason: path);
+          expect(sources.keys, contains(path));
+        }
+        for (final path in _perFileImports.keys) {
+          expect(_perFile.keys, contains(path));
+        }
+      },
+    );
 
     test('a file that reaches the signature by another way fails', () {
       // The third review's probe: from another file of the feature, the wallet's signer through the locator, a pattern, an extension, a cascade or a symbol.
@@ -486,7 +489,6 @@ const _shellVocabulary = {
   // The payment's types (#100, W3): the handle, its progress and the refusals it adds; and the reading of a pattern's fields that #103's code already had (`Err(:final failure)`, `SwapAmountOutOfBoundsFailure(isMinimum: true, :final limitAmountSat)`).
   'P2pWalletAlreadyPaid',
   'P2pWalletBroadcastUnknown',
-  'P2pWalletFunds',
   'P2pWalletInvoiceExpiresTooSoon',
   'P2pWalletInvoiceUnreadable',
   'P2pWalletPayment',
@@ -701,6 +703,7 @@ const _perFile = <String, Set<String>>{
     '_createOrder',
     '_delay',
     '_lateRefusal',
+    'delayed',
     '_pay',
     '_refusalOf',
     'after',
@@ -797,10 +800,10 @@ const _perFileImports = <String, Set<String>>{
 List<String> _vocabularyOffences(Map<String, String> sources) => [
   for (final MapEntry(key: path, value: source) in sources.entries)
     if ((_vocabularyOf([source])
-              .difference(_shellVocabulary)
-              .difference(_perFile[path] ?? const {})
-              .toList()
-            ..sort())
+            .difference(_shellVocabulary)
+            .difference(_perFile[path] ?? const {})
+            .toList()
+          ..sort())
         case final names when names.isNotEmpty)
       '$path names ${names.join(' ')}',
 ];

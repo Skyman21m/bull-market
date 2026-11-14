@@ -181,10 +181,7 @@ void main() {
       getWallets.answer = Ok([testWallet(isTestnet: true)]);
       final invoice = payInvoice(network: RobosatsNetwork.testnet);
       paymentOf(await payOf(invoice));
-      expect(
-        swaps.created.single['environment'],
-        OrderSwapEnvironment.testnet,
-      );
+      expect(swaps.created.single['environment'], OrderSwapEnvironment.testnet);
       expect(broadcast.networks, [true]);
     });
 
@@ -241,10 +238,7 @@ void main() {
       invoices.learn(invoice);
       expect(
         refusalOf(
-          await pay.execute(
-            invoice,
-            accepted: quoteOf(invoice, issue: false),
-          ),
+          await pay.execute(invoice, accepted: quoteOf(invoice, issue: false)),
         ),
         isA<P2pWalletQuoteStale>(),
       );
@@ -292,35 +286,44 @@ void main() {
       paymentOf(await payOf(invoice, quote: quoteOf(later)));
     });
 
-    test('is refused when older than two minutes, or from ahead of the clock', () async {
-      final invoice = payInvoice();
-      expect(PayCheckedInvoiceUsecase.quoteMaxAge, const Duration(minutes: 2));
-      for (final at in [
-        now.subtract(const Duration(minutes: 2, milliseconds: 1)),
-        now.add(const Duration(milliseconds: 1)),
-      ]) {
+    test(
+      'is refused when older than two minutes, or from ahead of the clock',
+      () async {
+        final invoice = payInvoice();
         expect(
-          refusalOf(await payOf(invoice, quote: quoteOf(invoice, at: at))),
-          isA<P2pWalletQuoteStale>(),
-          reason: '$at',
+          PayCheckedInvoiceUsecase.quoteMaxAge,
+          const Duration(minutes: 2),
         );
-      }
-      expectNoOrder();
-      paymentOf(
-        await payOf(
-          invoice,
-          quote: quoteOf(
+        for (final at in [
+          now.subtract(const Duration(minutes: 2, milliseconds: 1)),
+          now.add(const Duration(milliseconds: 1)),
+        ]) {
+          expect(
+            refusalOf(await payOf(invoice, quote: quoteOf(invoice, at: at))),
+            isA<P2pWalletQuoteStale>(),
+            reason: '$at',
+          );
+        }
+        expectNoOrder();
+        paymentOf(
+          await payOf(
             invoice,
-            at: now.subtract(const Duration(minutes: 2)),
+            quote: quoteOf(
+              invoice,
+              at: now.subtract(const Duration(minutes: 2)),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   });
 
   group('the invoice and the wallet, before any order:', () {
     test('an invoice no longer payable, or within the margin', () async {
-      expect(PayCheckedInvoiceUsecase.invoiceMargin, const Duration(seconds: 60));
+      expect(
+        PayCheckedInvoiceUsecase.invoiceMargin,
+        const Duration(seconds: 60),
+      );
       for (final (payableIn, refusal) in [
         (Duration.zero, isA<P2pWalletInvoiceExpired>()),
         (const Duration(seconds: -1), isA<P2pWalletInvoiceExpired>()),
@@ -338,7 +341,9 @@ void main() {
       }
       expectNoOrder();
       // At the margin exactly, it pays.
-      paymentOf(await payOf(payInvoice(payableIn: const Duration(seconds: 60))));
+      paymentOf(
+        await payOf(payInvoice(tag: 'p', payableIn: const Duration(seconds: 60))),
+      );
     });
 
     test('the wallet\'s decoder reads an earlier expiry', () async {
@@ -412,58 +417,61 @@ void main() {
       expectNoOrder();
     });
 
-    test('no default Liquid wallet, one that does not sign here, or no read', () async {
-      for (final (wallets, refusal) in [
-        (
-          const Err<List<Wallet>, WalletFailure>(NoWalletsFoundFailure()),
-          isA<P2pWalletNoInstantWallet>(),
-        ),
-        (
-          Ok<List<Wallet>, WalletFailure>([testWallet(isDefault: false)]),
-          isA<P2pWalletNoInstantWallet>(),
-        ),
-        (
-          Ok<List<Wallet>, WalletFailure>([testWallet(isLiquid: false)]),
-          isA<P2pWalletNoInstantWallet>(),
-        ),
-        (
-          Ok<List<Wallet>, WalletFailure>([
-            testWallet(signer: SignerEntity.remote),
-          ]),
-          isA<P2pWalletUnavailable>(),
-        ),
-        (
-          Ok<List<Wallet>, WalletFailure>([
-            testWallet(signer: SignerEntity.none),
-          ]),
-          isA<P2pWalletUnavailable>(),
-        ),
-        (
-          Ok<List<Wallet>, WalletFailure>([
-            testWallet(signerDevice: SignerDeviceEntity.jade),
-          ]),
-          isA<P2pWalletUnavailable>(),
-        ),
-      ]) {
-        getWallets.answer = wallets;
+    test(
+      'no default Liquid wallet, one that does not sign here, or no read',
+      () async {
+        for (final (wallets, refusal) in [
+          (
+            const Err<List<Wallet>, WalletFailure>(NoWalletsFoundFailure()),
+            isA<P2pWalletNoInstantWallet>(),
+          ),
+          (
+            Ok<List<Wallet>, WalletFailure>([testWallet(isDefault: false)]),
+            isA<P2pWalletNoInstantWallet>(),
+          ),
+          (
+            Ok<List<Wallet>, WalletFailure>([testWallet(isLiquid: false)]),
+            isA<P2pWalletNoInstantWallet>(),
+          ),
+          (
+            Ok<List<Wallet>, WalletFailure>([
+              testWallet(signer: SignerEntity.remote),
+            ]),
+            isA<P2pWalletUnavailable>(),
+          ),
+          (
+            Ok<List<Wallet>, WalletFailure>([
+              testWallet(signer: SignerEntity.none),
+            ]),
+            isA<P2pWalletUnavailable>(),
+          ),
+          (
+            Ok<List<Wallet>, WalletFailure>([
+              testWallet(signerDevice: SignerDeviceEntity.jade),
+            ]),
+            isA<P2pWalletUnavailable>(),
+          ),
+        ]) {
+          getWallets.answer = wallets;
+          expect(
+            refusalOf(await payOf(payInvoice())),
+            refusal,
+            reason: '$wallets',
+          );
+        }
+        getWallets.error = StateError('database locked');
         expect(
           refusalOf(await payOf(payInvoice())),
-          refusal,
-          reason: '$wallets',
+          isA<P2pWalletUnavailable>(),
         );
-      }
-      getWallets.error = StateError('database locked');
-      expect(
-        refusalOf(await payOf(payInvoice())),
-        isA<P2pWalletUnavailable>(),
-      );
-      expectNoOrder();
-    });
+        expectNoOrder();
+      },
+    );
   });
 
   group('never twice:', () {
     test(
-      'an invoice the wallet's records hold in any status, a refunded one included',
+      "an invoice the wallet's records hold in any status, a refunded one included",
       () async {
         for (final status in OrderSwapLocalStatus.values) {
           reset();
@@ -507,15 +515,16 @@ void main() {
             purpose: OrderSwapPurpose.transfer,
           ),
           paymentRecord(destination: invoice.bolt11, walletId: 'another'),
-          paymentRecord(destination: invoice.bolt11, walletId: null, note: null),
+          paymentRecord(
+            destination: invoice.bolt11,
+            walletId: null,
+            note: null,
+          ),
         ]) {
           swaps.records
             ..clear()
             ..[record.localId] = record;
-          expect(
-            refusalOf(await payOf(invoice)),
-            isA<P2pWalletAlreadyPaid>(),
-          );
+          expect(refusalOf(await payOf(invoice)), isA<P2pWalletAlreadyPaid>());
         }
         expect(journal.events, isEmpty);
       },
@@ -539,9 +548,7 @@ void main() {
         expect(journal.events, isEmpty);
         // An order of the wallet's own Send with the same hash is not this feature's: only its text would match.
         swaps.records.clear();
-        swaps.hold(
-          paymentRecord(destination: earlier.bolt11, note: 'my note'),
-        );
+        swaps.hold(paymentRecord(destination: earlier.bolt11, note: 'my note'));
         paymentOf(await payOf(payInvoice()));
       },
     );
@@ -619,7 +626,10 @@ void main() {
           pay.execute(invoice, accepted: quoteOf(invoice)),
           pay.execute(invoice, accepted: quoteOf(invoice)),
         ]);
-        expect(results.whereType<Ok<P2pWalletPayment, P2pWalletRefusal>>(), hasLength(1));
+        expect(
+          results.whereType<Ok<P2pWalletPayment, P2pWalletRefusal>>(),
+          hasLength(1),
+        );
         expect(refusalOf(results.last), isA<P2pWalletAlreadyPaid>());
         expect(journal.only({'create'}), ['create']);
         expect(journal.only({'broadcast'}), hasLength(1));
@@ -642,32 +652,38 @@ void main() {
       },
     );
 
-    test('two payments of two invoices at once run one after the other', () async {
-      final one = payInvoice();
-      final two = payInvoice(tag: 'p', hash: payHash(2));
-      invoices
-        ..learn(one)
-        ..learn(two);
-      final results = await Future.wait([
-        pay.execute(one, accepted: quoteOf(one)),
-        pay.execute(two, accepted: quoteOf(two)),
-      ]);
-      expect(results.map(paymentOf).map((p) => p.id).toList(), [
-        'local-1',
-        'local-2',
-      ]);
-      final events = journal.events;
-      expect(
-        events.indexOf('markBroadcast:txid-of-signed-pset1'),
-        lessThan(events.lastIndexOf('refund-address')),
-      );
-    });
+    test(
+      'two payments of two invoices at once run one after the other',
+      () async {
+        final one = payInvoice();
+        final two = payInvoice(tag: 'p', hash: payHash(2));
+        invoices
+          ..learn(one)
+          ..learn(two);
+        final results = await Future.wait([
+          pay.execute(one, accepted: quoteOf(one)),
+          pay.execute(two, accepted: quoteOf(two)),
+        ]);
+        expect(results.map(paymentOf).map((p) => p.id).toList(), [
+          'local-1',
+          'local-2',
+        ]);
+        final events = journal.events;
+        expect(
+          events.indexOf('markBroadcast:txid-of-signed-pset1'),
+          lessThan(events.lastIndexOf('refund-address')),
+        );
+      },
+    );
   });
 
   group('the order:', () {
     test('« app update required » stops before any order', () async {
       swaps.appUpdateRequired = true;
-      expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletServiceRefused>());
+      expect(
+        refusalOf(await payOf(payInvoice())),
+        isA<P2pWalletServiceRefused>(),
+      );
       expectNoOrder();
     });
 
@@ -678,75 +694,78 @@ void main() {
       expectNothingMoved();
     });
 
-    test('each failure of the creation is a refusal, with nothing moved', () async {
-      for (final (failure, refusal) in [
-        (
-          SwapAmountOutOfBoundsFailure(
-            limitAmountSat: BigInt.from(1000),
-            isMinimum: true,
+    test(
+      'each failure of the creation is a refusal, with nothing moved',
+      () async {
+        for (final (failure, refusal) in [
+          (
+            SwapAmountOutOfBoundsFailure(
+              limitAmountSat: BigInt.from(1000),
+              isMinimum: true,
+            ),
+            isA<P2pWalletUnderMinimum>().having(
+              (r) => r.minimum,
+              'minimum',
+              Sats.fromInt(1000),
+            ),
           ),
-          isA<P2pWalletUnderMinimum>().having(
-            (r) => r.minimum,
-            'minimum',
-            Sats.fromInt(1000),
+          (
+            SwapAmountOutOfBoundsFailure(
+              limitAmountSat: BigInt.from(100),
+              isMinimum: false,
+            ),
+            isA<P2pWalletOverMaximum>(),
           ),
-        ),
-        (
-          SwapAmountOutOfBoundsFailure(
-            limitAmountSat: BigInt.from(100),
-            isMinimum: false,
+          (
+            SwapAmountOutOfBoundsFailure(
+              limitAmountSat: BigInt.parse('99999999999999999999'),
+              isMinimum: true,
+            ),
+            isA<P2pWalletUnderMinimum>().having(
+              (r) => r.minimum,
+              'minimum',
+              isNull,
+            ),
           ),
-          isA<P2pWalletOverMaximum>(),
-        ),
-        (
-          SwapAmountOutOfBoundsFailure(
-            limitAmountSat: BigInt.parse('99999999999999999999'),
-            isMinimum: true,
+          (
+            const SwapAmountOutOfBoundsFailure(),
+            isA<P2pWalletOutsideServiceLimits>(),
           ),
-          isA<P2pWalletUnderMinimum>().having(
-            (r) => r.minimum,
-            'minimum',
-            isNull,
+          (const SwapNetworkFailure('x'), isA<P2pWalletServiceUnreachable>()),
+          (const SwapTimeoutFailure('x'), isA<P2pWalletServiceUnreachable>()),
+          (
+            const SwapCreationUnknownFailure('x'),
+            isA<P2pWalletServiceUnreachable>(),
           ),
-        ),
-        (
-          const SwapAmountOutOfBoundsFailure(),
-          isA<P2pWalletOutsideServiceLimits>(),
-        ),
-        (const SwapNetworkFailure('x'), isA<P2pWalletServiceUnreachable>()),
-        (const SwapTimeoutFailure('x'), isA<P2pWalletServiceUnreachable>()),
-        (
-          const SwapCreationUnknownFailure('x'),
-          isA<P2pWalletServiceUnreachable>(),
-        ),
-        (const SwapStorageFailure('x'), isA<P2pWalletUnavailable>()),
-        (
-          const SwapProviderFailure('App update required'),
-          isA<P2pWalletServiceRefused>(),
-        ),
-        (const SwapNoPaymentOptionFailure(), isA<P2pWalletServiceRefused>()),
-        (const SwapValidationFailure(), isA<P2pWalletServiceRefused>()),
-        (const SwapUnexpectedFailure('x'), isA<P2pWalletServiceRefused>()),
-        (const SwapOrderMismatchFailure('x'), isA<P2pWalletServiceRefused>()),
-        (const SwapOrderNotFoundFailure('x'), isA<P2pWalletServiceRefused>()),
-        (const SwapOrderExpiredFailure('x'), isA<P2pWalletServiceRefused>()),
-        (const SwapInvalidStateFailure('x'), isA<P2pWalletServiceRefused>()),
-        (
-          const SwapPriceUnavailableFailure('x'),
-          isA<P2pWalletServiceRefused>(),
-        ),
-      ]) {
-        reset();
-        swaps.createFailures.add(failure);
-        expect(
-          refusalOf(await payOf(payInvoice())),
-          refusal,
-          reason: '$failure',
-        );
-        expect(journal.only({'create'}), ['create'], reason: '$failure');
-        expectNothingMoved();
-      }
-    });
+          (const SwapStorageFailure('x'), isA<P2pWalletUnavailable>()),
+          (
+            const SwapProviderFailure('App update required'),
+            isA<P2pWalletServiceRefused>(),
+          ),
+          (const SwapNoPaymentOptionFailure(), isA<P2pWalletServiceRefused>()),
+          (const SwapValidationFailure(), isA<P2pWalletServiceRefused>()),
+          (const SwapUnexpectedFailure('x'), isA<P2pWalletServiceRefused>()),
+          (const SwapOrderMismatchFailure('x'), isA<P2pWalletServiceRefused>()),
+          (const SwapOrderNotFoundFailure('x'), isA<P2pWalletServiceRefused>()),
+          (const SwapOrderExpiredFailure('x'), isA<P2pWalletServiceRefused>()),
+          (const SwapInvalidStateFailure('x'), isA<P2pWalletServiceRefused>()),
+          (
+            const SwapPriceUnavailableFailure('x'),
+            isA<P2pWalletServiceRefused>(),
+          ),
+        ]) {
+          reset();
+          swaps.createFailures.add(failure);
+          expect(
+            refusalOf(await payOf(payInvoice())),
+            refusal,
+            reason: '$failure',
+          );
+          expect(journal.only({'create'}), ['create'], reason: '$failure');
+          expectNothingMoved();
+        }
+      },
+    );
 
     test('asked to wait, it tries once more after a short wait', () async {
       swaps.createFailures.add(
@@ -768,9 +787,7 @@ void main() {
         for (final (failures, payableIn, retryAfter) in [
           // More than 30 s.
           (
-            [
-              const SwapRateLimitedFailure(retryAfter: Duration(seconds: 31)),
-            ],
+            [const SwapRateLimitedFailure(retryAfter: Duration(seconds: 31))],
             const Duration(minutes: 3),
             const Duration(seconds: 31),
           ),
@@ -876,10 +893,15 @@ void main() {
           final accepted = 600 + random.nextInt(2000);
           final asked = 600 + random.nextInt(2000);
           final tag = String.fromCharCodes(
-            List.generate(8, (_) => 'qpzry9x8gf2tvdw0'.codeUnitAt(random.nextInt(16))),
+            List.generate(
+              8,
+              (_) => 'qpzry9x8gf2tvdw0'.codeUnitAt(random.nextInt(16)),
+            ),
           );
           final invoice = checkedBolt11InvoiceForTesting(
-            bolt11: payBolt11(tag: tag) + i.toRadixString(2).replaceAll('0', 'q').replaceAll('1', 'p'),
+            bolt11:
+                payBolt11(tag: tag) +
+                i.toRadixString(2).replaceAll('0', 'q').replaceAll('1', 'p'),
             amount: Sats.fromInt(600),
             network: RobosatsNetwork.mainnet,
             paymentHash: i.toRadixString(16).padLeft(64, '0'),
@@ -912,7 +934,11 @@ void main() {
     test(
       'a transaction that does not send exactly the payin to the order is not signed',
       () async {
-        for (final sent in [(int asked) => asked - 1, (int asked) => asked + 1, (int _) => 0]) {
+        for (final sent in [
+          (int asked) => asked - 1,
+          (int asked) => asked + 1,
+          (int _) => 0,
+        ]) {
           reset();
           liquid.sentInstead = sent;
           expect(
@@ -927,7 +953,10 @@ void main() {
 
     test('a fee above the one accepted is not signed', () async {
       liquid.fee = 27;
-      expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletQuoteChanged>());
+      expect(
+        refusalOf(await payOf(payInvoice())),
+        isA<P2pWalletQuoteChanged>(),
+      );
       expectNothingMoved();
       reset();
       liquid.fee = -1;
@@ -960,10 +989,7 @@ void main() {
               .having((r) => r.available, 'available', Sats.fromInt(10000))
               .having((r) => r.needed, 'needed', Sats.fromInt(10001)),
         ),
-        (
-          NoSpendableUtxoException('none'),
-          isA<P2pWalletNotEnoughBalance>(),
-        ),
+        (NoSpendableUtxoException('none'), isA<P2pWalletNotEnoughBalance>()),
         (StateError('lwk'), isA<P2pWalletUnavailable>()),
       ]) {
         reset();
@@ -990,7 +1016,9 @@ void main() {
       () async {
         swaps.onCreate = () => now = now.add(const Duration(seconds: 6));
         expect(
-          refusalOf(await payOf(payInvoice(payableIn: const Duration(seconds: 65)))),
+          refusalOf(
+            await payOf(payInvoice(payableIn: const Duration(seconds: 65))),
+          ),
           isA<P2pWalletInvoiceExpiresTooSoon>(),
         );
         expect(journal.only({'build'}), hasLength(1));
@@ -998,7 +1026,9 @@ void main() {
         // With the margin left after the order, it pays.
         reset();
         swaps.onCreate = () => now = now.add(const Duration(seconds: 5));
-        paymentOf(await payOf(payInvoice(payableIn: const Duration(seconds: 65))));
+        paymentOf(
+          await payOf(payInvoice(payableIn: const Duration(seconds: 65))),
+        );
       },
     );
   });
@@ -1036,11 +1066,17 @@ void main() {
       }
     });
 
-    test('a saved transaction other than the one signed is never broadcast', () async {
-      swaps.savedInstead = 'signed-by-someone-else';
-      expect(refusalOf(await payOf(payInvoice())), isA<P2pWalletUnavailable>());
-      expect(journal.only({'broadcast'}), isEmpty);
-    });
+    test(
+      'a saved transaction other than the one signed is never broadcast',
+      () async {
+        swaps.savedInstead = 'signed-by-someone-else';
+        expect(
+          refusalOf(await payOf(payInvoice())),
+          isA<P2pWalletUnavailable>(),
+        );
+        expect(journal.only({'broadcast'}), isEmpty);
+      },
+    );
 
     test(
       'a broadcast that fails says the funds may have moved, and the payment is found as such',
@@ -1095,10 +1131,15 @@ void main() {
         arrange();
         refusals.add(refusalOf(await payOf(payInvoice())));
       }
-      expect(
-        refusals.map((r) => r.fundsMayHaveMoved),
-        [false, false, false, false, false, false, true],
-      );
+      expect(refusals.map((r) => r.fundsMayHaveMoved), [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+      ]);
     });
   });
 

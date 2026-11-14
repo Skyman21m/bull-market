@@ -44,14 +44,11 @@ void main() {
 
   test('no file names a member of the payment yet', () {
     // The bond's panel (#100, W4) adds the one trade use case that pays; until then nothing in the feature may.
-    expect(
-      [
-        for (final MapEntry(key: path, value: source) in sources.entries)
-          if ((_Names(_paymentMembers)..visit(_parse(source))).named.isNotEmpty)
-            path,
-      ],
-      isEmpty,
-    );
+    expect([
+      for (final MapEntry(key: path, value: source) in sources.entries)
+        if ((_Names(_paymentMembers)..visit(_parse(source))).named.isNotEmpty)
+          path,
+    ], isEmpty);
   });
 
   test('only the trade use cases name a member of the port', () {
@@ -91,8 +88,9 @@ void main() {
 
     test('walletPaymentFor calls it, once', () {
       final finder = _InvoiceBuilds();
-      _parse(sources['lib/src/domain/trade/wallet_payment.dart'] ?? '')
-          .accept(finder);
+      _parse(
+        sources['lib/src/domain/trade/wallet_payment.dart'] ?? '',
+      ).accept(finder);
       expect(finder.found, ['calls CheckedBolt11Invoice.of']);
     });
 
