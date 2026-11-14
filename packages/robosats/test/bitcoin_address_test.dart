@@ -279,7 +279,12 @@ void main() {
       for (final humanReadablePart in ['a', 'bc', 'lntb10n', '1']) {
         for (final first in charset.split('')) {
           for (final second in charset.split('')) {
-            for (final data in ['', first, '$first$second', '$first$second$first$second$first']) {
+            for (final data in [
+              '',
+              first,
+              '$first$second',
+              '$first$second$first$second$first',
+            ]) {
               final text = '${humanReadablePart}1$data';
               final read = readBech32(text, maxLength: 90);
               expect(read.refusal, Bech32Refusal.malformed, reason: text);
@@ -461,7 +466,10 @@ void main() {
       final valid = encodeBech32('bc', words);
       expect(_ok(valid, _mainnet).kind, BitcoinAddressKind.p2wpkh);
       final padded = encodeBech32('bc', [...words, 0]);
-      expect(expectErr(decodeSegwit(padded)), isA<PayoutDestinationMalformed>());
+      expect(
+        expectErr(decodeSegwit(padded)),
+        isA<PayoutDestinationMalformed>(),
+      );
       for (final network in RobosatsNetwork.values) {
         expect(_err(padded, network), isA<PayoutDestinationMalformed>());
       }

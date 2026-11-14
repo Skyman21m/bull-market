@@ -535,12 +535,10 @@ final class CoordinatorClient {
     final CoordinatorFailure? refusal = switch ((code, invoice)) {
       (1047, _) => const OrderNotParticipant(),
       (1048, _) => const PayoutSignatureRefused(),
-      (1017, true) || (1015, false) => const PayoutNotBuyer(
-        fromLastRead: false,
-      ),
-      (1018 || 1019 || 3001, true) || (1016, false) => const PayoutNotNow(
-        fromLastRead: false,
-      ),
+      (1017, true) ||
+      (1015, false) => const PayoutNotBuyer(fromLastRead: false),
+      (1018 || 1019 || 3001, true) ||
+      (1016, false) => const PayoutNotNow(fromLastRead: false),
       (3000, true) => const PayoutInvoiceRefused(PayoutInvoiceRefusal.empty),
       (3002, true) => const PayoutInvoiceRefused(
         PayoutInvoiceRefusal.alreadySubmitted,

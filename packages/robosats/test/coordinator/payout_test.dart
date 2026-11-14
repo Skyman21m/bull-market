@@ -418,7 +418,10 @@ void main() {
             now: interopNow,
           ),
         );
-        expect(signed.signedMessage.codeUnits.every((unit) => unit < 128), isTrue);
+        expect(
+          signed.signedMessage.codeUnits.every((unit) => unit < 128),
+          isTrue,
+        );
       }
       expect(
         signedAddress.signedMessage.codeUnits.every((unit) => unit < 128),
