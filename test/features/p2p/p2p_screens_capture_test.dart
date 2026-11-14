@@ -1751,7 +1751,12 @@ void main() {
         await settle();
         await tester.tap(find.text(l10n.p2pPayWithThisWallet));
         await settle();
-        final pay = find.textContaining(l10n.p2pPayConfirm('').trim());
+        final parts = l10n.p2pPayConfirm('§').split('§');
+        final pay = find.textContaining(
+          RegExp(
+            '^${RegExp.escape(parts.first)}.+${RegExp.escape(parts.last)}\$',
+          ),
+        );
         await waitFor(pay);
         await capture('paiement-confirmation');
         await tester.ensureVisible(pay.last);
