@@ -4,7 +4,7 @@ import 'package:robosats/robosats.dart' show Coordinator, RobosatsNetwork;
 
 import 'network_garage_key.dart';
 import 'p2p_failure.dart';
-import 'trade_storable.dart';
+import 'trade_record.dart';
 
 /// What the trades need from the robot layer (design note `docs/design/phase-2-taking-an-order.md` § 3.3): a fresh robot for each new trade, the robot of a recorded trade, and the active trades.
 ///

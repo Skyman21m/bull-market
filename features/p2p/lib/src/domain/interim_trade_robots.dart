@@ -8,7 +8,7 @@ import 'p2p_failure.dart';
 import 'repositories/garage_key_repository.dart';
 import 'repositories/trade_record_repository.dart';
 import 'robot_binding.dart';
-import 'trade_storable.dart';
+import 'trade_record.dart';
 import 'trade_robots.dart';
 
 /// The robot layer of the trades until #79 and #81 land (design note `docs/design/phase-2-taking-an-order.md` § 2.1, § 3.3): the robots of the Garage Key of each network, as the vault holds it.
