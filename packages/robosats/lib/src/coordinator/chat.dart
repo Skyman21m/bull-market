@@ -19,7 +19,7 @@ final class OutgoingChatMessage {
   /// The most characters this package posts in `PGP_message`: the `max_length` the coordinator's model declares (`chat/models.py:389`).
   ///
   /// The reference coordinator does not enforce it (its serializer declares the field without it, `chat/serializers.py:280-283`, and the column is a PostgreSQL `text`), nor does the official client; this package keeps to it all the same.
-  /// A message of a robot of the official client or of this package takes about 1.4 characters per byte of UTF-8 text plus about 700: see the tests for the longest text that always fits.
+  /// A message of a robot's key to one peer takes 574 characters for an empty text and about 1.34 more per byte of UTF-8 text: 3,250 bytes always fit, 3,300 never do (measured in the tests).
   static const maxWireChars = 5000;
 
   /// The armored `PGP MESSAGE`, with line feeds, as this package armors it: no armor header, no backslash, no carriage return.
