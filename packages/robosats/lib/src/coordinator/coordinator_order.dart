@@ -1275,3 +1275,55 @@ Result<CancelOrderOutcome, CoordinatorFailure> parseCancelAnswer(
     identity: identity,
   ).map(OrderCancelAccepted._);
 }
+
+/// What a coordinator answered to a payout, an invoice or an address, that it accepted.
+///
+/// The reference coordinator answers an accepted payout with the order as this robot then sees it (`api/views.py:695`, commit ff1998c), and every refusal with an error (`:622-649`): unlike a take (`api/views.py:595-596`), a `200` is never a payout that did not happen, so there is one outcome.
+sealed class PayoutOutcome {
+  /// The order as the coordinator described it in its answer.
+  CoordinatorOrder get order;
+
+  const PayoutOutcome();
+}
+
+/// The coordinator recorded the payout: [order] is the order as it now is, still this robot's as buyer.
+///
+/// From 6 the order moves to 7 (the escrow awaited) or 9 (the chat), from 8 to 9, and from 15 to 13 once the coordinator retries the payment (`Logics.move_state_updated_payout_method`, `api/logics.py:909-947`); a later read tells if it moved on meanwhile.
+final class PayoutAccepted extends PayoutOutcome {
+  @override
+  final CoordinatorOrder order;
+
+  const PayoutAccepted._(this.order);
+
+  @override
+  String toString() => 'PayoutAccepted($order)';
+}
+
+/// Reads the decoded body of a `200` answer to a payout of the robot [identity], whose last read of the order was [lastRead]: the order, still with this robot as its buyer and in the same role.
+@internal
+Result<PayoutOutcome, CoordinatorFailure> parsePayoutAnswer(
+  Object? body, {
+  required RobotIdentity identity,
+  required CoordinatorOrder lastRead,
+}) {
+  final CoordinatorOrder order;
+  switch (CoordinatorOrder.parse(
+    body,
+    lastRead.coordinator,
+    lastRead.network,
+    orderId: lastRead.id,
+    identity: identity,
+  )) {
+    case Err(:final failure):
+      return Err(failure);
+    case Ok(:final value):
+      order = value;
+  }
+  if (order.isBuyer != true) {
+    return const Err(CoordinatorResponseMalformed('is_buyer'));
+  }
+  if (order.isMaker != lastRead.isMaker || order.isTaker != lastRead.isTaker) {
+    return const Err(CoordinatorResponseMalformed('is_taker'));
+  }
+  return Ok(PayoutAccepted._(order));
+}
