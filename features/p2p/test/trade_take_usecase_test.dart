@@ -75,6 +75,42 @@ void main() {
     );
   });
 
+  test(
+    'the pending take, its terms and its first trail are on disk when the take leaves',
+    () async {
+      final app = await TradeHarness.start();
+      final atTake = <String, List<Map<String, Object?>>>{};
+      app.coordinator.onRequest = (request) {
+        if (request.method != CoordinatorHttpMethod.post) return;
+        app.coordinator.hold = () async {
+          for (final table in ['trades', 'trade_terms', 'trade_trails']) {
+            atTake[table] = [
+              for (final row
+                  in await app.database
+                      .customSelect('SELECT * FROM $table')
+                      .get())
+                row.data,
+            ];
+          }
+        }();
+      };
+      await app.takeShown();
+      expect(atTake['trades'], [
+        isA<Map<String, Object?>>()
+            .having((row) => row['confirmed_at'], 'confirmed', isNull)
+            .having((row) => row['closed_at'], 'closed', isNull),
+      ]);
+      expect(atTake['trade_terms'], hasLength(1));
+      expect(atTake['trade_trails'], [
+        isA<Map<String, Object?>>().having(
+          (row) => row['position'],
+          'position',
+          'start',
+        ),
+      ]);
+    },
+  );
+
   group('a take that is not sent', () {
     test('a taker fee above the ceiling: no robot, nothing written', () async {
       final app = await TradeHarness.start(takerFee: 0.02);
