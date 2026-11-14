@@ -258,9 +258,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     switch (paid) {
       case Ok():
         // The funding was broadcast: the payment is sent, whatever the records say next.
-        emit(
-          state._with(step: const BondPayFollowing(P2pWalletPaymentSent())),
-        );
+        emit(state._with(step: const BondPayFollowing(P2pWalletPaymentSent())));
         _followAgain(leavesSending: true, paymentExists: true);
       case Err(
         failure: BondPayWalletRefused(
@@ -283,6 +281,18 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     P2pWalletPaymentExists(:final payment) => payment != null,
     _ => false,
   };
+
+  /// « Sending » while this process pays the bond now, followed again once that payment ends; `null` when it pays none.
+  BondPayStep? _sendingUntilDone() {
+    final running = _running(record);
+    if (running == null) return null;
+    unawaited(
+      running.whenComplete(() {
+        if (!isClosed) _followAgain(leavesSending: true);
+      }),
+    );
+    return const BondPaySending();
+  }
 
   /// Follows the payment recorded for the bond. Its events never move the panel out of a quote or a confirmation, nor out of a payment being sent unless [leavesSending] (the follow started once that payment answered or ended); when [paymentExists], finding nothing keeps the payment shown, or says the records cannot tell where it stands.
   void _followAgain({bool leavesSending = false, bool paymentExists = false}) {
@@ -307,9 +317,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
             BondPaymentFollowed(:final progress)
                 when !progress.fundsMayHaveLeft &&
                     progress is! P2pWalletPaymentSigned =>
-              _running(record) != null
-                  ? const BondPaySending()
-                  : const BondPayIdle(),
+              _sendingUntilDone() ?? const BondPayIdle(),
             BondPaymentFollowed(:final progress) => BondPayFollowing(progress),
             BondPaymentUnreadable() => const BondPayUnreadable(),
           },

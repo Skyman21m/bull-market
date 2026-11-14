@@ -318,14 +318,19 @@ void main() {
         id: 'swap',
         paymentHash: testPaymentHash,
       );
-      payments.running = Completer<void>().future;
+      final running = Completer<void>();
+      payments.running = running.future;
       payments.follows.single.add(
         BondPaymentFollowed(payment, const P2pWalletPaymentPreparing()),
       );
       await settle();
       expect(cubit.state.step, isA<BondPaySending>());
+      // That payment ends with nothing sent: followed again, its preparation left behind may be tried again.
       payments.running = null;
-      payments.follows.single.add(
+      running.complete();
+      await settle();
+      expect(payments.follows, hasLength(2));
+      payments.follows.last.add(
         BondPaymentFollowed(payment, const P2pWalletPaymentPreparing()),
       );
       await settle();
@@ -384,78 +389,90 @@ void main() {
     await cubit.close();
   });
 
-  test('a preparation left by an earlier run that ends while a new payment is sent does not offer to pay again', () async {
-    final payments = Payments();
-    final cubit = payments.cubit()..start();
-    final earlier = P2pWalletPayment(id: 'earlier', paymentHash: testPaymentHash);
-    payments.follows.single.add(
-      BondPaymentFollowed(earlier, const P2pWalletPaymentPreparing()),
-    );
-    await settle();
-    expect(cubit.state.step, isA<BondPayIdle>());
-    final asking = cubit.ask(seen);
-    payments.quotes.single.complete(Ok(walletQuote()));
-    await asking;
-    unawaited(cubit.confirm());
-    expect(cubit.state.step, isA<BondPaySending>());
-    // The earlier follow, if it were still listened to, would say the old order expired with nothing sent.
-    if (!payments.follows.single.isClosed) {
+  test(
+    'a preparation left by an earlier run that ends while a new payment is sent does not offer to pay again',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      final earlier = P2pWalletPayment(
+        id: 'earlier',
+        paymentHash: testPaymentHash,
+      );
       payments.follows.single.add(
-        BondPaymentFollowed(
-          earlier,
-          const P2pWalletPaymentExpired(P2pWalletFunds.notSent),
+        BondPaymentFollowed(earlier, const P2pWalletPaymentPreparing()),
+      );
+      await settle();
+      expect(cubit.state.step, isA<BondPayIdle>());
+      final asking = cubit.ask(seen);
+      payments.quotes.single.complete(Ok(walletQuote()));
+      await asking;
+      unawaited(cubit.confirm());
+      expect(cubit.state.step, isA<BondPaySending>());
+      // The earlier follow, if it were still listened to, would say the old order expired with nothing sent.
+      if (!payments.follows.single.isClosed) {
+        payments.follows.single.add(
+          BondPaymentFollowed(
+            earlier,
+            const P2pWalletPaymentExpired(P2pWalletFunds.notSent),
+          ),
+        );
+      }
+      await settle();
+      expect(cubit.state.step, isA<BondPaySending>());
+      await cubit.confirm();
+      expect(payments.pays, hasLength(1));
+      await cubit.close();
+    },
+  );
+
+  test(
+    'a payment answered sent stays sent when the follow finds nothing yet',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      payments.follows.single.add(const BondPaymentNone());
+      await settle();
+      final asking = cubit.ask(seen);
+      payments.quotes.single.complete(Ok(walletQuote()));
+      await asking;
+      final paying = cubit.confirm();
+      payments.pays.single.complete(
+        Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
+      );
+      await paying;
+      expect(cubit.state.step, isA<BondPayFollowing>());
+      payments.follows.last.add(const BondPaymentNone());
+      await settle();
+      expect(
+        cubit.state.step,
+        isA<BondPayFollowing>().having(
+          (f) => f.progress,
+          'progress',
+          isA<P2pWalletPaymentSent>(),
         ),
       );
-    }
-    await settle();
-    expect(cubit.state.step, isA<BondPaySending>());
-    await cubit.confirm();
-    expect(payments.pays, hasLength(1));
-    await cubit.close();
-  });
+      await cubit.close();
+    },
+  );
 
-  test('a payment answered sent stays sent when the follow finds nothing yet', () async {
-    final payments = Payments();
-    final cubit = payments.cubit()..start();
-    payments.follows.single.add(const BondPaymentNone());
-    await settle();
-    final asking = cubit.ask(seen);
-    payments.quotes.single.complete(Ok(walletQuote()));
-    await asking;
-    final paying = cubit.confirm();
-    payments.pays.single.complete(
-      Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
-    );
-    await paying;
-    expect(cubit.state.step, isA<BondPayFollowing>());
-    payments.follows.last.add(const BondPaymentNone());
-    await settle();
-    expect(
-      cubit.state.step,
-      isA<BondPayFollowing>().having(
-        (f) => f.progress,
-        'progress',
-        isA<P2pWalletPaymentSent>(),
-      ),
-    );
-    await cubit.close();
-  });
-
-  test('an error of the payment leaves « Sending » for « cannot tell », follows again, and goes on', () async {
-    final payments = Payments();
-    final cubit = payments.cubit()..start();
-    payments.follows.single.add(const BondPaymentNone());
-    await settle();
-    final asking = cubit.ask(seen);
-    payments.quotes.single.complete(Ok(walletQuote()));
-    await asking;
-    final paying = cubit.confirm();
-    payments.pays.single.completeError(StateError('a bug'));
-    await expectLater(paying, throwsStateError);
-    expect(cubit.state.step, isA<BondPayUnreadable>());
-    expect(payments.follows, hasLength(2));
-    await cubit.close();
-  });
+  test(
+    'an error of the payment leaves « Sending » for « cannot tell », follows again, and goes on',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      payments.follows.single.add(const BondPaymentNone());
+      await settle();
+      final asking = cubit.ask(seen);
+      payments.quotes.single.complete(Ok(walletQuote()));
+      await asking;
+      final paying = cubit.confirm();
+      payments.pays.single.completeError(StateError('a bug'));
+      await expectLater(paying, throwsStateError);
+      expect(cubit.state.step, isA<BondPayUnreadable>());
+      expect(payments.follows, hasLength(2));
+      await cubit.close();
+    },
+  );
 
   test('closed while a payment runs: nothing emitted after', () async {
     final payments = Payments();

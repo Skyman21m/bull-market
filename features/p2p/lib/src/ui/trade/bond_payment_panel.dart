@@ -87,14 +87,16 @@ class BondPaymentPanel extends StatefulWidget {
   };
 
   /// Where the payment of the bond stands, for « Cancel »: being sent, or sent (its funds may have left the wallet).
-  static WalletBondState bondOf(BuildContext context) =>
-      switch (context.watch<BondPaymentCubit>().state.step) {
-        BondPaySending() => const WalletBondState(sending: true, sent: false),
-        BondPayFollowing(:final progress) ||
-        BondPayPaidElsewhere(:final progress) when progress.fundsMayHaveLeft =>
-          const WalletBondState(sending: false, sent: true),
-        _ => WalletBondState.none,
-      };
+  static WalletBondState bondOf(BuildContext context) => switch (context
+      .watch<BondPaymentCubit>()
+      .state
+      .step) {
+    BondPaySending() => const WalletBondState(sending: true, sent: false),
+    BondPayFollowing(:final progress) || BondPayPaidElsewhere(:final progress)
+        when progress.fundsMayHaveLeft =>
+      const WalletBondState(sending: false, sent: true),
+    _ => WalletBondState.none,
+  };
 
   @override
   State<BondPaymentPanel> createState() => _BondPaymentPanelState();

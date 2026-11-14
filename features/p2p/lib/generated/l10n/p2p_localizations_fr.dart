@@ -1673,4 +1673,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayUnreadable =>
       'Bull Market ne peut pas lire où en est ce paiement.';
+
+  @override
+  String get p2pPayCancelNote =>
+      'Un paiement de cette caution est en route depuis ce portefeuille. Annuler maintenant coûte les frais du service d’échange, et son remboursement peut tarder.';
 }

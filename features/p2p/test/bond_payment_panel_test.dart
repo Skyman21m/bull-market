@@ -349,7 +349,9 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(
-        find.textContaining('A payment of this bond is on its way from this wallet.'),
+        find.textContaining(
+          'A payment of this bond is on its way from this wallet.',
+        ),
         findsOneWidget,
       );
     },

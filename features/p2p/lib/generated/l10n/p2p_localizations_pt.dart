@@ -1647,6 +1647,10 @@ class P2pLocalizationsPt extends P2pLocalizations {
   @override
   String get p2pPayUnreadable =>
       'Bull Market cannot read where this payment stands.';
+
+  @override
+  String get p2pPayCancelNote =>
+      'A payment of this bond is on its way from this wallet. Cancelling now costs the swap service’s fees, and its refund may take time.';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).

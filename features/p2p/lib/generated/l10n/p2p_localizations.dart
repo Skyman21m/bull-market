@@ -2764,6 +2764,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Bull Market cannot read where this payment stands.'**
   String get p2pPayUnreadable;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not the reference's: under the reference's text of the cancel dialogs, when a payment of the bond from this wallet may have left it; the user is informed, the cancel is not stopped.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment of this bond is on its way from this wallet. Cancelling now costs the swap service’s fees, and its refund may take time.'**
+  String get p2pPayCancelNote;
 }
 
 class _P2pLocalizationsDelegate
