@@ -128,6 +128,8 @@ void main() {
         terms: terms,
       );
       expect(afterRestart.has<InvoiceHashChanged>(), isTrue);
+      // The pinned hash is the first one, not the latest (mutant M13).
+      expect(afterRestart.trail.escrowHash, escrowA.facts.paymentHash);
       expect(
         pay(afterRestart, InvoiceStep.escrow),
         isA<WalletPaymentRefused>(),
@@ -143,6 +145,11 @@ void main() {
       );
       expect(backToA.trail.breached, isTrue);
       expect(backToA.has<CoordinatorInconsistent>(), isTrue);
+      // The invoice itself says it did not pass every check (mutant M09).
+      expect(switch (backToA.invoice) {
+        final CheckedInvoice invoice => invoice.passedEveryCheck,
+        _ => null,
+      }, isFalse);
       expect(pay(backToA, InvoiceStep.escrow), isA<WalletPaymentRefused>());
       // The pinned hash is the first one, not the latest (mutant M13).
       expect(backToA.trail.escrowHash, escrowA.facts.paymentHash);
