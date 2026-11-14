@@ -342,7 +342,9 @@ void main() {
       expectNoOrder();
       // At the margin exactly, it pays.
       paymentOf(
-        await payOf(payInvoice(tag: 'p', payableIn: const Duration(seconds: 60))),
+        await payOf(
+          payInvoice(tag: 'p', payableIn: const Duration(seconds: 60)),
+        ),
       );
     });
 
