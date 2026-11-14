@@ -3,8 +3,13 @@ import 'dart:io';
 
 import 'package:bb_mobile/features/p2p_wallet/data/instant_wallet_repository_impl.dart';
 import 'package:bb_mobile/features/p2p_wallet/data/lightning_swap_quote_repository_impl.dart';
+import 'package:bb_mobile/features/p2p_wallet/data/wallet_payment_repository_impl.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/entities/issued_quotes.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
 import 'package:bb_mobile/features/swap/public/swap_facade.dart';
 import 'package:bull_logger/bull_logger.dart';
@@ -12,13 +17,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 
 import 'support/fakes.dart';
+import 'support/payment_fakes.dart';
 
-/// The port as the shell lends it, over fakes of the Swap feature's facade and of the wallet's readers: no test reaches the swap service, and nothing but an unsigned transaction is built.
+/// The port as the shell lends it, over fakes of the Swap feature's facade and of the wallet: no test reaches the swap service, nothing real is built, signed or broadcast.
 void main() {
   late FakeGetWallets getWallets;
   late FakeWatchSyncs syncs;
   late FakeLiquidWallet liquid;
   late FakeSwapFacade swaps;
+  late Journal journal;
+  late FakeOrderSwaps orders;
+  late FakeWalletInvoices invoices;
   late P2pWalletPort port;
 
   setUp(() {
@@ -26,23 +35,122 @@ void main() {
     syncs = FakeWatchSyncs();
     liquid = FakeLiquidWallet();
     swaps = FakeSwapFacade(FakeSwapFacade.quoteOf());
+    journal = Journal();
+    orders = FakeOrderSwaps(journal, () => testNow);
+    invoices = FakeWalletInvoices();
     final wallets = InstantWalletRepositoryImpl(
       getWallets,
       syncs,
       FakeGetAddressAtIndex(),
       liquid,
     );
+    final issued = IssuedQuotes();
+    final payments = WalletPaymentRepositoryImpl(orders, invoices);
     port = P2pWalletFacade(
       WatchInstantBalanceUsecase(wallets),
       QuoteInvoicePaymentUsecase(
         wallets,
         LightningSwapQuoteRepositoryImpl(swaps),
+        issued,
         () => testNow,
       ),
+      PayCheckedInvoiceUsecase(
+        issued,
+        wallets,
+        invoices,
+        payments,
+        orders,
+        FakePayingLiquid(journal),
+        FakeRefundAddress(journal),
+        FakeBroadcast(journal),
+        () => testNow,
+      ),
+      WatchWalletPaymentUsecase(payments),
+      FindWalletPaymentUsecase(payments),
     );
   });
 
-  tearDown(() => syncs.finished.close());
+  tearDown(() async {
+    await syncs.finished.close();
+    await orders.close();
+  });
+
+  group('pays through the port', () {
+    test(
+      'with a quote the port gave, once; then follows and finds the payment',
+      () async {
+        final invoice = testInvoice();
+        invoices.learn(invoice);
+        final quote = switch (await port.quote(invoice)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final payment = switch (await port.payInvoice(
+          invoice,
+          accepted: quote,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(payment.paymentHash, invoice.paymentHash);
+        expect(journal.only({'broadcast'}), hasLength(1));
+        // The quote is spent.
+        expect(
+          await port.payInvoice(invoice, accepted: quote),
+          isA<Err<P2pWalletPayment, P2pWalletRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<P2pWalletQuoteStale>(),
+          ),
+        );
+        expect(
+          await port.watchPayment(payment).first,
+          isA<Ok<P2pWalletPaymentProgress, P2pWalletRefusal>>().having(
+            (ok) => ok.value,
+            'value',
+            isA<P2pWalletPaymentSent>(),
+          ),
+        );
+        expect(
+          await port.findPayment(invoice.paymentHash),
+          isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (ok) => ok.value?.payment,
+            'payment',
+            payment,
+          ),
+        );
+        expect(
+          await port.findPayment(payHash(9)),
+          isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+            (ok) => ok.value,
+            'value',
+            isNull,
+          ),
+        );
+      },
+    );
+
+    test('never with a quote it did not give', () async {
+      final invoice = testInvoice();
+      invoices.learn(invoice);
+      final forged = P2pWalletQuote(
+        invoice: invoice,
+        payin: Sats.fromInt(5000),
+        networkFee: Sats.fromInt(26),
+        balance: Sats.fromInt(10000),
+        quotedAt: testNow,
+      );
+      expect(
+        await port.payInvoice(invoice, accepted: forged),
+        isA<Err<P2pWalletPayment, P2pWalletRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<P2pWalletQuoteStale>(),
+        ),
+      );
+      expect(journal.events, isEmpty);
+    });
+  });
 
   test('quotes an invoice: fees, total and what stays', () async {
     final result = await port.quote(testInvoice());
