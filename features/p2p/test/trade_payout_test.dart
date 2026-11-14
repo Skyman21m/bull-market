@@ -43,8 +43,15 @@ void main() {
     bool swap = false,
     int? moveTo,
     bool payoutExpired = false,
+    RobosatsNetwork network = RobosatsNetwork.testnet,
+    int orderId = 42,
+    String alias = 'temple',
   }) async {
-    final app = await TradeHarness.start();
+    final app = await TradeHarness.start(
+      network: network,
+      orderId: orderId,
+      alias: alias,
+    );
     app.coordinator.swapAllowed = swap;
     app.coordinator.payoutExpired = payoutExpired;
     final taken = await app.takeShown();
@@ -424,6 +431,119 @@ void main() {
     );
   });
 
+  group('the trade\'s own order, network and coordinator, and whole sats', () {
+    test(
+      'an order read of another number, network or coordinator than the record\'s asks nothing',
+      () async {
+        final (app, record, seen) = await atSix();
+        final invoice = PayoutInvoiceText(
+          invoiceOf(app, sats: askedWithDefaultBudget).text,
+          budget: defaultBudget,
+        );
+        expect(
+          app.payout.check(record, seen, invoice),
+          isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
+        );
+        for (final (field, other) in [
+          ('order', await atSix(orderId: 43)),
+          ('network', await atSix(network: RobosatsNetwork.mainnet)),
+          ('coordinator', await atSix(alias: 'lake')),
+        ]) {
+          final (_, _, otherSeen) = other;
+          expect(
+            app.payout.check(
+              record,
+              TradeSeen(seen.status, order: otherSeen.order, stored: true),
+              invoice,
+            ),
+            refusedWith<PayoutNotAsked>(),
+            reason: field,
+          );
+        }
+      },
+    );
+
+    test(
+      'an invoice of no whole number of sats is refused with its own reason',
+      () async {
+        final (app, record, seen) = await atSix();
+        final ask = switch (app.payout.ask(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(
+          ask.check(
+            const PayoutInvoiceText(
+              'lntb1066065000p1fraction',
+              budget: RoutingBudgetPpm.referenceDefault,
+            ),
+            now: app.now,
+            reader: const Bolt11Reader(_FractionOfASat()),
+          ),
+          refusedWith<PayoutInvoiceAmountNotWholeSats>(),
+        );
+      },
+    );
+
+    test(
+      'on mainnet: a mainnet invoice is given, a testnet one or a testnet address is refused',
+      () async {
+        final (app, record, seen) = await atSix(
+          network: RobosatsNetwork.mainnet,
+          swap: true,
+        );
+        final testnetInvoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        expect(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(testnetInvoice.text, budget: defaultBudget),
+          ),
+          refusedWith<PayoutInvoiceOfAnotherNetwork>(),
+        );
+        final rate = MiningFeeRate.of(3.5);
+        if (rate == null) throw StateError('no rate');
+        expect(
+          app.payout.check(
+            record,
+            seen,
+            PayoutAddressText(testnetAddress, rate: rate),
+          ),
+          refusedWith<PayoutAddressUnusable>(),
+        );
+        expect(
+          app.payout.check(
+            record,
+            seen,
+            PayoutAddressText(mainnetAddress, rate: rate),
+          ),
+          isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
+        );
+        final mainnetInvoice = invoiceOf(
+          app,
+          sats: askedWithDefaultBudget,
+          network: Bolt11Network.mainnet,
+        );
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(mainnetInvoice.text, budget: defaultBudget),
+          ),
+        );
+        expect(
+          await app.payout.execute(record, shown),
+          isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<PayoutGiven>(),
+          ),
+        );
+        expect(app.coordinator.payoutsRecorded, [mainnetInvoice.text]);
+      },
+    );
+  });
+
   group('what is signed and sent', () {
     test(
       'at 6: the very text shown, signed and sent once, then the trade at 7 as a read stored it',
@@ -735,6 +855,55 @@ void main() {
       );
     },
   );
+
+  group('a payout warning that came since it was shown', () {
+    test(
+      '6 → 8 with a later deadline: the invoice may now expire first, shown again, nothing sent',
+      () async {
+        final (app, record, seen) = await atSix();
+        final deadline = switch (seen.status) {
+          WaitingForBoth(:final deadline) => deadline,
+          final other => throw StateError('$other'),
+        };
+        // Valid exactly until the step's end and a day: no warning at 6.
+        final invoice = invoiceOf(
+          app,
+          sats: askedWithDefaultBudget,
+          expiry: deadline
+              .add(TradeTolerances.payoutInvoiceAfterStep)
+              .difference(app.now),
+        );
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(invoice.text, budget: defaultBudget),
+          ),
+        );
+        expect(shown.warnings, isEmpty);
+        app.coordinator
+          ..moveTo(8)
+          ..moveDeadline(deadline.add(const Duration(hours: 1)));
+        expect(
+          await app.payout.execute(record, shown),
+          isA<Err<PayoutSubmission, PayoutNotSent>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<PayoutChangedSinceShown>()
+                .having((c) => c.fresh.warnings, 'warnings', [
+                  PayoutWarning.invoiceMayExpireFirst,
+                ])
+                .having(
+                  (c) => c.seen.status,
+                  'status',
+                  isA<WaitingForPayout>(),
+                ),
+          ),
+        );
+        expect(sent(app, payouts), 0);
+      },
+    );
+  });
 
   group('nothing sent for another trade, nor without a fresh read', () {
     test(
@@ -1066,6 +1235,8 @@ void main() {
           final body = request.body;
           if (body != null) signedTexts.add(utf8.decode(body));
         };
+        final robot = app.robot(0);
+        var lockedKeyArmor = '';
         final output = await captureKeyOutput(() async {
           final hold = app.holdKey.execute(record);
           final shown = checked(
@@ -1076,10 +1247,28 @@ void main() {
             ),
           );
           final result = await app.payout.execute(record, shown);
+          // The key the hold kept, leased once more, printed with everything else.
+          switch (await app.keyring.lease(await opened(app, record))) {
+            case Ok(:final value):
+              lockedKeyArmor = value.key.key.encryptedPrivateKeyArmored;
+              Zone.current.print('$value ${value.key}');
+              value.close();
+            case Err(:final failure):
+              throw StateError('$failure');
+          }
           hold.release();
           // The values print their kind only.
           Zone.current.print('$shown $result $hold ${shown.destination}');
         });
+        // Neither the robot's token nor its hashes, nor the key's private block, nor a line of it.
+        expect(output.contains(robot.token.reveal()), isFalse);
+        expect(output.contains(robot.tokenSha256Hex), isFalse);
+        expect(output.contains(robot.tokenSha256Base91), isFalse);
+        expect(lockedKeyArmor, isNotEmpty);
+        for (final line in lockedKeyArmor.split('\n')) {
+          if (line.length < 20) continue;
+          expect(output.contains(line), isFalse);
+        }
         expect(output.contains(invoice.text), isFalse);
         expect(output.contains(invoice.text.substring(0, 40)), isFalse);
         expect(output.contains(testnetAddress), isFalse);
@@ -1091,6 +1280,53 @@ void main() {
   });
 
   group('the keyring\'s lifetime', () {
+    test(
+      'an unlock that throws is not kept, even under a hold: the next lease tries again',
+      () async {
+        final (app, record, _) = await atSix();
+        final trade = await opened(app, record);
+        final hold = app.holdKey.execute(record);
+        app.keys.unlockError = StateError('a bug of the key work');
+        await expectLater(app.keyring.lease(trade), throwsStateError);
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
+        expect(app.keyring.openOf(record.robot), (holds: 1, leases: 0));
+        app.keys.unlockError = null;
+        switch (await app.keyring.lease(trade)) {
+          case Ok(:final value):
+            value.close();
+          case Err(:final failure):
+            throw StateError('$failure');
+        }
+        expect(app.keys.unlocked, hasLength(1));
+        expect(app.keyring.keepsKeyOf(record.robot), isTrue);
+        hold.release();
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
+      },
+    );
+
+    test(
+      'nothing of a closed lease leads back to the key, kept or dropped',
+      () async {
+        final (app, record, _) = await atSix();
+        final trade = await opened(app, record);
+        final hold = app.holdKey.execute(record);
+        final lease = switch (await app.keyring.lease(trade)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(lease.holdsNothing, isFalse);
+        lease.close();
+        // Kept by the hold, but no longer by the closed lease.
+        expect(lease.holdsNothing, isTrue);
+        expect(app.keyring.keepsKeyOf(record.robot), isTrue);
+        expect(() => lease.key, throwsStateError);
+        hold.release();
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
+        expect(app.keyring.openOf(record.robot), (holds: 0, leases: 0));
+        expect(lease.holdsNothing, isTrue);
+      },
+    );
+
     test(
       'without a hold, each lease unlocks for itself and the key is dropped when it closes',
       () async {
@@ -1277,4 +1513,13 @@ void main() {
       hold.release();
     });
   });
+}
+
+/// A decoder that reads every invoice as asking for a fraction of a sat, as the app's decoder refuses one (`Bolt11AmountUnusable`).
+final class _FractionOfASat implements Bolt11Decoder {
+  const _FractionOfASat();
+
+  @override
+  Result<Bolt11Invoice, Bolt11Refusal> decode(String invoice) =>
+      const Err(Bolt11AmountUnusable());
 }

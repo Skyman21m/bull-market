@@ -85,6 +85,9 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// When set, each unlock waits for it before it is done: an unlock in flight, as long as the test wants.
   Future<void>? holdUnlock;
 
+  /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
+  Error? unlockError;
+
   @override
   Future<Result<RobotPgpKey, RobotKeyComputeFailure>> generate(
     RobotIdentity identity,
@@ -105,6 +108,7 @@ final class HarnessKeys implements RobotKeyComputePort {
   >
   unlock(RobotPgpKey key, RobotIdentity identity) async {
     if (holdUnlock case final hold?) await hold;
+    if (unlockError case final error?) throw error;
     if (unlockFailure case final failure?) return Err(failure);
     unlocked.add(identity.hashId);
     return Ok(key.unlock(identity));
@@ -409,6 +413,7 @@ final class TradeHarness {
     int orderId = 42,
     bool range = false,
     String? password,
+    String alias = 'temple',
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -422,6 +427,7 @@ final class TradeHarness {
       orderId: orderId,
       range: range,
       password: password,
+      alias: alias,
     );
     final harness = TradeHarness._(network, database, coordinator, now);
     _clockOf[database] = now;

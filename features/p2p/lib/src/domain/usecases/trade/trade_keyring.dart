@@ -17,7 +17,7 @@ import 'trade_reader.dart';
 /// - the trade screen takes a hold (`HoldTradeKeyUsecase`) while it is shown and the app in the foreground, and releases it when it closes or the app is hidden or paused, taking a new one on return; a hold unlocks nothing by itself, it only keeps a key that a lease unlocked;
 /// - the payout use case takes a lease just to sign, and closes it right after the signature, before anything is sent; without a hold, the key is unlocked for that signature only and dropped when its lease closes;
 /// - two screens of one trade hold one key, kept while either holds it; a lease open when the last hold is released keeps the key until it closes (the app sent to the background during a signature), and the key is dropped then.
-/// One unlock at a time per robot, shared by the leases that come meanwhile; an unlock that failed is not kept, so the next lease tries again.
+/// One unlock at a time per robot, shared by the leases that come meanwhile; an unlock that failed, or threw, is not kept, so the next lease tries again; an entry dropped is emptied, and a closed lease holds neither the key nor the entry.
 /// Dropping a key forgets it: the package gives no way to wipe its secret values, which the garbage collector reclaims later without clearing them (a limit stated in `AGENTS.md`).
 /// Nothing here is printed, logged or stored. One for the feature (a lazy singleton of the composition), so that every trade use case, made anew for each use, shares the keys; `robot_bindings_architecture_test.dart` pins who may take a hold or a lease, and who names the unlocked key.
 final class TradeKeyring {
@@ -52,7 +52,14 @@ final class TradeKeyring {
           ..unlocking = null;
       }
       final unlocking = entry.unlocking ??= _unlock(robot);
-      final unlocked = await unlocking;
+      final Result<UnlockedRobotPgpKey, Failure> unlocked;
+      try {
+        unlocked = await unlocking;
+      } catch (_) {
+        // An `Error` of the read or the unlock is a bug (rule 11 of AGENTS.md) and reaches the caller, but the unlock that threw is not kept: the next lease tries again (review of #127).
+        if (identical(entry.unlocking, unlocking)) entry.unlocking = null;
+        rethrow;
+      }
       switch (unlocked) {
         case Ok(:final value):
           handedOut = true;
@@ -100,6 +107,10 @@ final class TradeKeyring {
   void _dropIfUnused(RobotSlot slot, _Entry entry) {
     if (entry.holds > 0 || entry.leases > 0) return;
     if (identical(_entries[slot], entry)) _entries.remove(slot);
+    // Emptied as it leaves the table, so that nothing that still holds the entry reaches the key (review of #127).
+    entry
+      ..unlocking = null
+      ..owner = null;
   }
 
   /// Whether a key of the robot of [slot] is kept or being unlocked: for the tests of the keyring's lifetime.
@@ -148,7 +159,7 @@ final class TradeKeyHold {
 final class TradeKeyLease {
   final TradeKeyring _keyring;
   final RobotSlot _slot;
-  final _Entry _entry;
+  _Entry? _entry;
   UnlockedRobotPgpKey? _key;
 
   TradeKeyLease._(
@@ -166,10 +177,17 @@ final class TradeKeyLease {
 
   /// Closes the lease, once: the key is dropped when no hold or other lease of the robot is open. A second call does nothing.
   void close() {
-    if (_key == null) return;
+    final entry = _entry;
+    if (_key == null || entry == null) return;
+    // Nothing of a closed lease leads back to the key: neither the key nor the keyring's entry, which holds its unlock (review of #127).
     _key = null;
-    _keyring._leaseClosed(_slot, _entry);
+    _entry = null;
+    _keyring._leaseClosed(_slot, entry);
   }
+
+  /// Whether this lease no longer holds the key nor the keyring's entry: true once closed, for the tests of the keyring's lifetime.
+  @visibleForTesting
+  bool get holdsNothing => _key == null && _entry == null;
 
   @override
   String toString() => 'TradeKeyLease(open: ${_key != null})';

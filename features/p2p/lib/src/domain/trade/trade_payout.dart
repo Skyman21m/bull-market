@@ -88,7 +88,12 @@ final class PayoutAsk {
   ) {
     final order = seen.order;
     if (!seen.stored || order == null) return const Err(PayoutNeedsARead());
-    if (order.id != record.orderId || order.network != record.network) {
+    // The order read must be the record's: its number, its network and its coordinator (alias and onion), a defence that costs nothing (review of #127).
+    if (order.id != record.orderId ||
+        order.network != record.network ||
+        order.coordinator.shortAlias != record.coordinatorAlias ||
+        CoordinatorIdentity.of(order.coordinator, record.network)?.onion !=
+            record.coordinatorOnion) {
       return const Err(PayoutNotAsked());
     }
     final TradeRole role;
@@ -155,6 +160,9 @@ final class PayoutAsk {
             : text;
         final Bolt11Invoice facts;
         switch (reader.read(invoice)) {
+          // No amount, or a fraction of a sat (`…500p`): the amount shown and signed is a whole number of sats, so such an invoice is not exactly what is shown, although the coordinator would take one whose whole sats are right (`api/lightning/lnd.py:514-520`; a deviation, `AGENTS.md`).
+          case Err(failure: Bolt11AmountUnusable()):
+            return const Err(PayoutInvoiceAmountNotWholeSats());
           case Err(:final failure):
             return Err(PayoutInvoiceUnreadable(failure));
           case Ok(:final value):
@@ -458,6 +466,13 @@ final class PayoutInvoiceUnreadable extends PayoutCheckRefusal {
 /// An invoice of another network than the trade's (`lnbc` on mainnet, `lntb` on testnet; signet, regtest and any other prefix are another network).
 final class PayoutInvoiceOfAnotherNetwork extends PayoutCheckRefusal {
   const PayoutInvoiceOfAnotherNetwork();
+}
+
+/// An invoice with no amount, or for an amount that is not a whole number of sats (a millisatoshi precision such as `…500p`): ask for exactly the whole sats asked.
+///
+/// The coordinator would take an invoice whose whole sats are the amount asked whatever its millisatoshis (LND compares `num_satoshis`), and so would the reference client (`Math.floor(value / 1000)`); here what is shown and signed is a whole number of sats, and an invoice that asks a fraction more is not exactly that (a deviation, `AGENTS.md`).
+final class PayoutInvoiceAmountNotWholeSats extends PayoutCheckRefusal {
+  const PayoutInvoiceAmountNotWholeSats();
 }
 
 /// An invoice for another amount than the one asked ([PayoutAsk.invoiceSatsFor] its routing budget).
