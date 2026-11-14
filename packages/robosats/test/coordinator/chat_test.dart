@@ -1066,6 +1066,13 @@ void main() {
       expect(page.repeatsAnIndex, isFalse);
     });
 
+    test('last index is the highest, wherever it is in the page', () async {
+      final page = await pageOf([3, 1, 2]);
+      expect(page.lastIndex, 3);
+      final repeated = await pageOf([7, 9, 9, 8], offset: 6);
+      expect(repeated.lastIndex, 9);
+    });
+
     test(
       'reordered: delivered in the coordinator order, said out of order',
       () async {
