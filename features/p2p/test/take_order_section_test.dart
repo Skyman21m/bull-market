@@ -161,6 +161,22 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a range order with no amount: a tap on « Take Order » shows « You must specify an amount first »',
+    (tester) async {
+      final take = _Take();
+      await _show(tester, await _order(range: true), take: take);
+      await _reveal(tester, _takeButton);
+      expect(find.text('You must specify an amount first'), findsNothing);
+      await tester.tap(_takeButton, warnIfMissed: false);
+      await tester.pump();
+      expect(find.text('You must specify an amount first'), findsOneWidget);
+      expect(take.amounts, isEmpty);
+      await tester.pump(const Duration(seconds: 2));
+      await settle(tester);
+    },
+  );
+
   testWidgets('an order with an open trade here: that trade opens', (
     tester,
   ) async {

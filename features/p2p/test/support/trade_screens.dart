@@ -105,6 +105,16 @@ final class TradeScreenStatuses {
     );
   }
 
+  /// [previous] after the order read as [json] when the state machine refuses that answer as a whole (a return to an earlier status, another role or order): the last status stays, with its warning, from no order, as `TradeReader` keeps it.
+  Future<TradeSeen> refusedRead(
+    TradeSeen previous,
+    Map<String, Object?> json, {
+    Duration after = const Duration(seconds: 30),
+  }) async {
+    final seen = await read(previous, json, after: after);
+    return TradeSeen(seen.status, order: null, stored: true);
+  }
+
   /// [previous] after a refusal (1043 or 1044) that comes from no order.
   TradeSeen refused(
     TradeSeen previous,

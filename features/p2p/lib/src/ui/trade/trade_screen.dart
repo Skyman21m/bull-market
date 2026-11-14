@@ -239,6 +239,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                     ),
                     final TradeContract contract => _Contract(
                       contract: contract,
+                      now: _now,
                       record: record,
                       cancel: state.cancel,
                       coordinator: coordinator,
@@ -349,6 +350,9 @@ class _Message extends StatelessWidget {
 
 /// The contract of a status: title and step, the warnings, the prompt, the bond line, and « Copy URL » / « Cancel » where the reference offers them.
 class _Contract extends StatelessWidget {
+  /// The screen's clock, which hides an invoice past its `payableUntil` between two reads.
+  final DateTime now;
+
   final TradeContract contract;
   final TradeRecord record;
   final TradeCancelState cancel;
@@ -357,6 +361,7 @@ class _Contract extends StatelessWidget {
 
   const _Contract({
     required this.contract,
+    required this.now,
     required this.record,
     required this.cancel,
     required this.coordinator,
@@ -380,7 +385,7 @@ class _Contract extends StatelessWidget {
       },
     );
     final step = contract.step;
-    final warnings = warningsOf(status);
+    final warnings = warningsOf(status, now: now);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -439,6 +444,7 @@ class _Contract extends StatelessWidget {
         record: record,
         status: bond,
         walletPayment: walletPayment,
+        now: now,
         swap: order?.currency.isBitcoin ?? false,
         payable: contract.payable,
       ),
@@ -525,7 +531,7 @@ class _BondLine extends StatelessWidget {
 }
 
 /// « Copy URL » and « Cancel » (`TradeBox/CancelButton.tsx`): a free cancel asks « Cancel the order? » of the pre-take, one that loses the bond the confirmation that alone builds its acknowledgement.
-class _CancelRow extends StatelessWidget {
+class _CancelRow extends StatefulWidget {
   final TradeCancelOffer offer;
   final TradeRecord record;
   final TradeSeen seen;
@@ -540,24 +546,45 @@ class _CancelRow extends StatelessWidget {
     required this.coordinator,
   });
 
-  Future<void> _press(BuildContext context) async {
+  @override
+  State<_CancelRow> createState() => _CancelRowState();
+}
+
+class _CancelRowState extends State<_CancelRow> {
+  /// Whether a dialog of the cancel is open: a second press meanwhile opens nothing more.
+  bool _asking = false;
+
+  /// Cancels with the status seen when « Cancel » was pressed, never the one shown when the dialog closes: an agreement given for one status is not given for another (`CancelTradeUsecase` sends that status's guard, and a [BondLossAcknowledged] covers that status only).
+  Future<void> _press() async {
+    if (_asking) return;
+    _asking = true;
     final cubit = context.read<TradeCubit>();
-    switch (offer) {
-      case TradeCancelOffer.free:
-        if (await CancelOrderDialog.show(context)) {
-          await cubit.cancel(seen);
-        }
-      case TradeCancelOffer.losesBond:
-        final acknowledged = await ConfirmCancelDialog.show(
-          context,
-          record: record,
-          seen: seen,
-        );
-        if (acknowledged != null) {
-          await cubit.cancel(seen, bondLoss: acknowledged);
-        }
-      case TradeCancelOffer.none:
-        break;
+    final seen = widget.seen;
+    try {
+      // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
+      if (seen.order == null) {
+        await cubit.cancel(seen);
+        return;
+      }
+      switch (widget.offer) {
+        case TradeCancelOffer.free:
+          if (await CancelOrderDialog.show(context)) {
+            await cubit.cancel(seen);
+          }
+        case TradeCancelOffer.losesBond:
+          final acknowledged = await ConfirmCancelDialog.show(
+            context,
+            record: widget.record,
+            seen: seen,
+          );
+          if (acknowledged != null) {
+            await cubit.cancel(seen, bondLoss: acknowledged);
+          }
+        case TradeCancelOffer.none:
+          break;
+      }
+    } finally {
+      _asking = false;
     }
   }
 
@@ -565,8 +592,11 @@ class _CancelRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
-    final running = cancel is CancelRunning;
-    final notice = switch (cancel) {
+    final offer = widget.offer;
+    final record = widget.record;
+    final coordinator = widget.coordinator;
+    final running = widget.cancel is CancelRunning;
+    final notice = switch (widget.cancel) {
       CancelIdle(:final notice?) => notice,
       _ => null,
     };
@@ -589,7 +619,7 @@ class _CancelRow extends StatelessWidget {
             outlined: true,
             color: colors.secondary,
             busy: running,
-            onPressed: () => unawaited(_press(context)),
+            onPressed: () => unawaited(_press()),
           ),
         ),
         if (notice != null) ...[

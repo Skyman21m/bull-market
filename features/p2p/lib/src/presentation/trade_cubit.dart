@@ -123,7 +123,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (isClosed || _subscription != null) return;
     final signals = StreamController<TradeWatchSignal>();
     _signals = signals;
-    _subscription =
+    late final StreamSubscription<TradeWatchState> subscription;
+    subscription = _subscription =
         _watch(
           state.record,
           signals: signals.stream,
@@ -135,7 +136,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
             emit(state._with(watch: _keepingWhatWasRead(watch)));
           },
           onDone: () {
-            _subscription = null;
+            // Only this subscription's end clears it: a later start's subscription stays.
+            if (identical(_subscription, subscription)) _subscription = null;
             unawaited(signals.close());
             if (identical(_signals, signals)) _signals = null;
           },

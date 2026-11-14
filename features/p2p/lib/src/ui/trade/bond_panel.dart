@@ -23,7 +23,7 @@ import 'wallet_payment_section.dart';
 ///
 /// From the top: « You are BUYING BTC »; the slot of « Pay with this wallet » ([WalletPaymentSection], empty today); « Pay with another wallet », which holds what the reference shows: « See Compatible Wallets » (the link shown for copy, never opened), the QR code of the invoice in capitals and « Copy to clipboard », with the facts read from the invoice under the QR code (amount, expiry, network, description: design note § 4.4); then « This is a hold invoice… ».
 /// « Pay with another wallet » is open at first while the wallet's slot offers nothing, as today.
-/// The QR code and the copy show only as [invoiceDisplayOf] allows: never for an `UnusableInvoice`, behind « Show anyway » for the amount checks, not at all for the others; the warnings themselves are shown by the contract above.
+/// The QR code and the copy show only as [invoiceDisplayOf] allows: never for an `UnusableInvoice` nor once the screen's clock passed the invoice's `payableUntil`, behind « Show anyway » for the amount checks, not at all for the others; the warnings themselves are shown by the contract above.
 /// Tapping the QR code opens nothing (the reference opens `lightning:`; the feature cannot open a link).
 class BondPanel extends StatelessWidget {
   final TradeRecord record;
@@ -36,11 +36,15 @@ class BondPanel extends StatelessWidget {
   /// Whether the status came with its trail stored: otherwise neither the wallet's slot nor the QR code and the copy are offered (`AGENTS.md`, « Rules for #88 »).
   final bool payable;
 
+  /// The screen's clock, which moves every second: once it passes the invoice's `payableUntil`, the QR code and the copy are gone, as for an invoice read expired ([invoiceExpiredAt]).
+  final DateTime now;
+
   const BondPanel({
     super.key,
     required this.record,
     required this.status,
     required this.walletPayment,
+    required this.now,
     this.swap = false,
     this.payable = true,
   });
@@ -58,10 +62,10 @@ class BondPanel extends StatelessWidget {
       status: status,
       amount: status.bond.orderAmount,
     );
-    final wallet = payable
+    final invoice = status.bond;
+    final wallet = payable && !invoiceExpiredAt(invoice, now)
         ? WalletPaymentSection.offer(context, walletPayment, request)
         : null;
-    final invoice = status.bond;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -84,6 +88,7 @@ class BondPanel extends StatelessWidget {
           invoice: invoice,
           initiallyOpen: wallet == null,
           payable: payable,
+          now: now,
         ),
         const Gap(BullSpacing.md),
         Text(
@@ -101,12 +106,14 @@ class _OtherWallet extends StatefulWidget {
   final StepInvoice invoice;
   final bool initiallyOpen;
   final bool payable;
+  final DateTime now;
 
   const _OtherWallet({
     super.key,
     required this.invoice,
     required this.initiallyOpen,
     required this.payable,
+    required this.now,
   });
 
   @override
@@ -142,7 +149,11 @@ class _OtherWalletState extends State<_OtherWallet> {
     final l10n = P2pLocalizations.of(context);
     final invoice = widget.invoice;
     final display = widget.payable
-        ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway)
+        ? invoiceDisplayOf(
+            invoice,
+            shownAnyway: _shownAnyway,
+            now: widget.now,
+          )
         : InvoiceDisplay.hidden;
     return DecoratedBox(
       decoration: BoxDecoration(

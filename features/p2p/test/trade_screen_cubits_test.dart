@@ -19,6 +19,7 @@ import 'package:test/test.dart';
 
 import 'support/key_output.dart';
 import 'support/trade_harness.dart';
+import 'support/trade_screens.dart';
 
 /// What the vault says of a key, for « Store your garage key » or « You do not have a Garage Key ».
 final class _Keys implements GarageKeyRepository {
@@ -358,6 +359,22 @@ void main() {
       expect(_seen(cubit).status, isA<PreTakeEnded>());
       expect(harness.coordinator.holdsPreTake(harness.robot(0)), isFalse);
       await cubit.close();
+    });
+
+    test('closed while a cancel runs, it emits nothing after', () async {
+      final statuses = await TradeScreenStatuses.make();
+      final seen = await statuses.bondStep();
+      final answer = Completer<Result<CancelOutcome, CancelRefusal>>();
+      final cubit = TradeCubit(
+        TradeScreenStatuses.record,
+        (record, {signals = const Stream.empty(), onScreen = true}) =>
+            const Stream.empty(),
+        (record, seen, {bondLoss}) => answer.future,
+      );
+      final cancelling = cubit.cancel(seen);
+      await cubit.close();
+      answer.complete(Ok(CancelDone(TradeScreenStatuses.record, seen)));
+      await expectLater(cancelling, completes);
     });
 
     // The order public again offers « Take Order » on the trade screen (#88): the take rules of #87 let the same order be taken anew once the earlier trade is over, with a fresh robot.

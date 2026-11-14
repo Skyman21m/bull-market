@@ -236,11 +236,21 @@ enum InvoiceDisplay {
   hidden,
 }
 
-/// How [invoice] is shown, once the user pressed « Show anyway » when [shownAnyway].
+/// Whether [invoice] can no longer be paid at [now], the screen's clock: past its `payableUntil` (the earlier of its expiry and the step's deadline).
+///
+/// The state machine finds an invoice expired only when a read computes its status ([InvoiceExpired]); the screen's clock moves every second, so an invoice that expires between two reads, or while the reads fail, is hidden at once (design note § 4.4: never show an expired invoice).
+bool invoiceExpiredAt(StepInvoice invoice, DateTime now) => switch (invoice) {
+  CheckedInvoice(:final payableUntil) => !now.isBefore(payableUntil),
+  UnusableInvoice() => false,
+};
+
+/// How [invoice] is shown at [now], once the user pressed « Show anyway » when [shownAnyway]: never once it can no longer be paid ([invoiceExpiredAt]).
 InvoiceDisplay invoiceDisplayOf(
   StepInvoice invoice, {
   required bool shownAnyway,
+  required DateTime now,
 }) => switch (invoice) {
+  _ when invoiceExpiredAt(invoice, now) => InvoiceDisplay.hidden,
   UnusableInvoice() => InvoiceDisplay.hidden,
   CheckedInvoice() when invoice.mayShow => InvoiceDisplay.shown,
   CheckedInvoice() when invoice.mayShowAnyway =>
@@ -248,8 +258,8 @@ InvoiceDisplay invoiceDisplayOf(
   CheckedInvoice() => InvoiceDisplay.hidden,
 };
 
-/// The warnings a status shows, each once (the three amount checks share one text, so they are kept apart here and worded by the screen), its invoice's own included.
-List<TradeWarning> warningsOf(TradeStatus status) {
+/// The warnings a status shows at [now], each once (the three amount checks share one text, so they are kept apart here and worded by the screen), its invoice's own included, and [InvoiceExpired] once the screen's clock passed the invoice's `payableUntil` ([invoiceExpiredAt]).
+List<TradeWarning> warningsOf(TradeStatus status, {required DateTime now}) {
   final seen = <Type>{};
   final invoice = status.invoice;
   return [
@@ -257,6 +267,8 @@ List<TradeWarning> warningsOf(TradeStatus status) {
       ...status.warnings,
       if (invoice case UnusableInvoice(:final reason)) reason,
       if (invoice case CheckedInvoice(:final warnings)) ...warnings,
+      if (invoice != null && invoiceExpiredAt(invoice, now))
+        const InvoiceExpired(),
     ])
       if (seen.add(warning.runtimeType)) warning,
   ];

@@ -10,6 +10,8 @@ import 'package:test/test.dart';
 /// - Only the cancel's confirmation dialog builds the acknowledgement that a cancel loses the bond: `BondLossAcknowledged.fromConfirmationDialog` is named in `lib/src/ui/trade/confirm_cancel_dialog.dart` and in the file that declares it, nowhere else.
 /// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`; no other file names them but the domain and the locator.
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
+/// - `TakeOrderCubit.take` is called by `TakeOrderSection` only, the single place a take starts (`AGENTS.md`): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method `take` (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
+/// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice) and the trade screen (the order's address) write to the clipboard.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -48,6 +50,10 @@ void main() {
           'ListActiveTradesUsecase',
           'lib/src/presentation/active_trades_cubit.dart',
         ),
+        (
+          'FindPublicOrderUsecase',
+          'lib/src/presentation/trade_order_page_cubit.dart',
+        ),
       ]) {
         final outside = {
           for (final path in _whereNamed(sources, useCase))
@@ -70,7 +76,50 @@ void main() {
     expect(offences, isEmpty);
   });
 
+  test('only TakeOrderSection calls TakeOrderCubit.take', () {
+    expect(_callersOfTake(sources), {'lib/src/ui/take_order_section.dart'});
+  });
+
+  test(
+    'the trade screens open no link, and copy only the invoice and the order\'s address',
+    () {
+      final tradeScreens = {
+        for (final MapEntry(key: path, value: source) in sources.entries)
+          if (_tradeScreens.any(path.startsWith)) path: source,
+      };
+      expect(tradeScreens.keys, contains('lib/src/ui/trade/bond_panel.dart'));
+      for (final MapEntry(key: path, value: source) in tradeScreens.entries) {
+        expect(source.contains('url_launcher'), isFalse, reason: path);
+        expect(
+          _namesIn(source).intersection({'launchUrl', 'launchUrlString'}),
+          isEmpty,
+          reason: path,
+        );
+      }
+      expect(_whereNamed(tradeScreens, 'Clipboard'), {
+        'lib/src/ui/trade/bond_panel.dart',
+        'lib/src/ui/trade/trade_screen.dart',
+      });
+    },
+  );
+
   group('the rules bite:', () {
+    test('a second caller of the take is seen', () {
+      expect(
+        _callersOfTake({
+          'lib/src/ui/take_order_section.dart':
+              'void f(TakeOrderCubit c) => c.take();',
+          'lib/src/ui/trade/trade_screen.dart':
+              'void g(TakeOrderCubit c) { c.take(amount: null); }',
+          'lib/src/ui/book.dart': 'final l = [1, 2].take(1);',
+        }),
+        {
+          'lib/src/ui/take_order_section.dart',
+          'lib/src/ui/trade/trade_screen.dart',
+        },
+      );
+    });
+
     test('an acknowledgement built elsewhere is seen', () {
       expect(
         _whereNamed({
@@ -99,8 +148,47 @@ void main() {
   });
 }
 
+/// The files of the trade's screens.
+const _tradeScreens = [
+  'lib/src/ui/trade/',
+  'lib/src/ui/take_order_section.dart',
+  'lib/src/ui/widgets/store_token_dialog.dart',
+  'lib/src/ui/widgets/trade_dialog_body.dart',
+  'lib/src/ui/widgets/trade_button.dart',
+];
+
+/// The files of [sources] that name `TakeOrderCubit` and call a method `take`, the cubit's own file aside.
+Set<String> _callersOfTake(Map<String, String> sources) => {
+  for (final MapEntry(key: path, value: source) in sources.entries)
+    if (path != 'lib/src/presentation/take_order_cubit.dart' &&
+        _namesIn(source).contains('TakeOrderCubit') &&
+        _callsMethod(source, 'take'))
+      path,
+};
+
+bool _callsMethod(String source, String method) {
+  final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+  final calls = _Calls(method);
+  unit.accept(calls);
+  return calls.found;
+}
+
+final class _Calls extends RecursiveAstVisitor<void> {
+  final String method;
+  bool found = false;
+
+  _Calls(this.method);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == method) found = true;
+    super.visitMethodInvocation(node);
+  }
+}
+
 /// What the screens never name.
 const _notForScreens = {
+  'FindPublicOrderUsecase',
   'TakeOrderUsecase',
   'WatchTradeUsecase',
   'CancelTradeUsecase',

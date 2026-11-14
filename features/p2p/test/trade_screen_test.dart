@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -12,12 +14,20 @@ import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/trade/trade_take.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
+import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
+import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:robosats/robosats.dart';
 
+import 'support/fakes.dart' show FakeTransport, bookOrder, coordinator, testNow;
 import 'support/harness.dart';
 import 'support/trade_orders.dart';
 import 'support/trade_screens.dart';
@@ -81,7 +91,16 @@ late Map<String, TradeSeen> _seen;
 
 final _record = TradeScreenStatuses.record;
 
-/// Shows the trade screen over [watch] and [cancels], with [state] emitted once it listens.
+/// What temple says of itself on mainnet, its fees included.
+Map<String, Object?> _templeInfo() =>
+    jsonDecode(
+          File(
+            '../../packages/robosats/test/fixtures/coordinator/temple-mainnet-info.json',
+          ).readAsStringSync(),
+        )
+        as Map<String, Object?>;
+
+/// Shows the trade screen over [watch] and [cancels], with [state] emitted once it listens; the order's side reads [transport] (nothing answers by default), and an order public again is taken with [takeOrder], its trade given to [taken].
 Future<TradeCubit> _show(
   WidgetTester tester, {
   required _Watch watch,
@@ -92,6 +111,10 @@ Future<TradeCubit> _show(
   double textScale = 1,
   WalletPaymentBuilder? walletPayment,
   bool tickerEnabled = true,
+  FakeTransport? transport,
+  TakeOrderCubit Function(PublicOrder order)? takeOrder,
+  List<TradeRecord>? taken,
+  DateTime Function()? now,
 }) async {
   tester.view
     ..physicalSize = size * 3
@@ -100,6 +123,17 @@ Future<TradeCubit> _show(
   final cubit = TradeCubit(_record, watch.call, (cancels ?? _Cancels()).call)
     ..start();
   addTearDown(cubit.close);
+  final reads = transport ?? FakeTransport();
+  final page = TradeOrderPageCubit(
+    coordinator('temple'),
+    RobosatsNetwork.mainnet,
+    FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+    FindPublicOrderUsecase(
+      CoordinatorClient(reads, clock: () => testNow),
+    ).execute,
+  );
+  addTearDown(page.close);
+  unawaited(page.loadInfo());
   await tester.pumpWidget(
     MaterialApp(
       theme: testTheme,
@@ -116,12 +150,17 @@ Future<TradeCubit> _show(
       home: TickerMode(
         enabled: tickerEnabled,
         child: Scaffold(
-          body: BlocProvider.value(
-            value: cubit,
+          body: MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: cubit),
+              BlocProvider.value(value: page),
+            ],
             child: TradeScreen(
-              now: () => tradeNow,
+              now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
               walletPayment: walletPayment,
+              takeOrder: takeOrder,
+              onTaken: taken?.add,
             ),
           ),
         ),
@@ -193,6 +232,22 @@ void main() {
       'publicAgain': await _statuses.publicAgain(),
       'bondForfeited': await _statuses.bondForfeited(),
       'pending': _statuses.pending(),
+      'swapBond': await _statuses.read(
+        await _statuses.bondStep(),
+        orderJson(3, bond: _statuses.invoice, changes: {'currency': 1000}),
+      ),
+      'sixCents': await _statuses.read(
+        await _statuses.bondStep(),
+        orderJson(6, changes: {'amount': '123.45000000'}),
+      ),
+      'sixSwap': await _statuses.read(
+        await _statuses.bondStep(),
+        orderJson(6, changes: {'currency': 1000, 'amount': '0.00100000'}),
+      ),
+      'sixRegressed': await _statuses.refusedRead(
+        await _statuses.waitingForBoth(),
+        orderJson(3, bond: _statuses.invoice),
+      ),
     };
   });
 
@@ -217,6 +272,45 @@ void main() {
   });
 
   group('status 3, the bond', () {
+    testWidgets('an order in bitcoin: « You are SWAPPING INTO Lightning »', (
+      tester,
+    ) async {
+      await _show(tester, watch: _Watch(), state: _watched('swapBond'));
+      expect(find.text('You are SWAPPING INTO Lightning'), findsOneWidget);
+      expect(find.text('You are BUYING BTC'), findsNothing);
+    });
+
+    testWidgets('« Copy URL » copies the order\'s address and says « Copied! »', (
+      tester,
+    ) async {
+      final copied = <String?>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied.add((call.arguments as Map)['text'] as String?);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await _show(tester, watch: _Watch(), state: _watched('bond'));
+      await _reveal(tester, find.text('Copy URL'));
+      await tester.tap(find.text('Copy URL'));
+      await tester.pump();
+      expect(copied, [
+        '${_record.coordinatorOnion}/order/temple/$tradeOrderId',
+      ]);
+      expect(find.text('Copied!'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Copy URL'), findsOneWidget);
+    });
+
     testWidgets('the reference\'s contract with the QR code and the facts', (
       tester,
     ) async {
@@ -388,18 +482,87 @@ void main() {
     testWidgets(
       'the « Order » tab: the order with « Expires in » and « Deposit »',
       (tester) async {
-        await _show(tester, watch: _Watch(), state: _watched('bond'));
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('bond'),
+          transport: FakeTransport(infos: {'temple': _templeInfo()}),
+        );
+        await settle(tester);
         await tester.tap(find.text('Order').last);
         await tester.pump();
         expect(find.text('Order host'), findsOneWidget);
         expect(find.text('Expires in'), findsOneWidget);
         expect(find.text('Deposit'), findsOneWidget);
         expect(find.byType(QrImageView), findsNothing);
+        // The coordinator's fees, the reference's estimate with its taker fee while the coordinator gives no sats yet, and the maker.
+        expect(find.text('M 0.025%'), findsOneWidget);
+        expect(find.text('T 0.175%'), findsOneWidget);
+        expect(find.text('You receive'), findsOneWidget);
+        expect(find.textContaining('111,304'), findsOneWidget);
+        await _reveal(tester, find.textContaining('Order maker'));
+        expect(find.text('Order maker · Active'), findsOneWidget);
       },
     );
   });
 
   group('cancel', () {
+    testWidgets('a double tap on « Cancel » opens one dialog', (tester) async {
+      await _show(tester, watch: _Watch(), state: _watched('bond'));
+      await _reveal(tester, find.text('Cancel'));
+      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.text('Cancel'), warnIfMissed: false);
+      await settle(tester);
+      expect(find.text('Cancel the order?'), findsOneWidget);
+    });
+
+    testWidgets(
+      'the status moves from 3 to 6 while the free dialog is open: the cancel is the one of 3, never an agreement for 6',
+      (tester) async {
+        final watch = _Watch();
+        final cancels = _Cancels();
+        await _show(
+          tester,
+          watch: watch,
+          cancels: cancels,
+          state: _watched('bond'),
+        );
+        await _reveal(tester, find.text('Cancel'));
+        await tester.tap(find.text('Cancel'));
+        await settle(tester);
+        watch.emit(_watched('six'));
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Confirm cancellation'));
+        await settle(tester);
+        final (seen, bondLoss) = cancels.asked.single;
+        expect(seen, same(_seen['bond']));
+        expect(bondLoss, isNull);
+      },
+    );
+
+    testWidgets(
+      'at 6 and 7, « Go back » is the filled button and « Confirm Cancel » the outlined one, in the reference\'s order',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('six'));
+        await _reveal(tester, find.text('Cancel'));
+        await tester.tap(find.text('Cancel'));
+        await settle(tester);
+        final back = tester.widget<TradeButton>(
+          find.widgetWithText(TradeButton, 'Go back'),
+        );
+        final go = tester.widget<TradeButton>(
+          find.widgetWithText(TradeButton, 'Confirm Cancel'),
+        );
+        expect(back.outlined, isFalse);
+        expect(go.outlined, isTrue);
+        expect(
+          tester.getTopLeft(find.text('Go back')).dy,
+          lessThan(tester.getTopLeft(find.text('Confirm Cancel')).dy),
+        );
+      },
+    );
+
     testWidgets(
       'at 3: « Back » sends nothing, « Confirm cancellation » one free cancel',
       (tester) async {
@@ -546,6 +709,53 @@ void main() {
       expect(find.byType(QrImageView), findsNothing);
     });
 
+    for (final (name, sent) in [
+      ('sixCents', '123.45 EUR'),
+      ('sixSwap', '100,000 Sats'),
+    ]) {
+      testWidgets(
+        '6: the amount to send at most 4 decimals, an order in bitcoin in Sats ($name)',
+        (tester) async {
+          await _show(tester, watch: _Watch(), state: _watched(name));
+          expect(
+            find.text(
+              'Before letting you send $sent, we want to make sure you are able to receive the BTC.',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+    }
+
+    testWidgets(
+      '6 kept from no order (an answer refused as a whole): « Cancel » opens no dialog and says to wait for a read',
+      (tester) async {
+        final cancels = _Cancels()
+          ..answer = (seen) => const Err(CancelNeedsARead());
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('sixRegressed'),
+        );
+        expect(_seen['sixRegressed']?.status, isA<WaitingForBoth>());
+        expect(
+          _seen['sixRegressed']?.status.warnings,
+          contains(isA<TradeStatusRegressed>()),
+        );
+        await _reveal(tester, find.text('Cancel'));
+        await tester.tap(find.text('Cancel'));
+        await settle(tester);
+        expect(find.text('Confirm Cancel'), findsNothing);
+        expect(tester.takeException(), isNull);
+        expect(cancels.asked.single.$2, isNull);
+        expect(
+          find.text('Wait until the order is read again before cancelling.'),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('7: the wait for the escrow', (tester) async {
       await _show(tester, watch: _Watch(), state: _watched('seven'));
       expect(find.text('Your info looks good! (2/4)'), findsOneWidget);
@@ -615,11 +825,67 @@ void main() {
           await _show(tester, watch: _Watch(), state: _watched(name));
           expect(find.text('Order host'), findsOneWidget);
           expect(find.text('Contract'), findsNothing);
+          // Without robots in the feature, nothing takes it.
           expect(find.text('Take Order'), findsNothing);
           expect(find.text('Cancel'), findsNothing);
         },
       );
     }
+
+    testWidgets(
+      'an order public again, listed by the book: « Take Order » takes it anew, its trade opened',
+      (tester) async {
+        final takes = <PublicOrder>[];
+        final taken = <TradeRecord>[];
+        final transport = FakeTransport(
+          books: {
+            'temple': [bookOrder(id: tradeOrderId)],
+          },
+        );
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('publicAgain'),
+          transport: transport,
+          taken: taken,
+          takeOrder: (order) => TakeOrderCubit(
+            order,
+            RobosatsNetwork.mainnet,
+            (shown, {required network, amount, password}) async {
+              takes.add(shown);
+              return Ok(TakeOutcomeUnknown(_record));
+            },
+            (network) async => const Ok(true),
+          ),
+        );
+        await settle(tester);
+        expect(transport.requested, contains('temple/api/book/'));
+        await _reveal(tester, find.text('Take Order'));
+        await tester.tap(find.text('Take Order'));
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(takes.single.id, tradeOrderId);
+        expect(taken, [_record]);
+      },
+    );
+
+    testWidgets(
+      'an order public again the book no longer lists: « This order is not available »',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('publicAgain'),
+          takeOrder: (order) => throw StateError('not taken'),
+          taken: [],
+        );
+        await settle(tester);
+        await _reveal(tester, find.text('This order is not available'));
+        expect(find.text('This order is not available'), findsOneWidget);
+        expect(find.text('Take Order'), findsNothing);
+      },
+    );
 
     testWidgets('a take whose answer is unknown: it keeps checking, no action', (
       tester,
@@ -723,6 +989,28 @@ void main() {
           ),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'a stored status not understood at another position than the one shown keeps nothing: the QR code goes',
+      (tester) async {
+        final watch = _Watch();
+        final six = _seen['six'] ?? (throw StateError('six'));
+        await _show(tester, watch: watch, state: _watched('bond'));
+        expect(find.byType(QrImageView), findsOneWidget);
+        watch.emit(
+          TradeScreenStatuses.watched(
+            TradeSeen(
+              TradeStatus.beforeFirstRead(six.status.trail),
+              order: null,
+              stored: true,
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(QrImageView), findsNothing);
       },
     );
 
@@ -868,7 +1156,13 @@ void main() {
       tester,
     ) async {
       final watch = _Watch();
-      await _show(tester, watch: watch, state: _watched('bond'));
+      var clock = tradeNow;
+      await _show(
+        tester,
+        watch: watch,
+        state: _watched('bond'),
+        now: () => clock,
+      );
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       await tester.pump();
@@ -882,6 +1176,12 @@ void main() {
       expect(watch.open, 1);
       // Still on the bond panel: the last status stays while the watch reads again.
       expect(find.byType(QrImageView), findsOneWidget);
+      // Back after the invoice could no longer be paid: the QR code and the copy are gone at once, without waiting for a read, and the line says why.
+      clock = tradeNow.add(const Duration(hours: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      expect(find.text('This invoice has expired.'), findsOneWidget);
     });
 
     testWidgets('back from a short absence: read now', (tester) async {

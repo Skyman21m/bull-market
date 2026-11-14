@@ -7,8 +7,8 @@ import '../../domain/trade_record.dart';
 
 /// What the bond panel gives the wallet's payment at each build: the trade, the status shown now and the bond the panel's title states.
 ///
-/// [status] is the status of the trade's last read, never one kept by the slot: the payment pull request asks `walletPaymentFor` with it, and its payment use case reads the order again and pays only from the status it then computes (`AGENTS.md`, « Rules for the screens (#88) »).
-/// [amount] is the bond of the title « Lock {{amountSats}} Sats to TAKE order » (`bond_satoshis`): the confirmation states it, and the wallet pays at most it.
+/// [status] is the status the screen shows, which may be one the trade's cubit kept from an earlier read when the watch gave a status not understood at the same position (`TradeCubit`), never one kept by the slot itself: the payment pull request asks `walletPaymentFor` with it only to offer, and its payment use case reads the order again and pays only from the status it then computes (`AGENTS.md`, « Rules for the screens (#88) »).
+/// [amount] is the bond of the title « Lock {{amountSats}} Sats to TAKE order » (`bond_satoshis`, a figure of the coordinator): the confirmation states it, but the ceiling the wallet pays is the decoded amount of the checked invoice, bounded by the take's terms, never this figure.
 @immutable
 final class WalletPaymentRequest {
   final TradeRecord record;
