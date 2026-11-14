@@ -772,6 +772,16 @@ void main() {
         );
         expect(count(app, ScriptedRequest.order), orderReads);
         expect(count(app, take), 1);
+        // Its robot was forgotten: once that trade is closed, a new preparation takes a third robot.
+        expect(
+          await app.records.closeTrade(record),
+          isA<Ok<Object?, Object?>>(),
+        );
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 3);
       },
     );
 
