@@ -77,6 +77,7 @@ export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
+/// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
@@ -89,6 +90,7 @@ void setUpP2pForTesting(
   GarageKeys? garageKeys,
   bool databaseUnavailable = false,
   Bolt11Decoder? bolt11Decoder,
+  P2pWalletPort? wallet,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -134,6 +136,7 @@ void setUpP2pForTesting(
       clock: clock,
     );
   }
+  if (wallet != null) locator.registerSingleton<P2pWalletPort>(wallet);
 }
 
 /// The draw in the middle of the range, which spreads no wait.

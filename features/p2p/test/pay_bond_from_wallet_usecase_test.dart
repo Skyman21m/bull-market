@@ -177,8 +177,14 @@ void main() {
         TradeOpened(:final trade) => trade.terms,
         _ => throw StateError('not opened'),
       };
-      expect(terms.bondCeiling.value, (terms.expectedBond * 1.02 + 1).floor());
-      expect(invoice.amount.value, lessThanOrEqualTo(terms.bondCeiling.value));
+      expect(
+        terms.bondCeiling.value.toInt(),
+        (terms.expectedBond * 1.02 + 1).floor(),
+      );
+      expect(
+        invoice.amount.value.toInt(),
+        lessThanOrEqualTo(terms.bondCeiling.value.toInt()),
+      );
     },
   );
 
@@ -432,10 +438,14 @@ void main() {
         final following = setup.payBond
             .followBond(setup.record)
             .listen(seen.add);
-        await setup.harness.settle();
+        for (var i = 0; i < 50 && seen.length < 2; i++) {
+          await setup.harness.settle();
+        }
         setup.fake.setProgress(payment, const Ok(P2pWalletPaymentPending()));
-        await setup.harness.settle();
-        await following.cancel();
+        for (var i = 0; i < 50 && seen.length < 3; i++) {
+          await setup.harness.settle();
+        }
+        unawaited(following.cancel());
         expect(seen.whereType<BondPaymentFollowed>().map((f) => f.progress), [
           isA<P2pWalletPaymentSent>(),
           isA<P2pWalletPaymentSent>(),

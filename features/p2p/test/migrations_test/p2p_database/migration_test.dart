@@ -958,7 +958,7 @@ void main() {
 
         final first = P2pDatabase.open(() async => directory);
         final rows = await rowsOf(first);
-        expect(await versionOf(first), 4);
+        expect(await versionOf(first), P2pDatabase.schema);
         expect({for (final table in before.keys) table: rows[table]}, before);
         expect(rows['trade_terms'], isEmpty);
         expect(rows['trade_trails'], isEmpty);
@@ -973,7 +973,7 @@ void main() {
         await first.close();
 
         final second = P2pDatabase.open(() async => directory);
-        expect(await versionOf(second), 4);
+        expect(await versionOf(second), P2pDatabase.schema);
         expect(await rowsOf(second), rows);
         await second.close();
       },
