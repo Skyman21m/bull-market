@@ -38,6 +38,7 @@ class ConfirmCancelDialog extends StatelessWidget {
       backLabel: l10n.p2pCommonGoBack,
       onBack: () => Navigator.of(context).pop(),
       goLabel: l10n.p2pTradeConfirmCancel,
+      backFirst: true,
       onGo: () => Navigator.of(
         context,
       ).pop(BondLossAcknowledged.fromConfirmationDialog(record, seen)),

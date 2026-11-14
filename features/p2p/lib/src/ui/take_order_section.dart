@@ -119,13 +119,23 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     );
     final under = <Widget>[
       if (state is TakeRunning) ...[
-        LinearProgressIndicator(color: context.bull.primary),
-        if (state.slow) _Line(l10n.p2pRobotStillWaiting(coordinator)),
+        // What a screen reader says of the take while it runs: « Take Order », in progress.
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: LinearProgressIndicator(
+            color: context.bull.primary,
+            semanticsLabel: l10n.p2pTakeOrder,
+          ),
+        ),
+        if (state.slow)
+          _Line(l10n.p2pRobotStillWaiting(coordinator), live: true),
       ],
       if (state case TakeIdle(:final problem?))
         _Line(
           problem.toText(context, coordinator: coordinator),
           color: context.bull.error,
+          live: true,
         ),
     ];
     final content = isRange
@@ -140,6 +150,8 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
                 ? button
                 : Tooltip(
                     message: l10n.p2pTakeSpecifyAmountFirst,
+                    // Opened by a tap, as the reference opens it on touch (`enterTouchDelay={0}`).
+                    triggerMode: TooltipTriggerMode.tap,
                     child: button,
                   ),
             under: under,
@@ -288,17 +300,18 @@ class _Column extends StatelessWidget {
   );
 }
 
-/// A line under the button, which wraps at any text size; a screen reader reads it when it changes.
+/// A line under the button, which wraps at any text size; a [live] one, what the take gave, is read out when it appears, while the estimate under the amount is not read at each keystroke.
 class _Line extends StatelessWidget {
   final String text;
   final Color? color;
+  final bool live;
 
-  const _Line(this.text, {this.color});
+  const _Line(this.text, {this.color, this.live = false});
 
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    liveRegion: true,
+    liveRegion: live,
     child: Text(
       text,
       textAlign: TextAlign.center,

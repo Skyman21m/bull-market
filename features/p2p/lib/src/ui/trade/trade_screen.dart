@@ -17,9 +17,12 @@ import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
+import '../../presentation/take_order_cubit.dart';
 import '../../presentation/trade_l10n.dart';
+import '../../presentation/trade_order_page_cubit.dart';
 import '../../presentation/trade_panel.dart';
 import '../coordinator_details_dialog.dart';
+import '../take_order_section.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
@@ -46,11 +49,23 @@ class TradeScreen extends StatefulWidget {
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
+  /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
+  final TakeOrderCubit Function(PublicOrder order)? takeOrder;
+
+  /// Opens the Garage, from the dialog shown when there is no robot to take with.
+  final VoidCallback? onOpenGarage;
+
+  /// Opens the trade a new take of the order started.
+  final ValueChanged<TradeRecord>? onTaken;
+
   const TradeScreen({
     super.key,
     required this.now,
     required this.coordinatorDetails,
     this.walletPayment,
+    this.takeOrder,
+    this.onOpenGarage,
+    this.onTaken,
   });
 
   @override
@@ -81,6 +96,16 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
       (_) => setState(() => _now = widget.now()),
     );
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _findIfPublic(context.read<TradeCubit>().state);
+    });
+  }
+
+  /// Looks for the order in its coordinator's book once the trade shows it public again, for « Take Order ».
+  void _findIfPublic(TradeScreenState state) {
+    if (TradeView.of(state.watch) case TradeOrderOnly(:final order)) {
+      unawaited(context.read<TradeOrderPageCubit>().findPublic(order));
+    }
   }
 
   @override
@@ -129,11 +154,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     final state = context.watch<TradeCubit>().state;
+    final page = context.watch<TradeOrderPageCubit>().state;
     final record = state.record;
     final view = TradeView.of(state.watch);
     final coordinator = _coordinatorName(state);
     final lines = _lines(context, state, coordinator);
-    return Material(
+    return BlocListener<TradeCubit, TradeScreenState>(
+      listener: (context, state) => _findIfPublic(state),
+      child: Material(
       color: colors.background,
       child: SafeArea(
         bottom: false,
@@ -179,22 +207,35 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       text: kind.toText(context, coordinator: coordinator),
                       waits: kind == TradeMessageKind.takePending,
                     ),
-                    TradeOrderOnly(:final order) => TradeOrderDetails(
+                    TradeOrderOnly(:final order) => _PublicAgain(
                       order: order,
                       now: _now,
+                      info: page.info,
+                      lookup: page.publicOrder,
+                      takeOrder: widget.takeOrder,
+                      onOpenGarage: widget.onOpenGarage,
+                      onTaken: widget.onTaken,
                       onOpenCoordinator: () => _openCoordinator(order),
                     ),
                     TradeContract(:final order?) when _orderTab =>
                       TradeOrderDetails(
                         order: order,
                         now: _now,
+                        info: page.info,
                         onOpenCoordinator: () => _openCoordinator(order),
                       ),
-                    TradeContract() when _orderTab => Padding(
-                      padding: const EdgeInsets.all(BullSpacing.xl),
-                      child: Center(
-                        child: CircularProgressIndicator(color: colors.primary),
+                    // No order read to show: the status the contract shows, with the lines above, never an endless wait.
+                    final TradeContract contract when _orderTab => _Line(
+                      contract.title.toText(
+                        context,
+                        bondSats: switch (contract.status) {
+                          WaitingForTakerBond(:final bond) => P2pFormats.of(
+                            context,
+                          ).sats(bond.orderAmount.value.toInt()),
+                          _ => '',
+                        },
                       ),
+                      center: true,
                     ),
                     final TradeContract contract => _Contract(
                       contract: contract,
@@ -210,6 +251,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -342,9 +384,11 @@ class _Contract extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The title is what a screen reader reads out when the status changes, rather than each line of the panel.
         Semantics(
           container: true,
           header: true,
+          liveRegion: true,
           child: Text(
             step == null
                 ? title
@@ -533,12 +577,7 @@ class _CancelRow extends StatelessWidget {
       children: [
         Tooltip(
           message: l10n.p2pTradeCopyOrderUrl,
-          child: TradeButton(
-            label: l10n.p2pTradeCopyUrl,
-            outlined: true,
-            onPressed: () =>
-                unawaited(Clipboard.setData(ClipboardData(text: url))),
-          ),
+          child: _CopyUrlButton(url: url),
         ),
         const Gap(BullSpacing.sm),
         Tooltip(
@@ -559,6 +598,7 @@ class _CancelRow extends StatelessWidget {
             notice.toText(context, coordinator: coordinator),
             color: colors.error,
             center: true,
+            live: true,
           ),
         ],
       ],
@@ -566,14 +606,23 @@ class _CancelRow extends StatelessWidget {
   }
 }
 
-/// A line of the trade screen, which wraps at any text size and is read out when it changes.
+/// A line of the trade screen, which wraps at any text size; a [live] one is read out when it changes.
 class _Line extends StatelessWidget {
   final String text;
   final Color? color;
   final IconData? icon;
   final bool center;
 
-  const _Line(this.text, {this.color, this.icon, this.center = false});
+  /// Whether a screen reader reads it out when it changes: a notice of what an action gave, not the static text of a panel.
+  final bool live;
+
+  const _Line(
+    this.text, {
+    this.color,
+    this.icon,
+    this.center = false,
+    this.live = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -588,7 +637,7 @@ class _Line extends StatelessWidget {
     );
     return Semantics(
       container: true,
-      liveRegion: true,
+      liveRegion: live,
       child: icon == null
           ? line
           : Row(
@@ -599,6 +648,117 @@ class _Line extends StatelessWidget {
                 Expanded(child: line),
               ],
             ),
+    );
+  }
+}
+
+/// « Copy URL », which says « Copied! » for a moment once the order's address is copied, as « Copy to clipboard » does.
+class _CopyUrlButton extends StatefulWidget {
+  final String url;
+
+  const _CopyUrlButton({required this.url});
+
+  @override
+  State<_CopyUrlButton> createState() => _CopyUrlButtonState();
+}
+
+class _CopyUrlButtonState extends State<_CopyUrlButton> {
+  bool _copied = false;
+  Timer? _copiedTimer;
+
+  @override
+  void dispose() {
+    _copiedTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.url));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _copiedTimer?.cancel();
+    _copiedTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    return Semantics(
+      liveRegion: _copied,
+      child: TradeButton(
+        label: _copied ? l10n.p2pCommonCopied : l10n.p2pTradeCopyUrl,
+        outlined: true,
+        onPressed: () => unawaited(_copy()),
+      ),
+    );
+  }
+}
+
+/// An order public again: the order with « Take Order », as the official client shows it to a robot that is no participant (`components/OrderDetails/index.tsx:566-578`).
+///
+/// The take starts from the order as its coordinator's book lists it ([TradeOrderPageCubit.findPublic]), with a fresh robot, through the same single caller of the take as the book's order page; while the book is read nothing is offered, and an order the book does not list says it is not available.
+class _PublicAgain extends StatelessWidget {
+  final CoordinatorOrder order;
+  final DateTime now;
+  final CoordinatorInfo? info;
+  final PublicOrderLookup lookup;
+  final TakeOrderCubit Function(PublicOrder order)? takeOrder;
+  final VoidCallback? onOpenGarage;
+  final ValueChanged<TradeRecord>? onTaken;
+  final VoidCallback onOpenCoordinator;
+
+  const _PublicAgain({
+    required this.order,
+    required this.now,
+    required this.info,
+    required this.lookup,
+    required this.takeOrder,
+    required this.onOpenGarage,
+    required this.onTaken,
+    required this.onOpenCoordinator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final takeOrder = this.takeOrder;
+    final onTaken = this.onTaken;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TradeOrderDetails(
+          order: order,
+          now: now,
+          info: info,
+          onOpenCoordinator: onOpenCoordinator,
+        ),
+        if (takeOrder != null && onTaken != null)
+          switch (lookup) {
+            PublicOrderFound(order: final public) when public.id == order.id =>
+              Padding(
+                padding: const EdgeInsets.only(top: BullSpacing.lg),
+                child: BlocProvider(
+                  key: ValueKey(public.id),
+                  create: (_) => takeOrder(public),
+                  child: TakeOrderSection(
+                    order: public,
+                    takerFee: info?.takerFee ?? 0,
+                    canTake: true,
+                    onOpenGarage: onOpenGarage,
+                    onTaken: onTaken,
+                  ),
+                ),
+              ),
+            PublicOrderNotListed(:final orderId) when orderId == order.id =>
+              Padding(
+                padding: const EdgeInsets.only(top: BullSpacing.lg),
+                child: _Line(l10n.p2pOrderNotAvailable, center: true),
+              ),
+            _ => const SizedBox.shrink(),
+          },
+      ],
     );
   }
 }

@@ -11,7 +11,8 @@ import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
-import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
+import 'package:p2p/testing.dart'
+    show ScriptedCoordinator, ScriptedFault, ScriptedRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -358,6 +359,40 @@ void main() {
       expect(harness.coordinator.holdsPreTake(harness.robot(0)), isFalse);
       await cubit.close();
     });
+
+    // The order public again offers « Take Order » on the trade screen (#88): the take rules of #87 let the same order be taken anew once the earlier trade is over, with a fresh robot.
+    for (final ending in ['a free cancel at 3', 'a take that expired']) {
+      test('after $ending, the order public again is taken anew', () async {
+        final (harness, cubit) = await taken();
+        cubit.start();
+        await harness.settle();
+        if (ending == 'a free cancel at 3') {
+          await cubit.cancel(_seen(cubit));
+          await harness.settle();
+        } else {
+          await harness.elapse(
+            ScriptedCoordinator.preTakeTime + const Duration(seconds: 30),
+          );
+        }
+        expect(_seen(cubit).status, isA<PreTakeEnded>());
+
+        final again = _takeCubit(harness, await harness.shownOrder());
+        await again.take();
+        await harness.settle();
+
+        final sent = again.state;
+        expect(sent, isA<TakeSent>());
+        final record = (sent as TakeSent).record;
+        expect(record.orderId, cubit.state.record.orderId);
+        expect(
+          record.robot.accountIndex,
+          isNot(cubit.state.record.robot.accountIndex),
+        );
+        expect(harness.coordinator.holdsPreTake(harness.robot(0)), isFalse);
+        await again.close();
+        await cubit.close();
+      });
+    }
 
     test(
       'at 6, a cancel without the acknowledgement is refused and sends nothing',

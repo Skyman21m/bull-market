@@ -17,6 +17,7 @@ import 'presentation/order_details_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
+import 'presentation/trade_order_page_cubit.dart';
 import 'ui/garage/garage_reauthentication.dart';
 import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
@@ -90,12 +91,38 @@ final class P2pRouter {
             state.extra is P2pTradeRouteArgs ? null : path,
         builder: (context, state) => switch (state.extra) {
           // One cubit, so one watch, per shown trade, closed with its page.
-          final P2pTradeRouteArgs args => BlocProvider(
-            create: (_) => locator<TradeCubit>(param1: args.record)..start(),
-            child: TradeScreen(
-              now: locator<P2pClock>().now,
-              coordinatorDetails: (request) =>
-                  locator<CoordinatorDetailsCubit>(param1: request),
+          final P2pTradeRouteArgs args => MultiBlocProvider(
+            providers: [
+              BlocProvider(
+                create: (_) =>
+                    locator<TradeCubit>(param1: args.record)..start(),
+              ),
+              BlocProvider(
+                create: (_) =>
+                    locator<TradeOrderPageCubit>(param1: args.record)
+                      ..loadInfo(),
+              ),
+            ],
+            child: Builder(
+              builder: (context) => TradeScreen(
+                now: locator<P2pClock>().now,
+                coordinatorDetails: (request) =>
+                    locator<CoordinatorDetailsCubit>(param1: request),
+                // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
+                takeOrder: locator.isRegistered<TakeOrderCubit>()
+                    ? (order) => locator<TakeOrderCubit>(
+                        param1: order,
+                        param2: args.record.network,
+                      )
+                    : null,
+                onOpenGarage: locator.isRegistered<GarageCubit>()
+                    ? () => context.pop(P2pOrderExit.garage)
+                    : null,
+                onTaken: (record) => context.pushReplacementNamed(
+                  tradeName,
+                  extra: P2pTradeRouteArgs(record),
+                ),
+              ),
             ),
           ),
           _ => const SizedBox.shrink(),
@@ -180,19 +207,35 @@ class _P2pPageState extends State<_P2pPage> {
 
   /// « Order »: the active trade, or the list of them when there are several or the records cannot be read.
   void _openTrades(BuildContext context, ActiveTradesState active) {
-    void open(TradeRecord record) => context.pushNamed(
-      P2pRouter.tradeName,
-      extra: P2pTradeRouteArgs(record),
-    );
+    Future<void> open(TradeRecord record) async {
+      final exit = await context.pushNamed<P2pOrderExit>(
+        P2pRouter.tradeName,
+        extra: P2pTradeRouteArgs(record),
+      );
+      if (exit == P2pOrderExit.garage && mounted) {
+        _show(P2pDestination.garage);
+      }
+    }
+
     switch (active) {
       case ActiveTradesListed(active: [final only]):
-        open(only.record);
+        unawaited(open(only.record));
       case ActiveTradesListed(:final active):
         unawaited(
-          ActiveTradesSheet.show(context, active: active, onOpen: open),
+          ActiveTradesSheet.show(
+            context,
+            active: active,
+            onOpen: (record) => unawaited(open(record)),
+          ),
         );
       case ActiveTradesUnreadable():
-        unawaited(ActiveTradesSheet.show(context, active: null, onOpen: open));
+        unawaited(
+          ActiveTradesSheet.show(
+            context,
+            active: null,
+            onOpen: (record) => unawaited(open(record)),
+          ),
+        );
       case ActiveTradesLoading():
         break;
     }

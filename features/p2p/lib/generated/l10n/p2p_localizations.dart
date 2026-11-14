@@ -2057,10 +2057,10 @@ abstract class P2pLocalizations {
   /// **'QR code of the bond invoice'**
   String get p2pTradeInvoiceQr;
 
-  /// Not in the RoboSats texts: the project's own: label of the expiry time of the bond invoice, among the facts read from it under the QR code (design note § 4.4).
+  /// Not in the RoboSats texts: the project's own: label of the time of day the bond invoice expires at, among the facts read from it under the QR code (design note § 4.4).
   ///
   /// In en, this message translates to:
-  /// **'Expires'**
+  /// **'Expires at'**
   String get p2pTradeInvoiceExpires;
 
   /// Not in the RoboSats texts: the project's own: label of the network of the bond invoice, among the facts read from it (design note § 4.4).
@@ -2524,6 +2524,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This trade is over for this robot.'**
   String get p2pTradeEnded;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the unit the official client writes for an amount of an order in bitcoin, which it shows in sats (`TakeButton.tsx:82-83`, `Payout.tsx:70`).
+  ///
+  /// In en, this message translates to:
+  /// **'Sats'**
+  String get p2pSatsUnit;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:76-80`), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'You are SWAPPING INTO Lightning'**
+  String get p2pTradeYouAreSwappingIn;
 }
 
 class _P2pLocalizationsDelegate

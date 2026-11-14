@@ -39,6 +39,7 @@ import 'domain/usecases/delete_garage_key_usecase.dart';
 import 'domain/usecases/derive_first_robot_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'domain/usecases/fetch_robot_usecase.dart';
+import 'domain/usecases/find_public_order_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
@@ -69,6 +70,7 @@ import 'presentation/order_details_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
+import 'presentation/trade_order_page_cubit.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -362,6 +364,21 @@ final class P2pLocator {
     locator.registerFactory<FetchCoordinatorInfoUsecase>(
       () => FetchCoordinatorInfoUsecase(
         CoordinatorClient(transport(), clock: clock),
+      ),
+    );
+    // Its only caller is the trade screen's order tab (#88), for an order public again.
+    locator.registerFactory<FindPublicOrderUsecase>(
+      () => FindPublicOrderUsecase(
+        CoordinatorClient(transport(), clock: clock),
+      ),
+    );
+    // What the order tab of a trade shows besides the order: read without a robot, as the order details of the book.
+    locator.registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+      (record, _) => TradeOrderPageCubit(
+        Federation.robosats.byAlias(record.coordinatorAlias),
+        record.network,
+        locator<FetchCoordinatorInfoUsecase>().execute,
+        locator<FindPublicOrderUsecase>().execute,
       ),
     );
     // Its only caller is `ReleaseRobotUsecase`, registered with the Garage, and nothing outside the feature reaches it.

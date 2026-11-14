@@ -1215,7 +1215,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pTradeInvoiceQr => 'QR code de la facture de caution';
 
   @override
-  String get p2pTradeInvoiceExpires => 'Expire';
+  String get p2pTradeInvoiceExpires => 'Expire à';
 
   @override
   String get p2pTradeInvoiceNetwork => 'Réseau';
@@ -1508,4 +1508,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeEnded => 'Cet échange est terminé pour ce robot.';
+
+  @override
+  String get p2pSatsUnit => 'Sats';
+
+  @override
+  String get p2pTradeYouAreSwappingIn => 'Vous faites un swap VERS Lightning';
 }

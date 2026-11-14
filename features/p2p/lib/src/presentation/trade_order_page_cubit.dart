@@ -76,7 +76,8 @@ final class PublicOrderNotListed extends PublicOrderLookup {
 
 /// Reads, without a robot, what the order's side of the trade screen shows besides the order: the only caller of [FindPublicOrderUsecase].
 class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
-  final Coordinator coordinator;
+  /// The trade's coordinator, `null` when the federation no longer lists it: nothing is then asked.
+  final Coordinator? coordinator;
   final RobosatsNetwork network;
   final CoordinatorInfoReader _info;
   final PublicOrderFinder _find;
@@ -87,7 +88,8 @@ class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
 
   /// Asks the coordinator for its fees, once.
   Future<void> loadInfo() async {
-    if (_askedInfo || isClosed) return;
+    final coordinator = this.coordinator;
+    if (_askedInfo || isClosed || coordinator == null) return;
     _askedInfo = true;
     final result = await _info(coordinator, network);
     if (isClosed) return;
@@ -96,7 +98,8 @@ class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
 
   /// Looks for [order], public again, in its coordinator's book: once per order, a second call while one runs or after it ended doing nothing.
   Future<void> findPublic(CoordinatorOrder order) async {
-    if (isClosed) return;
+    final coordinator = this.coordinator;
+    if (isClosed || coordinator == null) return;
     switch (state.publicOrder) {
       case PublicOrderLooking(:final orderId) ||
           PublicOrderNotListed(:final orderId) when orderId == order.id:

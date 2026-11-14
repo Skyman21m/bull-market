@@ -1193,7 +1193,7 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String get p2pTradeInvoiceQr => 'QR code of the bond invoice';
 
   @override
-  String get p2pTradeInvoiceExpires => 'Expires';
+  String get p2pTradeInvoiceExpires => 'Expires at';
 
   @override
   String get p2pTradeInvoiceNetwork => 'Network';
@@ -1484,6 +1484,12 @@ class P2pLocalizationsHi extends P2pLocalizations {
 
   @override
   String get p2pTradeEnded => 'This trade is over for this robot.';
+
+  @override
+  String get p2pSatsUnit => 'Sats';
+
+  @override
+  String get p2pTradeYouAreSwappingIn => 'You are SWAPPING INTO Lightning';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).
