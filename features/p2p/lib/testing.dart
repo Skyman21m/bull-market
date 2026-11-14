@@ -24,6 +24,8 @@ import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/p2p_waits.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
+import 'src/domain/trade/bolt11.dart';
+import 'src/testing/bolt11_test_invoice.dart';
 import 'src/p2p_locator.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
@@ -54,6 +56,9 @@ export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
 // BOLT11 invoices made by the tests (never real ones), for the tests of the app's decoder against the trade's checks (#86).
 export 'src/testing/bolt11_test_invoice.dart'
     show Bolt11TestDecoder, Bolt11TestInvoice;
+// A coordinator and an order of its book played for the tests of the trade use cases (#87): the take, the reads and the cancel as the reference backend answers them, over no network.
+export 'src/testing/scripted_coordinator.dart'
+    show ScriptedCoordinator, ScriptedFault, ScriptedRequest;
 export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'
@@ -70,6 +75,7 @@ export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
 /// The book waits before it asks a coordinator again on the timers of the test's zone (those of `WidgetTester` in a widget test), each wait exactly as long as its rule says, without the random spread of the app.
 ///
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
+/// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
@@ -81,6 +87,7 @@ void setUpP2pForTesting(
   P2pShuffle shuffle = P2pShuffle.unshuffled,
   GarageKeys? garageKeys,
   bool databaseUnavailable = false,
+  Bolt11Decoder? bolt11Decoder,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -91,6 +98,10 @@ void setUpP2pForTesting(
     _ => throw ArgumentError('Tor reports either states or reports'),
   };
   final tor = _StatesOnlyTor(reports);
+  // The trade's checks read the tests' invoices, never real ones.
+  locator.registerSingleton<Bolt11Decoder>(
+    bolt11Decoder ?? Bolt11TestDecoder(),
+  );
   P2pLocator.registerOver(
     locator,
     transport: () => transport,
