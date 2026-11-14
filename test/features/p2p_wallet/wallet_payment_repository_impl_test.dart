@@ -268,6 +268,8 @@ void main() {
           for (final record in [
             recordOf(status, signed: 's'),
             recordOf(status, signed: 's', transactionId: 't'),
+          // A transaction id without a saved payin still says the funds left.
+          recordOf(status, transactionId: 't'),
             // A failed order with nothing signed has no service order left to be under review.
             if (status != OrderSwapLocalStatus.failed)
               recordOf(status, payinStatus: 'under review'),

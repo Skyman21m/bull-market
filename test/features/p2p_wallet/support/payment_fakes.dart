@@ -391,6 +391,7 @@ OrderSwapRecord paymentRecord({
   BigInt? quoted,
   OrderSwapEnvironment environment = OrderSwapEnvironment.mainnet,
   String? payoutAddress,
+  bool withoutPayoutAddress = false,
 }) {
   final requested = amount ?? BigInt.from(600);
   final created = createdAt ?? testNow;
@@ -433,7 +434,9 @@ OrderSwapRecord paymentRecord({
             confirmationDeadline:
                 deadline ?? created.add(const Duration(minutes: 10)),
             liquidAddress: payinAddress,
-            lightningInvoice: payoutAddress ?? destination,
+            lightningInvoice: withoutPayoutAddress
+                ? null
+                : payoutAddress ?? destination,
           )
         : null,
   );

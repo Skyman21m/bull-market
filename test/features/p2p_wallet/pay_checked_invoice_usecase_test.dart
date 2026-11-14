@@ -1185,6 +1185,14 @@ void main() {
           destination: invoice.bolt11,
           environment: OrderSwapEnvironment.testnet,
         ),
+        // An order still being funded by another screen, or already signed while awaiting: nothing built on it.
+        paymentRecord(
+          destination: invoice.bolt11,
+          status: OrderSwapLocalStatus.preparingPayin,
+        ),
+        paymentRecord(destination: invoice.bolt11, signed: 'signed-elsewhere'),
+        // An order whose service answer states no payout address.
+        paymentRecord(destination: invoice.bolt11, withoutPayoutAddress: true),
         // A new order whose quoted payin is not the one accepted.
         paymentRecord(destination: invoice.bolt11, quoted: BigInt.from(700)),
         // An order paying out another amount (the review's mutant M07).
