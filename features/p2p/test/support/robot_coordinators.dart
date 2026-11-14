@@ -211,6 +211,13 @@ final class PairsByRobot implements RobotKeyComputePort {
     if (proveFailure case final failure?) return Err(failure);
     return Ok(robot.prove());
   }
+
+  @override
+  Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  unlock(RobotPgpKey key, RobotIdentity identity) async =>
+      Ok(key.unlock(identity));
 }
 
 /// The Tor sessions of the robots, whose closes are kept.

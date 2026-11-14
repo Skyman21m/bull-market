@@ -9,10 +9,12 @@ import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/robot_key_compute_port.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:primitives/primitives.dart';
@@ -170,3 +172,16 @@ Object readerKeepByTearOff(TradeReader reader) => reader.keep;
 
 /// An acknowledgement of a bond lost built elsewhere than in the cancel confirmation (review of #117).
 Object acknowledgedByTearOff() => BondLossAcknowledged.fromConfirmationDialog;
+
+/// A robot's key unlocked elsewhere than in the keyring of the trades, torn off (#90).
+Object unlockByTearOff(RobotKeyComputePort keys) => keys.unlock;
+
+/// A payout signed elsewhere than in the payout's use case, in a cascade (#90).
+Object signInCascade(UnlockedRobotPgpKey key) =>
+    key..signPayoutInvoice('lntb1', RobosatsNetwork.testnet);
+
+/// A lease of a trade's key taken elsewhere than in the payout's use case, through a variable (#90).
+Object leaseInVariable(TradeKeyring keyring) {
+  final lease = keyring.lease;
+  return lease;
+}
