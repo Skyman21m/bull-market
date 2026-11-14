@@ -212,8 +212,9 @@ class _SearchField<T extends Object> extends StatelessWidget {
         BullSpacing.md,
         BullSpacing.sm,
       ),
+      // While nothing is typed the hint names the field for a screen reader; once a text replaces it, the label does, so that the field is always « Search » and never « Search Search ».
       child: Semantics(
-        label: search.hint,
+        label: query.isEmpty ? null : search.hint,
         child: BullInputText(
           value: query,
           onChanged: onChanged,

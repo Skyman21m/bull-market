@@ -388,6 +388,42 @@ void main() {
       expect(matchesOptionSearch('Revolut', 'revolut '), isFalse);
     });
 
+    test('every letter of the table folds to its base, in lower and upper case', () {
+      // The table of `foldForSearch`, written out again: Latin-1, Latin Extended-A, and the Romanian « ș » and « ț ».
+      const table = {
+        'àáâãäåāăą': 'a',
+        'çćĉċč': 'c',
+        'ď': 'd',
+        'èéêëēĕėęě': 'e',
+        'ĝğġģ': 'g',
+        'ĥ': 'h',
+        'ìíîïĩīĭį': 'i',
+        'ĵ': 'j',
+        'ķ': 'k',
+        'ĺļľ': 'l',
+        'ñńņň': 'n',
+        'òóôõöōŏő': 'o',
+        'ŕŗř': 'r',
+        'śŝşšș': 's',
+        'ţťț': 't',
+        'ùúûüũūŭůűų': 'u',
+        'ŵ': 'w',
+        'ýÿŷ': 'y',
+        'źżž': 'z',
+      };
+      var letters = 0;
+      for (final MapEntry(key: group, value: base) in table.entries) {
+        for (final rune in group.runes) {
+          final letter = String.fromCharCode(rune);
+          expect(foldForSearch(letter), base, reason: letter);
+          expect(foldForSearch(letter.toUpperCase()), base, reason: letter);
+          letters++;
+        }
+      }
+      expect(letters, 82);
+      expect(foldForSearch('ȘȚ'), 'st');
+    });
+
     test('the folding', () {
       expect(foldForSearch('ÀÉÎÕÜ çñ ăşž'), 'aeiou cn asz');
       // No decomposition, as with NFD: kept.

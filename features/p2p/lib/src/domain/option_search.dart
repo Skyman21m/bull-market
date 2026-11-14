@@ -6,7 +6,7 @@ bool matchesOptionSearch(String name, String query) =>
 
 /// [text] in lower case without its accents, as MUI compares an option with what is typed (`toLowerCase`, then `normalize('NFD')` with the combining marks removed).
 ///
-/// Dart has no Unicode normalization, and the feature takes no dependency for it: the letters with an accent of Latin-1 and Latin Extended-A are mapped to their base letter, which covers the names of the official list and what a French, Spanish, Portuguese, German or Polish keyboard types; letters with no decomposition (« ø », « ł », « œ », « ß ») stay as they are, as with NFD, and other scripts are only lower-cased.
+/// Dart has no Unicode normalization, and the feature takes no dependency for it: the letters with an accent of Latin-1 and Latin Extended-A, and the Romanian « ș » and « ț », are mapped to their base letter, which covers the names of the official list and what a French, Spanish, Portuguese, German, Polish or Romanian keyboard types; the other letters NFD decomposes (the rest of Latin Extended-B, Vietnamese) are not folded, a limit; letters with no decomposition (« ø », « ł », « œ », « ß ») stay as they are, as with NFD, and other scripts are only lower-cased.
 String foldForSearch(String text) {
   final lower = text.toLowerCase();
   final folded = StringBuffer();
@@ -17,7 +17,7 @@ String foldForSearch(String text) {
   return folded.toString();
 }
 
-/// Each lower-case letter with an accent, by code point, and its base letter; « İ » lower-cases to « i » and a combining dot, which [foldForSearch] drops.
+/// Each lower-case letter with an accent, by code point, and its base letter: Latin-1 and Latin Extended-A, and the Romanian « ș » and « ț » of Latin Extended-B; [foldForSearch] lower-cases first, so the capitals fold too (Dart lower-cases « İ » to a plain « i »).
 final Map<int, String> _bases = {
   for (final (letters, base) in const [
     ('àáâãäåāăą', 'a'),
@@ -33,8 +33,8 @@ final Map<int, String> _bases = {
     ('ñńņň', 'n'),
     ('òóôõöōŏő', 'o'),
     ('ŕŗř', 'r'),
-    ('śŝşš', 's'),
-    ('ţť', 't'),
+    ('śŝşšș', 's'),
+    ('ţťț', 't'),
     ('ùúûüũūŭůűų', 'u'),
     ('ŵ', 'w'),
     ('ýÿŷ', 'y'),

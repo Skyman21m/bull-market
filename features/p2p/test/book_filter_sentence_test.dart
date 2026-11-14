@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -396,6 +397,53 @@ void main() {
   });
 
   group('the payment method sheet (#118)', () {
+    testWidgets(
+      'while no book is known: the official list, no count, no heading; frozen as opened; grouped when reopened',
+      (tester) async {
+        transport.held.addAll({
+          for (final coordinator in Federation.robosats.on(
+            RobosatsNetwork.mainnet,
+          ))
+            coordinator.shortAlias,
+        });
+        await open(tester);
+        await tester.tap(choice('Any payment method'));
+        await settle(tester);
+
+        // The book is unknown, not empty: no « No orders right now », no count, nothing dimmed; the official list in its order.
+        expect(row('No orders right now'), findsNothing);
+        expect(optionRow('Advcash'), findsOneWidget);
+        expect(
+          tester.getRect(optionRow('Advcash')).top,
+          lessThan(tester.getRect(optionRow('Airtel Money')).top),
+        );
+        expect(optionRow('Revolut'), findsNothing);
+        final advcash = tester.widget<Text>(row('Advcash'));
+        expect(advcash.style?.color, tester.element(sheet).bull.onSurface);
+        await typeSearch(tester, 'rev');
+        expect(row('Revolut'), findsOneWidget);
+        expect(row('Revolut · 3 orders'), findsNothing);
+        await typeSearch(tester, '');
+
+        // The books arrive while the sheet is open: it stays as it was opened.
+        for (final coordinator in Federation.robosats.on(RobosatsNetwork.mainnet)) {
+          transport.release(coordinator.shortAlias);
+        }
+        await settle(tester);
+        await settle(tester);
+        expect(listed(tester), [1, 2, 3, 4, 5, 6, 7]);
+        expect(row('No orders right now'), findsNothing);
+        expect(optionRow('Revolut'), findsNothing);
+        await closeSheet(tester);
+
+        // Reopened: the groups and the counts of the book received.
+        await tester.tap(choice('Any payment method'));
+        await settle(tester);
+        expect(row('Revolut · 3 orders'), findsOneWidget);
+        expect(row('No orders right now'), findsOneWidget);
+      },
+    );
+
     /// The methods of the open sheet, in the order it lists them, as far as its rows are built.
     List<String> listedMethods(WidgetTester tester) {
       final rows = [
@@ -491,6 +539,12 @@ void main() {
           tester.getSemantics(optionRow('Advcash')),
           isSemantics(label: 'Advcash', isChecked: true),
         );
+        // A dimmed method once ticked is drawn as every chosen row, in the primary colour, not in the muted one.
+        Color? colourOf(String label) =>
+            tester.widget<Text>(row(label)).style?.color;
+        expect(colourOf('Advcash'), colourOf('Wise · 1 order'));
+        expect(colourOf('Advcash'), isNot(colourOf('Airtel Money')));
+        expect(colourOf('Advcash'), isNot(colourOf('Revolut · 3 orders')));
         // No order has Advcash: with Wise or Advcash, Wise's order alone.
         expect(listed(tester), [2]);
         await closeSheet(tester);
@@ -515,6 +569,25 @@ void main() {
           tester.getRect(row('Any payment method')).top,
           lessThan(topOf(tester, 'Wise')),
         );
+
+        // The search field stays at the top of the sheet while its rows scroll under it, on an opaque background, so that no row shows through.
+        final field = find.descendant(of: sheet, matching: find.byType(TextField));
+        final background = tester.widget<ColoredBox>(
+          find.ancestor(of: field, matching: find.byType(ColoredBox)).first,
+        );
+        expect(background.color.a, 1.0);
+        final list = find.descendant(
+          of: sheet,
+          matching: find.byType(CustomScrollView),
+        );
+        await tester.drag(list, const Offset(0, -1500));
+        await settle(tester);
+        expect(field.hitTestable(), findsOneWidget);
+        final box = find.ancestor(of: field, matching: find.byType(ColoredBox)).first;
+        expect(tester.getRect(box).top, tester.getRect(list).top);
+        expect(row('Any payment method'), findsNothing);
+        await tester.drag(list, const Offset(0, 3000));
+        await settle(tester);
 
         // « Any payment method » clears every choice.
         await tester.tap(row('Any payment method'));
@@ -567,13 +640,18 @@ void main() {
         await open(tester);
         await tester.tap(choice('Any payment method'));
         await settle(tester);
-        // The field is labelled for a screen reader.
-        final field = tester.getSemantics(
-          find.descendant(of: sheet, matching: find.byType(TextField)),
+        // The field is labelled « Search » for a screen reader, once, before and after a text is typed.
+        final textField = find.descendant(
+          of: sheet,
+          matching: find.byType(TextField),
         );
-        expect('${field.label} ${field.hint}', contains('Search'));
+        expect(tester.getSemantics(textField).label, 'Search');
+        // Narrowing the rows does not move the field: the sheet keeps its height.
+        final fieldTop = tester.getRect(textField).top;
 
         await typeSearch(tester, 'RÉV');
+        expect(tester.getSemantics(textField).label, 'Search');
+        expect(tester.getRect(textField).top, fieldTop);
         expect(listedMethods(tester), ['Revolut']);
         expect(row('Revolut · 3 orders'), findsOneWidget);
         expect(row('Any payment method'), findsNothing);
@@ -599,6 +677,7 @@ void main() {
         await typeSearch(tester, 'zzz');
         expect(listedMethods(tester), isEmpty);
         expect(row('No payment method found'), findsOneWidget);
+        expect(tester.getRect(textField).top, fieldTop);
 
         // The button that empties the field brings everything back.
         await tester.tap(find.bySemanticsLabel('Clear'));
@@ -863,7 +942,19 @@ void main() {
             expect(tester.takeException(), isNull);
             tester.view.viewInsets = const FakeViewPadding(bottom: 260 * 3);
             addTearDown(tester.view.resetViewInsets);
+            await settle(tester);
+            final fieldBefore = tester
+                .getRect(find.descendant(of: sheet, matching: find.byType(TextField)))
+                .top;
             await typeSearch(tester, 'e');
+            expect(
+              tester
+                  .getRect(
+                    find.descendant(of: sheet, matching: find.byType(TextField)),
+                  )
+                  .top,
+              fieldBefore,
+            );
             expect(tester.takeException(), isNull);
             final field = find.descendant(
               of: sheet,
