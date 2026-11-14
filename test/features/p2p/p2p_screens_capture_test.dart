@@ -1843,7 +1843,10 @@ void main() {
         await tester.ensureVisible(find.text(l10n.p2pPayoutTabLightning));
         await settle();
         await capture('reception-6');
-        await tester.enterText(find.byType(TextField).first, payoutInvoice.text);
+        await tester.enterText(
+          find.byType(TextField).first,
+          payoutInvoice.text,
+        );
         await settle();
         await tester.ensureVisible(find.text(l10n.p2pTradeInvoiceNetwork));
         await settle();
@@ -1943,6 +1946,10 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pPayoutInvoiceExpiredSubmitNew));
         await capture('reception-15-nouvelle-facture');
+        // The trade ends (14), so that the order's next take is a new trade.
+        coordinator.moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await backToTab();
 
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.

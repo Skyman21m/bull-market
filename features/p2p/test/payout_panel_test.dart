@@ -224,24 +224,66 @@ void main() {
       },
     );
 
-    test('an outcome unknown is never given again by the cubit', () async {
-      final sender = _Sender()
-        ..answer = (shown) => Ok(PayoutOutcomeUnknown(record, six));
-      final cubit = cubitOf(sender)
-        ..show(six)
-        ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
-      await cubit.submit(PayoutKind.lightning);
-      await pumpEventQueue();
-      expect(sender.sent, hasLength(1));
-      expect(
-        cubit.state.phase,
-        isA<PayoutEditing>().having(
-          (p) => p.notice,
-          'notice',
-          isA<PayoutNoticeUnknown>(),
-        ),
-      );
-    });
+    test(
+      'an outcome unknown is never given again by the cubit, nor offered until a later read still asks',
+      () async {
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutOutcomeUnknown(record, six));
+        final cubit = cubitOf(sender)
+          ..show(six)
+          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+        await cubit.submit(PayoutKind.lightning);
+        await pumpEventQueue();
+        expect(sender.sent, hasLength(1));
+        expect(
+          cubit.state.phase,
+          isA<PayoutEditing>().having(
+            (p) => p.notice,
+            'notice',
+            isA<PayoutNoticeUnknown>(),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        await cubit.submit(PayoutKind.lightning);
+        expect(sender.sent, hasLength(1));
+        // A read made after it, at 6 still: the payout is asked again, and offered.
+        cubit.show(
+          await statuses.read(
+            await statuses.bondStep(),
+            orderJson(6),
+            after: const Duration(minutes: 2),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
+      },
+    );
+
+    test(
+      'a status shown while a payout is given leaves the payout running',
+      () async {
+        final gate = Completer<void>();
+        final sender = _Sender()
+          ..gate = gate.future
+          ..answer = (shown) => Ok(PayoutGiven(record, six));
+        final cubit = cubitOf(sender)
+          ..show(six)
+          ..checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
+        final running = cubit.submit(PayoutKind.lightning);
+        await pumpEventQueue();
+        cubit.show(
+          await statuses.read(
+            await statuses.bondStep(),
+            orderJson(6),
+            after: const Duration(minutes: 1),
+          ),
+        );
+        expect(cubit.state.phase, isA<PayoutSending>());
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        gate.complete();
+        await running;
+        expect(sender.sent, hasLength(1));
+      },
+    );
 
     test(
       'a status not stored, or one that asks nothing, gives nothing to submit',
@@ -533,6 +575,8 @@ void main() {
         );
         expect(told, 1);
         expect(sender.sent, hasLength(1));
+        // Received: « Submit » is not offered again.
+        expect(enabled(tester, submitButton()), isFalse);
       },
     );
 

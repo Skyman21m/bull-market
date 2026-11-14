@@ -124,6 +124,11 @@ final class P2pRouter {
                         ),
                       )
                     : null,
+                moneyActionRunning: locator.isRegistered<PayoutCubit>()
+                    ? (context) =>
+                          context.watch<PayoutCubit>().state.phase
+                              is PayoutSending
+                    : null,
                 // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
                 takeCubitFor:
                     locator.isRegistered<TakeOrderCubit>(

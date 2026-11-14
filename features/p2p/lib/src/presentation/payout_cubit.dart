@@ -72,9 +72,14 @@ final class PayoutPanelState {
         PayoutKind.onchain => address,
       };
 
-  /// The payout « Submit » of [kind]'s tab gives, when its text was checked and nothing is being sent.
+  /// The payout « Submit » of [kind]'s tab gives, when its text was checked, nothing is being sent, and no payout given was received or may have been: what the screen offers about money is true at each moment, and an action done is not offered again until a read shows the status still asks for it ([PayoutCubit.show]).
   CheckedPayout? submittable(PayoutKind kind) =>
       switch ((phase, checkOf(kind))) {
+        (
+          PayoutEditing(notice: PayoutNoticeGiven() || PayoutNoticeUnknown()),
+          _,
+        ) =>
+          null,
         (PayoutEditing(), Ok(:final value)) => value,
         _ => null,
       };
@@ -177,17 +182,30 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
   bool get holdsKey => _hold != null;
 
   /// The panel is shown with [seen], the status the trade screen shows: what the coordinator asks, and each tab's text checked again against it.
+  ///
+  /// A payout being given goes on as it is (nothing here resets it); a payout received or that may have been is offered again only once a read made after what it told shows the status still asking for one.
   void show(TradeSeen seen) {
     if (isClosed || identical(seen, state.seen)) return;
+    final told = _toldAt;
+    final phase = switch (state.phase) {
+      PayoutEditing(notice: PayoutNoticeGiven() || PayoutNoticeUnknown())
+          when told != null && seen.status.seenAt.isAfter(told) =>
+        const PayoutEditing(),
+      final phase => phase,
+    };
     emit(
       state._with(
         seen: seen,
         ask: _ask(record, seen),
         invoice: () => _checked(seen, _invoiceInput),
         address: () => _checked(seen, _addressInput),
+        phase: phase,
       ),
     );
   }
+
+  /// When the last payout given told it was received or may have been: the reads after it decide whether one is asked again.
+  DateTime? _toldAt;
 
   /// Checks [text], an invoice pasted or typed, with [budget] (`null` for an empty field, which shows nothing).
   void checkInvoice(String text, RoutingBudgetPpm budget) {
@@ -232,7 +250,8 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
     );
     if (isClosed) return;
     switch (result) {
-      case Ok(value: PayoutGiven()):
+      case Ok(value: PayoutGiven(:final seen)):
+        _toldAt = seen.status.seenAt;
         emit(
           state._with(phase: PayoutEditing(notice: PayoutNoticeGiven(kind))),
         );
@@ -244,7 +263,8 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
             ),
           ),
         );
-      case Ok(value: PayoutOutcomeUnknown()):
+      case Ok(value: PayoutOutcomeUnknown(:final seen)):
+        _toldAt = seen.status.seenAt;
         emit(
           state._with(phase: PayoutEditing(notice: PayoutNoticeUnknown(kind))),
         );

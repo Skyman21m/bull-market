@@ -56,6 +56,9 @@ class TradeScreen extends StatefulWidget {
   /// The payout panel of 6, 8 and 15 (#91): `null`, and the prompt shows no form, where the feature holds no robot (see [PayoutPanel]).
   final PayoutPanelBuilder? payout;
 
+  /// Whether an action that moves money runs for this trade (a payout being given, #91): « Cancel » is then off, so that a cancel never leaves while it runs; `null` for none.
+  final bool Function(BuildContext context)? moneyActionRunning;
+
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
@@ -71,6 +74,7 @@ class TradeScreen extends StatefulWidget {
     required this.coordinatorDetails,
     this.walletPayment,
     this.payout,
+    this.moneyActionRunning,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -259,6 +263,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
+                        moneyActionRunning:
+                            widget.moneyActionRunning?.call(context) ?? false,
                       ),
                     },
                   ],
@@ -374,6 +380,7 @@ class _Contract extends StatelessWidget {
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
+  final bool moneyActionRunning;
 
   const _Contract({
     required this.contract,
@@ -383,6 +390,7 @@ class _Contract extends StatelessWidget {
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
+    required this.moneyActionRunning,
   });
 
   @override
@@ -445,6 +453,7 @@ class _Contract extends StatelessWidget {
             seen: contract.seen,
             cancel: cancel,
             coordinator: coordinator,
+            moneyActionRunning: moneyActionRunning,
           ),
         ],
       ],
@@ -571,12 +580,16 @@ class _CancelRow extends StatefulWidget {
   final TradeCancelState cancel;
   final String coordinator;
 
+  /// Whether an action that moves money runs: « Cancel » is off meanwhile.
+  final bool moneyActionRunning;
+
   const _CancelRow({
     required this.offer,
     required this.record,
     required this.seen,
     required this.cancel,
     required this.coordinator,
+    required this.moneyActionRunning,
   });
 
   @override
@@ -652,7 +665,9 @@ class _CancelRowState extends State<_CancelRow> {
             outlined: true,
             color: colors.secondary,
             busy: running,
-            onPressed: () => unawaited(_press()),
+            onPressed: widget.moneyActionRunning
+                ? null
+                : () => unawaited(_press()),
           ),
         ),
         if (notice != null) ...[

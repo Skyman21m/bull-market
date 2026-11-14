@@ -796,7 +796,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case 15 when buyer:
         data
           ..['retries'] = 3
-          ..['next_retry_time'] = clock().toUtc().toIso8601String();
+          ..['next_retry_time'] = clock().toUtc().toIso8601String()
+          // `LNPayment.FailureReason.NONRECO`'s label (`api/models/ln_payment.py`).
+          ..['failure_reason'] = 'A non-recoverable error has occurred.';
         if (payoutExpired) data['invoice_expired'] = true;
       case 9 || 10:
         data

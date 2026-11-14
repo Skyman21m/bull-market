@@ -122,6 +122,7 @@ Future<TradeCubit> _show(
   double textScale = 1,
   WalletPaymentBuilder? walletPayment,
   PayoutPanelBuilder? payout,
+  bool moneyActionRunning = false,
   bool tickerEnabled = true,
   FakeTransport? transport,
   TakeOrderCubit Function(PublicOrder order)? takeCubitFor,
@@ -172,6 +173,7 @@ Future<TradeCubit> _show(
               coordinatorDetails: (_) => throw StateError('not opened'),
               walletPayment: walletPayment,
               payout: payout,
+              moneyActionRunning: (_) => moneyActionRunning,
               takeCubitFor: takeCubitFor,
               onTaken: taken?.add,
             ),
@@ -778,6 +780,23 @@ void main() {
         }
       },
     );
+
+    testWidgets('« Cancel » is off while a payout is being given (#91)', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: _watched('six'),
+        moneyActionRunning: true,
+      );
+      final cancel = find.widgetWithText(TradeButton, 'Cancel');
+      await _reveal(tester, cancel);
+      expect(tester.widget<TradeButton>(cancel).onPressed, isNull);
+      await tester.tap(cancel, warnIfMissed: false);
+      await settle(tester);
+      expect(find.text('Cancel the order?'), findsNothing);
+    });
 
     for (final (name, sent) in [
       ('sixCents', '123.45 EUR'),
