@@ -441,3 +441,38 @@ final class OrderActionOutcomeUnknown extends OrderActionFailure {
 
   const OrderActionOutcomeUnknown(this.cause);
 }
+
+/// Why a request about the chat of an order was refused, by the coordinator (errors 6000 to 6003, `chat/views.py`, commit ff1998c) or by this package before anything was sent.
+enum ChatRefusal {
+  /// The coordinator read no order number in a read (error 6000, `chat/views.py:48-49`): this package always sends one, so it means a coordinator that reads the request in another way.
+  ///
+  /// A post never gets it from the reference, whose serializer refuses a missing order number first with 6003 (`:121-129`).
+  orderIdMissing,
+
+  /// The robot is neither the maker nor the taker of the order (error 6001, `:53-54`, `:133-134`), or the last read of the order does not show it as one of them with a named peer.
+  notParticipant,
+
+  /// The order is not at a status where the coordinator takes this request (error 6002, `:56-62`, `:136-137`), or the last read is not at one: reading at 9, 10, 11 and 16, posting at 9 and 10.
+  notInChat,
+
+  /// The coordinator's serializer refused the body of a post (error 6003, `:121-124`, `chat/serializers.py:279-302`), which a body built by this package always passes.
+  invalidRequest,
+
+  /// The offset is not between 0 and `ChatPage.maxIndex`: refused by this package before anything is sent.
+  offsetOutOfRange,
+
+  /// The message was encrypted and signed by another robot's key than the one posting it: refused by this package before anything is sent.
+  messageOfAnotherRobot,
+
+  /// The encrypted message would take more than `OutgoingChatMessage.maxWireChars` characters on the wire: refused by this package when encrypting it.
+  messageTooLong,
+}
+
+/// A request about the chat of an order was refused for [reason]: nothing was stored (see `CoordinatorClient.postChat`).
+///
+/// Only the code is read, never the coordinator's text.
+final class ChatRefused extends CoordinatorOrderFailure {
+  final ChatRefusal reason;
+
+  const ChatRefused(this.reason);
+}

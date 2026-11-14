@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:convert/convert.dart' show hex;
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
+import 'package:robosats/src/coordinator/chat.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/coordinator_info.dart';
 import 'package:robosats/src/coordinator/coordinator_order.dart';
@@ -623,5 +624,196 @@ final class CoordinatorClient {
     } on FormatException {
       return const Err(CoordinatorNotJson());
     }
+  }
+
+  /// `GET /api/chat/?order_id=&offset=`, the messages of the chat of the order of [lastRead] above [offset], as its coordinator gives them to the robot [identity], with the peer's connection and key.
+  ///
+  /// The request is the reference client's poll (`frontend/src/components/TradeBox/EncryptedChat/EncryptedApiChat/index.tsx:133-136`, commit ff1998c), with the robot's short header and session; the coordinator answers it for the maker and the taker at 9, 10, 11 and 16 (`chat/views.py:40-113`).
+  /// The coordinator, the network and the order come from [lastRead], which must be this robot's read, show it as the maker or the taker with a named peer, and be at one of those statuses: otherwise nothing is sent and the failure is [OrderReadElsewhere] or a [ChatRefused] ([ChatRefusal.notParticipant], [ChatRefusal.notInChat]); an [offset] outside 0 to [ChatPage.maxIndex] is [ChatRefusal.offsetOutOfRange].
+  /// See [ChatPage] for what is read, what refuses the page and what is only stated; the peer's key is the coordinator's word: pin it for the trade.
+  /// The coordinator's refusals are [ChatRefused] kinds (6000 to 6002) and the authentication's ([RobotUnknown], [RobotCredentialsRejected]), never its text; an unknown order is a `500` at the reference (`chat/views.py:51`), read as [CoordinatorUnexpectedStatus].
+  /// A `GET`, so the transport may send it again after a connection failure.
+  /// Poll it through the app's robot request limiter, as every request of a robot.
+  Future<Result<ChatPage, CoordinatorFailure>> fetchChat({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required int offset,
+  }) async {
+    if (_chatRefusalBefore(
+          identity,
+          lastRead,
+          offset,
+          statuses: _chatReadStatuses,
+        )
+        case final refusal?) {
+      return Err(refusal);
+    }
+    final response = await _exchange(
+      lastRead.coordinator,
+      lastRead.network,
+      '/api/chat/',
+      {'order_id': '${lastRead.id}', 'offset': '$offset'},
+      CoordinatorReadBounds.chatBytes,
+      robot: (identity: identity, authorization: identity.authorizationHeader()),
+    );
+    return switch (_chatAnswer(response)) {
+      Err(:final failure) => Err(failure),
+      Ok(:final value) => ChatPage.parse(
+        value,
+        identity: identity,
+        lastRead: lastRead,
+        offset: offset,
+      ),
+    };
+  }
+
+  /// `POST /api/chat/` with `{"PGP_message":…,"order_id":…,"offset":…}`: posts [message] to the chat of the order of [lastRead] as the robot [identity], and reads the messages above [offset] that the coordinator answers with.
+  ///
+  /// The body is the reference client's (`frontend/src/components/TradeBox/EncryptedChat/index.tsx:259-267`, commit ff1998c), `PGP_message` being [OutgoingChatMessage.wire], with the robot's short header and session.
+  /// [offset] is always sent, so the answer is a [ChatPage] (`chat/views.py:194-214`): pass the last index read, and [ChatPage.indexOf] gives the index the coordinator gave the message when the page holds it.
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), when [message] was encrypted by another robot's key ([ChatRefusal.messageOfAnotherRobot]), when [lastRead] does not show this robot as the maker or the taker with a named peer ([ChatRefusal.notParticipant]) or is not at 9 or 10, the statuses where the coordinator stores a message ([ChatRefusal.notInChat], `chat/views.py:136-137`), or when [offset] is outside 0 to [ChatPage.maxIndex].
+  ///
+  /// A refusal of the coordinator is an [OrderActionRefused] whose cause is a [ChatRefused] kind (6000 to 6003) or one of the authentication's: each comes before the message is stored (`chat/views.py:121-137`).
+  /// Every other failure is an [OrderActionOutcomeUnknown]: the message may have been stored, since the reference stores it before it notifies and answers, and a `500` after storing is possible (`chat/views.py:158-192`, `:203`).
+  /// The caller then reads the chat again from the offset it posted with, and looks for the message with [ChatPage.indexOf] before it shows it as failed or offers to send it again; if it sends it again, it sends this same value, so that a reader can tell a duplicate by its text.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included; the transport never retries a request that is not a `GET`.
+  Future<Result<ChatPage, OrderActionFailure>> postChat({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required OutgoingChatMessage message,
+    required int offset,
+  }) async {
+    final before =
+        _chatRefusalBefore(
+          identity,
+          lastRead,
+          offset,
+          statuses: _chatPostStatuses,
+        ) ??
+        (message.sender != identity.hashId
+            ? const ChatRefused(ChatRefusal.messageOfAnotherRobot)
+            : null);
+    if (before != null) return Err(OrderActionRefused(before));
+    final onion = lastRead.coordinator.origins(lastRead.network).onion;
+    if (onion == null) {
+      return const Err(OrderActionRefused(CoordinatorNotOnNetwork()));
+    }
+    final response = await _send(
+      CoordinatorRequest(
+        method: CoordinatorHttpMethod.post,
+        url: Uri.parse(onion).replace(path: '/api/chat/'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': identity.authorizationHeader(),
+        },
+        body: utf8.encode(
+          jsonEncode({
+            'PGP_message': message.wire,
+            'order_id': lastRead.id,
+            'offset': offset,
+          }),
+        ),
+        maxResponseBytes: CoordinatorReadBounds.chatBytes,
+        robot: identity.sessionKey,
+      ),
+      catchErrors: true,
+    );
+    return switch (_chatAnswer(response)) {
+      Err(:final failure) => Err(_afterChatPost(failure)),
+      Ok(:final value) => ChatPage.parse(
+        value,
+        identity: identity,
+        lastRead: lastRead,
+        offset: offset,
+      ).mapErr(_afterChatPost),
+    };
+  }
+
+  /// The statuses at which the coordinator answers a read of the chat (`chat/views.py:56-62`) and stores a post (`:136-137`).
+  static const _chatReadStatuses = {
+    CoordinatorOrderStatus.sendingFiat,
+    CoordinatorOrderStatus.fiatSent,
+    CoordinatorOrderStatus.inDispute,
+    CoordinatorOrderStatus.waitingForDisputeResolution,
+  };
+  static const _chatPostStatuses = {
+    CoordinatorOrderStatus.sendingFiat,
+    CoordinatorOrderStatus.fiatSent,
+  };
+
+  /// Why a request about the chat of the order of [lastRead] must not be sent by the robot [identity], or `null`.
+  static CoordinatorFailure? _chatRefusalBefore(
+    RobotIdentity identity,
+    CoordinatorOrder lastRead,
+    int offset, {
+    required Set<CoordinatorOrderStatus> statuses,
+  }) {
+    if (!lastRead.wasReadBy(identity)) return const OrderReadElsewhere();
+    final peer = lastRead.isMaker ? lastRead.taker : lastRead.maker;
+    if (!(lastRead.isMaker || lastRead.isTaker) || peer == null) {
+      return const ChatRefused(ChatRefusal.notParticipant);
+    }
+    if (!statuses.contains(lastRead.status)) {
+      return const ChatRefused(ChatRefusal.notInChat);
+    }
+    if (offset < 0 || offset > ChatPage.maxIndex) {
+      return const ChatRefused(ChatRefusal.offsetOutOfRange);
+    }
+    return null;
+  }
+
+  /// Whether [failure] of a post comes before the message was stored, so that nothing was done.
+  ///
+  /// Refused: every [ChatRefused] (6000 to 6003, each answered before the message is stored, `chat/views.py:121-137`, and the checks of this package), the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Everything else is an outcome unknown: a `5xx` (the reference can fail after storing, `chat/views.py:169-192`), a code the reference does not send to a post, a malformed answer to a post that was stored, a lost connection.
+  static OrderActionFailure _afterChatPost(CoordinatorFailure failure) =>
+      switch (failure) {
+        ChatRefused() ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        OrderReadElsewhere() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
+
+  /// The decoded JSON of a `200` answer about a chat, or why the coordinator refused.
+  static Result<Object?, CoordinatorFailure> _chatAnswer(
+    Result<CoordinatorResponse, CoordinatorFailure> response,
+  ) => switch (response) {
+    Err(:final failure) => Err(failure),
+    Ok(value: CoordinatorResponse(statusCode: 200)) => _decode(response),
+    Ok(value: final answer) => Err(_chatRefusal(answer)),
+  };
+
+  /// Why a coordinator answered a request about a chat with a status other than `200`.
+  ///
+  /// Its errors are `{"error_code": …, "bad_request": …}` (`api/errors.py:85-89`, `:99-117`): only the code is read, on a `4xx` answer only, as for an order; the message is never kept.
+  /// With no code, `401` and `403` are the authentication's refusal, and anything else is the HTTP status alone.
+  static CoordinatorFailure _chatRefusal(CoordinatorResponse answer) {
+    final status = answer.statusCode;
+    if (status < 400 || status > 499) {
+      return CoordinatorUnexpectedStatus(status);
+    }
+    final code = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(
+        object,
+      ).optionalInt('error_code', min: 0, max: 99999),
+      _ => null,
+    };
+    return switch (code) {
+      null when status == 401 || status == 403 =>
+        const RobotCredentialsRejected(),
+      null => CoordinatorUnexpectedStatus(status),
+      6000 => const ChatRefused(ChatRefusal.orderIdMissing),
+      6001 => const ChatRefused(ChatRefusal.notParticipant),
+      6002 => const ChatRefused(ChatRefusal.notInChat),
+      6003 => const ChatRefused(ChatRefusal.invalidRequest),
+      7001 => const RobotUnknown(),
+      7000 || 7003 => const RobotCredentialsRejected(),
+      _ => OrderRequestRefused(code),
+    };
   }
 }

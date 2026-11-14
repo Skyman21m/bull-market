@@ -23,4 +23,9 @@ abstract final class CoordinatorReadBounds {
 
   /// Satoshis that can exist, the upper bound of every amount in sats.
   static const maxSats = 2100000000000000;
+
+  /// Bytes of a `/api/chat/` body: about 1.2 KB per message of a robot, and a whole chat when read from the start.
+  ///
+  /// Nothing bounds what a peer posts (`chat/serializers.py:280-283`), so a peer can make a page larger than this: read again from a later offset, such as the order's `chat_last_index`, to get past it.
+  static const chatBytes = 4194304;
 }

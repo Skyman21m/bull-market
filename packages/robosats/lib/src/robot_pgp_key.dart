@@ -17,6 +17,7 @@ import 'package:robosats/src/pgp_wire.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_token.dart';
+import 'package:robosats/src/coordinator/chat.dart';
 
 /// The official client dates keys and chat signatures one day in the past (`frontend/src/pgp/index.ts:29` and `:58`).
 ///
@@ -535,6 +536,23 @@ final class UnlockedRobotPgpKey {
 
   @override
   String toString() => 'UnlockedRobotPgpKey(${key.publicKey.fingerprint})';
+
+  /// [encryptChatMessage] for `CoordinatorClient.postChat`: the message as the one value that call sends, bound to this robot and to [peer].
+  ///
+  /// Encrypt to the peer key pinned for the trade, never to a key read again without comparing it.
+  /// Fails as [encryptChatMessage], and with [ChatRefused] of [ChatRefusal.messageTooLong] when the message would take more than [OutgoingChatMessage.maxWireChars] characters on the wire.
+  Result<OutgoingChatMessage, RobosatsFailure> encryptChatMessageToPost(
+    String plaintext, {
+    required PgpPublicKey peer,
+    DateTime? now,
+  }) => switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
+    Err(:final failure) => Err(failure),
+    Ok(value: final armored) => OutgoingChatMessage.internal(
+      armored,
+      sender: _identity.hashId,
+      peerFingerprint: peer.fingerprint,
+    ),
+  };
 }
 
 /// A chat message once decrypted.

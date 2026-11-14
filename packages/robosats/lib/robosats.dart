@@ -7,6 +7,8 @@
 /// For the robot of this device, the client also reads an order as the coordinator describes it to that robot (`/api/order/`, a [CoordinatorOrder]) and sends a taker's take and cancel of it; nothing in the app calls them yet.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
+///
+/// The client also reads the encrypted chat of a trade as a [ChatPage] and posts to it an [OutgoingChatMessage], which only the robot's unlocked key makes ([UnlockedRobotPgpKey.encryptChatMessageToPost]); nothing in the app calls them yet.
 library;
 
 export 'src/coordinator/coordinator.dart'
@@ -75,3 +77,15 @@ export 'src/robot_identity.dart' show NostrKeyDerivation, RobotIdentity;
 export 'src/robot_pgp_key.dart'
     show DecryptedChatMessage, PgpPublicKey, RobotPgpKey, UnlockedRobotPgpKey;
 export 'src/robot_token.dart' show RobotToken, TokenEntropy;
+export 'src/coordinator/chat.dart'
+    show
+        ChatMessage,
+        ChatMessageContent,
+        ChatPage,
+        ChatPeerKey,
+        ChatPeerKeyMisnamed,
+        ChatPeerKeyMissing,
+        ChatPeerKeyOfPeer,
+        ChatPeerKeyUnreadable,
+        ChatSender,
+        OutgoingChatMessage;
