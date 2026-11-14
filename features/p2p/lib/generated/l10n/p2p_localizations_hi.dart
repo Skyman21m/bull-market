@@ -1489,7 +1489,7 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String get p2pSatsUnit => 'Sats';
 
   @override
-  String get p2pTradeYouAreSwappingIn => 'You are SWAPPING INTO Lightning';
+  String get p2pTradeYouAreSwappingIn => 'SWAPPING INTO Lightning';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

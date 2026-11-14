@@ -10,6 +10,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
+import '../../domain/taker_estimate.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
@@ -22,7 +23,9 @@ import '../../presentation/trade_l10n.dart';
 import '../../presentation/trade_order_page_cubit.dart';
 import '../../presentation/trade_panel.dart';
 import '../coordinator_details_dialog.dart';
+import '../order_details_screen.dart';
 import '../take_order_section.dart';
+import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
@@ -131,6 +134,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
         _suspended = true;
         unawaited(cubit.suspend());
       case AppLifecycleState.resumed:
+        // The clock first, so that an invoice that expired while the app was away is not drawn for a frame.
+        setState(() => _now = widget.now());
         if (_suspended) {
           _suspended = false;
           cubit.resume();
@@ -734,7 +739,7 @@ class _CopyUrlButtonState extends State<_CopyUrlButton> {
 
 /// An order public again: the order with « Take Order », as the official client shows it to a robot that is no participant (`components/OrderDetails/index.tsx:566-578`).
 ///
-/// The take starts from the order as its coordinator's book lists it ([TradeOrderPageCubit.findPublic]), with a fresh robot, through the same single caller of the take as the book's order page; while the book is read nothing is offered, and an order the book does not list says it is not available.
+/// Once the coordinator's book lists it ([TradeOrderPageCubit.findPublic]), the order shown is the book's, as on the order details of the book, and « Take Order » takes that same order, with a fresh robot, through the same single caller of the take; until then, the order as the trade's last read describes it. An order the book does not list says it is not available; a book that could not be read says nothing of the order and offers « Retry », once per press.
 class _PublicAgain extends StatelessWidget {
   final CoordinatorOrder order;
   final DateTime now;
@@ -758,9 +763,50 @@ class _PublicAgain extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final takeCubitFor = this.takeCubitFor;
     final onTaken = this.onTaken;
+    final takes = takeCubitFor != null && onTaken != null;
+    if (takes) {
+      if (lookup case PublicOrderFound(
+        order: final public,
+      ) when public.id == order.id) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OrderHostRow(
+              coordinator: public.coordinator,
+              orderId: public.id,
+              onTap: onOpenCoordinator,
+            ),
+            const Gap(BullSpacing.sm),
+            OrderFeeRow(info: info),
+            const Gap(BullSpacing.sm),
+            PublicOrderDetailsCard(
+              order: public,
+              estimate: TakerEstimate.of(public, takerFee: info?.takerFee ?? 0),
+              now: now,
+            ),
+            const Gap(BullSpacing.md),
+            OrderMakerRow(maker: public.maker, activity: public.makerActivity),
+            const Gap(BullSpacing.lg),
+            BlocProvider(
+              key: ValueKey(public.id),
+              create: (_) => takeCubitFor(public),
+              child: TakeOrderSection(
+                order: public,
+                takerFee: info?.takerFee ?? 0,
+                canTake: true,
+                onOpenGarage: onOpenGarage,
+                onTaken: onTaken,
+              ),
+            ),
+          ],
+        );
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -770,27 +816,36 @@ class _PublicAgain extends StatelessWidget {
           info: info,
           onOpenCoordinator: onOpenCoordinator,
         ),
-        if (takeCubitFor != null && onTaken != null)
+        if (takes)
           switch (lookup) {
-            PublicOrderFound(order: final public) when public.id == order.id =>
-              Padding(
-                padding: const EdgeInsets.only(top: BullSpacing.lg),
-                child: BlocProvider(
-                  key: ValueKey(public.id),
-                  create: (_) => takeCubitFor(public),
-                  child: TakeOrderSection(
-                    order: public,
-                    takerFee: info?.takerFee ?? 0,
-                    canTake: true,
-                    onOpenGarage: onOpenGarage,
-                    onTaken: onTaken,
-                  ),
-                ),
-              ),
             PublicOrderNotListed(:final orderId) when orderId == order.id =>
               Padding(
                 padding: const EdgeInsets.only(top: BullSpacing.lg),
                 child: _Line(l10n.p2pOrderNotAvailable, center: true),
+              ),
+            // The book could not be read: a fault, not an answer about the order; the coordinator dialog's words and « Retry ».
+            PublicOrderLookFailed(:final orderId) when orderId == order.id =>
+              Padding(
+                padding: const EdgeInsets.only(top: BullSpacing.lg),
+                child: Column(
+                  children: [
+                    _Line(
+                      l10n.p2pCoordinatorOffline,
+                      color: colors.error,
+                      center: true,
+                      live: true,
+                    ),
+                    TextButton(
+                      onPressed: () => unawaited(
+                        context.read<TradeOrderPageCubit>().retryPublic(order),
+                      ),
+                      child: Text(
+                        l10n.p2pCommonRetry,
+                        style: text.labelLarge?.copyWith(color: colors.primary),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             _ => const SizedBox.shrink(),
           },

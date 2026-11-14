@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/taker_estimate.dart';
 import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
 import '../presentation/order_details_cubit.dart';
@@ -115,7 +116,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   const Gap(BullSpacing.sm),
                   OrderFeeRow(info: state.info),
                   const Gap(BullSpacing.sm),
-                  _DetailsCard(state: state, now: _now),
+                  PublicOrderDetailsCard(
+                    order: order,
+                    estimate: state.estimate,
+                    now: _now,
+                  ),
                   const Gap(BullSpacing.md),
                   OrderMakerRow(
                     maker: order.maker,
@@ -139,12 +144,20 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 }
 
-/// « Order Details »: the amount, what the taker sends and receives, the payment methods, price and premium, expiry and deposit time.
-class _DetailsCard extends StatelessWidget {
-  final OrderDetailsState state;
+/// « Order Details » of an order of the book: the amount, what the taker sends and receives, the payment methods, price and premium, expiry and deposit time; also the trade screen's for an order public again, so that what it shows and what « Take Order » takes are the same order.
+class PublicOrderDetailsCard extends StatelessWidget {
+  final PublicOrder order;
+
+  /// The sats a taker would trade ([TakerEstimate.of]), `null` when the order gives none.
+  final TakerEstimate? estimate;
   final DateTime now;
 
-  const _DetailsCard({required this.state, required this.now});
+  const PublicOrderDetailsCard({
+    super.key,
+    required this.order,
+    required this.estimate,
+    required this.now,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -152,13 +165,12 @@ class _DetailsCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    final order = state.order;
     final code = order.currency.code;
     // A swap order is given in BTC, which the official client writes in sats.
     final amount = order.currency.isBitcoin
         ? l10n.p2pAmountSats(formats.btcAmountInSats(order.amount))
         : '${formats.orderAmount(order.amount)} $code';
-    final estimate = state.estimate;
+    final estimate = this.estimate;
     final sats = estimate == null ? '-' : formats.estimate(estimate);
     final methods = order.paymentMethods.text;
     final (send, receive) = switch (order.type) {

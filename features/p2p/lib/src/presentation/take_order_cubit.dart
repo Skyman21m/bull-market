@@ -79,7 +79,13 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
   /// After how long a take that runs is said to be still waiting, as the robot panel of the Garage does (`RobotCoordinatorCubit.stillWaitingAfter`).
   static const stillWaitingAfter = Duration(seconds: 30);
 
+  /// The locator's name of the cubit that takes an order public again from the trade screen, given the trade shown ([shownTrade]).
+  static const fromTrade = 'fromTrade';
+
   final PublicOrder order;
+
+  /// The trade the screen shows, when the take starts from it: a take refused because the order still has that very trade open here (its close could not be written) is said as a refusal, not opened again over itself.
+  final TradeRecord? shownTrade;
   final RobosatsNetwork network;
   final TakeOrder _take;
   final HasGarageKey _hasKey;
@@ -92,6 +98,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     this._take,
     this._hasKey, {
     this._stillWaitingAfter = TakeOrderCubit.stillWaitingAfter,
+    this.shownTrade,
   }) : super(const TakeIdle());
 
   /// Whether a Garage Key is stored for the network, which decides between « Store your garage key » and « You do not have a Garage Key » (`Dialogs/Confirmation.tsx`): `false` only when the vault says there is none; a key that cannot be read goes on, and the take says why it fails.
@@ -114,6 +121,10 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     if (isClosed) return;
     emit(switch (result) {
       // The order already has an open trade on this device: that trade is opened rather than taken again.
+      // ... unless it is the trade on screen, whose close could not be written: said as a refusal, never opened over itself.
+      Err(failure: final TakeOrderAlreadyTraded refused)
+          when refused.record == shownTrade =>
+        TakeIdle(problem: TakeWasRefused(refused)),
       Err(failure: TakeOrderAlreadyTraded(:final record)) => TakeSent(record),
       Err(:final failure) => TakeIdle(problem: TakeWasRefused(failure)),
       Ok(value: TakeNotMade(:final refusal)) => TakeIdle(

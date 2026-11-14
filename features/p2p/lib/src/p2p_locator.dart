@@ -319,6 +319,17 @@ final class P2pLocator {
         locator<HasGarageKeyUsecase>().execute,
       ),
     );
+    // The same, from the trade screen of an order public again: the trade shown is given, so that a take refused for that very trade is not opened over itself.
+    locator.registerFactoryParam<TakeOrderCubit, PublicOrder, TradeRecord>(
+      (order, shown) => TakeOrderCubit(
+        order,
+        shown.network,
+        locator<TakeOrderUsecase>().execute,
+        locator<HasGarageKeyUsecase>().execute,
+        shownTrade: shown,
+      ),
+      instanceName: TakeOrderCubit.fromTrade,
+    );
     locator.registerFactoryParam<TradeCubit, TradeRecord, void>(
       (record, _) => TradeCubit(
         record,

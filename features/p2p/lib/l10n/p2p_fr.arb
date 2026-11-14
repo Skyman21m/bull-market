@@ -396,5 +396,5 @@
   "p2pActiveOrder": "Ordre actif #{orderId}",
   "p2pTradeEnded": "Cet échange est terminé pour ce robot.",
   "p2pSatsUnit": "Sats",
-  "p2pTradeYouAreSwappingIn": "Vous faites un swap VERS Lightning"
+  "p2pTradeYouAreSwappingIn": "SWAP VERS Lightning"
 }

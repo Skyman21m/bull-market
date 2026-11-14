@@ -2531,10 +2531,10 @@ abstract class P2pLocalizations {
   /// **'Sats'**
   String get p2pSatsUnit;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:76-80`), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's.
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:78`, without « You are »), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's, worded on the English.
   ///
   /// In en, this message translates to:
-  /// **'You are SWAPPING INTO Lightning'**
+  /// **'SWAPPING INTO Lightning'**
   String get p2pTradeYouAreSwappingIn;
 }
 

@@ -176,8 +176,11 @@ class TradeCubit extends Cubit<TradeScreenState> {
     await signals?.close();
   }
 
-  /// Follows the trade again when the app comes back: listening reads at once.
-  void resume() => start();
+  /// Follows the trade again when the app comes back: listening reads at once; not once the status shown is an end, as the official client stops reading at an end (`Slot.model.ts:216-223`): the screen keeps what it shows (an order public again with « Take Order » included).
+  void resume() {
+    if (state.seen?.status.isTerminal ?? false) return;
+    start();
+  }
 
   /// Tells the watch whether the trade's screen is the one shown, or to read now.
   void signal(TradeWatchSignal signal) {

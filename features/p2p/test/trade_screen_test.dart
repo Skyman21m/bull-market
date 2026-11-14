@@ -92,6 +92,15 @@ late Map<String, TradeSeen> _seen;
 
 final _record = TradeScreenStatuses.record;
 
+/// A take cubit whose take the test never expects.
+TakeOrderCubit _neverTaken(PublicOrder order) => TakeOrderCubit(
+  order,
+  RobosatsNetwork.mainnet,
+  (shown, {required network, amount, password}) =>
+      throw StateError('not taken'),
+  (network) async => const Ok(true),
+);
+
 /// What temple says of itself on mainnet, its fees included.
 Map<String, Object?> _templeInfo() =>
     jsonDecode(
@@ -292,11 +301,11 @@ void main() {
   );
 
   group('status 3, the bond', () {
-    testWidgets('an order in bitcoin: « You are SWAPPING INTO Lightning »', (
+    testWidgets('an order in bitcoin: « SWAPPING INTO Lightning »', (
       tester,
     ) async {
       await _show(tester, watch: _Watch(), state: _watched('swapBond'));
-      expect(find.text('You are SWAPPING INTO Lightning'), findsOneWidget);
+      expect(find.text('SWAPPING INTO Lightning'), findsOneWidget);
       expect(find.text('You are BUYING BTC'), findsNothing);
     });
 
@@ -864,7 +873,7 @@ void main() {
         final taken = <TradeRecord>[];
         final transport = FakeTransport(
           books: {
-            'temple': [bookOrder(id: tradeOrderId)],
+            'temple': [bookOrder(id: tradeOrderId, amount: 150)],
           },
         );
         await _show(
@@ -885,6 +894,9 @@ void main() {
         );
         await settle(tester);
         expect(transport.requested, contains('temple/api/book/'));
+        // The order shown is the book's, the one « Take Order » takes, not the trade's last read (100 EUR).
+        expect(find.text('150 EUR'), findsWidgets);
+        expect(find.text('100 EUR'), findsNothing);
         await _reveal(tester, find.text('Take Order'));
         await tester.tap(find.text('Take Order'));
         await settle(tester);
@@ -896,13 +908,121 @@ void main() {
     );
 
     testWidgets(
+      'an order public again whose book could not be read: no claim on the order, « Retry » reads it once more',
+      (tester) async {
+        final transport = FakeTransport(
+          books: {
+            'temple': [bookOrder(id: tradeOrderId)],
+          },
+          failures: {'temple': const CoordinatorTimedOut()},
+        );
+        int bookReads() =>
+            transport.requested.where((r) => r == 'temple/api/book/').length;
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('publicAgain'),
+          transport: transport,
+          takeCubitFor: _neverTaken,
+          taken: [],
+        );
+        await settle(tester);
+        await _reveal(tester, find.text('Retry'));
+        expect(find.text('Coordinator offline'), findsOneWidget);
+        expect(find.text('This order is not available'), findsNothing);
+        expect(bookReads(), 1);
+        await tester.pump(const Duration(seconds: 30));
+        expect(bookReads(), 1);
+
+        transport.failures.remove('temple');
+        await tester.tap(find.text('Retry'));
+        await settle(tester);
+        expect(bookReads(), 2);
+        expect(find.text('Coordinator offline'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'an order public again whose earlier trade here is the one shown, still open: the refusal said, no trade opened over itself',
+      (tester) async {
+        final taken = <TradeRecord>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('publicAgain'),
+          transport: FakeTransport(
+            books: {
+              'temple': [bookOrder(id: tradeOrderId)],
+            },
+          ),
+          taken: taken,
+          takeCubitFor: (order) => TakeOrderCubit(
+            order,
+            RobosatsNetwork.mainnet,
+            (shown, {required network, amount, password}) async =>
+                Err(TakeOrderAlreadyTraded(_record)),
+            (network) async => const Ok(true),
+            shownTrade: _record,
+          ),
+        );
+        await settle(tester);
+        await _reveal(tester, find.text('Take Order'));
+        await tester.tap(find.text('Take Order'));
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(taken, isEmpty);
+        await _reveal(tester, find.text('The order was not taken.'));
+        expect(find.text('The order was not taken.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an end shown with « Take Order »: paused then resumed, nothing is read again and the screen stays',
+      (tester) async {
+        final watch = _Watch();
+        expect(_seen['publicAgain']?.status.isTerminal, isTrue);
+        await _show(
+          tester,
+          watch: watch,
+          state: _watched('publicAgain'),
+          transport: FakeTransport(
+            books: {
+              'temple': [bookOrder(id: tradeOrderId)],
+            },
+          ),
+          takeCubitFor: _neverTaken,
+          taken: [],
+        );
+        await settle(tester);
+        expect(find.text('Take Order'), findsOneWidget);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await settle(tester);
+        expect(watch.listens, 1);
+        expect(find.text('Take Order'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'an order public again the book no longer lists: « This order is not available »',
       (tester) async {
         await _show(
           tester,
           watch: _Watch(),
           state: _watched('publicAgain'),
-          takeCubitFor: (order) => throw StateError('not taken'),
+          takeCubitFor: _neverTaken,
           taken: [],
         );
         await settle(tester);

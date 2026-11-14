@@ -67,11 +67,18 @@ final class PublicOrderFound extends PublicOrderLookup {
   const PublicOrderFound(this.order);
 }
 
-/// The book does not list it, or could not be read: it cannot be taken from here.
+/// The book does not list it: it cannot be taken from here.
 final class PublicOrderNotListed extends PublicOrderLookup {
   final int orderId;
 
   const PublicOrderNotListed(this.orderId);
+}
+
+/// The book could not be read: nothing is said of the order, and « Retry » reads it again ([TradeOrderPageCubit.retryPublic]).
+final class PublicOrderLookFailed extends PublicOrderLookup {
+  final int orderId;
+
+  const PublicOrderLookFailed(this.orderId);
 }
 
 /// Reads, without a robot, what the order's side of the trade screen shows besides the order: the only caller of [FindPublicOrderUsecase].
@@ -96,20 +103,33 @@ class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
     if (result case Ok(:final value)) emit(state._with(info: value));
   }
 
-  /// Looks for [order], public again, in its coordinator's book: once per order, a second call while one runs or after it ended doing nothing.
+  /// Looks for [order], public again, in its coordinator's book: once per order, a second call while one runs or after it ended doing nothing, a failed read included (only [retryPublic] reads again).
   Future<void> findPublic(CoordinatorOrder order) async {
-    final coordinator = this.coordinator;
-    if (isClosed || coordinator == null) return;
     switch (state.publicOrder) {
       case PublicOrderLooking(:final orderId) ||
-              PublicOrderNotListed(:final orderId)
+              PublicOrderNotListed(:final orderId) ||
+              PublicOrderLookFailed(:final orderId)
           when orderId == order.id:
         return;
       case PublicOrderFound(order: final found) when found.id == order.id:
         return;
       case _:
-        break;
+        await _look(order);
     }
+  }
+
+  /// Reads the book again once, on « Retry », after a read of it failed for [order]; nothing retries by itself.
+  Future<void> retryPublic(CoordinatorOrder order) async {
+    if (state.publicOrder case PublicOrderLookFailed(
+      :final orderId,
+    ) when orderId == order.id) {
+      await _look(order);
+    }
+  }
+
+  Future<void> _look(CoordinatorOrder order) async {
+    final coordinator = this.coordinator;
+    if (isClosed || coordinator == null) return;
     emit(state._with(publicOrder: PublicOrderLooking(order.id)));
     final result = await _find(
       coordinator,
@@ -123,7 +143,8 @@ class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
       state._with(
         publicOrder: switch (result) {
           Ok(value: final found?) => PublicOrderFound(found),
-          Ok() || Err() => PublicOrderNotListed(order.id),
+          Ok() => PublicOrderNotListed(order.id),
+          Err() => PublicOrderLookFailed(order.id),
         },
       ),
     );

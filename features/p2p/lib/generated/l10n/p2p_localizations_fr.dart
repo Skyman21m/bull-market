@@ -1513,5 +1513,5 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pSatsUnit => 'Sats';
 
   @override
-  String get p2pTradeYouAreSwappingIn => 'Vous faites un swap VERS Lightning';
+  String get p2pTradeYouAreSwappingIn => 'SWAP VERS Lightning';
 }

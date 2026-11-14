@@ -42,7 +42,7 @@ extension TakeProblemL10n on TakeProblem {
           cause.toRobotText(context, coordinator: coordinator),
         ),
         TakeNotRecorded() => l10n.p2pTakeNotRecorded,
-        // The cubit opens that trade: never shown.
+        // The cubit opens that trade; shown only when it is the trade on screen, whose close could not be written.
         TakeOrderAlreadyTraded() => l10n.p2pTakeNotMade,
       },
       TakeWasNotMade(:final refusal) => switch (refusal) {
