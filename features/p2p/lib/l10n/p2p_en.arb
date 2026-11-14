@@ -224,6 +224,47 @@
   "@p2pBookFilterListSeparator": {
     "description": "Between two choices of a list of choices but the last two (p2pBookFilterOrList)."
   },
+  "p2pBookFilterOrderCount": "{count, plural, =0{no orders} =1{1 order} other{{count} orders}}",
+  "@p2pBookFilterOrderCount": {
+    "description": "In the payment method sheet of the book's filter: how many orders the filter would keep with this method alone, the other choices as they are (#118).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "p2pBookFilterMethodWithCount": "{method} · {orders}",
+  "@p2pBookFilterMethodWithCount": {
+    "description": "A row of the payment method sheet: the method's name, then p2pBookFilterOrderCount, such as « Instant SEPA · 12 orders » (#118).",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "orders": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookFilterMethodWithCountSemantics": "{method}, {orders}",
+  "@p2pBookFilterMethodWithCountSemantics": {
+    "description": "What a screen reader says of a row of the payment method sheet, without the separator shown: « Instant SEPA, 12 orders ».",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      },
+      "orders": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pBookFilterMethodsWithoutOrders": "No orders right now",
+  "@p2pBookFilterMethodsWithoutOrders": {
+    "description": "Heading of the payment method sheet above the methods no order of the book would be kept with, listed dimmed but still selectable (#118, the owner's request)."
+  },
+  "p2pBookFilterNoMethodFound": "No payment method found",
+  "@p2pBookFilterNoMethodFound": {
+    "description": "The payment method sheet when no method matches the text typed in its search field."
+  },
   "p2pBookMakerStatusActive": "Active",
   "@p2pBookMakerStatusActive": {
     "description": "The maker was seen in the last 2 minutes (`maker_status` of the API). Missing from the RoboSats French texts."
