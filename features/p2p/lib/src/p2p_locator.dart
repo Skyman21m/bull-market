@@ -368,9 +368,8 @@ final class P2pLocator {
     );
     // Its only caller is the trade screen's order tab (#88), for an order public again.
     locator.registerFactory<FindPublicOrderUsecase>(
-      () => FindPublicOrderUsecase(
-        CoordinatorClient(transport(), clock: clock),
-      ),
+      () =>
+          FindPublicOrderUsecase(CoordinatorClient(transport(), clock: clock)),
     );
     // What the order tab of a trade shows besides the order: read without a robot, as the order details of the book.
     locator.registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(

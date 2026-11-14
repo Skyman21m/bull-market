@@ -109,7 +109,7 @@ final class P2pRouter {
                 coordinatorDetails: (request) =>
                     locator<CoordinatorDetailsCubit>(param1: request),
                 // An order public again is taken as from the book: a fresh robot, the same single caller of the take.
-                takeOrder: locator.isRegistered<TakeOrderCubit>()
+                takeCubitFor: locator.isRegistered<TakeOrderCubit>()
                     ? (order) => locator<TakeOrderCubit>(
                         param1: order,
                         param2: args.record.network,

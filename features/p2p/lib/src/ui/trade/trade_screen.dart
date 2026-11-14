@@ -50,7 +50,7 @@ class TradeScreen extends StatefulWidget {
   final WalletPaymentBuilder? walletPayment;
 
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
-  final TakeOrderCubit Function(PublicOrder order)? takeOrder;
+  final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
   /// Opens the Garage, from the dialog shown when there is no robot to take with.
   final VoidCallback? onOpenGarage;
@@ -63,7 +63,7 @@ class TradeScreen extends StatefulWidget {
     required this.now,
     required this.coordinatorDetails,
     this.walletPayment,
-    this.takeOrder,
+    this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
   });
@@ -162,97 +162,101 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
     return BlocListener<TradeCubit, TradeScreenState>(
       listener: (context, state) => _findIfPublic(state),
       child: Material(
-      color: colors.background,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            if (record.network == RobosatsNetwork.testnet)
-              const TestnetBanner(),
-            const Gap(BullSpacing.xs),
-            BullTopBar(
-              title: l10n.p2pNavOrder,
-              onBack: () {
-                if (context.canPop()) context.pop();
-              },
-            ),
-            if (view is TradeContract)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: BullSpacing.md),
-                child: BullSegmented(
-                  items: {l10n.p2pNavOrder, l10n.p2pTradeTabContract},
-                  initialValue: _orderTab
-                      ? l10n.p2pNavOrder
-                      : l10n.p2pTradeTabContract,
-                  onSelected: (item) =>
-                      setState(() => _orderTab = item == l10n.p2pNavOrder),
-                ),
+        color: colors.background,
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              if (record.network == RobosatsNetwork.testnet)
+                const TestnetBanner(),
+              const Gap(BullSpacing.xs),
+              BullTopBar(
+                title: l10n.p2pNavOrder,
+                onBack: () {
+                  if (context.canPop()) context.pop();
+                },
               ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(BullSpacing.md),
-                children: [
-                  for (final line in lines) ...[
-                    line,
-                    const Gap(BullSpacing.sm),
-                  ],
-                  switch (view) {
-                    TradeWaiting() => Padding(
-                      padding: const EdgeInsets.all(BullSpacing.xl),
-                      child: Center(
-                        child: CircularProgressIndicator(color: colors.primary),
+              if (view is TradeContract)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: BullSpacing.md,
+                  ),
+                  child: BullSegmented(
+                    items: {l10n.p2pNavOrder, l10n.p2pTradeTabContract},
+                    initialValue: _orderTab
+                        ? l10n.p2pNavOrder
+                        : l10n.p2pTradeTabContract,
+                    onSelected: (item) =>
+                        setState(() => _orderTab = item == l10n.p2pNavOrder),
+                  ),
+                ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(BullSpacing.md),
+                  children: [
+                    for (final line in lines) ...[
+                      line,
+                      const Gap(BullSpacing.sm),
+                    ],
+                    switch (view) {
+                      TradeWaiting() => Padding(
+                        padding: const EdgeInsets.all(BullSpacing.xl),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: colors.primary,
+                          ),
+                        ),
                       ),
-                    ),
-                    TradeMessage(:final kind) => _Message(
-                      text: kind.toText(context, coordinator: coordinator),
-                      waits: kind == TradeMessageKind.takePending,
-                    ),
-                    TradeOrderOnly(:final order) => _PublicAgain(
-                      order: order,
-                      now: _now,
-                      info: page.info,
-                      lookup: page.publicOrder,
-                      takeOrder: widget.takeOrder,
-                      onOpenGarage: widget.onOpenGarage,
-                      onTaken: widget.onTaken,
-                      onOpenCoordinator: () => _openCoordinator(order),
-                    ),
-                    TradeContract(:final order?) when _orderTab =>
-                      TradeOrderDetails(
+                      TradeMessage(:final kind) => _Message(
+                        text: kind.toText(context, coordinator: coordinator),
+                        waits: kind == TradeMessageKind.takePending,
+                      ),
+                      TradeOrderOnly(:final order) => _PublicAgain(
                         order: order,
                         now: _now,
                         info: page.info,
+                        lookup: page.publicOrder,
+                        takeCubitFor: widget.takeCubitFor,
+                        onOpenGarage: widget.onOpenGarage,
+                        onTaken: widget.onTaken,
                         onOpenCoordinator: () => _openCoordinator(order),
                       ),
-                    // No order read to show: the status the contract shows, with the lines above, never an endless wait.
-                    final TradeContract contract when _orderTab => _Line(
-                      contract.title.toText(
-                        context,
-                        bondSats: switch (contract.status) {
-                          WaitingForTakerBond(:final bond) => P2pFormats.of(
-                            context,
-                          ).sats(bond.orderAmount.value.toInt()),
-                          _ => '',
-                        },
+                      TradeContract(:final order?) when _orderTab =>
+                        TradeOrderDetails(
+                          order: order,
+                          now: _now,
+                          info: page.info,
+                          onOpenCoordinator: () => _openCoordinator(order),
+                        ),
+                      // No order read to show: the status the contract shows, with the lines above, never an endless wait.
+                      final TradeContract contract when _orderTab => _Line(
+                        contract.title.toText(
+                          context,
+                          bondSats: switch (contract.status) {
+                            WaitingForTakerBond(:final bond) => P2pFormats.of(
+                              context,
+                            ).sats(bond.orderAmount.value.toInt()),
+                            _ => '',
+                          },
+                        ),
+                        center: true,
                       ),
-                      center: true,
-                    ),
-                    final TradeContract contract => _Contract(
-                      contract: contract,
-                      now: _now,
-                      record: record,
-                      cancel: state.cancel,
-                      coordinator: coordinator,
-                      walletPayment: widget.walletPayment,
-                    ),
-                  },
-                ],
+                      final TradeContract contract => _Contract(
+                        contract: contract,
+                        now: _now,
+                        record: record,
+                        cancel: state.cancel,
+                        coordinator: coordinator,
+                        walletPayment: widget.walletPayment,
+                      ),
+                    },
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -458,7 +462,9 @@ class _Contract extends StatelessWidget {
                   (order.takenAmount ?? order.amount.max).value,
                   inBitcoin: order.currency.isBitcoin,
                 ),
-                order.currency.isBitcoin ? l10n.p2pSatsUnit : order.currency.code,
+                order.currency.isBitcoin
+                    ? l10n.p2pSatsUnit
+                    : order.currency.code,
               ),
             ),
             const Gap(BullSpacing.sm),
@@ -734,7 +740,7 @@ class _PublicAgain extends StatelessWidget {
   final DateTime now;
   final CoordinatorInfo? info;
   final PublicOrderLookup lookup;
-  final TakeOrderCubit Function(PublicOrder order)? takeOrder;
+  final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
   final VoidCallback? onOpenGarage;
   final ValueChanged<TradeRecord>? onTaken;
   final VoidCallback onOpenCoordinator;
@@ -744,7 +750,7 @@ class _PublicAgain extends StatelessWidget {
     required this.now,
     required this.info,
     required this.lookup,
-    required this.takeOrder,
+    required this.takeCubitFor,
     required this.onOpenGarage,
     required this.onTaken,
     required this.onOpenCoordinator,
@@ -753,7 +759,7 @@ class _PublicAgain extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
-    final takeOrder = this.takeOrder;
+    final takeCubitFor = this.takeCubitFor;
     final onTaken = this.onTaken;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -764,14 +770,14 @@ class _PublicAgain extends StatelessWidget {
           info: info,
           onOpenCoordinator: onOpenCoordinator,
         ),
-        if (takeOrder != null && onTaken != null)
+        if (takeCubitFor != null && onTaken != null)
           switch (lookup) {
             PublicOrderFound(order: final public) when public.id == order.id =>
               Padding(
                 padding: const EdgeInsets.only(top: BullSpacing.lg),
                 child: BlocProvider(
                   key: ValueKey(public.id),
-                  create: (_) => takeOrder(public),
+                  create: (_) => takeCubitFor(public),
                   child: TakeOrderSection(
                     order: public,
                     takerFee: info?.takerFee ?? 0,

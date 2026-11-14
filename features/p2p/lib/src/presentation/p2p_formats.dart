@@ -27,8 +27,9 @@ final class P2pFormats {
 
   /// The amount of the payout prompt (« Before letting you send {{amountFiat}} {{currencyCode}} »), as the official client writes it (`TradeBox/Prompts/Payout.tsx:63-71`): at most 4 decimals, not significant digits, with the separators of the language; an amount in bitcoin in sats.
   String payoutAmount(double value, {required bool inBitcoin}) =>
-      (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 4)
-          .format(inBitcoin ? value * 100000000 : value);
+      (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 4).format(
+        inBitcoin ? value * 100000000 : value,
+      );
 
   /// The amount of an order: `100` for a fixed amount, `50-300` for a range.
   String orderAmount(OrderAmount amount) => switch (amount) {

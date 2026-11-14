@@ -16,16 +16,15 @@ final class FindPublicOrderUsecase {
     required int orderId,
     required RobosatsCurrency currency,
     required OrderType type,
-  }) async =>
-      switch (await _client.fetchBook(
-        coordinator,
-        network,
-        currency: currency,
-        type: type,
-      )) {
-        Ok(:final value) => Ok(
-          value.orders.where((order) => order.id == orderId).firstOrNull,
-        ),
-        Err(:final failure) => Err(failure),
-      };
+  }) async => switch (await _client.fetchBook(
+    coordinator,
+    network,
+    currency: currency,
+    type: type,
+  )) {
+    Ok(:final value) => Ok(
+      value.orders.where((order) => order.id == orderId).firstOrNull,
+    ),
+    Err(:final failure) => Err(failure),
+  };
 }

@@ -71,9 +71,7 @@ class BondPanel extends StatelessWidget {
       children: [
         Text(
           // An order in bitcoin is a swap into Lightning (`LockInvoice.tsx:76-80`).
-          swap
-              ? l10n.p2pTradeYouAreSwappingIn
-              : l10n.p2pTradeYouAreBuying,
+          swap ? l10n.p2pTradeYouAreSwappingIn : l10n.p2pTradeYouAreBuying,
           textAlign: TextAlign.center,
           style: text.headlineLarge?.copyWith(color: colors.secondary),
         ),
@@ -149,11 +147,7 @@ class _OtherWalletState extends State<_OtherWallet> {
     final l10n = P2pLocalizations.of(context);
     final invoice = widget.invoice;
     final display = widget.payable
-        ? invoiceDisplayOf(
-            invoice,
-            shownAnyway: _shownAnyway,
-            now: widget.now,
-          )
+        ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway, now: widget.now)
         : InvoiceDisplay.hidden;
     return DecoratedBox(
       decoration: BoxDecoration(

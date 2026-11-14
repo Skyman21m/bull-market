@@ -102,7 +102,8 @@ class TradeOrderPageCubit extends Cubit<TradeOrderPageState> {
     if (isClosed || coordinator == null) return;
     switch (state.publicOrder) {
       case PublicOrderLooking(:final orderId) ||
-          PublicOrderNotListed(:final orderId) when orderId == order.id:
+              PublicOrderNotListed(:final orderId)
+          when orderId == order.id:
         return;
       case PublicOrderFound(order: final found) when found.id == order.id:
         return;

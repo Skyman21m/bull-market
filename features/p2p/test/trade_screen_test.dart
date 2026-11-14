@@ -21,6 +21,7 @@ import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -100,7 +101,7 @@ Map<String, Object?> _templeInfo() =>
         )
         as Map<String, Object?>;
 
-/// Shows the trade screen over [watch] and [cancels], with [state] emitted once it listens; the order's side reads [transport] (nothing answers by default), and an order public again is taken with [takeOrder], its trade given to [taken].
+/// Shows the trade screen over [watch] and [cancels], with [state] emitted once it listens; the order's side reads [transport] (nothing answers by default), and an order public again is taken with [takeCubitFor], its trade given to [taken].
 Future<TradeCubit> _show(
   WidgetTester tester, {
   required _Watch watch,
@@ -112,7 +113,7 @@ Future<TradeCubit> _show(
   WalletPaymentBuilder? walletPayment,
   bool tickerEnabled = true,
   FakeTransport? transport,
-  TakeOrderCubit Function(PublicOrder order)? takeOrder,
+  TakeOrderCubit Function(PublicOrder order)? takeCubitFor,
   List<TradeRecord>? taken,
   DateTime Function()? now,
 }) async {
@@ -159,7 +160,7 @@ Future<TradeCubit> _show(
               now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
               walletPayment: walletPayment,
-              takeOrder: takeOrder,
+              takeCubitFor: takeCubitFor,
               onTaken: taken?.add,
             ),
           ),
@@ -271,6 +272,25 @@ void main() {
     expect(_seen['pending']?.status, isA<StatusUnknown>());
   });
 
+  test(
+    'an invoice the read found expired stays hidden, « Show anyway » or not, even on a clock before its end',
+    () {
+      final invoice =
+          _seen['bondExpiredInvoice']?.status.invoice ??
+          (throw StateError('no invoice'));
+      for (final shownAnyway in [false, true]) {
+        expect(
+          invoiceDisplayOf(
+            invoice,
+            shownAnyway: shownAnyway,
+            now: DateTime.utc(2000),
+          ),
+          InvoiceDisplay.hidden,
+        );
+      }
+    },
+  );
+
   group('status 3, the bond', () {
     testWidgets('an order in bitcoin: « You are SWAPPING INTO Lightning »', (
       tester,
@@ -280,36 +300,37 @@ void main() {
       expect(find.text('You are BUYING BTC'), findsNothing);
     });
 
-    testWidgets('« Copy URL » copies the order\'s address and says « Copied! »', (
-      tester,
-    ) async {
-      final copied = <String?>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied.add((call.arguments as Map)['text'] as String?);
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    testWidgets(
+      '« Copy URL » copies the order\'s address and says « Copied! »',
+      (tester) async {
+        final copied = <String?>[];
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           SystemChannels.platform,
-          null,
-        ),
-      );
-      await _show(tester, watch: _Watch(), state: _watched('bond'));
-      await _reveal(tester, find.text('Copy URL'));
-      await tester.tap(find.text('Copy URL'));
-      await tester.pump();
-      expect(copied, [
-        '${_record.coordinatorOnion}/order/temple/$tradeOrderId',
-      ]);
-      expect(find.text('Copied!'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 3));
-      expect(find.text('Copy URL'), findsOneWidget);
-    });
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied.add((call.arguments as Map)['text'] as String?);
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await _show(tester, watch: _Watch(), state: _watched('bond'));
+        await _reveal(tester, find.text('Copy URL'));
+        await tester.tap(find.text('Copy URL'));
+        await tester.pump();
+        expect(copied, [
+          '${_record.coordinatorOnion}/order/temple/$tradeOrderId',
+        ]);
+        expect(find.text('Copied!'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 3));
+        expect(find.text('Copy URL'), findsOneWidget);
+      },
+    );
 
     testWidgets('the reference\'s contract with the QR code and the facts', (
       tester,
@@ -514,6 +535,10 @@ void main() {
       await tester.tap(find.text('Cancel'), warnIfMissed: false);
       await settle(tester);
       expect(find.text('Cancel the order?'), findsOneWidget);
+      // One « Back » closes it: no second dialog was waiting under it.
+      await tester.tap(find.text('Back'));
+      await settle(tester);
+      expect(find.text('Cancel the order?'), findsNothing);
     });
 
     testWidgets(
@@ -848,7 +873,7 @@ void main() {
           state: _watched('publicAgain'),
           transport: transport,
           taken: taken,
-          takeOrder: (order) => TakeOrderCubit(
+          takeCubitFor: (order) => TakeOrderCubit(
             order,
             RobosatsNetwork.mainnet,
             (shown, {required network, amount, password}) async {
@@ -877,7 +902,7 @@ void main() {
           tester,
           watch: _Watch(),
           state: _watched('publicAgain'),
-          takeOrder: (order) => throw StateError('not taken'),
+          takeCubitFor: (order) => throw StateError('not taken'),
           taken: [],
         );
         await settle(tester);
