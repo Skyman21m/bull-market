@@ -813,6 +813,7 @@ class RobotCoordinatorCubit {
       ),
       {
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_payment_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
         'lib/src/data/trade_trail_repository_impl.dart',
         'lib/src/p2p_locator.dart',
@@ -830,6 +831,7 @@ class RobotCoordinatorCubit {
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_payment_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
         'lib/src/data/trade_trail_repository_impl.dart',
         'lib/testing.dart',
@@ -1011,6 +1013,11 @@ class RobotCoordinatorCubit {
     expect(
       _drifted(File('lib/src/data/trade_trails.drift').readAsStringSync()),
       '${_trailTriggers.join(';')};',
+    );
+    // And on the payments of the trades' invoices, as written in `trade_payments.drift` (#100).
+    expect(
+      _drifted(File('lib/src/data/trade_payments.drift').readAsStringSync()),
+      '${_paymentTriggers.join(';')};',
     );
   });
 
@@ -2065,5 +2072,18 @@ final _trailTriggers = [
   for (final trigger in _trailTriggersAsWritten) _squeezed(trigger),
 ];
 
+/// The statements of `trade_payments.drift` (#100), as written: the payments of the trades' invoices written once per trade and step, only for an open trade whose trail is recorded, then only forward, never deleted.
+const _paymentTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments BEGIN SELECT RAISE(ABORT, 'the payment of a trade is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a payment of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at BEGIN SELECT RAISE(ABORT, 'a payment only moves forward'); END",
+];
+
+/// The triggers of `trade_payments.drift`, squeezed.
+final _paymentTriggers = [
+  for (final trigger in _paymentTriggersAsWritten) _squeezed(trigger),
+];
+
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
-final _driftTriggers = {..._tradeTriggers, ..._trailTriggers};
+final _driftTriggers = {..._tradeTriggers, ..._trailTriggers, ..._paymentTriggers};

@@ -46,15 +46,15 @@ Future<(BondPaymentCubit, Payments)> _show(
   addTearDown(tester.view.reset);
   final watch = StreamController<TradeWatchState>.broadcast();
   addTearDown(watch.close);
-  final trade = TradeCubit(
-    _record,
-    (record, {signals = const Stream.empty(), onScreen = true}) {
-      // The signals are listened to, as the watch does, so that the cubit's close completes.
-      signals.listen((_) {});
-      return watch.stream;
-    },
-    (record, seen, {bondLoss}) => throw StateError('no cancel'),
-  )..start();
+  final trade = TradeCubit(_record, (
+    record, {
+    signals = const Stream.empty(),
+    onScreen = true,
+  }) {
+    // The signals are listened to, as the watch does, so that the cubit's close completes.
+    signals.listen((_) {});
+    return watch.stream;
+  }, (record, seen, {bondLoss}) => throw StateError('no cancel'))..start();
   addTearDown(trade.close);
   final reads = FakeTransport();
   final page = TradeOrderPageCubit(
@@ -199,14 +199,19 @@ void main() {
     (tester) async {
       final (_, payments) = await _show(tester, state: 'bond');
       await _confirming(tester, payments);
-      await _reveal(tester, find.descendant(
-        of: find.byType(BondPaymentPanel),
-        matching: find.text('Cancel'),
-      ));
-      await tester.tap(find.descendant(
-        of: find.byType(BondPaymentPanel),
-        matching: find.text('Cancel'),
-      ));
+      await _reveal(
+        tester,
+        find.descendant(
+          of: find.byType(BondPaymentPanel),
+          matching: find.text('Cancel'),
+        ),
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BondPaymentPanel),
+          matching: find.text('Cancel'),
+        ),
+      );
       await tester.pump();
       expect(payments.pays, isEmpty);
       expect(find.text('Pay with this wallet'), findsOneWidget);

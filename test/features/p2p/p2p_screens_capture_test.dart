@@ -2312,4 +2312,3 @@ final class _CaptureWallet implements P2pWalletPort {
     _ => null,
   });
 }
-
