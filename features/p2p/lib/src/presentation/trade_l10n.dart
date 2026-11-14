@@ -44,6 +44,8 @@ extension TakeProblemL10n on TakeProblem {
         TakeNotRecorded() => l10n.p2pTakeNotRecorded,
         // The cubit opens that trade; shown only when it is the trade on screen, whose close could not be written.
         TakeOrderAlreadyTraded() => l10n.p2pTakeNotMade,
+        // Only the take in two steps gives it (#119), which no screen calls yet: its screen prepares again.
+        TakePreparationGone() => l10n.p2pTakeNotMade,
       },
       TakeWasNotMade(:final refusal) => switch (refusal) {
         null => l10n.p2pTakeNotMade,
