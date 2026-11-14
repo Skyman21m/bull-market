@@ -664,6 +664,19 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await capture('sans-robot');
 
+      // The same search while the book of temple is still awaited: the dialog waits for it.
+      tor = await show(RobosatsNetwork.mainnet, held: {'temple'});
+      tor.add(P2pTorState.ready);
+      await settle();
+      await tester.tap(find.text(l10n.p2pCommonSearch));
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.enterText(find.byType(TextField), '$temple/order/temple/1');
+      await tester.tap(find.text(l10n.p2pCommonSearch).last);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('recherche-attente');
+
       // The chart on a small phone, 320 by 568 points, with five coordinators offline above it (Gumpellite answers nothing recorded): the row scrolls with the chart.
       tester.view.physicalSize = const Size(640, 1136);
       tor = await show(
