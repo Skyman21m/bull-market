@@ -89,9 +89,9 @@ void main() {
       issued.issue(one);
       expect(issued.consume(one), isTrue);
       expect(issued.consume(one), isFalse);
-      // Given again after it was used, it is let through again: only the quote use case gives, once per quote it builds.
+      // Given again after it was used, it stays used.
       issued.issue(one);
-      expect(issued.consume(one), isTrue);
+      expect(issued.consume(one), isFalse);
     });
 
     test('an equal quote that was not given is refused: identity, not equality', () {

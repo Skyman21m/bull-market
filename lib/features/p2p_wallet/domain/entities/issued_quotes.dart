@@ -6,8 +6,8 @@ import 'package:p2p/p2p.dart';
 final class IssuedQuotes {
   final Expando<_QuoteUse> _uses = Expando('issued quotes');
 
-  /// Records [quote] as given by this wallet and not used yet.
-  void issue(P2pWalletQuote quote) => _uses[quote] = _QuoteUse.issued;
+  /// Records [quote] as given by this wallet and not used yet; a quote used already stays used.
+  void issue(P2pWalletQuote quote) => _uses[quote] ??= _QuoteUse.issued;
 
   /// Whether [quote] was given by this wallet and not used yet; it is used from now on, whatever the payment that presents it becomes.
   bool consume(P2pWalletQuote quote) {
