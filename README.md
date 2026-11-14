@@ -140,6 +140,7 @@ The Garage (RoboSats' name for the screen that holds the Garage Key and its robo
   <tr>
     <td align="center"><img src="docs/screenshots/fr-trade-bond.png" width="170" alt="Écran de l'application : l'échange après la prise de l'ordre, « Bloquez 3 207 sats pour PRENDRE l'ordre », le QR code de la facture de caution sous « Payer avec un autre portefeuille »"><br><sub>La caution à bloquer</sub></td>
     <td align="center"><img src="docs/screenshots/fr-trade-bond-locked.png" width="170" alt="Écran de l'application : l'échange une fois la caution bloquée, « Indiquez où recevoir les sats », « Votre caution de preneur est bloquée », « Copier l'URL » et « Annuler »"><br><sub>La caution bloquée</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-pay-bond.png" width="170" alt="Écran de l'application : la confirmation de « Payer avec ce portefeuille », avec les frais du service d'échange, les frais de réseau, le total et ce qui reste dans Paiements instantanés"><br><sub>Payer la caution avec ce portefeuille</sub></td>
   </tr>
 </table>
 
