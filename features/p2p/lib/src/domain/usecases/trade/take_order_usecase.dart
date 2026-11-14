@@ -133,7 +133,11 @@ final class TakeOrderUsecase {
       case Err(:final failure):
         return Err(failure);
     }
-    var reserved = _prepared.robotFor(network, coordinator.shortAlias, shown.id);
+    var reserved = _prepared.robotFor(
+      network,
+      coordinator.shortAlias,
+      shown.id,
+    );
     if (reserved == null) {
       switch (await _freshRobot(network, coordinator)) {
         case Ok(:final value):
@@ -248,7 +252,9 @@ final class TakeOrderUsecase {
           ),
         ) =>
           const Err(TakeOrderGone()),
-        Ok(value: Err(:final failure)) => Err(TakeCoordinatorUnreadable(failure)),
+        Ok(value: Err(:final failure)) => Err(
+          TakeCoordinatorUnreadable(failure),
+        ),
       };
     } finally {
       requests.close();

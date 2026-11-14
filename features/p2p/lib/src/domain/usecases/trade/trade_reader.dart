@@ -237,13 +237,8 @@ final class TradeReader {
     TradeRecord record,
     NetworkRobot robot,
     Coordinator coordinator,
-  ) => readOrderOf(
-    requests,
-    record.network,
-    record.orderId,
-    robot,
-    coordinator,
-  );
+  ) =>
+      readOrderOf(requests, record.network, record.orderId, robot, coordinator);
 
   /// One read of order [orderId] of [coordinator] on [network], by [robot], through [requests]: the read of a take being prepared, which has no record yet (#119); a busy answer is sent again as the limiter says.
   Future<Result<Result<CoordinatorOrder, CoordinatorFailure>, P2pFailure>>
