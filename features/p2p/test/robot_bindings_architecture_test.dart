@@ -272,6 +272,9 @@ void main() {
             'acknowledgedByTearOff': {
               'BondLossAcknowledged.fromConfirmationDialog',
             },
+            'unlockByTearOff': {'RobotKeyComputePort.unlock'},
+            'signInCascade': {'UnlockedRobotPgpKey.signPayoutInvoice'},
+            'leaseInVariable': {'TradeKeyring.lease'},
           },
         );
       },
@@ -346,6 +349,11 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.cancelOrder'), {
         '${_tradeUseCases}cancel_trade_usecase.dart',
       });
+      for (final member in ['submitPayoutInvoice', 'submitPayoutAddress']) {
+        expect(referring((r) => r == 'request CoordinatorClient.$member'), {
+          '${_tradeUseCases}submit_payout_usecase.dart',
+        }, reason: member);
+      }
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
         expect(
@@ -357,6 +365,8 @@ void main() {
               'request CoordinatorClient.fetchOrder',
               'request CoordinatorClient.takeOrder',
               'request CoordinatorClient.cancelOrder',
+              'request CoordinatorClient.submitPayoutInvoice',
+              'request CoordinatorClient.submitPayoutAddress',
             }),
           ),
           reason: path,
@@ -544,8 +554,70 @@ void main() {
           ),
           {'lib/src/data/isolate_robot_key_compute.dart'},
         );
-        // Nothing of the feature unlocks a robot's key yet: the proof wipes what it unlocks.
-        expect(referring((r) => r == 'RobotPgpKey.unlock'), isEmpty);
+        // The unlock of a trade's robot key (#90), in that isolate too; the proof wipes what it unlocks.
+        expect(referring((r) => r == 'RobotPgpKey.unlock'), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
+      },
+    );
+
+    test(
+      'only the keyring of the trades unlocks a robot\'s key, only the payout signs with it, and nothing else reaches the unlocked key',
+      () {
+        // The keyring reads the robot's proven pair back and has it unlocked away from the UI isolate, and keeps it no longer than its rules say (#90, design note § 3.4).
+        const keyring = '${_tradeUseCases}trade_keyring.dart';
+        const payout = '${_tradeUseCases}submit_payout_usecase.dart';
+        expect(referring((r) => r == 'RobotKeyComputePort.unlock'), {keyring});
+        expect(
+          referring((r) => r == 'ReadRobotOnCoordinatorUsecase.provenPairOf'),
+          {keyring},
+        );
+        // A lease only for the payout's signature, a hold only through the use case the trade screen calls.
+        expect(referring((r) => r == 'TradeKeyring.lease'), {payout});
+        expect(referring((r) => r == 'TradeKeyLease.key'), {payout});
+        expect(referring((r) => r == 'TradeKeyring.hold'), {
+          '${_tradeUseCases}hold_trade_key_usecase.dart',
+        });
+        expect(
+          referring((r) => r == 'type TradeKeyring'),
+          everyElement(
+            isIn({
+              keyring,
+              payout,
+              '${_tradeUseCases}hold_trade_key_usecase.dart',
+              'lib/src/p2p_locator.dart',
+            }),
+          ),
+        );
+        // What is signed is a payout, decoded and checked, in the payout's own file: never free text, nothing of the chat yet (#93 adds its own file).
+        expect(
+          referring(
+            (r) =>
+                r == 'UnlockedRobotPgpKey.signPayoutInvoice' ||
+                r == 'UnlockedRobotPgpKey.signPayoutAddress',
+          ),
+          {payout},
+        );
+        expect(
+          referring(
+            (r) =>
+                r.startsWith('UnlockedRobotPgpKey.') &&
+                r != 'UnlockedRobotPgpKey.signPayoutInvoice' &&
+                r != 'UnlockedRobotPgpKey.signPayoutAddress',
+          ),
+          isEmpty,
+        );
+        expect(
+          referring((r) => r == 'type UnlockedRobotPgpKey'),
+          everyElement(
+            isIn({
+              'lib/src/domain/robot_key_compute_port.dart',
+              'lib/src/data/isolate_robot_key_compute.dart',
+              keyring,
+              payout,
+            }),
+          ),
+        );
       },
     );
 
@@ -1706,7 +1778,25 @@ const _watched = {
   'RobotCoordinatorCubit': ('package:p2p/', {'putOn', 'retry', 'acknowledge'}),
   // The acknowledgement of a key of unknown history, which only the user's « I understand » records (#29, step 6).
   'AcknowledgeGarageKeyHistoryUsecase': ('package:p2p/', {'execute'}),
-  'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
+  'ReadRobotOnCoordinatorUsecase': (
+    'package:p2p/',
+    {'execute', 'provenPairOf'},
+  ),
+  // The keyring of the trades (#90): who unlocks a robot's key, who keeps it, who signs with it.
+  'TradeKeyring': ('package:p2p/', {'hold', 'lease'}),
+  'TradeKeyLease': ('package:p2p/', {'key'}),
+  'RobotKeyComputePort': ('package:p2p/', {'unlock'}),
+  'UnlockedRobotPgpKey': (
+    'package:robosats/',
+    {
+      'signCleartext',
+      'signPayoutInvoice',
+      'signPayoutAddress',
+      'encryptChatMessage',
+      'encryptChatMessageWith',
+      'decryptChatMessage',
+    },
+  ),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),
   // The requests of one call, through the limiter's places (#87: a trade use case reads only through them).

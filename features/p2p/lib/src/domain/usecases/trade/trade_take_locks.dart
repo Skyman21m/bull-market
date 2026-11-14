@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:robosats/robosats.dart' show Coordinator, RobosatsNetwork;
 
-/// The takes in flight in this process, one at a time per order: a second take of an order waits for the first to end, then finds its record (#87, review of #117).
+/// The takes in flight in this process, one at a time per order: a second take of an order waits for the first to end, then finds its record (#87, review of #117); the payouts of an order run in the same turn (#90), so that a payout and a take, or two payouts, of one order never overlap.
 ///
-/// One for the feature, for the run of the app (a lazy singleton of the composition: `P2pLocator.registerTrades`), so that every `TakeOrderUsecase`, which the composition makes anew for each use, shares it.
+/// One for the feature, for the run of the app (a lazy singleton of the composition: `P2pLocator.registerTrades`), so that every `TakeOrderUsecase` and `SubmitPayoutUsecase`, which the composition makes anew for each use, shares it.
 /// Per order rather than for every take: a take that waits on a slow coordinator (up to the transport's 132 s) must not hold back a take of another order; two orders never share a robot (the robot layer reserves each in one statement), so nothing else needs the takes in turn.
 /// The database refuses a second open trade of an order too (the trigger `trades_one_open_per_order`), across connections; this lock keeps the second take from reserving and contacting a robot first.
 final class TradeTakeLocks {

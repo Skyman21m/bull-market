@@ -55,9 +55,12 @@ import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
+import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
+import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
+import 'domain/usecases/trade/trade_keyring.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
@@ -281,7 +284,7 @@ final class P2pLocator {
         clock: clock,
       ),
     );
-    // One for the feature: the takes of an order run one at a time, whichever use case object runs them.
+    // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.
     locator.registerLazySingleton<TradeTakeLocks>(TradeTakeLocks.new);
     // One for the feature: a take prepared through one use case object is confirmed or abandoned through another (#119).
     locator.registerLazySingleton<PreparedTakes>(PreparedTakes.new);
@@ -313,6 +316,23 @@ final class P2pLocator {
     );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
+    );
+    // One for the feature: the unlocked keys of the trades' robots, kept while a screen holds them or a signature leases them (#90).
+    locator.registerLazySingleton<TradeKeyring>(
+      () => TradeKeyring(locator(), locator()),
+    );
+    locator.registerFactory<HoldTradeKeyUsecase>(
+      () => HoldTradeKeyUsecase(locator()),
+    );
+    locator.registerFactory<SubmitPayoutUsecase>(
+      () => SubmitPayoutUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        invoices(),
+      ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.
     TakeCalls takeCalls() {

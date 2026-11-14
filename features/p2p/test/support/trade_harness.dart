@@ -25,9 +25,13 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
@@ -78,7 +82,20 @@ enum KillAt {
 /// The robots' key pairs, made once for the whole run (one S2K of 32 MiB each).
 final Map<RobotHashId, RobotPgpKey> _pairs = {};
 
-final class _LazyPairs implements RobotKeyComputePort {
+/// The key work of the trade tests on the test's own isolate: the pairs made once for the run, the proofs the package's, and every unlock counted, failed or held back when the test says.
+final class HarnessKeys implements RobotKeyComputePort {
+  /// The robots whose key was unlocked, in order.
+  final List<RobotHashId> unlocked = [];
+
+  /// What the next unlocks give instead, when set: the work could not start.
+  RobotKeyComputeFailure? unlockFailure;
+
+  /// When set, each unlock waits for it before it is done: an unlock in flight, as long as the test wants.
+  Future<void>? holdUnlock;
+
+  /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
+  Error? unlockError;
+
   @override
   Future<Result<RobotPgpKey, RobotKeyComputeFailure>> generate(
     RobotIdentity identity,
@@ -92,6 +109,18 @@ final class _LazyPairs implements RobotKeyComputePort {
     >
   >
   prove(UnprovenCoordinatorRobot robot) async => Ok(robot.prove());
+
+  @override
+  Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  unlock(RobotPgpKey key, RobotIdentity identity) async {
+    if (holdUnlock case final hold?) await hold;
+    if (unlockError case final error?) throw error;
+    if (unlockFailure case final failure?) return Err(failure);
+    unlocked.add(identity.hashId);
+    return Ok(key.unlock(identity));
+  }
 }
 
 final class _Vault implements GarageKeyRepository {
@@ -208,6 +237,9 @@ final class TestTrails implements TradeTrailRepository {
   /// How many trails were asked to be stored.
   int stores = 0;
 
+  /// What every [storeTrail] gives instead of writing, while set: the database refuses the write.
+  P2pFailure? storeFailure;
+
   TestTrails(this._inner, this._kill);
 
   @override
@@ -228,6 +260,7 @@ final class TestTrails implements TradeTrailRepository {
     TradeTrailRecord trail,
   ) {
     stores++;
+    if (storeFailure case final failure?) return Future.value(Err(failure));
     if (stores == 2 && _kill() == KillAt.beforeTrailOfAnswer) {
       throw AppKilled();
     }
@@ -293,6 +326,15 @@ final class TradeHarness {
   late final WatchTradeUsecase watch;
   late final CancelTradeUsecase cancel;
   late final ListActiveTradesUsecase list;
+  late final TradeKeyring keyring;
+  late final HoldTradeKeyUsecase holdKey;
+  late final SubmitPayoutUsecase payout;
+
+  /// The key work of this run: its unlocks are counted.
+  final HarnessKeys keys = HarnessKeys();
+
+  /// The actions of an order in turn, for this run.
+  final TradeTakeLocks locks = TradeTakeLocks();
 
   /// The subscriptions reading each trade in this run.
   final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
@@ -326,11 +368,8 @@ final class TradeHarness {
       invoices,
       clock: clock,
     );
-    final put = PutRobotOnCoordinatorUsecase(
-      FetchRobotUsecase(client, bindings, _LazyPairs()),
-      bindings,
-      limiter,
-    );
+    final fetch = FetchRobotUsecase(client, bindings, keys);
+    final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
     take = TakeOrderUsecase(
       client,
       robots,
@@ -340,7 +379,25 @@ final class TradeHarness {
       reader,
       limiter,
       invoices,
-      TradeTakeLocks(),
+      locks,
+    );
+    keyring = TradeKeyring(
+      ReadRobotOnCoordinatorUsecase(
+        fetch,
+        bindings,
+        limiter,
+        Federation.robosats,
+      ),
+      keys,
+    );
+    holdKey = HoldTradeKeyUsecase(keyring);
+    payout = SubmitPayoutUsecase(
+      client,
+      reader,
+      limiter,
+      keyring,
+      locks,
+      invoices,
     );
     watch = WatchTradeUsecase(
       reader,
@@ -367,6 +424,7 @@ final class TradeHarness {
     int orderId = 42,
     bool range = false,
     String? password,
+    String alias = 'temple',
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -380,6 +438,7 @@ final class TradeHarness {
       orderId: orderId,
       range: range,
       password: password,
+      alias: alias,
     );
     final harness = TradeHarness._(network, database, coordinator, now);
     _clockOf[database] = now;
