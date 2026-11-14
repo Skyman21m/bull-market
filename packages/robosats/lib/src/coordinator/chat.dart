@@ -45,7 +45,7 @@ final class OutgoingChatMessage {
   ///
   /// Fails with [ChatRefused] of [ChatRefusal.messageTooLong] when it would take more than [maxWireChars] on the wire, and with [PgpArmorMalformed] when [armored] holds a backslash or a carriage return, which the one-line form could not carry both ways: neither happens with the armor of this package.
   @internal
-  static Result<OutgoingChatMessage, RobosatsFailure> internal(
+  static Result<OutgoingChatMessage, RobosatsFailure> fromArmored(
     String armored, {
     required RobotHashId sender,
     required String peerFingerprint,
@@ -336,7 +336,7 @@ final class ChatPage {
     final fields = JsonFields(item);
     final index = fields.requiredInt('index', min: 0, max: maxIndex);
     final time = fields.requiredDate('time');
-    final nick = fields.requiredString('nick', maxLength: maxNickLength);
+    final nick = fields.requiredString('nick', maxLength: ChatMessage.maxNickLength);
     if (fields.rejected case final field?) {
       return Err(CoordinatorResponseMalformed(field));
     }
@@ -350,7 +350,7 @@ final class ChatPage {
       return const Err(CoordinatorResponseMalformed('message'));
     }
     final ChatMessageContent content;
-    if (text.length > maxReadChars) {
+    if (text.length > ChatMessage.maxReadChars) {
       content = ChatMessageContent.tooLong;
     } else if (!text.startsWith(_pgpMessageBegin)) {
       content = ChatMessageContent.notPgpMessage;

@@ -547,7 +547,7 @@ final class UnlockedRobotPgpKey {
     DateTime? now,
   }) => switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
     Err(:final failure) => Err(failure),
-    Ok(value: final armored) => OutgoingChatMessage.internal(
+    Ok(value: final armored) => OutgoingChatMessage.fromArmored(
       armored,
       sender: _identity.hashId,
       peerFingerprint: peer.fingerprint,
