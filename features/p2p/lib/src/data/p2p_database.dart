@@ -8,17 +8,23 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys and the trades of the robots.
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots and the terms and trail of each trade.
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
 @DriftDatabase(
-  tables: [GarageKeyHistories, RobotBindings, Trades],
-  include: {'trades.drift'},
+  tables: [
+    GarageKeyHistories,
+    RobotBindings,
+    Trades,
+    StoredTradeTerms,
+    StoredTradeTrails,
+  ],
+  include: {'trades.drift', 'trade_trails.drift'},
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 3;
+  static const int schema = 4;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
@@ -81,6 +87,21 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradesNeverDeleted);
         await m.createTrigger(schema.tradesSetOnce);
         await m.createTrigger(schema.tradesInsertedOnce);
+      },
+      from3To4: (m, schema) async {
+        // Two new tables, the terms and the trail of each trade, and the triggers that keep their rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // No row of an older table is copied, changed or dropped.
+        await m.createTable(schema.tradeTerms);
+        await m.createTable(schema.tradeTrails);
+        await m.createTrigger(schema.tradeTermsNeverDeleted);
+        await m.createTrigger(schema.tradeTermsSetOnce);
+        await m.createTrigger(schema.tradeTermsInsertedOnce);
+        await m.createTrigger(schema.tradeTermsOfTheirTrade);
+        await m.createTrigger(schema.tradeTrailsNeverDeleted);
+        await m.createTrigger(schema.tradeTrailsInsertedOnce);
+        await m.createTrigger(schema.tradeTrailsOfTheirTrade);
+        await m.createTrigger(schema.tradeTrailsClosed);
+        await m.createTrigger(schema.tradeTrailsForward);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.
