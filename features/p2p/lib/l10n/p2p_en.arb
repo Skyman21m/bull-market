@@ -600,7 +600,7 @@
   },
   "p2pCommonAcknowledged": "Acknowledged",
   "@p2pCommonAcknowledged": {
-    "description": "Button that closes a warning the user has read."
+    "description": "Button that closes a warning or a message the user has read."
   },
   "p2pCoordinatorNotice": "Coordinator Notice",
   "@p2pCoordinatorNotice": {
@@ -820,7 +820,7 @@
   },
   "p2pNoRobotTitle": "You do not have a Garage Key",
   "@p2pNoRobotTitle": {
-    "description": "Title of the dialog shown when a page needs a robot, such as an order searched by its URL that is not in the public book."
+    "description": "Title of the dialog shown when a page needs a robot and no Garage Key is stored, such as an order searched by its URL that is not in the public book."
   },
   "p2pNoRobotText": "Generate a Garage Key to get your first robot identity and start trading.",
   "@p2pNoRobotText": {
@@ -829,6 +829,10 @@
   "p2pNoRobotHaveKey": "I have a Garage Key",
   "@p2pNoRobotHaveKey": {
     "description": "Button of the no-robot dialog that leads to the Garage; disabled until the Garage exists."
+  },
+  "p2pOrderNotAvailable": "This order is not available",
+  "@p2pOrderNotAvailable": {
+    "description": "The RoboSats text of a coordinator's refusal to show an order (error 1044), shown when an order searched by its URL is not in the public book and a Garage Key is stored, or cannot be read."
   },
   "p2pGarageOnboardingGenerateKey": "Generate Garage Key",
   "@p2pGarageOnboardingGenerateKey": {
