@@ -1160,40 +1160,23 @@ void main() {
     });
 
     test(
-      'the payment methods offered are those of the matching orders',
-      () async {
-        final book = await loaded();
-
+      'the payment methods offered are the fixed list of the official client',
+      () {
+        final offered = [
+          for (final method in BookFilter.offeredPaymentMethods) method.name,
+        ];
+        // Its fiat methods, in its order, whatever the book and the choices: not the methods of the orders received.
+        expect(offered.first, 'Advcash');
+        expect(offered.last, 'Zelle');
         expect(
-          BookFilter(
-            side: BookSide.buy,
-          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
-          ['Instant SEPA', 'Revolut', 'Wise'],
+          offered,
+          containsAll(['Bizum', 'Instant SEPA', 'Revolut', 'Wise']),
         );
-        expect(
-          BookFilter(
-            side: BookSide.buy,
-            paymentMethods: ['Wise'],
-          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
-          ['Instant SEPA', 'Revolut', 'Wise'],
-        );
-        // A method chosen that the other choices no longer show stays offered, so that it can be taken back.
-        expect(
-          BookFilter(
-            side: BookSide.buy,
-            hosts: [coordinator('temple')],
-            paymentMethods: ['Wise'],
-          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
-          ['Instant SEPA', 'Revolut', 'Wise'],
-        );
-        expect(
-          BookFilter(
-            side: BookSide.buy,
-            hosts: [coordinator('temple')],
-          ).paymentMethodsIn(book.state.receivedOrders).map((m) => m.name),
-          ['Instant SEPA', 'Revolut'],
-        );
-        await book.close();
+        expect(offered.toSet(), hasLength(offered.length));
+        // Neither the default text of an order without methods nor the swap destinations.
+        expect(offered, isNot(contains(PaymentMethods.notSpecified.name)));
+        expect(offered, isNot(contains('On-Chain BTC')));
+        expect(offered, isNot(contains('LBTC')));
       },
     );
 
