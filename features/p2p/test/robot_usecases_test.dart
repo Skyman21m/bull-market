@@ -748,6 +748,43 @@ void main() {
             ),
       );
     });
+
+    test(
+      'unlocks a trade\'s robot key in another isolate, and brings the unlocked key back (#90)',
+      () async {
+        final (unlocked, ticks) = await ticking(
+          () => compute.unlock(pgpKey, identity),
+        );
+        expect(ticks, greaterThan(5));
+        final key = switch (unlocked) {
+          Ok(value: Ok(:final value)) => value,
+          final other => fail('$other'),
+        };
+        expect(key.key, pgpKey);
+        // The key that came back signs, and its signature verifies with the robot's public key.
+        final signed = switch (key.signCleartext(
+          'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx',
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(
+          pgpKey.publicKey.verifyCleartext(signed),
+          isA<Ok<String, PgpFailure>>(),
+        );
+      },
+    );
+
+    test('an unlock there refuses a pair of another robot (#90)', () async {
+      expect(
+        await compute.unlock(otherRobotPgpKey, identity),
+        isA<Ok<Result<UnlockedRobotPgpKey, PgpFailure>, P2pFailure>>().having(
+          (ok) => ok.value,
+          'unlock',
+          isA<Err<UnlockedRobotPgpKey, PgpFailure>>(),
+        ),
+      );
+    });
   });
 
   group('CloseRobotSessionsUsecase', () {
