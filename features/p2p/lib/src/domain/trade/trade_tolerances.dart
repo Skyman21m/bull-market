@@ -44,4 +44,10 @@ abstract final class TradeTolerances {
   ///
   /// A pre-take lasts the coordinator's taker-bond time (`EXP_TAKER_BOND_INVOICE`: 150 s by default in the code, `api/models/order.py:317-319`; 200 s in `.env-sample:167`), which nothing a taker reads before the pre-take states; 30 minutes is nine times the sample's, so that error 1044 right after a take becomes final within the hour even when the take's answer was lost.
   static const Duration longestPreTake = Duration(minutes: 30);
+
+  /// How long after the end of the payout's step a buyer's invoice should still be valid, at least, for the coordinator to pay it: 24 hours.
+  ///
+  /// The coordinator pays the buyer only once the seller confirms the fiat, at the latest at the end of the chat, which lasts `FIAT_EXCHANGE_DURATION`, 24 h by default (`robosats/settings.py:310`), from its start, itself at the latest at the end of the payout's step (`expires_at` at 6 and 8: the escrow's time, `api/logics.py:909-947`); an invoice expired by then makes the trade fail its routing (15), and the buyer is asked for a new one (`api/logics.py:857-859`, design note § 2.0.5, § 4.4).
+  /// An invoice that expires earlier is said, never refused: it is information for the user (design note § 3.7), and the coordinator itself refuses only an invoice already expired (`api/lightning/lnd.py:529-533`).
+  static const Duration payoutInvoiceAfterStep = Duration(hours: 24);
 }

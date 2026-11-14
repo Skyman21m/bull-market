@@ -44,4 +44,11 @@ final class RecordingRobotKeys implements RobotKeyComputePort {
       null => Ok(robot.prove()),
     };
   }
+
+  @override
+  Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  unlock(RobotPgpKey key, RobotIdentity identity) async =>
+      Ok(key.unlock(identity));
 }

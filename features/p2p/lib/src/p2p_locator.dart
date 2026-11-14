@@ -53,8 +53,11 @@ import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
+import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
+import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
+import 'domain/usecases/trade/trade_keyring.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
@@ -274,7 +277,7 @@ final class P2pLocator {
         clock: clock,
       ),
     );
-    // One for the feature: the takes of an order run one at a time, whichever use case object runs them.
+    // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.
     locator.registerLazySingleton<TradeTakeLocks>(TradeTakeLocks.new);
     locator.registerFactory<TakeOrderUsecase>(
       () => TakeOrderUsecase(
@@ -303,6 +306,23 @@ final class P2pLocator {
     );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
+    );
+    // One for the feature: the unlocked keys of the trades' robots, kept while a screen holds them or a signature leases them (#90).
+    locator.registerLazySingleton<TradeKeyring>(
+      () => TradeKeyring(locator(), locator()),
+    );
+    locator.registerFactory<HoldTradeKeyUsecase>(
+      () => HoldTradeKeyUsecase(locator()),
+    );
+    locator.registerFactory<SubmitPayoutUsecase>(
+      () => SubmitPayoutUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        invoices(),
+      ),
     );
   }
 

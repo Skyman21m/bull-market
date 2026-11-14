@@ -5,9 +5,11 @@ import 'package:robosats/robosats.dart'
     show
         CoordinatorRobot,
         PgpClockOutOfRange,
+        PgpFailure,
         RobotIdentity,
         RobotPgpKey,
         RobotPgpKeyNotProven,
+        UnlockedRobotPgpKey,
         UnprovenCoordinatorRobot;
 
 import '../domain/p2p_failure.dart';
@@ -16,8 +18,9 @@ import '../domain/robot_key_compute_port.dart';
 /// Runs the work on the key pair of a robot in a short-lived isolate of its own (`Isolate.run`), so that the UI isolate never does the hashing.
 ///
 /// The isolate receives a copy of what the work needs, the robot's identity with its token included, and ends as soon as the work is done: the passphrase and the secret values a proof unlocks are wiped in it before it ends, and only the locked pair comes back.
+/// An unlock (#90) is the one work whose result holds secret values: the unlocked key comes back to the calling isolate, for `TradeKeyring` to keep as its rules say; the passphrase is wiped in the isolate before it ends.
 /// An isolate started so belongs to the group of the app's isolates and shares their heap: running elsewhere keeps the screens fluid, it does not keep the token or the unlocked values apart in memory.
-/// Each closure handed to `Isolate.run` is made in a static method, where it can hold nothing but its one argument, so that nothing else of the feature is copied to the isolate.
+/// Each closure handed to `Isolate.run` is made in a static method, where it can hold nothing but its arguments, so that nothing else of the feature is copied to the isolate.
 /// An isolate that cannot be started is a [RobotKeyComputeFailure]; an [Error] of the work is a bug and reaches the caller, as rule 11 of AGENTS.md wants.
 final class IsolateRobotKeyCompute implements RobotKeyComputePort {
   const IsolateRobotKeyCompute();
@@ -39,6 +42,18 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
     >
   >
   prove(UnprovenCoordinatorRobot robot) => _proveApart(robot);
+
+  @override
+  Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  unlock(RobotPgpKey key, RobotIdentity identity) => _unlockApart(key, identity);
+
+  static Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  _unlockApart(RobotPgpKey key, RobotIdentity identity) =>
+      _run(() => key.unlock(identity));
 
   static Future<
     Result<Result<RobotPgpKey, PgpClockOutOfRange>, RobotKeyComputeFailure>

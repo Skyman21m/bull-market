@@ -318,6 +318,13 @@ final class _Keys implements RobotKeyComputePort {
     proved.add(robot.hashId);
     return Ok(robot.prove());
   }
+
+  @override
+  Future<
+    Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
+  >
+  unlock(RobotPgpKey key, RobotIdentity identity) async =>
+      Ok(key.unlock(identity));
 }
 
 /// The sessions of the transport, whose closes are noted in [events].
