@@ -15,12 +15,13 @@ import '../../trade/trade_watch.dart';
 import '../../trade/wallet_payment.dart';
 import '../../trade_record.dart';
 import 'trade_reader.dart';
+import 'trade_take_locks.dart';
 
 /// Pays a trade's bond from the wallet's Instant Payments wallet, inside the trade screen (#100, W4): the only caller of [P2pWalletPort.payInvoice] (`wallet_port_architecture_test.dart`).
 ///
 /// - [watchBalance]: what the Instant Payments wallet can spend, as the wallet reads it.
 /// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
-/// - [payBond]: on the user's confirmation of that quote only. It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is the bond step and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
+/// - [payBond]: on the user's confirmation of that quote only, one action of the order at a time ([TradeTakeLocks], shared with the take and the payout). It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is the bond step and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
 /// - [followBond]: where the payment recorded for the trade stands, from the wallet's records ([P2pWalletPort.findPayment], then [P2pWalletPort.watchPayment]); it pays nothing.
 ///
 /// Nothing here retries a payment or pays by itself: a poll, a reopen or a follow never reaches [payBond]. Every refusal of the wallet but [P2pWalletBroadcastUnknown] means nothing left the wallet.
@@ -29,12 +30,14 @@ final class PayBondFromWalletUsecase {
   final RobotRequestLimiter _limiter;
   final TradePaymentRepository _payments;
   final P2pWalletPort _wallet;
+  final TradeTakeLocks _locks;
 
   const PayBondFromWalletUsecase(
     this._reader,
     this._limiter,
     this._payments,
     this._wallet,
+    this._locks,
   );
 
   /// What the Instant Payments wallet on [network] can spend, at once and after each sync of it; a refusal ends the stream.
@@ -97,81 +100,84 @@ final class PayBondFromWalletUsecase {
       case TradeNotOpened(:final failure):
         return Err(BondPayTradeUnavailable(failure));
     }
-    final requests = _limiter.open(trade.robot.identity.sessionKey);
-    final TradeStep step;
-    try {
-      final read = await _reader.readOrder(
-        requests,
-        record,
-        trade.robot,
-        trade.coordinator,
-      );
-      final answer = switch (read) {
-        Ok(:final value) => TradeAnswer.ofRead(value),
-        Err() => null,
-      };
-      if (answer == null) {
-        return Err(
-          BondPayTradeUnavailable(switch (read) {
-            Err(:final failure) => failure,
-            Ok(value: Err(:final failure)) => failure,
-            // An order this robot read, which every read gives an answer for: never here.
-            Ok(value: Ok()) => const P2pStorageFailure(),
-          }),
+    // One action of an order at a time in the process: its take, its payout and this payment (`TradeTakeLocks`, shared with the take and the payout); a second payment of the bond waits, reads the order again and finds the first.
+    return _locks.run(record.network, trade.coordinator, record.orderId, () async {
+      final requests = _limiter.open(trade.robot.identity.sessionKey);
+      final TradeStep step;
+      try {
+        final read = await _reader.readOrder(
+          requests,
+          record,
+          trade.robot,
+          trade.coordinator,
         );
+        final answer = switch (read) {
+          Ok(:final value) => TradeAnswer.ofRead(value),
+          Err() => null,
+        };
+        if (answer == null) {
+          return Err(
+            BondPayTradeUnavailable(switch (read) {
+              Err(:final failure) => failure,
+              Ok(value: Err(:final failure)) => failure,
+              // An order this robot read, which every read gives an answer for: never here.
+              Ok(value: Ok()) => const P2pStorageFailure(),
+            }),
+          );
+        }
+        step = await _reader.advance(trade, answer, at: _reader.now());
+      } finally {
+        requests.close();
       }
-      step = await _reader.advance(trade, answer, at: _reader.now());
-    } finally {
-      requests.close();
-    }
-    final status = step.trade.seen.status;
-    if (!step.stored || status is! WaitingForTakerBond) {
-      return const Err(BondPayNotAtBondStep());
-    }
-    final WalletPaymentOffered offered;
-    switch (_offered(step.trade.terms, status)) {
-      case Ok(:final value):
-        offered = value;
-      case Err(:final failure):
-        return Err(failure);
-    }
-    final invoice = offered.walletInvoice;
-    if (invoice.paymentHash != accepted.invoice.paymentHash ||
-        invoice.bolt11 != accepted.invoice.bolt11) {
-      return const Err(BondPayInvoiceChanged());
-    }
-    switch (await _payments.recordStart(
-      record,
-      InvoiceStep.bond,
-      paymentHash: invoice.paymentHash,
-      at: _reader.now(),
-    )) {
-      case Ok(value: true):
-        break;
-      case Ok(value: false) || Err():
-        return const Err(BondPayNotRecorded());
-    }
-    final paid = await _wallet.payInvoice(invoice, accepted: accepted);
-    final payment = switch (paid) {
-      Ok(:final value) => value,
-      Err(failure: P2pWalletBroadcastUnknown(:final payment)) ||
-      Err(failure: P2pWalletPaymentInterrupted(:final payment)) => payment,
-      Err(failure: P2pWalletPaymentExists(:final payment?)) => payment,
-      Err() => null,
-    };
-    if (payment != null) {
-      // A failed write here loses nothing: the start is recorded, and [followBond] finds the payment by its hash and writes its id then.
-      final _ = await _payments.recordWalletPayment(
+      final status = step.trade.seen.status;
+      if (!step.stored || status is! WaitingForTakerBond) {
+        return const Err(BondPayNotAtBondStep());
+      }
+      final WalletPaymentOffered offered;
+      switch (_offered(step.trade.terms, status)) {
+        case Ok(:final value):
+          offered = value;
+        case Err(:final failure):
+          return Err(failure);
+      }
+      final invoice = offered.walletInvoice;
+      if (invoice.paymentHash != accepted.invoice.paymentHash ||
+          invoice.bolt11 != accepted.invoice.bolt11) {
+        return const Err(BondPayInvoiceChanged());
+      }
+      switch (await _payments.recordStart(
         record,
         InvoiceStep.bond,
-        paymentHash: payment.paymentHash,
-        walletPaymentId: payment.id,
-      );
-    }
-    return switch (paid) {
-      Ok(:final value) => Ok(value),
-      Err(:final failure) => Err(BondPayWalletRefused(failure)),
-    };
+        paymentHash: invoice.paymentHash,
+        at: _reader.now(),
+      )) {
+        case Ok(value: true):
+          break;
+        case Ok(value: false) || Err():
+          return const Err(BondPayNotRecorded());
+      }
+      final paid = await _wallet.payInvoice(invoice, accepted: accepted);
+      final payment = switch (paid) {
+        Ok(:final value) => value,
+        Err(failure: P2pWalletBroadcastUnknown(:final payment)) ||
+        Err(failure: P2pWalletPaymentInterrupted(:final payment)) => payment,
+        Err(failure: P2pWalletPaymentExists(:final payment?)) => payment,
+        Err() => null,
+      };
+      if (payment != null) {
+        // A failed write here loses nothing: the start is recorded, and [followBond] finds the payment by its hash and writes its id then.
+        final _ = await _payments.recordWalletPayment(
+          record,
+          InvoiceStep.bond,
+          paymentHash: payment.paymentHash,
+          walletPaymentId: payment.id,
+        );
+      }
+      return switch (paid) {
+        Ok(:final value) => Ok(value),
+        Err(:final failure) => Err(BondPayWalletRefused(failure)),
+      };
+    });
   }
 
   /// Where the payment of [record]'s bond stands: none when none was recorded from this device or the wallet has none for its invoice, then the wallet's progress of it at once and at each change it records.

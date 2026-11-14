@@ -33,7 +33,31 @@ final class ReadRobotOnCoordinatorUsecase {
   /// A busy answer of the transport is sent again after a growing wait, as [RobotRequestLimiter] says; [RobotCoordinatorBusyFailure] when that does not get through, and [RobotReleasedFailure] once the robot was released, from the start of the call, the read of the binding included: nothing is then bound or sent.
   /// The inner result is what the coordinator answered, checked: [RobotUnknown] for a robot bound there whose first contact never created it, or its robot shown as a [RobotOnCoordinatorFace].
   Future<Result<Result<RobotOnCoordinatorFace, CoordinatorFailure>, P2pFailure>>
-  execute(NetworkRobot robot) async {
+  execute(NetworkRobot robot) async => switch (await _read(robot)) {
+    Err(:final failure) => Err(failure),
+    Ok(value: Err(:final failure)) => Ok(Err(failure)),
+    Ok(value: Ok(value: final known)) => Ok(
+      Ok(RobotOnCoordinatorFace.of(known, alreadyExisted: false)),
+    ),
+  };
+
+  /// The key pair of [robot] as its coordinator holds it, read back exactly as [execute] reads it and proven by the robot's token, still locked: for the keyring of a trade only (`TradeKeyring`, #90, design note § 3.4), which unlocks it away from the UI isolate to sign the trade's payout.
+  ///
+  /// The refusals and the failures are [execute]'s; a read back sends no key, so the pair is always proven (`FetchRobotUsecase`), and nothing of it is stored.
+  /// A screen never calls it: `robot_bindings_architecture_test.dart` pins its one caller.
+  Future<Result<Result<RobotPgpKey, CoordinatorFailure>, P2pFailure>>
+  provenPairOf(NetworkRobot robot) async => switch (await _read(robot)) {
+    Err(:final failure) => Err(failure),
+    Ok(value: Err(:final failure)) => Ok(Err(failure)),
+    Ok(value: Ok(value: CoordinatorRobot(pgpKeyProven: true, :final pgpKey))) =>
+      Ok(Ok(pgpKey)),
+    // A read back is always proven; a pair taken without a proof is never handed out.
+    Ok(value: Ok()) => const Ok(Err(RobotPgpKeyNotProven())),
+  };
+
+  /// [robot] read back from the coordinator of its binding, as [execute] says.
+  Future<Result<Result<CoordinatorRobot, CoordinatorFailure>, P2pFailure>>
+  _read(NetworkRobot robot) async {
     // Opened before the binding is read, so that a release of the robot during that read stops the request before it binds or leaves (security review of step 5).
     final requests = _limiter.open(robot.identity.sessionKey);
     try {
@@ -61,10 +85,7 @@ final class ReadRobotOnCoordinatorUsecase {
         isBusy: FetchRobotUsecase.answeredBusy,
       )) {
         Err(:final failure) || Ok(value: Err(:final failure)) => Err(failure),
-        Ok(value: Ok(value: Err(:final failure))) => Ok(Err(failure)),
-        Ok(value: Ok(value: Ok(value: final known))) => Ok(
-          Ok(RobotOnCoordinatorFace.of(known, alreadyExisted: false)),
-        ),
+        Ok(value: Ok(value: final answer)) => Ok(answer),
       };
     } finally {
       requests.close();

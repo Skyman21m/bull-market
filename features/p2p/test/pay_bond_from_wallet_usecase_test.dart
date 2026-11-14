@@ -120,6 +120,7 @@ final class _Setup {
         harness.limiter,
         payments ?? stored,
         wallet,
+        harness.locks,
       ),
     );
   }
@@ -385,6 +386,36 @@ void main() {
         hasLength(1),
       );
       expect((await setup.recorded())?.walletPaymentId, 'swap-4');
+    },
+  );
+
+  test(
+    'one action of the order at a time: the payment waits while the take or the payout holds the order',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      setup.fake.scriptPayment(
+        Ok(P2pWalletPayment(id: 'swap-6', paymentHash: quote.invoice.paymentHash)),
+      );
+      final release = Completer<void>();
+      final opened = await setup.harness.reader.open(setup.record);
+      final coordinator = switch (opened) {
+        TradeOpened(:final trade) => trade.coordinator,
+        _ => throw StateError('not opened'),
+      };
+      final holding = setup.harness.locks.run(
+        setup.record.network,
+        coordinator,
+        setup.record.orderId,
+        () => release.future,
+      );
+      final paying = setup.payBond.payBond(setup.record, accepted: quote);
+      await setup.harness.settle();
+      expect(setup.fake.paid, isEmpty);
+      release.complete();
+      await holding;
+      expect(await paying, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
+      expect(setup.fake.paid, hasLength(1));
     },
   );
 
