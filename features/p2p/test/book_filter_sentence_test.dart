@@ -191,6 +191,28 @@ void main() {
     await settle(tester);
     expect(find.byType(FilterPickerSheet<BookSide>), findsOneWidget);
     expect(find.text('Select Order Type'), findsOneWidget);
+    // One choice of several, as radio buttons: the screen reader says which is checked and that only one can be.
+    Finder typeRow(String label) => find.descendant(
+      of: find.byType(FilterPickerSheet<BookSide>),
+      matching: find.text(label),
+    );
+    expect(
+      tester.getSemantics(typeRow('Any type')),
+      isSemantics(
+        label: 'Any type',
+        isChecked: true,
+        isInMutuallyExclusiveGroup: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(typeRow('Buy')),
+      isSemantics(
+        label: 'Buy',
+        isChecked: false,
+        isInMutuallyExclusiveGroup: true,
+      ),
+    );
     await tester.tap(find.text('Buy').last);
     await settle(tester);
 
@@ -239,7 +261,12 @@ void main() {
       expect(listed(tester), [1, 2, 4, 5, 7]);
       expect(
         tester.getSemantics(row('EUR')),
-        isSemantics(label: 'EUR', isChecked: true, hasTapAction: true),
+        isSemantics(
+          label: 'EUR',
+          isChecked: true,
+          isInMutuallyExclusiveGroup: false,
+          hasTapAction: true,
+        ),
       );
       expect(
         tester.getSemantics(row('Any currency')),
@@ -391,6 +418,58 @@ void main() {
     expect(choice('EUR +1'), findsOneWidget);
     expect(listed(tester), [1, 2, 3, 4, 5, 7]);
   });
+
+  testWidgets(
+    'shown without the app\'s bottom bar, the last row stays above the system bar',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(390, 844) * 3
+        ..devicePixelRatio = 3
+        ..padding = const FakeViewPadding(bottom: 48 * 3);
+      addTearDown(tester.view.reset);
+      final options = [for (var i = 1; i <= 30; i++) 'Option $i'];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => FilterSheet.show<String>(
+                    context,
+                    title: 'Title',
+                    anyLabel: 'Any option',
+                    options: options,
+                    selected: const [],
+                    label: (option) => option,
+                    onChanged: (_) {},
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await settle(tester);
+      await tester.scrollUntilVisible(
+        row('Option 30'),
+        200,
+        scrollable: find.descendant(of: sheet, matching: find.byType(Scrollable)),
+      );
+      await tester.drag(
+        find.descendant(of: sheet, matching: find.byType(Scrollable)),
+        const Offset(0, -2000),
+      );
+      await settle(tester);
+
+      expect(tester.getRect(row('Option 30')).bottom, lessThanOrEqualTo(844 - 48));
+      expect(row('Option 30').hitTestable(), findsOneWidget);
+    },
+  );
 
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {

@@ -739,6 +739,34 @@ void main() {
       );
       await settle();
       await capture('filtres-petit-texte2-plusieurs');
+
+      // The same phone with the text three times as large: the sheets of the hosts and of the payment methods, whose close button then goes above the title.
+      tester.platformDispatcher.textScaleFactorTestValue = 3;
+      await settle();
+      final hosts = find.text('${host('temple')} +1');
+      await tester.ensureVisible(hosts);
+      await settle();
+      await tester.tap(hosts);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-petit-texte3-hotes');
+      await tester.drag(
+        find.byType(ListView).last,
+        const Offset(0, -900),
+      );
+      await settle();
+      await capture('filtres-petit-texte3-hotes-bas');
+      await tester.tapAt(const Offset(4, 4));
+      await settle();
+      final methods = find.text(l10n.p2pBookFilterAnyMethod);
+      await tester.ensureVisible(methods);
+      await settle();
+      await tester.tap(methods);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-petit-texte3-paiements');
+      await tester.tapAt(const Offset(4, 4));
+      await settle();
       tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
   }

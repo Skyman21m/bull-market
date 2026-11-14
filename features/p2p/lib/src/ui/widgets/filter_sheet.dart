@@ -179,37 +179,52 @@ class _SheetFrame extends StatelessWidget {
       ),
       child: ListView.builder(
         shrinkWrap: true,
-        padding: const EdgeInsets.only(
+        // The system's bottom inset too, which a list given its own padding no longer adds: shown without the app's bottom bar, which takes the inset in the tab, the last row stays above the system bar.
+        padding: EdgeInsets.only(
           top: BullSpacing.md,
-          bottom: BullSpacing.lg,
+          bottom: BullSpacing.lg + MediaQuery.paddingOf(context).bottom,
         ),
         itemCount: rows + 1,
         itemBuilder: (context, index) {
           if (index > 0) return row(index - 1);
+          final close = IconButton(
+            tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+            iconSize: 20,
+            onPressed: () => Navigator.of(context).pop(),
+            color: colors.onSurface,
+            icon: const Icon(Icons.close),
+          );
+          final heading = Semantics(
+            header: true,
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: text.headlineMedium?.copyWith(color: colors.onSurface),
+            ),
+          );
+          // With very large text the close button goes above the title, which then has the whole width: beside it, « Sélectionner » no longer fits on a line of a small phone and breaks in the middle.
+          if (_SheetFrame.isLargeText(context)) {
+            return Padding(
+              padding: const EdgeInsets.only(
+                left: BullSpacing.md,
+                right: BullSpacing.md,
+                bottom: BullSpacing.md,
+              ),
+              child: Column(
+                children: [
+                  Align(alignment: AlignmentDirectional.centerEnd, child: close),
+                  heading,
+                ],
+              ),
+            );
+          }
           return Padding(
             padding: const EdgeInsets.only(bottom: BullSpacing.md),
             child: Row(
               children: [
                 const Gap(48),
-                Expanded(
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: text.headlineMedium?.copyWith(
-                        color: colors.onSurface,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                  iconSize: 20,
-                  onPressed: () => Navigator.of(context).pop(),
-                  color: colors.onSurface,
-                  icon: const Icon(Icons.close),
-                ),
+                Expanded(child: heading),
+                close,
                 const Gap(BullSpacing.md),
               ],
             ),
@@ -218,6 +233,10 @@ class _SheetFrame extends StatelessWidget {
       ),
     );
   }
+
+  /// Whether the text is at least two and a half times its size, where the sheets give their words more room; the normal sizes keep the design of `BullPickerSheet`.
+  static bool isLargeText(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(1) >= 2.5;
 }
 
 /// One row of a sheet of the filter: its label, in the primary colour with a check when it is chosen, as `BullPickerSheet` draws its selected row.
@@ -249,10 +268,12 @@ class _FilterRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            // The padding of the rows of `BullPickerSheet`.
-            padding: const EdgeInsets.symmetric(
+            // The padding of the rows of `BullPickerSheet`, narrower with very large text, so that more of a word fits on a line.
+            padding: EdgeInsets.symmetric(
               vertical: BullSpacing.md + BullSpacing.xxs,
-              horizontal: BullSpacing.xl + BullSpacing.xs,
+              horizontal: _SheetFrame.isLargeText(context)
+                  ? BullSpacing.lg
+                  : BullSpacing.xl + BullSpacing.xs,
             ),
             child: Row(
               children: [

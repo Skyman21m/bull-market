@@ -620,6 +620,37 @@ void main() {
     );
 
     test(
+      'several hosts chosen: the market price comes from all of their orders',
+      () async {
+        Future<List<PublicOrder>> dollars(String alias, double price) =>
+            parseOrders([
+              caseOrder(1, 1, 0, 1000, currency: 1, price: price),
+            ], alias: alias);
+        final book = [
+          ...await dollars('lake', 70000),
+          ...await dollars('temple', 60000),
+          ...await dollars('bazaar', 40000),
+          ...await dollars('freeport', 45000),
+        ];
+        // Every coordinator: 40000, 45000, 60000 and 70000, the lower of the two middle votes.
+        expect(DepthChart.impliedMarketPrice(book, usd), 45000);
+        // Lake alone would say 70000; lake and temple together say the lower of their two votes, 60000, and their orders, at a premium of 0, sit on it.
+        final both = DepthChart.of(
+          book: book,
+          filter: BookFilter(hosts: [coordinator('lake'), coordinator('temple')]),
+          axis: DepthAxis.price,
+        );
+        expect(both.window.center, 60000);
+        final lakeOnly = DepthChart.of(
+          book: book,
+          filter: BookFilter(hosts: [coordinator('lake')]),
+          axis: DepthAxis.price,
+        );
+        expect(lakeOnly.window.center, 70000);
+      },
+    );
+
+    test(
       'a median between -1 and 0 is a centre of 0, never a negative zero',
       () async {
         final chart = DepthChart.of(
@@ -667,6 +698,35 @@ void main() {
         DepthChart.median([70000 / (1 + 1 / 100), 1 / (1 + 5 / 100)]),
       );
     });
+
+    test(
+      'several currencies chosen are priced in US dollars, as every currency is',
+      () async {
+        final chf = currency(7);
+        final book = await parseOrders([
+          caseOrder(1, 1, 0, 1000000, currency: 1, price: 75000),
+          caseOrder(2, 1, 1, 1000000, price: 70000),
+          caseOrder(3, 0, 2, 1000000, currency: 7, price: 66000),
+        ]);
+        final chart = DepthChart.of(
+          book: book,
+          filter: BookFilter(currencies: [eur, chf]),
+          axis: DepthAxis.price,
+        );
+        expect(chart.priceCurrency, usd);
+        // The euro and franc orders are placed on the dollar price with their premiums, 75750 and 76500, the dollar order not being chosen: the window centres between them.
+        expect(chart.window.center, 76125);
+        // One currency chosen prices the axis in it.
+        expect(
+          DepthChart.of(
+            book: book,
+            filter: BookFilter(currencies: [chf]),
+            axis: DepthAxis.price,
+          ).priceCurrency,
+          chf,
+        );
+      },
+    );
 
     test('the market price is the median of the prices the orders imply', () {
       expect(DepthChart.median([3, 1, 2]), 2);
