@@ -139,6 +139,9 @@ void main() {
         cubit.checkInvoice(invoice.text, RoutingBudgetPpm.referenceDefault);
         final shown = cubit.state.submittable(PayoutKind.lightning);
         expect(shown, isA<CheckedPayoutInvoice>());
+        // A check is no confirmation: nothing is given without « Submit ».
+        await pumpEventQueue();
+        expect(sender.sent, isEmpty);
         final phases = <PayoutPhase>[];
         final listening = cubit.stream.listen((s) => phases.add(s.phase));
         final gate = Completer<void>();
