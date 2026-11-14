@@ -52,8 +52,8 @@ class TradeScreen extends StatefulWidget {
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
-  /// The line that says, after status 3, where the payment of a bond paid by this wallet stands: `null` without the wallet's port (#100).
-  final WidgetBuilder? walletBondLine;
+  /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
+  final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
@@ -212,7 +212,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         when view is! TradeWaiting &&
                             !(view is TradeContract &&
                                 view.status is WaitingForTakerBond)) ...[
-                      bondLine(context),
+                      bondLine(
+                        context,
+                        // Locked only while the trade goes on after the lock.
+                        view is TradeContract && !view.status.isTerminal,
+                      ),
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {

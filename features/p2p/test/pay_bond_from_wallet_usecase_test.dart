@@ -9,6 +9,7 @@ import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_payment.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/trade/bond_payments_in_flight.dart';
 import 'package:p2p/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/testing.dart';
@@ -121,6 +122,7 @@ final class _Setup {
         payments ?? stored,
         wallet,
         harness.locks,
+        BondPaymentsInFlight(),
       ),
     );
   }

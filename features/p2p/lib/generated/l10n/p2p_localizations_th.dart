@@ -1524,7 +1524,7 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pPayCustody =>
-      'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds them to this wallet, without its fees.';
+      'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds the bond’s sats to Instant payments, and its fees are not refunded.';
 
   @override
   String p2pPayConfirm(String total) {
@@ -1541,15 +1541,15 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pPayHeld =>
-      'Your bond is locked. Its sats are held by the swap service until the trade ends.';
+      'Your bond is locked. The sats of this bond are held by the swap service until the trade ends.';
 
   @override
   String get p2pPayRefundPending =>
-      'Your bond was returned. The swap service is refunding it to Instant payments, without its fees.';
+      'Your bond was returned. The swap service is refunding the bond’s sats to Instant payments; its fees are not refunded.';
 
   @override
   String get p2pPayRefunded =>
-      'Refunded: the bond is back in Instant payments, without the swap service’s fees.';
+      'Refunded: the bond’s sats are back in Instant payments; the swap service’s fees are not refunded.';
 
   @override
   String p2pPaySettled(String coordinator) {
@@ -1570,7 +1570,7 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pPayAskSupport =>
-      'The swap service did not pay this bond, and its sats may have left this wallet. Contact Bull Bitcoin support.';
+      'The swap service did not pay this bond, and the sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
 
   @override
   String p2pPayUnderMinimum(String min) {
@@ -1622,4 +1622,29 @@ class P2pLocalizationsTh extends P2pLocalizations {
 
   @override
   String get p2pPayWalletUnavailable => 'This wallet cannot pay this bond now.';
+
+  @override
+  String get p2pPayServiceCouldNotPay =>
+      'The swap service could not pay this invoice. It is refunding the sats to Instant payments; its fees are not refunded.';
+
+  @override
+  String get p2pPayWithSwapService =>
+      'The sats of this bond are with the swap service.';
+
+  @override
+  String p2pPayCoordinatorUnreachable(String coordinator) {
+    return 'Could not reach $coordinator. Nothing was paid.';
+  }
+
+  @override
+  String get p2pPayStillSending =>
+      'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a minute.';
+
+  @override
+  String get p2pPayAskSupportSent =>
+      'The swap service did not pay this bond, and the sats of this bond left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String get p2pPayUnreadable =>
+      'Bull Market cannot read where this payment stands.';
 }

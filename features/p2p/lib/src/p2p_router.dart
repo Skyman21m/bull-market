@@ -119,7 +119,7 @@ final class P2pRouter {
                     ? BondPaymentPanel.slotFor
                     : null,
                 walletBondLine: P2pLocator.paysBondFromWallet(locator)
-                    ? (_) => const BondPaymentLine()
+                    ? (_, bondHeld) => BondPaymentLine(bondHeld: bondHeld)
                     : null,
                 coordinatorDetails: (request) =>
                     locator<CoordinatorDetailsCubit>(param1: request),

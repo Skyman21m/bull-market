@@ -14,6 +14,7 @@ import '../../trade/trade_terms.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade/wallet_payment.dart';
 import '../../trade_record.dart';
+import 'bond_payments_in_flight.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -31,6 +32,7 @@ final class PayBondFromWalletUsecase {
   final TradePaymentRepository _payments;
   final P2pWalletPort _wallet;
   final TradeTakeLocks _locks;
+  final BondPaymentsInFlight _inFlight;
 
   const PayBondFromWalletUsecase(
     this._reader,
@@ -38,7 +40,12 @@ final class PayBondFromWalletUsecase {
     this._payments,
     this._wallet,
     this._locks,
+    this._inFlight,
   );
+
+  /// When the payment of [record]'s bond this process is making now ends, `null` when none runs: a screen opened meanwhile says the payment is being sent.
+  Future<void>? bondPaymentRunning(TradeRecord record) =>
+      _inFlight.running(record);
 
   /// What the Instant Payments wallet on [network] can spend, at once and after each sync of it; a refusal ends the stream.
   Stream<Result<Sats, P2pWalletRefusal>> watchBalance(
@@ -88,6 +95,11 @@ final class PayBondFromWalletUsecase {
   /// The order is read again first, with the trade's robot through its places in [RobotRequestLimiter], and kept as every read is; the payment goes on only when the status now stored is the bond step and `walletPaymentFor` offers the invoice of [accepted] (same text and payment hash): a status that moved on, an invoice replaced or too little time left refuse it, with nothing paid.
   /// Then the payment's start is written; only once it is written is the wallet asked. The wallet's id of the payment is written as soon as the wallet gives one (paid, or a refusal that carries a payment: broadcast unknown, interrupted, or a payment that already exists).
   Future<Result<P2pWalletPayment, BondPayRefusal>> payBond(
+    TradeRecord record, {
+    required P2pWalletQuote accepted,
+  }) => _inFlight.run(record, () => _payBond(record, accepted: accepted));
+
+  Future<Result<P2pWalletPayment, BondPayRefusal>> _payBond(
     TradeRecord record, {
     required P2pWalletQuote accepted,
   }) async {

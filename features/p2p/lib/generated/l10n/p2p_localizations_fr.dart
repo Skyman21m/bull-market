@@ -1548,7 +1548,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayCustody =>
-      'Ce portefeuille paie en Lightning par un service d’échange. Tant que votre caution est bloquée, les sats sont gardés par ce service ; si la caution est rendue, il les rembourse sur ce portefeuille, sans ses frais.';
+      'Ce portefeuille paie en Lightning par un service d’échange. Tant que votre caution est bloquée, les sats sont gardés par ce service ; si la caution est rendue, il rembourse les sats de la caution vers Paiements instantanés, et ses frais ne sont pas rendus.';
 
   @override
   String p2pPayConfirm(String total) {
@@ -1565,15 +1565,15 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayHeld =>
-      'Votre caution est bloquée. Ses sats sont gardés par le service d’échange jusqu’à la fin de l’échange.';
+      'Votre caution est bloquée. Les sats de cette caution sont gardés par le service d’échange jusqu’à la fin de l’échange.';
 
   @override
   String get p2pPayRefundPending =>
-      'Votre caution a été rendue. Le service d’échange la rembourse vers Paiements instantanés, sans ses frais.';
+      'Votre caution a été rendue. Le service d’échange rembourse les sats de la caution vers Paiements instantanés ; ses frais ne sont pas rendus.';
 
   @override
   String get p2pPayRefunded =>
-      'Remboursé : la caution est revenue dans Paiements instantanés, sans les frais du service d’échange.';
+      'Remboursée : les sats de la caution sont revenus dans Paiements instantanés ; les frais du service d’échange ne sont pas rendus.';
 
   @override
   String p2pPaySettled(String coordinator) {
@@ -1594,7 +1594,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayAskSupport =>
-      'Le service d’échange n’a pas payé cette caution, et ses sats sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+      'Le service d’échange n’a pas payé cette caution, et les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
   String p2pPayUnderMinimum(String min) {
@@ -1648,4 +1648,29 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayWalletUnavailable =>
       'Ce portefeuille ne peut pas payer cette caution maintenant.';
+
+  @override
+  String get p2pPayServiceCouldNotPay =>
+      'Le service d’échange n’a pas pu payer cette facture. Il rembourse les sats vers Paiements instantanés ; ses frais ne sont pas rendus.';
+
+  @override
+  String get p2pPayWithSwapService =>
+      'Les sats de cette caution sont chez le service d’échange.';
+
+  @override
+  String p2pPayCoordinatorUnreachable(String coordinator) {
+    return 'Impossible de joindre $coordinator. Rien n’a été payé.';
+  }
+
+  @override
+  String get p2pPayStillSending =>
+      'Envoi toujours en cours : l’ordre est relu par Tor, puis le service d’échange crée le paiement. Cela peut prendre une minute.';
+
+  @override
+  String get p2pPayAskSupportSent =>
+      'Le service d’échange n’a pas payé cette caution, et les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
+  String get p2pPayUnreadable =>
+      'Bull Market ne peut pas lire où en est ce paiement.';
 }

@@ -18,11 +18,15 @@ final class WalletPaymentRequest {
   final TradeSeen seen;
   final Sats amount;
 
+  /// Whether the screen's clock passed the invoice's `payableUntil`: the wallet offers nothing more, but says where a payment it made stands.
+  final bool invoiceExpired;
+
   const WalletPaymentRequest({
     required this.record,
     required this.status,
     required this.seen,
     required this.amount,
+    this.invoiceExpired = false,
   });
 }
 
@@ -32,7 +36,14 @@ final class WalletPaymentSlot {
   final Widget child;
   final bool othersOpen;
 
-  const WalletPaymentSlot(this.child, {this.othersOpen = false});
+  /// Whether this wallet is paying the invoice or paid it: « Pay with another wallet » then closes and offers neither the QR code nor the copy.
+  final bool othersHidden;
+
+  const WalletPaymentSlot(
+    this.child, {
+    this.othersOpen = false,
+    this.othersHidden = false,
+  });
 }
 
 /// Builds what the wallet offers for [request], or `null` when it has nothing to offer: then the section is empty and « Pay with another wallet » opens at once.

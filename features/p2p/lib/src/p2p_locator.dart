@@ -56,6 +56,7 @@ import 'domain/usecases/release_robot_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
+import 'domain/usecases/trade/bond_payments_in_flight.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
@@ -381,7 +382,12 @@ final class P2pLocator {
         locator(),
         locator<P2pWalletPort>(),
         locator(),
+        locator(),
       ),
+    );
+    // One for the feature: a screen opened again while a payment runs knows of it.
+    locator.registerLazySingleton<BondPaymentsInFlight>(
+      BondPaymentsInFlight.new,
     );
     locator.registerFactoryParam<BondPaymentCubit, TradeRecord, void>((
       record,
@@ -395,6 +401,7 @@ final class P2pLocator {
         payments.quoteBond,
         payments.payBond,
         payments.followBond,
+        payments.bondPaymentRunning,
       );
     });
     locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(

@@ -38,6 +38,7 @@ Future<(BondPaymentCubit, Payments)> _show(
   Result<Sats, P2pWalletRefusal>? balance,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
+  DateTime Function()? now,
   double textScale = 1,
 }) async {
   tester.view
@@ -91,10 +92,11 @@ Future<(BondPaymentCubit, Payments)> _show(
             BlocProvider.value(value: cubit),
           ],
           child: TradeScreen(
-            now: () => tradeNow,
+            now: now ?? () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             walletPayment: BondPaymentPanel.slotFor,
-            walletBondLine: (_) => const BondPaymentLine(),
+            walletBondLine: (_, bondHeld) =>
+                BondPaymentLine(bondHeld: bondHeld),
           ),
         ),
       ),
@@ -288,12 +290,126 @@ void main() {
   );
 
   testWidgets(
-    'not offered (the invoice is not one the wallet pays): the screen as without the wallet',
+    'not offered (the invoice is not one the wallet pays): why, no balance, no button, the other wallet open',
     (tester) async {
       await _show(tester, state: 'bond', offered: false);
       await tester.pump();
       expect(find.text('Pay with this wallet'), findsNothing);
+      expect(
+        find.text('The order moved on before the payment. Nothing was paid.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('sats available'), findsNothing);
       expect(find.byType(QrImageView), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'while the payment is sent, and once sent: the other wallet closed, no QR code nor copy of the same invoice, the line in view',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      await _confirming(tester, payments);
+      await tester.tap(find.text('Pay 3,357 sats'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Sending the payment…'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      final line = tester.getRect(find.text('Sending the payment…'));
+      expect(line.top, greaterThanOrEqualTo(0));
+      expect(line.bottom, lessThanOrEqualTo(844));
+      payments.pays.single.complete(Ok(_payment));
+      await tester.pump();
+      _follow(payments, const P2pWalletPaymentSent());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'at 3, the swap service could not pay: said so, the other wallet open',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      _follow(payments, const P2pWalletPaymentRefundPending());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'The swap service could not pay this invoice. It is refunding the sats to Instant payments; its fees are not refunded.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a payment of the invoice made by the wallet\'s own screens: already paid, nothing more offered',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      await _confirming(tester, payments);
+      await tester.tap(find.text('Pay 3,357 sats'));
+      await tester.pump();
+      payments.pays.single.complete(
+        const Err(
+          BondPayWalletRefused(
+            P2pWalletPaymentExists(progress: P2pWalletPaymentSent()),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('This wallet already paid this invoice.'),
+        findsOneWidget,
+      );
+      expect(find.text('Pay with this wallet'), findsNothing);
+      expect(find.byType(QrImageView), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'the order could not be read just before the payment: the coordinator not reached, nothing paid, the wallet still offered',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      await _confirming(tester, payments);
+      await tester.tap(find.text('Pay 3,357 sats'));
+      await tester.pump();
+      payments.pays.single.complete(
+        const Err(BondPayTradeUnavailable(CoordinatorTimedOut())),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Could not reach Temple of Sats. Nothing was paid.'),
+        findsOneWidget,
+      );
+      expect(find.text('Pay with this wallet'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'past the invoice\'s end, a payment sent is still said; nothing more is offered',
+    (tester) async {
+      var clock = tradeNow;
+      final (_, payments) = await _show(
+        tester,
+        state: 'bond',
+        now: () => clock,
+      );
+      _follow(payments, const P2pWalletPaymentSent());
+      await tester.pump();
+      clock = tradeNow.add(const Duration(hours: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        find.text(
+          'Payment sent. Waiting for Temple of Sats to see your bond locked.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Pay with this wallet'), findsNothing);
     },
   );
 
@@ -315,25 +431,37 @@ void main() {
       'held',
       'six',
       const P2pWalletPaymentPending(),
-      'Your bond is locked. Its sats are held by the swap service until the trade ends.',
+      'Your bond is locked. The sats of this bond are held by the swap service until the trade ends.',
     ),
     (
       'refund pending',
       'expired',
       const P2pWalletPaymentRefundPending(),
-      'Your bond was returned. The swap service is refunding it to Instant payments, without its fees.',
+      'Your bond was returned. The swap service is refunding the bond’s sats to Instant payments; its fees are not refunded.',
     ),
     (
       'refunded',
       'expired',
       const P2pWalletPaymentRefunded(),
-      'Refunded: the bond is back in Instant payments, without the swap service’s fees.',
+      'Refunded: the bond’s sats are back in Instant payments; the swap service’s fees are not refunded.',
     ),
     (
       'kept',
       'expired',
       const P2pWalletPaymentPaid(),
       'Your bond was kept by Temple of Sats.',
+    ),
+    (
+      'sent, the order no longer going on: neutral',
+      'expired',
+      const P2pWalletPaymentPending(),
+      'The sats of this bond are with the swap service.',
+    ),
+    (
+      'expired with its funding sent',
+      'expired',
+      const P2pWalletPaymentExpired(P2pWalletFunds.sent),
+      'The swap service did not pay this bond, and the sats of this bond left this wallet. Contact Bull Bitcoin support.',
     ),
     (
       'under review',
@@ -405,6 +533,47 @@ void main() {
     }
   });
 
+  group(
+    'on a phone of 320 points, the text larger, the lines of the payment',
+    () {
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        for (final scale in const [2.0, 3.0]) {
+          testWidgets(
+            '${locale.languageCode} at ×$scale: sending, sent, and after 3',
+            (tester) async {
+              final (cubit, payments) = await _show(
+                tester,
+                state: 'bond',
+                locale: locale,
+                size: const Size(320, 640),
+                textScale: scale,
+              );
+              unawaited(cubit.ask(_bondSeen()));
+              await tester.pump();
+              payments.quotes.single.complete(Ok(walletQuote()));
+              await tester.pump();
+              unawaited(cubit.confirm());
+              await tester.pump();
+              _expectNothingCut(tester, 'sending');
+              payments.pays.single.complete(Ok(_payment));
+              await tester.pump();
+              for (final progress in const <P2pWalletPaymentProgress>[
+                P2pWalletPaymentSent(),
+                P2pWalletPaymentRefundPending(),
+                P2pWalletPaymentUnderReview(),
+                P2pWalletPaymentExpired(P2pWalletFunds.maybeSent),
+              ]) {
+                _follow(payments, progress);
+                await tester.pump();
+                await tester.pump();
+                _expectNothingCut(tester, '$progress');
+              }
+            },
+          );
+        }
+      }
+    },
+  );
   testWidgets(
     'a screen reader hears the confirmation\'s title as it opens, and the payment\'s line as it changes',
     (tester) async {

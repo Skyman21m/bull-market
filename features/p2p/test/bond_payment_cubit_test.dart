@@ -22,6 +22,9 @@ final class Payments {
   final List<P2pWalletQuote> accepted = [];
   int checks = 0;
 
+  /// The payment of the bond this process is making now, as the use case knows it.
+  Future<void>? running;
+
   Stream<Result<Sats, P2pWalletRefusal>> balance(RobosatsNetwork network) =>
       balances.stream;
 
@@ -65,6 +68,7 @@ final class Payments {
     quote,
     pay,
     follow,
+    (record) => running,
   );
 }
 
@@ -275,6 +279,108 @@ void main() {
     expect(cubit.state.step, isA<BondPayUnreadable>());
     await cubit.ask(seen);
     expect(payments.quotes, isEmpty);
+    await cubit.close();
+  });
+
+  test(
+    'opened again while this process pays the bond: being sent, then followed once it ends; never offered meanwhile',
+    () async {
+      final payments = Payments();
+      final running = Completer<void>();
+      payments.running = running.future;
+      final cubit = payments.cubit()..start();
+      expect(cubit.state.step, isA<BondPaySending>());
+      expect(payments.follows, isEmpty);
+      await cubit.ask(seen);
+      expect(payments.quotes, isEmpty);
+      payments.running = null;
+      running.complete();
+      await settle();
+      expect(payments.follows, hasLength(1));
+      payments.follows.single.add(
+        BondPaymentFollowed(
+          P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash),
+          const P2pWalletPaymentSent(),
+        ),
+      );
+      await settle();
+      expect(cubit.state.step, isA<BondPayFollowing>());
+      await cubit.close();
+    },
+  );
+
+  test(
+    'a payment being prepared by this process is being sent; one left by an earlier run may be tried again',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      final payment = P2pWalletPayment(
+        id: 'swap',
+        paymentHash: testPaymentHash,
+      );
+      payments.running = Completer<void>().future;
+      payments.follows.single.add(
+        BondPaymentFollowed(payment, const P2pWalletPaymentPreparing()),
+      );
+      await settle();
+      expect(cubit.state.step, isA<BondPaySending>());
+      payments.running = null;
+      payments.follows.single.add(
+        BondPaymentFollowed(payment, const P2pWalletPaymentPreparing()),
+      );
+      await settle();
+      expect(cubit.state.step, isA<BondPayIdle>());
+      await cubit.close();
+    },
+  );
+
+  test(
+    'a payment of the invoice made by the wallet\'s own screens: paid elsewhere, never offered again',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      payments.follows.single.add(const BondPaymentNone());
+      await settle();
+      final asking = cubit.ask(seen);
+      payments.quotes.single.complete(Ok(walletQuote()));
+      await asking;
+      final paying = cubit.confirm();
+      payments.pays.single.complete(
+        const Err(
+          BondPayWalletRefused(
+            P2pWalletPaymentExists(progress: P2pWalletPaymentSent()),
+          ),
+        ),
+      );
+      await paying;
+      expect(cubit.state.step, isA<BondPayPaidElsewhere>());
+      await cubit.ask(seen);
+      expect(payments.quotes, hasLength(1));
+      await cubit.close();
+    },
+  );
+
+  test('a payment sent for a while says it still waits', () async {
+    final payments = Payments();
+    final cubit = BondPaymentCubit(
+      TradeScreenStatuses.record,
+      payments.balance,
+      payments.check,
+      payments.quote,
+      payments.pay,
+      payments.follow,
+      (record) => null,
+      stillWaitingAfter: const Duration(milliseconds: 10),
+    )..start();
+    payments.follows.single.add(const BondPaymentNone());
+    await settle();
+    final asking = cubit.ask(seen);
+    payments.quotes.single.complete(Ok(walletQuote()));
+    await asking;
+    unawaited(cubit.confirm());
+    expect((cubit.state.step as BondPaySending).slow, isFalse);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect((cubit.state.step as BondPaySending).slow, isTrue);
     await cubit.close();
   });
 

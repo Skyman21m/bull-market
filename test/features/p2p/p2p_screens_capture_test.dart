@@ -1772,6 +1772,13 @@ void main() {
         await nextRead();
         await capture('paiement-envoye');
 
+        // At 3, a swap service that could not pay the invoice (demonstration progress), then back to the payment held.
+        wallet.progress(const P2pWalletPaymentRefundPending());
+        await settle();
+        await capture('paiement-service-n-a-pas-paye');
+        wallet.progress(const P2pWalletPaymentPending());
+        await settle();
+
         // The coordinator sees the bond locked: 6, the bond held by the swap service.
         final taker = identities.firstWhere(coordinator.holdsPreTake);
         coordinator.lockBond(taker);
@@ -1779,13 +1786,14 @@ void main() {
         await nextRead();
         await capture('paiement-caution-bloquee');
 
-        // What the line says once the trade ends, as the swap service reports it (demonstration progress).
-        wallet.progress(const P2pWalletPaymentRefundPending());
+        // The bond lost by a cancel at 6: the coordinator keeps it, and the wallet reports the invoice settled (demonstration progress).
+        await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
         await settle();
-        await capture('paiement-remboursement');
-        wallet.progress(const P2pWalletPaymentRefunded());
+        await tester.tap(find.text(l10n.p2pCommonCancel).last);
         await settle();
-        await capture('paiement-rembourse');
+        await tester.tap(find.text(l10n.p2pTradeConfirmCancel));
+        await settle();
+        await nextRead();
         wallet.progress(const P2pWalletPaymentPaid());
         await settle();
         await capture('paiement-caution-conservee');

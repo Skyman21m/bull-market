@@ -2582,7 +2582,7 @@ abstract class P2pLocalizations {
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's explanation of the swap service's custody.
   ///
   /// In en, this message translates to:
-  /// **'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds them to this wallet, without its fees.'**
+  /// **'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds the bond’s sats to Instant payments, and its fees are not refunded.'**
   String get p2pPayCustody;
 
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's button, the only tap that pays.
@@ -2603,22 +2603,22 @@ abstract class P2pLocalizations {
   /// **'Payment sent. Waiting for {coordinator} to see your bond locked.'**
   String p2pPaySent(String coordinator);
 
-  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: from status 6 on, for a bond paid by this wallet. The study's text named the amount, which the trade's later statuses do not carry: left out.
+  /// The panel of « Pay with this wallet » (#100): from status 6 until the trade's end, for a bond paid by this wallet, from the study of #100 § 4 without its amount (the trade's later statuses do not carry it).
   ///
   /// In en, this message translates to:
-  /// **'Your bond is locked. Its sats are held by the swap service until the trade ends.'**
+  /// **'Your bond is locked. The sats of this bond are held by the swap service until the trade ends.'**
   String get p2pPayHeld;
 
-  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the coordinator cancelled the hold invoice and the swap service is to refund the wallet. The study's text named an amount, which the wallet does not give for a refund: left out.
+  /// The panel of « Pay with this wallet » (#100): after status 3, the coordinator cancelled the hold invoice and the swap service refunds the bond (the study of #100 observed a refund equal to the bond; its fees are not returned), from the study's § 4 without an amount.
   ///
   /// In en, this message translates to:
-  /// **'Your bond was returned. The swap service is refunding it to Instant payments, without its fees.'**
+  /// **'Your bond was returned. The swap service is refunding the bond’s sats to Instant payments; its fees are not refunded.'**
   String get p2pPayRefundPending;
 
-  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service refunded the wallet. No amount, as for the refund pending.
+  /// The panel of « Pay with this wallet » (#100): after status 3, the swap service refunded the bond, from the study's § 4 without an amount.
   ///
   /// In en, this message translates to:
-  /// **'Refunded: the bond is back in Instant payments, without the swap service’s fees.'**
+  /// **'Refunded: the bond’s sats are back in Instant payments; the swap service’s fees are not refunded.'**
   String get p2pPayRefunded;
 
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the hold invoice was settled: the bond is lost, as with any wallet.
@@ -2648,7 +2648,7 @@ abstract class P2pLocalizations {
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a payment that expired or failed with its funding possibly sent; only the swap service's support can tell where the sats are.
   ///
   /// In en, this message translates to:
-  /// **'The swap service did not pay this bond, and its sats may have left this wallet. Contact Bull Bitcoin support.'**
+  /// **'The swap service did not pay this bond, and the sats of this bond may have left this wallet. Contact Bull Bitcoin support.'**
   String get p2pPayAskSupport;
 
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal; « Pay with another wallet » opens.
@@ -2657,7 +2657,7 @@ abstract class P2pLocalizations {
   /// **'This bond is under the swap service’s minimum of {min} sats.'**
   String p2pPayUnderMinimum(String min);
 
-  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the same when the service gives no minimum.
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: a refusal when the swap service gives no minimum.
   ///
   /// In en, this message translates to:
   /// **'This bond is under the swap service’s minimum.'**
@@ -2728,6 +2728,42 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This wallet cannot pay this bond now.'**
   String get p2pPayWalletUnavailable;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: at status 3, a refund pending or done (the bond was never locked); « Pay with another wallet » opens.
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service could not pay this invoice. It is refunding the sats to Instant payments; its fees are not refunded.'**
+  String get p2pPayServiceCouldNotPay;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: after status 3, outside a trade going on (an order public again, cancelled or ended), for a payment sent whose end the wallet has not reported yet.
+  ///
+  /// In en, this message translates to:
+  /// **'The sats of this bond are with the swap service.'**
+  String get p2pPayWithSwapService;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table, worded on the take's: the order could not be read again just before the payment; « Pay with this wallet » stays offered.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach {coordinator}. Nothing was paid.'**
+  String p2pPayCoordinatorUnreachable(String coordinator);
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: after 30 s of « Sending the payment… », as the take says it still waits; the screen cannot tell which of the two steps is waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a minute.'**
+  String get p2pPayStillSending;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: a payment that expired or failed after its funding was broadcast.
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service did not pay this bond, and the sats of this bond left this wallet. Contact Bull Bitcoin support.'**
+  String get p2pPayAskSupportSent;
+
+  /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: the records, or the wallet's, cannot be read; nothing is paid.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot read where this payment stands.'**
+  String get p2pPayUnreadable;
 }
 
 class _P2pLocalizationsDelegate

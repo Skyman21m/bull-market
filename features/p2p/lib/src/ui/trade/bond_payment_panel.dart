@@ -19,14 +19,15 @@ import 'wallet_payment_section.dart';
 
 /// « Pay with this wallet », the slot of the bond panel at status 3 (#100, W4): the Instant payments balance, the button, the swap service's quote and its confirmation, the payment and where it stands, as the study of #100 (§ 4) words them.
 ///
-/// The quote is asked only on the tap of « Pay with this wallet », never when the panel opens; the payment is made only on the tap of its confirmation, « Pay {total} sats ». A refusal opens « Pay with another wallet », and « Pay with this wallet » stays offered while nothing left the wallet.
+/// The quote is asked only on the tap of « Pay with this wallet », never when the panel opens; the payment is made only on the tap of its confirmation, « Pay {total} sats ». Every wait says what it waits for (the fees, the sending, the coordinator's lock), and the line of the payment is brought into view when it changes.
+/// While this wallet pays, or once its payment may have moved funds, « Pay with another wallet » closes and offers neither the QR code nor the copy of the same invoice. A refusal that moved nothing opens it, and « Pay with this wallet » stays offered.
 /// It reads and drives one [BondPaymentCubit]; it names neither the wallet's port nor its payment.
 class BondPaymentPanel extends StatefulWidget {
   final WalletPaymentRequest request;
 
   const BondPaymentPanel({super.key, required this.request});
 
-  /// The slot for [request], as the trade screen's [WalletPaymentBuilder]: nothing when the wallet has nothing to offer (no Instant payments wallet, an invoice it is not offered for, records it cannot read), so that « Pay with another wallet » opens at once.
+  /// The slot for [request], as the trade screen's [WalletPaymentBuilder]: nothing when the wallet has nothing to offer or say (no Instant payments wallet, the invoice past its end with no payment), so that « Pay with another wallet » opens at once.
   static WalletPaymentSlot? slotFor(
     BuildContext context,
     WalletPaymentRequest request,
@@ -34,34 +35,63 @@ class BondPaymentPanel extends StatefulWidget {
     final state = context.watch<BondPaymentCubit>().state;
     final panel = BondPaymentPanel(request: request);
     final step = state.step;
-    if (step is BondPayUnreadable) return null;
-    if (state.balance case Err()) {
-      // No Instant payments wallet to pay from; a payment made earlier is still shown.
-      return step is BondPayFollowing ? WalletPaymentSlot(panel) : null;
+    final offering = switch (step) {
+      BondPayLooking() || BondPayIdle() || BondPayQuoting() => true,
+      BondPayConfirming() => true,
+      _ => false,
+    };
+    // No Instant payments wallet, or the invoice past its end: the wallet offers nothing more, but a payment it made or is making is still said.
+    if (offering &&
+        (request.invoiceExpired ||
+            state.balance is Err<Sats, P2pWalletRefusal>)) {
+      return null;
     }
     return switch (step) {
-      BondPayFollowing(:final progress) => WalletPaymentSlot(
-        panel,
-        othersOpen: progress is P2pWalletPaymentSigned,
-      ),
+      // A payment may exist: not read, so the rule of the slot holds (the other way opens), with a line that says so.
+      BondPayUnreadable() => WalletPaymentSlot(panel, othersOpen: true),
+      BondPaySending() => WalletPaymentSlot(panel, othersHidden: true),
+      BondPayFollowing(:final progress) => _following(panel, progress),
+      BondPayPaidElsewhere(:final progress) =>
+        progress.fundsMayHaveLeft
+            ? WalletPaymentSlot(panel, othersHidden: true)
+            : WalletPaymentSlot(panel, othersOpen: true),
       BondPayIdle(:final refused?) => WalletPaymentSlot(
         panel,
         othersOpen: !refused.fundsMayHaveMoved,
       ),
-      // Checked and not offered: nothing in the slot, but the panel is kept so that it checks again for the next status.
+      // Checked and not offered: the reason, and the other way open.
       BondPayIdle() when state.offer is Err => WalletPaymentSlot(
-        BondPaymentPanel(request: request),
+        panel,
         othersOpen: true,
       ),
       _ => WalletPaymentSlot(panel),
     };
   }
 
+  static WalletPaymentSlot _following(
+    BondPaymentPanel panel,
+    P2pWalletPaymentProgress progress,
+  ) => switch (progress) {
+    // Nothing left the wallet, or the swap service is refunding it without having paid: the other way is the one left.
+    P2pWalletPaymentSigned() ||
+    P2pWalletPaymentRefundPending() ||
+    P2pWalletPaymentRefunded() => WalletPaymentSlot(panel, othersOpen: true),
+    _ when !progress.fundsMayHaveLeft => WalletPaymentSlot(
+      panel,
+      othersOpen: true,
+    ),
+    _ => WalletPaymentSlot(panel, othersHidden: true),
+  };
+
   @override
   State<BondPaymentPanel> createState() => _BondPaymentPanelState();
 }
 
 class _BondPaymentPanelState extends State<BondPaymentPanel> {
+  /// The line of the payment, and the confirmation's « Pay » button, brought into view when they appear.
+  final _lineKey = GlobalKey();
+  final _payKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +112,21 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
     });
   }
 
+  /// Brings [key]'s widget into view after the frame: the line of a payment being sent or sent, the « Pay » button of a confirmation.
+  void _reveal(GlobalKey key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = key.currentContext;
+      if (mounted && target != null && target.mounted) {
+        unawaited(
+          Scrollable.ensureVisible(
+            target,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          ),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
@@ -96,9 +141,25 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
       Ok(:final value) => value,
       _ => null,
     };
-    final offered = state.offer is Ok;
+    final offer = state.offer;
+    final offered = offer is Ok && !widget.request.invoiceExpired;
+    final notOffered = switch (offer) {
+      Err(:final failure) => failure,
+      _ => null,
+    };
+    final showsBalance =
+        balance != null &&
+        switch (step) {
+          BondPayLooking() || BondPayQuoting() || BondPayConfirming() => true,
+          BondPayIdle(:final refused) => refused != null || notOffered == null,
+          _ => false,
+        };
+    Widget line(String value, {Color? color}) => KeyedSubtree(
+      key: _lineKey,
+      child: BondPaymentLine.text(value, color: color),
+    );
     final children = <Widget>[
-      if (balance != null && step is! BondPayFollowing)
+      if (showsBalance)
         Text(
           l10n.p2pPayBalance(formats.sats(balance.value.toInt())),
           textAlign: TextAlign.center,
@@ -108,9 +169,15 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
         BondPayLooking() => const <Widget>[],
         BondPayIdle(:final refused) => [
           if (refused != null)
-            BondPaymentLine.text(
-              bondPayRefusalText(context, refused),
+            line(
+              bondPayRefusalText(context, refused, coordinator: coordinator),
               color: colors.error,
+            )
+          else if (notOffered != null)
+            // Not offered for this invoice: why, in the panel's words.
+            line(
+              bondPayRefusalText(context, notOffered, coordinator: coordinator),
+              color: colors.textMuted,
             ),
           if (offered && balance != null)
             TradeButton(
@@ -124,46 +191,63 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
             busy: true,
             onPressed: () {},
           ),
-          BondPaymentLine.text(l10n.p2pPayQuoting),
+          line(l10n.p2pPayQuoting),
         ],
         BondPayConfirming(:final walletQuote) => [
           _Confirmation(
             walletQuote: walletQuote,
+            payKey: _payKey,
             onCancel: cubit.dismiss,
             onPay: () => unawaited(cubit.confirm()),
           ),
         ],
-        BondPaySending() => [
+        BondPaySending(:final slow) => [
           TradeButton(
             label: l10n.p2pPayWithThisWallet,
             busy: true,
             onPressed: () {},
           ),
-          BondPaymentLine.text(l10n.p2pPaySending),
+          line(l10n.p2pPaySending),
+          if (slow) BondPaymentLine.text(l10n.p2pPayStillSending),
         ],
         BondPayFollowing(:final progress) => [
-          BondPaymentLine.text(
+          line(
             bondPaymentProgressText(
               context,
               progress,
-              atBondStep: true,
               coordinator: coordinator,
             ),
           ),
         ],
-        BondPayUnreadable() => [
-          BondPaymentLine.text(l10n.p2pPayWalletUnavailable),
+        BondPayPaidElsewhere(:final progress) => [
+          line(
+            progress.fundsMayHaveLeft
+                ? l10n.p2pPayAlreadyPaid
+                : l10n.p2pPayInterrupted,
+          ),
         ],
+        BondPayUnreadable() => [line(l10n.p2pPayUnreadable)],
       },
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final (index, child) in children.indexed) ...[
-          if (index > 0) const Gap(BullSpacing.sm),
-          child,
+    return BlocListener<BondPaymentCubit, BondPaymentState>(
+      listenWhen: (previous, current) =>
+          previous.step.runtimeType != current.step.runtimeType,
+      listener: (context, state) => switch (state.step) {
+        BondPayConfirming() => _reveal(_payKey),
+        BondPaySending() ||
+        BondPayFollowing() ||
+        BondPayPaidElsewhere() => _reveal(_lineKey),
+        _ => null,
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (index, child) in children.indexed) ...[
+            if (index > 0) const Gap(BullSpacing.sm),
+            child,
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -171,11 +255,13 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
 /// The confirmation: the invoice's amount, the swap service's fee, the network fee, the total and what stays, the swap service's custody, « Cancel » and « Pay {total} sats », the only tap that pays.
 class _Confirmation extends StatelessWidget {
   final P2pWalletQuote walletQuote;
+  final GlobalKey payKey;
   final VoidCallback onCancel;
   final VoidCallback onPay;
 
   const _Confirmation({
     required this.walletQuote,
+    required this.payKey,
     required this.onCancel,
     required this.onPay,
   });
@@ -236,9 +322,12 @@ class _Confirmation extends StatelessWidget {
               onPressed: onCancel,
             ),
             const Gap(BullSpacing.sm),
-            TradeButton(
-              label: l10n.p2pPayConfirm(sats(walletQuote.total)),
-              onPressed: onPay,
+            KeyedSubtree(
+              key: payKey,
+              child: TradeButton(
+                label: l10n.p2pPayConfirm(sats(walletQuote.total)),
+                onPressed: onPay,
+              ),
             ),
           ],
         ),
@@ -249,14 +338,20 @@ class _Confirmation extends StatelessWidget {
 
 /// A line of the wallet's payment of the bond, which wraps at any text size and is read out when it changes.
 ///
-/// [BondPaymentLine.new], after status 3: where the payment of a bond paid by this wallet stands (held by the swap service, refund pending, refunded, kept), from the trade's [BondPaymentCubit]; nothing when the bond was not paid by this wallet.
+/// [BondPaymentLine.new], after status 3: where the payment of a bond paid by this wallet stands, from the trade's [BondPaymentCubit]: « locked » only while the trade goes on after the lock ([bondHeld]), elsewhere a neutral line for sats still with the swap service; nothing when the bond was not paid by this wallet, or nothing left the wallet.
 class BondPaymentLine extends StatelessWidget {
   final String? _text;
   final Color? color;
 
-  const BondPaymentLine({super.key}) : _text = null, color = null;
+  /// Whether the trade goes on after the bond's lock (status 6 until before its end): only then is the bond said locked.
+  final bool bondHeld;
 
-  const BondPaymentLine.text(String this._text, {super.key, this.color});
+  const BondPaymentLine({super.key, this.bondHeld = false})
+    : _text = null,
+      color = null;
+
+  const BondPaymentLine.text(String this._text, {super.key, this.color})
+    : bondHeld = false;
 
   @override
   Widget build(BuildContext context) {
@@ -264,10 +359,10 @@ class BondPaymentLine extends StatelessWidget {
     final line =
         _text ??
         switch (context.watch<BondPaymentCubit>().state.step) {
-          BondPayFollowing(:final progress) => bondPaymentProgressText(
+          BondPayFollowing(:final progress) => bondPaymentAfterText(
             context,
             progress,
-            atBondStep: false,
+            bondHeld: bondHeld,
             coordinator: bondPaymentCoordinator(
               context.read<BondPaymentCubit>().record,
             ),
@@ -296,11 +391,10 @@ String bondPaymentCoordinator(TradeRecord record) => CoordinatorText.of(
   maxCodePoints: CoordinatorText.name,
 );
 
-/// What the panel says of a payment of the bond at [progress]: at status 3 ([atBondStep]) until the coordinator sees the bond locked, after it while the trade goes on or once it ended.
+/// What the panel says, at status 3, of a payment of the bond at [progress].
 String bondPaymentProgressText(
   BuildContext context,
   P2pWalletPaymentProgress progress, {
-  required bool atBondStep,
   required String coordinator,
 }) {
   final l10n = P2pLocalizations.of(context);
@@ -308,23 +402,60 @@ String bondPaymentProgressText(
     P2pWalletPaymentPreparing() => l10n.p2pPaySending,
     P2pWalletPaymentSigned() => l10n.p2pPayInterrupted,
     P2pWalletPaymentBroadcastUnknown() => l10n.p2pPayMaybeSent,
+    P2pWalletPaymentSent() ||
+    P2pWalletPaymentPending() => l10n.p2pPaySent(coordinator),
+    P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
+    P2pWalletPaymentPaid() => l10n.p2pPaySettled(coordinator),
+    // At 3 the bond was never locked: the swap service could not pay the invoice.
+    P2pWalletPaymentRefundPending() ||
+    P2pWalletPaymentRefunded() => l10n.p2pPayServiceCouldNotPay,
+    P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
+    P2pWalletPaymentFailed(
+      funds: P2pWalletFunds.notSent,
+    ) => l10n.p2pPayWalletUnavailable,
+    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) ||
+    P2pWalletPaymentFailed(
+      funds: P2pWalletFunds.sent,
+    ) => l10n.p2pPayAskSupportSent,
+    P2pWalletPaymentExpired() ||
+    P2pWalletPaymentFailed() => l10n.p2pPayAskSupport,
+  };
+}
+
+/// What the line after status 3 says of a payment of the bond at [progress], `null` when nothing left the wallet: locked only when [bondHeld].
+String? bondPaymentAfterText(
+  BuildContext context,
+  P2pWalletPaymentProgress progress, {
+  required bool bondHeld,
+  required String coordinator,
+}) {
+  final l10n = P2pLocalizations.of(context);
+  return switch (progress) {
+    P2pWalletPaymentPreparing() || P2pWalletPaymentSigned() => null,
+    P2pWalletPaymentBroadcastUnknown() => l10n.p2pPayMaybeSent,
     P2pWalletPaymentSent() || P2pWalletPaymentPending() =>
-      atBondStep ? l10n.p2pPaySent(coordinator) : l10n.p2pPayHeld,
+      bondHeld ? l10n.p2pPayHeld : l10n.p2pPayWithSwapService,
     P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
     P2pWalletPaymentPaid() => l10n.p2pPaySettled(coordinator),
     P2pWalletPaymentRefundPending() => l10n.p2pPayRefundPending,
     P2pWalletPaymentRefunded() => l10n.p2pPayRefunded,
     P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
+    P2pWalletPaymentFailed(funds: P2pWalletFunds.notSent) => null,
+    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) ||
     P2pWalletPaymentFailed(
-      funds: P2pWalletFunds.notSent,
-    ) => l10n.p2pPayWalletUnavailable,
+      funds: P2pWalletFunds.sent,
+    ) => l10n.p2pPayAskSupportSent,
     P2pWalletPaymentExpired() ||
     P2pWalletPaymentFailed() => l10n.p2pPayAskSupport,
   };
 }
 
 /// Why the wallet did not quote or pay the bond, in the panel's words.
-String bondPayRefusalText(BuildContext context, BondPayRefusal refusal) {
+String bondPayRefusalText(
+  BuildContext context,
+  BondPayRefusal refusal, {
+  required String coordinator,
+}) {
   final l10n = P2pLocalizations.of(context);
   final formats = P2pFormats.of(context);
   String sats(Sats amount) => formats.sats(amount.value.toInt());
@@ -332,8 +463,8 @@ String bondPayRefusalText(BuildContext context, BondPayRefusal refusal) {
     BondPayNotAtBondStep() || BondPayInvoiceChanged() => l10n.p2pPayOrderMoved,
     BondPayNotOffered(reason: WalletPaymentRefusal.tooLate) =>
       l10n.p2pPayTooLate,
-    BondPayNotOffered() ||
-    BondPayTradeUnavailable() => l10n.p2pPayWalletUnavailable,
+    BondPayTradeUnavailable() => l10n.p2pPayCoordinatorUnreachable(coordinator),
+    BondPayNotOffered() => l10n.p2pPayWalletUnavailable,
     BondPayNotRecorded() => l10n.p2pPayNotRecorded,
     BondPayWalletRefused(:final refusal) => switch (refusal) {
       P2pWalletUnderMinimum(minimum: final minimum?) => l10n.p2pPayUnderMinimum(
