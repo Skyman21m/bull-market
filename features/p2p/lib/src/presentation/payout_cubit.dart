@@ -223,7 +223,9 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
       record,
       shown,
       onProgress: (step) {
-        if (!isClosed && state.phase is PayoutSending) {
+        if (isClosed) return;
+        if (state.phase case PayoutSending(step: final current)
+            when current != step) {
           emit(state._with(phase: PayoutSending(kind, step)));
         }
       },

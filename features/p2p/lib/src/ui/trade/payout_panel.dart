@@ -17,8 +17,10 @@ import '../../domain/trade_record.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/payout_cubit.dart';
 import '../../presentation/payout_l10n.dart';
+import '../widgets/coordinator_link_sheet.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/trade_button.dart';
+import 'bond_panel.dart';
 
 /// What the trade screen gives the payout panel of the status it shows.
 @immutable
@@ -90,6 +92,12 @@ class PayoutPanel extends StatefulWidget {
     required this.onTold,
     this.wallet,
   });
+
+  /// The keys of the fields, for the tests.
+  static const invoiceField = ValueKey('payout-invoice');
+  static const addressField = ValueKey('payout-address');
+  static const feeField = ValueKey('payout-mining-fee');
+  static const budgetField = ValueKey('payout-routing-budget');
 
   /// How long a payout may be given before the panel says it still waits, as the take does.
   static const stillWaitingAfter = Duration(seconds: 30);
@@ -439,10 +447,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             children: [
               Expanded(
                 child: BullInputText(
+                  uiKey: PayoutPanel.budgetField,
                   value: _budgetText,
                   onChanged: (text) => _setBudget(text, ask.buyerSats),
                   digitsOnly: true,
-                  maxLength: 9,
                   autocorrect: false,
                   enableSuggestions: false,
                 ),
@@ -490,11 +498,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         const Gap(BullSpacing.sm),
         _Label(l10n.p2pPayoutInvoiceField),
         BullInputText(
+          uiKey: PayoutPanel.invoiceField,
           value: _invoice,
           onChanged: _setInvoice,
-          hint: l10n.p2pPayoutInvoiceField,
           maxLines: 4,
-          maxLength: 2100,
           autocorrect: false,
           enableSuggestions: false,
           rightIcon: Tooltip(
@@ -506,6 +513,18 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         ..._check(context, state, PayoutKind.lightning),
         const Gap(BullSpacing.md),
         _submit(context, state, PayoutKind.lightning),
+        // The reference's wallets button under the Lightning form (`Forms/LightningPayout.tsx:658-660`), its link shown for copy as in the bond panel.
+        const Gap(BullSpacing.sm),
+        TradeButton(
+          label: l10n.p2pTradeCompatibleWallets,
+          icon: Icons.account_balance_wallet_outlined,
+          outlined: true,
+          onPressed: () => CoordinatorLinkSheet.show(
+            context,
+            title: l10n.p2pTradeCompatibleWallets,
+            value: BondPanel.compatibleWallets,
+          ),
+        ),
       ],
     );
   }
@@ -558,11 +577,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         const Gap(BullSpacing.md),
         _Label(l10n.p2pPayoutAddressField),
         BullInputText(
+          uiKey: PayoutPanel.addressField,
           value: _address,
           onChanged: _setAddress,
-          hint: l10n.p2pPayoutAddressField,
           maxLines: 2,
-          maxLength: 100,
           autocorrect: false,
           enableSuggestions: false,
           rightIcon: Tooltip(
@@ -574,10 +592,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         const Gap(BullSpacing.sm),
         _Label(l10n.p2pPayoutMiningFeeField),
         BullInputText(
+          uiKey: PayoutPanel.feeField,
           value: _feeText,
           onChanged: _setFee,
           onlyNumbers: true,
-          maxLength: 10,
           autocorrect: false,
           enableSuggestions: false,
         ),

@@ -22,6 +22,7 @@ import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
+import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -120,6 +121,7 @@ Future<TradeCubit> _show(
   Size size = const Size(390, 844),
   double textScale = 1,
   WalletPaymentBuilder? walletPayment,
+  PayoutPanelBuilder? payout,
   bool tickerEnabled = true,
   FakeTransport? transport,
   TakeOrderCubit Function(PublicOrder order)? takeCubitFor,
@@ -169,6 +171,7 @@ Future<TradeCubit> _show(
               now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
               walletPayment: walletPayment,
+              payout: payout,
               takeCubitFor: takeCubitFor,
               onTaken: taken?.add,
             ),
@@ -722,26 +725,59 @@ void main() {
   });
 
   group('statuses 6 to 9', () {
-    testWidgets('6: payout info, the form a later version, the bond locked', (
-      tester,
-    ) async {
-      await _show(tester, watch: _Watch(), state: _watched('six'));
-      expect(find.text('Submit payout info (2/4)'), findsOneWidget);
-      expect(
-        find.text(
-          'Before letting you send 100 EUR, we want to make sure you are able to receive the BTC.',
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.text(
-          'Sending your payout info comes in a later version of Bull Market.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Your taker bond is locked'), findsOneWidget);
-      expect(find.byType(QrImageView), findsNothing);
-    });
+    testWidgets(
+      '6: payout info and the bond locked; the form only from the payout panel given (#91)',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('six'));
+        expect(find.text('Submit payout info (2/4)'), findsOneWidget);
+        expect(
+          find.text(
+            'Before letting you send 100 EUR, we want to make sure you are able to receive the BTC.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('later version'), findsNothing);
+        expect(find.byKey(const ValueKey('payout panel')), findsNothing);
+        expect(find.text('Your taker bond is locked'), findsOneWidget);
+        expect(find.byType(QrImageView), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'the payout panel under the prompt at 6 and 8, given the shown status, stored; none at 7 and 9',
+      (tester) async {
+        final requests = <PayoutPanelRequest>[];
+        Widget panel(BuildContext context, PayoutPanelRequest request) {
+          requests.add(request);
+          return const SizedBox(key: ValueKey('payout panel'), height: 10);
+        }
+
+        for (final (name, shown) in [
+          ('six', true),
+          ('eight', true),
+          ('seven', false),
+          ('nine', false),
+        ]) {
+          requests.clear();
+          await _show(
+            tester,
+            watch: _Watch(),
+            state: _watched(name),
+            payout: panel,
+          );
+          expect(
+            find.byKey(const ValueKey('payout panel')),
+            shown ? findsOneWidget : findsNothing,
+            reason: name,
+          );
+          if (shown) {
+            expect(identical(requests.last.seen, _seen[name]), isTrue);
+            expect(requests.last.stored, isTrue);
+            expect(requests.last.record, _record);
+          }
+        }
+      },
+    );
 
     for (final (name, sent) in [
       ('sixCents', '123.45 EUR'),
