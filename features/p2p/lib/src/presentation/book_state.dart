@@ -63,7 +63,7 @@ final class BookState {
     this.tor = TorWait.initializing,
     this.torPercent,
     this.coordinators = const {},
-    this.filter = const BookFilter(),
+    this.filter = const BookFilter.any(),
     this.orders = const [],
   });
 

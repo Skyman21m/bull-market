@@ -1,4 +1,3 @@
-import 'package:bull_ui/bull_ui.dart' show BullPickerSheet;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +16,7 @@ import 'package:p2p/src/presentation/order_details_cubit.dart';
 import 'package:p2p/src/ui/book_view.dart';
 import 'package:p2p/src/ui/order_details_screen.dart';
 import 'package:p2p/src/ui/widgets/coordinators_row.dart';
+import 'package:p2p/src/ui/widgets/filter_sheet.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -95,7 +95,7 @@ void main() {
       coordinators: {
         hostile: const CoordinatorBookFailed(CoordinatorTimedOut()),
       },
-      filter: BookFilter(host: hostile),
+      filter: BookFilter(hosts: [hostile]),
     );
 
     await tester.pumpWidget(
@@ -127,7 +127,7 @@ void main() {
     }
     expect(
       find.descendant(
-        of: find.byWidgetPredicate((widget) => widget is BullPickerSheet),
+        of: find.byWidgetPredicate((widget) => widget is FilterSheet),
         matching: find.text(shown),
       ),
       findsOneWidget,

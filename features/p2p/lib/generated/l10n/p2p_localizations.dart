@@ -308,17 +308,11 @@ abstract class P2pLocalizations {
   /// **'Map'**
   String get p2pBookViewMap;
 
-  /// Start of the filter sentence « I want to [type] and use [currency] pay with [method] hosted by [host] ».
+  /// Start of the filter sentence once an order type is chosen: « I want to [Buy] and use [EUR] pay with [Revolut] hosted by [Temple of Sats] ». While none is chosen it is p2pBookFilterIWant.
   ///
   /// In en, this message translates to:
   /// **'I want to'**
   String get p2pBookFilterIWantTo;
-
-  /// The « any » value of the four selectors (type, currency, payment method, host), and the value of {currencyCode} in the empty book message.
-  ///
-  /// In en, this message translates to:
-  /// **'ANY'**
-  String get p2pBookFilterAny;
 
   /// Choosing « Buy » shows the SELL orders (type 1).
   ///
@@ -373,6 +367,84 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Select Host'**
   String get p2pBookFilterSelectHost;
+
+  /// Start of the filter sentence while no order type is chosen: « I want [Any type] and use [Any currency] pay with [Any payment method] hosted by [Any host] ». Once a type is chosen the sentence starts with p2pBookFilterIWantTo (« I want to [Buy] »).
+  ///
+  /// In en, this message translates to:
+  /// **'I want'**
+  String get p2pBookFilterIWant;
+
+  /// The order type selector while no type is chosen, and the first entry of its list. It names its subject, since four selectors would otherwise all read « ANY » (#101, owner's request); RoboSats shows « ANY ».
+  ///
+  /// In en, this message translates to:
+  /// **'Any type'**
+  String get p2pBookFilterAnyType;
+
+  /// The currency selector while no currency is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French word for the currency is « Devise ».
+  ///
+  /// In en, this message translates to:
+  /// **'Any currency'**
+  String get p2pBookFilterAnyCurrency;
+
+  /// The payment method selector while no method is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French words for the payment method are « Mode de paiement ».
+  ///
+  /// In en, this message translates to:
+  /// **'Any payment method'**
+  String get p2pBookFilterAnyMethod;
+
+  /// The host (coordinator) selector while no host is chosen, and the entry at the top of its list that clears the choice. RoboSats shows « ANY »; its French word for the host is « Hôte ».
+  ///
+  /// In en, this message translates to:
+  /// **'Any host'**
+  String get p2pBookFilterAnyHost;
+
+  /// A selector with several choices: the first one chosen, then how many more, as RoboSats shows its hidden payment method tags (« +2 »).
+  ///
+  /// In en, this message translates to:
+  /// **'{first} +{count}'**
+  String p2pBookFilterMore(String first, int count);
+
+  /// What the order type selector chooses, said by a screen reader before the choice (p2pBookFilterChoices).
+  ///
+  /// In en, this message translates to:
+  /// **'Order type'**
+  String get p2pBookFilterSubjectType;
+
+  /// What the currency selector chooses, said by a screen reader before the choices.
+  ///
+  /// In en, this message translates to:
+  /// **'Currency'**
+  String get p2pBookFilterSubjectCurrency;
+
+  /// What the payment method selector chooses, said by a screen reader before the choices.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment method'**
+  String get p2pBookFilterSubjectMethod;
+
+  /// What the host selector chooses, said by a screen reader before the choices.
+  ///
+  /// In en, this message translates to:
+  /// **'Host'**
+  String get p2pBookFilterSubjectHost;
+
+  /// What a screen reader says of a selector with a choice made: its subject, then every choice (p2pBookFilterOrList), such as « Currency: EUR, USD or CHF ».
+  ///
+  /// In en, this message translates to:
+  /// **'{subject}: {choices}'**
+  String p2pBookFilterChoices(String subject, String choices);
+
+  /// Several choices of one selector, any of which an order may match: {others} is every choice but the last, joined with p2pBookFilterListSeparator, such as « EUR, USD or CHF ».
+  ///
+  /// In en, this message translates to:
+  /// **'{others} or {last}'**
+  String p2pBookFilterOrList(String others, String last);
+
+  /// Between two choices of a list of choices but the last two (p2pBookFilterOrList).
+  ///
+  /// In en, this message translates to:
+  /// **', '**
+  String get p2pBookFilterListSeparator;
 
   /// The maker was seen in the last 2 minutes (`maker_status` of the API). Missing from the RoboSats French texts.
   ///
@@ -434,17 +506,23 @@ abstract class P2pLocalizations {
   /// **'An error occurred.'**
   String get p2pBookError;
 
-  /// Empty book when the filter is « Sell ». {currencyCode} is the currency code or « ANY ».
+  /// Empty book when the filter is « Sell ». {currencyCode} is the currency chosen, several joined by p2pBookFilterOrList (« EUR, USD or CHF »), or p2pBookEmptyAnyCurrency when none is.
   ///
   /// In en, this message translates to:
   /// **'No orders found to sell BTC for {currencyCode}'**
   String p2pBookEmptySell(String currencyCode);
 
-  /// Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency code or « ANY ».
+  /// Empty book for any filter but « Sell » (RoboSats tests type 0, else this text). {currencyCode} is the currency chosen, several joined by p2pBookFilterOrList (« EUR, USD or CHF »), or p2pBookEmptyAnyCurrency when none is.
   ///
   /// In en, this message translates to:
   /// **'No orders found to buy BTC for {currencyCode}'**
   String p2pBookEmptyBuy(String currencyCode);
+
+  /// The value of {currencyCode} in the empty book messages while no currency is chosen, where RoboSats puts « ANY ».
+  ///
+  /// In en, this message translates to:
+  /// **'any currency'**
+  String get p2pBookEmptyAnyCurrency;
 
   /// Below the empty book message, in the primary colour.
   ///

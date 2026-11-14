@@ -1,7 +1,11 @@
+import 'dart:collection';
+
 import 'package:meta/meta.dart';
 import 'package:robosats/robosats.dart';
 
 /// What the user wants to do, the first choice of the filter sentence of the book: « I want to [Buy] ».
+///
+/// It stays a single choice, as in the official client: with buy and sell only, choosing both is choosing any, and the order of the book, the side of the empty book's message and the sign of the premium that is best all follow one side (#101).
 enum BookSide {
   /// Both sides: every order is shown.
   any,
@@ -20,82 +24,99 @@ enum BookSide {
   };
 }
 
-/// The filter sentence of the book, « I want to [side] and use [currency] pay with [method] hosted by [host] », as the official client applies it (`utils/filterOrders.ts`).
+/// The filter sentence of the book, « I want to [side] and use [currencies] pay with [methods] hosted by [hosts] », as the official client applies it (`utils/filterOrders.ts`).
 ///
-/// A `null` currency, payment method or host means any.
+/// An empty set of currencies, payment methods or hosts means any; a set that is not empty keeps an order that matches one of its members.
+/// The official client takes several payment methods but one currency and one host; several currencies and several hosts are the owner's request (#101), on the same rule.
+/// Each set keeps the order its members were chosen in, which the sentence uses to name the first one; two filters with the same members are equal whatever that order.
 /// Like the official client by default (`mode: 'fiat'`), the book never shows swap orders, whose currency is bitcoin: they belong to the « Swap In » and « Swap Out » choices, which this filter does not offer yet.
 @immutable
 final class BookFilter {
   final BookSide side;
-  final RobosatsCurrency? currency;
 
-  /// The name of a recognised payment method, which the text of an order must contain.
-  final String? paymentMethod;
-  final Coordinator? host;
+  /// The currencies chosen, none for any.
+  final Set<RobosatsCurrency> currencies;
 
-  const BookFilter({
+  /// The names of the payment methods chosen, none for any: an order is kept when its text contains one of them (`filterByPayment`).
+  final Set<String> paymentMethods;
+
+  /// The coordinators chosen, none for any.
+  final Set<Coordinator> hosts;
+
+  /// A filter with the given choices; the sets are copied, so a set changed afterwards does not change the filter.
+  BookFilter({
     this.side = BookSide.any,
-    this.currency,
-    this.paymentMethod,
-    this.host,
-  });
+    Iterable<RobosatsCurrency> currencies = const [],
+    Iterable<String> paymentMethods = const [],
+    Iterable<Coordinator> hosts = const [],
+  }) : currencies = _frozen(currencies),
+       paymentMethods = _frozen(paymentMethods),
+       hosts = _frozen(hosts);
+
+  /// The filter that keeps every order but the swaps, in the order the coordinators gave them.
+  const BookFilter.any()
+    : side = BookSide.any,
+      currencies = const {},
+      paymentMethods = const {},
+      hosts = const {};
+
+  static Set<T> _frozen<T>(Iterable<T> members) =>
+      UnmodifiableSetView(LinkedHashSet.of(members));
 
   BookFilter withSide(BookSide side) => BookFilter(
     side: side,
-    currency: currency,
-    paymentMethod: paymentMethod,
-    host: host,
+    currencies: currencies,
+    paymentMethods: paymentMethods,
+    hosts: hosts,
   );
 
-  BookFilter withCurrency(RobosatsCurrency? currency) => BookFilter(
+  BookFilter withCurrencies(Iterable<RobosatsCurrency> currencies) =>
+      BookFilter(
+        side: side,
+        currencies: currencies,
+        paymentMethods: paymentMethods,
+        hosts: hosts,
+      );
+
+  BookFilter withPaymentMethods(Iterable<String> paymentMethods) => BookFilter(
     side: side,
-    currency: currency,
-    paymentMethod: paymentMethod,
-    host: host,
+    currencies: currencies,
+    paymentMethods: paymentMethods,
+    hosts: hosts,
   );
 
-  BookFilter withPaymentMethod(String? paymentMethod) => BookFilter(
+  BookFilter withHosts(Iterable<Coordinator> hosts) => BookFilter(
     side: side,
-    currency: currency,
-    paymentMethod: paymentMethod,
-    host: host,
-  );
-
-  BookFilter withHost(Coordinator? host) => BookFilter(
-    side: side,
-    currency: currency,
-    paymentMethod: paymentMethod,
-    host: host,
+    currencies: currencies,
+    paymentMethods: paymentMethods,
+    hosts: hosts,
   );
 
   /// Whether [order] belongs to the book this filter shows.
-  ///
-  /// The payment method is matched as the official client does: the text of the order contains its name, case included.
   bool matches(PublicOrder order) =>
-      _matchesAllButMethod(order) &&
-      switch (paymentMethod) {
-        null => true,
-        final method => order.paymentMethods.text.contains(method),
-      };
+      _matchesAllButMethod(order) && matchesPaymentMethods(order);
+
+  /// Whether [order] passes the payment methods chosen, by the official client's rule (`filterByPayment` in `utils/filterOrders.ts`): with none chosen every order does, and otherwise an order does when its text contains the name of at least one of them.
+  ///
+  /// « Contains » is the official client's `includes`: case included, anywhere in the text, so `SEPA` keeps an order of `Instant SEPA` and `Revolut` does not keep an order written `revolut`, which the list recognises.
+  bool matchesPaymentMethods(PublicOrder order) =>
+      paymentMethods.isEmpty ||
+      paymentMethods.any(order.paymentMethods.text.contains);
 
   bool _matchesAllButMethod(PublicOrder order) {
     if (order.currency.isBitcoin) return false;
     if (side.shownType case final type? when order.type != type) return false;
-    if (currency case final currency? when order.currency != currency) {
-      return false;
-    }
-    if (host case final host? when order.coordinator != host) return false;
-    return true;
+    return _matchesCurrencyAndHost(order);
   }
 
+  bool _matchesCurrencyAndHost(PublicOrder order) =>
+      (currencies.isEmpty || currencies.contains(order.currency)) &&
+      (hosts.isEmpty || hosts.contains(order.coordinator));
+
   /// Whether the depth chart draws [order]: it filters by currency and host only, as the official client's chart does, so it shows both sides, every payment method, and the swaps when every currency is shown.
-  bool showsInDepthChart(PublicOrder order) {
-    if (currency case final currency? when order.currency != currency) {
-      return false;
-    }
-    if (host case final host? when order.coordinator != host) return false;
-    return true;
-  }
+  ///
+  /// With several currencies or hosts chosen, it draws the orders of each of them.
+  bool showsInDepthChart(PublicOrder order) => _matchesCurrencyAndHost(order);
 
   /// The orders that match, in the default order of the official client (`components/BookTable/index.tsx`).
   ///
@@ -121,7 +142,7 @@ final class BookFilter {
     return [for (final (_, order) in ranked) order];
   }
 
-  /// The recognised payment methods of the orders that match every other choice, in the order of the official list, for the payment method selector.
+  /// The payment methods the selector offers, in the order of the official list: those recognised in the orders that match every other choice, and those chosen, so that a choice the book no longer shows can still be taken back.
   List<PaymentMethodInfo> paymentMethodsIn(Iterable<PublicOrder> orders) {
     final found = <PaymentMethodInfo>{
       for (final order in orders)
@@ -129,7 +150,8 @@ final class BookFilter {
     }..remove(PaymentMethods.notSpecified);
     return [
       for (final method in PaymentMethods.known)
-        if (found.contains(method)) method,
+        if (found.contains(method) || paymentMethods.contains(method.name))
+          method,
     ];
   }
 
@@ -137,14 +159,25 @@ final class BookFilter {
   bool operator ==(Object other) =>
       other is BookFilter &&
       other.side == side &&
-      other.currency == currency &&
-      other.paymentMethod == paymentMethod &&
-      other.host == host;
+      _sameMembers(other.currencies, currencies) &&
+      _sameMembers(other.paymentMethods, paymentMethods) &&
+      _sameMembers(other.hosts, hosts);
+
+  static bool _sameMembers<T>(Set<T> a, Set<T> b) =>
+      a.length == b.length && a.containsAll(b);
 
   @override
-  int get hashCode => Object.hash(side, currency, paymentMethod, host);
+  int get hashCode => Object.hash(
+    side,
+    Object.hashAllUnordered(currencies),
+    Object.hashAllUnordered(paymentMethods),
+    Object.hashAllUnordered(hosts),
+  );
 
+  /// The side, the currencies and the hosts; never the payment methods, which come from the text of orders.
   @override
   String toString() =>
-      'BookFilter(${side.name}, ${currency?.code}, ${host?.shortAlias})';
+      'BookFilter(${side.name}, '
+      '${[for (final currency in currencies) currency.code]}, '
+      '${[for (final host in hosts) host.shortAlias]})';
 }

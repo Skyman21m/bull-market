@@ -144,7 +144,7 @@ final class DepthLines {
 
 /// The depth chart of the book, as the official client builds it (`components/Charts/DepthChart/index.tsx`).
 ///
-/// It draws every order received of the chosen currency and host, swaps included when every currency is shown; neither the side nor the payment method of the filter applies.
+/// It draws every order received of the chosen currencies and hosts, swaps included when every currency is shown; neither the side nor the payment methods of the filter apply.
 /// Each line adds up, order after order along the axis, the bitcoin each order trades at its largest amount.
 /// The window it opens on is centred on the orders it draws, one vote per coordinator: the middle one of the coordinators' median premiums or prices (of the two middle ones, the one nearer zero), cut to a whole number toward zero.
 /// The official client centres its premium axis on the 24-hour non-KYC premium of the coordinators (`/api/info/`), which the book does not read, and its fallback is the median of every order received; one vote per coordinator, after the filter, keeps a coordinator that floods the book from moving the window away from the others, and choosing a host brings the chart back to that host's orders.
@@ -152,7 +152,7 @@ final class DepthLines {
 final class DepthChart {
   final DepthAxis axis;
 
-  /// The currency of the price axis: the one chosen, or US dollars when every currency is shown; `null` on the premium axis.
+  /// The currency of the price axis: the one chosen, or US dollars when every currency is shown or several are chosen, as the official client prices every currency when it shows them all; `null` on the premium axis.
   final RobosatsCurrency? priceCurrency;
 
   /// The window the chart opens on, which the zoom buttons narrow or widen.
@@ -176,7 +176,7 @@ final class DepthChart {
   /// The most an order can add to a line: every bitcoin there will be.
   static const maxBtc = 21000000.0;
 
-  /// The chart of [book], every order received, under the currency and the host of [filter], along [axis].
+  /// The chart of [book], every order received, under the currencies and the hosts of [filter], along [axis].
   factory DepthChart.of({
     required Iterable<PublicOrder> book,
     required BookFilter filter,
@@ -185,11 +185,14 @@ final class DepthChart {
     final all = book.toList();
     final priceCurrency = switch (axis) {
       DepthAxis.premium => null,
-      DepthAxis.price => filter.currency ?? RobosatsCurrency.fromId(_usdId),
+      DepthAxis.price => switch (filter.currencies) {
+        final chosen when chosen.length == 1 => chosen.single,
+        _ => RobosatsCurrency.fromId(_usdId),
+      },
     };
     final market = priceCurrency == null
         ? null
-        : _marketPrice(all, filter.host, priceCurrency);
+        : _marketPrice(all, filter.hosts, priceCurrency);
     double? place(PublicOrder order) => switch (axis) {
       DepthAxis.premium => order.premium.percent,
       DepthAxis.price => market == null ? null : priceAt(market, order),
@@ -234,15 +237,15 @@ final class DepthChart {
     return whole == 0 ? 0 : whole;
   }
 
-  /// The market price of [currency]: the one the orders of [host] imply, when a host is chosen and its orders give one, else the one the orders of every coordinator imply.
+  /// The market price of [currency]: the one the orders of [hosts] imply, when hosts are chosen and their orders give one, else the one the orders of every coordinator imply.
   static double? _marketPrice(
     List<PublicOrder> all,
-    Coordinator? host,
+    Set<Coordinator> hosts,
     RobosatsCurrency currency,
   ) {
-    if (host != null) {
+    if (hosts.isNotEmpty) {
       final own = impliedMarketPrice(
-        all.where((order) => order.coordinator == host),
+        all.where((order) => hosts.contains(order.coordinator)),
         currency,
       );
       if (own != null) return own;
