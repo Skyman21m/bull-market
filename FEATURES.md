@@ -21,6 +21,7 @@ graph TB
     SETTINGS[Settings]
     LOGS[Logs<br/>Workspace Feature]
     P2P[P2P<br/>Workspace Feature]
+    P2P_WALLET[P2P Wallet<br/>Troc]
     ELECTRUM_SETTINGS[Electrum Settings]
     TOR_SETTINGS[Tor Settings]
     RECOVERBULL[RecoverBull]
@@ -85,6 +86,9 @@ graph TB
     P2P --> BULL_UI
     P2P --> SECRETS
     P2P --> SCREEN_PRIVACY
+    P2P_WALLET --> P2P
+    P2P_WALLET --> SWAPS
+    P2P_WALLET --> WALLETS
     CORE --> BULL_PAYJOIN
     BULL_PAYJOIN --> PRIMITIVES
     CORE --> BULL_PRICER
@@ -220,7 +224,7 @@ graph TB
 
     class CORE coreStyle
     class SECRETS,PRIMITIVES,BULL_PAYJOIN,BULL_PRICER,ROBOSATS,TOR,SCREEN_PRIVACY packageStyle
-    class SETTINGS,P2P,PIN_CODE,LABELS,HW_WALLETS,BTC_PRICE,NETWORK,BIP85,FEES,WALLETS,EXCHANGE,EXCHANGE_SETTINGS,EXCHANGE_SUPPORT_CHAT,APP_STARTUP,UTXO_MGMT,ADDRESS_MGMT,RECIPIENTS,FUNDING,BACKUPS,SWAPS,WITHDRAWAL,STATUS,SEND,RECEIVE,TRANSFER,TX_HISTORY,REPLACE_BY_FEE,BG_TASKS,AUTOSWAP,AUTOBUY,DCA,DEFAULT_WALLETS,LIMIT_ORDERS,SELL,PAY,BUY,COINS,ANNOUNCEMENTS,CONSOLIDATION,ALL_SEED_VIEW,APP_UNLOCK,SP featureStyle
+    class SETTINGS,P2P,P2P_WALLET,PIN_CODE,LABELS,HW_WALLETS,BTC_PRICE,NETWORK,BIP85,FEES,WALLETS,EXCHANGE,EXCHANGE_SETTINGS,EXCHANGE_SUPPORT_CHAT,APP_STARTUP,UTXO_MGMT,ADDRESS_MGMT,RECIPIENTS,FUNDING,BACKUPS,SWAPS,WITHDRAWAL,STATUS,SEND,RECEIVE,TRANSFER,TX_HISTORY,REPLACE_BY_FEE,BG_TASKS,AUTOSWAP,AUTOBUY,DCA,DEFAULT_WALLETS,LIMIT_ORDERS,SELL,PAY,BUY,COINS,ANNOUNCEMENTS,CONSOLIDATION,ALL_SEED_VIEW,APP_UNLOCK,SP featureStyle
 ```
 
 ## About Package Dependency Diagrams
@@ -292,6 +296,7 @@ graph TB
 - **Receive**: Depends on Payjoin, Swaps
 - **Backups**: Depends on BIP85, Tor, Wallets
 - **P2P** (workspace feature, Troc): Depends on the RoboSats package for the protocol, on Tor for the transport and on `bull_ui` for its screens (the P2P tab: Tor wait, order book, its depth chart and its map of the orders that have a location, over a world map bundled with the feature, with no tile and no request, order details and the dialog of its coordinator, search of an order by its URL, read-only); inside the feature, use cases can also make a robot known to a coordinator and read it back, on a Tor session per coordinator and robot, only once the robot is bound to that coordinator (one robot index, one coordinator, kept in the feature's own Drift database `p2p.sqlite`, whose directory the shell passes to `P2pFeature.setup` with the Garage Key handle, in the foreground composition only), which only the robot panel of the Garage profile calls and which the app-facing facade does not offer; depends on the Secrets package for the RoboSats Garage Key of each network, whose handle the shell passes to `P2pFeature.setup` in the foreground composition only, and which internal use cases generate, import, read, derive robots from and delete for the Garage of the tab (welcome, wizard, profile, robot navigator, delete, recovery by pasting a key, all on the device; under the navigator of the profile, the robot panel shows the coordinator a robot is bound to and reads it back once Tor is ready, and puts a robot on a coordinator only when the user chooses one with « Select Host » and confirms; for a key pasted, or whose draw could not be recorded, « Select Host » first asks « Robots from elsewhere », once per key and network, which only the user's « I understand » records); depends on the Screen Privacy package, which protects the whole Garage from capture as the wallet's seed screens are; the PIN re-authentication the profile asks before it shows a stored key is App Unlock's `buildReauthenticationGate`, which the shell lends to `P2pFeature.route` (the feature does not import App Unlock); the shell mounts its tab behind the superuser and dev-mode gate, and no feature depends on it
+- **P2P Wallet** (Troc, `lib/features/p2p_wallet`, #100): the wallet's side of the P2P feature's `P2pWalletPort`, which the shell hands to `P2pFeature.setup` in the foreground composition only. Depends on the P2P workspace feature for the port's contract, on Swaps (`SwapFacade.getQuote` only) for the swap service's quote, and on Wallets for the Instant Payments wallet's balance and syncs and for the fee of an unsigned Liquid transaction (the readers that Pay, Sell and Autoswap use). Today it reads and quotes only: it creates no order, signs nothing and broadcasts nothing, and nothing in the app calls it yet; no feature depends on it, and P2P reaches it only through the port
 
 ### Exchange-Related Features
 

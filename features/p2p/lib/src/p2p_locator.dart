@@ -7,6 +7,7 @@ import 'package:get_it/get_it.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
+import '../public/p2p_wallet_port.dart';
 import 'data/garage_key_repository_impl.dart';
 import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
@@ -54,10 +55,12 @@ import 'ui/widgets/garage_key_clipboard.dart';
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
 final class P2pLocator {
   /// [garageKeys] is the vault's handle on the Garage Keys and [databaseDirectory] gives the directory of the feature's database: without them, nothing that reads or writes a Garage Key, a binding or the database is registered.
+  /// [wallet] gives the wallet's port: without it, no port is registered.
   static void setup(
     GetIt locator, {
     required GarageKeys? garageKeys,
     required Future<Directory> Function()? databaseDirectory,
+    required P2pWalletPort Function()? wallet,
   }) {
     // `Tor` and its HTTP client factory are read lazily, so this runs whether or not the Tor package is registered yet.
     locator.registerLazySingleton<TorCoordinatorTransport>(
@@ -84,6 +87,10 @@ final class P2pLocator {
         transport: () => locator<TorCoordinatorTransport>(),
         clock: DateTime.now,
       );
+    }
+    if (wallet != null) {
+      // Only the trade use cases may read it: `wallet_port_architecture_test.dart`.
+      locator.registerLazySingleton<P2pWalletPort>(wallet);
     }
   }
 

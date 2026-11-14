@@ -51,5 +51,25 @@ export 'package:robosats/robosats.dart'
         RobotHashId;
 
 export 'public/p2p_facade.dart' show P2pFacade, P2pFeature;
+// The port through which the shell lends the wallet's Instant Payments wallet (#100), and the types of its signatures.
+export 'public/p2p_wallet_port.dart'
+    show
+        P2pWalletInvoiceExpired,
+        P2pWalletInvoiceUnreadable,
+        P2pWalletNeedsConsolidation,
+        P2pWalletNoInstantWallet,
+        P2pWalletNotEnoughBalance,
+        P2pWalletOutsideServiceLimits,
+        P2pWalletOverMaximum,
+        P2pWalletPort,
+        P2pWalletQuote,
+        P2pWalletRefusal,
+        P2pWalletServiceBusy,
+        P2pWalletServiceRefused,
+        P2pWalletServiceUnreachable,
+        P2pWalletUnavailable,
+        P2pWalletUnderMinimum,
+        P2pWalletWrongNetwork;
+export 'src/domain/checked_bolt11_invoice.dart' show CheckedBolt11Invoice;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 export 'src/ui/garage/garage_reauthentication.dart' show P2pReauthentication;

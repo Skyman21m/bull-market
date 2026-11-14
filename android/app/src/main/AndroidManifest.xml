@@ -48,7 +48,7 @@
     </queries>
     <application
         android:requestLegacyExternalStorage="true"
-        android:label="Troc"
+        android:label="Bull Market"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true"

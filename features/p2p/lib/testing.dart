@@ -3,18 +3,21 @@
 /// For tests and screenshots only: the app registers the feature with `P2pFeature.setup`.
 library;
 
-import 'dart:async' show Timer;
+import 'dart:async' show StreamController, StreamSubscription, Timer;
 import 'dart:io' show FileSystemException;
 
 import 'package:bull_tor/tor.dart';
 import 'package:drift/native.dart';
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:secrets/secrets.dart' show GarageKeys;
 
+import 'public/p2p_wallet_port.dart';
 import 'src/data/p2p_database.dart';
 import 'src/data/tor_coordinator_transport.dart';
+import 'src/domain/checked_bolt11_invoice.dart';
 import 'src/domain/coordinator_sessions_port.dart';
 import 'src/domain/p2p_shuffle.dart';
 import 'src/domain/p2p_tor_state.dart';
@@ -126,6 +129,99 @@ bool hasGarageKeysForTesting(GetIt locator) =>
 bool hasP2pDatabaseForTesting(GetIt locator) =>
     locator.isRegistered<P2pDatabase>() &&
     locator.isRegistered<RobotBindingRepository>();
+
+/// Whether the feature registered in [locator] was given the wallet's port, which `P2pFeature.setup` receives from the foreground composition of the shell only.
+@visibleForTesting
+bool hasWalletPortForTesting(GetIt locator) =>
+    locator.isRegistered<P2pWalletPort>();
+
+/// A [CheckedBolt11Invoice] as the feature's BOLT11 check would build it from what it decoded at [now] (the device's clock by default), or `null` where the value refuses it: for the tests of the wallet's port, which take no invoice but this type.
+///
+/// Tests give obviously fake strings, never a real invoice.
+@visibleForTesting
+CheckedBolt11Invoice? checkedBolt11InvoiceForTesting({
+  required String bolt11,
+  required Sats amount,
+  required RobosatsNetwork network,
+  required DateTime expiresAt,
+  DateTime? now,
+}) => CheckedBolt11Invoice.of(
+  bolt11: bolt11,
+  amount: amount,
+  network: network,
+  expiresAt: expiresAt,
+  now: now ?? DateTime.now(),
+);
+
+/// A wallet's port whose answers the test writes: no wallet, no swap service, no money.
+///
+/// The balance of each network is the one given to the constructor, or the last given to [setBalance], at each subscription, then each value given to [setBalance]; a refusal given there ends the subscriptions open, as the port's does.
+/// Each [quote] takes the next answer of [scriptQuote], in order, and fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
+/// It records what it was asked: [balanceRequests] and [quoted].
+@visibleForTesting
+final class FakeP2pWalletPort implements P2pWalletPort {
+  Result<Sats, P2pWalletRefusal> _balance;
+  final _balances = StreamController<Result<Sats, P2pWalletRefusal>>.broadcast(
+    sync: true,
+  );
+  final _quotes = <Result<P2pWalletQuote, P2pWalletRefusal>>[];
+
+  /// The networks of the balances asked for, in order.
+  final List<RobosatsNetwork> balanceRequests = [];
+
+  /// The invoices quoted, in order.
+  final List<CheckedBolt11Invoice> quoted = [];
+
+  /// A port whose balance is [_balance] until [setBalance] changes it.
+  FakeP2pWalletPort(this._balance);
+
+  /// The balance each subscription gets first.
+  Result<Sats, P2pWalletRefusal> get balance => _balance;
+
+  /// Sets the balance and gives it to every subscription open, as a finished sync of the wallet does.
+  void setBalance(Result<Sats, P2pWalletRefusal> balance) {
+    _balance = balance;
+    _balances.add(balance);
+  }
+
+  /// Adds the answer of a coming [quote].
+  void scriptQuote(Result<P2pWalletQuote, P2pWalletRefusal> answer) =>
+      _quotes.add(answer);
+
+  @override
+  Stream<Result<Sats, P2pWalletRefusal>> instantBalance(
+    RobosatsNetwork network,
+  ) {
+    balanceRequests.add(network);
+    StreamSubscription<Result<Sats, P2pWalletRefusal>>? changes;
+    late final StreamController<Result<Sats, P2pWalletRefusal>> controller;
+    void give(Result<Sats, P2pWalletRefusal> balance) {
+      controller.add(balance);
+      if (balance is Err<Sats, P2pWalletRefusal>) {
+        changes?.cancel();
+        controller.close();
+      }
+    }
+
+    controller = StreamController(
+      onListen: () {
+        changes = _balances.stream.listen(give);
+        give(_balance);
+      },
+      onCancel: () => changes?.cancel(),
+    );
+    return controller.stream;
+  }
+
+  @override
+  Future<Result<P2pWalletQuote, P2pWalletRefusal>> quote(
+    CheckedBolt11Invoice invoice,
+  ) async {
+    quoted.add(invoice);
+    if (_quotes.isEmpty) throw StateError('No quote scripted');
+    return _quotes.removeAt(0);
+  }
+}
 
 /// The transport of the app, over the embedded Tor, once the feature is registered with `P2pFeature.setup`.
 ///
