@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/taker_estimate.dart';
 import '../../presentation/p2p_formats.dart';
 import '../widgets/offer_row.dart';
 import '../widgets/order_detail_row.dart';
@@ -10,10 +11,13 @@ import '../widgets/reversible_payments_dialog.dart';
 
 /// The « Order » tab of the trade screen: the order as its coordinator describes it to the trade's robot, as the official client's order details on the order page (`components/OrderDetails/index.tsx` at commit ff1998c), read from the last read of the trade, nothing asked for it.
 ///
-/// Host and number, then « Order Details »: the amount (the amount taken once there is one), what the taker sends and receives (the sats once the coordinator gives them: before that the reference estimates them with the coordinator's fees, which this screen does not read), the payment methods, the price and premium, then, while the order's status expires (`:494`: not 4, 5, 12 to 18), « Expires in » with the countdown (orange under a quarter of the time, red under a tenth, bold under a quarter), « Deposit » and the bar of the time left.
+/// Host and number, the coordinator's fees, then « Order Details »: the amount (the amount taken once there is one), what the taker sends and receives (the sats once the coordinator gives them, `invoice_amount` or `trade_satoshis`, and until then the reference's estimate with the coordinator's taker fee, `TakerEstimate.ofTrade`), the payment methods, the price and premium, then, while the order's status expires (`:494`: not 4, 5, 12 to 18), « Expires in » with the countdown (orange under a quarter of the time, red under a tenth, bold under a quarter), « Deposit » and the bar of the time left; then the maker with how recently its coordinator saw it, as the order details of the book show them (`OrderFeeRow`, `OrderMakerRow`).
 class TradeOrderDetails extends StatelessWidget {
   final CoordinatorOrder order;
   final DateTime now;
+
+  /// What the coordinator says about itself, `null` until it answers: the fee row stays empty and the estimate counts no fee, as the reference does without its info.
+  final CoordinatorInfo? info;
 
   /// Opens the dialog of the coordinator, as a tap on the host does in the official client.
   final VoidCallback? onOpenCoordinator;
@@ -22,6 +26,7 @@ class TradeOrderDetails extends StatelessWidget {
     super.key,
     required this.order,
     required this.now,
+    this.info,
     this.onOpenCoordinator,
   });
 
@@ -43,7 +48,15 @@ class TradeOrderDetails extends StatelessWidget {
                 : formats.sats((taken.value * 100000000).round()),
           )
         : '${taken == null ? formats.orderAmount(order.amount) : formats.amount(taken)} $code';
-    final sats = order.payoutInvoiceAmount ?? order.tradeSatoshis;
+    final given = order.payoutInvoiceAmount ?? order.tradeSatoshis;
+    final estimate = given == null
+        ? TakerEstimate.ofTrade(order, takerFee: info?.takerFee ?? 0)
+        : null;
+    final sats = given != null
+        ? formats.sats(given.value.toInt())
+        : estimate != null
+        ? formats.estimate(estimate)
+        : null;
     final methods = order.paymentMethods.text;
     final send = OrderSentence.split(
       l10n.p2pOrderYouSendVia(methods, OrderSentence.mark),
@@ -53,7 +66,7 @@ class TradeOrderDetails extends StatelessWidget {
         ? null
         : OrderSentence.split(
             l10n.p2pOrderYouReceiveSats(OrderSentence.mark),
-            formats.sats(sats.value.toInt()),
+            sats,
           );
     final price = order.priceNow;
     final premium = order.premiumNow ?? order.premium;
@@ -86,7 +99,9 @@ class TradeOrderDetails extends StatelessWidget {
           orderId: order.id,
           onTap: onOpenCoordinator,
         ),
-        const Gap(BullSpacing.md),
+        const Gap(BullSpacing.sm),
+        OrderFeeRow(info: info),
+        const Gap(BullSpacing.sm),
         Text(
           l10n.p2pOrderDetailsDivider,
           style: text.labelLarge?.copyWith(color: colors.textMuted),
@@ -153,6 +168,8 @@ class TradeOrderDetails extends StatelessWidget {
             ],
           ],
         ),
+        const Gap(BullSpacing.md),
+        OrderMakerRow(maker: order.maker, activity: order.makerActivity),
       ],
     );
   }

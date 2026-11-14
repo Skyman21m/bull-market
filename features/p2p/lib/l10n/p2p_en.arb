@@ -1616,9 +1616,9 @@
   "@p2pTradeInvoiceQr": {
     "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the QR code of the bond invoice."
   },
-  "p2pTradeInvoiceExpires": "Expires",
+  "p2pTradeInvoiceExpires": "Expires at",
   "@p2pTradeInvoiceExpires": {
-    "description": "Not in the RoboSats texts: the project's own: label of the expiry time of the bond invoice, among the facts read from it under the QR code (design note § 4.4)."
+    "description": "Not in the RoboSats texts: the project's own: label of the time of day the bond invoice expires at, among the facts read from it under the QR code (design note § 4.4)."
   },
   "p2pTradeInvoiceNetwork": "Network",
   "@p2pTradeInvoiceNetwork": {
@@ -2023,5 +2023,13 @@
   "p2pTradeEnded": "This trade is over for this robot.",
   "@p2pTradeEnded": {
     "description": "Not in the RoboSats texts: the project's own: the stored records of the trade hold an end, and no read of it is there to show (#87, #88). No action."
+  },
+  "p2pSatsUnit": "Sats",
+  "@p2pSatsUnit": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the unit the official client writes for an amount of an order in bitcoin, which it shows in sats (`TakeButton.tsx:82-83`, `Payout.tsx:70`)."
+  },
+  "p2pTradeYouAreSwappingIn": "You are SWAPPING INTO Lightning",
+  "@p2pTradeYouAreSwappingIn": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:76-80`), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's."
   }
 }

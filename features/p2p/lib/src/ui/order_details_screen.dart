@@ -16,7 +16,6 @@ import 'take_order_section.dart';
 import 'widgets/offer_row.dart';
 import 'widgets/order_detail_row.dart';
 import 'widgets/reversible_payments_dialog.dart';
-import 'widgets/robot_avatar.dart';
 import 'widgets/testnet_banner.dart';
 
 /// The details of a public order, in the order of the official client: host and number, fees, then the order details, the maker and « Take Order ».
@@ -114,11 +113,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                   ),
                   const Gap(BullSpacing.sm),
-                  _FeeRow(info: state.info),
+                  OrderFeeRow(info: state.info),
                   const Gap(BullSpacing.sm),
                   _DetailsCard(state: state, now: _now),
                   const Gap(BullSpacing.md),
-                  _MakerRow(order: order),
+                  OrderMakerRow(
+                    maker: order.maker,
+                    activity: order.makerActivity,
+                  ),
                   const Gap(BullSpacing.md),
                   TakeOrderSection(
                     order: order,
@@ -135,64 +137,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       ),
     );
   }
-}
-
-/// « M 0.025% · T 0.175% » and the on-chain payout fee, as the coordinator announces them; nothing until it answers.
-class _FeeRow extends StatelessWidget {
-  final CoordinatorInfo? info;
-
-  const _FeeRow({required this.info});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final l10n = P2pLocalizations.of(context);
-    final formats = P2pFormats.of(context);
-    final info = this.info;
-    final style = text.labelLarge?.copyWith(color: colors.textMuted);
-    if (info == null) return SizedBox(height: style?.fontSize ?? 12);
-    final swapRate = info.currentSwapFeeRate;
-    return Wrap(
-      spacing: BullSpacing.xs,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Tooltip(
-          message: l10n.p2pOrderFeeMakerTooltip,
-          child: Text(
-            '${_initial(l10n.p2pOrderFeeMaker)} ${formats.fee(info.makerFee)}',
-            style: style,
-          ),
-        ),
-        Text('·', style: style),
-        Tooltip(
-          message: l10n.p2pOrderFeeTakerTooltip,
-          child: Text(
-            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(info.takerFee)}',
-            style: style,
-          ),
-        ),
-        Text('·', style: style),
-        Tooltip(
-          message: info.swapEnabled
-              ? l10n.p2pOrderOnchainEnabled
-              : l10n.p2pOrderOnchainDisabled,
-          child: info.swapEnabled && swapRate != null
-              ? BullBadge(
-                  label: formats.swapFee(swapRate),
-                  icon: Icons.link,
-                  background: colors.surfaceContainer,
-                  foreground: colors.success,
-                )
-              : Icon(Icons.link_off, size: 16, color: colors.textMuted),
-        ),
-      ],
-    );
-  }
-
-  /// The first letter of a role, as the official client writes the fee row.
-  static String _initial(String word) =>
-      word.isEmpty ? word : String.fromCharCode(word.runes.first);
 }
 
 /// « Order Details »: the amount, what the taker sends and receives, the payment methods, price and premium, expiry and deposit time.
@@ -323,47 +267,6 @@ class _DetailsCard extends StatelessWidget {
               ],
             ),
           ],
-        ),
-      ],
-    );
-  }
-}
-
-/// The maker of the order, with how recently its coordinator saw it.
-class _MakerRow extends StatelessWidget {
-  final PublicOrder order;
-
-  const _MakerRow({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final l10n = P2pLocalizations.of(context);
-    final activity = switch (order.makerActivity) {
-      MakerActivity.active => l10n.p2pBookMakerStatusActive,
-      MakerActivity.seenRecently => l10n.p2pBookMakerStatusSeenRecently,
-      MakerActivity.inactive => l10n.p2pBookMakerStatusInactive,
-      null => null,
-    };
-    return Row(
-      children: [
-        RobotAvatar(seed: order.maker.hex, size: 36),
-        const Gap(BullSpacing.sm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                order.maker.nickname,
-                style: text.headlineLarge?.copyWith(color: colors.text),
-              ),
-              Text(
-                [l10n.p2pOrderMaker, ?activity].join(' · '),
-                style: text.labelMedium?.copyWith(color: colors.textMuted),
-              ),
-            ],
-          ),
         ),
       ],
     );

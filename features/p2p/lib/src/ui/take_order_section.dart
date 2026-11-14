@@ -184,7 +184,9 @@ class _RangeTake extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    final code = order.currency.isBitcoin ? 'Sats' : order.currency.code;
+    final code = order.currency.isBitcoin
+        ? l10n.p2pSatsUnit
+        : order.currency.code;
     final error = switch (input) {
       TakeAmountTooLow() => l10n.p2pTakeTooLow,
       TakeAmountTooHigh() => l10n.p2pTakeTooHigh,

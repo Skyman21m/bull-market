@@ -36,6 +36,36 @@ final class TakerEstimate {
     return TakerEstimate._(sats(order.amount.min), sats(order.amount.max));
   }
 
+  /// The estimate the official client's order details show to the taker who buys, when the coordinator gives neither `invoice_amount` nor `trade_satoshis` yet (before both bonds are locked: `components/OrderDetails/index.tsx:203-229`), for [order] as the coordinator describes it to the trade's robot, with the [takerFee] of its coordinator (0 while it is unknown).
+  ///
+  /// The rate comes from the order: the amount taken (or the fixed amount) over `satoshis_now`, else the largest amount of the range; the sats are counted as for [of], the taker fee against the coordinator and the default routing budget deducted. `null` when the order gives no sats.
+  static TakerEstimate? ofTrade(
+    CoordinatorOrder order, {
+    required double takerFee,
+  }) {
+    final satoshisNow = order.satoshisNow?.value.toInt();
+    if (satoshisNow == null || satoshisNow <= 0) return null;
+    final single = switch ((order.takenAmount, order.amount)) {
+      (final taken?, _) => taken,
+      (null, FixedOrderAmount(:final amount)) => amount,
+      _ => null,
+    };
+    final top = single ?? order.amount.max;
+    final rate = top.value / (satoshisNow / 100000000);
+    int sats(FiatAmount amount) =>
+        (amount.value /
+                rate *
+                100000000 *
+                (1 + takerFee) *
+                (1 - defaultRoutingBudget))
+            .round();
+    if (single != null) {
+      final value = sats(single);
+      return TakerEstimate._(value, value);
+    }
+    return TakerEstimate._(sats(order.amount.min), sats(order.amount.max));
+  }
+
   /// The sats « You will receive {{satoshis}} Sats (Approx) » shows under the amount field of a range order for [amount], an amount of the order's currency (bitcoin for an order in sats), or `null` when the order gives no sats at the current price.
   ///
   /// The official client's take button computes it apart from its order details (`components/OrderDetails/TakeButton.tsx:59-76`): the same rate, the taker fee as a positive fee (`computeSats`, `utils/computeSats.ts`: the sats times one less the fee), and no routing budget, since the order of a robot that is no participant says it is not a buyer (`is_buyer`, `api/views.py:312`).

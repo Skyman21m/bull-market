@@ -395,6 +395,7 @@ class _Contract extends StatelessWidget {
         record: record,
         status: bond,
         walletPayment: walletPayment,
+        swap: order?.currency.isBitcoin ?? false,
         payable: contract.payable,
       ),
       (TradePrompt.payout, _) => Column(
@@ -402,16 +403,13 @@ class _Contract extends StatelessWidget {
         children: [
           if (order != null) ...[
             _Line(
-              l10n.p2pTradePayoutPrompt(switch ((
-                order.takenAmount,
-                order.amount,
-              )) {
-                (final taken?, _) => formats.amount(taken),
-                (null, FixedOrderAmount(:final amount)) => formats.amount(
-                  amount,
+              l10n.p2pTradePayoutPrompt(
+                formats.payoutAmount(
+                  (order.takenAmount ?? order.amount.max).value,
+                  inBitcoin: order.currency.isBitcoin,
                 ),
-                (null, final range) => formats.orderAmount(range),
-              }, order.currency.code),
+                order.currency.isBitcoin ? l10n.p2pSatsUnit : order.currency.code,
+              ),
             ),
             const Gap(BullSpacing.sm),
           ],

@@ -4,7 +4,9 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../presentation/coordinator_text.dart';
+import '../../presentation/p2p_formats.dart';
 import 'coordinator_avatar.dart';
+import 'robot_avatar.dart';
 
 /// The coordinator that hosts an order, and the number of the order on it, as the official client's order details open (`components/OrderDetails/index.tsx:300-328`); a tap does [onTap].
 class OrderHostRow extends StatelessWidget {
@@ -147,6 +149,106 @@ final class OrderSentence {
     return OrderSentence(
       sentence.substring(0, at).trim(),
       sentence.substring(at).replaceAll(mark, value).trim(),
+    );
+  }
+}
+
+/// « M 0.025% · T 0.175% » and the on-chain payout fee, as the coordinator announces them; nothing until it answers.
+class OrderFeeRow extends StatelessWidget {
+  final CoordinatorInfo? info;
+
+  const OrderFeeRow({super.key, required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final info = this.info;
+    final style = text.labelLarge?.copyWith(color: colors.textMuted);
+    if (info == null) return SizedBox(height: style?.fontSize ?? 12);
+    final swapRate = info.currentSwapFeeRate;
+    return Wrap(
+      spacing: BullSpacing.xs,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Tooltip(
+          message: l10n.p2pOrderFeeMakerTooltip,
+          child: Text(
+            '${_initial(l10n.p2pOrderFeeMaker)} ${formats.fee(info.makerFee)}',
+            style: style,
+          ),
+        ),
+        Text('·', style: style),
+        Tooltip(
+          message: l10n.p2pOrderFeeTakerTooltip,
+          child: Text(
+            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(info.takerFee)}',
+            style: style,
+          ),
+        ),
+        Text('·', style: style),
+        Tooltip(
+          message: info.swapEnabled
+              ? l10n.p2pOrderOnchainEnabled
+              : l10n.p2pOrderOnchainDisabled,
+          child: info.swapEnabled && swapRate != null
+              ? BullBadge(
+                  label: formats.swapFee(swapRate),
+                  icon: Icons.link,
+                  background: colors.surfaceContainer,
+                  foreground: colors.success,
+                )
+              : Icon(Icons.link_off, size: 16, color: colors.textMuted),
+        ),
+      ],
+    );
+  }
+
+  /// The first letter of a role, as the official client writes the fee row.
+  static String _initial(String word) =>
+      word.isEmpty ? word : String.fromCharCode(word.runes.first);
+}
+
+/// The maker of an order, with how recently its coordinator saw it (`components/OrderDetails/index.tsx:357-364`).
+class OrderMakerRow extends StatelessWidget {
+  final RobotHashId maker;
+  final MakerActivity? activity;
+
+  const OrderMakerRow({super.key, required this.maker, required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final activity = switch (this.activity) {
+      MakerActivity.active => l10n.p2pBookMakerStatusActive,
+      MakerActivity.seenRecently => l10n.p2pBookMakerStatusSeenRecently,
+      MakerActivity.inactive => l10n.p2pBookMakerStatusInactive,
+      null => null,
+    };
+    return Row(
+      children: [
+        RobotAvatar(seed: maker.hex, size: 36),
+        const Gap(BullSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                maker.nickname,
+                style: text.headlineLarge?.copyWith(color: colors.text),
+              ),
+              Text(
+                [l10n.p2pOrderMaker, ?activity].join(' · '),
+                style: text.labelMedium?.copyWith(color: colors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

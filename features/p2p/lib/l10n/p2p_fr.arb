@@ -312,7 +312,7 @@
   "p2pTradeCopyToClipboard": "Copier dans le presse-papiers",
   "p2pTradeHoldInvoiceBond": "Ceci est une facture en attente, elle sera gelée dans votre portefeuille. Elle ne sera débitée que si vous annulez ou perdez un litige.",
   "p2pTradeInvoiceQr": "QR code de la facture de caution",
-  "p2pTradeInvoiceExpires": "Expire",
+  "p2pTradeInvoiceExpires": "Expire à",
   "p2pTradeInvoiceNetwork": "Réseau",
   "p2pTradeInvoiceDescription": "Description",
   "p2pTradeNetworkMainnet": "Bitcoin",
@@ -389,5 +389,7 @@
   "p2pTradeWarnHashChanged": "{coordinator} a envoyé une nouvelle facture pour la même étape. Ne la payez pas.",
   "p2pTradeWarnPayee": "Cette facture ne vient pas du nœud Lightning connu de {coordinator}. Ne la payez pas.",
   "p2pActiveOrder": "Ordre actif #{orderId}",
-  "p2pTradeEnded": "Cet échange est terminé pour ce robot."
+  "p2pTradeEnded": "Cet échange est terminé pour ce robot.",
+  "p2pSatsUnit": "Sats",
+  "p2pTradeYouAreSwappingIn": "Vous faites un swap VERS Lightning"
 }

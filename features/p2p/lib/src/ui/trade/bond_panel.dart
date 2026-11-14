@@ -30,6 +30,9 @@ class BondPanel extends StatelessWidget {
   final WaitingForTakerBond status;
   final WalletPaymentBuilder? walletPayment;
 
+  /// Whether the order is in bitcoin, a swap into Lightning, as the order read says.
+  final bool swap;
+
   /// Whether the status came with its trail stored: otherwise neither the wallet's slot nor the QR code and the copy are offered (`AGENTS.md`, « Rules for #88 »).
   final bool payable;
 
@@ -38,6 +41,7 @@ class BondPanel extends StatelessWidget {
     required this.record,
     required this.status,
     required this.walletPayment,
+    this.swap = false,
     this.payable = true,
   });
 
@@ -62,7 +66,10 @@ class BondPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          l10n.p2pTradeYouAreBuying,
+          // An order in bitcoin is a swap into Lightning (`LockInvoice.tsx:76-80`).
+          swap
+              ? l10n.p2pTradeYouAreSwappingIn
+              : l10n.p2pTradeYouAreBuying,
           textAlign: TextAlign.center,
           style: text.headlineLarge?.copyWith(color: colors.secondary),
         ),
