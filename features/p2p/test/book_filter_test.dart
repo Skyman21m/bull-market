@@ -4,6 +4,8 @@ import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/src/domain/book_filter.dart';
 import 'package:p2p/src/domain/option_search.dart';
 import 'package:p2p/src/presentation/book_filter_text.dart';
+import 'package:p2p/src/presentation/book_state.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart';
@@ -369,6 +371,62 @@ void main() {
       expect(lake.available, ['Zelle']);
     });
   });
+
+  test(
+    'a book is known once a coordinator gave one, kept during a refresh, not while all are awaited or offline',
+    () async {
+      final result = await CoordinatorClient(
+        FakeTransport(),
+        clock: () => testNow,
+      ).fetchBook(coordinator('temple'), RobosatsNetwork.mainnet);
+      final book = switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      BookState stateOf(Map<String, CoordinatorBookStatus> statuses) =>
+          BookState(
+            network: RobosatsNetwork.mainnet,
+            coordinators: {
+              for (final MapEntry(:key, :value) in statuses.entries)
+                coordinator(key): value,
+            },
+          );
+      expect(stateOf({}).hasBookReceived, isFalse);
+      expect(
+        stateOf({
+          'temple': const CoordinatorBookLoading(),
+          'lake': const CoordinatorBookLoading(),
+        }).hasBookReceived,
+        isFalse,
+      );
+      expect(
+        stateOf({
+          'temple': const CoordinatorBookFailed(CoordinatorUnreachable()),
+          'lake': const CoordinatorBookFailed(CoordinatorTimedOut()),
+        }).hasBookReceived,
+        isFalse,
+      );
+      expect(
+        stateOf({
+          'temple': CoordinatorBookLoaded(book),
+          'lake': const CoordinatorBookLoading(),
+        }).hasBookReceived,
+        isTrue,
+      );
+      // A pull to refresh: every coordinator awaited again, the previous book kept on screen.
+      expect(
+        stateOf({
+          'temple': CoordinatorBookLoading(book),
+          'lake': const CoordinatorBookLoading(),
+        }).hasBookReceived,
+        isTrue,
+      );
+      expect(
+        stateOf({'temple': CoordinatorBookLoading(book)}).hasAnswer,
+        isFalse,
+      );
+    },
+  );
 
   group('the search of the sheet, as the official client\'s list filters', () {
     test('the name contains the text anywhere, case and accents ignored', () {

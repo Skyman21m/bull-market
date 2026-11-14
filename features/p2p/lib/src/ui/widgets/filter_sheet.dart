@@ -400,7 +400,7 @@ class _SheetFrame extends StatelessWidget {
         height: pinned == null ? null : height,
         constraints: pinned == null ? BoxConstraints(maxHeight: height) : null,
         child: CustomScrollView(
-          shrinkWrap: pinned == null,
+          shrinkWrap: true,
           slivers: [
             SliverPadding(
               padding: const EdgeInsets.only(top: BullSpacing.md),
