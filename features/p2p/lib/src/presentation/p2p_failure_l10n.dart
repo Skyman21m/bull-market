@@ -66,6 +66,13 @@ extension P2pFailureL10n on P2pFailure {
         l10n.p2pRobotCoordinatorTooManyRefusals,
       // Its text names the coordinator, which only the robot panel knows: there, [toRobotText].
       RobotCoordinatorChangedFailure() => l10n.p2pBookError,
+      // The failures of the trade records and of the robot of a new trade (#85): no screen shows them yet, and the trade screens give them their texts (#88).
+      GarageKeyNotForTradesFailure() ||
+      TradeCoordinatorNotOnNetworkFailure() ||
+      TradeKeyMissingFailure() ||
+      TradeAlreadyRecordedFailure() ||
+      RobotNotForNewTradeFailure() ||
+      TradeClosedFailure() => l10n.p2pBookError,
     };
   }
 
@@ -98,7 +105,14 @@ extension P2pFailureL10n on P2pFailure {
       GarageKeyNotSavedFailure() ||
       GarageKeyNotDeletedFailure() ||
       GarageKeyInvalidFailure() ||
-      GarageRobotUnavailableFailure() => toTranslated(context),
+      GarageRobotUnavailableFailure() ||
+      // Not a robot request: the panel never gets them.
+      GarageKeyNotForTradesFailure() ||
+      TradeCoordinatorNotOnNetworkFailure() ||
+      TradeKeyMissingFailure() ||
+      TradeAlreadyRecordedFailure() ||
+      RobotNotForNewTradeFailure() ||
+      TradeClosedFailure() => toTranslated(context),
     };
   }
 }
