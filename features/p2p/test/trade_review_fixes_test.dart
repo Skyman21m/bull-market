@@ -380,6 +380,8 @@ void main() {
         };
         expect(started.recordProblem, isA<P2pStorageFailure>());
         expect(started.stored, isFalse);
+        // The pending trail's own status, the one on disk: never one of the take's unstored trail.
+        expect(started.status.position.name, 'start');
         expect(started.status, isA<StatusUnknown>());
         expect(started.status.invoice, isNull);
         expect(

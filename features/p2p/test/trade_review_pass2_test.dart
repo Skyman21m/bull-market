@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
@@ -211,6 +212,32 @@ void main() {
   });
 
   group('the guards the second pass\'s mutants found untested', () {
+    test('N10: an acknowledgement given for an earlier read at the same status covers no later read', () async {
+      final (app, record) = await takenTrade();
+      final run = app.watchOf(record);
+      await app.settle();
+      app.coordinator.lockBond(app.robot(0));
+      await app.elapse(const Duration(seconds: 5));
+      final earlier = run.lastStatus.seen;
+      await app.elapse(const Duration(seconds: 10));
+      final later = run.lastStatus.seen;
+      expect(later.status.seenAt, isNot(earlier.status.seenAt));
+      await run.subscription.cancel();
+      expect(
+        await app.cancel.execute(
+          record,
+          later,
+          bondLoss: BondLossAcknowledged.fromConfirmationDialog(record, earlier),
+        ),
+        isA<Err<CancelOutcome, CancelRefusal>>().having(
+          (e) => e.failure,
+          'refusal',
+          isA<CancelAcknowledgementMismatch>(),
+        ),
+      );
+      expect(app.coordinator.received, isNot(contains(ScriptedRequest.cancel)));
+    });
+
     test(
       'N08: a pre-take seen on a record whose confirmation failed ends as the state machine says, not as a take not made',
       () async {
