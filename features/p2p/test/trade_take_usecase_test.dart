@@ -347,7 +347,11 @@ void main() {
         // A live pre-take of this robot would be shown as 3: it holds none, and no invoice was ever shown.
         expect(
           run.last,
-          isA<TradeWatchTakeNotMade>().having((s) => s.closed, 'closed', isTrue),
+          isA<TradeWatchTakeNotMade>().having(
+            (s) => s.closed,
+            'closed',
+            isTrue,
+          ),
         );
         expect(run.done, isTrue);
         expect(await app.activeRecords(), isEmpty);
@@ -420,7 +424,11 @@ void main() {
         await again.settle();
         expect(
           run.last,
-          isA<TradeWatchTakeNeverSent>().having((s) => s.closed, 'closed', isTrue),
+          isA<TradeWatchTakeNeverSent>().having(
+            (s) => s.closed,
+            'closed',
+            isTrue,
+          ),
         );
         expect(await again.activeRecords(), isEmpty);
         expect(app.coordinator.received, isNot(contains(take)));

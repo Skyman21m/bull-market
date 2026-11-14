@@ -147,7 +147,8 @@ final class TradeReader {
     }
     final termsRecord = history.terms;
     // The take sends its request only once its terms and its first trail are written.
-    if (record.isPendingTake && (termsRecord == null || history.trail == null)) {
+    if (record.isPendingTake &&
+        (termsRecord == null || history.trail == null)) {
       return const TradeTakeNeverSent();
     }
     if (termsRecord == null) {

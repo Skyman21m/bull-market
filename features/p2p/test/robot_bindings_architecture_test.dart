@@ -492,9 +492,7 @@ void main() {
         );
         // The trade screen's cancel confirmation (#88) is to be the one file that builds it: add that file here, alone.
         expect(
-          referring(
-            (r) => r == 'BondLossAcknowledged.fromConfirmationDialog',
-          ),
+          referring((r) => r == 'BondLossAcknowledged.fromConfirmationDialog'),
           isEmpty,
         );
       },

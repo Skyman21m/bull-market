@@ -22,8 +22,10 @@ final class BondLossAcknowledged {
   final DateTime seenAt;
 
   /// The acknowledgement for [record] at [seen], which must come from an order (`TradeSeen.order`).
-  BondLossAcknowledged.fromConfirmationDialog(TradeRecord record, TradeSeen seen)
-    : robot = record.robot,
+  BondLossAcknowledged.fromConfirmationDialog(
+    TradeRecord record,
+    TradeSeen seen,
+  ) : robot = record.robot,
       orderId = record.orderId,
       status = switch (seen.order) {
         final order? => order.status,

@@ -264,16 +264,19 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         final fields = body is Map<String, Object?> ? body : const {};
         if (_takeRefusals.isNotEmpty) {
           final code = _takeRefusals.removeAt(0);
-          return _json(switch (code) {
-            1000 || 1001 || 1002 || 1003 => 409,
-            1012 => 403,
-            _ => 400,
-          }, {
-            'error_code': code,
-            'bad_request': code == 1012
-                ? 'You need to wait 60 seconds to take an order'
-                : 'refused',
-          });
+          return _json(
+            switch (code) {
+              1000 || 1001 || 1002 || 1003 => 409,
+              1012 => 403,
+              _ => 400,
+            },
+            {
+              'error_code': code,
+              'bad_request': code == 1012
+                  ? 'You need to wait 60 seconds to take an order'
+                  : 'refused',
+            },
+          );
         }
         if (hasPenalty(robot)) {
           return _json(403, {

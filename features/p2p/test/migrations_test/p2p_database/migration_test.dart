@@ -1036,65 +1036,76 @@ void main() {
       },
     );
 
-    test('a file holding two open trades of one order migrates, keeps both, and refuses a third', () async {
-      await writeSchema3();
-      // No version wrote a take before schema 4: by hand, a second open trade of order 41.
-      final old = v3.DatabaseAtV3(NativeDatabase(file));
-      await old
-          .into(old.robotBindings)
-          .insert(
-            v3.RobotBindingsCompanion.insert(
-              network: testnet.name,
-              keyFingerprint: drawn.hex,
-              robotIndex: 5,
-              coordinatorAlias: temple.alias,
-              coordinatorOnion: temple.onion,
-              coordinatorNodeKeys: temple.nodeKeys.join(','),
-              coordinatorNostrKey: temple.nostrKey,
-              boundAt: 10,
-              provenance: const Value('generated'),
-            ),
-          );
-      await old
-          .into(old.trades)
-          .insert(
-            v3.TradesCompanion.insert(
-              network: testnet.name,
-              keyFingerprint: drawn.hex,
-              robotIndex: 5,
-              coordinatorAlias: temple.alias,
-              coordinatorOnion: temple.onion,
-              orderId: 41,
-              role: 'buyer',
-              origin: 'takenHere',
-              takenAt: 16,
-            ),
-          );
-      await old.close();
+    test(
+      'a file holding two open trades of one order migrates, keeps both, and refuses a third',
+      () async {
+        await writeSchema3();
+        // No version wrote a take before schema 4: by hand, a second open trade of order 41.
+        final old = v3.DatabaseAtV3(NativeDatabase(file));
+        await old
+            .into(old.robotBindings)
+            .insert(
+              v3.RobotBindingsCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: 5,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                coordinatorNodeKeys: temple.nodeKeys.join(','),
+                coordinatorNostrKey: temple.nostrKey,
+                boundAt: 10,
+                provenance: const Value('generated'),
+              ),
+            );
+        await old
+            .into(old.trades)
+            .insert(
+              v3.TradesCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: 5,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                orderId: 41,
+                role: 'buyer',
+                origin: 'takenHere',
+                takenAt: 16,
+              ),
+            );
+        await old.close();
 
-      final database = P2pDatabase.open(() async => directory);
-      expect(await versionOf(database), 4);
-      expect(
-        await database
-            .customSelect(
-              'SELECT * FROM trades WHERE order_id = 41 AND closed_at IS NULL',
-            )
-            .get(),
-        hasLength(2),
-      );
-      await database.customStatement(
-        "INSERT INTO robot_bindings VALUES ('testnet', ?, 6, ?, ?, ?, ?, 10, 'generated')",
-        [drawn.hex, temple.alias, temple.onion, temple.nodeKeys.join(','), temple.nostrKey],
-      );
-      await expectLater(
-        database.customStatement(
-          "INSERT INTO trades VALUES ('testnet', ?, 6, ?, ?, 41, 'buyer', 'recovered', 0, 0, NULL)",
-          [drawn.hex, temple.alias, temple.onion],
-        ),
-        throwsA(predicate((error) => '$error'.contains('SqliteException(1811)'))),
-      );
-      await database.close();
-    });
+        final database = P2pDatabase.open(() async => directory);
+        expect(await versionOf(database), 4);
+        expect(
+          await database
+              .customSelect(
+                'SELECT * FROM trades WHERE order_id = 41 AND closed_at IS NULL',
+              )
+              .get(),
+          hasLength(2),
+        );
+        await database.customStatement(
+          "INSERT INTO robot_bindings VALUES ('testnet', ?, 6, ?, ?, ?, ?, 10, 'generated')",
+          [
+            drawn.hex,
+            temple.alias,
+            temple.onion,
+            temple.nodeKeys.join(','),
+            temple.nostrKey,
+          ],
+        );
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trades VALUES ('testnet', ?, 6, ?, ?, 41, 'buyer', 'recovered', 0, 0, NULL)",
+            [drawn.hex, temple.alias, temple.onion],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('SqliteException(1811)')),
+          ),
+        );
+        await database.close();
+      },
+    );
 
     test(
       'a file migrated holds the same objects as a new file of schema 4',

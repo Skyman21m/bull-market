@@ -264,7 +264,6 @@ final class TradeWatchSession {
     await _signalSubscription?.cancel();
     if (!_out.isClosed) await _out.close();
   }
-}
 
   void _release() {
     if (!_registered) return;
