@@ -11,7 +11,7 @@ import 'package:test/test.dart';
 /// It lives in `features/p2p`, whose tests have the analyzer, and reads the app's files from here, as `trade_money_calls_architecture_test.dart` reads the integration tests: the app has no analyzer among its dependencies. The sources are parsed without resolution: comments and strings are not code.
 /// It cannot see a name used bare (a top-level function or variable of an allowed import named without a call or a dot, such as one torn off under an allowed local name), nor what an allowed member does: the allowed members are the quote of `SwapFacade`, the `execute` of the readers the feature calls, and the build and fee read of an unsigned transaction, read in the reviews of this pull request.
 /// The pull request that adds the payment extends this rule with a per-file list: the names that commit funds are allowed in its one pay use case file only, and the shared list stays untouched. It is reviewed as money code.
-/// Pull request #106 adds `lib/features/p2p_wallet/data/bolt11_decoder_impl.dart`: whichever of #103 and #106 merges second adds that file's import of the `bolt11_decoder` package and its names to this list.
+/// The BOLT11 decoder's adapter of #86 is not part of this feature: it gets a shell folder of its own (`lib/features/p2p_bolt11/`), so this list never names the decoder package.
 void main() {
   // Tests run with the package directory as working directory.
   const shell = '../../lib/features/p2p_wallet';
