@@ -2,6 +2,9 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'trade_record.dart';
+import 'trade_tolerances.dart';
+
 /// What this robot is to the trade it took: taking a sell order makes a buyer, taking a buy order a seller (`Logics.is_buyer`, `api/logics.py`, commit ff1998c).
 enum TradeRole {
   buyer,
@@ -12,6 +15,21 @@ enum TradeRole {
     OrderType.sell => buyer,
     OrderType.buy => seller,
   };
+}
+
+/// Why a take cannot be checked, so is not made: a type, the take use case gives the user its text (#87, #88).
+sealed class TradeTermsRefusal extends Failure {
+  const TradeTermsRefusal();
+}
+
+/// The coordinator announces a taker fee above [TradeTolerances.takerFeeCeiling].
+final class TakerFeeTooHigh extends TradeTermsRefusal {
+  const TakerFeeTooHigh();
+}
+
+/// The order gives nothing to check a take against: no sats at the current price, or no valid amount.
+final class TradeTermsUnusable extends TradeTermsRefusal {
+  const TradeTermsUnusable();
 }
 
 /// What a trade was taken with, fixed at the take and never read again from the coordinator: every answer about the trade is checked against it (design note § 3.2).
@@ -67,45 +85,202 @@ final class TradeTerms {
     required this.takerFee,
   });
 
-  /// The terms of taking [order] of the book of [network], for [rangeAmount] when the order has a range, with the [takerFee] of the coordinator's `/api/info/`.
+  /// The terms of taking [order], as the book listed it on [network], for [rangeAmount] when the order has a range, with the [takerFee] of the coordinator's `/api/info/`.
   ///
-  /// `null` when the order cannot be checked or taken so: no sats at the current price in the book, an amount for a fixed order or none for a range, an amount out of the range, or a fee that is not a fraction.
-  static TradeTerms? take(
+  /// Build them from a fresh read of the order just before the take (the book reloaded, or [takeRead]), never from a book left open: the bond and the trade's sats are checked against this price within [TradeTolerances.price].
+  /// Refused with [TakerFeeTooHigh] above [TradeTolerances.takerFeeCeiling], and with [TradeTermsUnusable] when the order cannot be checked so: no sats at the current price, an amount for a fixed order or none for a range, an amount out of the range.
+  static Result<TradeTerms, TradeTermsRefusal> take(
     PublicOrder order, {
     required RobosatsNetwork network,
     FiatAmount? rangeAmount,
     required double takerFee,
+  }) => _of(
+    network: network,
+    coordinator: order.coordinator,
+    orderId: order.id,
+    type: order.type,
+    currency: order.currency,
+    orderAmount: order.amount,
+    rangeAmount: rangeAmount,
+    premium: order.premium,
+    explicitSatoshis: order.explicitSatoshis,
+    bondSize: order.bondSize,
+    escrowDuration: order.escrowDuration,
+    satoshisNow: order.satoshisNow,
+    takerFee: takerFee,
+  );
+
+  /// The terms of taking [order], read just before the take by the robot that takes it, which is not one of its participants yet (`GET /api/order/` of a public order, `api/views.py:287-299`).
+  ///
+  /// Refused as [take] refuses, and with [TradeTermsUnusable] for a read that is not of a public order this robot does not take part in.
+  static Result<TradeTerms, TradeTermsRefusal> takeRead(
+    CoordinatorOrder order, {
+    FiatAmount? rangeAmount,
+    required double takerFee,
   }) {
-    if (!takerFee.isFinite || takerFee < 0 || takerFee >= 1) return null;
-    final satoshisNow = order.satoshisNow?.value.toInt();
-    if (satoshisNow == null || satoshisNow <= 0) return null;
+    final premium = order.premium;
+    if (order.status != CoordinatorOrderStatus.public ||
+        order.isParticipant ||
+        premium == null) {
+      return const Err(TradeTermsUnusable());
+    }
+    return _of(
+      network: order.network,
+      coordinator: order.coordinator,
+      orderId: order.id,
+      type: order.type,
+      currency: order.currency,
+      orderAmount: order.amount,
+      rangeAmount: rangeAmount,
+      premium: premium,
+      explicitSatoshis: order.explicitSatoshis,
+      bondSize: order.bondSize,
+      escrowDuration: order.escrowDuration,
+      satoshisNow: order.satoshisNow,
+      takerFee: takerFee,
+    );
+  }
+
+  static Result<TradeTerms, TradeTermsRefusal> _of({
+    required RobosatsNetwork network,
+    required Coordinator coordinator,
+    required int orderId,
+    required OrderType type,
+    required RobosatsCurrency currency,
+    required OrderAmount orderAmount,
+    required FiatAmount? rangeAmount,
+    required Premium premium,
+    required Sats? explicitSatoshis,
+    required BondSize bondSize,
+    required Duration escrowDuration,
+    required Sats? satoshisNow,
+    required double takerFee,
+  }) {
+    if (!takerFee.isFinite || takerFee < 0) {
+      return const Err(TradeTermsUnusable());
+    }
+    if (takerFee > TradeTolerances.takerFeeCeiling) {
+      return const Err(TakerFeeTooHigh());
+    }
+    final sats = satoshisNow?.value.toInt();
+    if (sats == null || sats <= 0) return const Err(TradeTermsUnusable());
     final FiatAmount amount;
-    switch ((order.amount, rangeAmount)) {
+    switch ((orderAmount, rangeAmount)) {
       case (FixedOrderAmount(amount: final fixed), null):
         amount = fixed;
       case (RangeOrderAmount(:final min, :final max), final chosen?)
           when chosen.value >= min.value && chosen.value <= max.value:
         amount = chosen;
       default:
-        return null;
+        return const Err(TradeTermsUnusable());
     }
-    return TradeTerms._(
-      network: network,
-      coordinator: order.coordinator,
-      orderId: order.id,
-      role: TradeRole.takingOrderOf(order.type),
-      type: order.type,
-      currency: order.currency,
-      amount: amount,
-      isRange: order.amount is RangeOrderAmount,
-      premium: order.premium,
-      explicitSatoshis: order.explicitSatoshis,
-      bondSize: order.bondSize,
-      escrowDuration: order.escrowDuration,
-      bookPrice: order.amount.max.value / (satoshisNow / satsPerBitcoin),
-      takerFee: takerFee,
+    return Ok(
+      TradeTerms._(
+        network: network,
+        coordinator: coordinator,
+        orderId: orderId,
+        role: TradeRole.takingOrderOf(type),
+        type: type,
+        currency: currency,
+        amount: amount,
+        isRange: orderAmount is RangeOrderAmount,
+        premium: premium,
+        explicitSatoshis: explicitSatoshis,
+        bondSize: bondSize,
+        escrowDuration: escrowDuration,
+        bookPrice: orderAmount.max.value / (sats / satsPerBitcoin),
+        takerFee: takerFee,
+      ),
     );
   }
+
+  /// The exact, storable form of these terms: store it at the take, with the trade (#87).
+  TradeTermsRecord get record => TradeTermsRecord(
+    version: TradeTermsRecord.currentVersion,
+    network: network.name,
+    coordinatorAlias: coordinator.shortAlias,
+    orderId: orderId,
+    role: role.name,
+    type: type.wire,
+    currencyId: currency.id,
+    amount: amount.value,
+    isRange: isRange,
+    premiumPercent: premium.percent,
+    explicitSatoshis: explicitSatoshis?.value.toInt(),
+    bondSizePercent: bondSize.percent,
+    escrowSeconds: escrowDuration.inSeconds,
+    bookPrice: bookPrice,
+    takerFee: takerFee,
+  );
+
+  /// The terms [record] holds, or [TradeRecordMalformed] when it is not one [record] wrote: an unknown version, a coordinator that is not in the federation list on its network, a role that does not follow from the order's type, any value out of the bounds the take checks.
+  static Result<TradeTerms, TradeRecordMalformed> restore(
+    TradeTermsRecord record,
+  ) {
+    const refused = Err<TradeTerms, TradeRecordMalformed>(
+      TradeRecordMalformed(),
+    );
+    if (record.version != TradeTermsRecord.currentVersion) return refused;
+    final network = RobosatsNetwork.values
+        .where((value) => value.name == record.network)
+        .firstOrNull;
+    final coordinator = Federation.robosats.byAlias(record.coordinatorAlias);
+    final type = OrderType.fromWire(record.type);
+    final role = TradeRole.values
+        .where((value) => value.name == record.role)
+        .firstOrNull;
+    final currency = RobosatsCurrency.fromId(record.currencyId);
+    final amount = FiatAmount.tryCreate(record.amount);
+    final premium = Premium.tryCreate(record.premiumPercent);
+    final bondSize = BondSize.tryCreate(record.bondSizePercent);
+    final explicit = record.explicitSatoshis;
+    if (network == null ||
+        coordinator == null ||
+        !coordinator.isOn(network) ||
+        type == null ||
+        role == null ||
+        role != TradeRole.takingOrderOf(type) ||
+        currency == null ||
+        amount == null ||
+        premium == null ||
+        bondSize == null ||
+        record.orderId < 1 ||
+        (explicit != null && explicit < 1) ||
+        record.escrowSeconds < 1800 ||
+        record.escrowSeconds > 36000 ||
+        !record.bookPrice.isFinite ||
+        record.bookPrice <= 0 ||
+        !record.takerFee.isFinite ||
+        record.takerFee < 0 ||
+        record.takerFee > TradeTolerances.takerFeeCeiling) {
+      return refused;
+    }
+    return Ok(
+      TradeTerms._(
+        network: network,
+        coordinator: coordinator,
+        orderId: record.orderId,
+        role: role,
+        type: type,
+        currency: currency,
+        amount: amount,
+        isRange: record.isRange,
+        premium: premium,
+        explicitSatoshis: explicit == null ? null : Sats.fromInt(explicit),
+        bondSize: bondSize,
+        escrowDuration: Duration(seconds: record.escrowSeconds),
+        bookPrice: record.bookPrice,
+        takerFee: record.takerFee,
+      ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is TradeTerms && other.record == record;
+
+  @override
+  int get hashCode => record.hashCode;
 
   /// The sats the trade is worth at the book's price, before any fee: what the coordinator computes as `satoshis_now` for the amount taken, at the price of its own when it does (`Logics.satoshis_now`, `api/logics.py:262-275`).
   double get expectedSatoshis => switch (explicitSatoshis) {

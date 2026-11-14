@@ -1,11 +1,4 @@
-import 'package:meta/meta.dart';
-import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart';
-
-import 'bolt11.dart';
-import 'trade_terms.dart';
-import 'trade_tolerances.dart';
-import 'trade_warning.dart';
+part of 'trade_status.dart';
 
 /// The step of a trade an invoice pays: the taker's bond, or the seller's escrow.
 enum InvoiceStep { bond, escrow }
@@ -39,7 +32,7 @@ final class UnusableInvoice extends StepInvoice {
 
 /// A hold invoice of the coordinator, decoded here, on the trade's network, with every check of its read: the only kind of invoice a screen may show as a QR code and the wallet may be asked to pay (design note § 4.4).
 ///
-/// Only [checkStepInvoice] builds one: there is no public constructor, so a string read from a coordinator becomes one only through the checks.
+/// Only the state machine builds one (`_checkStepInvoice`, private to the library of `TradeStatus`, which this file is part of): a string read from a coordinator becomes one only through every check of [TradeStatus.from], the order's, the trade's history and its own.
 /// [warnings] holds every check that failed on the read that carried it, the invoice's own and the order's: « Pay with this wallet » needs none at all (`walletPaymentFor`), and each warning's effect says whether the QR code is shown.
 /// Its [toString] names no part of the invoice.
 @immutable
@@ -126,7 +119,7 @@ final class CheckedInvoice extends StepInvoice {
 /// - A payee it states (`n`) that is not one of the coordinator's node keys in the federation list: [InvoicePayeeNotCoordinator]. The app's decoder does not recover the payee from the signature, so an invoice that states none is not compared (design note § 7, decision 6).
 ///
 /// [readWarnings] are the checks of the same read that failed on the order: the invoice carries them too, so that nothing pays it from the wallet.
-StepInvoice checkStepInvoice({
+StepInvoice _checkStepInvoice({
   required HoldInvoice hold,
   required InvoiceStep step,
   required TradeTerms terms,

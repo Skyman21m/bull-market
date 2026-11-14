@@ -2,9 +2,9 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
-import 'package:p2p/src/domain/trade/checked_invoice.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
+import 'package:p2p/src/domain/trade/trade_record.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_terms.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';
@@ -26,6 +26,9 @@ final String templeNode = coordinator(
 /// A node key no coordinator has: a fixed test value.
 const strangerNode =
     '02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+/// When the trades of the tests were taken.
+final takenAt = tradeNow.subtract(const Duration(seconds: 5));
 
 void main() {
   late TradeTerms buyer;
@@ -52,13 +55,15 @@ void main() {
     return readAnswer(json);
   }
 
+  /// The status after [answer]; with no [previous], the first read after the take.
   TradeStatus next(
     TradeStatus? previous,
     TradeAnswer answer, {
     TradeTerms? terms,
     DateTime? now,
   }) => TradeStatus.from(
-    previous: previous,
+    previous:
+        previous ?? TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt)),
     answer: answer,
     terms: terms ?? buyer,
     now: now ?? tradeNow,
@@ -107,7 +112,8 @@ void main() {
       expect(
         walletPaymentFor(
           accepted: Sats.fromInt(bookBond),
-          invoice: bond,
+          status: status,
+          step: InvoiceStep.bond,
           now: tradeNow,
         ),
         isA<WalletPaymentOffered>(),
@@ -206,9 +212,27 @@ void main() {
       final bond = await preTake();
       expect(next(bond, const TradeOrderCancelled()), isA<Cancelled>());
 
-      final lost = next(bond, const TradeOrderNotAvailable());
+      // Error 1044 during the pre-take is not an end until the pre-take is certainly gone: the maker may have paused the order.
+      final onHold = next(bond, const TradeOrderNotAvailable());
+      expect(onHold, isA<PreTakeUnavailable>());
+      expect(onHold.isTerminal, isFalse);
+      final gone = tradeNow
+          .add(const Duration(seconds: 190))
+          .add(TradeTolerances.coordinatorLoops);
+      expect((onHold as PreTakeUnavailable).finalFrom, gone);
+      final stillOnHold = next(
+        onHold,
+        const TradeOrderNotAvailable(),
+        now: gone.subtract(const Duration(seconds: 1)),
+      );
+      expect(stillOnHold, isA<PreTakeUnavailable>());
+      final lost = next(stillOnHold, const TradeOrderNotAvailable(), now: gone);
       expect(lost, isA<TakenByAnother>());
       expect((lost as TakenByAnother).bondMayHaveBeenLost, isFalse);
+      expect(
+        next(bond, const TradeOrderNotAvailable(), now: gone),
+        isA<TakenByAnother>(),
+      );
 
       final ended = next(bond, await answer(orderJson(1)));
       expect(ended, isA<PreTakeEnded>());
@@ -221,6 +245,8 @@ void main() {
       expect((endedLate as PreTakeEnded).bondMayHaveBeenLost, isTrue);
       final takenLate = next(bond, const TradeOrderNotAvailable(), now: late);
       expect((takenLate as TakenByAnother).bondMayHaveBeenLost, isTrue);
+      final cancelledLate = next(bond, const TradeOrderCancelled(), now: late);
+      expect((cancelledLate as Cancelled).bondMayHaveBeenLost, isTrue);
       final justBefore = late.subtract(const Duration(seconds: 1));
       final endedBefore = next(
         bond,
@@ -228,18 +254,33 @@ void main() {
         now: justBefore,
       );
       expect((endedBefore as PreTakeEnded).bondMayHaveBeenLost, isFalse);
+      final cancelledBefore = next(
+        bond,
+        const TradeOrderCancelled(),
+        now: justBefore,
+      );
+      expect((cancelledBefore as Cancelled).bondMayHaveBeenLost, isFalse);
 
-      // With no history, nothing can be said.
+      // Right after the take, nothing can have been locked; after recovery, nothing can be said.
       expect(
         (next(null, await answer(orderJson(1))) as PreTakeEnded)
             .bondMayHaveBeenLost,
-        isTrue,
+        isFalse,
       );
       expect(
-        (next(null, const TradeOrderNotAvailable()) as TakenByAnother)
+        (next(null, const TradeOrderCancelled()) as Cancelled)
             .bondMayHaveBeenLost,
-        isTrue,
+        isFalse,
       );
+      final recovered = TradeStatus.beforeFirstRead(
+        TradeTrail.recovered(tradeNow),
+      );
+      final foundPublic = next(recovered, await answer(orderJson(1)));
+      expect((foundPublic as PreTakeEnded).bondMayHaveBeenLost, isTrue);
+      expect(foundPublic.has<TradeHistoryUnknown>(), isTrue);
+      final afterTake = next(null, const TradeOrderNotAvailable());
+      expect(afterTake, isA<PreTakeUnavailable>());
+      expect((afterTake as PreTakeUnavailable).finalFrom, isNull);
 
       // After the bond locked, every way back to the book settles it.
       final both = next(bond, await answer(orderJson(6)));
@@ -247,9 +288,15 @@ void main() {
       expect(forfeited, isA<BondForfeited>());
       expect(forfeited.position, TradePosition.publicAgain);
       expect(forfeited.warnings, isEmpty);
-      final gone = next(both, const TradeOrderNotAvailable());
-      expect(gone, isA<BondForfeited>());
-      expect(gone.position, TradePosition.notAvailable);
+      final outOfReach = next(both, const TradeOrderNotAvailable());
+      expect(outOfReach, isA<BondForfeited>());
+      expect(outOfReach.position, TradePosition.notAvailable);
+      // A cancel after 6, 7 or 8 may follow a bond settled in between.
+      final cancelledAfterBond = next(both, const TradeOrderCancelled());
+      expect((cancelledAfterBond as Cancelled).bondMayHaveBeenLost, isTrue);
+      final chat = next(both, await answer(orderJson(9)));
+      final cancelledInChat = next(chat, const TradeOrderCancelled());
+      expect((cancelledInChat as Cancelled).bondMayHaveBeenLost, isFalse);
     });
 
     test(
@@ -286,9 +333,14 @@ void main() {
           identical(next(ended, await answer(orderJson(1))), ended),
           isTrue,
         );
-        final taken = next(bond, const TradeOrderNotAvailable());
+        final gone = tradeNow.add(const Duration(minutes: 10));
+        final taken = next(bond, const TradeOrderNotAvailable(), now: gone);
+        expect(taken, isA<TakenByAnother>());
         expect(
-          identical(next(taken, const TradeOrderNotAvailable()), taken),
+          identical(
+            next(taken, const TradeOrderNotAvailable(), now: gone),
+            taken,
+          ),
           isTrue,
         );
       },
@@ -304,7 +356,8 @@ void main() {
       final role = terms.role;
       return switch (position) {
         TradePosition.cancelled => const TradeOrderCancelled(),
-        TradePosition.notAvailable => const TradeOrderNotAvailable(),
+        TradePosition.notAvailable ||
+        TradePosition.preTakeUnavailable => const TradeOrderNotAvailable(),
         TradePosition.publicAgain => answer(orderJson(1, role: role)),
         TradePosition.bondStep => answer(
           orderJson(3, role: role),
@@ -323,6 +376,9 @@ void main() {
       TradePosition position,
       TradeTerms terms,
     ) async {
+      if (position == TradePosition.start) {
+        return TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt));
+      }
       final bond = await preTake(terms: terms);
       if (position == TradePosition.bondStep) return bond;
       return next(bond, await answerAt(position, terms), terms: terms);
@@ -341,10 +397,14 @@ void main() {
               final terms = role == TradeRole.buyer ? buyer : seller;
               final from = await statusAt(origin, terms);
               expect(from.position, origin, reason: '$origin as $role');
+              // Error 1044 at the pre-take is final once the pre-take is certainly gone.
               final to = next(
                 from,
                 await answerAt(target, terms),
                 terms: terms,
+                now: target == TradePosition.notAvailable
+                    ? tradeNow.add(const Duration(minutes: 10))
+                    : tradeNow,
               );
               expect(to.position, target, reason: '$origin → $target as $role');
               expect(
@@ -356,6 +416,80 @@ void main() {
               expect(TradeEdges.allows(role, origin, target), isTrue);
             }
           }
+        }
+      },
+    );
+
+    test(
+      'the steps are exactly those of the reference, as written out here apart from the table',
+      () {
+        const b = TradeRole.buyer;
+        const s = TradeRole.seller;
+        TradePosition at(String name) => TradePosition.values.byName(name);
+        // (from, to, roles), written out from the reference (see `trade_edges.dart` for the lines of each).
+        const listed = <(String, String, Set<TradeRole>)>[
+          ('start', 'bondStep', {b, s}),
+          ('start', 'publicAgain', {b, s}),
+          ('start', 'preTakeUnavailable', {b, s}),
+          ('start', 'cancelled', {b, s}),
+          ('bondStep', 'waitingForBoth', {b, s}),
+          ('bondStep', 'publicAgain', {b, s}),
+          ('bondStep', 'preTakeUnavailable', {b, s}),
+          ('bondStep', 'notAvailable', {b, s}),
+          ('bondStep', 'cancelled', {b, s}),
+          ('preTakeUnavailable', 'bondStep', {b, s}),
+          ('preTakeUnavailable', 'waitingForBoth', {b, s}),
+          ('preTakeUnavailable', 'publicAgain', {b, s}),
+          ('preTakeUnavailable', 'notAvailable', {b, s}),
+          ('preTakeUnavailable', 'cancelled', {b, s}),
+          ('waitingForBoth', 'waitingForEscrow', {b, s}),
+          ('waitingForBoth', 'waitingForPayout', {b, s}),
+          ('waitingForBoth', 'chatting', {b, s}),
+          ('waitingForBoth', 'expired', {b, s}),
+          ('waitingForBoth', 'publicAgain', {b, s}),
+          ('waitingForBoth', 'cancelled', {b, s}),
+          ('waitingForEscrow', 'chatting', {b, s}),
+          ('waitingForEscrow', 'expired', {b, s}),
+          ('waitingForEscrow', 'publicAgain', {b, s}),
+          ('waitingForEscrow', 'cancelled', {b, s}),
+          ('waitingForPayout', 'chatting', {b, s}),
+          ('waitingForPayout', 'expired', {b, s}),
+          ('waitingForPayout', 'publicAgain', {b}),
+          ('waitingForPayout', 'cancelled', {b, s}),
+          ('chatting', 'fiatSent', {b, s}),
+          ('chatting', 'inDispute', {b, s}),
+          ('chatting', 'cancelled', {b, s}),
+          ('chatting', 'expired', {b, s}),
+          ('fiatSent', 'chatting', {b, s}),
+          ('fiatSent', 'inDispute', {b, s}),
+          ('fiatSent', 'sendingSats', {b, s}),
+          ('fiatSent', 'succeeded', {b, s}),
+          ('fiatSent', 'expired', {b, s}),
+          ('inDispute', 'waitingDisputeResolution', {b, s}),
+          ('inDispute', 'takerLostDispute', {b, s}),
+          ('inDispute', 'makerLostDispute', {b, s}),
+          ('inDispute', 'cancelled', {b, s}),
+          ('inDispute', 'sendingSats', {b, s}),
+          ('waitingDisputeResolution', 'takerLostDispute', {b, s}),
+          ('waitingDisputeResolution', 'makerLostDispute', {b, s}),
+          ('waitingDisputeResolution', 'cancelled', {b, s}),
+          ('waitingDisputeResolution', 'sendingSats', {b, s}),
+          ('publicAgain', 'notAvailable', {b, s}),
+          ('publicAgain', 'cancelled', {b, s}),
+          ('sendingSats', 'succeeded', {b, s}),
+          ('sendingSats', 'routingFailed', {b, s}),
+          ('routingFailed', 'sendingSats', {b, s}),
+          ('routingFailed', 'succeeded', {b, s}),
+        ];
+        final table = {
+          for (final MapEntry(key: from, value: targets)
+              in TradeEdges.steps.entries)
+            for (final MapEntry(key: to, value: roles) in targets.entries)
+              (from, to): roles,
+        };
+        expect(table.length, listed.length);
+        for (final (from, to, roles) in listed) {
+          expect(table[(at(from), at(to))], roles, reason: '$from → $to');
         }
       },
     );
@@ -403,21 +537,15 @@ void main() {
         (TradeRole.buyer, TradePosition.waitingForBoth, TradePosition.bondStep),
         (TradeRole.buyer, TradePosition.sendingSats, TradePosition.inDispute),
         (TradeRole.buyer, TradePosition.inDispute, TradePosition.chatting),
-        (
-          TradeRole.buyer,
-          TradePosition.waitingForPayout,
-          TradePosition.expired,
-        ),
+        (TradeRole.buyer, TradePosition.start, TradePosition.waitingForBoth),
+        (TradeRole.buyer, TradePosition.start, TradePosition.succeeded),
+        (TradeRole.seller, TradePosition.start, TradePosition.notAvailable),
         (
           TradeRole.seller,
           TradePosition.waitingForPayout,
           TradePosition.publicAgain,
         ),
-        (
-          TradeRole.seller,
-          TradePosition.waitingForEscrow,
-          TradePosition.expired,
-        ),
+        (TradeRole.buyer, TradePosition.chatting, TradePosition.bondStep),
         (TradeRole.buyer, TradePosition.chatting, TradePosition.notAvailable),
         (TradeRole.buyer, TradePosition.routingFailed, TradePosition.chatting),
       ];
@@ -476,7 +604,7 @@ void main() {
         expect(refused.has<TradeStatusRegressed>(), isTrue, reason: '$wire');
       }
       final first = next(null, await answer(orderJson(2, changes: withTaker)));
-      expect(first, isA<StatusNotUnderstood>());
+      expect(first, isA<StatusUnknown>());
       expect(first.has<TradeStatusRegressed>(), isTrue);
       // After a first answer refused, any next one may come, with the breach remembered.
       final then = next(first, await answer(orderJson(6)));
@@ -821,7 +949,7 @@ void main() {
           final invoice = bondInvoice(network: network);
           decoder.add(invoice);
           final status = TradeStatus.from(
-            previous: null,
+            previous: TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt)),
             answer: TradeOrderRead(
               await readOrder(
                 orderJson(3, bond: invoice),
@@ -964,12 +1092,24 @@ void main() {
         await answer(orderJson(3, bond: other), invoices: [other]),
       );
       expect(again.has<InvoiceHashChanged>(), isTrue);
-      // The first invoice again is fine.
+      // The first invoice again may be shown, but a coordinator that swapped an invoice is never trusted again: the wallet never pays on this trade.
       final back = next(
         again,
         await answer(orderJson(3), invoices: [bondInvoice()]),
       );
-      expect(back.warnings, isEmpty);
+      expect(back.warnings.map((warning) => warning.runtimeType), [
+        CoordinatorInconsistent,
+      ]);
+      expect(checkedOf(back).mayShow, isTrue);
+      expect(
+        walletPaymentFor(
+          accepted: Sats.fromInt(bookBond),
+          status: back,
+          step: InvoiceStep.bond,
+          now: tradeNow,
+        ),
+        isA<WalletPaymentRefused>(),
+      );
       // The escrow has its own hash.
       final sellerBond = await preTake(terms: seller);
       final escrow = escrowInvoice();
@@ -1003,7 +1143,8 @@ void main() {
       expect(
         walletPaymentFor(
           accepted: Sats.fromInt(bookBond),
-          invoice: checkedOf(stranger),
+          status: stranger,
+          step: checkedOf(stranger).step,
           now: tradeNow,
         ),
         isA<WalletPaymentRefused>(),
@@ -1037,11 +1178,12 @@ void main() {
     test(
       'at most the amount accepted, never too late, never after a failed check',
       () async {
-        final bond = checkedOf(await preTake());
+        final bond = await preTake();
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond),
-            invoice: bond,
+            status: bond,
+            step: InvoiceStep.bond,
             now: tradeNow,
           ),
           isA<WalletPaymentOffered>(),
@@ -1049,7 +1191,8 @@ void main() {
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond - 1),
-            invoice: bond,
+            status: bond,
+            step: InvoiceStep.bond,
             now: tradeNow,
           ),
           isA<WalletPaymentRefused>().having(
@@ -1065,7 +1208,8 @@ void main() {
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond),
-            invoice: bond,
+            status: bond,
+            step: InvoiceStep.bond,
             now: lastMoment,
           ),
           isA<WalletPaymentOffered>(),
@@ -1073,7 +1217,8 @@ void main() {
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond),
-            invoice: bond,
+            status: bond,
+            step: InvoiceStep.bond,
             now: lastMoment.add(const Duration(seconds: 1)),
           ),
           isA<WalletPaymentRefused>().having(
@@ -1093,7 +1238,8 @@ void main() {
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond),
-            invoice: checkedOf(shortStep),
+            status: shortStep,
+            step: checkedOf(shortStep).step,
             now: tradeNow,
           ),
           isA<WalletPaymentRefused>().having(
@@ -1102,13 +1248,12 @@ void main() {
             WalletPaymentRefusal.tooLate,
           ),
         );
-        final stale = checkedOf(
-          await preTake(bond: bondInvoice(sats: bookBond * 2)),
-        );
+        final stale = await preTake(bond: bondInvoice(sats: bookBond * 2));
         expect(
           walletPaymentFor(
             accepted: Sats.fromInt(bookBond * 3),
-            invoice: stale,
+            status: stale,
+            step: InvoiceStep.bond,
             now: tradeNow,
           ),
           isA<WalletPaymentRefused>().having(
@@ -1130,7 +1275,8 @@ void main() {
       expect(
         walletPaymentFor(
           accepted: Sats.fromInt(bookBond),
-          invoice: checkedOf(refused),
+          status: refused,
+          step: checkedOf(refused).step,
           now: tradeNow,
         ),
         isA<WalletPaymentRefused>(),
@@ -1140,14 +1286,43 @@ void main() {
   });
 
   group('properties, over seeded random answers', () {
-    /// One random answer for a taker of [terms], from the reference's statuses and from what a lying coordinator could send.
-    Future<TradeAnswer> randomAnswer(Random random, TradeTerms terms) async {
-      final role = random.nextInt(10) == 0
+    /// One random answer, as generated, with what the generator knows of it: whether it lies about the role, shows a status a taker is never shown, or changes the order's terms.
+    Future<
+      ({
+        TradeAnswer answer,
+        bool lies,
+        int? wire,
+        bool termsChanged,
+        int? bondSats,
+        int? escrowSats,
+      })
+    >
+    randomAnswer(Random random, TradeTerms terms, DateTime now) async {
+      final flipped = random.nextInt(10) == 0;
+      final role = flipped
           ? (terms.role == TradeRole.buyer ? TradeRole.seller : TradeRole.buyer)
           : terms.role;
       final pick = random.nextInt(22);
-      if (pick == 19) return const TradeOrderCancelled();
-      if (pick == 20) return const TradeOrderNotAvailable();
+      if (pick == 19) {
+        return (
+          answer: const TradeOrderCancelled() as TradeAnswer,
+          lies: false,
+          wire: null,
+          termsChanged: false,
+          bondSats: null,
+          escrowSats: null,
+        );
+      }
+      if (pick == 20) {
+        return (
+          answer: const TradeOrderNotAvailable() as TradeAnswer,
+          lies: false,
+          wire: null,
+          termsChanged: false,
+          bondSats: null,
+          escrowSats: null,
+        );
+      }
       const wires = [
         0,
         1,
@@ -1169,6 +1344,8 @@ void main() {
         17,
         18,
         3,
+        6,
+        7,
       ];
       final wire = wires[pick % wires.length];
       final last = bookSats + random.nextInt(6001) - 3000;
@@ -1179,25 +1356,28 @@ void main() {
         network: random.nextInt(12) == 0
             ? Bolt11Network.testnet
             : Bolt11Network.mainnet,
-        age: Duration(seconds: random.nextInt(260)),
+        age: tradeNow.difference(now) + Duration(seconds: random.nextInt(260)),
         payee: random.nextInt(8) == 0
             ? strangerNode
             : (random.nextBool() ? templeNode : null),
       );
       final escrowSats = escrowOf(last) + random.nextInt(5) - 2;
-      final escrow = escrowInvoice(
+      final escrow = Bolt11TestInvoice(
+        network: Bolt11Network.mainnet,
         sats: escrowSats,
         seed: 2 + random.nextInt(2),
+        createdAt: now.subtract(Duration(seconds: random.nextInt(3600))),
+        expiry: const Duration(seconds: 10800),
       );
-      final unreadable = random.nextInt(10) == 0;
-      if (!unreadable) {
+      if (random.nextInt(10) != 0) {
         decoder
           ..add(bond)
           ..add(escrow);
       }
+      final termsChanged = random.nextInt(15) == 0;
       final changes = <String, Object?>{
         if (wire == 0 || wire == 2 || wire == 4) ...withTaker,
-        if (random.nextInt(15) == 0) 'premium': '3.00',
+        if (termsChanged) 'premium': '3.00',
         if (wire == 3 && random.nextInt(8) == 0) 'bond_satoshis': bondSats + 7,
         if (wire != 1 && random.nextInt(15) == 0) 'trade_satoshis': last,
         if (random.nextInt(20) == 0) 'satoshis_now': null,
@@ -1206,7 +1386,7 @@ void main() {
             random.nextInt(8) == 0)
           'escrow_satoshis': escrowSats + 1,
       };
-      return TradeOrderRead(
+      final answer = TradeOrderRead(
         await readOrder(
           orderJson(
             wire,
@@ -1214,23 +1394,31 @@ void main() {
             last: last,
             bond: bond,
             escrow: escrow,
-            expiresAt: tradeNow.add(
-              Duration(seconds: 30 + random.nextInt(400)),
-            ),
+            expiresAt: now.add(Duration(seconds: 30 + random.nextInt(400))),
             changes: changes,
           ),
         ),
       );
+      return (
+        answer: answer as TradeAnswer,
+        lies: flipped && wire != 1,
+        wire: wire,
+        termsChanged: termsChanged,
+        bondSats: bondSats,
+        escrowSats: escrowSats,
+      );
     }
 
-    /// An independent oracle of the checks a payable invoice must have passed: what the coordinator said in [answer] against [terms], the first hash of the step in the run, and the clock.
-    bool everyCheckPasses(
-      TradeAnswer answer,
-      TradeTerms terms,
-      CheckedInvoice invoice,
-      String? firstHash,
-      DateTime now,
-    ) {
+    /// The oracle: whether an invoice the wallet was offered passes every check, computed apart from the code under test, from what the generator made, the trade's terms, what the run saw before and the clock.
+    bool payable({
+      required TradeAnswer answer,
+      required TradeTerms terms,
+      required CheckedInvoice invoice,
+      required String? firstHash,
+      required DateTime? lastDeadlineHere,
+      required int accepted,
+      required DateTime now,
+    }) {
       if (answer is! TradeOrderRead) return false;
       final order = answer.order;
       final hold = switch (invoice.step) {
@@ -1239,17 +1427,30 @@ void main() {
       };
       if (hold == null || hold.invoice != invoice.bolt11) return false;
       final amount = invoice.amount.value.toInt();
-      if (amount != hold.satoshis.value.toInt()) return false;
+      if (amount != hold.satoshis.value.toInt() || amount > accepted) {
+        return false;
+      }
       if (!invoice.facts.network.belongsTo(terms.network)) return false;
-      if (now.isAfter(
-        invoice.expiresAt.subtract(TradeTolerances.walletPaymentMargin),
-      )) {
+      final margin = TradeTolerances.walletPaymentMargin;
+      if (invoice.expiresAt.difference(now) < margin) return false;
+      if (order.expiresAt.difference(now) < margin) return false;
+      if (lastDeadlineHere != null &&
+          order.expiresAt.isBefore(lastDeadlineHere)) {
         return false;
       }
       if (firstHash != null && firstHash != invoice.paymentHash) return false;
       final payee = invoice.facts.payeeNodeKey;
       if (payee != null && !terms.nodeKeys.contains(payee)) return false;
-      if (order.isBuyer != (terms.role == TradeRole.buyer)) return false;
+      if (order.isMaker || order.isBuyer != (terms.role == TradeRole.buyer)) {
+        return false;
+      }
+      if (order.currency != terms.currency ||
+          (order.premium?.percent ?? terms.premium.percent) !=
+              terms.premium.percent ||
+          order.bondSize.percent != terms.bondSize.percent ||
+          order.escrowDuration != terms.escrowDuration) {
+        return false;
+      }
       switch (invoice.step) {
         case InvoiceStep.bond:
           if ((amount - terms.expectedBond).abs() >
@@ -1270,22 +1471,36 @@ void main() {
       return true;
     }
 
+    /// A step of the clock: seconds, minutes or hours.
+    Duration tick(Random random) => switch (random.nextInt(4)) {
+      0 => Duration(seconds: random.nextInt(10)),
+      1 => Duration(seconds: random.nextInt(120)),
+      2 => Duration(minutes: random.nextInt(60)),
+      _ => Duration(hours: random.nextInt(4)),
+    };
+
     for (final role in TradeRole.values) {
       test(
-        'as $role: never leaves an end, never an unlisted edge without a warning, never pays after a failed check',
+        'as $role: never leaves an end, never an unlisted edge without a warning, never pays after a failed check, and a restored trail decides as the original',
         () async {
           final terms = role == TradeRole.buyer ? buyer : seller;
           var offered = 0;
+          var restarts = 0;
           for (var seed = 0; seed < 150; seed++) {
             final random = Random(seed);
-            TradeStatus? status;
+            TradeStatus status = TradeStatus.beforeFirstRead(
+              TradeTrail.atTake(takenAt),
+            );
+            var now = tradeNow;
             final hashes = <InvoiceStep, String>{};
+            final deadlines = <TradePosition, DateTime>{};
+            // The oracle's own memory of a breach: what the generator knows it sent.
             var breached = false;
+            var lastFrom = TradePosition.start;
             for (var step = 0; step < 12; step++) {
-              final answer = await randomAnswer(random, terms);
-              final now = tradeNow.add(
-                Duration(seconds: step * random.nextInt(4)),
-              );
+              now = now.add(tick(random));
+              final made = await randomAnswer(random, terms, now);
+              final answer = made.answer;
               final before = status;
               final after = next(before, answer, terms: terms, now: now);
               // Pure: the same input gives the same status.
@@ -1293,8 +1508,8 @@ void main() {
                 next(before, answer, terms: terms, now: now).toString(),
                 after.toString(),
               );
-              final from = before?.position ?? TradePosition.start;
-              if (before != null && before.isTerminal) {
+              final from = before.position;
+              if (before.isTerminal) {
                 expect(
                   after.position,
                   from,
@@ -1309,35 +1524,123 @@ void main() {
                   reason: 'seed $seed: $from → ${after.position}',
                 );
               }
-              if (after.warnings.any((warning) => warning.isBreachOfTrust)) {
-                breached = true;
-              }
-              if (breached &&
-                  !identical(after, before) &&
-                  after.position != TradePosition.start) {
+              // A restored trail is the trail, and decides the next read as the original does.
+              final restored = switch (TradeTrail.restore(after.trail.record)) {
+                Ok(:final value) => value,
+                Err(:final failure) => fail('seed $seed: $failure'),
+              };
+              expect(restored, after.trail);
+              if (!after.isTerminal && step < 11 && random.nextInt(3) == 0) {
+                restarts++;
+                final probe = await randomAnswer(
+                  Random(seed * 100 + step),
+                  terms,
+                  now,
+                );
+                final viaOriginal = next(
+                  after,
+                  probe.answer,
+                  terms: terms,
+                  now: now,
+                );
+                final viaRestored = next(
+                  TradeStatus.beforeFirstRead(restored),
+                  probe.answer,
+                  terms: terms,
+                  now: now,
+                );
                 expect(
-                  after.warnings,
-                  isNotEmpty,
-                  reason: 'seed $seed: breach forgotten',
+                  viaRestored.trail,
+                  viaOriginal.trail,
+                  reason: 'seed $seed',
+                );
+                expect(viaRestored.position, viaOriginal.position);
+                WalletPaymentRefusal? decided(TradeStatus s) {
+                  final step = s.invoice?.step;
+                  if (step == null) return WalletPaymentRefusal.noInvoice;
+                  return switch (walletPaymentFor(
+                    accepted: Sats.fromInt(1 << 40),
+                    status: s,
+                    step: step,
+                    now: now,
+                  )) {
+                    WalletPaymentRefused(:final reason) => reason,
+                    WalletPaymentOffered() => null,
+                  };
+                }
+
+                // Offered after a restart exactly when offered without one.
+                expect(
+                  decided(viaRestored) == null,
+                  decided(viaOriginal) == null,
+                  reason: 'seed $seed',
                 );
               }
-              if (after.invoice case final CheckedInvoice invoice) {
+
+              // The oracle's breach: a lie about the role, a status never shown, an unlisted edge, back to the bond step, another invoice in a step.
+              final wire = made.wire;
+              if (made.lies ||
+                  (wire != null && const [0, 2, 4, 12].contains(wire)) ||
+                  (wire == 3 &&
+                      !const [
+                        TradePosition.start,
+                        TradePosition.bondStep,
+                        TradePosition.preTakeUnavailable,
+                      ].contains(lastFrom))) {
+                breached = true;
+              }
+              // Where the answer meant to go, worked out from what was generated.
+              final TradePosition? meant = switch (answer) {
+                TradeOrderCancelled() => TradePosition.cancelled,
+                TradeOrderNotAvailable() =>
+                  const [
+                        TradePosition.start,
+                        TradePosition.bondStep,
+                        TradePosition.preTakeUnavailable,
+                      ].contains(lastFrom)
+                      ? null
+                      : TradePosition.notAvailable,
+                TradeOrderRead() => switch (wire) {
+                  1 => TradePosition.publicAgain,
+                  0 || 2 || 4 || 12 || null => null,
+                  final shown => TradePosition.values.firstWhere(
+                    (position) => _wireOrNull(position) == shown,
+                  ),
+                },
+              };
+              if (meant != null &&
+                  meant != lastFrom &&
+                  !TradeEdges.allows(terms.role, lastFrom, meant)) {
+                breached = true;
+              }
+              final invoice = after.invoice;
+              if (!identical(after, before) && invoice is CheckedInvoice) {
+                final first = hashes[invoice.step];
+                if (first != null && first != invoice.paymentHash) {
+                  breached = true;
+                }
+                final amount = invoice.amount.value.toInt();
+                // Accepted near the real amounts, so that the cap is exercised both ways.
+                final accepted = amount + random.nextInt(7) - 3;
                 final decision = walletPaymentFor(
-                  accepted: Sats.fromInt(1 << 40),
-                  invoice: invoice,
+                  accepted: Sats.fromInt(accepted),
+                  status: after,
+                  step: invoice.step,
                   now: now,
                 );
                 if (decision is WalletPaymentOffered) {
                   offered++;
-                  expect(after.warnings, isEmpty, reason: 'seed $seed');
-                  expect(breached, isFalse, reason: 'seed $seed');
+                  expect(breached, isFalse, reason: 'seed $seed step $step');
+                  expect(made.termsChanged, isFalse, reason: 'seed $seed');
                   expect(
-                    everyCheckPasses(
-                      answer,
-                      terms,
-                      invoice,
-                      hashes[invoice.step],
-                      now,
+                    payable(
+                      answer: answer,
+                      terms: terms,
+                      invoice: invoice,
+                      firstHash: first,
+                      lastDeadlineHere: deadlines[after.position],
+                      accepted: accepted,
+                      now: now,
                     ),
                     isTrue,
                     reason: 'seed $seed step $step',
@@ -1345,14 +1648,117 @@ void main() {
                 }
                 hashes.putIfAbsent(invoice.step, () => invoice.paymentHash);
               }
+              if (answer case TradeOrderRead(
+                :final order,
+              ) when !identical(after, before)) {
+                deadlines[after.position] = order.expiresAt;
+              }
+              lastFrom = after.position;
               status = after;
             }
           }
-          // The property is not empty: some invoices passed every check.
+          // The properties are not empty: some invoices passed every check, and some trails were restored mid-run.
           expect(offered, greaterThan(0));
+          expect(restarts, greaterThan(0));
         },
       );
     }
+
+    test(
+      'terms round-trip exactly, and a record that is not one is refused',
+      () async {
+        final range = await tradeTerms(range: true);
+        final testnet = await tradeTerms(network: RobosatsNetwork.testnet);
+        for (final terms in [buyer, seller, range, testnet]) {
+          expect(switch (TradeTerms.restore(terms.record)) {
+            Ok(:final value) => value,
+            Err(:final failure) => failure,
+          }, terms);
+        }
+        final r = buyer.record;
+        TradeTermsRecord changed({
+          int? version,
+          String? network,
+          String? alias,
+          String? role,
+          int? type,
+          double? takerFee,
+          int? escrowSeconds,
+          double? bookPrice,
+        }) => TradeTermsRecord(
+          version: version ?? r.version,
+          network: network ?? r.network,
+          coordinatorAlias: alias ?? r.coordinatorAlias,
+          orderId: r.orderId,
+          role: role ?? r.role,
+          type: type ?? r.type,
+          currencyId: r.currencyId,
+          amount: r.amount,
+          isRange: r.isRange,
+          premiumPercent: r.premiumPercent,
+          explicitSatoshis: r.explicitSatoshis,
+          bondSizePercent: r.bondSizePercent,
+          escrowSeconds: escrowSeconds ?? r.escrowSeconds,
+          bookPrice: bookPrice ?? r.bookPrice,
+          takerFee: takerFee ?? r.takerFee,
+        );
+        for (final bad in [
+          changed(version: 2),
+          changed(network: 'regtest'),
+          changed(alias: 'nobody'),
+          changed(role: 'seller'),
+          changed(type: 0),
+          changed(takerFee: 0.0101),
+          changed(takerFee: double.nan),
+          changed(escrowSeconds: 60),
+          changed(bookPrice: 0),
+        ]) {
+          expect(
+            TradeTerms.restore(bad),
+            isA<Err<TradeTerms, TradeRecordMalformed>>(),
+            reason: '$bad',
+          );
+        }
+      },
+    );
+
+    test('a trail record that is not one is refused', () async {
+      final r = (await preTake()).trail.record;
+      TradeTrailRecord changed({
+        int? version,
+        String? position,
+        String? bondHash,
+        int? readAtMicros,
+      }) => TradeTrailRecord(
+        version: version ?? r.version,
+        position: position ?? r.position,
+        readAtMicros: readAtMicros ?? r.readAtMicros,
+        bondHash: bondHash ?? r.bondHash,
+        escrowHash: r.escrowHash,
+        deadlineMicros: r.deadlineMicros,
+        bondStepSeenAtMicros: r.bondStepSeenAtMicros,
+        bondStepDeadlineMicros: r.bondStepDeadlineMicros,
+        breached: r.breached,
+        historyUnknown: r.historyUnknown,
+      );
+      expect(
+        TradeTrail.restore(r),
+        isA<Ok<TradeTrail, TradeRecordMalformed>>(),
+      );
+      for (final bad in [
+        changed(version: 0),
+        changed(position: 'somewhere'),
+        changed(bondHash: 'F' * 64),
+        changed(bondHash: 'f' * 63),
+        changed(readAtMicros: -1),
+      ]) {
+        expect(
+          TradeTrail.restore(bad),
+          isA<Err<TradeTrail, TradeRecordMalformed>>(),
+          reason: '$bad',
+        );
+      }
+    });
   });
 
   test(
@@ -1383,13 +1789,15 @@ void main() {
           '$status',
           '${status.invoice}',
           '${status.trail}',
+          '${status.trail.record}',
           if (status.invoice case final CheckedInvoice checked) ...[
             '${checked.facts}',
             '$checked',
           ],
         ],
         '$buyer',
-        '${walletPaymentFor(accepted: Sats.fromInt(bookBond), invoice: checkedOf(statuses.first), now: tradeNow)}',
+        '${buyer.record}',
+        '${walletPaymentFor(accepted: Sats.fromInt(bookBond), status: statuses.first, step: checkedOf(statuses.first).step, now: tradeNow)}',
       ].join('\n');
       for (final invoice in invoices) {
         // Booleans, so that a failure never prints what it found.
@@ -1413,6 +1821,15 @@ final Map<String, Object?> withTaker = {
   'taker_nick': us.nickname,
 };
 
+int? _wireOrNull(TradePosition position) => switch (position) {
+  TradePosition.start ||
+  TradePosition.cancelled ||
+  TradePosition.notAvailable ||
+  TradePosition.preTakeUnavailable ||
+  TradePosition.publicAgain => null,
+  _ => _wireOf(position),
+};
+
 int _wireOf(TradePosition position) => switch (position) {
   TradePosition.bondStep => 3,
   TradePosition.waitingForBoth => 6,
@@ -1431,7 +1848,8 @@ int _wireOf(TradePosition position) => switch (position) {
   TradePosition.publicAgain => 1,
   TradePosition.start ||
   TradePosition.cancelled ||
-  TradePosition.notAvailable => throw StateError('$position'),
+  TradePosition.notAvailable ||
+  TradePosition.preTakeUnavailable => throw StateError('$position'),
 };
 
 final class _Answering implements Bolt11Decoder {

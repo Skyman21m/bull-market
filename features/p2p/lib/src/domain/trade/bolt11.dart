@@ -127,7 +127,7 @@ final class Bolt11Reader {
 
   /// The invoice [text] decodes to, or why it cannot be used.
   ///
-  /// The decoder sees only [maxLength] visible ASCII characters at most; an exception it throws is a [Bolt11Malformed], and so is an answer that breaks its own contract (a payment hash or a node key of the wrong form, no amount).
+  /// The decoder sees only [maxLength] visible ASCII characters at most; anything it throws, an `Error` included, is a [Bolt11Malformed], and so is an answer that breaks its own contract (a payment hash or a node key of the wrong form, no amount).
   Result<Bolt11Invoice, Bolt11Refusal> read(String text) {
     if (text.length > maxLength) return const Err(Bolt11TooLong());
     if (!_visibleAscii.hasMatch(text)) {
@@ -136,7 +136,8 @@ final class Bolt11Reader {
     final Result<Bolt11Invoice, Bolt11Refusal> decoded;
     try {
       decoded = _decoder.decode(text);
-    } on Exception {
+    } catch (_) {
+      // Whatever the decoder throws on a coordinator's text, an `Error` included, is a refusal: an invoice never crashes the trade's checks.
       return const Err(Bolt11Malformed());
     }
     return switch (decoded) {

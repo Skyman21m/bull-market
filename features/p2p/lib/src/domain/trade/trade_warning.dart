@@ -90,6 +90,14 @@ final class CoordinatorInconsistent extends TradeWarning {
   TradeWarningEffect get effect => TradeWarningEffect.shown;
 }
 
+/// The trade was found by recovery, without its history: its invoices cannot be checked against the first ones of their step, so the wallet never pays on it, while another wallet still can (`TradeTrail.recovered`).
+final class TradeHistoryUnknown extends TradeWarning {
+  const TradeHistoryUnknown();
+
+  @override
+  TradeWarningEffect get effect => TradeWarningEffect.shown;
+}
+
 /// The bond the coordinator asks for (`bond_satoshis`) is not the bond the public order implies at the book's price, within [TradeTolerances.price].
 final class BondAmountOutsideOrder extends TradeWarning {
   const BondAmountOutsideOrder();
@@ -189,12 +197,15 @@ final class InvoiceExpiringSoon extends TradeWarning {
   TradeWarningEffect get effect => TradeWarningEffect.shown;
 }
 
-/// The invoice's payment hash is not the one of the first invoice of the same step: a new invoice, which the coordinator never sends within a step (`api/logics.py:1393-1399`, `:1490-1495`). Any confirmation given for the first one does not hold for it.
+/// The invoice's payment hash is not the one of the first invoice of the same step: a new invoice, which the coordinator never sends within a step (`api/logics.py:1393-1399`, `:1490-1495`). A breach of trust: the trade is never paid from this wallet again, even when the first invoice comes back. Any confirmation given for the first one does not hold for it.
 final class InvoiceHashChanged extends TradeWarning {
   const InvoiceHashChanged();
 
   @override
   TradeWarningEffect get effect => TradeWarningEffect.hidesInvoice;
+
+  @override
+  bool get isBreachOfTrust => true;
 }
 
 /// The node the invoice pays is not one of the coordinator's Lightning nodes in the federation list: « This invoice is not from {coordinator}'s known Lightning node. Do not pay it. » (design note § 4.4).

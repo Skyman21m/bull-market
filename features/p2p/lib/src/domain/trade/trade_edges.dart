@@ -2,11 +2,14 @@ import 'trade_terms.dart';
 
 /// Where a taker's trade stands, as the edges of the state machine see it: one position per status a taker is shown, and the three answers that are not an order of the trade.
 enum TradePosition {
-  /// No answer read yet, or none understood: anything may come.
+  /// No answer read yet since the take (or, for a trade found by recovery, since it was found): only the take's own answers may come first.
   start,
 
   /// 3: the pre-take, waiting for the taker bond.
   bondStep,
+
+  /// Error 1044 while holding the pre-take, before the pre-take is certainly gone: the order paused, or another robot's bond locked first.
+  preTakeUnavailable,
 
   /// 6.
   waitingForBoth,
@@ -75,18 +78,38 @@ enum TradePosition {
 abstract final class TradeEdges {
   static const _both = {TradeRole.buyer, TradeRole.seller};
   static const _buyer = {TradeRole.buyer};
-  static const _seller = {TradeRole.seller};
 
   /// Each single move of the backend for a taker, by origin: the destination and the roles of this robot it happens to.
   static const Map<TradePosition, Map<TradePosition, Set<TradeRole>>> steps = {
+    // The answer to the take itself, or the first read after a take whose answer was lost: the pre-take (`api/views.py:381-396`), or the order out of reach because the take did not happen (`api/views.py:595-596`: public, 1044 or 1043). No step from here goes further: a bond needs the invoice that only the pre-take gives.
+    TradePosition.start: {
+      TradePosition.bondStep: _both,
+      TradePosition.publicAgain: _both,
+      TradePosition.preTakeUnavailable: _both,
+      TradePosition.cancelled: _both,
+    },
     TradePosition.bondStep: {
       // The bond locks first: `finalize_contract` (`follow_invoices.py:243-251`, `api/logics.py:1320-1380`).
       TradePosition.waitingForBoth: _both,
       // The pre-take expires (`clean_orders.py:89-97`) or is cancelled (`api/logics.py:1061-1075`): the order is public, this robot no participant (`api/views.py:287-299`).
       TradePosition.publicAgain: _both,
-      // Another taker's bond locked first (`follow_invoices.py:252-261`), or the order expired or was paused meanwhile: error 1044 (`api/views.py:269-275`).
+      // Error 1044 (`api/views.py:269-275`, which tests `order.taker`, not the pre-take): the maker paused the order, which does not expire pre-takes (`api/logics.py:1758-1783`), another taker's bond locked first (`follow_invoices.py:252-261`), or the order expired (`api/logics.py:340-358`).
+      TradePosition.preTakeUnavailable: _both,
+      // The same, read once the pre-take is certainly gone (its deadline and the coordinator's loops, `clean_orders.py:89-97`).
       TradePosition.notAvailable: _both,
       // The maker cancelled the public order (`api/logics.py:1048-1060`): error 1043.
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.preTakeUnavailable: {
+      // The maker resumed the order (`api/logics.py:1769-1773`): the pre-take shows again, with the same invoice (`api/logics.py:1393-1399`).
+      TradePosition.bondStep: _both,
+      // The bond locked while the order was public again: `finalize_contract` (`follow_invoices.py:243-251`).
+      TradePosition.waitingForBoth: _both,
+      // The pre-take expired, the order public again (`clean_orders.py:89-97`).
+      TradePosition.publicAgain: _both,
+      // Still out of reach once the pre-take is certainly gone.
+      TradePosition.notAvailable: _both,
+      // The maker cancelled the order (`api/logics.py:1048-1060`).
       TradePosition.cancelled: _both,
     },
     TradePosition.waitingForBoth: {
@@ -106,8 +129,8 @@ abstract final class TradeEdges {
     TradePosition.waitingForEscrow: {
       // The escrow locked (`api/logics.py:1475-1481`).
       TradePosition.chatting: _both,
-      // The maker, the seller, did not lock it: this buyer's bond returned (`api/logics.py:381-402`).
-      TradePosition.expired: _buyer,
+      // The maker, the seller, did not lock it: this buyer's bond returned (`api/logics.py:381-402`); or, for both roles, the cleaner could not find a hold invoice while expiring the order and set it expired (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
       // This taker cancelled (`api/logics.py:1108-1130`), or as the seller did not lock the escrow (`api/logics.py:404-421`): its bond settled.
       TradePosition.publicAgain: _both,
       // The maker cancelled (`api/logics.py:1083-1106`).
@@ -116,8 +139,8 @@ abstract final class TradeEdges {
     TradePosition.waitingForPayout: {
       // The payout came (`api/logics.py:912-918`).
       TradePosition.chatting: _both,
-      // The maker, the buyer, gave no payout: this seller's bond and escrow returned (`api/logics.py:423-443`).
-      TradePosition.expired: _seller,
+      // The maker, the buyer, gave no payout: this seller's bond and escrow returned (`api/logics.py:423-443`); or, for both roles, a hold invoice the cleaner could not find (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
       // This taker, the buyer, gave no payout: its bond settled (`api/logics.py:445-458`).
       TradePosition.publicAgain: _buyer,
       // Both asked to cancel (`api/logics.py:1138-1159`).
@@ -130,6 +153,8 @@ abstract final class TradeEdges {
       TradePosition.inDispute: _both,
       // Both asked to cancel.
       TradePosition.cancelled: _both,
+      // The chat's time ran out and opening the dispute failed on a hold invoice the cleaner could not find: the order is set expired (`clean_orders.py:72-81`, `api/logics.py:460-468`).
+      TradePosition.expired: _both,
     },
     TradePosition.fiatSent: {
       // « Payment failed? »: the buyer takes « fiat sent » back (`api/logics.py:1737-1756`).
@@ -138,6 +163,8 @@ abstract final class TradeEdges {
       // The seller confirms: a Lightning payout (`api/logics.py:1645`), or at once an on-chain one (`:1653-1668`, `:1677`).
       TradePosition.sendingSats: _both,
       TradePosition.succeeded: _both,
+      // As from 9 (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
     },
     TradePosition.inDispute: {
       // Both statements are in (`api/logics.py:536-569`).
@@ -176,11 +203,14 @@ abstract final class TradeEdges {
 
   /// Whether a trade of a taker of [role] may be at [to] at a read after a read at [from]: the same position, or one reachable through [steps].
   ///
-  /// From [TradePosition.start] every position may come: nothing is known of what happened before.
-  static bool allows(TradeRole role, TradePosition from, TradePosition to) =>
-      from == to ||
-      from == TradePosition.start ||
-      (_reachable[role]?[from]?.contains(to) ?? false);
+  /// From [TradePosition.start], only the single steps listed: the first answer after a take is the take's own, and nothing can have happened before it.
+  static bool allows(TradeRole role, TradePosition from, TradePosition to) {
+    if (from == to) return true;
+    if (from == TradePosition.start) {
+      return steps[from]?[to]?.contains(role) ?? false;
+    }
+    return _reachable[role]?[from]?.contains(to) ?? false;
+  }
 
   static Map<TradePosition, Set<TradePosition>> _closure(TradeRole role) {
     final reachable = <TradePosition, Set<TradePosition>>{};

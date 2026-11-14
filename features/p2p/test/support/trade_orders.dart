@@ -61,14 +61,15 @@ Future<TradeTerms> tradeTerms({
       makerSeed: 1,
     ),
   ]);
-  final terms = TradeTerms.take(
+  return switch (TradeTerms.take(
     order,
     network: network,
     rangeAmount: range ? FiatAmount.tryCreate(rangeAmount) : null,
     takerFee: takerFee,
-  );
-  if (terms == null) throw StateError('no terms');
-  return terms;
+  )) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('no terms: $failure'),
+  };
 }
 
 /// The figures of the trade fixed at the bond's lock, for [last] sats, as `Logics.payout_amount` and `Logics.escrow_amount` compute them.

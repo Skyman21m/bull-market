@@ -24,4 +24,14 @@ abstract final class TradeTolerances {
 
   /// How far two percentages may be and still be the same: the coordinator keeps the premium and the bond size with 2 decimals (`api/models/order.py:91-96`, `:135-140`).
   static const double percent = 0.005;
+
+  /// The highest taker fee `/api/info/` may announce for a take to be allowed, as a fraction of the trade: 1 %.
+  ///
+  /// The reference's default is 0.175 % (`FEE` 0.2 % × (1 − `MAKER_FEE_SPLIT` 0.125), `.env-sample:107-110`, `api/views.py:1042-1045`); the coordinators recorded on 2026-11-10 announce 0.17 % to 0.175 % on mainnet and 0.2625 % on testnet (`packages/robosats/test/fixtures/coordinator/*-info.json`). A fee checked only against what the coordinator itself announces would let it ask for anything: 1 % is about four times the highest seen, and a coordinator above it is refused before the take.
+  static const double takerFeeCeiling = 0.01;
+
+  /// How long after a deadline the coordinator's own loops have certainly acted on it: 1 minute.
+  ///
+  /// The order cleaner runs every 5 s (`api/management/commands/clean_orders.py:114-120`, it expires orders and pre-takes past their `expires_at`), and so does the invoice follower (`follow_invoices.py:27,33-34`, it settles or returns a bond that locked); a minute covers both with room for a slow coordinator.
+  static const Duration coordinatorLoops = Duration(minutes: 1);
 }

@@ -1,6 +1,6 @@
 import 'package:primitives/primitives.dart';
 
-import 'checked_invoice.dart';
+import 'trade_status.dart';
 import 'trade_tolerances.dart';
 
 /// Whether « Pay with this wallet » may be offered for an invoice (design note § 3.2, § 4.4, as amended by #86): the only answer is this function's, and nothing overrides it.
@@ -23,6 +23,9 @@ final class WalletPaymentOffered extends WalletPaymentDecision {
 
 /// Why « Pay with this wallet » is not offered; « Pay with another wallet » stays as the invoice's warnings allow.
 enum WalletPaymentRefusal {
+  /// The status holds no checked invoice of that step: nothing to pay at this status.
+  noInvoice,
+
   /// A check of the read that carried the invoice failed: whatever its effect on the QR code, the wallet never pays it.
   checkFailed,
 
@@ -42,16 +45,22 @@ final class WalletPaymentRefused extends WalletPaymentDecision {
   String toString() => 'WalletPaymentRefused(${reason.name})';
 }
 
-/// Whether the wallet may be offered to pay [invoice] at [now], when the user accepted [accepted] sats for its step (the bond stated in the take confirmation, or the escrow in the escrow panel's).
+/// Whether the wallet may be offered, at [now], to pay the invoice of [step] that the trade's current [status] holds, when the user accepted [accepted] sats for that step (the bond stated in the take confirmation, or the escrow in the escrow panel's, exactly the amount shown on the confirmation the user tapped).
 ///
-/// Offered only when every check of the read passed ([CheckedInvoice.passedEveryCheck]: no warning at all, so never after « Show anyway »), the invoice's amount is at most [accepted], and the invoice and its step stay payable for [TradeTolerances.walletPaymentMargin] at least.
+/// It takes the status, never an invoice kept by a screen: only the invoice of the latest status is ever offered, and the payment code asks again with the latest status at the moment it pays.
+/// Offered only when [status] holds a [CheckedInvoice] of [step], neither [status] nor its invoice carries any warning (so never after « Show anyway », never on a trade whose coordinator once contradicted itself), the invoice's amount is at most [accepted], and the invoice and its step stay payable for [TradeTolerances.walletPaymentMargin] at least.
 /// A payment is bound to [CheckedInvoice.paymentHash]: an invoice with another hash is another invoice and needs a new confirmation (#88).
 WalletPaymentDecision walletPaymentFor({
   required Sats accepted,
-  required CheckedInvoice invoice,
+  required TradeStatus status,
+  required InvoiceStep step,
   required DateTime now,
 }) {
-  if (!invoice.passedEveryCheck) {
+  final invoice = status.invoice;
+  if (invoice is! CheckedInvoice || invoice.step != step) {
+    return const WalletPaymentRefused._(WalletPaymentRefusal.noInvoice);
+  }
+  if (status.warnings.isNotEmpty || !invoice.passedEveryCheck) {
     return const WalletPaymentRefused._(WalletPaymentRefusal.checkFailed);
   }
   if (invoice.amount.value > accepted.value) {

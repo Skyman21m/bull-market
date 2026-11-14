@@ -5,16 +5,28 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'bolt11.dart';
-import 'checked_invoice.dart';
 import 'trade_answer.dart';
 import 'trade_edges.dart';
+import 'trade_record.dart';
 import 'trade_terms.dart';
 import 'trade_tolerances.dart';
 import 'trade_warning.dart';
 
+// The checked invoice is part of this library, so that only the state machine builds one (`_checkStepInvoice`).
+part 'checked_invoice.dart';
+
 /// What the trade remembers from one read to the next, so that each answer is checked against the trade's history and not only against itself.
+///
+/// It must outlive the app: the trade's use cases store its [record] after each read and resume a recorded trade with [restore], never with a fresh trail, or a coordinator could swap an invoice, or make a breach forgotten, across a restart (#86, review of #106).
+/// A fresh trail comes only from [atTake], for the first read after this device took the order, and from [recovered], for a trade found by recovery, whose history is unknown and on which the wallet never pays.
 @immutable
 final class TradeTrail {
+  /// Where the trade stood at its last status.
+  final TradePosition position;
+
+  /// When the answer of the last status was read (for [atTake], when the order was taken).
+  final DateTime readAt;
+
   /// The payment hash of the first bond invoice and of the first escrow invoice of the trade: a step never changes its invoice.
   final String? bondHash;
   final String? escrowHash;
@@ -22,52 +34,162 @@ final class TradeTrail {
   /// The deadline (`expires_at`) of the last order read, for the position it was read at.
   final DateTime? deadline;
 
-  /// When an answer last showed the pre-take: a pre-take that ended earlier than the escrow duration after it cannot have locked and lost the bond.
+  /// When an answer last showed the pre-take, and the pre-take's deadline it gave: a pre-take that ended earlier than the escrow duration after it cannot have locked and lost the bond, and one past its deadline is gone.
   final DateTime? bondStepSeenAt;
+  final DateTime? bondStepDeadline;
 
   /// Whether an answer of this trade was a breach of trust ([TradeWarning.isBreachOfTrust]): every later status then carries [CoordinatorInconsistent].
   final bool breached;
 
+  /// Whether the trail started without the trade's history ([recovered]): every status then carries [TradeHistoryUnknown].
+  final bool historyUnknown;
+
   const TradeTrail._({
+    required this.position,
+    required this.readAt,
     required this.bondHash,
     required this.escrowHash,
     required this.deadline,
     required this.bondStepSeenAt,
+    required this.bondStepDeadline,
     required this.breached,
+    required this.historyUnknown,
   });
 
-  static const empty = TradeTrail._(
+  /// The trail of a trade this device has just taken, at [takenAt]: the first answer must be the take's own (the pre-take, or the order out of reach).
+  factory TradeTrail.atTake(DateTime takenAt) => TradeTrail._(
+    position: TradePosition.start,
+    readAt: takenAt.toUtc(),
     bondHash: null,
     escrowHash: null,
     deadline: null,
     bondStepSeenAt: null,
+    bondStepDeadline: null,
     breached: false,
+    historyUnknown: false,
+  );
+
+  /// The trail of a trade found by recovery at [now], whose history is lost: any first answer is taken, and the wallet never pays on it.
+  factory TradeTrail.recovered(DateTime now) => TradeTrail._(
+    position: TradePosition.start,
+    readAt: now.toUtc(),
+    bondHash: null,
+    escrowHash: null,
+    deadline: null,
+    bondStepSeenAt: null,
+    bondStepDeadline: null,
+    breached: false,
+    historyUnknown: true,
+  );
+
+  /// The trail [record] holds, or [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash that is not 64 lowercase hexadecimal characters, a time out of range.
+  static Result<TradeTrail, TradeRecordMalformed> restore(
+    TradeTrailRecord record,
+  ) {
+    const refused = Err<TradeTrail, TradeRecordMalformed>(
+      TradeRecordMalformed(),
+    );
+    if (record.version != TradeTrailRecord.currentVersion) return refused;
+    final position = TradePosition.values
+        .where((value) => value.name == record.position)
+        .firstOrNull;
+    if (position == null) return refused;
+    for (final hash in [record.bondHash, record.escrowHash]) {
+      if (hash != null && !_hash.hasMatch(hash)) return refused;
+    }
+    final times = [
+      record.readAtMicros,
+      record.deadlineMicros,
+      record.bondStepSeenAtMicros,
+      record.bondStepDeadlineMicros,
+    ];
+    if (times.any(
+      (micros) => micros != null && (micros < 0 || micros > _maxMicros),
+    )) {
+      return refused;
+    }
+    DateTime? at(int? micros) => micros == null
+        ? null
+        : DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+    return Ok(
+      TradeTrail._(
+        position: position,
+        readAt: DateTime.fromMicrosecondsSinceEpoch(
+          record.readAtMicros,
+          isUtc: true,
+        ),
+        bondHash: record.bondHash,
+        escrowHash: record.escrowHash,
+        deadline: at(record.deadlineMicros),
+        bondStepSeenAt: at(record.bondStepSeenAtMicros),
+        bondStepDeadline: at(record.bondStepDeadlineMicros),
+        breached: record.breached,
+        historyUnknown: record.historyUnknown,
+      ),
+    );
+  }
+
+  static final RegExp _hash = RegExp(r'^[0-9a-f]{64}$');
+
+  /// The year 9999, beyond any date a coordinator or the device's clock gives.
+  static const _maxMicros = 253402300799999999;
+
+  /// The exact, storable form of this trail: store it after each read (#87).
+  TradeTrailRecord get record => TradeTrailRecord(
+    version: TradeTrailRecord.currentVersion,
+    position: position.name,
+    readAtMicros: readAt.toUtc().microsecondsSinceEpoch,
+    bondHash: bondHash,
+    escrowHash: escrowHash,
+    deadlineMicros: deadline?.toUtc().microsecondsSinceEpoch,
+    bondStepSeenAtMicros: bondStepSeenAt?.toUtc().microsecondsSinceEpoch,
+    bondStepDeadlineMicros: bondStepDeadline?.toUtc().microsecondsSinceEpoch,
+    breached: breached,
+    historyUnknown: historyUnknown,
   );
 
   TradeTrail _next({
+    required TradePosition position,
+    required DateTime readAt,
     String? bondHash,
     String? escrowHash,
     required DateTime? deadline,
     DateTime? bondStepSeenAt,
+    DateTime? bondStepDeadline,
     required bool breached,
   }) => TradeTrail._(
+    position: position,
+    readAt: readAt.toUtc(),
     bondHash: this.bondHash ?? bondHash,
     escrowHash: this.escrowHash ?? escrowHash,
-    deadline: deadline,
-    bondStepSeenAt: bondStepSeenAt ?? this.bondStepSeenAt,
+    deadline: deadline?.toUtc(),
+    bondStepSeenAt: bondStepSeenAt?.toUtc() ?? this.bondStepSeenAt,
+    bondStepDeadline: bondStepDeadline?.toUtc() ?? this.bondStepDeadline,
     breached: this.breached || breached,
+    historyUnknown: historyUnknown,
   );
 
   TradeTrail _breach() => TradeTrail._(
+    position: position,
+    readAt: readAt,
     bondHash: bondHash,
     escrowHash: escrowHash,
     deadline: deadline,
     bondStepSeenAt: bondStepSeenAt,
+    bondStepDeadline: bondStepDeadline,
     breached: true,
+    historyUnknown: historyUnknown,
   );
 
   @override
-  String toString() => 'TradeTrail(breached: $breached)';
+  bool operator ==(Object other) =>
+      other is TradeTrail && other.record == record;
+
+  @override
+  int get hashCode => record.hashCode;
+
+  @override
+  String toString() => 'TradeTrail(${position.name}, breached: $breached)';
 }
 
 /// What a screen may show, and the wallet may pay, of a taker's trade: one class per status a taker can see (design note § 3.2), built only by [TradeStatus.from] from the coordinator's answers, checked against the terms of the take and the trade's history.
@@ -79,13 +201,20 @@ sealed class TradeStatus {
   /// When the answer this status comes from was read.
   final DateTime seenAt;
 
-  /// Every check that failed on that answer, and those carried from earlier answers of the trade ([CoordinatorInconsistent]); an answer refused as a whole adds its own to the status it leaves in place.
+  /// Every check that failed on that answer, and those carried from earlier answers of the trade ([CoordinatorInconsistent], [TradeHistoryUnknown]); an answer refused as a whole adds its own to the status it leaves in place.
   final List<TradeWarning> warnings;
 
-  /// What the next read is checked against.
+  /// What the next read is checked against: store its [TradeTrail.record] after each read.
   final TradeTrail trail;
 
   const TradeStatus._(this.seenAt, this.warnings, this.trail);
+
+  /// The status before any answer is understood on [trail]: a fresh trail at the take ([TradeTrail.atTake]) or after recovery ([TradeTrail.recovered]), or a trail restored when the app resumes a recorded trade ([TradeTrail.restore]). Pass it as `previous` to [from].
+  static TradeStatus beforeFirstRead(TradeTrail trail) => StatusUnknown._(
+    trail.readAt,
+    [if (trail.breached) const CoordinatorInconsistent()],
+    trail,
+  );
 
   /// Where the trade stands for the edges of [TradeEdges].
   TradePosition get position;
@@ -102,72 +231,82 @@ sealed class TradeStatus {
   /// The same status with [more] warnings and [trail]: the invoice it holds, if any, takes them too.
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail);
 
-  /// The status of the trade [terms] after [answer], read at [now], when the last status was [previous] (`null` before the first answer): a pure function, with no clock, no I/O and no randomness, which [reader] decodes invoices for.
+  /// The status of the trade [terms] after [answer], read at [now], when the last status was [previous]: a pure function, with no clock, no I/O and no randomness, which [reader] decodes invoices for.
   ///
+  /// [previous] is the last status, or [beforeFirstRead] of the trade's trail: there is no status without a trail, and a fresh trail only at the take or after recovery.
   /// - A terminal [previous] is never left: any answer returns [previous] as it is, but an order of the same status (5, 14, 17, 18), which refreshes it.
-  /// - An answer refused as a whole leaves [previous] in place with the reason added ([TradeOrderMismatch], [TradeRoleMismatch], [TradeStatusRegressed], or [TradeStatusUnexpected] for an unlisted edge into a terminal position), or gives a [StatusNotUnderstood] when there is none.
+  /// - An answer refused as a whole leaves [previous] in place with the reason added ([TradeOrderMismatch], [TradeRoleMismatch], [TradeStatusRegressed], or [TradeStatusUnexpected] for an unlisted edge into a terminal position).
   /// - Any other answer gives its status, with [TradeStatusUnexpected] when its edge is not one of [TradeEdges], and the warnings of the order's checks and of its invoice.
   static TradeStatus from({
-    required TradeStatus? previous,
+    required TradeStatus previous,
     required TradeAnswer answer,
     required TradeTerms terms,
     required DateTime now,
     required Bolt11Reader reader,
   }) {
-    final from = previous?.position ?? TradePosition.start;
-    final trail = previous?.trail ?? TradeTrail.empty;
-    final to = _positionOf(answer);
+    final trail = previous.trail;
+    final from = trail.position;
+    final to = _positionOf(answer, from: from, trail: trail, now: now);
     // An end is refreshed only by an order of the same status, which may say more (a summary, a transaction): being out of the order again says nothing new.
-    if (previous != null &&
-        previous.isTerminal &&
+    if (previous.isTerminal &&
         (to != from ||
             answer is! TradeOrderRead ||
             to == TradePosition.publicAgain)) {
       return previous;
     }
 
-    final refusal = _refusalOf(answer, terms, from, to);
+    final refusal = _refusalOf(answer, terms, trail, to);
     if (refusal != null || to == null) {
       // [_refusalOf] refuses every answer without a position.
       final reason = refusal ?? const TradeStatusRegressed();
-      return switch (previous) {
-        null => StatusNotUnderstood._(now, [reason], trail._breach()),
-        _ => previous._rewarned([
-          if (!previous.warnings.any(
-            (warning) => warning.runtimeType == reason.runtimeType,
-          ))
-            reason,
-        ], trail._breach()),
-      };
+      return previous._rewarned([
+        if (!previous.warnings.any(
+          (warning) => warning.runtimeType == reason.runtimeType,
+        ))
+          reason,
+      ], trail._breach());
     }
 
     final readWarnings = <TradeWarning>[
+      if (trail.historyUnknown) const TradeHistoryUnknown(),
       if (trail.breached) const CoordinatorInconsistent(),
-      if (!TradeEdges.allows(terms.role, from, to))
-        const TradeStatusUnexpected(),
+      if (!_allows(terms.role, trail, to)) const TradeStatusUnexpected(),
     ];
+    TradeTrail outOfOrder() => trail._next(
+      position: to,
+      readAt: now,
+      deadline: null,
+      breached: _breaches(readWarnings),
+    );
     switch (answer) {
       case TradeOrderCancelled():
         return Cancelled._(
           now,
           readWarnings,
-          trail._next(deadline: null, breached: _breaches(readWarnings)),
-        );
-      case TradeOrderNotAvailable()
-          when from == TradePosition.bondStep || from == TradePosition.start:
-        return TakenByAnother._(
-          now,
-          readWarnings,
-          trail._next(deadline: null, breached: _breaches(readWarnings)),
-          bondMayHaveBeenLost: _bondMayHaveBeenLost(from, trail, terms, now),
+          outOfOrder(),
+          bondMayHaveBeenLost: _bondMayHaveBeenLost(trail, terms, now),
         );
       case TradeOrderNotAvailable():
-        return BondForfeited._(
-          now,
-          readWarnings,
-          trail._next(deadline: null, breached: _breaches(readWarnings)),
-          position: TradePosition.notAvailable,
-        );
+        return switch (to) {
+          TradePosition.preTakeUnavailable => PreTakeUnavailable._(
+            now,
+            readWarnings,
+            outOfOrder(),
+            finalFrom: _preTakeGoneAt(trail),
+          ),
+          _ when _isPreTake(from) => TakenByAnother._(
+            now,
+            readWarnings,
+            outOfOrder(),
+            bondMayHaveBeenLost: _bondMayHaveBeenLost(trail, terms, now),
+          ),
+          _ => BondForfeited._(
+            now,
+            readWarnings,
+            outOfOrder(),
+            position: TradePosition.notAvailable,
+          ),
+        };
       case TradeOrderRead(:final order):
         return _ofOrder(
           order,
@@ -188,9 +327,37 @@ sealed class TradeStatus {
   static bool _breaches(List<TradeWarning> warnings) =>
       warnings.any((warning) => warning.isBreachOfTrust);
 
+  /// Whether [from] is a position of the pre-take: no bond locked yet, as far as the trade knows.
+  static bool _isPreTake(TradePosition from) =>
+      from == TradePosition.start ||
+      from == TradePosition.bondStep ||
+      from == TradePosition.preTakeUnavailable;
+
+  /// Whether a trade of [role] may move from [trail]'s position to [to]: any first answer of a trade whose history is lost, otherwise the edges of [TradeEdges].
+  static bool _allows(TradeRole role, TradeTrail trail, TradePosition to) =>
+      (trail.historyUnknown && trail.position == TradePosition.start) ||
+      TradeEdges.allows(role, trail.position, to);
+
+  /// When error 1044 at the pre-take becomes final: the pre-take's deadline and [TradeTolerances.coordinatorLoops], by which the coordinator has expired the pre-take (`clean_orders.py:89-97`) or returned a bond that locked while the order was not public (`follow_invoices.py:252-261`); `null` while the deadline is unknown.
+  static DateTime? _preTakeGoneAt(TradeTrail trail) =>
+      trail.bondStepDeadline?.add(TradeTolerances.coordinatorLoops);
+
   /// The position an answer shows, or `null` for a status a taker is never shown: 0, 2, 4 and 12 in an order, or the order public with this robot still a participant.
-  static TradePosition? _positionOf(TradeAnswer answer) => switch (answer) {
+  ///
+  /// Error 1044 during the pre-take is [TradePosition.preTakeUnavailable] until the pre-take is certainly gone ([_preTakeGoneAt]): the maker paused the order (`api/views.py:269-275` tests `order.taker`, and a pause does not expire pre-takes, `api/logics.py:1758-1783`), or another robot's bond locked first; after the pause the pre-take shows again, with the same invoice.
+  static TradePosition? _positionOf(
+    TradeAnswer answer, {
+    required TradePosition from,
+    required TradeTrail trail,
+    required DateTime now,
+  }) => switch (answer) {
     TradeOrderCancelled() => TradePosition.cancelled,
+    TradeOrderNotAvailable() when _isPreTake(from) => switch (_preTakeGoneAt(
+      trail,
+    )) {
+      final gone? when !now.isBefore(gone) => TradePosition.notAvailable,
+      _ => TradePosition.preTakeUnavailable,
+    },
     TradeOrderNotAvailable() => TradePosition.notAvailable,
     TradeOrderRead(:final order) => switch (order.status) {
       CoordinatorOrderStatus.public when !order.isParticipant =>
@@ -225,7 +392,7 @@ sealed class TradeStatus {
   static TradeWarning? _refusalOf(
     TradeAnswer answer,
     TradeTerms terms,
-    TradePosition from,
+    TradeTrail trail,
     TradePosition? to,
   ) {
     if (answer case TradeOrderRead(:final order)) {
@@ -242,31 +409,44 @@ sealed class TradeStatus {
       }
     }
     if (to == null) return const TradeStatusRegressed();
-    if (to == TradePosition.bondStep &&
-        from != TradePosition.start &&
-        from != TradePosition.bondStep) {
+    if (to == TradePosition.bondStep && !_isPreTake(trail.position)) {
       return const TradeStatusRegressed();
     }
     // A coordinator does not end a trade in this app's eyes by an answer that contradicts its history: such an answer is refused, and the reads go on.
-    if (to.isTerminal && !TradeEdges.allows(terms.role, from, to)) {
+    if (to.isTerminal && !_allows(terms.role, trail, to)) {
       return const TradeStatusUnexpected();
     }
     return null;
   }
 
-  /// Whether a pre-take that ended at [now] may have locked its bond and lost it since the last read that showed it: the bond can lock up to that read's end, and a bond is lost at the earliest an escrow duration later (a step left undone, `api/logics.py:404-421`, `:445-458`), with a minute of margin for the coordinator's loops.
+  /// Whether this robot's bond may have locked and been lost by the read at [now], when the trade last stood at [trail]'s position.
+  ///
+  /// - At the take: no (the first answer is the take's own). After recovery: it cannot be said.
+  /// - At the pre-take: only if the pre-take was last seen an escrow duration ago or more (less [TradeTolerances.coordinatorLoops]): the bond can lock up to that read, and a locked bond is lost at the earliest when a step is left undone that long (`api/logics.py:404-421`, `:445-458`).
+  /// - At 6, 7 or 8: yes, since the order may have gone back to the book with the bond settled (a cancel or a timeout) before what followed.
+  /// - Later: no; the bond is locked until the end, and settled only by a lost dispute, which its own status says.
   static bool _bondMayHaveBeenLost(
-    TradePosition from,
     TradeTrail trail,
     TradeTerms terms,
     DateTime now,
   ) {
-    final seen = trail.bondStepSeenAt;
-    if (from != TradePosition.bondStep || seen == null) return true;
-    final earliestLoss = seen
-        .add(terms.escrowDuration)
-        .subtract(const Duration(minutes: 1));
-    return !now.isBefore(earliestLoss);
+    switch (trail.position) {
+      case TradePosition.start:
+        return trail.historyUnknown;
+      case TradePosition.bondStep || TradePosition.preTakeUnavailable:
+        final seen = trail.bondStepSeenAt;
+        if (seen == null) return true;
+        final earliestLoss = seen
+            .add(terms.escrowDuration)
+            .subtract(TradeTolerances.coordinatorLoops);
+        return !now.isBefore(earliestLoss);
+      case TradePosition.waitingForBoth ||
+          TradePosition.waitingForEscrow ||
+          TradePosition.waitingForPayout:
+        return true;
+      default:
+        return false;
+    }
   }
 
   /// Whether [a] and [b] are within [tolerance] of each other, both ways, plus [TradeTolerances.roundingSats].
@@ -395,7 +575,7 @@ sealed class TradeStatus {
     StepInvoice? invoiceOf(HoldInvoice? hold, InvoiceStep step) =>
         switch (hold) {
           null => null,
-          _ => checkStepInvoice(
+          _ => _checkStepInvoice(
             hold: hold,
             step: step,
             terms: terms,
@@ -421,14 +601,20 @@ sealed class TradeStatus {
       _ => null,
     };
 
-    TradeTrail nextTrail({StepInvoice? bond, StepInvoice? escrow}) =>
-        trail._next(
-          bondHash: hashOf(bond),
-          escrowHash: hashOf(escrow),
-          deadline: deadline,
-          bondStepSeenAt: to == TradePosition.bondStep ? now : null,
-          breached: breached,
-        );
+    TradeTrail nextTrail({
+      StepInvoice? bond,
+      StepInvoice? escrow,
+    }) => trail._next(
+      position: to,
+      readAt: now,
+      bondHash: hashOf(bond),
+      escrowHash: hashOf(escrow),
+      deadline: deadline,
+      bondStepSeenAt: to == TradePosition.bondStep ? now : null,
+      bondStepDeadline: to == TradePosition.bondStep ? deadline : null,
+      // The invoice's own checks count too: a changed payment hash is a breach.
+      breached: breached || _breaches(warningsWith(bond ?? escrow)),
+    );
 
     StepInvoice? escrowForSeller() => role == TradeRole.seller
         ? invoiceOf(order.escrowInvoice, InvoiceStep.escrow)
@@ -439,7 +625,7 @@ sealed class TradeStatus {
         // `package:robosats` gives status 3 only with its bond invoice.
         final bond = invoiceOf(order.bondInvoice, InvoiceStep.bond);
         if (bond == null) {
-          return StatusNotUnderstood._(now, readWarnings, nextTrail());
+          return StatusUnknown._(now, readWarnings, nextTrail());
         }
         return WaitingForTakerBond._(
           now,
@@ -544,13 +730,12 @@ sealed class TradeStatus {
           nextTrail(),
           reason: order.expiryReason,
         );
-      case TradePosition.publicAgain
-          when from == TradePosition.bondStep || from == TradePosition.start:
+      case TradePosition.publicAgain when _isPreTake(from):
         return PreTakeEnded._(
           now,
           readWarnings,
           nextTrail(),
-          bondMayHaveBeenLost: _bondMayHaveBeenLost(from, trail, terms, now),
+          bondMayHaveBeenLost: _bondMayHaveBeenLost(trail, terms, now),
         );
       case TradePosition.publicAgain:
         return BondForfeited._(
@@ -561,9 +746,10 @@ sealed class TradeStatus {
         );
       case TradePosition.start ||
           TradePosition.cancelled ||
-          TradePosition.notAvailable:
+          TradePosition.notAvailable ||
+          TradePosition.preTakeUnavailable:
         // Not the position of an order read.
-        return StatusNotUnderstood._(now, readWarnings, nextTrail());
+        return StatusUnknown._(now, readWarnings, nextTrail());
     }
   }
 
@@ -953,17 +1139,30 @@ final class Expired extends TradeStatus {
 
 /// Error 1043: the order is cancelled, by one side or by both (« This order has been cancelled »). Terminal.
 final class Cancelled extends TradeStatus {
-  const Cancelled._(super.seenAt, super.warnings, super.trail) : super._();
+  /// Whether this robot's bond may have been lost before the order was cancelled: after 6, 7 or 8 the order may have gone back to the book with the bond settled, then been cancelled by its maker; never say « nothing was taken » then.
+  final bool bondMayHaveBeenLost;
+
+  const Cancelled._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.bondMayHaveBeenLost,
+  }) : super._();
 
   @override
   TradePosition get position => TradePosition.cancelled;
 
   @override
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
-      Cancelled._(seenAt, [...warnings, ...more], trail);
+      Cancelled._(
+        seenAt,
+        [...warnings, ...more],
+        trail,
+        bondMayHaveBeenLost: bondMayHaveBeenLost,
+      );
 }
 
-/// Error 1044 after the pre-take: another robot locked its bond first, or the order left the book otherwise (expired, paused) while this robot held the pre-take. Its bond invoice was cancelled: a payment of it comes back. Terminal.
+/// Error 1044 once the pre-take is certainly gone ([PreTakeUnavailable.finalFrom]): another robot locked its bond first, or the order left the book otherwise (expired, or paused past the pre-take). Its bond invoice was cancelled: a payment of it comes back. Terminal.
 final class TakenByAnother extends TradeStatus {
   /// Whether this robot's bond may have locked and been lost since the last read that showed the pre-take (see [PreTakeEnded.bondMayHaveBeenLost]).
   final bool bondMayHaveBeenLost;
@@ -1035,17 +1234,44 @@ final class BondForfeited extends TradeStatus {
       );
 }
 
-/// The first answer of the trade was refused, or showed a status this app does not handle: the generic panel (« Troc cannot act on this status yet… », design note § 2.1); any next answer may follow it.
-final class StatusNotUnderstood extends TradeStatus {
-  const StatusNotUnderstood._(super.seenAt, super.warnings, super.trail)
-    : super._();
+/// No answer understood yet on the trade's trail: before the first read after the take, after recovery or when the app resumes a recorded trade ([TradeStatus.beforeFirstRead]), or after an answer refused then. The generic panel (« Troc cannot act on this status yet… », design note § 2.1) while it lasts; its position is the trail's, so the next answer is checked against the trade's history.
+final class StatusUnknown extends TradeStatus {
+  const StatusUnknown._(super.seenAt, super.warnings, super.trail) : super._();
 
   @override
-  TradePosition get position => TradePosition.start;
+  TradePosition get position => trail.position;
+
+  @override
+  bool get isTerminal => false;
 
   @override
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
-      StatusNotUnderstood._(seenAt, [...warnings, ...more], trail);
+      StatusUnknown._(seenAt, [...warnings, ...more], trail);
+}
+
+/// Error 1044 while this robot holds the pre-take: the order is out of this robot's reach for now, because its maker paused it or another robot's bond locked first. Not an end until [finalFrom]: after a pause the pre-take shows again with the same invoice, and if this robot's bond locked meanwhile the trade goes on at 6 (`api/views.py:269-275`, `api/logics.py:1758-1783`, `follow_invoices.py:243-261`).
+final class PreTakeUnavailable extends TradeStatus {
+  /// From when error 1044 means the pre-take is certainly gone (its deadline and [TradeTolerances.coordinatorLoops]), `null` while that deadline is unknown (no pre-take read yet).
+  final DateTime? finalFrom;
+
+  const PreTakeUnavailable._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.finalFrom,
+  }) : super._();
+
+  @override
+  TradePosition get position => TradePosition.preTakeUnavailable;
+
+  @override
+  TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
+      PreTakeUnavailable._(
+        seenAt,
+        [...warnings, ...more],
+        trail,
+        finalFrom: finalFrom,
+      );
 }
 
 StepInvoice _invoiceWith(StepInvoice invoice, List<TradeWarning> more) =>

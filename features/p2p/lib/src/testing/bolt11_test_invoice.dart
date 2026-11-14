@@ -18,7 +18,7 @@ final class Bolt11TestInvoice {
 
   /// An invoice of [sats] on [network], whose payment hash is 32 bytes made from [seed], made at [createdAt] (whole seconds) for [expiry], with [description] and the payee [payeeNodeKey] when given.
   ///
-  /// [prefix] replaces the network's human-readable prefix (`lnbc`, `lntb`, `lntbs`, `lnbcrt`), and [amountText] the amount's text (by default the sats in nano-bitcoin, `{sats×10}n`), to make invoices a decoder must refuse; [paymentHashes] repeats the payment hash field.
+  /// [prefix] replaces the network's human-readable prefix (`lnbc`, `lntb`, `lntbs`, `lnbcrt`), and [amountText] the amount's text (by default the sats in nano-bitcoin, `{sats×10}n`), to make invoices a decoder must refuse; [paymentHashes], [descriptionFields] and [payeeFields] repeat those fields.
   factory Bolt11TestInvoice({
     required Bolt11Network network,
     required int sats,
@@ -31,6 +31,8 @@ final class Bolt11TestInvoice {
     String? prefix,
     String? amountText,
     int paymentHashes = 1,
+    int descriptionFields = 1,
+    int payeeFields = 1,
   }) {
     final hrp =
         '${prefix ?? _prefixes[network]}${amountText ?? '${sats * 10}n'}';
@@ -39,9 +41,13 @@ final class Bolt11TestInvoice {
     final words = <int>[
       ..._intWords(seconds, 7),
       for (var i = 0; i < paymentHashes; i++) ..._tag(1, _toWords(hash)),
-      if (description != null) ..._tag(13, _toWords(utf8.encode(description))),
+      if (description != null)
+        for (var i = 0; i < descriptionFields; i++)
+          ..._tag(13, _toWords(utf8.encode(description))),
       if (writeExpiry) ..._tag(6, _minimalWords(expiry.inSeconds)),
-      if (payeeNodeKey != null) ..._tag(19, _toWords(_hexBytes(payeeNodeKey))),
+      if (payeeNodeKey != null)
+        for (var i = 0; i < payeeFields; i++)
+          ..._tag(19, _toWords(_hexBytes(payeeNodeKey))),
       ..._toWords(List<int>.generate(65, (i) => (seed * 13 + i * 5) & 0xff)),
     ];
     final text = _bech32(hrp, words);
