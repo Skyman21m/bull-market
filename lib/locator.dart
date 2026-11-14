@@ -33,6 +33,8 @@ import 'package:bb_mobile/features/import_mnemonic/locator.dart';
 import 'package:bb_mobile/features/import_watch_only_wallet/import_watch_only_locator.dart';
 import 'package:bb_mobile/features/ledger/ledger_locator.dart';
 import 'package:bb_mobile/features/onboarding/onboarding_locator.dart';
+import 'package:bb_mobile/features/p2p_wallet/p2p_wallet_locator.dart';
+import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
 import 'package:bb_mobile/features/pay/pay_locator.dart';
 import 'package:bb_mobile/features/pin_code/pin_code_locator.dart';
 import 'package:bb_mobile/features/psbt_flow/psbt_flow_locator.dart';
@@ -199,6 +201,7 @@ class AppLocator {
     SellLocator.setup(locator);
     WithdrawLocator.setup(locator);
     PayLocator.setup(locator);
+    P2pWalletLocator.setup(locator);
     StatusLocator.setup(locator);
     StatusCheckLocator.setup(locator);
 
@@ -218,6 +221,7 @@ class AppLocator {
   /// The handle creates and imports Garage Keys under the vault's write lock, which is per isolate, and the database must be opened and migrated by the foreground app alone: only the foreground composition may pass them, and the WorkManager isolate, which runs [setup] too, passes false.
   /// The documents directory is kept out of cloud backups on both platforms, as the wallet's databases are there.
   /// Asking for the handle reads and writes nothing, and the directory is asked for only at the first query of the database.
+  /// The wallet's port (#100), the balance and quotes of the Instant Payments wallet, goes to P2P under the same flag, as the foreground's alone: the facade is resolved at the port's first use, once every feature is registered, and nothing calls the port yet.
   @visibleForTesting
   static void setupP2p(GetIt locator, {required bool withGarageKeys}) =>
       const P2pFeature().setup(
@@ -226,6 +230,7 @@ class AppLocator {
         databaseDirectory: withGarageKeys
             ? getApplicationDocumentsDirectory
             : null,
+        wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null,
       );
 }
 
