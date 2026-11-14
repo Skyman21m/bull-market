@@ -128,6 +128,43 @@ final class RobotCoordinatorTooManyRefusalsFailure extends P2pFailure {
   const RobotCoordinatorTooManyRefusalsFailure();
 }
 
+/// The Garage Key of this network may not start a trade: it is not recorded as drawn on this device for the network, or it is recorded as imported or acknowledged on a network.
+///
+/// Its robots may live on coordinators from elsewhere, which hold their credentials, so none is used for a new trade (design note `docs/design/phase-2-taking-an-order.md` § 3.3); nothing was written or sent.
+/// A robot of such a key may still finish an order it already holds, once the user takes that trade over.
+final class GarageKeyNotForTradesFailure extends P2pFailure {
+  const GarageKeyNotForTradesFailure();
+}
+
+/// The federation list of this version of the app gives this coordinator no onion address on the network of the trade: no robot request can go there, and nothing was written or sent.
+final class TradeCoordinatorNotOnNetworkFailure extends P2pFailure {
+  const TradeCoordinatorNotOnNetworkFailure();
+}
+
+/// The Garage Key of this trade's robot is not the one the vault holds for the trade's network, or the vault holds none: nothing was sent.
+///
+/// The trade can be finished once the key is pasted back, or with the official client and that key.
+final class TradeKeyMissingFailure extends P2pFailure {
+  const TradeKeyMissingFailure();
+}
+
+/// This robot already has a trade record: a robot is never used for a second trade, and nothing was written.
+final class TradeAlreadyRecordedFailure extends P2pFailure {
+  const TradeAlreadyRecordedFailure();
+}
+
+/// This robot may not start a trade: it has no binding, or its binding was made under a key from elsewhere or on another network than the take's, and nothing was written.
+///
+/// Only a robot the robot layer returned for a new trade is recorded as a pending take.
+final class RobotNotForNewTradeFailure extends P2pFailure {
+  const RobotNotForNewTradeFailure();
+}
+
+/// This trade record is closed, and a closed record never changes: nothing was written.
+final class TradeClosedFailure extends P2pFailure {
+  const TradeClosedFailure();
+}
+
 /// This robot was released, its screen left, before the request could leave: nothing more was sent for it.
 ///
 /// A request already in flight when the robot was released runs to its end, and its answer is returned to the call that sent it, like any other: the screen that is gone drops it.
