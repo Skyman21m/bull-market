@@ -62,12 +62,14 @@ sealed class TradeView {
     ),
     // A take that did not happen: no pre-take, so no invoice, was ever seen.
     TradeWatchTakeNotMade() => const TradeMessage(TradeMessageKind.takeNotMade),
-    // One subscription per trade: this screen is not the trade's.
-    TradeWatchAlreadyWatched() => const TradeMessage(
-      TradeMessageKind.unavailable,
+    // A newer subscription took the trade over: not an error; the cubit stops and never shows it.
+    TradeWatchSuperseded() => const TradeWaiting(),
+    TradeWatchStatus(:final seen, :final takePending) => _ofStatus(
+      seen,
+      takePending: takePending,
+      // An invoice, or a payment, only from a status marked stored (#117): `recordProblem` alone does not decide it.
+      payable: seen.stored,
     ),
-    TradeWatchStatus(:final seen, :final takePending, :final recordProblem) =>
-      _ofStatus(seen, takePending: takePending, payable: recordProblem == null),
   };
 
   static TradeView _ofStatus(
@@ -146,7 +148,7 @@ final class TradeContract extends TradeView {
   final TradeSeen seen;
   final CoordinatorOrder? order;
 
-  /// Whether the status came with its trail stored: otherwise the trade's records could not be written, and nothing payable is offered (no QR code, no copy, no wallet), only the reads and what the reference offers without an invoice (`AGENTS.md`, « Rules for #88 »).
+  /// Whether the status is marked stored (`TradeSeen.stored`): otherwise nothing payable is offered (no QR code, no copy, no wallet), only the reads and what the reference offers without an invoice (`AGENTS.md`, « Rules for #88 »).
   final bool payable;
 
   const TradeContract(this.seen, {required this.order, this.payable = true});

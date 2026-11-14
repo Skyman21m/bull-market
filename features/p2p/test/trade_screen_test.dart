@@ -681,10 +681,7 @@ void main() {
         TradeWatchTakeNotMade(_record, closed: true),
         'The order was not taken.',
       ),
-      (
-        TradeWatchAlreadyWatched(_record),
-        'Bull Market cannot open this trade now. Nothing is sent.',
-      ),
+      
     ]) {
       testWidgets('${state.runtimeType}: « $text », no action', (tester) async {
         await _show(tester, watch: _Watch(), state: state);
@@ -729,7 +726,31 @@ void main() {
       },
     );
 
-    testWidgets('a status whose records could not be written: nothing payable', (
+    testWidgets('a status not marked stored: nothing payable, the records said unwritten', (
+      tester,
+    ) async {
+      final bond = _seen['bond'] ?? (throw StateError('bond'));
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: TradeScreenStatuses.watched(
+          // The bond's status in memory, with its invoice, but not marked stored.
+          TradeSeen(bond.status, order: bond.order),
+          recordProblem: const P2pStorageFailure(),
+        ),
+        walletPayment: (context, request) => const Text('wallet slot'),
+      );
+      expect(
+        find.text('Bull Market could not write the records of this trade on this device.'),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      expect(find.text('Show anyway'), findsNothing);
+      expect(find.text('wallet slot'), findsNothing);
+    });
+
+    testWidgets('a stored status with a record problem (the confirmation failed): its QR code stays', (
       tester,
     ) async {
       await _show(
@@ -739,19 +760,27 @@ void main() {
           _seen['bond'] ?? (throw StateError('bond')),
           recordProblem: const P2pStorageFailure(),
         ),
-        walletPayment: (context, request) => const Text('wallet slot'),
       );
       expect(
-        find.text(
-          'Bull Market could not write the records of this trade on this device.',
-        ),
+        find.text('Bull Market could not write the records of this trade on this device.'),
         findsOneWidget,
       );
-      expect(find.byType(QrImageView), findsNothing);
-      expect(find.text('Copy to clipboard'), findsNothing);
-      expect(find.text('Show anyway'), findsNothing);
-      expect(find.text('wallet slot'), findsNothing);
+      expect(find.byType(QrImageView), findsOneWidget);
     });
+
+    testWidgets('superseded by a newer watch of the trade: no error, the cubit stops', (
+      tester,
+    ) async {
+      final watch = _Watch();
+      final cubit = await _show(tester, watch: watch, state: _watched('bond'));
+      watch.emit(TradeWatchSuperseded(_record));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(find.textContaining('cannot'), findsNothing);
+      expect(cubit.state.watch, isA<TradeWatchStatus>());
+    });
+
 
     testWidgets(
       'reads that keep failing: the last status kept, with its time',

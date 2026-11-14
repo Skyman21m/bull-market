@@ -81,6 +81,7 @@ final class TradeScreenStatuses {
         reader: reader,
       ),
       order: started.order,
+      stored: true,
     );
   }
 
@@ -100,6 +101,7 @@ final class TradeScreenStatuses {
         reader: reader,
       ),
       order: order,
+      stored: true,
     );
   }
 
@@ -117,6 +119,7 @@ final class TradeScreenStatuses {
       reader: reader,
     ),
     order: null,
+    stored: true,
   );
 
   /// 6, the bond locked, as the buyer.
