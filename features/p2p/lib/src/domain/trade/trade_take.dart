@@ -172,14 +172,22 @@ sealed class TakeOutcome {
 
 /// The take started a trade: [status] is the pre-take with its bond (`TradeStatus.afterTake`), once its trail is stored.
 ///
-/// [recordProblem] is set when the trail or the confirmation could not be written: the trade runs on the coordinator all the same, and the next read of the trade writes them. When the trail could not be stored, [status] is the stored pending trail's (`StatusUnknown`, no invoice): an invoice is shown or offered to the wallet only from a status whose trail is stored (review of #117); the screen says the records could not be written and offers nothing payable.
+/// [recordProblem] is set when the trail or the confirmation could not be written: the trade runs on the coordinator all the same, and the next read of the trade writes them. When the trail could not be stored, [status] is the stored pending trail's (`StatusUnknown`, no invoice) and [stored] is false: an invoice is shown or offered to the wallet only from a status marked [stored] (review of #117); a failed confirmation leaves [stored] true.
 final class TakeStarted extends TakeOutcome {
   @override
   final TradeRecord record;
   final TradeStatus status;
   final P2pFailure? recordProblem;
 
-  const TakeStarted(this.record, this.status, {this.recordProblem});
+  /// Whether [status] is the one stored with its trail by this take (`TradeSeen.stored`): show an invoice, or offer a payment, only when it is.
+  final bool stored;
+
+  const TakeStarted(
+    this.record,
+    this.status, {
+    this.recordProblem,
+    this.stored = false,
+  });
 
   @override
   String toString() => 'TakeStarted($record, $status)';
@@ -192,7 +200,15 @@ final class TakeResumed extends TakeOutcome {
   final TradeStatus status;
   final P2pFailure? recordProblem;
 
-  const TakeResumed(this.record, this.status, {this.recordProblem});
+  /// Whether [status] is the one stored with its trail by this take (`TradeSeen.stored`): show an invoice, or offer a payment, only when it is.
+  final bool stored;
+
+  const TakeResumed(
+    this.record,
+    this.status, {
+    this.recordProblem,
+    this.stored = false,
+  });
 
   @override
   String toString() => 'TakeResumed($record, $status)';

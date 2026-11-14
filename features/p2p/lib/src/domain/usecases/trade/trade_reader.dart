@@ -91,7 +91,7 @@ final class TradeStep {
   /// A write that failed (the trail, the confirmation, the close), or [TradeClosedFailure] from a confirmation of a closed record.
   final P2pFailure? recordProblem;
 
-  /// Whether the trail of [trade]'s status is the one stored: the status was written, or is the stored trail's own (a status of an unstored trail is never returned, review of #117).
+  /// Whether [trade]'s status is the one this step stored ([TradeSeen.stored]): only such a status may show an invoice or offer a payment.
   final bool stored;
 
   /// Whether the step ended a take this robot never held: a pending take, never confirmed, on which no pre-take (so no invoice) was ever seen, now at an end; it is closed as a take not made, whatever the end says of a bond (none can have been paid from here).
@@ -266,7 +266,9 @@ final class TradeReader {
     required DateTime at,
   }) async {
     // A terminal status is never left, and its trail and record are kept already: nothing to write.
-    if (trade.seen.status.isTerminal) return TradeStep(trade, stored: true);
+    if (trade.seen.status.isTerminal) {
+      return TradeStep(trade, stored: trade.seen.stored);
+    }
     final taker = showsTaker(answer, trade.terms);
     final step = await keep(
       trade,
@@ -275,11 +277,12 @@ final class TradeReader {
       answer: answer,
       at: at,
     );
+    // From the trail now on disk (stored or kept), never from one only in memory.
     final notMade =
         !taker &&
         trade.record.confirmedAt == null &&
         trade.record.origin == TradeOrigin.takenHere &&
-        trade.seen.status.trail.bondStepSeenAt == null &&
+        step.trade.seen.status.trail.bondStepSeenAt == null &&
         step.trade.seen.status.isTerminal;
     if (!notMade) return step;
     return TradeStep(
@@ -313,12 +316,13 @@ final class TradeReader {
     );
   }
 
-  /// [trade] at [seen]: its trail stored over the stored one, its record confirmed when [showsTaker], and closed at a terminal status whose trail is stored.
+  /// [trade] at [seen]: its trail stored over the stored one, its record confirmed when [showsTaker], and closed at a terminal status whose trail is on disk.
   ///
-  /// [trade]'s own status must be the stored trail's (as every status [TradeReader] gives): it is what stays when nothing could be stored.
-  /// - Stored: the trade goes on at [seen].
-  /// - Not stored (the database refused the write): the trade stays at [trade]'s status, the one of the stored trail, never at [seen], whose invoice and pinned hash are on no disk; [TradeStep.recordProblem] says why.
-  /// - Kept (the stored trail changed, or was refused over): from the stored trail. When [answer] read at [at] is newer than the stored trail, [answer] is read again over the stored trail and stored, once; at an end the stored trail already holds, [seen] stays (an end holds no invoice, and says what the end means); otherwise the status is the stored trail's own.
+  /// [trade]'s own status must come from the trail on disk (as every status [TradeReader] gives).
+  /// - Stored: the trade goes on at [seen], marked [TradeSeen.stored].
+  /// - Not stored (the database refused the write): the status is the trail on disk's own (`TradeStatus.beforeFirstRead`, no invoice, no order), never [seen], whose invoice and pinned hash are on no disk, nor the last status shown, whose invoice may be stale (review of #117); [TradeStep.recordProblem] says why.
+  /// - Kept (the stored trail changed, or was refused over): when [answer] read at [at] is newer than the stored trail, [answer] is read again over the stored trail and stored, once; at an end the stored trail already holds, [seen] stays, unmarked (an end holds no invoice, and says what the end means); otherwise the status is the stored trail's own.
+  /// Only a status marked [TradeSeen.stored] may show an invoice or offer a payment.
   Future<TradeStep> keep(
     OpenTrade trade,
     TradeSeen seen, {
@@ -327,17 +331,22 @@ final class TradeReader {
     DateTime? at,
   }) async {
     var record = trade.record;
-    var current = trade.seen;
+    // The trail last known on disk, and its own status: what stays when nothing is stored.
+    var onDiskTrail = trade.seen.status.trail;
+    TradeSeen ownStatus(TradeTrail trail) =>
+        TradeSeen(TradeStatus.beforeFirstRead(trail), order: null);
+    var current = ownStatus(onDiskTrail);
     var attempt = seen;
     P2pFailure? problem;
-    var stored = false;
+    var onDisk = false;
     for (var round = 0; round < 2; round++) {
       switch (await _trails.storeTrail(record, attempt.status.trail.record)) {
         case Ok(value: TrailStored()):
-          current = attempt;
-          stored = true;
+          current = TradeSeen(attempt.status, order: attempt.order, stored: true);
+          onDisk = true;
         case Err(:final failure):
           problem = failure;
+          current = ownStatus(onDiskTrail);
         case Ok(value: TrailKept(stored: final kept)):
           final restored = TradeTrail.restore(
             kept,
@@ -345,10 +354,11 @@ final class TradeReader {
             now: now(),
           );
           if (restored case Ok(value: final keptTrail)) {
-            stored = true;
+            onDisk = true;
+            onDiskTrail = keptTrail;
             if (attempt.status.isTerminal &&
                 keptTrail.position == attempt.status.position) {
-              current = attempt;
+              current = TradeSeen(attempt.status, order: attempt.order);
             } else if (round == 0 &&
                 answer != null &&
                 at != null &&
@@ -360,16 +370,14 @@ final class TradeReader {
                 trade.terms,
                 at,
               );
-              stored = false;
+              current = ownStatus(keptTrail);
               continue;
             } else {
-              current = TradeSeen(
-                TradeStatus.beforeFirstRead(keptTrail),
-                order: null,
-              );
+              current = ownStatus(keptTrail);
             }
           } else {
             problem = const P2pStorageFailure();
+            current = ownStatus(onDiskTrail);
           }
       }
       break;
@@ -382,7 +390,7 @@ final class TradeReader {
           problem ??= failure;
       }
     }
-    if (stored && current.status.isTerminal && record.isActive) {
+    if (onDisk && current.status.isTerminal && record.isActive) {
       switch (await _records.closeTrade(record)) {
         case Ok(:final value):
           record = value;
@@ -393,7 +401,7 @@ final class TradeReader {
     return TradeStep(
       trade._with(record: record, seen: current),
       recordProblem: problem,
-      stored: stored,
+      stored: current.stored,
     );
   }
 

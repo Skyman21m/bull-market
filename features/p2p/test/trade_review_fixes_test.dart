@@ -800,21 +800,17 @@ void main() {
   );
 
   group('the minors', () {
-    test('P6: a second subscription to a trade reads nothing', () async {
+    test('P6: a second subscription takes the trade over, the first is superseded, one read', () async {
       final (app, record) = await takenTrade();
       final before = reads(app);
       final a = app.watchOf(record);
       final b = app.watchOf(record);
       await app.settle();
       expect(reads(app), before + 1);
-      expect(b.last, isA<TradeWatchAlreadyWatched>());
-      expect(b.done, isTrue);
-      await a.subscription.cancel();
-      // Free again once the first is cancelled.
-      final c = app.watchOf(record);
-      await app.settle();
-      expect(c.last, isA<TradeWatchStatus>());
-      await c.subscription.cancel();
+      expect(a.last, isA<TradeWatchSuperseded>());
+      expect(a.done, isTrue);
+      expect(b.last, isA<TradeWatchStatus>());
+      await b.subscription.cancel();
     });
 
     test(

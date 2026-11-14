@@ -266,6 +266,7 @@ final class TakeOrderUsecase {
             step.trade.record,
             step.trade.seen.status,
             recordProblem: step.recordProblem,
+            stored: step.stored,
           ),
         );
       case Ok(value: Ok(value: OrderAlreadyTakenByThisRobot(:final order))):
@@ -282,6 +283,7 @@ final class TakeOrderUsecase {
                 step.trade.record,
                 step.trade.seen.status,
                 recordProblem: step.recordProblem,
+                stored: step.stored,
               ),
             );
           case TradeNotRestorable() || TradeNotOpened() || TradeTakeNeverSent():

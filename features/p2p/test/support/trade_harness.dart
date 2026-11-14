@@ -283,6 +283,9 @@ final class TradeHarness {
   late final CancelTradeUsecase cancel;
   late final ListActiveTradesUsecase list;
 
+  /// The subscriptions reading each trade in this run.
+  final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
+
   TradeHarness._(this.network, this.database, this.coordinator, this.now) {
     DateTime clock() => now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
@@ -339,7 +342,7 @@ final class TradeHarness {
         },
         random: () => 0.5,
       ),
-      TradeWatchRegistry(),
+      watchRegistry,
     );
     cancel = CancelTradeUsecase(client, reader, limiter);
     list = ListActiveTradesUsecase(robots, trails, clock: clock);

@@ -15,10 +15,16 @@ final class TradeSeen {
   /// The order of the read [status] comes from, as the coordinator described it to the trade's robot; `null` when the status comes from no order (error 1043 or 1044, a trail restored and not read yet, a read refused as a whole).
   final CoordinatorOrder? order;
 
-  const TradeSeen(this.status, {required this.order});
+  /// Whether [status] is the one computed from the read it carries and stored with its trail by this read: **only such a status may show an invoice or offer a payment** (review of #117).
+  ///
+  /// False for a status of the trail on disk when the read's own could not be stored, or was kept out by another write (`TradeStatus.beforeFirstRead`: no invoice, no order), for a trail restored and not read yet, and for an end that another write stored first.
+  final bool stored;
+
+  const TradeSeen(this.status, {required this.order, this.stored = false});
 
   @override
-  String toString() => 'TradeSeen($status, read: ${order != null})';
+  String toString() =>
+      'TradeSeen($status, read: ${order != null}, stored: $stored)';
 }
 
 /// What `WatchTradeUsecase` emits about one trade.
@@ -44,7 +50,7 @@ final class TradeWatchStatus extends TradeWatchState {
 
   /// A write of the trade's records that failed after the coordinator answered (the trail, the confirmation, the close), or a [TradeClosedFailure] when the record was closed and the coordinator now shows this robot as the taker: shown, never dropped (#87).
   ///
-  /// When the trail could not be stored, [seen] is the stored trail's status, never the one the read computed: an invoice is shown or offered only from a status whose trail is stored (review of #117).
+  /// Its causes are told apart by [stored]: a trail that could not be stored leaves [seen] unmarked, at the trail on disk's own status (no invoice); a failed confirmation or close, and a [TradeClosedFailure], leave [seen] as the read gave it.
   final P2pFailure? recordProblem;
 
   /// Whether the trade is a take whose answer was lost, and no read has shown yet whether it happened: the reads go on until one shows this robot as the taker, or brings the take to an end ([TradeWatchTakeNotMade]).
@@ -59,9 +65,12 @@ final class TradeWatchStatus extends TradeWatchState {
     required this.takePending,
   });
 
+  /// Whether [seen]'s status is the one this read stored ([TradeSeen.stored]): show an invoice, or offer a payment, only when it is.
+  bool get stored => seen.stored;
+
   @override
   String toString() =>
-      'TradeWatchStatus($record, ${seen.status}, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending)';
+      'TradeWatchStatus($record, ${seen.status}, stored: $stored, failed: $failedReads, problem: ${recordProblem?.runtimeType}, pending: $takePending)';
 }
 
 /// The trade's stored records cannot be restored: shown read-only with [reason], never resumed, and nothing is sent ([TradeRecordMalformed], [TradeRecordOfAnotherTrade], or [TradeCoordinatorGone] for a coordinator that left the federation list).
@@ -128,15 +137,17 @@ final class TradeWatchTakeNotMade extends TradeWatchState {
   String toString() => 'TradeWatchTakeNotMade($record, closed: $closed)';
 }
 
-/// The trade is already watched by another subscription: one subscription per trade, so that a trade is never read twice at once; this one reads nothing, and ends.
-final class TradeWatchAlreadyWatched extends TradeWatchState {
+/// Another subscription to the same trade took it over: the newest subscription reads the trade, this one stops, and its stream ends after this state (a screen that is going away, as the previous route while Flutter builds the next): not an error to show.
+///
+/// A read of this subscription already in flight is dropped as for a cancel; the writes of an answer already being kept finish (the stored trail stays correct), and the new subscription reads only once they have.
+final class TradeWatchSuperseded extends TradeWatchState {
   @override
   final TradeRecord record;
 
-  const TradeWatchAlreadyWatched(this.record);
+  const TradeWatchSuperseded(this.record);
 
   @override
-  String toString() => 'TradeWatchAlreadyWatched($record)';
+  String toString() => 'TradeWatchSuperseded($record)';
 }
 
 /// What the screen tells the watch of a trade.
