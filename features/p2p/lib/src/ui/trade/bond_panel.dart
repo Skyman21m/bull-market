@@ -248,7 +248,10 @@ class _Qr extends StatelessWidget {
                 color: colors.surfaceFixed,
                 borderRadius: BorderRadius.circular(BullRadius.xxs),
               ),
-              child: QrImageView(data: bolt11.toUpperCase()),
+              // The package's own label (« qr code ») would add to the app's.
+              child: ExcludeSemantics(
+                child: QrImageView(data: bolt11.toUpperCase()),
+              ),
             ),
           ),
         );

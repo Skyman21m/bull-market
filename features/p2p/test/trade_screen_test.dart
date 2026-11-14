@@ -223,9 +223,9 @@ void main() {
       expect(find.text('Pay with another wallet'), findsOneWidget);
       expect(find.byType(QrImageView), findsOneWidget);
       expect(
-          tester.getSemantics(find.byType(QrImageView)),
-          containsSemantics(label: 'QR code of the bond invoice', isImage: true),
-        );
+        tester.getSemantics(find.byType(QrImageView)),
+        isSemantics(label: 'QR code of the bond invoice', isImage: true),
+      );
       expect(find.text('3,207 Sats'), findsWidgets);
       expect(find.text('Bitcoin'), findsOneWidget);
       expect(find.text('Copy to clipboard'), findsOneWidget);

@@ -205,36 +205,48 @@ class _RangeTake extends StatelessWidget {
     final edge = error == null ? colors.outline : colors.error;
     return _Column(
       above: [
+        // The label above the field rather than inside its border: a floating label is kept on one line, which three times the text size would cut on a phone of 320 points.
+        // A screen reader hears it as the field's label.
+        ExcludeSemantics(
+          child: Text(
+            l10n.p2pTakeAmountLabel(code),
+            style: text.labelLarge?.copyWith(
+              color: error == null ? colors.textMuted : colors.error,
+            ),
+          ),
+        ),
         Tooltip(
           message: l10n.p2pTakeAmountHint,
-          child: TextField(
-            controller: controller,
-            enabled: enabled,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            // An amount, not words: no suggestion, correction or learning by the keyboard.
-            autocorrect: false,
-            enableSuggestions: false,
-            enableIMEPersonalizedLearning: false,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-              LengthLimitingTextInputFormatter(20),
-            ],
-            textAlign: TextAlign.center,
-            style: text.bodyLarge?.copyWith(color: colors.text),
-            onChanged: (_) => onChanged(),
-            decoration: InputDecoration(
-              labelText: l10n.p2pTakeAmountLabel(code),
-              labelStyle: text.bodyMedium?.copyWith(
-                color: error == null ? colors.textMuted : colors.error,
+          child: Semantics(
+            container: true,
+            label: l10n.p2pTakeAmountLabel(code),
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              errorText: error,
-              errorMaxLines: 3,
-              filled: true,
-              fillColor: colors.surface,
-              enabledBorder: border(edge),
-              focusedBorder: border(error == null ? colors.primary : edge),
-              errorBorder: border(colors.error),
-              focusedErrorBorder: border(colors.error),
+              // An amount, not words: no suggestion, correction or learning by the keyboard.
+              autocorrect: false,
+              enableSuggestions: false,
+              enableIMEPersonalizedLearning: false,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              textAlign: TextAlign.center,
+              style: text.bodyLarge?.copyWith(color: colors.text),
+              onChanged: (_) => onChanged(),
+              decoration: InputDecoration(
+                errorText: error,
+                errorMaxLines: 3,
+                filled: true,
+                fillColor: colors.surface,
+                enabledBorder: border(edge),
+                focusedBorder: border(error == null ? colors.primary : edge),
+                errorBorder: border(colors.error),
+                focusedErrorBorder: border(colors.error),
+              ),
             ),
           ),
         ),

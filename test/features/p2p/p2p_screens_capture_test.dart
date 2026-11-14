@@ -1596,7 +1596,7 @@ void main() {
             network: RobosatsNetwork.mainnet,
           ),
         );
-        tor.add(P2pTorState.ready);
+        // Tor is told ready only once the scripted coordinator is in place, so that the book is read from it.
         await settle();
 
         // A Garage Key drawn here: the robots of a take come from it. Its text, shown for backup right after the draw, gives the test the robots the scripted coordinator knows; it is never captured.
@@ -1631,6 +1631,8 @@ void main() {
         );
         transport.temple = coordinator;
         await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        tor.add(P2pTorState.ready);
         await settle();
 
         // The book: the order of Temple of Sats, then its details with « Take Order ».

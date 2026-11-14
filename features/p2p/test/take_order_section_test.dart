@@ -284,7 +284,10 @@ void main() {
       expect(
         find.byType(TextField),
         findsOneWidget,
-        reason: tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).join(' | '),
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((t) => t.data)
+            .join(' | '),
       );
       expect(find.text('Amount EUR'), findsOneWidget);
       expect(
