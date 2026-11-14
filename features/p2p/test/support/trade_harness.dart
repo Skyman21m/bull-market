@@ -47,6 +47,14 @@ final GarageKey tradeKey = switch (GarageKey.fromBytes(
   Err(:final failure) => throw StateError('$failure'),
 };
 
+/// Another Garage Key made for the trade tests only, which a test puts in the vault in place of [tradeKey].
+final GarageKey otherTradeKey = switch (GarageKey.fromBytes(
+  Uint8List.fromList(List<int>.generate(32, (i) => 201 + i)),
+)) {
+  Ok(:final value) => value,
+  Err(:final failure) => throw StateError('$failure'),
+};
+
 /// The app stopped at a step: an `Error`, which no use case catches.
 final class AppKilled extends Error {}
 
@@ -87,15 +95,18 @@ final class _LazyPairs implements RobotKeyComputePort {
 }
 
 final class _Vault implements GarageKeyRepository {
-  final NetworkGarageKey key;
+  /// The key the vault holds: `null` once deleted.
+  NetworkGarageKey? key;
 
   _Vault(this.key);
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
-  ) async =>
-      network == key.network ? Ok(key) : const Err(GarageKeyMissingFailure());
+  ) async => switch (key) {
+    final held? when held.network == network => Ok(held),
+    _ => const Err(GarageKeyMissingFailure()),
+  };
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> create(
@@ -286,7 +297,10 @@ final class TradeHarness {
   /// The subscriptions reading each trade in this run.
   final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
 
-  TradeHarness._(this.network, this.database, this.coordinator, this.now) {
+  final _Vault _vault;
+
+  TradeHarness._(this.network, this.database, this.coordinator, this.now)
+    : _vault = _Vault(NetworkGarageKey(network, tradeKey)) {
     DateTime clock() => now;
     bindings = RobotBindingRepositoryImpl(database, clock: clock);
     records = _KillingRecords(
@@ -294,10 +308,7 @@ final class TradeHarness {
       () => kill,
     );
     trails = TestTrails(TradeTrailRepositoryImpl(database), () => kill);
-    robots = InterimTradeRobots(
-      _Vault(NetworkGarageKey(network, tradeKey)),
-      records,
-    );
+    robots = InterimTradeRobots(_vault, records);
     limiter = RobotRequestLimiter(
       elapsed: () => now.difference(DateTime.utc(2026)),
       delay: (wait) async => busyWaits.add(wait),
@@ -433,6 +444,12 @@ final class TradeHarness {
     }
     return found;
   }
+
+  /// The Garage Key deleted from the vault, as the Garage's delete does.
+  void deleteKey() => _vault.key = null;
+
+  /// Another Garage Key in the vault in place of [tradeKey], as after a delete and a new key.
+  void replaceKey() => _vault.key = NetworkGarageKey(network, otherTradeKey);
 
   /// The robot of index [index] among [robotsOf].
   RobotIdentity robot(int index) => robotsOf(network)[index];
