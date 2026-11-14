@@ -7,13 +7,14 @@ import 'package:go_router/go_router.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/trade_record.dart';
 import '../presentation/coordinator_details_cubit.dart';
-import '../presentation/coordinator_text.dart';
 import '../presentation/order_details_cubit.dart';
 import '../presentation/p2p_formats.dart';
 import 'coordinator_details_dialog.dart';
-import 'widgets/coordinator_avatar.dart';
+import 'take_order_section.dart';
 import 'widgets/offer_row.dart';
+import 'widgets/order_detail_row.dart';
 import 'widgets/reversible_payments_dialog.dart';
 import 'widgets/robot_avatar.dart';
 import 'widgets/testnet_banner.dart';
@@ -21,7 +22,7 @@ import 'widgets/testnet_banner.dart';
 /// The details of a public order, in the order of the official client: host and number, fees, then the order details, the maker and « Take Order ».
 ///
 /// The host opens the dialog of its coordinator, as in the official client.
-/// Phase 1 is read-only: « Take Order » is shown disabled.
+/// « Take Order » is [TakeOrderSection] (#88): with [canTake], a `TakeOrderCubit` above this screen takes the order, and [onTaken] opens its trade.
 class OrderDetailsScreen extends StatefulWidget {
   final DateTime Function() now;
 
@@ -29,10 +30,22 @@ class OrderDetailsScreen extends StatefulWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// Whether a `TakeOrderCubit` is above this screen: the feature holds robots only when it was set up with the vault's handle.
+  final bool canTake;
+
+  /// Opens the Garage from « You do not have a Garage Key », when the tab has one.
+  final VoidCallback? onOpenGarage;
+
+  /// Opens the trade a take started: always given by the route, which [canTake] needs.
+  final ValueChanged<TradeRecord>? onTaken;
+
   const OrderDetailsScreen({
     super.key,
     required this.now,
     required this.coordinatorDetails,
+    this.canTake = false,
+    this.onOpenGarage,
+    this.onTaken,
   });
 
   @override
@@ -85,8 +98,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(BullSpacing.md),
                 children: [
-                  _HostRow(
-                    order: order,
+                  OrderHostRow(
+                    coordinator: order.coordinator,
+                    orderId: order.id,
                     // The fees the page already read are shown at once in the dialog, which asks the coordinator only when the page has none.
                     onTap: () => CoordinatorDetailsDialog.show(
                       context,
@@ -106,12 +120,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   const Gap(BullSpacing.md),
                   _MakerRow(order: order),
                   const Gap(BullSpacing.md),
-                  BullButton.big(
-                    label: l10n.p2pTakeOrder,
-                    onPressed: () {},
-                    disabled: true,
-                    bgColor: colors.primary,
-                    textColor: colors.onPrimary,
+                  TakeOrderSection(
+                    order: order,
+                    takerFee: state.info?.takerFee ?? 0,
+                    canTake: widget.canTake,
+                    onOpenGarage: widget.onOpenGarage,
+                    onTaken: widget.onTaken ?? (_) {},
                   ),
                 ],
               ),
@@ -120,56 +134,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         ),
       ),
     );
-  }
-}
-
-/// The coordinator that hosts the order, and the number of the order on it; a tap opens the dialog of the coordinator.
-class _HostRow extends StatelessWidget {
-  final PublicOrder order;
-  final VoidCallback onTap;
-
-  const _HostRow({required this.order, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final l10n = P2pLocalizations.of(context);
-    final row = Row(
-      children: [
-        CoordinatorAvatar(coordinator: order.coordinator, size: 44),
-        const Gap(BullSpacing.sm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                CoordinatorText.of(
-                  order.coordinator.longAlias,
-                  maxCodePoints: CoordinatorText.name,
-                ),
-                style: text.headlineLarge?.copyWith(color: colors.text),
-              ),
-              Text(
-                l10n.p2pOrderHost,
-                style: text.labelMedium?.copyWith(color: colors.textMuted),
-              ),
-            ],
-          ),
-        ),
-        Semantics(
-          label: l10n.p2pOrderId,
-          child: Text(
-            '# ${order.id}',
-            style: text.headlineMedium?.copyWith(
-              color: colors.textMuted,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-      ],
-    );
-    return InkWell(onTap: onTap, child: row);
   }
 }
 
@@ -256,16 +220,22 @@ class _DetailsCard extends StatelessWidget {
     final (send, receive) = switch (order.type) {
       // The taker of a sell order buys bitcoin: pays fiat, receives sats.
       OrderType.sell => (
-        _Sentence.split(
-          l10n.p2pOrderYouSendVia(methods, _Sentence.mark),
+        OrderSentence.split(
+          l10n.p2pOrderYouSendVia(methods, OrderSentence.mark),
           amount,
         ),
-        _Sentence.split(l10n.p2pOrderYouReceiveSats(_Sentence.mark), sats),
+        OrderSentence.split(
+          l10n.p2pOrderYouReceiveSats(OrderSentence.mark),
+          sats,
+        ),
       ),
       OrderType.buy => (
-        _Sentence.split(l10n.p2pOrderYouSendLightning(_Sentence.mark), sats),
-        _Sentence.split(
-          l10n.p2pOrderYouReceiveVia(methods, _Sentence.mark),
+        OrderSentence.split(
+          l10n.p2pOrderYouSendLightning(OrderSentence.mark),
+          sats,
+        ),
+        OrderSentence.split(
+          l10n.p2pOrderYouReceiveVia(methods, OrderSentence.mark),
           amount,
         ),
       ),
@@ -302,17 +272,15 @@ class _DetailsCard extends StatelessWidget {
         const Gap(BullSpacing.xs),
         BullDetailsTable(
           items: [
-            _row(
-              context,
+            OrderDetailRow(
               order.amount is RangeOrderAmount
                   ? l10n.p2pOrderAmountRange
                   : l10n.p2pBookColumnAmount,
               amount,
             ),
-            _row(context, send.label, send.value),
-            _row(context, receive.label, receive.value),
-            _row(
-              context,
+            OrderDetailRow(send.label, send.value),
+            OrderDetailRow(receive.label, receive.value),
+            OrderDetailRow(
               order.currency.isBitcoin
                   ? l10n.p2pOrderSwapDestination
                   : l10n.p2pOrderAcceptedMethods,
@@ -324,9 +292,8 @@ class _DetailsCard extends StatelessWidget {
                     )
                   : null,
             ),
-            _row(context, priceLabel, priceValue),
-            _row(
-              context,
+            OrderDetailRow(priceLabel, priceValue),
+            OrderDetailRow(
               l10n.p2pOrderExpiresIn,
               left.isNegative ? l10n.p2pOrderExpired : formats.countdown(left),
               color: share < 0.10
@@ -339,8 +306,7 @@ class _DetailsCard extends StatelessWidget {
             // The time left closes the card, under its last row, as in the official client.
             Column(
               children: [
-                _row(
-                  context,
+                OrderDetailRow(
                   l10n.p2pOrderDeposit,
                   formats.depositTime(order.escrowDuration),
                 ),
@@ -359,81 +325,6 @@ class _DetailsCard extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-
-  /// One row of the card: label and value share the width equally, so that a long label wraps on two lines at most.
-  ///
-  /// With [warning], the row shows the orange warning of the official client and opens it when tapped.
-  Widget _row(
-    BuildContext context,
-    String label,
-    String value, {
-    Color? color,
-    bool bold = false,
-    VoidCallback? warning,
-  }) {
-    final colors = context.bull;
-    final text = Theme.of(context).textTheme;
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: text.bodyMedium?.copyWith(color: colors.textMuted),
-            ),
-          ),
-          const Gap(BullSpacing.sm),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: text.bodyLarge?.copyWith(
-                color: color ?? colors.text,
-                fontWeight: bold ? FontWeight.w700 : null,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          if (warning != null) ...[
-            const Gap(BullSpacing.xs),
-            Tooltip(
-              message: P2pLocalizations.of(context).p2pReversibleTitle,
-              child: Icon(
-                Icons.warning_amber_rounded,
-                size: 20,
-                color: colors.warning,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-    if (warning == null) return row;
-    return InkWell(onTap: warning, child: row);
-  }
-}
-
-/// A sentence of the official client cut where its value starts, so that « You send via Revolut 100 EUR » reads as a label and a value.
-final class _Sentence {
-  final String label;
-  final String value;
-
-  const _Sentence(this.label, this.value);
-
-  /// Stands for the value in the translated sentence: a control character, which no coordinator text can contain.
-  static const mark = '\u0001';
-
-  /// [sentence] translated with [mark] in place of [value]: the text before it is the label, the rest is the value.
-  static _Sentence split(String sentence, String value) {
-    final at = sentence.indexOf(mark);
-    if (at <= 0) return _Sentence(sentence.replaceAll(mark, value), '');
-    return _Sentence(
-      sentence.substring(0, at).trim(),
-      sentence.substring(at).replaceAll(mark, value).trim(),
     );
   }
 }

@@ -20,6 +20,7 @@ enum P2pDestination { offers, garage }
 ///
 /// « Offers » is the wait for Tor, then the book; « Create » is disabled; « Garage » is [garage], which needs no network and so is there while Tor connects.
 /// Without [garage], when the feature was set up without the vault's handle, « Garage » is disabled.
+/// With an active trade on the network ([onOpenTrades] set), the middle entry is « Order » instead of « Create », as the middle button of the official client's phone bar becomes the order of the robot that has one (`basic/NavBar/AppBar/index.tsx:54-73`): it opens the trade, and is not a destination of its own.
 class P2pTabScreen extends StatelessWidget {
   final DateTime Function() now;
 
@@ -34,6 +35,9 @@ class P2pTabScreen extends StatelessWidget {
   final ValueChanged<P2pDestination> onDestination;
   final WidgetBuilder? garage;
 
+  /// Opens the active trade, or the list of them: set while the network has one.
+  final VoidCallback? onOpenTrades;
+
   const P2pTabScreen({
     super.key,
     required this.now,
@@ -43,6 +47,7 @@ class P2pTabScreen extends StatelessWidget {
     required this.destination,
     required this.onDestination,
     required this.garage,
+    this.onOpenTrades,
   });
 
   @override
@@ -63,26 +68,11 @@ class P2pTabScreen extends StatelessWidget {
             BullTopBar(title: l10n.p2pTabLabel),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: BullSpacing.md),
-              child: BullSegmented(
-                items: {
-                  l10n.p2pNavOffers,
-                  l10n.p2pNavCreate,
-                  l10n.p2pNavGarage,
-                },
-                initialValue: showsGarage
-                    ? l10n.p2pNavGarage
-                    : l10n.p2pNavOffers,
-                disabledItems: {
-                  l10n.p2pNavCreate,
-                  if (garage == null) l10n.p2pNavGarage,
-                },
-                onSelected: (item) {
-                  if (item == l10n.p2pNavOffers) {
-                    onDestination(P2pDestination.offers);
-                  } else if (item == l10n.p2pNavGarage) {
-                    onDestination(P2pDestination.garage);
-                  }
-                },
+              child: _Entries(
+                showsGarage: showsGarage,
+                hasGarage: garage != null,
+                onDestination: onDestination,
+                onOpenOrder: onOpenTrades,
               ),
             ),
             const Gap(BullSpacing.sm),
@@ -114,6 +104,55 @@ class P2pTabScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The entries at the top of the tab; « Order », which opens a page rather than showing a destination, puts the bar back on the destination shown once chosen.
+class _Entries extends StatefulWidget {
+  final bool showsGarage;
+  final bool hasGarage;
+  final ValueChanged<P2pDestination> onDestination;
+  final VoidCallback? onOpenOrder;
+
+  const _Entries({
+    required this.showsGarage,
+    required this.hasGarage,
+    required this.onDestination,
+    required this.onOpenOrder,
+  });
+
+  @override
+  State<_Entries> createState() => _EntriesState();
+}
+
+class _EntriesState extends State<_Entries> {
+  /// How many times « Order » was chosen, the key that puts the bar back on the destination shown.
+  int _orders = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final onOpenOrder = widget.onOpenOrder;
+    final middle = onOpenOrder == null ? l10n.p2pNavCreate : l10n.p2pNavOrder;
+    return BullSegmented(
+      key: ValueKey(_orders),
+      items: {l10n.p2pNavOffers, middle, l10n.p2pNavGarage},
+      initialValue: widget.showsGarage ? l10n.p2pNavGarage : l10n.p2pNavOffers,
+      disabledItems: {
+        if (onOpenOrder == null) l10n.p2pNavCreate,
+        if (!widget.hasGarage) l10n.p2pNavGarage,
+      },
+      onSelected: (item) {
+        if (item == l10n.p2pNavOffers) {
+          widget.onDestination(P2pDestination.offers);
+        } else if (item == l10n.p2pNavGarage) {
+          widget.onDestination(P2pDestination.garage);
+        } else if (onOpenOrder != null && item == l10n.p2pNavOrder) {
+          setState(() => _orders++);
+          onOpenOrder();
+        }
+      },
     );
   }
 }

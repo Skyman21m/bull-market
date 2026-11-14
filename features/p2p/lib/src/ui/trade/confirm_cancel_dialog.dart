@@ -1,0 +1,46 @@
+import 'package:bull_ui/bull_ui.dart';
+
+import '../../../generated/l10n/p2p_localizations.dart';
+import '../../domain/trade/trade_cancel.dart';
+import '../../domain/trade/trade_watch.dart';
+import '../../domain/trade_record.dart';
+import '../widgets/trade_dialog_body.dart';
+
+/// « Cancel the order? » once the taker bond is locked, at 6 and 7, where a cancel alone loses the bond (`TradeBox/Dialogs/ConfirmCancel.tsx`, commit ff1998c): « If the order is cancelled now you will lose your bond. », « Go back » / « Confirm Cancel ».
+///
+/// The only place of the app that builds a [BondLossAcknowledged], which `CancelTradeUsecase` needs to send such a cancel: on « Confirm Cancel » alone, for the trade [record] at the status [seen] this dialog was opened for; « Go back », a system back or a tap outside give `null`, and nothing is sent (`trade_screen_architecture_test.dart` pins that no other file names its constructor).
+class ConfirmCancelDialog extends StatelessWidget {
+  final TradeRecord record;
+  final TradeSeen seen;
+
+  const ConfirmCancelDialog({
+    super.key,
+    required this.record,
+    required this.seen,
+  });
+
+  /// The acknowledgement of the bond's loss, when the user pressed « Confirm Cancel » on the dialog opened for [record] at [seen].
+  static Future<BondLossAcknowledged?> show(
+    BuildContext context, {
+    required TradeRecord record,
+    required TradeSeen seen,
+  }) => BullDialog.show<BondLossAcknowledged>(
+    context: context,
+    builder: (_) => ConfirmCancelDialog(record: record, seen: seen),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    return TradeDialogBody(
+      title: l10n.p2pTradeCancelTitle,
+      text: l10n.p2pTradeCancelBondText,
+      backLabel: l10n.p2pCommonGoBack,
+      onBack: () => Navigator.of(context).pop(),
+      goLabel: l10n.p2pTradeConfirmCancel,
+      onGo: () => Navigator.of(
+        context,
+      ).pop(const BondLossAcknowledged.fromConfirmationDialog()),
+    );
+  }
+}

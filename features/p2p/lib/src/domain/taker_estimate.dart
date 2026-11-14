@@ -36,6 +36,20 @@ final class TakerEstimate {
     return TakerEstimate._(sats(order.amount.min), sats(order.amount.max));
   }
 
+  /// The sats « You will receive {{satoshis}} Sats (Approx) » shows under the amount field of a range order for [amount], an amount of the order's currency (bitcoin for an order in sats), or `null` when the order gives no sats at the current price.
+  ///
+  /// The official client's take button computes it apart from its order details (`components/OrderDetails/TakeButton.tsx:59-76`): the same rate, the taker fee as a positive fee (`computeSats`, `utils/computeSats.ts`: the sats times one less the fee), and no routing budget, since the order of a robot that is no participant says it is not a buyer (`is_buyer`, `api/views.py:312`).
+  static int? takeSats(
+    PublicOrder order,
+    double amount, {
+    required double takerFee,
+  }) {
+    final satoshisNow = order.satoshisNow?.value.toInt();
+    if (satoshisNow == null || satoshisNow <= 0) return null;
+    final rate = order.amount.max.value / (satoshisNow / 100000000);
+    return (amount / rate * 100000000 * (1 - takerFee)).round();
+  }
+
   /// Whether the order has a range, so the estimate too.
   bool get isRange => minSats != maxSats;
 

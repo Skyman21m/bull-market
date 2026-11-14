@@ -30,6 +30,7 @@ import 'domain/network_garage_key.dart';
 import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
 import 'domain/trade/bolt11.dart';
+import 'domain/trade_record.dart';
 import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
@@ -58,11 +59,14 @@ import 'domain/usecases/trade/take_order_usecase.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
+import 'presentation/active_trades_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
+import 'presentation/take_order_cubit.dart';
+import 'presentation/trade_cubit.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -296,6 +300,28 @@ final class P2pLocator {
     );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
+    );
+    // The screens of the trades (#88), their only callers: the take of an order of the book, one trade shown, and the list of the active trades of a network.
+    locator.registerFactoryParam<TakeOrderCubit, PublicOrder, RobosatsNetwork>(
+      (order, network) => TakeOrderCubit(
+        order,
+        network,
+        locator<TakeOrderUsecase>().execute,
+        locator<HasGarageKeyUsecase>().execute,
+      ),
+    );
+    locator.registerFactoryParam<TradeCubit, TradeRecord, void>(
+      (record, _) => TradeCubit(
+        record,
+        locator<WatchTradeUsecase>().execute,
+        locator<CancelTradeUsecase>().execute,
+      ),
+    );
+    locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(
+      (network, _) => ActiveTradesCubit(
+        network,
+        locator<ListActiveTradesUsecase>().execute,
+      ),
     );
   }
 

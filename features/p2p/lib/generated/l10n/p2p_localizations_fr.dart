@@ -1044,4 +1044,437 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pRobotHistoryConfirm => 'Je comprends';
+
+  @override
+  String p2pTakeAmountLabel(String currencyCode) {
+    return 'Montant $currencyCode';
+  }
+
+  @override
+  String get p2pTakeAmountHint =>
+      'Saisissez le montant de fiat à échanger contre des bitcoins';
+
+  @override
+  String get p2pTakeTooLow => 'Trop bas';
+
+  @override
+  String get p2pTakeTooHigh => 'Trop élevé';
+
+  @override
+  String p2pTakeYouWillReceive(String satoshis) {
+    return 'Vous recevrez $satoshis Sats (environ)';
+  }
+
+  @override
+  String get p2pTakeSpecifyAmountFirst =>
+      'Vous devez d\'abord spécifier un montant';
+
+  @override
+  String get p2pTakeSellingLater =>
+      'La vente arrive dans une prochaine version.';
+
+  @override
+  String get p2pStoreKeyTitle => 'Conservez votre clé de garage';
+
+  @override
+  String get p2pStoreKeyText =>
+      'Votre clé de garage donne accès à tous vos comptes de robot. Conservez-la en lieu sûr. Vous pouvez simplement la copier dans une autre application.';
+
+  @override
+  String get p2pCommonGoBack => 'Retour';
+
+  @override
+  String get p2pCommonDone => 'Fait';
+
+  @override
+  String p2pTakeCoordinatorUnreadable(String coordinator) {
+    return 'Impossible de joindre $coordinator. L’ordre n’a pas été pris.';
+  }
+
+  @override
+  String get p2pOrderNotAvailable => 'Cet ordre n\'est pas disponible';
+
+  @override
+  String get p2pTakeOrderChanged =>
+      'Cet ordre a changé depuis son affichage. Il n’a pas été pris : rouvrez-le depuis le carnet.';
+
+  @override
+  String get p2pTakeAmountOutOfRange =>
+      'Le montant indiqué est en dehors de la plage fixée par le créateur';
+
+  @override
+  String p2pTakeFeeTooHigh(String coordinator) {
+    return '$coordinator demande des frais de preneur supérieurs à 1 %. L’ordre n’a pas été pris.';
+  }
+
+  @override
+  String get p2pTakeTermsUnusable =>
+      'Les conditions de cet ordre n’ont pas pu être vérifiées. Il n’a pas été pris.';
+
+  @override
+  String p2pTakeNotTakenAfter(String reason) {
+    return '$reason L’ordre n’a pas été pris.';
+  }
+
+  @override
+  String get p2pTakeNotRecorded =>
+      'Bull Market n’a pas pu écrire ses enregistrements sur cet appareil. L’ordre n’a pas été pris.';
+
+  @override
+  String get p2pTakeKeyNotForTrades =>
+      'Les robots d’une clé de garage collée ne peuvent pas prendre d’ordre ici. Générez une nouvelle clé de garage dans le Garage.';
+
+  @override
+  String p2pTakeRobotNotNew(String coordinator) {
+    return 'Le robot choisi pour cet ordre existait déjà chez $coordinator. L’ordre n’a pas été pris : réessayez.';
+  }
+
+  @override
+  String get p2pTakeNotMade => 'L’ordre n’a pas été pris.';
+
+  @override
+  String get p2pTakeAlreadyMaker =>
+      'Vous êtes déjà le créateur d’un ordre actif';
+
+  @override
+  String get p2pTakeAlreadyTaker =>
+      'Vous êtes déjà le preneur d’un ordre actif';
+
+  @override
+  String get p2pTakeAlreadyTaking =>
+      'Vous êtes déjà en train de prendre un ordre actif';
+
+  @override
+  String get p2pTakePaymentPending =>
+      'Vous attendez encore un paiement d’un ordre récent';
+
+  @override
+  String p2pTakePenalty(String seconds) {
+    return 'Vous devez attendre $seconds secondes pour prendre un ordre';
+  }
+
+  @override
+  String get p2pTakeWaitPenalty =>
+      'Attendez jusqu\'à ce que vous puissiez prendre un ordre';
+
+  @override
+  String get p2pTradeTabContract => 'Contrat';
+
+  @override
+  String p2pTradeStep(String step, String steps) {
+    return '($step/$steps)';
+  }
+
+  @override
+  String p2pTradeTitleLockBond(String amountSats) {
+    return 'Bloquez $amountSats sats pour PRENDRE l’ordre';
+  }
+
+  @override
+  String get p2pTradeYouAreBuying => 'Vous ACHETEZ des BTC';
+
+  @override
+  String get p2pTradeCompatibleWallets => 'Voir Portefeuilles compatibles';
+
+  @override
+  String get p2pTradeCopyToClipboard => 'Copier dans le presse-papiers';
+
+  @override
+  String get p2pTradeHoldInvoiceBond =>
+      'Ceci est une facture en attente, elle sera gelée dans votre portefeuille. Elle ne sera débitée que si vous annulez ou perdez un litige.';
+
+  @override
+  String get p2pTradeInvoiceQr => 'QR code de la facture de caution';
+
+  @override
+  String get p2pTradeInvoiceExpires => 'Expire';
+
+  @override
+  String get p2pTradeInvoiceNetwork => 'Réseau';
+
+  @override
+  String get p2pTradeInvoiceDescription => 'Description';
+
+  @override
+  String get p2pTradeNetworkMainnet => 'Bitcoin';
+
+  @override
+  String get p2pTradeNetworkTestnet => 'Bitcoin testnet';
+
+  @override
+  String get p2pTradePayOtherWallet => 'Payer avec un autre portefeuille';
+
+  @override
+  String get p2pTradeShowAnyway => 'Afficher quand même';
+
+  @override
+  String get p2pTradeBondLocked => 'Votre caution de preneur est bloquée';
+
+  @override
+  String get p2pTradeBondUnlocked => 'Votre caution de preneur est débloquée';
+
+  @override
+  String get p2pTradeBondSettled => 'Votre caution de preneur est débitée';
+
+  @override
+  String get p2pTradeTitlePayout => 'Indiquez où recevoir les sats';
+
+  @override
+  String p2pTradePayoutPrompt(String amountFiat, String currencyCode) {
+    return 'Avant de vous laisser envoyer $amountFiat $currencyCode, nous voulons nous assurer que vous êtes en mesure de recevoir les BTC.';
+  }
+
+  @override
+  String get p2pTradePayoutLater =>
+      'L’envoi de vos informations de paiement arrive dans une prochaine version de Bull Market.';
+
+  @override
+  String get p2pTradeTitleInfoGood => 'Vos informations sont correctes !';
+
+  @override
+  String get p2pTradeEscrowWait =>
+      'Nous attendons que le vendeur verrouille le montant de la transaction.';
+
+  @override
+  String get p2pTradeEscrowWaitHangOn =>
+      'Patientez un instant. Si le vendeur ne dépose pas, vous récupérerez automatiquement votre caution. De plus, vous recevrez une compensation (consultez les récompenses dans votre profil).';
+
+  @override
+  String get p2pTradeExpiredNotTaken => 'Expiré sans avoir été pris';
+
+  @override
+  String get p2pTradeExpiredMakerBond => 'Caution du créateur non bloquée';
+
+  @override
+  String get p2pTradeExpiredEscrow => 'Dépôt de garantie non bloqué';
+
+  @override
+  String get p2pTradeExpiredInvoice => 'Facture non soumise';
+
+  @override
+  String get p2pTradeExpiredNeither =>
+      'Ni dépôt de garantie bloqué ni facture soumise';
+
+  @override
+  String get p2pOrderCancelled => 'Cet ordre a été annulé';
+
+  @override
+  String get p2pTradeTitleChat => 'Discutez avec le vendeur';
+
+  @override
+  String get p2pTradeTitleDispute => 'Un litige a été ouvert';
+
+  @override
+  String get p2pTradeTitleStatementReceived =>
+      'Nous avons reçu votre déclaration';
+
+  @override
+  String get p2pTradeTitleSendingSats => 'Tentative de paiement Lightning';
+
+  @override
+  String get p2pTradeTitleFinished => 'Échange terminé !';
+
+  @override
+  String get p2pTradeTitleRoutingFailed => 'Échec du routage Lightning';
+
+  @override
+  String get p2pTradeTitleStatements => 'Nous avons les déclarations';
+
+  @override
+  String get p2pTradeTitleDisputeWon => 'Vous avez gagné le litige';
+
+  @override
+  String get p2pTradeTitleDisputeLost => 'Vous avez perdu le litige';
+
+  @override
+  String get p2pTradeTitleUnknown => 'Statut d’ordre inconnu';
+
+  @override
+  String get p2pTradeStepLater =>
+      'Bull Market ne peut pas encore afficher cette étape.';
+
+  @override
+  String get p2pTradeCopyUrl => 'Copier l\'URL';
+
+  @override
+  String get p2pTradeCopyOrderUrl => 'Copier l\'URL de l\'ordre';
+
+  @override
+  String get p2pTradeCancelOrder => 'Annuler l\'ordre';
+
+  @override
+  String get p2pTradeCancelUnilateral =>
+      'Annulation unilatérale (caution en jeu !)';
+
+  @override
+  String get p2pTradeCancelTitle => 'Annuler l\'ordre?';
+
+  @override
+  String get p2pTradeCancelPreTakeText =>
+      'Si l’ordre est annulé maintenant alors que vous avez déjà essayé de payer la facture, vous pourriez perdre votre caution.';
+
+  @override
+  String get p2pTradeCancelBack => 'Retour';
+
+  @override
+  String get p2pTradeConfirmCancellation => 'Confirmer l\'annulation';
+
+  @override
+  String get p2pTradeCancelBondText =>
+      'Si l\'ordre est annulé maintenant, vous perdrez votre caution';
+
+  @override
+  String get p2pTradeConfirmCancel => 'Confirmer l\'annulation';
+
+  @override
+  String get p2pTradeCancelMovedOn =>
+      'L’ordre a avancé avant l’annulation : rien n’a été annulé.';
+
+  @override
+  String p2pTradeCancelNotDoneAfter(String reason) {
+    return '$reason Rien n’a été annulé.';
+  }
+
+  @override
+  String get p2pTradeCancelUnknown =>
+      'Bull Market ne sait pas encore si l’annulation a abouti. Il continue de vérifier.';
+
+  @override
+  String get p2pTradeCancelNeedsRead =>
+      'Attendez que l’ordre soit relu avant d’annuler.';
+
+  @override
+  String get p2pTradeCancelOnlyTogether =>
+      'Seule une annulation collaborative est possible maintenant ; elle arrive dans une prochaine version.';
+
+  @override
+  String get p2pTradeCancelNotPossible =>
+      'Vous ne pouvez pas annuler cet ordre';
+
+  @override
+  String p2pTradeTakePending(String coordinator) {
+    return 'Bull Market ne sait pas encore si la prise de l’ordre a abouti. Il continue de vérifier auprès de $coordinator.';
+  }
+
+  @override
+  String p2pTradeTakeNeverSent(String coordinator) {
+    return 'Cette prise d’ordre n’a jamais été envoyée à $coordinator.';
+  }
+
+  @override
+  String p2pTradeReadsFailing(String coordinator, String time) {
+    return 'Impossible de joindre $coordinator. Ce qui est affiché a été lu à $time.';
+  }
+
+  @override
+  String get p2pTradeRecordProblem =>
+      'Bull Market n’a pas pu écrire les enregistrements de cet échange sur cet appareil.';
+
+  @override
+  String p2pTradeClosedProblem(String coordinator) {
+    return 'Cet échange a été clôturé sur cet appareil, mais $coordinator indique que ce robot en est le preneur.';
+  }
+
+  @override
+  String get p2pTradeUnrestorable =>
+      'Bull Market ne peut pas lire les enregistrements de cet échange. Rien n’est envoyé.';
+
+  @override
+  String p2pTradeCoordinatorGone(String coordinator) {
+    return '$coordinator ne figure plus dans la liste des coordinateurs. Rien n’est envoyé.';
+  }
+
+  @override
+  String get p2pTradeUnavailable =>
+      'Bull Market ne peut pas ouvrir cet échange pour l’instant. Rien n’est envoyé.';
+
+  @override
+  String get p2pTradeKeyMissing =>
+      'La clé de garage de cet échange n’est pas sur cet appareil. Rien n’est envoyé.';
+
+  @override
+  String p2pTradeWarnRole(String coordinator) {
+    return '$coordinator attribue à ce robot un autre rôle que celui qu’il a pris. Ne payez rien.';
+  }
+
+  @override
+  String p2pTradeWarnOrder(String coordinator) {
+    return '$coordinator a répondu à propos d’un autre ordre. Ne payez rien.';
+  }
+
+  @override
+  String get p2pTradeWarnTerms =>
+      'Les conditions de l’ordre ne sont pas celles de l’ordre pris.';
+
+  @override
+  String get p2pTradeWarnUnexpected =>
+      'Changement inattendu du côté du coordinateur.';
+
+  @override
+  String p2pTradeWarnRegressed(String coordinator) {
+    return '$coordinator a envoyé un statut qui ne suit pas cet échange. Il a été ignoré.';
+  }
+
+  @override
+  String p2pTradeWarnInconsistent(String coordinator) {
+    return '$coordinator s’est contredit plus tôt dans cet échange.';
+  }
+
+  @override
+  String get p2pTradeWarnHistoryUnknown =>
+      'Cet échange a été retrouvé sans son historique : ses factures ne peuvent pas être comparées aux premières.';
+
+  @override
+  String get p2pTradeWarnBond =>
+      'La caution demandée n’est pas celle de l’ordre pris.';
+
+  @override
+  String get p2pTradeWarnPrice =>
+      'Le montant de l’échange ne correspond pas au prix de l’ordre.';
+
+  @override
+  String p2pTradeWarnAmounts(String coordinator) {
+    return 'Les montants donnés par $coordinator ne concordent pas.';
+  }
+
+  @override
+  String p2pTradeWarnDeadline(String coordinator) {
+    return '$coordinator a avancé l’échéance.';
+  }
+
+  @override
+  String p2pTradeWarnUnreadable(String coordinator) {
+    return 'La facture envoyée par $coordinator est illisible. Elle n’est pas affichée.';
+  }
+
+  @override
+  String p2pTradeWarnWrongNetwork(String coordinator) {
+    return 'La facture envoyée par $coordinator est pour un autre réseau. Elle n’est pas affichée.';
+  }
+
+  @override
+  String get p2pTradeWarnInvoiceAmount =>
+      'Le montant de la facture n’est pas celui que demande l’ordre.';
+
+  @override
+  String get p2pTradeWarnExpired => 'Cette facture a expiré.';
+
+  @override
+  String get p2pTradeWarnExpiringSoon =>
+      'Cette facture expire dans moins d’une minute.';
+
+  @override
+  String p2pTradeWarnHashChanged(String coordinator) {
+    return '$coordinator a envoyé une nouvelle facture pour la même étape. Ne la payez pas.';
+  }
+
+  @override
+  String p2pTradeWarnPayee(String coordinator) {
+    return 'Cette facture ne vient pas du nœud Lightning connu de $coordinator. Ne la payez pas.';
+  }
+
+  @override
+  String p2pActiveOrder(String orderId) {
+    return 'Ordre actif #$orderId';
+  }
 }
