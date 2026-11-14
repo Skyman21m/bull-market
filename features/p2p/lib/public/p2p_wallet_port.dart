@@ -6,9 +6,9 @@ import '../src/domain/checked_bolt11_invoice.dart';
 /// What the wallet of the app lends the P2P feature so that a bond or an escrow can be paid from its Instant Payments wallet without leaving the trade screen (#100, design note § 2.1 and § 3.9).
 ///
 /// The shell implements it in `lib/features/p2p_wallet` and passes it to `P2pFeature.setup` in the foreground composition only; the feature works without it.
-/// This contract moves no money: it reads the balance and asks the swap service for a quote. Paying (`pay`, `watch`, `find`) is added by a later pull request, reviewed as money code.
+/// It reads the balance, asks the swap service for a quote, and pays: [payInvoice] moves money and triggers a signature, and is reviewed as money code (and key material). [watchPayment] and [findPayment] only read what the wallet recorded.
 /// Only the trade use cases (`lib/src/domain/usecases/trade/`) may reach it: `wallet_port_architecture_test.dart`.
-/// Its types carry no wallet type and no text: a refusal is a type, with at most a number.
+/// Its types carry no wallet type and no text: a refusal is a type, with at most a number; a payment is an opaque handle.
 abstract interface class P2pWalletPort {
   /// What the Instant Payments wallet on [network] can spend now: at once, then again each time the app finishes a sync of that wallet.
   ///
@@ -25,6 +25,227 @@ abstract interface class P2pWalletPort {
   Future<Result<P2pWalletQuote, P2pWalletRefusal>> quote(
     CheckedBolt11Invoice invoice,
   );
+
+  /// Pays [invoice] from the Instant Payments wallet within [accepted], the quote the user confirmed, and returns once the funding transaction is broadcast; or a refusal.
+  ///
+  /// [accepted] must be a quote this wallet gave for this very invoice (same string, amount, network and payment hash), not used before and not older than the wallet allows: a quote is consumed by the first call that presents it, whatever its outcome, so that each payment follows one confirmation (#88). The invoice given is the one the latest status offered (`walletPaymentFor`); its [CheckedBolt11Invoice.payableUntil] is the one taken.
+  /// Nothing is paid twice: an invoice of which the wallet holds any payment, in any state (a refunded one included), is refused with [P2pWalletAlreadyPaid]; two calls at once run one after the other.
+  /// What it sends the swap service, through the wallet's own client over clearnet: the invoice itself (its payee, amount, payment hash, description and expiry), an address of the Instant Payments wallet as the refund destination, the networks and the payin the user accepted; then the funding transaction reaches the Liquid network through the wallet's Electrum servers. #109 tracks the privacy of these calls.
+  /// Every refusal but one means nothing left the wallet ([P2pWalletRefusal.fundsMayHaveMoved] is false); [P2pWalletBroadcastUnknown] means the broadcast was tried and its outcome is unknown: its payment is then followed with [watchPayment] and found again with [findPayment].
+  /// It never resumes or retries a payment left halfway by an earlier run: such a payment is reported by [findPayment] and [watchPayment] as it stands.
+  Future<Result<P2pWalletPayment, P2pWalletRefusal>> payInvoice(
+    CheckedBolt11Invoice invoice, {
+    required P2pWalletQuote accepted,
+  });
+
+  /// The progress of [payment], at once and then each time the wallet records a change (its own watcher asks the swap service while the app is open); it starts nothing and asks the service nothing.
+  ///
+  /// A refusal ends the stream: [P2pWalletUnavailable] when the payment's record cannot be read or is not this payment.
+  Stream<Result<P2pWalletPaymentProgress, P2pWalletRefusal>> watchPayment(
+    P2pWalletPayment payment,
+  );
+
+  /// The payment of [paymentHash] that this wallet started, in any state (a terminal one included), with its progress; `null` when it started none, so that a restart never pays an invoice twice.
+  ///
+  /// It reads the wallet's records only. When several were started for one hash, which [payInvoice] prevents, the latest is given.
+  Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
+    String paymentHash,
+  );
+}
+
+/// A payment the wallet started: the swap's local id in the wallet's records and the invoice's payment hash. No key, address or transaction id.
+///
+/// Opaque to the feature, which keeps it (or finds it again by its hash) to follow the payment. Its [toString] names neither field.
+final class P2pWalletPayment {
+  /// The wallet's local id of the swap that pays the invoice.
+  final String id;
+
+  /// The payment hash of the invoice it pays.
+  final String paymentHash;
+
+  const P2pWalletPayment({required this.id, required this.paymentHash});
+
+  @override
+  bool operator ==(Object other) =>
+      other is P2pWalletPayment &&
+      other.id == id &&
+      other.paymentHash == paymentHash;
+
+  @override
+  int get hashCode => Object.hash(id, paymentHash);
+
+  @override
+  String toString() => 'P2pWalletPayment';
+}
+
+/// A payment [findPayment] found, with its progress when it was read.
+final class P2pWalletPaymentFound {
+  final P2pWalletPayment payment;
+  final P2pWalletPaymentProgress progress;
+
+  const P2pWalletPaymentFound({required this.payment, required this.progress});
+
+  @override
+  String toString() => 'P2pWalletPaymentFound($progress)';
+}
+
+/// What the wallet knows of the funds of a payment that ended without paying: whether the funding transaction left the wallet.
+enum P2pWalletFunds {
+  /// Nothing was signed for it: nothing left the wallet.
+  notSent,
+
+  /// A funding transaction was signed and saved, but no broadcast was recorded: it may have left the wallet.
+  maybeSent,
+
+  /// The funding transaction was broadcast: the funds left the wallet, and only the swap service can return them.
+  sent,
+}
+
+/// Where a payment stands, as the wallet records it: what a user can be told, without any text of the swap service.
+///
+/// [fundsMayHaveLeft] says whether the funding transaction may have left the wallet.
+sealed class P2pWalletPaymentProgress {
+  const P2pWalletPaymentProgress();
+
+  /// Whether the funds may have left the wallet at this point.
+  bool get fundsMayHaveLeft;
+
+  /// Whether the payment can still change: false once paid, refunded, expired or failed, but a refund still due.
+  bool get isFinal;
+
+  @override
+  String toString() => runtimeType.toString();
+}
+
+/// The swap is being created or prepared: nothing has left the wallet.
+final class P2pWalletPaymentPreparing extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentPreparing();
+
+  @override
+  bool get fundsMayHaveLeft => false;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The funding transaction is signed and saved, but was not sent: nothing has left the wallet. After a restart, the payment was interrupted before its broadcast, and nothing finishes it.
+final class P2pWalletPaymentSigned extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentSigned();
+
+  @override
+  bool get fundsMayHaveLeft => false;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The funding transaction was being broadcast and the outcome is unknown: the funds may have left the wallet. The wallet's watcher settles it when the swap service sees the funding (or not).
+final class P2pWalletPaymentBroadcastUnknown extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentBroadcastUnknown();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The funding transaction was broadcast: the funds left the wallet for the swap service, which has not yet reported receiving them.
+final class P2pWalletPaymentSent extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentSent();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The swap service received the funds and is paying the invoice: a hold invoice stays pending as long as the coordinator holds it, and the funds stay with the service meanwhile.
+final class P2pWalletPaymentPending extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentPending();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The swap service holds the payment for a manual review; the funds are with it.
+final class P2pWalletPaymentUnderReview extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentUnderReview();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The invoice was paid and settled: for a bond, the coordinator kept it; for an escrow, the trade ended normally.
+final class P2pWalletPaymentPaid extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentPaid();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => true;
+}
+
+/// The invoice was not paid after the funds reached the swap service (the payee cancelled a hold invoice, or the service failed): the service is to refund the wallet's refund address.
+final class P2pWalletPaymentRefundPending extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentRefundPending();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => false;
+}
+
+/// The swap service refunded the funds, less its fees, to the wallet's refund address.
+final class P2pWalletPaymentRefunded extends P2pWalletPaymentProgress {
+  const P2pWalletPaymentRefunded();
+
+  @override
+  bool get fundsMayHaveLeft => true;
+
+  @override
+  bool get isFinal => true;
+}
+
+/// The swap expired before it was paid; [funds] says whether its funding left the wallet (then only the swap service can return it).
+final class P2pWalletPaymentExpired extends P2pWalletPaymentProgress {
+  final P2pWalletFunds funds;
+
+  const P2pWalletPaymentExpired(this.funds);
+
+  @override
+  bool get fundsMayHaveLeft => funds != P2pWalletFunds.notSent;
+
+  @override
+  bool get isFinal => true;
+
+  @override
+  String toString() => 'P2pWalletPaymentExpired(${funds.name})';
+}
+
+/// The swap failed with no broadcast recorded; [funds] says whether a funding transaction was signed and may have left the wallet. A failure after a recorded broadcast is [P2pWalletPaymentRefundPending].
+final class P2pWalletPaymentFailed extends P2pWalletPaymentProgress {
+  final P2pWalletFunds funds;
+
+  const P2pWalletPaymentFailed(this.funds);
+
+  @override
+  bool get fundsMayHaveLeft => funds != P2pWalletFunds.notSent;
+
+  @override
+  bool get isFinal => true;
+
+  @override
+  String toString() => 'P2pWalletPaymentFailed(${funds.name})';
 }
 
 /// The swap service's quote for paying [invoice] from the Instant Payments wallet, with the wallet's estimate of its network fee.
@@ -82,8 +303,13 @@ final class P2pWalletQuote {
 }
 
 /// Why the wallet cannot quote or pay an invoice, or read its balance: a type, never a text of the service or of an exception (design note § 3.10).
+///
+/// Every refusal means that nothing left the wallet, but [P2pWalletBroadcastUnknown]: [fundsMayHaveMoved] tells them apart without reading any text.
 sealed class P2pWalletRefusal extends Failure {
   const P2pWalletRefusal();
+
+  /// Whether the funds may have left the wallet: only when a broadcast was tried and its outcome is unknown.
+  bool get fundsMayHaveMoved => false;
 }
 
 /// The invoice's amount is under the swap service's minimum, which it gives most of the time ([minimum], as the service states it, when it is a plausible amount of bitcoin).
@@ -165,4 +391,34 @@ final class P2pWalletServiceBusy extends P2pWalletRefusal {
 /// The swap service refused, or answered what the wallet cannot use (a quote that does not match the invoice included).
 final class P2pWalletServiceRefused extends P2pWalletRefusal {
   const P2pWalletServiceRefused();
+}
+
+/// The invoice, or the coordinator's step, stops being payable too soon for this wallet to pay it in time through its swap service.
+final class P2pWalletInvoiceExpiresTooSoon extends P2pWalletRefusal {
+  const P2pWalletInvoiceExpiresTooSoon();
+}
+
+/// The quote presented cannot be paid: it was not given by this wallet, it was used already, it is too old, or it is for another invoice. A new quote and a new confirmation are needed.
+final class P2pWalletQuoteStale extends P2pWalletRefusal {
+  const P2pWalletQuoteStale();
+}
+
+/// The swap service asked a payin above the one the user accepted, or the funding transaction's network fee came out above the one quoted: nothing was sent, and the swap order is left to expire at the service.
+final class P2pWalletQuoteChanged extends P2pWalletRefusal {
+  const P2pWalletQuoteChanged();
+}
+
+/// The wallet already holds a payment of this invoice, in whatever state (a refunded or failed one included): it never pays an invoice twice. [P2pWalletPort.findPayment] gives it.
+final class P2pWalletAlreadyPaid extends P2pWalletRefusal {
+  const P2pWalletAlreadyPaid();
+}
+
+/// The funding transaction was being broadcast when something failed: it may have left the wallet. [payment] is followed with [P2pWalletPort.watchPayment]; nothing tries the broadcast again.
+final class P2pWalletBroadcastUnknown extends P2pWalletRefusal {
+  final P2pWalletPayment payment;
+
+  const P2pWalletBroadcastUnknown(this.payment);
+
+  @override
+  bool get fundsMayHaveMoved => true;
 }

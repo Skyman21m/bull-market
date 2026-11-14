@@ -18,12 +18,16 @@ void main() {
     String bolt11, {
     int amount = 600,
     RobosatsNetwork network = RobosatsNetwork.mainnet,
+    String paymentHash = testPaymentHash,
+    DateTime? payableUntil,
     DateTime? now,
   }) => checkedBolt11InvoiceForTesting(
     bolt11: bolt11,
     amount: Sats.fromInt(amount),
     network: network,
+    paymentHash: paymentHash,
     expiresAt: expiry,
+    payableUntil: payableUntil,
     now: now ?? before,
   );
 
@@ -35,15 +39,68 @@ void main() {
   }
 
   group('a checked invoice', () {
-    test('takes the string, amount, network and expiry it was given', () {
-      final value = invoiceOf(
-        fake('lntb6u1'),
-        network: RobosatsNetwork.testnet,
+    test(
+      'takes the string, amount, network, payment hash, expiry and deadline it was given',
+      () {
+        final until = expiry.subtract(const Duration(seconds: 30));
+        final value = invoiceOf(
+          fake('lntb6u1'),
+          network: RobosatsNetwork.testnet,
+          paymentHash: 'cd' * 32,
+          payableUntil: until,
+        );
+        expect(value?.bolt11, fake('lntb6u1'));
+        expect(value?.amount, Sats.fromInt(600));
+        expect(value?.network, RobosatsNetwork.testnet);
+        expect(value?.paymentHash, 'cd' * 32);
+        expect(value?.expiresAt, expiry);
+        expect(value?.payableUntil, until);
+        // Without a deadline of its own, the helper takes the expiry.
+        expect(invoiceOf(fake('lnbc6u1'))?.payableUntil, expiry);
+      },
+    );
+
+    test('has a payment hash of 64 lowercase hexadecimal characters', () {
+      expect(invoiceOf(fake('lnbc6u1'), paymentHash: '0' * 64), isNotNull);
+      expect(invoiceOf(fake('lnbc6u1'), paymentHash: 'f' * 64), isNotNull);
+      for (final hash in [
+        '',
+        '0' * 63,
+        '0' * 65,
+        'A' * 64,
+        'g' * 64,
+        '${'0' * 63} ',
+        ' ${'0' * 63}',
+      ]) {
+        expect(
+          invoiceOf(fake('lnbc6u1'), paymentHash: hash),
+          isNull,
+          reason: hash,
+        );
+      }
+    });
+
+    test('is payable until a deadline no later than its expiry', () {
+      expect(invoiceOf(fake('lnbc6u1'), payableUntil: expiry), isNotNull);
+      expect(
+        invoiceOf(
+          fake('lnbc6u1'),
+          payableUntil: expiry.add(const Duration(milliseconds: 1)),
+        ),
+        isNull,
       );
-      expect(value?.bolt11, fake('lntb6u1'));
-      expect(value?.amount, Sats.fromInt(600));
-      expect(value?.network, RobosatsNetwork.testnet);
-      expect(value?.expiresAt, expiry);
+      final until = before.add(const Duration(minutes: 1));
+      final value = invoiceOf(fake('lnbc6u1'), payableUntil: until);
+      expect(
+        value?.isExpiredAt(until.subtract(const Duration(milliseconds: 1))),
+        isFalse,
+      );
+      expect(value?.isExpiredAt(until), isTrue);
+      // Built at its deadline or after, it is refused.
+      expect(
+        invoiceOf(fake('lnbc6u1'), payableUntil: until, now: until),
+        isNull,
+      );
     });
 
     test('is bounded to 2,000 characters', () {
@@ -93,7 +150,8 @@ void main() {
       for (final (prefix, network, accepted) in [
         ('lnbc6u1', RobosatsNetwork.mainnet, true),
         ('lntb6u1', RobosatsNetwork.testnet, true),
-        ('lntbs6u1', RobosatsNetwork.testnet, true),
+        // Signet is another network than testnet (#113).
+        ('lntbs6u1', RobosatsNetwork.testnet, false),
         ('lntb6u1', RobosatsNetwork.mainnet, false),
         ('lntbs6u1', RobosatsNetwork.mainnet, false),
         ('lnbc6u1', RobosatsNetwork.testnet, false),
@@ -157,6 +215,31 @@ void main() {
       // The reviewer's probe P1: a string of 1,000,000 sats, or of 2,100,000 BTC, given as 400 sats.
       expect(invoiceOf(fake('lnbc10m1'), amount: 400), isNull);
       expect(invoiceOf(fake('lnbc21000001'), amount: 400), isNull);
+    });
+
+    test('asks for at most 21 million bitcoin, as the payout check (#113)', () {
+      final most = CheckedBolt11Invoice.maxSats;
+      expect(most, BigInt.from(2100000000000000));
+      CheckedBolt11Invoice? of(String prefix, BigInt sats) =>
+          checkedBolt11InvoiceForTesting(
+            bolt11: fake(prefix),
+            amount: Sats(sats),
+            network: RobosatsNetwork.mainnet,
+            expiresAt: expiry,
+            now: before,
+          );
+      expect(of('lnbc210000001', most), isNotNull);
+      expect(of('lnbc21000000000m1', most), isNotNull);
+      expect(of('lnbc210000011', most + BigInt.from(100000000)), isNull);
+      expect(
+        of('lnbc21000000001m1', most + BigInt.from(100000)),
+        isNull,
+      );
+      // The value of #113's report: 60,708,632 BTC.
+      expect(
+        of('lnbc607086321', BigInt.from(6070863200000000)),
+        isNull,
+      );
     });
 
     test('refuses an amount below a satoshi, with a leading zero, or zero', () {
@@ -242,12 +325,26 @@ void main() {
       expect(one.isExpiredAt(expiry.add(const Duration(seconds: 1))), isTrue);
     });
 
-    test('equals another of the same string, amount, network and expiry', () {
-      expect(invoice(), invoice());
-      expect(invoice().hashCode, invoice().hashCode);
-      expect(invoice(), isNot(invoice(amount: 601)));
-      expect(invoiceOf(fake('lnbc6000n1', 41)), isNot(invoice()));
-    });
+    test(
+      'equals another of the same string, amount, network, hash, expiry and deadline',
+      () {
+        expect(invoice(), invoice());
+        expect(invoice().hashCode, invoice().hashCode);
+        expect(invoice(), isNot(invoice(amount: 601)));
+        expect(invoiceOf(fake('lnbc6000n1', 41)), isNot(invoice()));
+        final otherHash = invoiceOf(fake('lnbc6000n1'), paymentHash: 'cd' * 32);
+        expect(otherHash, isNot(invoice()));
+        final earlier = invoiceOf(
+          fake('lnbc6000n1'),
+          payableUntil: expiry.subtract(const Duration(seconds: 1)),
+        );
+        expect(earlier, isNot(invoice()));
+        // The same invoice read again with another deadline is the same invoice, for a payment.
+        expect(earlier?.isSameInvoiceAs(invoice()), isTrue);
+        expect(otherHash?.isSameInvoiceAs(invoice()), isFalse);
+        expect(invoice(amount: 601).isSameInvoiceAs(invoice()), isFalse);
+      },
+    );
 
     test('prints nothing of itself', () {
       expect('${invoice()}', 'CheckedBolt11Invoice');
@@ -333,10 +430,23 @@ void main() {
       const P2pWalletServiceUnreachable(),
       const P2pWalletServiceBusy(retryAfter: Duration(seconds: 30)),
       const P2pWalletServiceRefused(),
+      const P2pWalletInvoiceExpiresTooSoon(),
+      const P2pWalletQuoteStale(),
+      const P2pWalletQuoteChanged(),
+      const P2pWalletAlreadyPaid(),
+      const P2pWalletBroadcastUnknown(
+        P2pWalletPayment(id: 'local-1', paymentHash: testPaymentHash),
+      ),
     ];
     for (final refusal in refusals) {
       expect('$refusal', '${refusal.runtimeType}');
       expect(refusal.logMessage, isNull);
+      // Only an unknown broadcast may have moved funds.
+      expect(
+        refusal.fundsMayHaveMoved,
+        refusal is P2pWalletBroadcastUnknown,
+        reason: '$refusal',
+      );
     }
     // Every variant is listed: a new one fails to compile here until it is.
     String name(P2pWalletRefusal refusal) => switch (refusal) {
@@ -353,8 +463,69 @@ void main() {
       P2pWalletServiceUnreachable() => 'unreachable',
       P2pWalletServiceBusy() => 'busy',
       P2pWalletServiceRefused() => 'refused',
+      P2pWalletInvoiceExpiresTooSoon() => 'too soon',
+      P2pWalletQuoteStale() => 'stale',
+      P2pWalletQuoteChanged() => 'changed',
+      P2pWalletAlreadyPaid() => 'already paid',
+      P2pWalletBroadcastUnknown() => 'broadcast unknown',
     };
-    expect(refusals.map(name).toSet(), hasLength(13));
+    expect(refusals.map(name).toSet(), hasLength(18));
+  });
+
+  test('a payment and its progress print no id, hash or text', () {
+    const payment = P2pWalletPayment(id: 'local-1', paymentHash: testPaymentHash);
+    expect('$payment', 'P2pWalletPayment');
+    expect(
+      payment,
+      const P2pWalletPayment(id: 'local-1', paymentHash: testPaymentHash),
+    );
+    expect(
+      payment,
+      isNot(const P2pWalletPayment(id: 'local-2', paymentHash: testPaymentHash)),
+    );
+    final progress = <P2pWalletPaymentProgress, (bool, bool)>{
+      const P2pWalletPaymentPreparing(): (false, false),
+      const P2pWalletPaymentSigned(): (false, false),
+      const P2pWalletPaymentBroadcastUnknown(): (true, false),
+      const P2pWalletPaymentSent(): (true, false),
+      const P2pWalletPaymentPending(): (true, false),
+      const P2pWalletPaymentUnderReview(): (true, false),
+      const P2pWalletPaymentPaid(): (true, true),
+      const P2pWalletPaymentRefundPending(): (true, false),
+      const P2pWalletPaymentRefunded(): (true, true),
+      const P2pWalletPaymentExpired(P2pWalletFunds.notSent): (false, true),
+      const P2pWalletPaymentExpired(P2pWalletFunds.maybeSent): (true, true),
+      const P2pWalletPaymentExpired(P2pWalletFunds.sent): (true, true),
+      const P2pWalletPaymentFailed(P2pWalletFunds.notSent): (false, true),
+      const P2pWalletPaymentFailed(P2pWalletFunds.maybeSent): (true, true),
+      const P2pWalletPaymentFailed(P2pWalletFunds.sent): (true, true),
+    };
+    for (final MapEntry(key: value, value: (mayHaveLeft, isFinal))
+        in progress.entries) {
+      expect(value.fundsMayHaveLeft, mayHaveLeft, reason: '$value');
+      expect(value.isFinal, isFinal, reason: '$value');
+      expect('$value', startsWith('${value.runtimeType}'));
+      expect('$value', isNot(contains('local')));
+    }
+    expect(
+      '${const P2pWalletPaymentFound(payment: payment, progress: P2pWalletPaymentSent())}',
+      'P2pWalletPaymentFound(P2pWalletPaymentSent)',
+    );
+    // Every variant is listed: a new one fails to compile here until it is.
+    String name(P2pWalletPaymentProgress value) => switch (value) {
+      P2pWalletPaymentPreparing() => 'preparing',
+      P2pWalletPaymentSigned() => 'signed',
+      P2pWalletPaymentBroadcastUnknown() => 'broadcast unknown',
+      P2pWalletPaymentSent() => 'sent',
+      P2pWalletPaymentPending() => 'pending',
+      P2pWalletPaymentUnderReview() => 'under review',
+      P2pWalletPaymentPaid() => 'paid',
+      P2pWalletPaymentRefundPending() => 'refund pending',
+      P2pWalletPaymentRefunded() => 'refunded',
+      P2pWalletPaymentExpired() => 'expired',
+      P2pWalletPaymentFailed() => 'failed',
+    };
+    expect(progress.keys.map(name).toSet(), hasLength(11));
   });
 
   group('setup', () {
@@ -486,6 +657,85 @@ void main() {
         expect(() => port.quote(invoice()), throwsStateError);
       },
     );
+
+    test('answers the payments it was given, and records them', () async {
+      final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+      final quote = P2pWalletQuote(
+        invoice: invoice(),
+        payin: Sats.fromInt(603),
+        networkFee: Sats.fromInt(26),
+        balance: Sats.fromInt(1000),
+        quotedAt: expiry,
+      );
+      const payment = P2pWalletPayment(
+        id: 'local-1',
+        paymentHash: testPaymentHash,
+      );
+      port
+        ..scriptPayment(const Err(P2pWalletAlreadyPaid()))
+        ..scriptPayment(const Ok(payment));
+      expect(
+        await port.payInvoice(invoice(), accepted: quote),
+        isA<Err<P2pWalletPayment, P2pWalletRefusal>>(),
+      );
+      expect(
+        await port.payInvoice(invoice(), accepted: quote),
+        isA<Ok<P2pWalletPayment, P2pWalletRefusal>>(),
+      );
+      expect(port.paid, hasLength(2));
+      expect(port.paid.first.$2, same(quote));
+      expect(
+        () => port.payInvoice(invoice(), accepted: quote),
+        throwsStateError,
+      );
+    });
+
+    test('gives a payment\'s progress, then each change, until a refusal', () async {
+      final port = FakeP2pWalletPort(Ok(Sats.fromInt(1000)));
+      const payment = P2pWalletPayment(
+        id: 'local-1',
+        paymentHash: testPaymentHash,
+      );
+      port.setProgress(payment, const Ok(P2pWalletPaymentSent()));
+      final seen = <Result<P2pWalletPaymentProgress, P2pWalletRefusal>>[];
+      final done = Completer<void>();
+      port.watchPayment(payment).listen(seen.add, onDone: done.complete);
+      await pumpEventQueue();
+      port
+        ..setProgress(payment, const Ok(P2pWalletPaymentPending()))
+        ..setProgress(
+          const P2pWalletPayment(id: 'other', paymentHash: testPaymentHash),
+          const Ok(P2pWalletPaymentPaid()),
+        )
+        ..setProgress(payment, const Err(P2pWalletUnavailable()));
+      await done.future;
+      expect(seen, hasLength(3));
+      expect(seen.last, isA<Err<P2pWalletPaymentProgress, P2pWalletRefusal>>());
+      port.setFound(
+        testPaymentHash,
+        const P2pWalletPaymentFound(
+          payment: payment,
+          progress: P2pWalletPaymentRefunded(),
+        ),
+      );
+      expect(
+        await port.findPayment(testPaymentHash),
+        isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+          (ok) => ok.value?.payment,
+          'payment',
+          payment,
+        ),
+      );
+      expect(
+        await port.findPayment('cd' * 32),
+        isA<Ok<P2pWalletPaymentFound?, P2pWalletRefusal>>().having(
+          (ok) => ok.value,
+          'value',
+          isNull,
+        ),
+      );
+      expect(port.found, [testPaymentHash, 'cd' * 32]);
+    });
   });
 }
 

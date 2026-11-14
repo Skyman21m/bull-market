@@ -138,29 +138,40 @@ bool hasP2pDatabaseForTesting(GetIt locator) =>
 bool hasWalletPortForTesting(GetIt locator) =>
     locator.isRegistered<P2pWalletPort>();
 
-/// A [CheckedBolt11Invoice] as the feature's BOLT11 check would build it from what it decoded at [now] (the device's clock by default), or `null` where the value refuses it: for the tests of the wallet's port, which take no invoice but this type.
+/// A [CheckedBolt11Invoice] as `walletPaymentFor` would build it from what the trade's checks decoded at [now] (the device's clock by default), or `null` where the value refuses it: for the tests of the wallet's port, which take no invoice but this type.
 ///
+/// [paymentHash] is [testPaymentHash] unless given, and [payableUntil] is [expiresAt] unless given.
 /// Tests give obviously fake strings, never a real invoice.
 @visibleForTesting
 CheckedBolt11Invoice? checkedBolt11InvoiceForTesting({
   required String bolt11,
   required Sats amount,
   required RobosatsNetwork network,
+  String paymentHash = testPaymentHash,
   required DateTime expiresAt,
+  DateTime? payableUntil,
   DateTime? now,
 }) => CheckedBolt11Invoice.of(
   bolt11: bolt11,
   amount: amount,
   network: network,
+  paymentHash: paymentHash,
   expiresAt: expiresAt,
+  payableUntil: payableUntil ?? expiresAt,
   now: now ?? DateTime.now(),
 );
+
+/// An obviously fake payment hash, for the tests' invoices: 64 lowercase hexadecimal characters.
+@visibleForTesting
+const testPaymentHash =
+    'ab00000000000000000000000000000000000000000000000000000000000000';
 
 /// A wallet's port whose answers the test writes: no wallet, no swap service, no money.
 ///
 /// The balance of each network is the one given to the constructor, or the last given to [setBalance], at each subscription, then each value given to [setBalance]; a refusal given there ends the subscriptions open, as the port's does.
-/// Each [quote] takes the next answer of [scriptQuote], in order, and fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
-/// It records what it was asked: [balanceRequests] and [quoted].
+/// Each [quote] takes the next answer of [scriptQuote], in order, and each [payInvoice] the next of [scriptPayment]; either fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
+/// [watchPayment] gives the last progress given to [setProgress] for that payment, then each new one; a refusal ends the stream. [findPayment] answers what [setFound] gave for the hash, `null` otherwise.
+/// It records what it was asked: [balanceRequests], [quoted], [paid] and [found].
 @visibleForTesting
 final class FakeP2pWalletPort implements P2pWalletPort {
   Result<Sats, P2pWalletRefusal> _balance;
@@ -174,6 +185,21 @@ final class FakeP2pWalletPort implements P2pWalletPort {
 
   /// The invoices quoted, in order.
   final List<CheckedBolt11Invoice> quoted = [];
+
+  final _payments = <Result<P2pWalletPayment, P2pWalletRefusal>>[];
+  final _progress =
+      <P2pWalletPayment, Result<P2pWalletPaymentProgress, P2pWalletRefusal>>{};
+  final _progressChanges =
+      StreamController<
+        (P2pWalletPayment, Result<P2pWalletPaymentProgress, P2pWalletRefusal>)
+      >.broadcast(sync: true);
+  final _found = <String, P2pWalletPaymentFound>{};
+
+  /// The payments asked for, in order: the invoice and the quote accepted.
+  final List<(CheckedBolt11Invoice, P2pWalletQuote)> paid = [];
+
+  /// The payment hashes looked for, in order.
+  final List<String> found = [];
 
   /// A port whose balance is [_balance] until [setBalance] changes it.
   FakeP2pWalletPort(this._balance);
@@ -190,6 +216,23 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   /// Adds the answer of a coming [quote].
   void scriptQuote(Result<P2pWalletQuote, P2pWalletRefusal> answer) =>
       _quotes.add(answer);
+
+  /// Adds the answer of a coming [payInvoice].
+  void scriptPayment(Result<P2pWalletPayment, P2pWalletRefusal> answer) =>
+      _payments.add(answer);
+
+  /// Sets where [payment] stands and gives it to every [watchPayment] of it open.
+  void setProgress(
+    P2pWalletPayment payment,
+    Result<P2pWalletPaymentProgress, P2pWalletRefusal> progress,
+  ) {
+    _progress[payment] = progress;
+    _progressChanges.add((payment, progress));
+  }
+
+  /// Sets what [findPayment] answers for [paymentHash].
+  void setFound(String paymentHash, P2pWalletPaymentFound payment) =>
+      _found[paymentHash] = payment;
 
   @override
   Stream<Result<Sats, P2pWalletRefusal>> instantBalance(
@@ -223,6 +266,53 @@ final class FakeP2pWalletPort implements P2pWalletPort {
     quoted.add(invoice);
     if (_quotes.isEmpty) throw StateError('No quote scripted');
     return _quotes.removeAt(0);
+  }
+
+  @override
+  Future<Result<P2pWalletPayment, P2pWalletRefusal>> payInvoice(
+    CheckedBolt11Invoice invoice, {
+    required P2pWalletQuote accepted,
+  }) async {
+    paid.add((invoice, accepted));
+    if (_payments.isEmpty) throw StateError('No payment scripted');
+    return _payments.removeAt(0);
+  }
+
+  @override
+  Stream<Result<P2pWalletPaymentProgress, P2pWalletRefusal>> watchPayment(
+    P2pWalletPayment payment,
+  ) {
+    StreamSubscription<Object?>? changes;
+    late final StreamController<
+      Result<P2pWalletPaymentProgress, P2pWalletRefusal>
+    >
+    controller;
+    void give(Result<P2pWalletPaymentProgress, P2pWalletRefusal> progress) {
+      controller.add(progress);
+      if (progress is Err<P2pWalletPaymentProgress, P2pWalletRefusal>) {
+        changes?.cancel();
+        controller.close();
+      }
+    }
+
+    controller = StreamController(
+      onListen: () {
+        changes = _progressChanges.stream
+            .where((change) => change.$1 == payment)
+            .listen((change) => give(change.$2));
+        if (_progress[payment] case final progress?) give(progress);
+      },
+      onCancel: () => changes?.cancel(),
+    );
+    return controller.stream;
+  }
+
+  @override
+  Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
+    String paymentHash,
+  ) async {
+    found.add(paymentHash);
+    return Ok(_found[paymentHash]);
   }
 }
 
