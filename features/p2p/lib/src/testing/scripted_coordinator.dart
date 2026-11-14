@@ -80,6 +80,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   double swapFeeRate = 0.75;
   double suggestedMiningFeeRate = 3.5;
 
+  /// A coordinator that sends its swap rates with `swap_allowed` false, which the reference never does (it sends them only with a swap offered, `api/logics.py:724-728`).
+  bool swapRatesWithoutSwap = false;
+
   /// The coordinator's economy estimate, which an address's mining fee rate must reach (`get_minning_fee("minimum")`, at least 2: `api/logics.py:780-793`).
   double minimumMiningFeeRate = 2;
 
@@ -764,11 +767,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         data
           ..['invoice_amount'] = payout
           ..['swap_allowed'] = swapAllowed;
-        if (swapAllowed) {
+        if (swapAllowed || swapRatesWithoutSwap) {
           data
             ..['suggested_mining_fee_rate'] = suggestedMiningFeeRate
             ..['swap_fee_rate'] = swapFeeRate;
-        } else {
+        }
+        if (!swapAllowed) {
           data['swap_failure_reason'] =
               'On-the-fly submarine swaps are disabled';
         }
