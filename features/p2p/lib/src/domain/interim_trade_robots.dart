@@ -85,11 +85,13 @@ final class InterimTradeRobots implements TradeRobots {
   }
 
   @override
-  Future<Result<NetworkRobot, P2pFailure>> robotOfTrade(
-    TradeRecord record,
-  ) async {
+  Future<Result<NetworkRobot, P2pFailure>> robotOfTrade(TradeRecord record) =>
+      robotOfSlot(record.robot);
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> robotOfSlot(RobotSlot slot) async {
     final NetworkGarageKey key;
-    switch (await _keys.read(record.network)) {
+    switch (await _keys.read(slot.network)) {
       case Ok(:final value):
         key = value;
       case Err(failure: GarageKeyMissingFailure()):
@@ -97,9 +99,9 @@ final class InterimTradeRobots implements TradeRobots {
       case Err(:final failure):
         return Err(failure);
     }
-    // The index of the record, as the key gives it back: the same key (its fingerprint), network and index, or this is not the key of the trade.
-    return switch (key.firstUsableRobot(record.robot.accountIndex)) {
-      Ok(:final value) when value.slot == record.robot => Ok(value),
+    // The index of the slot, as the key gives it back: the same key (its fingerprint), network and index, or this is not the key of the robot.
+    return switch (key.firstUsableRobot(slot.accountIndex)) {
+      Ok(:final value) when value.slot == slot => Ok(value),
       _ => const Err(TradeKeyMissingFailure()),
     };
   }

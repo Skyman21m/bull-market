@@ -95,6 +95,18 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The payment hash of the last invoice recorded as the payout (`order.payout`).
   String? _payoutHash;
 
+  /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
+  String? description;
+
+  /// What the coordinator also says, or says otherwise, to a robot that reads the public order without taking part in it: a coordinator that answers a robot otherwise than the book (#119).
+  final Map<String, Object?> robotView = {};
+
+  /// What the coordinator also says, or says otherwise, of the order in its book (#119).
+  final Map<String, Object?> bookView = {};
+
+  /// The sats of an order priced in sats, as the official client makes one: `is_explicit`, these `satoshis`, and a `premium` that the order's own answer gives as `null` (`frontend/src/models/Order.model.ts:206`, `OrderView.get` serialising the stored field), where the book gives the premium the coordinator computes at the price now (`api/views.py:809-812`) and a non-participant's read gives it as `premium_now` (`api/views.py:289`); its sats now are these sats whatever the price (`Logics.satoshis_now`, `api/logics.py:262-275`).
+  int? explicitSatoshis;
+
   final Map<RobotSessionKey, Map<String, Object?>> _robotFields = {};
   final List<int> _takeRefusals = [];
   final Map<RobotSessionKey, DateTime> _penalties = {};
@@ -602,14 +614,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// The sats of [amount] at the price now: those of the largest amount, in proportion for a range.
   int _satsOf(double amount) =>
-      range ? (satoshisNow * amount / 200).truncate() : satoshisNow;
+      range ? (_satsNow * amount / 200).truncate() : _satsNow;
 
   Bolt11TestInvoice _bondInvoice([int? sats]) {
     final invoice = Bolt11TestInvoice(
       network: network == RobosatsNetwork.mainnet
           ? Bolt11Network.mainnet
           : Bolt11Network.testnet,
-      sats: sats ?? satoshisNow * bondPercent ~/ 100,
+      sats: sats ?? _satsNow * bondPercent ~/ 100,
       seed: _invoiceSeed++,
       createdAt: clock().toUtc(),
       expiry: const Duration(seconds: 200),
@@ -620,7 +632,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     return invoice;
   }
 
-  int get _last => _lastSatoshis ?? satoshisNow;
+  int get _last => _lastSatoshis ?? _satsNow;
+
+  /// The sats of the order's largest amount now: its own for an order priced in sats.
+  int get _satsNow => explicitSatoshis ?? satoshisNow;
 
   int get _fee => (_last * takerFee).round();
 
@@ -661,18 +676,19 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     'min_amount': range ? '50.00000000' : null,
     'max_amount': range ? '200.00000000' : null,
     'payment_method': 'Revolut Instant SEPA',
-    'is_explicit': false,
+    'is_explicit': explicitSatoshis != null,
     'premium': '2.00',
-    'satoshis': null,
+    'satoshis': explicitSatoshis,
     'maker': 7,
     'escrow_duration': escrowSeconds,
     'bond_size': '3.00',
     'latitude': null,
     'longitude': null,
     'maker_hash_id': _maker.hex,
-    'satoshis_now': satoshisNow,
+    'satoshis_now': _satsNow,
     'price': 93545.0,
     'maker_status': 'Active',
+    ...bookView,
   };
 
   /// The order as `OrderView.get` describes it to [robot] at the shown [status] (`api/views.py:226-528`), with the JSON types the reference writes.
@@ -707,9 +723,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       'min_amount': range ? '50.00000000' : null,
       'max_amount': range ? '200.00000000' : null,
       'payment_method': 'Revolut Instant SEPA',
-      'is_explicit': false,
-      'premium': '2.00',
-      'satoshis': null,
+      'is_explicit': explicitSatoshis != null,
+      'premium': explicitSatoshis != null ? null : '2.00',
+      'satoshis': explicitSatoshis,
       'maker': 7,
       'taker': taken ? 8 : null,
       'escrow_duration': escrowSeconds,
@@ -726,14 +742,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           .clamp(0, 1 << 31),
       'maker_nick': _maker.nickname,
       'maker_hash_id': _maker.hex,
-      'description': null,
+      'description': description,
       'maker_status': 'Active',
     };
     if (!participant) {
       data
         ..['price_now'] = 93545.0
         ..['premium_now'] = 2.0
-        ..['satoshis_now'] = satoshisNow;
+        ..['satoshis_now'] = _satsNow
+        ..addAll(robotView);
       return data;
     }
     final payout = _last - _fee;

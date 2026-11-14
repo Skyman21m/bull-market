@@ -51,7 +51,7 @@ final class TradeTerms {
   /// Whether the order has a range, so that [amount] was chosen at the take.
   final bool isRange;
 
-  /// The premium of the order: the maker's, or for an order priced in sats the one the coordinator computed for the book.
+  /// The premium of the order: the maker's, or for an order priced in sats the one the coordinator computed at the price now (the book's `premium`, a robot's `premium_now`).
   final Premium premium;
 
   /// The sats the maker fixed, for an order priced in sats: then the trade is these sats whatever the price (`Logics.satoshis_now`, `api/logics.py:262-275`).
@@ -110,12 +110,13 @@ final class TradeTerms {
   /// The terms of taking [order], read just before the take by the robot that takes it, which is not one of its participants yet (`GET /api/order/` of a public order, `api/views.py:287-299`).
   ///
   /// Refused as [take] refuses, and with [TradeTermsUnusable] for a read that is not of a public order this robot does not take part in.
+  /// The premium of an order priced in sats is the one the coordinator computes at the price now, `premium_now` (`Logics.price_and_premium_now`, `api/views.py:289`), the very one the book gives as its `premium` (`api/views.py:809-812`): the order's own `premium` is `null` when the official client made it (`frontend/src/models/Order.model.ts:206`), and the state machine never checks the premium of such an order (`TradeStatus`).
   static Result<TradeTerms, TradeTermsRefusal> takeRead(
     CoordinatorOrder order, {
     FiatAmount? rangeAmount,
     required double takerFee,
   }) {
-    final premium = order.premium;
+    final premium = order.isExplicit ? order.premiumNow : order.premium;
     if (order.status != CoordinatorOrderStatus.public ||
         order.isParticipant ||
         premium == null) {
