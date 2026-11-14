@@ -2750,7 +2750,7 @@ abstract class P2pLocalizations {
   /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: after 30 s of « Sending the payment… », as the take says it still waits; the screen cannot tell which of the two steps is waiting.
   ///
   /// In en, this message translates to:
-  /// **'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a minute.'**
+  /// **'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a few minutes.'**
   String get p2pPayStillSending;
 
   /// The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: a payment that expired or failed after its funding was broadcast.

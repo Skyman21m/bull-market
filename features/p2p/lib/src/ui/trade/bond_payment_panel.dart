@@ -91,27 +91,30 @@ class BondPaymentPanel extends StatefulWidget {
   };
 
   /// Where the payment of the bond stands, for « Cancel »: being sent, or sent (its funds may have left the wallet).
-  static WalletBondState bondOf(BuildContext context) =>
-      switch (context.watch<BondPaymentCubit>().state.step) {
-        BondPaySending() => const WalletBondState(sending: true, sent: false),
-        BondPayFollowing(:final progress) ||
-        BondPayPaidElsewhere(:final progress) when _onItsWay(progress) =>
-          const WalletBondState(sending: false, sent: true),
-        BondPayUnreadable(paymentMayExist: true) => const WalletBondState(
-          sending: false,
-          sent: true,
-        ),
-        _ => WalletBondState.none,
-      };
+  static WalletBondState bondOf(BuildContext context) => switch (context
+      .watch<BondPaymentCubit>()
+      .state
+      .step) {
+    BondPaySending() => const WalletBondState(sending: true, sent: false),
+    BondPayFollowing(:final progress) || BondPayPaidElsewhere(:final progress)
+        when _onItsWay(progress) =>
+      const WalletBondState(sending: false, sent: true),
+    BondPayUnreadable(paymentMayExist: true) => const WalletBondState(
+      sending: false,
+      sent: true,
+    ),
+    _ => WalletBondState.none,
+  };
 
   /// A payment on its way to the coordinator: sent, held, or not yet known; not refunded, being refunded, or settled.
-  static bool _onItsWay(P2pWalletPaymentProgress progress) => switch (progress) {
-    P2pWalletPaymentSent() ||
-    P2pWalletPaymentPending() ||
-    P2pWalletPaymentBroadcastUnknown() ||
-    P2pWalletPaymentUnderReview() => true,
-    _ => false,
-  };
+  static bool _onItsWay(P2pWalletPaymentProgress progress) =>
+      switch (progress) {
+        P2pWalletPaymentSent() ||
+        P2pWalletPaymentPending() ||
+        P2pWalletPaymentBroadcastUnknown() ||
+        P2pWalletPaymentUnderReview() => true,
+        _ => false,
+      };
 
   @override
   State<BondPaymentPanel> createState() => _BondPaymentPanelState();

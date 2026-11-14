@@ -52,15 +52,15 @@ Future<(BondPaymentCubit, Payments)> _show(
   addTearDown(tester.view.reset);
   final watch = StreamController<TradeWatchState>.broadcast();
   addTearDown(watch.close);
-  final trade = TradeCubit(_record, (
-    record, {
-    signals = const Stream.empty(),
-    onScreen = true,
-  }) {
-    // The signals are listened to, as the watch does, so that the cubit's close completes.
-    signals.listen((_) {});
-    return watch.stream;
-  }, (record, seen, {bondLoss}) => cancel ?? (throw StateError('no cancel')))..start();
+  final trade = TradeCubit(
+    _record,
+    (record, {signals = const Stream.empty(), onScreen = true}) {
+      // The signals are listened to, as the watch does, so that the cubit's close completes.
+      signals.listen((_) {});
+      return watch.stream;
+    },
+    (record, seen, {bondLoss}) => cancel ?? (throw StateError('no cancel')),
+  )..start();
   addTearDown(trade.close);
   final reads = FakeTransport();
   final page = TradeOrderPageCubit(
@@ -400,8 +400,11 @@ void main() {
     (tester) async {
       final answer = Completer<Result<CancelOutcome, CancelRefusal>>();
       await _show(tester, state: 'bond', cancel: answer.future);
-      final trade = tester.element(find.byType(BondPaymentPanel)).read<TradeCubit>();
+      final trade = tester
+          .element(find.byType(BondPaymentPanel))
+          .read<TradeCubit>();
       unawaited(trade.cancel(_bondSeen()));
+      await tester.pump();
       await tester.pump();
       final pay = find.widgetWithText(TradeButton, 'Pay with this wallet');
       expect(tester.widget<TradeButton>(pay).onPressed, isNull);

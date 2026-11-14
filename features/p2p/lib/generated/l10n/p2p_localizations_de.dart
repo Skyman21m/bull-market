@@ -1638,7 +1638,7 @@ class P2pLocalizationsDe extends P2pLocalizations {
 
   @override
   String get p2pPayStillSending =>
-      'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a minute.';
+      'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a few minutes.';
 
   @override
   String get p2pPayAskSupportSent =>

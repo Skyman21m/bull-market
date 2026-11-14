@@ -1664,7 +1664,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayStillSending =>
-      'Envoi toujours en cours : l’ordre est relu par Tor, puis le service d’échange crée le paiement. Cela peut prendre une minute.';
+      'Envoi toujours en cours : l’ordre est relu par Tor, puis le service d’échange crée le paiement. Cela peut prendre quelques minutes.';
 
   @override
   String get p2pPayAskSupportSent =>

@@ -474,37 +474,40 @@ void main() {
     },
   );
 
-  test('a refusal carrying a payment whose follow finds nothing: « cannot tell », a payment may exist', () async {
-    final payments = Payments();
-    final cubit = payments.cubit()..start();
-    payments.follows.single.add(const BondPaymentNone());
-    await settle();
-    final asking = cubit.ask(seen);
-    payments.quotes.single.complete(Ok(walletQuote()));
-    await asking;
-    final paying = cubit.confirm();
-    payments.pays.single.complete(
-      Err(
-        BondPayWalletRefused(
-          P2pWalletBroadcastUnknown(
-            P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash),
+  test(
+    'a refusal carrying a payment whose follow finds nothing: « cannot tell », a payment may exist',
+    () async {
+      final payments = Payments();
+      final cubit = payments.cubit()..start();
+      payments.follows.single.add(const BondPaymentNone());
+      await settle();
+      final asking = cubit.ask(seen);
+      payments.quotes.single.complete(Ok(walletQuote()));
+      await asking;
+      final paying = cubit.confirm();
+      payments.pays.single.complete(
+        Err(
+          BondPayWalletRefused(
+            P2pWalletBroadcastUnknown(
+              P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash),
+            ),
           ),
         ),
-      ),
-    );
-    await paying;
-    payments.follows.last.add(const BondPaymentNone());
-    await settle();
-    expect(
-      cubit.state.step,
-      isA<BondPayUnreadable>().having(
-        (u) => u.paymentMayExist,
-        'paymentMayExist',
-        isTrue,
-      ),
-    );
-    await cubit.close();
-  });
+      );
+      await paying;
+      payments.follows.last.add(const BondPaymentNone());
+      await settle();
+      expect(
+        cubit.state.step,
+        isA<BondPayUnreadable>().having(
+          (u) => u.paymentMayExist,
+          'paymentMayExist',
+          isTrue,
+        ),
+      );
+      await cubit.close();
+    },
+  );
 
   test('closed while a payment runs: nothing emitted after', () async {
     final payments = Payments();

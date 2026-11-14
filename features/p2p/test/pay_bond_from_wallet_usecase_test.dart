@@ -556,20 +556,25 @@ void main() {
     );
   });
 
-  test('a payment refused leaves no payment running: a screen opened again offers to pay', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    setup.fake.scriptPayment(const Err(P2pWalletServiceUnreachable()));
-    final paying = setup.payBond.payBond(setup.record, accepted: quote);
-    expect(setup.payBond.bondPaymentRunning(setup.record), isNotNull);
-    await paying;
-    expect(setup.payBond.bondPaymentRunning(setup.record), isNull);
-  });
+  test(
+    'a payment refused leaves no payment running: a screen opened again offers to pay',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      setup.fake.scriptPayment(const Err(P2pWalletServiceUnreachable()));
+      final paying = setup.payBond.payBond(setup.record, accepted: quote);
+      expect(setup.payBond.bondPaymentRunning(setup.record), isNotNull);
+      await paying;
+      expect(setup.payBond.bondPaymentRunning(setup.record), isNull);
+    },
+  );
 
   test('the ceiling of the bond is what walletPaymentFor is asked with', () {
     // A guard against a later change: the payment is offered within the take's terms, never a figure of the coordinator.
     expect(
-      File('lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart').readAsStringSync(),
+      File(
+        'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
+      ).readAsStringSync(),
       contains('accepted: terms.bondCeiling,'),
     );
   });
