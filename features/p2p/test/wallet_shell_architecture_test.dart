@@ -646,8 +646,6 @@ const _shellVocabulary = {
   'total',
   'watch',
   // Of Dart's own, for the payment.
-  'any',
-  'compareTo',
   'complete',
   'Completer',
   'difference',
@@ -661,9 +659,7 @@ const _shellVocabulary = {
   'Map',
   'Set',
   'zero',
-  'sort',
   'then',
-  'toList',
   'toLowerCase',
   // Members: the feature's own (`read`, `watchSyncs`, `estimateNetworkFee`, `quote`, `refusalFor`…), the readers' `execute`, the locator's registrations, and those of Dart's numbers, collections, streams and dates.
   '_instant',
