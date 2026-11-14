@@ -26,11 +26,18 @@ import 'support/trade_screens.dart';
 /// The maker's description of the tests.
 const _description = 'Revolut only, no notes in the transfer.';
 
-/// The order as the robot reads it: with the description, with none, and with fresh figures (a price of 95,000 EUR, 105,263 sats).
+/// The longest description the package lets through, 240 code points, of long words that cannot break between spaces.
+final _longDescription = List.filled(
+  6,
+  'Bankueberweisungsbestaetigungsreferenznummer',
+).join(' ').padRight(240, 'x').substring(0, 240);
+
+/// The order as the robot reads it: with the description, with none, with fresh figures (a price of 95,000 EUR, 105,263 sats), of a range order, and with the longest description.
 late PreparedTake _read;
 late PreparedTake _readWithout;
 late PreparedTake _readFresh;
 late PreparedTake _readRange;
+late PreparedTake _readLong;
 
 /// The take in two steps, played by the test.
 final class _Take {
@@ -151,8 +158,9 @@ Future<(List<TradeRecord>, TakeOrderCubit)> _show(
 }
 
 Finder get _takeButton => find.text('Take Order');
-Finder get _confirmButton => find.text('Confirm');
+Finder get _continueButton => find.text('Continue');
 Finder get _backButton => find.text('Go back');
+Finder get _readLine => find.text('Read by your robot at 08:00:30');
 
 /// The list of the order details, built lazily: what is below the screen is built once scrolled to.
 Finder get _details => find
@@ -168,17 +176,10 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
   await tester.pump();
 }
 
-Future<void> _press(WidgetTester tester) async {
-  await _reveal(tester, _takeButton);
-  await tester.tap(_takeButton);
-  await settle(tester);
-}
-
-/// « Take Order », then « Done » of « Store your garage key »: the take prepared.
-Future<void> _prepare(WidgetTester tester) async {
-  await _press(tester);
-  await tester.tap(find.text('Done'));
-  await settle(tester);
+/// Scrolls the order details up until [finder] is built and in view.
+Future<void> _revealAbove(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(finder, -150, scrollable: _details);
+  await tester.pump();
 }
 
 Future<void> _tap(WidgetTester tester, Finder button) async {
@@ -187,47 +188,96 @@ Future<void> _tap(WidgetTester tester, Finder button) async {
   await settle(tester);
 }
 
+/// « Take Order »: the take prepared, the robot reading the order.
+Future<void> _prepare(WidgetTester tester) => _tap(tester, _takeButton);
+
+/// « Continue », then « Done » of « Store your garage key »: the take sent.
+Future<void> _confirm(WidgetTester tester) async {
+  await _tap(tester, _continueButton);
+  expect(find.byType(StoreTokenDialog), findsOneWidget);
+  await tester.tap(find.text('Done'));
+  await settle(tester);
+}
+
+/// The style of the value of the row of [label].
+TextStyle? _valueStyleOf(WidgetTester tester, String label) {
+  final row = find.ancestor(
+    of: find.text(label),
+    matching: find.byType(OrderDetailRow),
+  );
+  final value = tester.widget<OrderDetailRow>(row).value;
+  return tester
+      .widget<Text>(find.descendant(of: row, matching: find.text(value)))
+      .style;
+}
+
 void main() {
   setUpAll(() async {
     _read = await preparedTake(description: _description);
     _readWithout = await preparedTake();
     _readFresh = await preparedTake(
-      description: _description,
+      description: 'Revolut only. Pay within 30 minutes.',
       changes: {'price_now': 95000.0, 'satoshis_now': 105263},
     );
     _readRange = await preparedTake(
       range: true,
       amount: TakeAmount.tryCreate(120.5),
+      changes: {'satoshis_now': 100000},
     );
+    _readLong = await preparedTake(description: _longDescription);
   });
 
   testWidgets(
-    'a fixed sell order: Store your garage key, « Done » prepares once, « Confirm » takes once',
+    'the reference\'s order: « Take Order » reads the order, « Continue » opens « Store your garage key », whose « Done » takes once',
     (tester) async {
       final take = _Take();
       final (taken, _) = await _show(tester, await _order(), take: take);
 
-      await _press(tester);
-      expect(find.byType(StoreTokenDialog), findsOneWidget);
-      expect(find.text('Store your garage key'), findsOneWidget);
-      await tester.tap(find.text('Go back'));
-      await settle(tester);
-      expect(take.amounts, isEmpty);
-
       await _prepare(tester);
+      // The order read at « Take Order », with no dialog first.
+      expect(find.byType(StoreTokenDialog), findsNothing);
       expect(take.amounts, [null]);
       expect(take.confirmed, isEmpty);
-      expect(taken, isEmpty);
       expect(_takeButton, findsNothing);
 
-      await _tap(tester, _confirmButton);
+      // « Go back » of the dialog abandons, as « Go back » of the order details does.
+      await _tap(tester, _continueButton);
+      expect(find.text('Store your garage key'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(StoreTokenDialog),
+          matching: _backButton,
+        ),
+      );
+      await settle(tester);
+      expect(take.abandoned, [_read]);
+      expect(take.confirmed, isEmpty);
+      await _reveal(tester, _takeButton);
+
+      await _prepare(tester);
+      await _confirm(tester);
       expect(take.confirmed, [_read]);
       expect(taken, [TradeScreenStatuses.record]);
     },
   );
 
+  testWidgets('a tap outside « Store your garage key » abandons too', (
+    tester,
+  ) async {
+    final take = _Take();
+    final (taken, _) = await _show(tester, await _order(), take: take);
+    await _prepare(tester);
+    await _tap(tester, _continueButton);
+    await tester.tapAt(const Offset(4, 4));
+    await settle(tester);
+    expect(find.byType(StoreTokenDialog), findsNothing);
+    expect(take.abandoned, [_read]);
+    expect(take.confirmed, isEmpty);
+    expect(taken, isEmpty);
+  });
+
   testWidgets(
-    'the order read: the maker\'s description in the order details, as plain text, then the read\'s figures, the bond and the time of the read',
+    'the order read: its description in the order details, as plain text, then the read\'s figures, the bond and the time of the read',
     (tester) async {
       await _show(
         tester,
@@ -235,23 +285,27 @@ void main() {
         take: _Take(prepared: [Ok(_readFresh)]),
       );
       // Before « Take Order », no robot read anything: no description, the book's price.
-      expect(find.text('Description'), findsNothing);
-      expect(find.text(_description), findsNothing);
+      expect(find.text('Order description'), findsNothing);
       expect(find.textContaining('95,000'), findsNothing);
 
       await _prepare(tester);
 
-      expect(find.text('Description'), findsOneWidget);
-      expect(find.text(_description), findsOneWidget);
+      expect(find.text('Order description'), findsOneWidget);
+      final words = find.text('Revolut only. Pay within 30 minutes.');
+      expect(words, findsOneWidget);
       // Shown as text that cannot be selected, copied or opened.
       expect(find.byType(SelectableText), findsNothing);
-      final words = tester.widget<Text>(find.text(_description));
-      expect(words.textSpan, isNull);
+      expect(tester.widget<Text>(words).textSpan, isNull);
       expect(find.textContaining('95,000'), findsOneWidget);
       // The bond at the robot's read: 3 % of its 105,263 sats, 3,157.89, and at most that and 2 % of it, plus one sat (the state machine's tolerance).
       expect(find.text('Taker bond'), findsOneWidget);
-      expect(find.text('3,158 Sats, at most 3,222'), findsOneWidget);
-      expect(find.text('Read at 08:00:30'), findsOneWidget);
+      expect(find.text('3,158 Sats, at most 3,222 Sats'), findsOneWidget);
+      // A row of its own, before « Expires in » and the time left.
+      expect(
+        tester.getTopLeft(find.text('Taker bond')).dy,
+        lessThan(tester.getTopLeft(find.text('Expires in')).dy),
+      );
+      expect(_readLine, findsOneWidget);
     },
   );
 
@@ -265,10 +319,10 @@ void main() {
     );
     await _prepare(tester);
     expect(find.byType(OrderDescriptionRow), findsNothing);
-    expect(find.text('Description'), findsNothing);
-    expect(find.text('Read at 08:00:30'), findsOneWidget);
-    await _reveal(tester, _confirmButton);
-    expect(_confirmButton, findsOneWidget);
+    expect(find.text('Order description'), findsNothing);
+    expect(_readLine, findsOneWidget);
+    await _reveal(tester, _continueButton);
+    expect(_continueButton, findsOneWidget);
   });
 
   testWidgets(
@@ -282,6 +336,20 @@ void main() {
       expect(find.text('Pay first to lnbc1x'), findsOneWidget);
     },
   );
+
+  testWidgets('the maker\'s activity is the read\'s once the order is read', (
+    tester,
+  ) async {
+    final read = await tester.runAsync(
+      () => preparedTake(changes: {'maker_status': 'Inactive'}),
+    );
+    await _show(tester, await _order(), take: _Take(prepared: [Ok(read!)]));
+    await _reveal(tester, find.textContaining('Order maker'));
+    expect(find.textContaining('Active'), findsOneWidget);
+    await _prepare(tester);
+    await _reveal(tester, find.textContaining('Order maker'));
+    expect(find.textContaining('Inactive'), findsOneWidget);
+  });
 
   testWidgets(
     '« Go back » abandons the preparation: nothing taken, « Take Order » again',
@@ -334,54 +402,117 @@ void main() {
   );
 
   testWidgets(
-    'the order changed at the confirmation: its new figures shown with « The order changed. », never confirmed by itself',
+    'the order changed at « Done »: « The order changed. » from the start of the new read, the read seen kept meanwhile, then the rows that changed marked; « Continue » and « Done » again',
     (tester) async {
-      final take = _Take(prepared: [Ok(_read), Ok(_readFresh)])
-        ..answer = () => const Err(TakeOrderChanged());
+      final take = _Take()..answer = () => const Err(TakeOrderChanged());
       final (taken, _) = await _show(tester, await _order(), take: take);
       await _prepare(tester);
-      expect(find.textContaining('95,000'), findsNothing);
+      final again = Completer<Result<PreparedTake, TakeRefusal>>();
+      take.preparing = again;
 
-      await _tap(tester, _confirmButton);
+      await _confirm(tester);
 
+      // Read again: said at once, the read seen kept, « Continue » running, no « Take Order ».
       expect(take.confirmed, [_read]);
       expect(take.amounts, hasLength(2));
-      // The order details are brought into view with the new figures.
-      expect(find.textContaining('95,000'), findsOneWidget);
       await _reveal(tester, find.text('The order changed.'));
       expect(find.text('The order changed.'), findsOneWidget);
+      expect(_takeButton, findsNothing);
+      expect(
+        tester
+            .widget<Semantics>(
+              find
+                  .ancestor(
+                    of: find.text('The order changed.'),
+                    matching: find.byWidgetPredicate(
+                      (w) =>
+                          w is Semantics && (w.properties.liveRegion ?? false),
+                    ),
+                  )
+                  .first,
+            )
+            .properties
+            .liveRegion,
+        isTrue,
+      );
+      await _revealAbove(tester, find.text(_description));
+      expect(find.text(_description), findsOneWidget);
+      expect(find.textContaining('95,000'), findsNothing);
+
+      take.preparing = null;
+      again.complete(Ok(_readFresh));
+      await settle(tester);
+
+      // The new read, the rows that changed marked as the reference marks the time left: price, sats and description.
+      expect(find.textContaining('95,000'), findsOneWidget);
+      final style = _valueStyleOf(tester, 'Price and Premium');
+      expect(style?.fontWeight, FontWeight.w700);
+      final amountStyle = _valueStyleOf(tester, 'Amount');
+      expect(amountStyle?.fontWeight, isNot(FontWeight.w700));
+      final words = tester.widget<Text>(
+        find.text('Revolut only. Pay within 30 minutes.'),
+      );
+      expect(words.style?.fontWeight, FontWeight.w700);
+      await _reveal(tester, find.text('The order changed.'));
       expect(taken, isEmpty);
-      expect(_confirmButton, findsOneWidget);
+
+      take.answer = null;
+      await _confirm(tester);
+      expect(take.confirmed, [_read, _readFresh]);
+      expect(taken, [TradeScreenStatuses.record]);
     },
   );
 
   testWidgets(
-    'the order gone at the confirmation: « This order is not available », nothing taken',
+    'the order gone at « Done »: « This order is not available », and « Take Order » stays disabled',
     (tester) async {
       final take = _Take()..answer = () => const Err(TakeOrderGone());
       final (taken, _) = await _show(tester, await _order(), take: take);
       await _prepare(tester);
-      await _tap(tester, _confirmButton);
+      await _confirm(tester);
       await _reveal(tester, find.text('This order is not available'));
       expect(find.text('This order is not available'), findsOneWidget);
       expect(taken, isEmpty);
       expect(find.text(_description), findsNothing);
+      await tester.tap(_takeButton, warnIfMissed: false);
+      await settle(tester);
+      expect(take.amounts, hasLength(1));
     },
   );
 
   testWidgets(
-    'the preparation gone at the confirmation: prepared again, waiting for the user',
+    'the preparation gone at « Done »: prepared again, waiting for « Continue »',
     (tester) async {
       final take = _Take(prepared: [Ok(_read), Ok(_readWithout)])
         ..answer = () => const Err(TakePreparationGone());
       final (taken, _) = await _show(tester, await _order(), take: take);
       await _prepare(tester);
-      await _tap(tester, _confirmButton);
+      await _confirm(tester);
       expect(take.amounts, hasLength(2));
-      await _reveal(tester, _confirmButton);
+      await _reveal(tester, _continueButton);
       expect(find.text('The order changed.'), findsNothing);
-      expect(_confirmButton, findsOneWidget);
+      expect(_continueButton, findsOneWidget);
       expect(taken, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'the take sent: the read stays shown and « Take Order » does not come back while the trade\'s screen opens',
+    (tester) async {
+      final take = _Take()
+        ..confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
+      final (taken, _) = await _show(tester, await _order(), take: take);
+      await _prepare(tester);
+      await _confirm(tester);
+      take.confirming?.complete(
+        Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)),
+      );
+      await settle(tester);
+      expect(taken, [TradeScreenStatuses.record]);
+      await _reveal(tester, _continueButton);
+      expect(_takeButton, findsNothing);
+      await _revealAbove(tester, find.text(_description));
+      expect(find.text(_description), findsOneWidget);
     },
   );
 
@@ -418,7 +549,7 @@ void main() {
       final take = _Take();
       await _show(tester, await _order(), take: take, keys: const Ok(false));
 
-      await _press(tester);
+      await _prepare(tester);
       expect(find.byType(NoRobotDialog), findsOneWidget);
       expect(find.byType(StoreTokenDialog), findsNothing);
       expect(take.amounts, isEmpty);
@@ -429,13 +560,13 @@ void main() {
     'without robots in the feature: « You do not have a Garage Key »',
     (tester) async {
       await _show(tester, await _order(), canTake: false);
-      await _press(tester);
+      await _prepare(tester);
       expect(find.byType(NoRobotDialog), findsOneWidget);
     },
   );
 
   testWidgets(
-    'while the order is read, « Take Order » cannot be pressed again; while the take is confirmed, neither button',
+    'while the order is read, « Take Order » cannot be pressed again; while the take is sent, neither « Continue » nor « Go back »',
     (tester) async {
       final take = _Take()
         ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
@@ -445,18 +576,18 @@ void main() {
       expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
       await tester.tap(_takeButton, warnIfMissed: false);
       await settle(tester);
-      expect(find.byType(StoreTokenDialog), findsNothing);
       expect(take.amounts, hasLength(1));
 
       take.preparing?.complete(Ok(_read));
       take.preparing = null;
       await settle(tester);
       take.confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
-      await _tap(tester, _confirmButton);
-      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
-      await tester.tap(_confirmButton, warnIfMissed: false);
+      await _confirm(tester);
+      await _reveal(tester, _backButton);
+      await tester.tap(_continueButton, warnIfMissed: false);
       await tester.tap(_backButton, warnIfMissed: false);
       await settle(tester);
+      expect(find.byType(StoreTokenDialog), findsNothing);
       expect(take.confirmed, hasLength(1));
       expect(take.abandoned, isEmpty);
 
@@ -467,20 +598,34 @@ void main() {
     },
   );
 
+  testWidgets('a read that runs long says it still waits', (tester) async {
+    final take = _Take()
+      ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
+    await _show(tester, await _order(), take: take);
+    await _reveal(tester, _takeButton);
+    await tester.tap(_takeButton);
+    await tester.pump(const Duration(seconds: 31));
+    expect(
+      find.text('Still waiting for Temple of Sats. Tor can take a minute.'),
+      findsOneWidget,
+    );
+    take.preparing?.complete(Ok(_read));
+    await settle(tester);
+  });
+
   testWidgets(
     'the wait says the step that runs under the bar, and none that has not started',
     (tester) async {
       final take = _Take()
         ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
       await _show(tester, await _order(), take: take);
-      await _press(tester);
-      await tester.tap(find.text('Done'));
+      await _reveal(tester, _takeButton);
+      await tester.tap(_takeButton);
       await tester.pump();
       // Before any step starts: the bar only.
       expect(find.text('Checking the order with Temple of Sats'), findsNothing);
       expect(find.text('Building your robot!'), findsNothing);
-      expect(find.text('Your robot reads the order'), findsNothing);
-      await tester.runAsync(() async {});
+      expect(find.text('Your robot is reading the order'), findsNothing);
       take.preparing?.complete(Ok(_read));
       take.preparing = null;
       await settle(tester);
@@ -491,8 +636,8 @@ void main() {
         ..preparing = steps
         ..preparingSteps = [TakeStep.checkingOrder];
       await _tap(tester, _backButton);
-      await _press(tester);
-      await tester.tap(find.text('Done'));
+      await _reveal(tester, _takeButton);
+      await tester.tap(_takeButton);
       await tester.pump();
       await _reveal(
         tester,
@@ -503,7 +648,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Building your robot!'), findsNothing);
-      expect(find.text('Your robot reads the order'), findsNothing);
+      expect(find.text('Your robot is reading the order'), findsNothing);
       steps.complete(Ok(_read));
       await settle(tester);
       expect(find.text('Checking the order with Temple of Sats'), findsNothing);
@@ -512,10 +657,10 @@ void main() {
       take
         ..confirming = confirming
         ..confirmingSteps = [TakeStep.readingOrderAgain, TakeStep.sendingTake];
-      await _tap(tester, _confirmButton);
+      await _confirm(tester);
       await _reveal(tester, find.text('Taking the order with Temple of Sats'));
       expect(find.text('Taking the order with Temple of Sats'), findsOneWidget);
-      expect(find.text('Your robot reads the order again'), findsNothing);
+      expect(find.text('Your robot is reading the order again'), findsNothing);
       confirming.complete(Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)));
       await settle(tester);
     },
@@ -534,7 +679,7 @@ void main() {
     ),
     (
       TakeStep.readingOrder,
-      'Your robot reads the order',
+      'Your robot is reading the order',
       'Votre robot lit l’ordre',
     ),
   ]) {
@@ -545,16 +690,13 @@ void main() {
           ..preparingSteps = [step]
           ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
         await _show(tester, await _order(), take: take, locale: locale);
-        final fr0 = locale.languageCode == 'fr';
-        await _reveal(
-          tester,
-          find.text(fr0 ? 'Prendre l\'ordre' : 'Take Order'),
+        final takeOrder = find.text(
+          locale.languageCode == 'fr' ? 'Prendre l\'ordre' : 'Take Order',
         );
-        await tester.tap(find.text(fr0 ? 'Prendre l\'ordre' : 'Take Order'));
-        await settle(tester);
-        await tester.tap(find.text(fr0 ? 'Fait' : 'Done'));
+        await _reveal(tester, takeOrder);
+        await tester.tap(takeOrder);
         await tester.pump();
-        final line = find.text(fr0 ? fr : en);
+        final line = find.text(locale.languageCode == 'fr' ? fr : en);
         await _reveal(tester, line);
         expect(line, findsOneWidget);
         expect(tester.getSemantics(line), isSemantics(isLiveRegion: true));
@@ -564,21 +706,6 @@ void main() {
       }
     });
   }
-
-  testWidgets('a read that runs long says it still waits', (tester) async {
-    final take = _Take()
-      ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
-    await _show(tester, await _order(), take: take);
-    await _press(tester);
-    await tester.tap(find.text('Done'));
-    await tester.pump(const Duration(seconds: 31));
-    expect(
-      find.text('Still waiting for Temple of Sats. Tor can take a minute.'),
-      findsOneWidget,
-    );
-    take.preparing?.complete(Ok(_read));
-    await settle(tester);
-  });
 
   for (final (refusal, text) in <(Result<PreparedTake, TakeRefusal>, String)>[
     (const Err(TakeOrderGone()), 'This order is not available'),
@@ -606,7 +733,7 @@ void main() {
       await _reveal(tester, find.text(text));
       expect(find.text(text), findsOneWidget);
       expect(taken, isEmpty);
-      expect(_confirmButton, findsNothing);
+      expect(_continueButton, findsNothing);
     });
   }
 
@@ -625,11 +752,11 @@ void main() {
       'You need to wait 42 seconds to take an order',
     ),
   ]) {
-    testWidgets('a confirmation not made: « $text »', (tester) async {
+    testWidgets('a take not made: « $text »', (tester) async {
       final take = _Take()..answer = () => answer;
       final (taken, _) = await _show(tester, await _order(), take: take);
       await _prepare(tester);
-      await _tap(tester, _confirmButton);
+      await _confirm(tester);
       await _reveal(tester, find.text(text));
       expect(find.text(text), findsOneWidget);
       expect(taken, isEmpty);
@@ -645,24 +772,15 @@ void main() {
     expect(find.text('Selling is coming in a later version.'), findsOneWidget);
     await tester.tap(_takeButton, warnIfMissed: false);
     await settle(tester);
-    expect(find.byType(StoreTokenDialog), findsNothing);
     expect(take.amounts, isEmpty);
   });
 
   testWidgets(
-    'a range order: the amount first, « Too low », « Too high », the estimate, then the read with the amount kept',
+    'a range order: the amount first, « Too low », « Too high », the estimate, then the read with the amount kept and its own estimate',
     (tester) async {
       final take = _Take(prepared: [Ok(_readRange)]);
       await _show(tester, await _order(range: true), take: take);
       await _reveal(tester, _takeButton);
-      expect(
-        find.byType(TextField),
-        findsOneWidget,
-        reason: tester
-            .widgetList<Text>(find.byType(Text))
-            .map((t) => t.data)
-            .join(' | '),
-      );
       expect(find.text('Amount EUR'), findsOneWidget);
       expect(
         find.byTooltip('You must specify an amount first'),
@@ -670,7 +788,7 @@ void main() {
       );
       await tester.tap(_takeButton, warnIfMissed: false);
       await settle(tester);
-      expect(find.byType(StoreTokenDialog), findsNothing);
+      expect(take.amounts, isEmpty);
 
       final field = find.byType(TextField);
       await tester.enterText(field, '10');
@@ -682,8 +800,11 @@ void main() {
       await tester.enterText(field, '120,5');
       await tester.pump();
       expect(find.text('Too high'), findsNothing);
-      expect(find.textContaining('You will receive'), findsOneWidget);
-      expect(find.byTooltip('You must specify an amount first'), findsNothing);
+      // The book's estimate: 120.5 of 200 EUR for 106,900 sats, the fee unknown.
+      expect(
+        find.text('You will receive 64,407 Sats (Approx)'),
+        findsOneWidget,
+      );
 
       await _prepare(tester);
       expect(take.amounts.single?.amount.value, 120.5);
@@ -691,11 +812,12 @@ void main() {
       await _reveal(tester, field);
       expect(tester.widget<TextField>(field).enabled, isFalse);
       expect(find.text('120,5'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('Amount Range'),
-        -150,
-        scrollable: _details,
+      // The read's estimate: 120.5 of 200 EUR for its 100,000 sats, its taker fee off.
+      expect(
+        find.text('You will receive 60,145 Sats (Approx)'),
+        findsOneWidget,
       );
+      await _revealAbove(tester, find.text('Amount Range'));
       expect(find.text('Amount Range'), findsOneWidget);
     },
   );
@@ -716,21 +838,27 @@ void main() {
   );
 
   testWidgets(
-    'a screen reader hears the description with its label, the time of the read, and both buttons',
+    'a screen reader hears the description with its label, the read when it arrives, and both buttons',
     (tester) async {
       final semantics = tester.ensureSemantics();
       await _show(tester, await _order(), take: _Take());
       await _prepare(tester);
-      await _reveal(tester, find.text(_description));
-      expect(find.bySemanticsLabel('Description'), findsOneWidget);
+      await _revealAbove(tester, find.text(_description));
+      expect(find.bySemanticsLabel('Order description'), findsOneWidget);
       final node = tester.getSemantics(find.byType(OrderDescriptionRow));
       expect(node.value, _description);
-      await _reveal(tester, find.text('Read at 08:00:30'));
-      expect(find.bySemanticsLabel(RegExp('Read at 08:00:30')), findsOneWidget);
+      await _reveal(tester, _readLine);
+      expect(
+        tester.getSemantics(_readLine),
+        isSemantics(
+          label: 'Read by your robot at 08:00:30',
+          isLiveRegion: true,
+        ),
+      );
       await _reveal(tester, _backButton);
       expect(
-        tester.getSemantics(_confirmButton),
-        isSemantics(label: 'Confirm', isButton: true, isEnabled: true),
+        tester.getSemantics(_continueButton),
+        isSemantics(label: 'Continue', isButton: true, isEnabled: true),
       );
       expect(
         tester.getSemantics(_backButton),
@@ -752,7 +880,7 @@ void main() {
             ..answer = () => const Err(TakeOrderChanged());
           final (_, cubit) = await _show(tester, await _order(), take: take);
           await _prepare(tester);
-          await _tap(tester, _confirmButton);
+          await _confirm(tester);
           await _tap(tester, _backButton);
           await tester.runAsync(cubit.close);
         },
@@ -767,34 +895,34 @@ void main() {
   });
 
   group('on a phone of 320 points, the text larger', () {
+    void nothingCut(WidgetTester tester, String reason) {
+      expect(tester.takeException(), isNull, reason: reason);
+      for (final paragraph in tester.renderObjectList<RenderParagraph>(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is TakeOrderSection ||
+                widget is StoreTokenDialog ||
+                widget is PublicOrderDetailsCard,
+          ),
+          matching: find.byType(RichText),
+        ),
+      )) {
+        expect(
+          paragraph.didExceedMaxLines,
+          isFalse,
+          reason: '$reason: ${paragraph.text.toPlainText()}',
+        );
+      }
+    }
+
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
         testWidgets(
           '${locale.languageCode} at ×$scale: nothing overflows or is cut',
           (tester) async {
             final fr = locale.languageCode == 'fr';
-            void nothingCut(String reason) {
-              expect(tester.takeException(), isNull, reason: reason);
-              for (final paragraph in tester.renderObjectList<RenderParagraph>(
-                find.descendant(
-                  of: find.byWidgetPredicate(
-                    (widget) =>
-                        widget is TakeOrderSection ||
-                        widget is StoreTokenDialog ||
-                        widget is PublicOrderDetailsCard,
-                  ),
-                  matching: find.byType(RichText),
-                ),
-              )) {
-                expect(
-                  paragraph.didExceedMaxLines,
-                  isFalse,
-                  reason: '$reason: ${paragraph.text.toPlainText()}',
-                );
-              }
-            }
-
-            final take = _Take(prepared: [Ok(_readRange), Ok(_readFresh)])
+            final take = _Take(prepared: [Ok(_readRange), Ok(_readLong)])
               ..answer = () => const Err(TakeOrderChanged());
             await _show(
               tester,
@@ -806,39 +934,65 @@ void main() {
             );
             final button = find.text(fr ? 'Prendre l\'ordre' : 'Take Order');
             await _reveal(tester, button);
-            nothingCut('range');
+            nothingCut(tester, 'range');
             await tester.enterText(find.byType(TextField), '10');
             await tester.pump();
-            nothingCut('too low');
+            nothingCut(tester, 'too low');
             await tester.enterText(find.byType(TextField), '120');
             await tester.pump();
-            nothingCut('estimate');
+            nothingCut(tester, 'estimate');
             await _reveal(tester, button);
             await tester.tap(button);
             await settle(tester);
-            nothingCut('store your garage key');
+            nothingCut(tester, 'read');
+            final go = find.text(fr ? 'Continuer' : 'Continue');
+            await _reveal(tester, go);
+            nothingCut(tester, 'continue');
+            await tester.tap(go);
+            await settle(tester);
+            nothingCut(tester, 'store your garage key');
             // The dialog scrolls at this size: « Done » is brought into view, then pressed.
             final done = find.text(fr ? 'Fait' : 'Done');
             await tester.ensureVisible(done);
             await tester.pump();
             await tester.tap(done);
             await settle(tester);
-            nothingCut('read');
-            final confirm = find.text(fr ? 'Confirmer' : 'Confirm');
-            await _reveal(tester, confirm);
-            nothingCut('confirm');
-            await tester.tap(confirm);
-            await settle(tester);
-            await _reveal(tester, confirm);
-            nothingCut('changed');
-            final description = find.text(_description);
-            await tester.scrollUntilVisible(
-              description,
-              -150,
-              scrollable: _details,
+            await _reveal(tester, go);
+            nothingCut(tester, 'changed');
+            // The longest description, of long words.
+            await _revealAbove(tester, find.text(_longDescription));
+            nothingCut(tester, 'description');
+          },
+        );
+
+        testWidgets(
+          '${locale.languageCode} at ×$scale: the lines of a step and « Still waiting » are not cut',
+          (tester) async {
+            final fr = locale.languageCode == 'fr';
+            final take = _Take()
+              ..preparingSteps = [TakeStep.creatingRobot]
+              ..preparing = Completer<Result<PreparedTake, TakeRefusal>>();
+            await _show(
+              tester,
+              await _order(),
+              take: take,
+              locale: locale,
+              size: const Size(320, 568),
+              textScale: scale,
             );
-            await tester.pump();
-            nothingCut('description');
+            final button = find.text(fr ? 'Prendre l\'ordre' : 'Take Order');
+            await _reveal(tester, button);
+            await tester.tap(button);
+            await tester.pump(const Duration(seconds: 31));
+            final still = find.text(
+              fr
+                  ? 'Toujours en attente de Temple of Sats. Tor peut prendre une minute.'
+                  : 'Still waiting for Temple of Sats. Tor can take a minute.',
+            );
+            await _reveal(tester, still);
+            nothingCut(tester, 'still waiting');
+            take.preparing?.complete(Ok(_read));
+            await settle(tester);
           },
         );
       }

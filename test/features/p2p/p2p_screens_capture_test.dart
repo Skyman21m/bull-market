@@ -1754,21 +1754,26 @@ void main() {
           await settle();
         }
 
-        /// « Take Order » and « Done »: the robot reads the order (#119), whose read the order details then show, brought into view.
+        /// « Take Order »: the robot reads the order (#119), whose read the order details then show, brought into view.
         Future<void> prepare() async {
           await openTempleOrder();
           await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
           await settle();
           await tester.tap(find.text(l10n.p2pTakeOrder));
-          await settle();
-          await tester.tap(find.text(l10n.p2pCommonDone));
           await waitFor(find.text(l10n.p2pTakerBond));
         }
 
-        /// « Confirm »: the take, then its trade.
+        /// « Continue », then « Done » of « Store your garage key »: the take sent.
+        Future<void> send() async {
+          await reveal(find.text(l10n.p2pCommonContinue));
+          await tester.tap(find.text(l10n.p2pCommonContinue));
+          await settle();
+          await tester.tap(find.text(l10n.p2pCommonDone));
+        }
+
+        /// [send], then its trade.
         Future<void> confirm() async {
-          await reveal(find.text(l10n.p2pTakeConfirm));
-          await tester.tap(find.text(l10n.p2pTakeConfirm));
+          await send();
           await waitFor(find.text(l10n.p2pTradeTabContract));
         }
 
@@ -1811,7 +1816,7 @@ void main() {
         await capture('echange-montant-estimation');
         await backToTab();
 
-        // Take 1: the order details, « Store your garage key », the wait of each step, the order read by the robot with the maker's description (#119), its figures changed at « Confirm », then 3, 6, 7 and the end at 5.
+        // Take 1: the order details, the wait of each step, the order read by the robot with the maker's description (#119), « Store your garage key », the order changed at « Done » and read again, then 3, 6, 7 and the end at 5.
         coordinator.description = locale.languageCode == 'fr'
             ? 'Revolut uniquement, sans note dans le virement.'
             : 'Revolut only, no notes in the transfer.';
@@ -1820,9 +1825,6 @@ void main() {
         await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
         await settle();
         await capture('echange-ordre-bas');
-        await tester.tap(find.text(l10n.p2pTakeOrder));
-        await settle();
-        await capture('echange-sauvegarder-cle');
         // Each request waits for its gate: the wait is captured at its first two steps.
         var gate = Completer<void>();
         coordinator.hold = gate.future;
@@ -1834,7 +1836,7 @@ void main() {
           await settle();
         }
 
-        await tester.tap(find.text(l10n.p2pCommonDone));
+        await tester.tap(find.text(l10n.p2pTakeOrder));
         await settle();
         await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
         await settle();
@@ -1845,14 +1847,32 @@ void main() {
         gate.complete();
         await waitFor(find.text(l10n.p2pTakerBond));
         await capture('prise-lecture-description');
-        await reveal(find.text(l10n.p2pTakeConfirm));
+        await reveal(find.text(l10n.p2pCommonContinue));
         await capture('prise-lecture-bas');
-        // The maker changes the description before « Confirm »: the new read is shown, never taken by itself.
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await capture('echange-sauvegarder-cle');
+        // The maker changes the description before « Done »: the order is read again, the read seen kept meanwhile, then the new read with its changed rows marked, never taken by itself.
         coordinator.description = locale.languageCode == 'fr'
             ? 'Revolut uniquement. Paiement sous 30 minutes.'
             : 'Revolut only. Pay within 30 minutes.';
         final changed = coordinator.description ?? '';
-        await tester.tap(find.text(l10n.p2pTakeConfirm));
+        // The read again at « Done » goes through; the new preparation's first request waits for its gate.
+        gate = Completer<void>();
+        var reads = 0;
+        coordinator.onRequest = (request) {
+          if (request.url.path == '/api/book/' && ++reads == 1) {
+            coordinator.hold = gate.future;
+          }
+        };
+        await tester.tap(find.text(l10n.p2pCommonDone));
+        await waitFor(find.text(l10n.p2pTakeOrderChangedRead));
+        await reveal(find.text(l10n.p2pTakeOrderChangedRead));
+        await capture('prise-relecture');
+        coordinator
+          ..onRequest = null
+          ..hold = null;
+        gate.complete();
         await waitFor(find.text(changed));
         await capture('prise-chiffres-changes');
         await reveal(find.text(l10n.p2pTakeOrderChangedRead));
@@ -1928,12 +1948,11 @@ void main() {
         await capture('echange-public');
         await backToTab();
 
-        // An order the maker cancels between the read and « Confirm »: not available, nothing taken.
+        // An order the maker cancels between the read and « Done »: not available, nothing taken, « Take Order » disabled.
         coordinator.backToPublic();
         await prepare();
         coordinator.cancelByMaker();
-        await reveal(find.text(l10n.p2pTakeConfirm));
-        await tester.tap(find.text(l10n.p2pTakeConfirm));
+        await send();
         await waitFor(find.text(l10n.p2pOrderNotAvailable));
         await tester.ensureVisible(find.text(l10n.p2pOrderNotAvailable));
         await settle();

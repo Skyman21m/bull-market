@@ -84,7 +84,7 @@ TradeSeen _seen(TradeCubit cubit) => switch (cubit.state.seen) {
 void main() {
   group('TakeOrderCubit', () {
     test(
-      'a sell order: preparing, then the order read by its robot, nothing taken until « Confirm »',
+      'a sell order: preparing, then the order read by its robot, nothing taken until it is confirmed',
       () async {
         final harness = await TradeHarness.start();
         harness.coordinator.description = 'Revolut only.';
@@ -112,6 +112,8 @@ void main() {
         final sent = states.last;
         expect(sent, isA<TakeSent>());
         expect((sent as TakeSent).record.orderId, harness.coordinator.orderId);
+        // The read stays shown until the trade's screen opens.
+        expect(sent.prepared, same(read));
         expect(harness.coordinator.holdsPreTake(harness.robot(0)), isTrue);
         await listening.cancel();
         await cubit.close();
@@ -254,13 +256,22 @@ void main() {
         await cubit.take();
         final first = _readOf(cubit);
         harness.coordinator.description = 'Now pay first.';
+        final states = <TakeOrderState>[];
+        final listening = cubit.stream.listen(states.add);
 
         await cubit.confirm();
 
+        // While the order is read again, the read the user saw stays shown.
+        final rereads = states.whereType<TakePreparing>().toList();
+        expect(rereads, isNotEmpty);
+        expect(rereads.map((s) => s.previous), everyElement(same(first)));
         expect(
           cubit.state,
-          isA<TakeReady>().having((s) => s.changed, 'changed', isTrue),
+          isA<TakeReady>()
+              .having((s) => s.changed, 'changed', isTrue)
+              .having((s) => s.previous, 'previous', same(first)),
         );
+        await listening.cancel();
         final again = _readOf(cubit);
         expect(again, isNot(same(first)));
         expect(again.description, 'Now pay first.');
@@ -316,6 +327,11 @@ void main() {
           ),
         );
         expect(_requestsOf(harness, ScriptedRequest.take), 0);
+        // An order found gone is not prepared again.
+        expect((cubit.state as TakeIdle).orderGone, isTrue);
+        final requests = harness.coordinator.requests.length;
+        await cubit.take();
+        expect(harness.coordinator.requests, hasLength(requests));
         await cubit.close();
       },
     );

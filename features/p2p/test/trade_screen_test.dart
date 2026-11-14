@@ -916,14 +916,14 @@ void main() {
         await _reveal(tester, find.text('Take Order'));
         await tester.tap(find.text('Take Order'));
         await settle(tester);
-        await tester.tap(find.text('Done'));
-        await settle(tester);
         expect(takes.single.id, tradeOrderId);
-        // The order details show the robot's read, then « Confirm » takes it (#119).
-        expect(find.text('Read at 08:00:30'), findsOneWidget);
+        // The order details show the robot's read, then « Continue » and « Done » of « Store your garage key » take it (#119).
+        expect(find.text('Read by your robot at 08:00:30'), findsOneWidget);
         expect(taken, isEmpty);
-        await _reveal(tester, find.text('Confirm'));
-        await tester.tap(find.text('Confirm'));
+        await _reveal(tester, find.text('Continue'));
+        await tester.tap(find.text('Continue'));
+        await settle(tester);
+        await tester.tap(find.text('Done'));
         await settle(tester);
         expect(taken, [_record]);
       },
@@ -995,8 +995,6 @@ void main() {
         await settle(tester);
         await _reveal(tester, find.text('Take Order'));
         await tester.tap(find.text('Take Order'));
-        await settle(tester);
-        await tester.tap(find.text('Done'));
         await settle(tester);
         expect(taken, isEmpty);
         await _reveal(tester, find.text('The order was not taken.'));
@@ -1079,11 +1077,29 @@ void main() {
       expect(find.byType(TradeButton), findsNothing);
     });
 
-    testWidgets('before any read: a spinner, nothing else', (tester) async {
-      await _show(tester, watch: _Watch());
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text('Cancel'), findsNothing);
-    });
+    testWidgets(
+      'before any read: a spinner, what it waits for, then that it still waits; nothing else',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _show(tester, watch: _Watch());
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.text('Cancel'), findsNothing);
+        final line = find.text(
+          'Your robot is reading the order from Temple of Sats',
+        );
+        expect(line, findsOneWidget);
+        expect(tester.getSemantics(line), isSemantics(isLiveRegion: true));
+        final still = find.text(
+          'Still waiting for Temple of Sats. Tor can take a minute.',
+        );
+        expect(still, findsNothing);
+        await tester.pump(const Duration(seconds: 29));
+        expect(still, findsNothing);
+        await tester.pump(const Duration(seconds: 2));
+        expect(still, findsOneWidget);
+        semantics.dispose();
+      },
+    );
 
     for (final (state, text) in <(TradeWatchState, String)>[
       (
