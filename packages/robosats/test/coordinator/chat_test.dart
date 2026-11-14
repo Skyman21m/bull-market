@@ -115,7 +115,7 @@ void main() {
     test(
       'fetchChat is the reference poll: GET /api/chat/?order_id=&offset= with the short header on the robot session',
       () async {
-        final transport = _answering(Ok(jsonResponse(_page())));
+        final transport = _answering(Ok(jsonResponse(_page(messages: []))));
         expectOk(await _fetch(transport, offset: 7));
         final request = transport.requests.single;
         expect(request.method, _get);
