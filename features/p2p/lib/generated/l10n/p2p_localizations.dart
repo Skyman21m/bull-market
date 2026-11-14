@@ -1634,7 +1634,7 @@ abstract class P2pLocalizations {
   /// First paragraph of the confirmation. Not in the RoboSats texts (design note of #29, § 2.2): the official client sends every robot it shows to every coordinator.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} will know this robot from now on. In Troc a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.'**
+  /// **'{coordinator} will know this robot from now on. In Bull Market, a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.'**
   String p2pRobotSendBody(String coordinator);
 
   /// Second paragraph of the confirmation. Not in the RoboSats texts (design note of #29, § 2.2).
@@ -1748,7 +1748,7 @@ abstract class P2pLocalizations {
   /// An answer of the coordinator that cannot be read. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} sent an answer Troc cannot read.'**
+  /// **'{coordinator} sent an answer Bull Market cannot read.'**
   String p2pRobotBadAnswer(String coordinator);
 
   /// A robot bound to a coordinator whose address or keys in the federation list of the app changed since. Not in the RoboSats texts (design note of #29, § 2.3). No button.
@@ -1760,7 +1760,7 @@ abstract class P2pLocalizations {
   /// The feature's database could not be read or written. Not in the RoboSats texts (design note of #29, § 2.3). With « Retry ».
   ///
   /// In en, this message translates to:
-  /// **'Troc could not read its records on this device. Nothing was sent.'**
+  /// **'Bull Market could not read its records on this device. Nothing was sent.'**
   String get p2pRobotStorage;
 
   /// Warning on a robot whose coordinator holds the Nostr key of the first formula of the official client. Not in the RoboSats texts (design note of #29, § 2.3).
@@ -1790,7 +1790,7 @@ abstract class P2pLocalizations {
   /// Under the text of a first contact that failed, when the feature's database cannot be read right after it: the request may have left, so, unlike p2pRobotStorage, it does not say that nothing was sent. Not in the RoboSats texts (security review of step 5 of #29). With « Retry ».
   ///
   /// In en, this message translates to:
-  /// **'Troc could not read its records on this device.'**
+  /// **'Bull Market could not read its records on this device.'**
   String get p2pRobotRecordsUnreadable;
 
   /// Title of the dialog that « Select Host » opens first for a robot of a Garage Key of unknown history (pasted in, or whose draw this device could not record), once per key and network, and again after the key is pasted again. Not in the RoboSats texts (design note of #29, § 2.4): the official client sends every robot it shows to every coordinator, so it asks nothing.
@@ -1802,7 +1802,7 @@ abstract class P2pLocalizations {
   /// Body of the dialog « Robots from elsewhere ». Not in the RoboSats texts (design note of #29, § 2.4). Factual: a key from the user's own backup is pasted in too, and nothing here says that a robot must be sent to a coordinator before trading.
   ///
   /// In en, this message translates to:
-  /// **'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.'**
+  /// **'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.'**
   String get p2pRobotHistoryBody;
 
   /// Button of the dialog « Robots from elsewhere » that records the acknowledgement and goes on to the « Select Host » sheet; « Cancel » records nothing. Bull's own label (`settingsDevModeUnderstandButton` of the wallet), as the design note of #29 asks (§ 2.6).

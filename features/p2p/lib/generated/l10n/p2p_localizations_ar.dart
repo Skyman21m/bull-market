@@ -898,7 +898,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String p2pRobotSendBody(String coordinator) {
-    return '$coordinator will know this robot from now on. In Troc a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.';
+    return '$coordinator will know this robot from now on. In Bull Market, a robot lives on one coordinator only: this robot will never be sent to another one. To trade elsewhere, use another robot.';
   }
 
   @override
@@ -985,7 +985,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String p2pRobotBadAnswer(String coordinator) {
-    return '$coordinator sent an answer Troc cannot read.';
+    return '$coordinator sent an answer Bull Market cannot read.';
   }
 
   @override
@@ -995,7 +995,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pRobotStorage =>
-      'Troc could not read its records on this device. Nothing was sent.';
+      'Bull Market could not read its records on this device. Nothing was sent.';
 
   @override
   String p2pRobotNostrOld(String coordinator) {
@@ -1017,14 +1017,14 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pRobotRecordsUnreadable =>
-      'Troc could not read its records on this device.';
+      'Bull Market could not read its records on this device.';
 
   @override
   String get p2pRobotHistoryTitle => 'Robots from elsewhere';
 
   @override
   String get p2pRobotHistoryBody =>
-      'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Troc a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.';
+      'This Garage Key was pasted in, or this device could not record that it drew it. Its robots may already exist on coordinators: the official RoboSats app sends each robot it shows to every coordinator. In Bull Market, a robot lives on one coordinator only: if you used this key before, put each robot on the coordinator where you used it. To start clean, generate a new Garage Key.';
 
   @override
   String get p2pRobotHistoryConfirm => 'I understand';
