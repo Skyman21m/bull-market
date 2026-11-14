@@ -979,6 +979,11 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradeTrailsOfTheirTrade)',
       'm.createTrigger(schema.tradeTrailsClosed)',
       'm.createTrigger(schema.tradeTrailsForward)',
+      'm.createTable(schema.tradePayments)',
+      'm.createTrigger(schema.tradePaymentsNeverDeleted)',
+      'm.createTrigger(schema.tradePaymentsInsertedOnce)',
+      'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
+      'm.createTrigger(schema.tradePaymentsForward)',
     ]);
     // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
     expect(
@@ -2086,4 +2091,8 @@ final _paymentTriggers = [
 ];
 
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
-final _driftTriggers = {..._tradeTriggers, ..._trailTriggers, ..._paymentTriggers};
+final _driftTriggers = {
+  ..._tradeTriggers,
+  ..._trailTriggers,
+  ..._paymentTriggers,
+};
