@@ -21,7 +21,7 @@ abstract interface class TradePaymentRepository {
     InvoiceStep step,
   );
 
-  /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at]: the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt cleared).
+  /// Records, before the wallet is asked, that an attempt to pay the invoice of [paymentHash] for [trade]'s [step] starts at [at]: the payment when there was none, or a new attempt of the same invoice (its start moved to [at] unless already later, the id of the earlier attempt kept until the wallet gives a new one).
   ///
   /// `false`: nothing was written, since [trade]'s payment of [step] is of another invoice, or [trade] is closed or was never read; the wallet is then not asked.
   @useResult
