@@ -21,6 +21,8 @@ const _answer = orderAnswer;
 const _error = orderError;
 const _read = readOrder;
 const _readAt = readOrderAt;
+const _apply = applyChanges;
+const _stepSeconds = stepSecondsOf;
 
 /// The short body of a cancel that ended the order (`api/views.py:604-615`).
 Map<String, Object?> _ended(int status) => {

@@ -148,7 +148,7 @@ void main() {
         testnetInvoice,
         testnetInvoice.toUpperCase(),
         invoiceShaped('lntb', seed: 'no amount', wordCount: 111),
-        invoiceShaped('lntb25m', seed: 'long', wordCount: 3000),
+        invoiceShaped('lntb25m', seed: 'long', wordCount: 1900),
       ]) {
         final signed = expectOk(
           unlocked.signPayoutInvoice(invoice, _testnet, now: interopNow),
@@ -1271,7 +1271,7 @@ void main() {
           'The invoice provided is not for 1,000 Sats $marker',
           'The mining fee is too low. Must be higher than $marker Sat/vbyte',
           'Invalid address $marker',
-          '$marker‮',
+          '$marker\u202e',
         ];
         for (var i = 0; i < 400; i++) {
           final body = <String, Object?>{

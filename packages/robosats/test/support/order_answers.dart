@@ -78,7 +78,7 @@ Map<String, Object?> orderAnswer(
     'is_taker': isTaker,
     'is_participant': isMaker || isTaker,
     'has_password': password,
-    'total_secs_exp': _stepSeconds(status),
+    'total_secs_exp': stepSecondsOf(status),
     'maker_nick': makerIdentity.nickname,
     'maker_hash_id': makerIdentity.hashId.hex,
     'maker_nostr_pubkey': makerIdentity.nostrKeyPair().publicKeyHex,
@@ -97,7 +97,7 @@ Map<String, Object?> orderAnswer(
         ..['longitude'] = null
         ..['description'] = null;
     }
-    return _apply(data, changes);
+    return applyChanges(data, changes);
   }
   if (status >= 1 && status < 6) {
     data
@@ -178,10 +178,10 @@ Map<String, Object?> orderAnswer(
         ..['expiry_message'] = 'Escrow not locked';
     }
   }
-  return _apply(data, changes);
+  return applyChanges(data, changes);
 }
 
-Map<String, Object?> _apply(
+Map<String, Object?> applyChanges(
   Map<String, Object?> data,
   Map<String, Object?> changes,
 ) {
@@ -196,7 +196,7 @@ Map<String, Object?> _apply(
 }
 
 /// `Order.t_to_expire` with the defaults of the code (`api/models/order.py:310-339`).
-int _stepSeconds(int status) => switch (status) {
+int stepSecondsOf(int status) => switch (status) {
   0 => 300,
   1 => 86399,
   3 => 150,

@@ -202,6 +202,15 @@ Result<void, PayoutDestinationFailure> checkPayoutInvoice(
   String invoice,
   RobosatsNetwork network,
 ) {
+  // The prefix first, so that a `lightning:` URI or an address is not reported as a typo.
+  if (invoice.length > CoordinatorOrder.maxInvoiceLength) {
+    return const Err(PayoutDestinationMalformed());
+  }
+  final lower = invoice.toLowerCase();
+  final separator = lower.lastIndexOf('1');
+  if (separator < 0 || !_invoicePrefix.hasMatch(lower.substring(0, separator))) {
+    return const Err(PayoutDestinationMalformed());
+  }
   final read = readBech32(
     invoice,
     maxLength: CoordinatorOrder.maxInvoiceLength,
