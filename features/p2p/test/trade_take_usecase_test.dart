@@ -243,6 +243,24 @@ void main() {
     );
   });
 
+  test(
+    'terms written but answered as failed: the take is still refused',
+    () async {
+      final app = await TradeHarness.start();
+      app.trails.termsFailureAfterWrite = const P2pStorageFailure();
+      expect(
+        await app.takeShown(),
+        isA<Err<TakeOutcome, TakeRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<TakeNotRecorded>(),
+        ),
+      );
+      expect(app.coordinator.received, isNot(contains(ScriptedRequest.take)));
+      expect(await app.activeRecords(), isEmpty);
+    },
+  );
+
   group('a take answered without a trade', () {
     test(
       'the order as it is, this robot not its taker: the pending take closed',

@@ -189,6 +189,9 @@ final class TestTrails implements TradeTrailRepository {
   /// What the next [recordTerms] gives instead of writing, when set.
   P2pFailure? termsFailure;
 
+  /// What [recordTerms] gives once it has written, when set: a write that reached the disk but answered a failure.
+  P2pFailure? termsFailureAfterWrite;
+
   /// How many trails were asked to be stored.
   int stores = 0;
 
@@ -202,6 +205,7 @@ final class TestTrails implements TradeTrailRepository {
     if (termsFailure case final failure?) return Err(failure);
     final written = await _inner.recordTerms(trade, terms);
     if (_kill() == KillAt.afterTerms) throw AppKilled();
+    if (termsFailureAfterWrite case final failure?) return Err(failure);
     return written;
   }
 
