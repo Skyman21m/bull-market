@@ -8,6 +8,7 @@ import '../domain/book_filter.dart';
 import '../domain/order_search.dart';
 import '../domain/p2p_tor_state.dart';
 import '../domain/tor_wait.dart';
+import '../domain/usecases/has_garage_key_usecase.dart';
 import '../domain/usecases/load_federation_books_usecase.dart';
 import '../domain/usecases/retry_p2p_tor_usecase.dart';
 import '../domain/usecases/start_p2p_tor_usecase.dart';
@@ -23,6 +24,9 @@ class BookCubit extends Cubit<BookState> {
   final RetryP2pTorUsecase _retryTor;
   final LoadFederationBooksUsecase _loadBooks;
 
+  /// Whether a Garage Key is stored, when the feature has the vault's handle: registered with the Garage only.
+  final HasGarageKeyUsecase? _hasGarageKey;
+
   StreamSubscription<P2pTorReport>? _torStates;
 
   /// The attempts running for each coordinator: asking a coordinator again cancels the attempts before, whose outcome is then dropped.
@@ -33,8 +37,9 @@ class BookCubit extends Cubit<BookState> {
     this._watchTor,
     this._startTor,
     this._retryTor,
-    this._loadBooks,
-  ) : super(BookState(network: network));
+    this._loadBooks, {
+    this._hasGarageKey,
+  }) : super(BookState(network: network));
 
   /// Follows Tor and starts it: the book is requested once Tor is ready.
   void start() {
@@ -72,6 +77,40 @@ class BookCubit extends Cubit<BookState> {
   /// « Search order »: what an order URL finds among every order received, whatever the filter.
   OrderSearchOutcome searchOrder(String url) =>
       OrderSearch.run(url, state.receivedOrders);
+
+  /// What the screen says for [miss], an order URL that the books received do not hold.
+  ///
+  /// While the book of the coordinator the URL names is still awaited, it waits for it; then the order if that book holds it, or [OrderSearchMissOffline] if that book could not be had.
+  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored, or one that cannot be read (keystore locked, entry unreadable or unusable), is [OrderSearchMissNotAvailable], since a failure is not an absence (`HasGarageKeyUsecase`).
+  /// `null`, the vault not read, once [asked] says that the screen no longer asks or the book is closed.
+  /// It hands no key out, uses no robot, and sends nothing to any coordinator.
+  Future<OrderSearchMiss?> settleSearchMiss(
+    OrderSearchNeedsRobot miss, {
+    required bool Function() asked,
+  }) async {
+    bool bookIs<T extends CoordinatorBookStatus>(BookState state) =>
+        state.coordinators.entries.any(
+          (entry) =>
+              entry.key.shortAlias == miss.coordinator && entry.value is T,
+        );
+    if (bookIs<CoordinatorBookLoading>(state)) {
+      await stream.firstWhere(
+        (state) => !bookIs<CoordinatorBookLoading>(state),
+        orElse: () => state,
+      );
+    }
+    if (isClosed || !asked()) return null;
+    if (searchOrder(miss.url) case OrderSearchFound(:final order)) {
+      return OrderSearchMissFound(order);
+    }
+    if (bookIs<CoordinatorBookFailed>(state)) {
+      return const OrderSearchMissOffline();
+    }
+    return switch (await _hasGarageKey?.execute(state.network)) {
+      null || Ok(value: false) => const OrderSearchMissNoGarageKey(),
+      Ok(value: true) || Err() => const OrderSearchMissNotAvailable(),
+    };
+  }
 
   void _onTorState(P2pTorReport report) {
     final previous = state.tor;
