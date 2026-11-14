@@ -73,16 +73,15 @@ final class PayoutPanelState {
       };
 
   /// The payout « Submit » of [kind]'s tab gives, when its text was checked, nothing is being sent, and no payout given was received or may have been: what the screen offers about money is true at each moment, and an action done is not offered again until a read shows the status still asks for it ([PayoutCubit.show]).
-  CheckedPayout? submittable(PayoutKind kind) =>
-      switch ((phase, checkOf(kind))) {
-        (
-          PayoutEditing(notice: PayoutNoticeGiven() || PayoutNoticeUnknown()),
-          _,
-        ) =>
-          null,
-        (PayoutEditing(), Ok(:final value)) => value,
-        _ => null,
-      };
+  CheckedPayout? submittable(PayoutKind kind) => switch ((
+    phase,
+    checkOf(kind),
+  )) {
+    (PayoutEditing(notice: PayoutNoticeGiven() || PayoutNoticeUnknown()), _) =>
+      null,
+    (PayoutEditing(), Ok(:final value)) => value,
+    _ => null,
+  };
 
   PayoutPanelState _with({
     TradeSeen? seen,
@@ -242,8 +241,9 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
       shown,
       onProgress: (step) {
         if (isClosed) return;
-        if (state.phase case PayoutSending(step: final current)
-            when current != step) {
+        if (state.phase case PayoutSending(
+          step: final current,
+        ) when current != step) {
           emit(state._with(phase: PayoutSending(kind, step)));
         }
       },
