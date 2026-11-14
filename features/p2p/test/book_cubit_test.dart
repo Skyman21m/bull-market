@@ -1221,26 +1221,61 @@ void main() {
   });
 
   group('« Search order » and the Garage Key', () {
-    for (final (name, answer, lacks)
-        in <(String, Result<bool, P2pFailure>, bool)>[
-          ('no key stored', const Ok(false), true),
-          ('a key stored', const Ok(true), false),
-          ('the keystore locked', const Err(GarageKeyLockedFailure()), false),
+    final temple = hostOf('temple', RobosatsNetwork.mainnet);
+    final url = 'http://$temple/order/temple/1';
+
+    /// What a search of [url] found in [book]: no order in the books received.
+    OrderSearchNeedsRobot missIn(BookCubit book) =>
+        book.searchOrder(url) as OrderSearchNeedsRobot;
+
+    /// A book whose coordinators answered, temple's book held until the test releases it, with order 1 in it.
+    Future<BookCubit> heldBook(_KeyStore keys) async {
+      transport = FakeTransport(
+        books: {
+          'temple': [bookOrder(id: 1, makerSeed: 1)],
+        },
+        held: {'temple'},
+      );
+      final book = cubit(hasGarageKey: HasGarageKeyUsecase(keys))..start();
+      tor.embedded.ready();
+      await settle();
+      await settle();
+      return book;
+    }
+
+    for (final (name, answer, miss)
+        in <(String, Result<bool, P2pFailure>, Type)>[
+          ('no key stored', const Ok(false), OrderSearchMissNoGarageKey),
+          ('a key stored', const Ok(true), OrderSearchMissNotAvailable),
+          (
+            'the keystore locked',
+            const Err(GarageKeyLockedFailure()),
+            OrderSearchMissNotAvailable,
+          ),
           (
             'an entry unreadable',
             const Err(GarageKeyUnreadableFailure()),
-            false,
+            OrderSearchMissNotAvailable,
           ),
-          ('a key unusable', const Err(GarageKeyUnusableFailure()), false),
+          (
+            'a key unusable',
+            const Err(GarageKeyUnusableFailure()),
+            OrderSearchMissNotAvailable,
+          ),
         ]) {
-      test('$name: lacks a Garage Key is $lacks', () async {
+      test('$name: $miss', () async {
         final keys = _KeyStore(answer);
         final book = cubit(
           network: RobosatsNetwork.testnet,
           hasGarageKey: HasGarageKeyUsecase(keys),
         );
 
-        expect(await book.lacksGarageKey(), lacks);
+        final settled = await book.settleSearchMiss(
+          missIn(book),
+          asked: () => true,
+        );
+
+        expect(settled.runtimeType, miss);
         // Whether the key of the book's network is stored, asked once: no key read, no robot, nothing sent.
         expect(keys.calls, ['exists testnet']);
         expect(transport.requested, isEmpty);
@@ -1251,21 +1286,131 @@ void main() {
     test('without the vault\'s handle, no Garage Key can be stored', () async {
       final book = cubit();
 
-      expect(await book.lacksGarageKey(), isTrue);
+      expect(
+        await book.settleSearchMiss(missIn(book), asked: () => true),
+        isA<OrderSearchMissNoGarageKey>(),
+      );
       expect(transport.requested, isEmpty);
       await book.close();
     });
 
-    test('the vault is asked only when the screen asks', () async {
+    test('the search of the book itself does not ask the vault', () async {
       final keys = _KeyStore(const Ok(true));
       final book = cubit(hasGarageKey: HasGarageKeyUsecase(keys))..start();
       tor.embedded.ready();
       await settle();
       await settle();
-      book.searchOrder('http://example.onion/order/temple/1');
+      book.searchOrder(url);
 
       expect(keys.calls, isEmpty);
       await book.close();
+    });
+
+    test(
+      'the book of the coordinator still awaited: waits for it, and opens the order it brings without asking the vault',
+      () async {
+        final keys = _KeyStore(const Ok(true));
+        final book = await heldBook(keys);
+        OrderSearchMiss? settled;
+        unawaited(
+          book
+              .settleSearchMiss(missIn(book), asked: () => true)
+              .then((miss) => settled = miss),
+        );
+        await settle();
+        expect(settled, isNull);
+
+        transport.release('temple');
+        await settle();
+        await settle();
+
+        expect(
+          settled,
+          isA<OrderSearchMissFound>().having((f) => f.order.id, 'id', 1),
+        );
+        expect(keys.calls, isEmpty);
+        await book.close();
+      },
+    );
+
+    test(
+      'the book of the coordinator still awaited, then failed: offline, the vault not asked',
+      () async {
+        final keys = _KeyStore(const Ok(false));
+        final book = await heldBook(keys);
+        final settling = book.settleSearchMiss(missIn(book), asked: () => true);
+        transport.failures['temple'] = const CoordinatorTransportFailed();
+        transport.release('temple');
+
+        expect(await settling, isA<OrderSearchMissOffline>());
+        expect(keys.calls, isEmpty);
+        await book.close();
+      },
+    );
+
+    test(
+      'the book of the coordinator still awaited, then without the order: the vault is asked then',
+      () async {
+        final keys = _KeyStore(const Ok(true));
+        final book = await heldBook(keys);
+        final miss = OrderSearch.run(
+          'http://$temple/order/temple/2',
+          book.state.receivedOrders,
+        );
+        final settling = book.settleSearchMiss(
+          miss as OrderSearchNeedsRobot,
+          asked: () => true,
+        );
+        await settle();
+        expect(keys.calls, isEmpty);
+        transport.release('temple');
+
+        expect(await settling, isA<OrderSearchMissNotAvailable>());
+        expect(keys.calls, ['exists mainnet']);
+        await book.close();
+      },
+    );
+
+    test(
+      'the screen gone while the book is awaited: nothing, the vault not read',
+      () async {
+        final keys = _KeyStore(const Ok(false));
+        final book = await heldBook(keys);
+        var asked = true;
+        final settling = book.settleSearchMiss(
+          missIn(book),
+          asked: () => asked,
+        );
+        await settle();
+        asked = false;
+        transport.books['temple'] = [];
+        transport.release('temple');
+
+        expect(await settling, isNull);
+        expect(keys.calls, isEmpty);
+        await book.close();
+      },
+    );
+
+    test('a closed book does not read the vault', () async {
+      final keys = _KeyStore(const Ok(false));
+      final book = cubit(hasGarageKey: HasGarageKeyUsecase(keys));
+      final miss = missIn(book);
+      await book.close();
+
+      expect(await book.settleSearchMiss(miss, asked: () => true), isNull);
+      expect(keys.calls, isEmpty);
+    });
+
+    test('a book closed while the coordinator is awaited: nothing', () async {
+      final keys = _KeyStore(const Ok(false));
+      final book = await heldBook(keys);
+      final settling = book.settleSearchMiss(missIn(book), asked: () => true);
+      await settle();
+      await book.close();
+
+      expect(await settling, isNull);
+      expect(keys.calls, isEmpty);
     });
   });
 }

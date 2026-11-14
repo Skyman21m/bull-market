@@ -78,16 +78,39 @@ class BookCubit extends Cubit<BookState> {
   OrderSearchOutcome searchOrder(String url) =>
       OrderSearch.run(url, state.receivedOrders);
 
-  /// After « Search order » found no order in the books received: whether no Garage Key is stored for the network of the book, for the screen to say the official client's « You do not have a Garage Key » rather than its « This order is not available ».
+  /// What the screen says for [miss], an order URL that the books received do not hold.
   ///
-  /// `true` only when the vault said that the slot of the network is empty, or when the feature has no vault's handle, the Garage being disabled then.
-  /// A key that cannot be read (keystore locked, entry unreadable or unusable) is not an absence (`HasGarageKeyUsecase`) and gives `false`.
-  /// It asks the vault only whether a key is stored, which hands no key out and uses no robot, and sends nothing to any coordinator.
-  Future<bool> lacksGarageKey() async =>
-      switch (await _hasGarageKey?.execute(state.network)) {
-        null || Ok(value: false) => true,
-        Ok(value: true) || Err() => false,
-      };
+  /// While the book of the coordinator the URL names is still awaited, it waits for it; then the order if that book holds it, or [OrderSearchMissOffline] if that book could not be had.
+  /// Otherwise it asks the vault whether a Garage Key is stored for the network of the book: [OrderSearchMissNoGarageKey] only when the vault said that the slot is empty, or when the feature has no vault's handle, the Garage being disabled then; a key stored, or one that cannot be read (keystore locked, entry unreadable or unusable), is [OrderSearchMissNotAvailable], since a failure is not an absence (`HasGarageKeyUsecase`).
+  /// `null`, the vault not read, once [asked] says that the screen no longer asks or the book is closed.
+  /// It hands no key out, uses no robot, and sends nothing to any coordinator.
+  Future<OrderSearchMiss?> settleSearchMiss(
+    OrderSearchNeedsRobot miss, {
+    required bool Function() asked,
+  }) async {
+    bool bookIs<T extends CoordinatorBookStatus>(BookState state) =>
+        state.coordinators.entries.any(
+          (entry) =>
+              entry.key.shortAlias == miss.coordinator && entry.value is T,
+        );
+    if (bookIs<CoordinatorBookLoading>(state)) {
+      await stream.firstWhere(
+        (state) => !bookIs<CoordinatorBookLoading>(state),
+        orElse: () => state,
+      );
+    }
+    if (isClosed || !asked()) return null;
+    if (searchOrder(miss.url) case OrderSearchFound(:final order)) {
+      return OrderSearchMissFound(order);
+    }
+    if (bookIs<CoordinatorBookFailed>(state)) {
+      return const OrderSearchMissOffline();
+    }
+    return switch (await _hasGarageKey?.execute(state.network)) {
+      null || Ok(value: false) => const OrderSearchMissNoGarageKey(),
+      Ok(value: true) || Err() => const OrderSearchMissNotAvailable(),
+    };
+  }
 
   void _onTorState(P2pTorReport report) {
     final previous = state.tor;
