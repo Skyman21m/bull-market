@@ -16,6 +16,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
+import 'support/key_output.dart';
 import 'support/trade_harness.dart';
 
 /// What the vault says of a key, for « Store your garage key » or « You do not have a Garage Key ».
@@ -397,5 +398,38 @@ void main() {
       expect(harness.coordinator.requests.length, afterTake);
       await cubit.close();
     });
+  });
+
+  test('a take, the watch and a cancel print and log nothing of the trade', () async {
+    final harness = await TradeHarness.start();
+    String? invoice;
+    final output = await captureKeyOutput(() async {
+      final take = _takeCubit(harness, await harness.shownOrder());
+      await take.take();
+      final record = switch (take.state) {
+        TakeSent(:final record) => record,
+        final other => throw StateError('$other'),
+      };
+      await take.close();
+      invoice = harness.coordinator.bondOf(harness.robot(0))?.text;
+      final trade = TradeCubit(
+        record,
+        harness.watch.execute,
+        harness.cancel.execute,
+      )..start();
+      await harness.settle();
+      await trade.cancel(_seen(trade));
+      await harness.settle();
+      await trade.close();
+      final list = ActiveTradesCubit(harness.network, harness.list.execute)
+        ..start();
+      await harness.settle();
+      await list.close();
+    });
+    expect(invoice, isNotNull);
+    expect(output.contains(invoice ?? '-'), isFalse);
+    expect(output.contains(harness.robot(0).tokenSha256Hex), isFalse);
+    expect(output.contains(harness.robot(0).nickname), isFalse);
+    expectNoKeyIn(output, [tradeKey]);
   });
 }
