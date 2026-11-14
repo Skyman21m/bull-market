@@ -59,6 +59,7 @@ import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
+import 'domain/usecases/trade/prepared_takes.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
@@ -294,6 +295,8 @@ final class P2pLocator {
     );
     // One for the feature: the takes of an order run one at a time, whichever use case object runs them.
     locator.registerLazySingleton<TradeTakeLocks>(TradeTakeLocks.new);
+    // One for the feature: a take prepared through one use case object is confirmed or abandoned through another (#119).
+    locator.registerLazySingleton<PreparedTakes>(PreparedTakes.new);
     locator.registerFactory<TakeOrderUsecase>(
       () => TakeOrderUsecase(
         CoordinatorClient(transport(), clock: clock),
@@ -305,6 +308,7 @@ final class P2pLocator {
         locator(),
         invoices(),
         locator(),
+        preparedTakes: locator(),
       ),
     );
     // One for the feature: one subscription per trade, whichever use case object makes it.

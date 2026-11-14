@@ -99,6 +99,11 @@ final class TakeOrderAlreadyTraded extends TakeRefusal {
   String toString() => 'TakeOrderAlreadyTraded($record)';
 }
 
+/// The prepared take given to `TakeOrderUsecase.confirm` is not, or no longer, one this app prepared: confirmed already, abandoned, replaced by a newer preparation of the same order, or prepared before the app restarted; nothing was sent: prepare again (#119).
+final class TakePreparationGone extends TakeRefusal {
+  const TakePreparationGone();
+}
+
 /// The order is no longer in the coordinator's book read just before the take: taken, paused, cancelled or expired.
 final class TakeOrderGone extends TakeRefusal {
   const TakeOrderGone();
@@ -240,4 +245,39 @@ final class TakeOutcomeUnknown extends TakeOutcome {
 
   @override
   String toString() => 'TakeOutcomeUnknown($record)';
+}
+
+/// A take prepared and not sent (#119): the order as the trade's fresh robot read it on its coordinator, after the robot was reserved and put there, for the user to see before confirming.
+///
+/// The public book carries neither the maker's description nor figures fresher than its last refresh: this read does, by the robot that will take, and its terms are the ones a confirmed take is sent with and checked against.
+/// It holds no robot: the robot and its reservation stay with the use case (`PreparedTakes`), out of reach of a screen; a prepared take is confirmed or abandoned through `TakeOrderUsecase`, once.
+@immutable
+final class PreparedTake {
+  /// The order as the robot read it (`GET /api/order/`), a public order this robot takes no part in yet.
+  final CoordinatorOrder order;
+
+  /// The terms of the take, built from [order] (`TradeTerms.takeRead`): what the take is sent with and checked against once confirmed.
+  final TradeTerms terms;
+
+  /// The amount chosen in the range of the order, or `null` for a fixed order.
+  final TakeAmount? amount;
+
+  /// When [order] was read.
+  final DateTime readAt;
+
+  const PreparedTake({
+    required this.order,
+    required this.terms,
+    required this.amount,
+    required this.readAt,
+  });
+
+  /// The maker's description, as the robot's read gave it: at most 240 code points, cleaned by the package (`displayText`), or `null` when there is none. The maker's own words: shown as plain text, never acted on.
+  String? get description => order.description;
+
+  /// The bond the terms expect, in sats at the read's price: an estimate; the bond invoice states the amount to lock.
+  double get expectedBond => terms.expectedBond;
+
+  @override
+  String toString() => 'PreparedTake($terms)';
 }
