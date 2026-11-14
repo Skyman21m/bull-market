@@ -185,8 +185,189 @@ i1.GeneratedColumn<String> _column_10(
       'NOT NULL DEFAULT \'generated\' CHECK (provenance IN (\'generated\', \'acknowledged\'))',
   defaultValue: const i1.CustomExpression('\'generated\''),
 );
+
+final class Schema3 extends i0.VersionedSchema {
+  Schema3({required super.database}) : super(version: 3);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    robotBindings,
+    robotBindingsNetwork,
+    trades,
+    tradesNeverDeleted,
+    tradesSetOnce,
+    tradesInsertedOnce,
+    garageKeyHistories,
+  ];
+  late final Shape1 robotBindings = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'robot_bindings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(length(coordinator_onion) > 0)',
+        'CHECK(length(coordinator_nostr_key) > 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+        _column_10,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index robotBindingsNetwork = i1.Index(
+    'robot_bindings_network',
+    'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  );
+  late final Shape2 trades = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'trades',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(length(coordinator_onion) > 0)',
+        'CHECK(order_id > 0)',
+        'CHECK(role IN (\'buyer\', \'seller\'))',
+        'CHECK(origin IN (\'takenHere\', \'recovered\'))',
+        'CHECK(origin = \'takenHere\' OR confirmed_at IS NOT NULL)',
+        'CHECK(taken_at BETWEEN 0 AND 8640000000000000)',
+        'CHECK(confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000)',
+        'CHECK(closed_at IS NULL OR closed_at BETWEEN 0 AND 8640000000000000)',
+        'FOREIGN KEY(key_fingerprint, robot_index, network)REFERENCES robot_bindings(key_fingerprint, robot_index, network)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_11,
+        _column_12,
+        _column_2,
+        _column_13,
+        _column_14,
+        _column_15,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradesNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE (ABORT, \'a trade record is kept\');END',
+    'trades_never_deleted',
+  );
+  final i1.Trigger tradesSetOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR(OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE (ABORT, \'a trade record only gains its times\');END',
+    'trades_set_once',
+  );
+  final i1.Trigger tradesInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trades_inserted_once',
+  );
+  late final Shape0 garageKeyHistories = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'garage_key_histories',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(network, key_fingerprint)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(origin IN (\'generated\', \'imported\', \'acknowledged\'))',
+      ],
+      columns: [_column_0, _column_1, _column_2, _column_3],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+}
+
+class Shape2 extends i0.VersionedTable {
+  Shape2({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get network =>
+      columnsByName['network']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get keyFingerprint =>
+      columnsByName['key_fingerprint']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get robotIndex =>
+      columnsByName['robot_index']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get coordinatorAlias =>
+      columnsByName['coordinator_alias']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get coordinatorOnion =>
+      columnsByName['coordinator_onion']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get orderId =>
+      columnsByName['order_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get role =>
+      columnsByName['role']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get origin =>
+      columnsByName['origin']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get takenAt =>
+      columnsByName['taken_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get confirmedAt =>
+      columnsByName['confirmed_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get closedAt =>
+      columnsByName['closed_at']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_11(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'order_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_12(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'role',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_13(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'taken_at',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_14(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'confirmed_at',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_15(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'closed_at',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
+  required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -195,6 +376,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from1To2(migrator, schema);
         return 2;
+      case 2:
+        final schema = Schema3(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from2To3(migrator, schema);
+        return 3;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -203,6 +389,7 @@ i0.MigrationStepWithVersion migrationSteps({
 
 i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
+  required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
 }) => i0.VersionedSchema.stepByStepHelper(
-  step: migrationSteps(from1To2: from1To2),
+  step: migrationSteps(from1To2: from1To2, from2To3: from2To3),
 );
