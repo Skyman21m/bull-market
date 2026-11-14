@@ -519,39 +519,55 @@ void main() {
       await settle();
       await capture('offres');
 
-      // Several payment methods: the sheet with two checked, then the sentence that names the first and counts the other.
-      // The sheet lists every method of the official client, so the two chosen are scrolled to; they are neighbours at the end of the list, and both show in the capture.
+      // The payment method sheet with « Buy » and « EUR » chosen (#118): the methods of these orders first with their counts, the others dimmed under a heading.
       await tester.tap(find.text(l10n.p2pBookFilterAnyMethod));
       await settle();
-      final methodList = find.byType(ListView).last;
-      for (final method in ['Wise', 'Zelle']) {
-        final row = find.descendant(
-          of: methodList,
-          matching: find.text(method),
-        );
-        await tester.scrollUntilVisible(
-          row,
-          200,
-          scrollable: find
-              .descendant(of: methodList, matching: find.byType(Scrollable))
-              .first,
-        );
-        await settle();
-        await tester.tap(row);
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-feuille-modes');
+      // Two of them ticked, then the sentence that names the first and counts the other, then the sheet opened again with them first.
+      final methodSheet = find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == 'FilterSheet<String>',
+      );
+      final methodRows = find.descendant(
+        of: methodSheet,
+        matching: find.byWidgetPredicate(
+          (widget) => widget.key is ValueKey<String>,
+        ),
+      );
+      final ticked = [
+        for (final index in [1, 0])
+          (tester.widget(methodRows.at(index)).key as ValueKey<String>?)
+                  ?.value ??
+              '',
+      ];
+      for (final index in [1, 0]) {
+        await tester.tap(methodRows.at(index));
         await settle();
       }
       await tester.pump(const Duration(seconds: 1));
       await capture('filtres-feuille-plusieurs');
-      // The title, and its close button, scrolled away with the rows: a tap above the sheet closes it.
       await tester.tapAt(const Offset(4, 4));
       await settle();
       await capture('filtres-paiements');
-      // « Any payment method » at the top of the sheet clears the choice.
-      await tester.tap(find.text('Wise +1'));
+      final chosenMethods = find.text(l10n.p2pBookFilterMore(ticked.first, 1));
+      await tester.tap(chosenMethods);
       await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-feuille-rouverte');
+      // The search, as the official client's list filters: « rev ».
+      final search = find.descendant(
+        of: methodSheet,
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, 'rev');
+      await settle();
+      await capture('filtres-feuille-recherche');
+      await tester.enterText(search, '');
+      await settle();
+      // « Any payment method » at the top of the sheet clears the choice.
       await tester.tap(find.text(l10n.p2pBookFilterAnyMethod).last);
       await settle();
-      await tester.tap(close);
+      await tester.tapAt(const Offset(4, 4));
       await settle();
 
       // Several hosts, then back to every host, so that the chart below shows every coordinator's euro orders as before.
@@ -755,6 +771,31 @@ void main() {
       await settle();
       await capture('filtres-petit-texte2-plusieurs');
 
+      // The payment method sheet on that phone, then its search with the keyboard up: the sheet stands on the keyboard and its rows scroll above it.
+      final anyMethod = find.text(l10n.p2pBookFilterAnyMethod);
+      await tester.ensureVisible(anyMethod);
+      await settle();
+      await tester.tap(anyMethod);
+      await settle();
+      await tester.pump(const Duration(seconds: 1));
+      await capture('filtres-petit-texte2-modes');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260 * 2);
+      await tester.enterText(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) => widget.runtimeType.toString() == 'FilterSheet<String>',
+          ),
+          matching: find.byType(TextField),
+        ),
+        'pay',
+      );
+      await settle();
+      await capture('filtres-petit-texte2-recherche-clavier');
+      tester.view.resetViewInsets();
+      await settle();
+      await tester.tapAt(const Offset(4, 4));
+      await settle();
+
       // The same phone with the text three times as large: the sheets of the hosts and of the payment methods, whose close button then goes above the title.
       tester.platformDispatcher.textScaleFactorTestValue = 3;
       await settle();
@@ -765,7 +806,10 @@ void main() {
       await settle();
       await tester.pump(const Duration(seconds: 1));
       await capture('filtres-petit-texte3-hotes');
-      await tester.drag(find.byType(ListView).last, const Offset(0, -900));
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, -900),
+      );
       await settle();
       await capture('filtres-petit-texte3-hotes-bas');
       await tester.tapAt(const Offset(4, 4));
