@@ -330,23 +330,23 @@ void main() {
         );
 
         // Rates sent without the swap offered: still no on-chain payout.
-      final (odd, oddRecord, _) = await atSix();
-      odd.coordinator.swapRatesWithoutSwap = true;
-      final oddRun = odd.watchOf(oddRecord);
-      await odd.settle();
-      final oddSeen = oddRun.lastStatus.seen;
-      await oddRun.subscription.cancel();
-      expect(oddSeen.order?.swapFeeRate, 0.75);
-      expect(
-        odd.payout.check(
-          oddRecord,
-          oddSeen,
-          PayoutAddressText(testnetAddress, rate: rate),
-        ),
-        refusedWith<PayoutOnchainNotOffered>(),
-      );
+        final (odd, oddRecord, _) = await atSix();
+        odd.coordinator.swapRatesWithoutSwap = true;
+        final oddRun = odd.watchOf(oddRecord);
+        await odd.settle();
+        final oddSeen = oddRun.lastStatus.seen;
+        await oddRun.subscription.cancel();
+        expect(oddSeen.order?.swapFeeRate, 0.75);
+        expect(
+          odd.payout.check(
+            oddRecord,
+            oddSeen,
+            PayoutAddressText(testnetAddress, rate: rate),
+          ),
+          refusedWith<PayoutOnchainNotOffered>(),
+        );
 
-      final (swap, swapRecord, swapSeen) = await atSix(swap: true);
+        final (swap, swapRecord, swapSeen) = await atSix(swap: true);
         final ask = switch (swap.payout.ask(swapRecord, swapSeen)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
@@ -737,61 +737,70 @@ void main() {
   );
 
   group('nothing sent for another trade, nor without a fresh read', () {
-    test('a payout checked for another trade is refused before anything', () async {
-      final (app, record, seen) = await atSix();
-      final shown = checked(
-        app.payout.check(
-          record,
-          seen,
-          PayoutInvoiceText(
-            invoiceOf(app, sats: askedWithDefaultBudget).text,
-            budget: defaultBudget,
+    test(
+      'a payout checked for another trade is refused before anything',
+      () async {
+        final (app, record, seen) = await atSix();
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(
+              invoiceOf(app, sats: askedWithDefaultBudget).text,
+              budget: defaultBudget,
+            ),
           ),
-        ),
-      );
-      final other = await TradeHarness.start(orderId: 43);
-      final otherRecord = TradeHarness.recordOf(await other.takeShown());
-      final before = other.coordinator.requests.length;
-      expect(
-        await other.payout.execute(otherRecord, shown),
-        isA<Err<PayoutSubmission, PayoutNotSent>>().having(
-          (err) => err.failure,
-          'refusal',
-          isA<PayoutOfAnotherTrade>(),
-        ),
-      );
-      expect(other.coordinator.requests, hasLength(before));
-      expect(other.keys.unlocked, isEmpty);
-    });
+        );
+        final other = await TradeHarness.start(orderId: 43);
+        final otherRecord = TradeHarness.recordOf(await other.takeShown());
+        final before = other.coordinator.requests.length;
+        expect(
+          await other.payout.execute(otherRecord, shown),
+          isA<Err<PayoutSubmission, PayoutNotSent>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<PayoutOfAnotherTrade>(),
+          ),
+        );
+        expect(other.coordinator.requests, hasLength(before));
+        expect(other.keys.unlocked, isEmpty);
+      },
+    );
 
-    test('an order that cannot be read just before signing: nothing signed or sent', () async {
-      final (app, record, seen) = await atSix();
-      final shown = checked(
-        app.payout.check(
-          record,
-          seen,
-          PayoutInvoiceText(
-            invoiceOf(app, sats: askedWithDefaultBudget).text,
-            budget: defaultBudget,
+    test(
+      'an order that cannot be read just before signing: nothing signed or sent',
+      () async {
+        final (app, record, seen) = await atSix();
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(
+              invoiceOf(app, sats: askedWithDefaultBudget).text,
+              budget: defaultBudget,
+            ),
           ),
-        ),
-      );
-      app.coordinator.failNext(ScriptedRequest.order, ScriptedFault.unreachable);
-      expect(
-        await app.payout.execute(record, shown),
-        isA<Err<PayoutSubmission, PayoutNotSent>>().having(
-          (err) => err.failure,
-          'refusal',
-          isA<PayoutReadFailed>().having(
-            (r) => r.cause,
-            'cause',
-            isA<CoordinatorUnreachable>(),
+        );
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        expect(
+          await app.payout.execute(record, shown),
+          isA<Err<PayoutSubmission, PayoutNotSent>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<PayoutReadFailed>().having(
+              (r) => r.cause,
+              'cause',
+              isA<CoordinatorUnreachable>(),
+            ),
           ),
-        ),
-      );
-      expect(sent(app, payouts), 0);
-      expect(app.keyring.openOf(record.robot), (holds: 0, leases: 0));
-    });
+        );
+        expect(sent(app, payouts), 0);
+        expect(app.keyring.openOf(record.robot), (holds: 0, leases: 0));
+      },
+    );
   });
 
   group('what each answer gives', () {
