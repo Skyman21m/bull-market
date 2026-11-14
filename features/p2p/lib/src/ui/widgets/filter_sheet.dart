@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 /// A tap on an option adds it or takes it back, a tap on [anyLabel] clears the choice, and each tap applies at once through [onChanged], as the official client applies a change of its filter as soon as it is made (`AutocompletePayments`, `onChange`); the sheet stays open for more choices, and closing it, by its button, a tap outside or the back gesture, keeps what was chosen.
 /// The choices keep the order they were made in, the first one being the one the sentence names.
 /// For a screen reader each row is one node, its label and whether it is checked.
+/// The payment method sheet (#118) also lists its rows in [groups] (a heading over the last, its rows dimmed but chosen like the others) and has a [search] field: it narrows every group to the rows that match, hides [anyLabel] while a text is typed, says when nothing matches, and forgets the text when the sheet closes; the rows keep the places they had when the sheet opened, whatever is ticked.
 class FilterSheet<T extends Object> extends StatefulWidget {
   final String title;
 
@@ -27,6 +28,15 @@ class FilterSheet<T extends Object> extends StatefulWidget {
   /// Called after each tap with every choice now made, in the order they were made, none for any.
   final ValueChanged<List<T>> onChanged;
 
+  /// The rows in groups, each with its heading, in place of [options]; `null` lists [options] as one group.
+  final List<FilterSheetGroup<T>>? groups;
+
+  /// What a screen reader says of a row instead of its label, such as its method and number of orders without the separator shown.
+  final String Function(T)? semanticsLabel;
+
+  /// A search field under the title that narrows the rows; `null` for none.
+  final FilterSheetSearch<T>? search;
+
   const FilterSheet({
     super.key,
     required this.title,
@@ -36,6 +46,9 @@ class FilterSheet<T extends Object> extends StatefulWidget {
     required this.label,
     required this.onChanged,
     this.leading,
+    this.groups,
+    this.semanticsLabel,
+    this.search,
   });
 
   /// Opens the sheet; completes when it is closed, every choice already applied.
@@ -48,6 +61,9 @@ class FilterSheet<T extends Object> extends StatefulWidget {
     required String Function(T) label,
     required ValueChanged<List<T>> onChanged,
     Widget Function(T)? leading,
+    List<FilterSheetGroup<T>>? groups,
+    String Function(T)? semanticsLabel,
+    FilterSheetSearch<T>? search,
   }) => BullBottomSheet.show<void>(
     context: context,
     child: FilterSheet<T>(
@@ -58,6 +74,9 @@ class FilterSheet<T extends Object> extends StatefulWidget {
       label: label,
       leading: leading,
       onChanged: onChanged,
+      groups: groups,
+      semanticsLabel: semanticsLabel,
+      search: search,
     ),
   );
 
@@ -67,6 +86,9 @@ class FilterSheet<T extends Object> extends StatefulWidget {
 
 class _FilterSheetState<T extends Object> extends State<FilterSheet<T>> {
   late final LinkedHashSet<T> _chosen = LinkedHashSet.of(widget.selected);
+
+  /// The text typed in the search field, never kept once the sheet is closed.
+  String _query = '';
 
   void _toggle(T option) {
     setState(() {
@@ -84,27 +106,176 @@ class _FilterSheetState<T extends Object> extends State<FilterSheet<T>> {
   @override
   Widget build(BuildContext context) {
     final leading = widget.leading;
+    final search = widget.search;
+    final searching = search != null && _query.isNotEmpty;
+    final groups =
+        widget.groups ?? [FilterSheetGroup<T>(options: widget.options)];
+    // The rows as the sheet lists them: « Any » while nothing is typed, then each group with rows left, its heading first.
+    final rows = <Widget>[
+      if (!searching)
+        _FilterRow(
+          label: widget.anyLabel,
+          checked: _chosen.isEmpty,
+          onTap: _clear,
+        ),
+    ];
+    var matched = 0;
+    for (final group in groups) {
+      final options = [
+        for (final option in group.options)
+          if (!searching || search.matches(option, _query)) option,
+      ];
+      if (options.isEmpty) continue;
+      matched += options.length;
+      if (group.heading case final heading?) {
+        rows.add(_GroupHeading(heading));
+      }
+      for (final option in options) {
+        rows.add(
+          _FilterRow(
+            key: ValueKey(option),
+            label: widget.label(option),
+            semanticsLabel: widget.semanticsLabel?.call(option),
+            leading: leading?.call(option),
+            checked: _chosen.contains(option),
+            dimmed: group.dimmed,
+            onTap: () => _toggle(option),
+          ),
+        );
+      }
+    }
+    if (searching && matched == 0) rows.add(_NoMatch(search.noMatch));
     return _SheetFrame(
       title: widget.title,
-      rows: widget.options.length + 1,
-      row: (index) {
-        if (index == 0) {
-          return _FilterRow(
-            label: widget.anyLabel,
-            checked: _chosen.isEmpty,
-            onTap: _clear,
-          );
-        }
-        final option = widget.options[index - 1];
-        return _FilterRow(
-          label: widget.label(option),
-          leading: leading?.call(option),
-          checked: _chosen.contains(option),
-          onTap: () => _toggle(option),
-        );
-      },
+      rows: rows.length,
+      row: (index) => rows[index],
+      pinned: search == null
+          ? null
+          : _SearchField(
+              search: search,
+              query: _query,
+              onChanged: (query) => setState(() => _query = query),
+            ),
     );
   }
+}
+
+/// A group of rows of a [FilterSheet], under its [heading] when it has one; [dimmed] rows are drawn in the muted colour, still chosen by a tap.
+@immutable
+final class FilterSheetGroup<T extends Object> {
+  final String? heading;
+  final List<T> options;
+  final bool dimmed;
+
+  const FilterSheetGroup({
+    required this.options,
+    this.heading,
+    this.dimmed = false,
+  });
+}
+
+/// The search field of a [FilterSheet]: its [hint], the label of the button that empties it, the text shown when no row matches, and the rule a row matches by.
+@immutable
+final class FilterSheetSearch<T extends Object> {
+  final String hint;
+  final String clear;
+  final String noMatch;
+  final bool Function(T option, String query) matches;
+
+  const FilterSheetSearch({
+    required this.hint,
+    required this.clear,
+    required this.noMatch,
+    required this.matches,
+  });
+}
+
+/// The search field of a sheet, kept at the top of the sheet while its rows scroll, with a button that empties it once something is typed.
+class _SearchField<T extends Object> extends StatelessWidget {
+  final FilterSheetSearch<T> search;
+  final String query;
+  final ValueChanged<String> onChanged;
+
+  const _SearchField({
+    required this.search,
+    required this.query,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.bull.background,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(
+        BullSpacing.md,
+        0,
+        BullSpacing.md,
+        BullSpacing.sm,
+      ),
+      // While nothing is typed the hint names the field for a screen reader; once a text replaces it, the label does, so that the field is always « Search » and never « Search Search ».
+      child: Semantics(
+        label: query.isEmpty ? null : search.hint,
+        child: BullInputText(
+          value: query,
+          onChanged: onChanged,
+          hint: search.hint,
+          maxLines: 1,
+          autocorrect: false,
+          rightIcon: query.isEmpty
+              ? null
+              : Icon(Icons.close, semanticLabel: search.clear),
+          onRightTap: () => onChanged(''),
+        ),
+      ),
+    ),
+  );
+}
+
+/// The heading of a group of rows, said as a header.
+class _GroupHeading extends StatelessWidget {
+  final String text;
+
+  const _GroupHeading(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      _FilterRow.sidePadding(context),
+      BullSpacing.md,
+      _FilterRow.sidePadding(context),
+      BullSpacing.xxs,
+    ),
+    child: Semantics(
+      header: true,
+      child: Text(
+        text,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: context.bull.textMuted),
+      ),
+    ),
+  );
+}
+
+/// What the sheet says when no row matches the text typed.
+class _NoMatch extends StatelessWidget {
+  final String text;
+
+  const _NoMatch(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.symmetric(
+      horizontal: _FilterRow.sidePadding(context),
+      vertical: BullSpacing.lg,
+    ),
+    child: Text(
+      text,
+      style: Theme.of(
+        context,
+      ).textTheme.bodyLarge?.copyWith(color: context.bull.textMuted),
+    ),
+  );
 }
 
 /// The list of a selector of the book that takes one choice (the order type), drawn as [FilterSheet]: a tap chooses and closes it, as the official client's select does.
@@ -157,71 +328,59 @@ class FilterPickerSheet<T extends Object> extends StatelessWidget {
 
 /// The frame of the sheets of the filter: the title, centred with the close button beside it, then the rows, in the design of `BullPickerSheet`.
 ///
-/// The title scrolls with the rows rather than staying above them, so that on a small phone with large text, where the title alone can be taller than the sheet, the rows can still be reached.
+/// The title scrolls with the rows rather than staying above them, so that on a small phone with large text, where the title alone can be taller than the sheet, the rows can still be reached; a [pinned] search field stays at the top while the rows scroll.
+/// The sheet stands on the keyboard (`viewInsets`), as the wallet's sheets with a text field do, so that the keyboard never hides its rows.
 class _SheetFrame extends StatelessWidget {
   final String title;
   final int rows;
   final Widget Function(int index) row;
 
+  /// What stays at the top of the sheet under the title while the rows scroll, such as a search field.
+  final Widget? pinned;
+
   const _SheetFrame({
     required this.title,
     required this.rows,
     required this.row,
+    this.pinned,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+    final pinned = this.pinned;
+    final close = IconButton(
+      tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+      iconSize: 20,
+      onPressed: () => Navigator.of(context).pop(),
+      color: colors.onSurface,
+      icon: const Icon(Icons.close),
+    );
+    final heading = Semantics(
+      header: true,
+      child: Text(
+        title,
+        textAlign: TextAlign.center,
+        style: text.headlineMedium?.copyWith(color: colors.onSurface),
       ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        // The system's bottom inset too, which a list given its own padding no longer adds: shown without the app's bottom bar, which takes the inset in the tab, the last row stays above the system bar.
-        padding: EdgeInsets.only(
-          top: BullSpacing.md,
-          bottom: BullSpacing.lg + MediaQuery.paddingOf(context).bottom,
-        ),
-        itemCount: rows + 1,
-        itemBuilder: (context, index) {
-          if (index > 0) return row(index - 1);
-          final close = IconButton(
-            tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-            iconSize: 20,
-            onPressed: () => Navigator.of(context).pop(),
-            color: colors.onSurface,
-            icon: const Icon(Icons.close),
-          );
-          final heading = Semantics(
-            header: true,
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: text.headlineMedium?.copyWith(color: colors.onSurface),
+    );
+    // With very large text the close button goes above the title, which then has the whole width: beside it, « Sélectionner » no longer fits on a line of a small phone and breaks in the middle.
+    final Widget header = _SheetFrame.isLargeText(context)
+        ? Padding(
+            padding: const EdgeInsets.only(
+              left: BullSpacing.xs,
+              right: BullSpacing.xs,
+              bottom: BullSpacing.md,
             ),
-          );
-          // With very large text the close button goes above the title, which then has the whole width: beside it, « Sélectionner » no longer fits on a line of a small phone and breaks in the middle.
-          if (_SheetFrame.isLargeText(context)) {
-            return Padding(
-              padding: const EdgeInsets.only(
-                left: BullSpacing.xs,
-                right: BullSpacing.xs,
-                bottom: BullSpacing.md,
-              ),
-              child: Column(
-                children: [
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: close,
-                  ),
-                  heading,
-                ],
-              ),
-            );
-          }
-          return Padding(
+            child: Column(
+              children: [
+                Align(alignment: AlignmentDirectional.centerEnd, child: close),
+                heading,
+              ],
+            ),
+          )
+        : Padding(
             padding: const EdgeInsets.only(bottom: BullSpacing.md),
             child: Row(
               children: [
@@ -232,7 +391,34 @@ class _SheetFrame extends StatelessWidget {
               ],
             ),
           );
-        },
+    // The keyboard's height below the sheet, so that a search field's keyboard never hides the rows: the sheet stands on it and its list shrinks.
+    // With a search field the sheet keeps its full height, so that narrowing the rows never moves the field under the finger: only the list changes, as in the official client's list.
+    final height = MediaQuery.sizeOf(context).height * 0.8;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Container(
+        height: pinned == null ? null : height,
+        constraints: pinned == null ? BoxConstraints(maxHeight: height) : null,
+        child: CustomScrollView(
+          shrinkWrap: true,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.only(top: BullSpacing.md),
+              sliver: SliverToBoxAdapter(child: header),
+            ),
+            if (pinned != null) PinnedHeaderSliver(child: pinned),
+            // The system's bottom inset too, which a list given its own padding no longer adds: shown without the app's bottom bar, which takes the inset in the tab, the last row stays above the system bar.
+            SliverPadding(
+              padding: EdgeInsets.only(
+                bottom: BullSpacing.lg + MediaQuery.paddingOf(context).bottom,
+              ),
+              sliver: SliverList.builder(
+                itemCount: rows,
+                itemBuilder: (context, index) => row(index),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -245,6 +431,7 @@ class _SheetFrame extends StatelessWidget {
 /// One row of a sheet of the filter: its label, in the primary colour with a check when it is chosen, as `BullPickerSheet` draws its selected row.
 class _FilterRow extends StatelessWidget {
   final String label;
+  final String? semanticsLabel;
   final Widget? leading;
   final bool checked;
   final VoidCallback onTap;
@@ -252,13 +439,25 @@ class _FilterRow extends StatelessWidget {
   /// Whether the row is one of options of which only one is chosen, as a radio button is.
   final bool exclusive;
 
+  /// Whether the label is drawn in the muted colour while not chosen; the row is chosen by a tap all the same, and a screen reader does not hear it as disabled.
+  final bool dimmed;
+
   const _FilterRow({
+    super.key,
     required this.label,
     required this.checked,
     required this.onTap,
+    this.semanticsLabel,
     this.leading,
     this.exclusive = false,
+    this.dimmed = false,
   });
+
+  /// The space on each side of a row, narrower with very large text.
+  static double sidePadding(BuildContext context) =>
+      _SheetFrame.isLargeText(context)
+      ? BullSpacing.lg
+      : BullSpacing.xl + BullSpacing.xs;
 
   @override
   Widget build(BuildContext context) {
@@ -277,9 +476,7 @@ class _FilterRow extends StatelessWidget {
             // The padding of the rows of `BullPickerSheet`, narrower with very large text.
             padding: EdgeInsets.symmetric(
               vertical: BullSpacing.md + BullSpacing.xxs,
-              horizontal: large
-                  ? BullSpacing.lg
-                  : BullSpacing.xl + BullSpacing.xs,
+              horizontal: sidePadding(context),
             ),
             child: Row(
               children: [
@@ -287,8 +484,13 @@ class _FilterRow extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
+                    semanticsLabel: semanticsLabel,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: checked ? colors.primary : colors.onSurface,
+                      color: checked
+                          ? colors.primary
+                          : dimmed
+                          ? colors.textMuted
+                          : colors.onSurface,
                       fontWeight: checked ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),

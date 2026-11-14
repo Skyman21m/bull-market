@@ -446,6 +446,36 @@ abstract class P2pLocalizations {
   /// **', '**
   String get p2pBookFilterListSeparator;
 
+  /// In the payment method sheet of the book's filter: how many orders the filter would keep with this method alone, the other choices as they are (#118).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{no orders} =1{1 order} other{{count} orders}}'**
+  String p2pBookFilterOrderCount(int count);
+
+  /// A row of the payment method sheet: the method's name, then p2pBookFilterOrderCount, such as « Instant SEPA · 12 orders » (#118).
+  ///
+  /// In en, this message translates to:
+  /// **'{method} · {orders}'**
+  String p2pBookFilterMethodWithCount(String method, String orders);
+
+  /// What a screen reader says of a row of the payment method sheet, without the separator shown: « Instant SEPA, 12 orders ».
+  ///
+  /// In en, this message translates to:
+  /// **'{method}, {orders}'**
+  String p2pBookFilterMethodWithCountSemantics(String method, String orders);
+
+  /// Heading of the payment method sheet above the methods no order of the book would be kept with, listed dimmed but still selectable (#118, the owner's request).
+  ///
+  /// In en, this message translates to:
+  /// **'No orders right now'**
+  String get p2pBookFilterMethodsWithoutOrders;
+
+  /// The payment method sheet when no method matches the text typed in its search field.
+  ///
+  /// In en, this message translates to:
+  /// **'No payment method found'**
+  String get p2pBookFilterNoMethodFound;
+
   /// The maker was seen in the last 2 minutes (`maker_status` of the API). Missing from the RoboSats French texts.
   ///
   /// In en, this message translates to:
