@@ -20,6 +20,7 @@ import 'package:robosats/src/pgp_wire.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_token.dart';
+import 'package:robosats/src/coordinator/chat.dart';
 
 /// The official client dates keys and chat signatures one day in the past (`frontend/src/pgp/index.ts:29` and `:58`).
 ///
@@ -149,8 +150,9 @@ final class PgpPublicKey {
   @override
   int get hashCode => fingerprint.hashCode;
 
+  /// The fingerprint only: [userId] is text whoever made the key chose, a coordinator or a peer.
   @override
-  String toString() => 'PgpPublicKey($fingerprint, $userId)';
+  String toString() => 'PgpPublicKey($fingerprint)';
 }
 
 /// The OpenPGP key pair of a robot, as the two armored blocks a coordinator stores: the public key and the private key locked by the robot token.
@@ -577,6 +579,27 @@ final class UnlockedRobotPgpKey {
 
   @override
   String toString() => 'UnlockedRobotPgpKey(${key.publicKey.fingerprint})';
+
+  /// [encryptChatMessage] for `CoordinatorClient.postChat`: the message as the one value that call sends, bound to this robot and to [peer].
+  ///
+  /// Encrypt to the peer key pinned for the trade, never to a key read again without comparing it.
+  /// Fails with [PgpChatTextTooLong], before anything is encrypted, when [plaintext] takes more than [OutgoingChatMessage.maxTextBytes] bytes ([OutgoingChatMessage.textBytesOf]), and otherwise as [encryptChatMessage].
+  Result<OutgoingChatMessage, PgpFailure> encryptChatMessageToPost(
+    String plaintext, {
+    required PgpPublicKey peer,
+    DateTime? now,
+  }) =>
+      OutgoingChatMessage.textBytesOf(plaintext) >
+          OutgoingChatMessage.maxTextBytes
+      ? const Err(PgpChatTextTooLong())
+      : switch (encryptChatMessage(plaintext, peer: peer, now: now)) {
+          Err(:final failure) => Err(failure),
+          Ok(value: final armored) => OutgoingChatMessage.fromArmored(
+            armored,
+            sender: _identity.hashId,
+            peerFingerprint: peer.fingerprint,
+          ),
+        };
 }
 
 /// A chat message once decrypted.
