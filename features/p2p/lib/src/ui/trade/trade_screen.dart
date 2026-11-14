@@ -395,6 +395,7 @@ class _Contract extends StatelessWidget {
         record: record,
         status: bond,
         walletPayment: walletPayment,
+        payable: contract.payable,
       ),
       (TradePrompt.payout, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

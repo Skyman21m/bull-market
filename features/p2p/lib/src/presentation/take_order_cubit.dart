@@ -44,7 +44,7 @@ final class TakeRunning extends TakeOrderState {
   const TakeRunning({this.slow = false});
 }
 
-/// The take was sent and started a trade, resumed one, or its outcome is unknown: the trade of [record] is the screen to show (the watch of the trade resolves an unknown outcome).
+/// The take was sent and started a trade, resumed one, or its outcome is unknown, or the order already had an open trade here: the trade of [record] is the screen to show (the watch of the trade resolves an unknown outcome).
 final class TakeSent extends TakeOrderState {
   final TradeRecord record;
 
@@ -113,6 +113,8 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     _stillWaiting?.cancel();
     if (isClosed) return;
     emit(switch (result) {
+      // The order already has an open trade on this device: that trade is opened rather than taken again.
+      Err(failure: TakeOrderAlreadyTraded(:final record)) => TakeSent(record),
       Err(:final failure) => TakeIdle(problem: TakeWasRefused(failure)),
       Ok(value: TakeNotMade(:final refusal)) => TakeIdle(
         problem: TakeWasNotMade(refusal),

@@ -8,7 +8,7 @@ import '../widgets/trade_dialog_body.dart';
 
 /// « Cancel the order? » once the taker bond is locked, at 6 and 7, where a cancel alone loses the bond (`TradeBox/Dialogs/ConfirmCancel.tsx`, commit ff1998c): « If the order is cancelled now you will lose your bond. », « Go back » / « Confirm Cancel ».
 ///
-/// The only place of the app that builds a [BondLossAcknowledged], which `CancelTradeUsecase` needs to send such a cancel: on « Confirm Cancel » alone, for the trade [record] at the status [seen] this dialog was opened for; « Go back », a system back or a tap outside give `null`, and nothing is sent (`trade_screen_architecture_test.dart` pins that no other file names its constructor).
+/// The only place of the app that builds a [BondLossAcknowledged], which `CancelTradeUsecase` needs to send such a cancel: on « Confirm Cancel » alone, bound to the trade [record] and the status [seen] this dialog was opened for (an acknowledgement of another status is refused, `CancelAcknowledgementMismatch`); « Go back », a system back or a tap outside give `null`, and nothing is sent (`trade_screen_architecture_test.dart` pins that no other file names its constructor).
 class ConfirmCancelDialog extends StatelessWidget {
   final TradeRecord record;
   final TradeSeen seen;
@@ -40,7 +40,7 @@ class ConfirmCancelDialog extends StatelessWidget {
       goLabel: l10n.p2pTradeConfirmCancel,
       onGo: () => Navigator.of(
         context,
-      ).pop(const BondLossAcknowledged.fromConfirmationDialog()),
+      ).pop(BondLossAcknowledged.fromConfirmationDialog(record, seen)),
     );
   }
 }

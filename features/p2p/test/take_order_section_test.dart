@@ -161,6 +161,18 @@ void main() {
     },
   );
 
+  testWidgets('an order with an open trade here: that trade opens', (
+    tester,
+  ) async {
+    final take = _Take()
+      ..answer = () => Err(TakeOrderAlreadyTraded(TradeScreenStatuses.record));
+    final taken = await _show(tester, await _order(), take: take);
+    await _press(tester);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(taken, [TradeScreenStatuses.record]);
+  });
+
   testWidgets(
     'no Garage Key: « You do not have a Garage Key », nothing taken',
     (tester) async {

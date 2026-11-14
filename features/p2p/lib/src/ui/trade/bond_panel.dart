@@ -30,11 +30,15 @@ class BondPanel extends StatelessWidget {
   final WaitingForTakerBond status;
   final WalletPaymentBuilder? walletPayment;
 
+  /// Whether the status came with its trail stored: otherwise neither the wallet's slot nor the QR code and the copy are offered (`AGENTS.md`, « Rules for #88 »).
+  final bool payable;
+
   const BondPanel({
     super.key,
     required this.record,
     required this.status,
     required this.walletPayment,
+    this.payable = true,
   });
 
   /// The page of compatible wallets the official client's « See Compatible Wallets » opens (`TradeBox/WalletsButton.tsx`).
@@ -50,7 +54,9 @@ class BondPanel extends StatelessWidget {
       status: status,
       amount: status.bond.orderAmount,
     );
-    final wallet = WalletPaymentSection.offer(context, walletPayment, request);
+    final wallet = payable
+        ? WalletPaymentSection.offer(context, walletPayment, request)
+        : null;
     final invoice = status.bond;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -70,6 +76,7 @@ class BondPanel extends StatelessWidget {
           }),
           invoice: invoice,
           initiallyOpen: wallet == null,
+          payable: payable,
         ),
         const Gap(BullSpacing.md),
         Text(
@@ -86,11 +93,13 @@ class BondPanel extends StatelessWidget {
 class _OtherWallet extends StatefulWidget {
   final StepInvoice invoice;
   final bool initiallyOpen;
+  final bool payable;
 
   const _OtherWallet({
     super.key,
     required this.invoice,
     required this.initiallyOpen,
+    required this.payable,
   });
 
   @override
@@ -125,7 +134,9 @@ class _OtherWalletState extends State<_OtherWallet> {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final invoice = widget.invoice;
-    final display = invoiceDisplayOf(invoice, shownAnyway: _shownAnyway);
+    final display = widget.payable
+        ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway)
+        : InvoiceDisplay.hidden;
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: colors.outlineVariant),

@@ -42,6 +42,8 @@ extension TakeProblemL10n on TakeProblem {
           cause.toRobotText(context, coordinator: coordinator),
         ),
         TakeNotRecorded() => l10n.p2pTakeNotRecorded,
+        // The cubit opens that trade: never shown.
+        TakeOrderAlreadyTraded() => l10n.p2pTakeNotMade,
       },
       TakeWasNotMade(:final refusal) => switch (refusal) {
         null => l10n.p2pTakeNotMade,
@@ -125,6 +127,7 @@ extension TradeMessageKindL10n on TradeMessageKind {
       TradeMessageKind.notAvailable => l10n.p2pOrderNotAvailable,
       TradeMessageKind.takePending => l10n.p2pTradeTakePending(coordinator),
       TradeMessageKind.takeNeverSent => l10n.p2pTradeTakeNeverSent(coordinator),
+      TradeMessageKind.takeNotMade => l10n.p2pTakeNotMade,
       TradeMessageKind.unrestorable => l10n.p2pTradeUnrestorable,
       TradeMessageKind.coordinatorGone => l10n.p2pTradeCoordinatorGone(
         coordinator,
@@ -184,6 +187,8 @@ extension TradeCancelNoticeL10n on TradeCancelNotice {
         CancelLosesTheBond() => l10n.p2pTradeCancelBondText,
         CancelOnlyTogether() => l10n.p2pTradeCancelOnlyTogether,
         CancelNotPossible() => l10n.p2pTradeCancelNotPossible,
+        // The status moved since the dialog was opened: nothing was sent, the screen shows the fresh status and its « Cancel ».
+        CancelAcknowledgementMismatch() => l10n.p2pTradeCancelMovedOn,
         CancelOfAnotherTrade() => l10n.p2pTradeUnavailable,
         CancelTradeUnavailable(
           failure: GarageKeyMissingFailure() || TradeKeyMissingFailure(),

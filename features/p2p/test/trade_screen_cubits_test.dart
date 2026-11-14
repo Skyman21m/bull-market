@@ -214,6 +214,26 @@ void main() {
       expect(cubit.state, isA<TakeRunning>());
     });
 
+    test(
+      'an order with an open trade here opens that trade, nothing taken again',
+      () async {
+        final harness = await TradeHarness.start();
+        final shown = await harness.shownOrder();
+        final first = _takeCubit(harness, shown);
+        await first.take();
+        final record = (first.state as TakeSent).record;
+        await first.close();
+        final second = _takeCubit(harness, shown);
+
+        await second.take();
+
+        expect(second.state, isA<TakeSent>());
+        expect((second.state as TakeSent).record.robot, record.robot);
+        expect(_requestsOf(harness, ScriptedRequest.take), 1);
+        await second.close();
+      },
+    );
+
     test('the key: none only when the vault says so', () async {
       final harness = await TradeHarness.start();
       final order = await harness.shownOrder();
@@ -360,7 +380,10 @@ void main() {
 
       await cubit.cancel(
         _seen(cubit),
-        bondLoss: const BondLossAcknowledged.fromConfirmationDialog(),
+        bondLoss: BondLossAcknowledged.fromConfirmationDialog(
+          cubit.state.record,
+          _seen(cubit),
+        ),
       );
       await harness.settle();
 

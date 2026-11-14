@@ -1803,6 +1803,14 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pOrderCancelled));
         await capture('echange-annule');
+
+        // The screens gone, their cubits closed: the waits they leave (the release of the robots, 10 s at most) run out.
+        await backToTab();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(seconds: 3)),
+        );
+        await tester.pump(const Duration(minutes: 1));
       },
     );
   }

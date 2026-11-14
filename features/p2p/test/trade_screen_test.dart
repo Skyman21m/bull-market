@@ -453,6 +453,14 @@ void main() {
           expect(cancels.asked, hasLength(1));
           expect(cancels.asked.single.$1, same(_seen[name]));
           expect(cancels.asked.single.$2, isA<BondLossAcknowledged>());
+          // Bound to this trade and the status the dialog was opened for.
+          expect(
+            cancels.asked.single.$2?.covers(
+              _record,
+              _seen[name] ?? (throw StateError(name)),
+            ),
+            isTrue,
+          );
         },
       );
     }
@@ -648,6 +656,48 @@ void main() {
         expect(find.text('Cancel'), findsNothing);
       });
     }
+
+    for (final (state, text) in <(TradeWatchState, String)>[
+      (
+        TradeWatchTakeNotMade(_record, closed: true),
+        'The order was not taken.',
+      ),
+      (
+        TradeWatchAlreadyWatched(_record),
+        'Bull Market cannot open this trade now. Nothing is sent.',
+      ),
+    ]) {
+      testWidgets('${state.runtimeType}: « $text », no action', (tester) async {
+        await _show(tester, watch: _Watch(), state: state);
+        expect(find.text(text), findsOneWidget);
+        expect(find.byType(TradeButton), findsNothing);
+        expect(find.textContaining('bond'), findsNothing);
+      });
+    }
+
+    testWidgets('a status whose records could not be written: nothing payable', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: TradeScreenStatuses.watched(
+          _seen['bond'] ?? (throw StateError('bond')),
+          recordProblem: const P2pStorageFailure(),
+        ),
+        walletPayment: (context, request) => const Text('wallet slot'),
+      );
+      expect(
+        find.text(
+          'Bull Market could not write the records of this trade on this device.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      expect(find.text('Show anyway'), findsNothing);
+      expect(find.text('wallet slot'), findsNothing);
+    });
 
     testWidgets(
       'reads that keep failing: the last status kept, with its time',

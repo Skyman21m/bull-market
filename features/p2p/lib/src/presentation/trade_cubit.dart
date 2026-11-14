@@ -143,7 +143,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// [watch], or, when it is a status not understood yet ([StatusUnknown], as the watch gives when it opens a trade again from its stored trail, or when the stored trail won over its read) at the very position of the status shown, that status with what [watch] says of its reads and records: the screen does not fall back to its wait for a status it has already shown at that position.
   TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
     final shown = state.seen;
+    // A status that comes with a record problem is the stored trail's, shown as it is: nothing payable is kept from before.
     if (watch is! TradeWatchStatus ||
+        watch.recordProblem != null ||
         shown == null ||
         watch.seen.status is! StatusUnknown ||
         shown.status is StatusUnknown ||

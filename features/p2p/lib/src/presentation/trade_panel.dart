@@ -60,13 +60,21 @@ sealed class TradeView {
     TradeWatchTakeNeverSent() => const TradeMessage(
       TradeMessageKind.takeNeverSent,
     ),
-    TradeWatchStatus(:final seen, :final takePending) => _ofStatus(
-      seen,
-      takePending: takePending,
+    // A take that did not happen: no pre-take, so no invoice, was ever seen.
+    TradeWatchTakeNotMade() => const TradeMessage(TradeMessageKind.takeNotMade),
+    // One subscription per trade: this screen is not the trade's.
+    TradeWatchAlreadyWatched() => const TradeMessage(
+      TradeMessageKind.unavailable,
     ),
+    TradeWatchStatus(:final seen, :final takePending, :final recordProblem) =>
+      _ofStatus(seen, takePending: takePending, payable: recordProblem == null),
   };
 
-  static TradeView _ofStatus(TradeSeen seen, {required bool takePending}) {
+  static TradeView _ofStatus(
+    TradeSeen seen, {
+    required bool takePending,
+    required bool payable,
+  }) {
     final status = seen.status;
     final order = seen.order;
     return switch (status) {
@@ -95,7 +103,7 @@ sealed class TradeView {
       BondForfeited() when order != null => TradeOrderOnly(order),
       PreTakeEnded() ||
       BondForfeited() => const TradeMessage(TradeMessageKind.notAvailable),
-      _ => TradeContract(seen, order: order),
+      _ => TradeContract(seen, order: order, payable: payable),
     };
   }
 }
@@ -118,6 +126,7 @@ enum TradeMessageKind {
   notAvailable,
   takePending,
   takeNeverSent,
+  takeNotMade,
   unrestorable,
   coordinatorGone,
   unavailable,
@@ -137,7 +146,10 @@ final class TradeContract extends TradeView {
   final TradeSeen seen;
   final CoordinatorOrder? order;
 
-  const TradeContract(this.seen, {required this.order});
+  /// Whether the status came with its trail stored: otherwise the trade's records could not be written, and nothing payable is offered (no QR code, no copy, no wallet), only the reads and what the reference offers without an invoice (`AGENTS.md`, « Rules for #88 »).
+  final bool payable;
+
+  const TradeContract(this.seen, {required this.order, this.payable = true});
 
   TradeStatus get status => seen.status;
 
