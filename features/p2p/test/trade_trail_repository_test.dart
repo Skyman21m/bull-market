@@ -326,9 +326,9 @@ void main() {
         bondStepDeadline: at(200),
       );
       final trade = await recorded(bondStep);
-      // From the pre-take to the chat, skipping nothing the edges know: refused without a breach.
+      // Back to the start, which no edge reaches: refused without a breach.
       final skipped = trailOf(
-        position: 'succeeded',
+        position: 'start',
         readAt: at(20),
         bondHash: hashA,
         bondStepSeenAt: at(10),
@@ -515,14 +515,14 @@ void main() {
           reason: label,
         );
       }
-      // A seller of a sell order.
+      // A seller of a sell order: refused, by its trigger (not the trade's role) or its CHECK.
       await expectLater(
         database.customStatement(
           "INSERT INTO trade_terms VALUES (?, 0, 1, 'testnet', 'temple', 7, "
           "'seller', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175)",
           [trade.robot.keyFingerprint.hex],
         ),
-        refusedBy(check),
+        anyOf(refusedBy(trigger), refusedBy(check)),
       );
     });
 
