@@ -1482,18 +1482,19 @@ void main() {
             final other => fail('not reserved: $other'),
           };
           // The one reservation handed to both connections, as a bug would: the database still writes one record.
+          // Each round takes orders of its own: an order has one open trade (schema 4, review of #117).
           final results = await Future.wait([
             untilNotBusy(
               () => one.recordPendingTake(
                 reservation,
-                orderId: 10,
+                orderId: 10 + 2 * index,
                 role: TradeRole.buyer,
               ),
             ),
             untilNotBusy(
               () => other.recordPendingTake(
                 reservation,
-                orderId: 11,
+                orderId: 11 + 2 * index,
                 role: TradeRole.buyer,
               ),
             ),

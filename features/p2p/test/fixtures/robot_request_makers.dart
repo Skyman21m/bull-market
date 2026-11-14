@@ -9,9 +9,11 @@ import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/robot_binding_repository.dart';
 import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' as robosats;
@@ -162,3 +164,9 @@ final recoveredTradeInVariable = [
         role: TradeRole.seller,
       ),
 ];
+
+/// A trail kept, and a record closed, through the trade use cases' shared reader, from outside them (review of #117).
+Object readerKeepByTearOff(TradeReader reader) => reader.keep;
+
+/// An acknowledgement of a bond lost built elsewhere than in the cancel confirmation (review of #117).
+Object acknowledgedByTearOff() => BondLossAcknowledged.fromConfirmationDialog;

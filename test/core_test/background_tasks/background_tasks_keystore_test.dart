@@ -112,6 +112,8 @@ void main() {
               'garageKeys: withGarageKeys ? locator<Secrets>().garageKeys() : null',
               'databaseDirectory: withGarageKeys ? getApplicationDocumentsDirectory : null',
               'wallet: withGarageKeys ? () => locator<P2pWalletFacade>() : null',
+              // The BOLT11 decoder (#86, #87): pure code, read by the trade use cases only, which exist with the database alone.
+              'bolt11Decoder: () => const Bolt11DecoderImpl()',
             ],
           ],
         );

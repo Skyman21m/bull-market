@@ -6,6 +6,9 @@ import 'package:drift_dev/api/migrations_native.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
+import 'package:p2p/src/data/trade_trail_repository_impl.dart';
+import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
+import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
@@ -18,6 +21,7 @@ import '../../support/fakes.dart';
 import 'generated/schema.dart';
 import 'generated/schema_v1.dart' as v1;
 import 'generated/schema_v2.dart' as v2;
+import 'generated/schema_v3.dart' as v3;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -560,12 +564,12 @@ void main() {
 
         final first = P2pDatabase.open(() async => directory);
         await expectRowsKept(first);
-        expect(await versionOf(first), 3);
+        expect(await versionOf(first), P2pDatabase.schema);
         await first.validateDatabaseSchema();
         await first.close();
 
         final second = P2pDatabase.open(() async => directory);
-        expect(await versionOf(second), 3);
+        expect(await versionOf(second), P2pDatabase.schema);
         await expectRowsKept(second);
         await second.validateDatabaseSchema();
         await second.close();
@@ -596,7 +600,7 @@ void main() {
         await first.close();
 
         final second = P2pDatabase.open(() async => directory);
-        expect(await versionOf(second), 3);
+        expect(await versionOf(second), P2pDatabase.schema);
         expect(await rowsOf(second), rows);
         expect(await schemaOf(second), schema);
         expect(rows['trades'], hasLength(1));
@@ -708,7 +712,7 @@ void main() {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network')",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name <> 'trades_one_open_per_order'",
               )
               .get())
         row.read<String>('name'): row
@@ -770,11 +774,399 @@ void main() {
 
           final database = P2pDatabase.open(() async => directory);
           await expectRowsKept(database);
-          expect(await versionOf(database), 3, reason: '$parts');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$parts',
+          );
           await database.validateDatabaseSchema();
           expect(
             (await objectsOf(database)).keys,
             unorderedEquals(_schema3Objects),
+            reason: '$parts',
+          );
+          await database.close();
+        }
+      },
+    );
+  });
+
+  group('a file of schema 3 with rows', () {
+    const testnet = RobosatsNetwork.testnet;
+
+    // Fixed test bytes: not keys anyone uses.
+    final drawn = switch (GarageKey.fromBytes(
+      Uint8List.fromList(List<int>.generate(32, (i) => 1 + i)),
+    )) {
+      Ok(value: final key) => switch (GarageKeyFingerprint.of(key)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      },
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    final temple = switch (CoordinatorIdentity.of(
+      coordinator('temple'),
+      testnet,
+    )) {
+      final identity? => identity,
+      null => throw StateError('temple is not on testnet'),
+    };
+
+    // What schema 3 holds: a key drawn here, three bound robots, a pending take, a taken trade and a closed one.
+    final trades = [(0, 41, null, null), (1, 42, 20, null), (2, 43, 20, 30)];
+
+    late Directory directory;
+    late File file;
+
+    Future<void> writeSchema3() async {
+      for (final name in [
+        P2pDatabase.fileName,
+        '${P2pDatabase.fileName}-wal',
+        '${P2pDatabase.fileName}-shm',
+      ]) {
+        final leftover = File('${directory.path}/$name');
+        if (leftover.existsSync()) leftover.deleteSync();
+      }
+      final old = v3.DatabaseAtV3(NativeDatabase(file));
+      await old
+          .into(old.garageKeyHistories)
+          .insert(
+            v3.GarageKeyHistoriesCompanion.insert(
+              network: testnet.name,
+              keyFingerprint: drawn.hex,
+              origin: 'generated',
+              recordedAt: 1,
+            ),
+          );
+      for (final (index, orderId, confirmed, closed) in trades) {
+        await old
+            .into(old.robotBindings)
+            .insert(
+              v3.RobotBindingsCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: index,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                coordinatorNodeKeys: temple.nodeKeys.join(','),
+                coordinatorNostrKey: temple.nostrKey,
+                boundAt: 10,
+                provenance: const Value('generated'),
+              ),
+            );
+        await old
+            .into(old.trades)
+            .insert(
+              v3.TradesCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: index,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                orderId: orderId,
+                role: 'buyer',
+                origin: 'takenHere',
+                takenAt: 15,
+                confirmedAt: Value(confirmed),
+                closedAt: Value(closed),
+              ),
+            );
+      }
+      expect(await versionOf(old), 3);
+      await old.close();
+    }
+
+    setUp(() async {
+      directory = await Directory.systemTemp.createTemp('p2p-migration-');
+      file = File('${directory.path}/${P2pDatabase.fileName}');
+    });
+
+    tearDown(() => directory.delete(recursive: true));
+
+    Future<Map<String, List<Map<String, Object?>>>> rowsOf(
+      GeneratedDatabase database,
+    ) async => {
+      for (final table in [
+        'garage_key_histories',
+        'robot_bindings',
+        'trades',
+        'trade_terms',
+        'trade_trails',
+      ])
+        table: [
+          for (final row
+              in await database
+                  .customSelect('SELECT * FROM $table ORDER BY rowid')
+                  .get())
+            row.data,
+        ],
+    };
+
+    /// The schema 4 objects of [database], by name, compared without quotes and white space (drift quotes names when it creates a file only).
+    Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name IN ('trade_terms', 'trade_trails') OR name = 'trades_one_open_per_order')",
+              )
+              .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
+
+    TradeTermsRecord termsOf(int orderId) => TradeTermsRecord(
+      version: 1,
+      network: 'testnet',
+      coordinatorAlias: 'temple',
+      orderId: orderId,
+      role: 'buyer',
+      type: 1,
+      currencyId: 2,
+      amount: 100,
+      isRange: false,
+      premiumPercent: 2,
+      explicitSatoshis: null,
+      bondSizePercent: 3,
+      escrowSeconds: 10800,
+      bookPrice: 93545,
+      takerFee: 0.00175,
+    );
+
+    test(
+      'keeps every row, adds the two empty tables, and is not migrated again',
+      () async {
+        await writeSchema3();
+        final old = v3.DatabaseAtV3(NativeDatabase(file));
+        final before = {
+          for (final table in [
+            'garage_key_histories',
+            'robot_bindings',
+            'trades',
+          ])
+            table: [
+              for (final row
+                  in await old
+                      .customSelect('SELECT * FROM $table ORDER BY rowid')
+                      .get())
+                row.data,
+            ],
+        };
+        await old.close();
+
+        final first = P2pDatabase.open(() async => directory);
+        final rows = await rowsOf(first);
+        expect(await versionOf(first), 4);
+        expect({for (final table in before.keys) table: rows[table]}, before);
+        expect(rows['trade_terms'], isEmpty);
+        expect(rows['trade_trails'], isEmpty);
+        await first.validateDatabaseSchema();
+        expect(
+          (await first.customSelect('PRAGMA foreign_keys').getSingle())
+              .data
+              .values
+              .single,
+          1,
+        );
+        await first.close();
+
+        final second = P2pDatabase.open(() async => directory);
+        expect(await versionOf(second), 4);
+        expect(await rowsOf(second), rows);
+        await second.close();
+      },
+    );
+
+    test(
+      'its open trades take terms and a trail, its closed one neither',
+      () async {
+        await writeSchema3();
+        final database = P2pDatabase.open(() async => directory);
+        final records = TradeRecordRepositoryImpl(
+          database,
+          clock: () => testNow,
+        );
+        final trails = TradeTrailRepositoryImpl(database);
+        final active = switch (await records.watchActiveTrades(testnet).first) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(active.map((record) => record.orderId), [41, 42]);
+        for (final record in active) {
+          expect(
+            await trails.recordTerms(record, termsOf(record.orderId)),
+            isA<Ok>(),
+          );
+          expect(
+            await trails.storeTrail(
+              record,
+              TradeTrailRecord(
+                version: 1,
+                network: 'testnet',
+                coordinatorAlias: 'temple',
+                orderId: record.orderId,
+                role: 'buyer',
+                position: 'start',
+                readAtMicros: 15000,
+                bondHash: null,
+                escrowHash: null,
+                deadlineMicros: null,
+                bondStepSeenAtMicros: null,
+                bondStepDeadlineMicros: null,
+                breached: false,
+                historyUnknown: false,
+              ),
+            ),
+            isA<Ok<TrailStoreOutcome, P2pFailure>>(),
+          );
+        }
+        // The closed trade, written by hand with schema 3's own columns: the database refuses terms for it.
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trade_terms VALUES (?, 2, 1, 'testnet', 'temple', 43, "
+            "'buyer', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.0, 0.00175)",
+            [drawn.hex],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('SqliteException(1811)')),
+          ),
+        );
+        await database.close();
+      },
+    );
+
+    test(
+      'a file holding two open trades of one order migrates, keeps both, and refuses a third',
+      () async {
+        await writeSchema3();
+        // No version wrote a take before schema 4: by hand, a second open trade of order 41.
+        final old = v3.DatabaseAtV3(NativeDatabase(file));
+        await old
+            .into(old.robotBindings)
+            .insert(
+              v3.RobotBindingsCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: 5,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                coordinatorNodeKeys: temple.nodeKeys.join(','),
+                coordinatorNostrKey: temple.nostrKey,
+                boundAt: 10,
+                provenance: const Value('generated'),
+              ),
+            );
+        await old
+            .into(old.trades)
+            .insert(
+              v3.TradesCompanion.insert(
+                network: testnet.name,
+                keyFingerprint: drawn.hex,
+                robotIndex: 5,
+                coordinatorAlias: temple.alias,
+                coordinatorOnion: temple.onion,
+                orderId: 41,
+                role: 'buyer',
+                origin: 'takenHere',
+                takenAt: 16,
+              ),
+            );
+        await old.close();
+
+        final database = P2pDatabase.open(() async => directory);
+        expect(await versionOf(database), 4);
+        expect(
+          await database
+              .customSelect(
+                'SELECT * FROM trades WHERE order_id = 41 AND closed_at IS NULL',
+              )
+              .get(),
+          hasLength(2),
+        );
+        await database.customStatement(
+          "INSERT INTO robot_bindings VALUES ('testnet', ?, 6, ?, ?, ?, ?, 10, 'generated')",
+          [
+            drawn.hex,
+            temple.alias,
+            temple.onion,
+            temple.nodeKeys.join(','),
+            temple.nostrKey,
+          ],
+        );
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trades VALUES ('testnet', ?, 6, ?, ?, 41, 'buyer', 'recovered', 0, 0, NULL)",
+            [drawn.hex, temple.alias, temple.onion],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('SqliteException(1811)')),
+          ),
+        );
+        await database.close();
+      },
+    );
+
+    test(
+      'a file migrated holds the same objects as a new file of schema 4',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await objectsOf(fresh);
+        await fresh.close();
+        expect(expected.keys, unorderedEquals(_schema4Objects));
+
+        await writeSchema3();
+        final migrated = P2pDatabase.open(() async => directory);
+        expect(await objectsOf(migrated), expected);
+        await migrated.close();
+      },
+    );
+
+    test(
+      'a step that stopped after any of its parts runs again over the file it left',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final statements = {
+          for (final row
+              in await fresh
+                  .customSelect(
+                    'SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL',
+                  )
+                  .get())
+            row.read<String>('name'): row.read<String>('sql'),
+        };
+        await fresh.close();
+
+        for (var parts = 1; parts <= _schema4Objects.length; parts++) {
+          await writeSchema3();
+          final half = v3.DatabaseAtV3(NativeDatabase(file));
+          for (final name in _schema4Objects.take(parts)) {
+            await half.customStatement(
+              statements[name] ?? fail('no $name in a new file'),
+            );
+          }
+          expect(await versionOf(half), 3, reason: '$parts');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => directory);
+          expect(await versionOf(database), 4, reason: '$parts');
+          await database.validateDatabaseSchema();
+          expect(
+            (await objectsOf(database)).keys,
+            unorderedEquals(_schema4Objects),
+            reason: '$parts',
+          );
+          expect(
+            await database.customSelect('SELECT * FROM trades').get(),
+            hasLength(3),
             reason: '$parts',
           );
           await database.close();
@@ -797,4 +1189,20 @@ const _schema3Objects = [
   'trades_never_deleted',
   'trades_set_once',
   'trades_inserted_once',
+];
+
+/// The objects schema 4 adds, in the order of its step from 3: the terms and the trails of the trades, the trigger of one open trade per order, and the nine triggers of the terms and trails.
+const _schema4Objects = [
+  'trade_terms',
+  'trade_trails',
+  'trades_one_open_per_order',
+  'trade_terms_never_deleted',
+  'trade_terms_set_once',
+  'trade_terms_inserted_once',
+  'trade_terms_of_their_trade',
+  'trade_trails_never_deleted',
+  'trade_trails_inserted_once',
+  'trade_trails_of_their_trade',
+  'trade_trails_closed',
+  'trade_trails_forward',
 ];

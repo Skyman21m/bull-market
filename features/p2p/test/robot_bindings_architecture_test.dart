@@ -268,6 +268,10 @@ void main() {
             'recoveredTradeInVariable': {
               'TradeRecordRepository.recordRecoveredTrade',
             },
+            'readerKeepByTearOff': {'TradeReader.keep'},
+            'acknowledgedByTearOff': {
+              'BondLossAcknowledged.fromConfirmationDialog',
+            },
           },
         );
       },
@@ -326,9 +330,47 @@ void main() {
 
     test('only the use case that binds a robot requests one, or binds', () {
       // Every member of `CoordinatorClient` that takes a robot's identity or token, whatever its name: the requests of later tickets are watched too.
-      expect(referring((r) => r.startsWith('request ')), {
-        'lib/src/domain/usecases/fetch_robot_usecase.dart',
+      // The trade use cases (#87) send the order's requests of the robot of a trade, which a trade's record binds, each through the robot's places in `RobotRequestLimiter`: the read in the file they share, the take and the cancel in their own use case, and nothing else.
+      expect(
+        referring(
+          (r) => r.startsWith('request '),
+        ).where((path) => !path.startsWith(_tradeUseCases)),
+        {'lib/src/domain/usecases/fetch_robot_usecase.dart'},
+      );
+      expect(referring((r) => r == 'request CoordinatorClient.fetchOrder'), {
+        '${_tradeUseCases}trade_reader.dart',
       });
+      expect(referring((r) => r == 'request CoordinatorClient.takeOrder'), {
+        _takeOrderUseCase,
+      });
+      expect(referring((r) => r == 'request CoordinatorClient.cancelOrder'), {
+        '${_tradeUseCases}cancel_trade_usecase.dart',
+      });
+      for (final path in referring((r) => r.startsWith('request '))) {
+        if (!path.startsWith(_tradeUseCases)) continue;
+        expect(
+          (references[path] ?? const <String>{}).where(
+            (r) => r.startsWith('request '),
+          ),
+          everyElement(
+            isIn({
+              'request CoordinatorClient.fetchOrder',
+              'request CoordinatorClient.takeOrder',
+              'request CoordinatorClient.cancelOrder',
+            }),
+          ),
+          reason: path,
+        );
+        // And through the robot's places only: the file holds a limiter.
+        expect(
+          references[path],
+          anyOf(
+            contains('type RobotRequestLimiter'),
+            contains('type RobotRequests'),
+          ),
+          reason: path,
+        );
+      }
       expect(referring((r) => r == 'RobotBindingRepository.bind'), {
         'lib/src/domain/usecases/fetch_robot_usecase.dart',
       });
@@ -387,6 +429,70 @@ void main() {
                   'lib/src/p2p_locator.dart',
                 }.contains(path),
           ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'only the take writes the terms of a trade, only the trade use cases store a trail, and only the take starts a trade',
+      () {
+        // The terms are written once, with the pending take, before its request leaves (#87).
+        expect(referring((r) => r == 'TradeTrailRepository.recordTerms'), {
+          _takeOrderUseCase,
+        });
+        // A trail is stored by the take (its first trail, and the take's own answer) and by the file the trade use cases share, which asks `whyNotReplace` through the repository.
+        expect(referring((r) => r == 'TradeTrailRepository.storeTrail'), {
+          _takeOrderUseCase,
+          '${_tradeUseCases}trade_reader.dart',
+        });
+        expect(
+          referring((r) => r == 'type TradeTrailRepository').where(
+            (path) =>
+                !path.startsWith(_tradeUseCases) &&
+                !{
+                  'lib/src/domain/repositories/trade_trail_repository.dart',
+                  'lib/src/data/trade_trail_repository_impl.dart',
+                  'lib/src/p2p_locator.dart',
+                }.contains(path),
+          ),
+          isEmpty,
+        );
+        // A trade starts from the take's own answer only; a pending take with no trail is read once on its own trail, by the take or the resolution of a pending take; a recovered trail only where a recorded trade has none (`AGENTS.md`, « Rules for the trade use cases (#87) »).
+        expect(referring((r) => r == 'TradeStatus.afterTake'), {
+          _takeOrderUseCase,
+        });
+        // Since the review of #117 a pending take without its first trail is closed as never sent: only the take names this factory.
+        expect(referring((r) => r == 'TradeTrail.forPendingTake'), {
+          _takeOrderUseCase,
+        });
+        expect(referring((r) => r == 'TradeTrail.recovered'), {
+          '${_tradeUseCases}trade_reader.dart',
+        });
+      },
+    );
+
+    test(
+      'only the trade use cases reach the reader they share, and no file of lib/ builds an acknowledgement of a bond lost yet',
+      () {
+        // Its members store trails, confirm and close records: only the trade use cases and the composition name it (review of #117).
+        expect(
+          referring(
+            (r) => r.startsWith('TradeReader.'),
+          ).where((path) => !path.startsWith(_tradeUseCases)),
+          isEmpty,
+        );
+        expect(
+          referring((r) => r == 'type TradeReader').where(
+            (path) =>
+                !path.startsWith(_tradeUseCases) &&
+                path != 'lib/src/p2p_locator.dart',
+          ),
+          isEmpty,
+        );
+        // The trade screen's cancel confirmation (#88) is to be the one file that builds it: add that file here, alone.
+        expect(
+          referring((r) => r == 'BondLossAcknowledged.fromConfirmationDialog'),
           isEmpty,
         );
       },
@@ -515,12 +621,16 @@ void main() {
         // A robot reaches a coordinator from a screen only through the panel's cubit, which the user drives: « Select Host », then « Continue ».
         const cubit = 'lib/src/presentation/robot_coordinator_cubit.dart';
         for (final member in [
-          'PutRobotOnCoordinatorUsecase.execute',
           'ReadRobotOnCoordinatorUsecase.execute',
           'ReleaseRobotUsecase.execute',
         ]) {
           expect(referring((r) => r == member), {cubit}, reason: member);
         }
+        // And the take (#87), which puts the fresh robot it reserved on the order's coordinator before its pending take: its first contact, through the same use case.
+        expect(referring((r) => r == 'PutRobotOnCoordinatorUsecase.execute'), {
+          cubit,
+          _takeOrderUseCase,
+        });
         // The cubit, its states and every widget reach a robot request only through those use cases: never the use case that binds, the coordinator client, the limiter, the bindings, the database, a credential or a raw client.
         final panel = [
           for (final path in references.keys)
@@ -686,6 +796,7 @@ class RobotCoordinatorCubit {
       {
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
+        'lib/src/data/trade_trail_repository_impl.dart',
         'lib/src/p2p_locator.dart',
         'lib/testing.dart',
       },
@@ -702,6 +813,7 @@ class RobotCoordinatorCubit {
         'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
+        'lib/src/data/trade_trail_repository_impl.dart',
         'lib/testing.dart',
       },
     );
@@ -743,7 +855,7 @@ class RobotCoordinatorCubit {
                 r'\b(from|into|update|join)\s+"?trades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_tradeTriggers.contains(_squeezed(text)),
+              !_driftTriggers.contains(_squeezed(text)),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -794,7 +906,7 @@ class RobotCoordinatorCubit {
       for (final text in facts.strings) {
         // The steps hold the triggers of `trades.drift` as written, which name an update and a delete only to refuse them (pinned below).
         if (identical(facts, steps) &&
-            _tradeTriggers.contains(_squeezed(text))) {
+            _driftTriggers.contains(_squeezed(text))) {
           continue;
         }
         expect(
@@ -834,6 +946,19 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradesNeverDeleted)',
       'm.createTrigger(schema.tradesSetOnce)',
       'm.createTrigger(schema.tradesInsertedOnce)',
+      // Schema 4 (#87): the terms and the trails of the trades, and the triggers that keep them.
+      'm.createTable(schema.tradeTerms)',
+      'm.createTable(schema.tradeTrails)',
+      'm.createTrigger(schema.tradesOneOpenPerOrder)',
+      'm.createTrigger(schema.tradeTermsNeverDeleted)',
+      'm.createTrigger(schema.tradeTermsSetOnce)',
+      'm.createTrigger(schema.tradeTermsInsertedOnce)',
+      'm.createTrigger(schema.tradeTermsOfTheirTrade)',
+      'm.createTrigger(schema.tradeTrailsNeverDeleted)',
+      'm.createTrigger(schema.tradeTrailsInsertedOnce)',
+      'm.createTrigger(schema.tradeTrailsOfTheirTrade)',
+      'm.createTrigger(schema.tradeTrailsClosed)',
+      'm.createTrigger(schema.tradeTrailsForward)',
     ]);
     // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
     expect(
@@ -864,7 +989,153 @@ class RobotCoordinatorCubit {
       _drifted(File('lib/src/data/trades.drift').readAsStringSync()),
       '${_tradeRules.join(';')};',
     );
+    // And on the terms and trails, as written in `trade_trails.drift` (#87).
+    expect(
+      _drifted(File('lib/src/data/trade_trails.drift').readAsStringSync()),
+      '${_trailTriggers.join(';')};',
+    );
   });
+
+  test(
+    'the terms and trails of the trades are written by their repository alone, one statement each, a trail only after whyNotReplace',
+    () {
+      // No other file holds SQL that writes either table, but the triggers as drift copies them (#87).
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) =>
+                RegExp(
+                  r'\b(into|update|delete\s+from)\s+"?trade_(terms|trails)\b',
+                  caseSensitive: false,
+                ).hasMatch(text) &&
+                !_driftTriggers.contains(_squeezed(text)),
+          ),
+        ),
+        {'lib/src/data/trade_trail_repository_impl.dart'},
+      );
+      // The tables are named by the database, its repository and drift's code only.
+      expect(
+        where(
+          (facts) =>
+              facts.names.contains('storedTradeTerms') ||
+              facts.names.contains('storedTradeTrails'),
+        ),
+        {
+          'lib/src/data/trade_trail_repository_impl.dart',
+          if (File('lib/src/data/p2p_database.g.dart').existsSync())
+            'lib/src/data/p2p_database.g.dart',
+        },
+      );
+      final trails =
+          libraries['lib/src/data/trade_trail_repository_impl.dart'] ??
+          fail('no trails');
+      expect(
+        trails.invoked.intersection({
+          'delete',
+          'deleteWhere',
+          'deleteAll',
+          'update',
+          'replace',
+          'write',
+          'into',
+          'batch',
+          'customInsert',
+          'customUpdate',
+          'customStatement',
+          'insertOnConflictUpdate',
+          'insertAllOnConflictUpdate',
+          'transaction',
+        }),
+        isEmpty,
+      );
+      for (final text in trails.strings) {
+        expect(
+          RegExp(
+            r'\b(delete|drop|replace|alter|pragma)\b',
+            caseSensitive: false,
+          ).hasMatch(text),
+          isFalse,
+          reason: text,
+        );
+      }
+      // Its three writes, as written: the terms and a first trail inserted once, a later trail only over the one compared, every column of it.
+      expect(
+        trails.constants['_recordTermsSql'],
+        'INSERT INTO trade_terms (key_fingerprint, robot_index, version, '
+        'network, coordinator_alias, order_id, role, order_type, currency_id, '
+        'amount, is_range, premium_percent, explicit_satoshis, '
+        'bond_size_percent, escrow_seconds, book_price, taker_fee) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trails.constants['_insertTrailSql'],
+        'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
+        'network, coordinator_alias, order_id, role, position, read_at, '
+        'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
+        'bond_step_deadline, breached, history_unknown) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trails.constants['_replaceTrailSql'],
+        'UPDATE trade_trails SET version = ?, position = ?, read_at = ?, '
+        'bond_hash = ?, escrow_hash = ?, deadline = ?, bond_step_seen_at = ?, '
+        'bond_step_deadline = ?, breached = ?, history_unknown = ? '
+        'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
+        'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
+        'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
+        'AND escrow_hash IS ? AND deadline IS ? AND bond_step_seen_at IS ? '
+        'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
+        'RETURNING robot_index',
+      );
+      final pinned = [
+        for (final name in [
+          '_recordTermsSql',
+          '_insertTrailSql',
+          '_replaceTrailSql',
+        ])
+          trails.constants[name] ?? fail('no $name'),
+      ];
+      expect(
+        trails.strings.where(
+          (text) =>
+              RegExp(
+                r'\b(insert|update)\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !pinned.any((statement) => statement.contains(text)),
+        ),
+        isEmpty,
+      );
+      // The terms by `recordTerms` alone; the trails by `storeTrail` alone, which asks `whyNotReplace` of the stored trail before either write.
+      final writes = trails.calls.where(
+        (call) => call.startsWith('customWriteReturning('),
+      );
+      expect(writes, hasLength(3));
+      expect(
+        trails.callsByMethod['recordTerms']?.where(
+          (call) => call.startsWith('customWriteReturning('),
+        ),
+        [startsWith('customWriteReturning(_recordTermsSql,')],
+      );
+      final store = trails.callsByMethod['storeTrail'] ?? fail('no storeTrail');
+      final asked = store.indexWhere(
+        (call) => call.startsWith('whyNotReplace('),
+      );
+      final firstWrite = store.indexWhere(
+        (call) => call.startsWith('customWriteReturning('),
+      );
+      expect(asked, isNonNegative);
+      expect(firstWrite, greaterThan(asked));
+      expect(store.where((call) => call.startsWith('customWriteReturning(')), [
+        startsWith('customWriteReturning(_insertTrailSql,'),
+        startsWith('customWriteReturning(_replaceTrailSql,'),
+      ]);
+    },
+  );
 
   test('nothing in the feature opens a database transaction', () {
     // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
@@ -977,7 +1248,7 @@ class RobotCoordinatorCubit {
                 r'\b(update|delete)\b[^;]*\btrades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_tradeTriggers.contains(_squeezed(text)),
+              !_driftTriggers.contains(_squeezed(text)),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -1355,6 +1626,17 @@ const _watched = {
       'closeTrade',
     },
   ),
+  // The terms and trails of the trades (#87): who writes them.
+  'TradeTrailRepository': ('package:p2p/', {'recordTerms', 'storeTrail'}),
+  // The fresh trails of the state machine (#86, #87): only the take starts a trade, only the take and the resolution of a pending take read one on a pending take's trail.
+  'TradeStatus': ('package:p2p/', {'afterTake'}),
+  'TradeTrail': ('package:p2p/', {'forPendingTake', 'recovered'}),
+  // What the trade use cases share, which writes trails and closes records, and the acknowledgement of a bond lost (review of #117).
+  'TradeReader': (
+    'package:p2p/',
+    {'open', 'readOrder', 'advance', 'keep', 'closeAtEnd', 'closeNeverSent'},
+  ),
+  'BondLossAcknowledged': ('package:p2p/', {'fromConfirmationDialog'}),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),
@@ -1369,6 +1651,8 @@ const _watched = {
   'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute'}),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),
+  // The requests of one call, through the limiter's places (#87: a trade use case reads only through them).
+  'RobotRequests': ('package:p2p/', <String>{}),
   'CoordinatorClient': ('package:robosats/', <String>{}),
   'P2pDatabase': ('package:p2p/', <String>{}),
   'UnprovenCoordinatorRobot': ('package:robosats/', {'prove', 'parse'}),
@@ -1722,3 +2006,25 @@ final _tradeRules = [
   ),
   ..._tradeTriggers,
 ];
+
+/// The statements of `trade_trails.drift` (#87), as written: the terms set once and kept, the trails written once, then only forward, never deleted, never written again once their trade is closed.
+const _trailTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'an order has one open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are set once'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms WHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'terms of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails BEGIN SELECT RAISE(ABORT, 'the trail of a trade is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails WHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a trail of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
+];
+
+/// The triggers of `trade_trails.drift`, squeezed.
+final _trailTriggers = [
+  for (final trigger in _trailTriggersAsWritten) _squeezed(trigger),
+];
+
+/// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
+final _driftTriggers = {..._tradeTriggers, ..._trailTriggers};
