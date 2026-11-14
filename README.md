@@ -73,7 +73,7 @@ A few notes on what the mock-up shows:
 
 ## Screens in the app
 
-> These are **real screens**, rendered from the app's own code by a test: the order book screens with books recorded from the RoboSats coordinators on November 10, 2026 (Gumpellite, added to the app's coordinator list after that recording, shows as offline), but for the map, whose orders, places and robots are made up by the test since no recorded order has a location, and the Garage, on testnet, with the public example Garage Key of the RoboSats tests (the backup alert shows a throwaway key drawn by the test, kept hidden); its robot panel, on mainnet, with that key and coordinators played by the test, so nothing was sent anywhere. They are only visible when both superuser mode and developer mode are on. The order book screens but for the map, with the row of coordinators above the offers, and the Garage screens were tried on a phone with debug builds, sending a robot to a coordinator from the Garage once; the question asked for a pasted key and the PIN prompts have not been tried on a phone yet (see the status below).
+> These are **real screens**, rendered from the app's own code by a test: the order book screens with books recorded from the RoboSats coordinators on November 10, 2026 (Gumpellite, added to the app's coordinator list after that recording, shows as offline), but for the map, whose orders, places and robots are made up by the test since no recorded order has a location, and the Garage, on testnet, with the public example Garage Key of the RoboSats tests (the backup alert shows a throwaway key drawn by the test, kept hidden); its robot panel, on mainnet, with that key and coordinators played by the test, so nothing was sent anywhere. The trade screens, on mainnet, with a Garage Key drawn by the test and Temple of Sats played by the test (its invoices made by the test), so no order was taken and no money moved. They are only visible when both superuser mode and developer mode are on. The order book screens but for the map, with the row of coordinators above the offers, and the Garage screens were tried on a phone with debug builds, sending a robot to a coordinator from the Garage once; the question asked for a pasted key and the PIN prompts have not been tried on a phone yet (see the status below).
 
 <table>
   <tr>
@@ -84,9 +84,13 @@ A few notes on what the mock-up shows:
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/en-search-order.png" width="170" alt="App screen: Search order dialog asking for an order URL"><br><sub>Search order</sub></td>
-    <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of an order, with the Take Order button"><br><sub>Order details</sub></td>
+    <td align="center"><img src="docs/screenshots/en-order.png" width="170" alt="App screen: details of a range order, with the amount field of Take Order"><br><sub>Order details</sub></td>
     <td align="center"><img src="docs/screenshots/en-reversible-payments.png" width="170" alt="App screen: warning about reversible payment methods"><br><sub>Reversible payments warning</sub></td>
     <td align="center"><img src="docs/screenshots/en-coordinator-details.png" width="170" alt="App screen: details of the coordinator that hosts the order"><br><sub>Coordinator details</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/en-trade-bond.png" width="170" alt="App screen: the trade after a take, Lock 3,207 Sats to TAKE order, with the QR code of the bond invoice under Pay with another wallet"><br><sub>The bond to lock</sub></td>
+    <td align="center"><img src="docs/screenshots/en-trade-bond-locked.png" width="170" alt="App screen: the trade once the bond is locked, Submit payout info, Your taker bond is locked, Copy URL and Cancel"><br><sub>The bond locked</sub></td>
   </tr>
 </table>
 
@@ -117,7 +121,7 @@ The Garage (RoboSats' name for the screen that holds the Garage Key and its robo
 
 <br>
 
-*Écrans réels, rendus par le code de l'application dans un test : les écrans du carnet d'ordres (lecture seule) avec des carnets enregistrés le 10 novembre 2026 (Gumpellite, ajouté à la liste des coordinateurs de l'application après cet enregistrement, apparaît hors ligne), sauf la carte, dont les ordres, les lieux et les robots sont inventés par le test puisqu'aucun ordre enregistré n'a d'emplacement ; le Garage, sur testnet, avec la clé de garage d'exemple, publique, des tests de RoboSats (l'alerte de sauvegarde montre une clé jetable tirée par le test, masquée) ; son panneau du robot, sur mainnet, avec cette clé et des coordinateurs joués par le test : rien n'a été envoyé. Visibles uniquement en mode super-utilisateur et développeur. Les écrans du carnet, sauf la carte, avec la rangée des coordinateurs au-dessus des offres, et ceux du Garage ont été essayés sur un téléphone avec des versions de débogage, l'envoi d'un robot chez un coordinateur depuis le Garage une fois ; la question posée pour une clé collée et les demandes de PIN ne l'ont pas encore été.*
+*Écrans réels, rendus par le code de l'application dans un test : les écrans du carnet d'ordres (lecture seule) avec des carnets enregistrés le 10 novembre 2026 (Gumpellite, ajouté à la liste des coordinateurs de l'application après cet enregistrement, apparaît hors ligne), sauf la carte, dont les ordres, les lieux et les robots sont inventés par le test puisqu'aucun ordre enregistré n'a d'emplacement ; le Garage, sur testnet, avec la clé de garage d'exemple, publique, des tests de RoboSats (l'alerte de sauvegarde montre une clé jetable tirée par le test, masquée) ; son panneau du robot, sur mainnet, avec cette clé et des coordinateurs joués par le test : rien n'a été envoyé. Les écrans de l'échange, sur mainnet, avec une clé de garage tirée par le test et Temple of Sats joué par le test (ses factures faites par le test) : aucun ordre n'a été pris, aucun argent n'a bougé. Visibles uniquement en mode super-utilisateur et développeur. Les écrans du carnet, sauf la carte, avec la rangée des coordinateurs au-dessus des offres, et ceux du Garage ont été essayés sur un téléphone avec des versions de débogage, l'envoi d'un robot chez un coordinateur depuis le Garage une fois ; la question posée pour une clé collée et les demandes de PIN ne l'ont pas encore été.*
 
 <table>
   <tr>
@@ -128,9 +132,13 @@ The Garage (RoboSats' name for the screen that holds the Garage Key and its robo
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/fr-search-order.png" width="170" alt="Écran de l'application : fenêtre « Rechercher un ordre » qui demande l'URL d'un ordre"><br><sub>Rechercher un ordre</sub></td>
-    <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre, avec le bouton « Prendre l'ordre »"><br><sub>La fiche d'un ordre</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-order.png" width="170" alt="Écran de l'application : fiche d'un ordre à fourchette, avec le champ du montant de « Prendre l'ordre »"><br><sub>La fiche d'un ordre</sub></td>
     <td align="center"><img src="docs/screenshots/fr-reversible-payments.png" width="170" alt="Écran de l'application : avertissement sur les paiements réversibles"><br><sub>Avertissement « Paiements réversibles »</sub></td>
     <td align="center"><img src="docs/screenshots/fr-coordinator-details.png" width="170" alt="Écran de l'application : fiche du coordinateur qui héberge l'ordre"><br><sub>La fiche du coordinateur</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/fr-trade-bond.png" width="170" alt="Écran de l'application : l'échange après la prise de l'ordre, « Bloquez 3 207 sats pour PRENDRE l'ordre », le QR code de la facture de caution sous « Payer avec un autre portefeuille »"><br><sub>La caution à bloquer</sub></td>
+    <td align="center"><img src="docs/screenshots/fr-trade-bond-locked.png" width="170" alt="Écran de l'application : l'échange une fois la caution bloquée, « Indiquez où recevoir les sats », « Votre caution de preneur est bloquée », « Copier l'URL » et « Annuler »"><br><sub>La caution bloquée</sub></td>
   </tr>
 </table>
 
