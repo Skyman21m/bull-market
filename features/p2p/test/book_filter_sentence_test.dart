@@ -426,7 +426,9 @@ void main() {
         await typeSearch(tester, '');
 
         // The books arrive while the sheet is open: it stays as it was opened.
-        for (final coordinator in Federation.robosats.on(RobosatsNetwork.mainnet)) {
+        for (final coordinator in Federation.robosats.on(
+          RobosatsNetwork.mainnet,
+        )) {
           transport.release(coordinator.shortAlias);
         }
         await settle(tester);
@@ -543,7 +545,7 @@ void main() {
         Color? colourOf(String label) =>
             tester.widget<Text>(row(label)).style?.color;
         expect(colourOf('Advcash'), colourOf('Wise · 1 order'));
-        expect(colourOf('Advcash'), isNot(colourOf('Airtel Money')));
+        expect(colourOf('Advcash'), isNot(advcash.style?.color));
         expect(colourOf('Advcash'), isNot(colourOf('Revolut · 3 orders')));
         // No order has Advcash: with Wise or Advcash, Wise's order alone.
         expect(listed(tester), [2]);
@@ -571,7 +573,10 @@ void main() {
         );
 
         // The search field stays at the top of the sheet while its rows scroll under it, on an opaque background, so that no row shows through.
-        final field = find.descendant(of: sheet, matching: find.byType(TextField));
+        final field = find.descendant(
+          of: sheet,
+          matching: find.byType(TextField),
+        );
         final background = tester.widget<ColoredBox>(
           find.ancestor(of: field, matching: find.byType(ColoredBox)).first,
         );
@@ -583,7 +588,9 @@ void main() {
         await tester.drag(list, const Offset(0, -1500));
         await settle(tester);
         expect(field.hitTestable(), findsOneWidget);
-        final box = find.ancestor(of: field, matching: find.byType(ColoredBox)).first;
+        final box = find
+            .ancestor(of: field, matching: find.byType(ColoredBox))
+            .first;
         expect(tester.getRect(box).top, tester.getRect(list).top);
         expect(row('Any payment method'), findsNothing);
         await tester.drag(list, const Offset(0, 3000));
@@ -645,12 +652,17 @@ void main() {
           of: sheet,
           matching: find.byType(TextField),
         );
-        expect(tester.getSemantics(textField).label, 'Search');
+        final editable = find.descendant(
+          of: sheet,
+          matching: find.byType(EditableText),
+        );
+        expect(tester.getSemantics(editable).label, 'Search');
         // Narrowing the rows does not move the field: the sheet keeps its height.
         final fieldTop = tester.getRect(textField).top;
 
         await typeSearch(tester, 'RÉV');
-        expect(tester.getSemantics(textField).label, 'Search');
+        expect(tester.getSemantics(editable).label, 'Search');
+        expect(tester.getSemantics(editable).value, 'RÉV');
         expect(tester.getRect(textField).top, fieldTop);
         expect(listedMethods(tester), ['Revolut']);
         expect(row('Revolut · 3 orders'), findsOneWidget);
@@ -858,137 +870,132 @@ void main() {
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
-        testWidgets(
-          '${locale.languageCode} at ×$scale: nothing overflows or is cut',
-          (tester) async {
-            await open(tester, locale: locale, size: const Size(320, 568));
-            final l10n = lookupP2pLocalizations(locale);
+        testWidgets('${locale.languageCode} at ×$scale: nothing overflows or is cut', (
+          tester,
+        ) async {
+          await open(tester, locale: locale, size: const Size(320, 568));
+          final l10n = lookupP2pLocalizations(locale);
 
-            // Several of each, chosen through the cubit: the sheets are tested above.
-            BlocProvider.of<BookCubit>(
-                tester.element(find.byType(BookFilterSentence)),
-              )
-              ..selectSide(BookSide.buy)
-              ..selectCurrencies([
-                for (final code in ['EUR', 'USD', 'CHF'])
-                  RobosatsCurrency.all.firstWhere((c) => c.code == code),
-              ])
-              ..selectPaymentMethods(['Instant SEPA', 'Revolut'])
-              ..selectHosts([coordinator('temple'), coordinator('lake')]);
-            await settle(tester);
+          // Several of each, chosen through the cubit: the sheets are tested above.
+          BlocProvider.of<BookCubit>(
+              tester.element(find.byType(BookFilterSentence)),
+            )
+            ..selectSide(BookSide.buy)
+            ..selectCurrencies([
+              for (final code in ['EUR', 'USD', 'CHF'])
+                RobosatsCurrency.all.firstWhere((c) => c.code == code),
+            ])
+            ..selectPaymentMethods(['Instant SEPA', 'Revolut'])
+            ..selectHosts([coordinator('temple'), coordinator('lake')]);
+          await settle(tester);
 
-            tester.platformDispatcher.textScaleFactorTestValue = scale;
-            addTearDown(
-              tester.platformDispatcher.clearTextScaleFactorTestValue,
-            );
-            await settle(tester);
-            expect(tester.takeException(), isNull);
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await settle(tester);
+          expect(tester.takeException(), isNull);
 
-            final screen = Offset.zero & const Size(320, 568);
-            for (final label in [
-              l10n.p2pBookFilterBuy,
-              l10n.p2pBookFilterMore('EUR', 2),
-              l10n.p2pBookFilterMore('Instant SEPA', 1),
-              l10n.p2pBookFilterMore('Temple of Sats', 1),
-            ]) {
-              final box = find.ancestor(
-                of: choice(label),
-                matching: find.byType(FilterChoice),
-              );
-              final rect = tester.getRect(box);
-              expect(
-                rect.left,
-                greaterThanOrEqualTo(screen.left),
-                reason: label,
-              );
-              expect(
-                rect.right,
-                lessThanOrEqualTo(screen.right),
-                reason: label,
-              );
-              final paragraph = tester.renderObject<RenderParagraph>(
-                find.descendant(
-                  of: choice(label),
-                  matching: find.byType(RichText),
-                ),
-              );
-              expect(paragraph.didExceedMaxLines, isFalse, reason: label);
-            }
-
-            // The sheets too.
-            await tapShown(
-              tester,
-              choice(l10n.p2pBookFilterMore('Temple of Sats', 1)),
-            );
-            expect(tester.takeException(), isNull);
-            await closeSheet(tester);
-            // Nothing chosen, the longest label.
-            await tapShown(
-              tester,
-              choice(l10n.p2pBookFilterMore('Instant SEPA', 1)),
-            );
-            await pickRow(tester, l10n.p2pBookFilterAnyMethod);
-            expect(tester.takeException(), isNull);
-            await closeSheet(tester);
-            final any = find.ancestor(
-              of: choice(l10n.p2pBookFilterAnyMethod),
+          final screen = Offset.zero & const Size(320, 568);
+          for (final label in [
+            l10n.p2pBookFilterBuy,
+            l10n.p2pBookFilterMore('EUR', 2),
+            l10n.p2pBookFilterMore('Instant SEPA', 1),
+            l10n.p2pBookFilterMore('Temple of Sats', 1),
+          ]) {
+            final box = find.ancestor(
+              of: choice(label),
               matching: find.byType(FilterChoice),
             );
-            expect(tester.getRect(any).right, lessThanOrEqualTo(320));
-            expect(tester.takeException(), isNull);
-
-            // The payment method sheet, its counts and heading, then its search with the keyboard up: the field and a row stay above the keyboard.
-            await tapShown(tester, any);
-            expect(tester.takeException(), isNull);
-            tester.view.viewInsets = const FakeViewPadding(bottom: 260 * 3);
-            addTearDown(tester.view.resetViewInsets);
-            await settle(tester);
-            final fieldBefore = tester
-                .getRect(find.descendant(of: sheet, matching: find.byType(TextField)))
-                .top;
-            await typeSearch(tester, 'e');
-            expect(
-              tester
-                  .getRect(
-                    find.descendant(of: sheet, matching: find.byType(TextField)),
-                  )
-                  .top,
-              fieldBefore,
-            );
-            expect(tester.takeException(), isNull);
-            final field = find.descendant(
-              of: sheet,
-              matching: find.byType(TextField),
-            );
-            await tester.ensureVisible(field);
-            await settle(tester);
-            expect(tester.getRect(field).bottom, lessThanOrEqualTo(568 - 260));
-            expect(field.hitTestable(), findsOneWidget);
-            // The list ends above the keyboard, and once the title has scrolled away its rows show there, under the field.
-            final list = find.descendant(
-              of: sheet,
-              matching: find.byType(CustomScrollView),
-            );
-            expect(tester.getRect(list).bottom, lessThanOrEqualTo(568 - 260));
-            await tester.drag(list, const Offset(0, -600));
-            await settle(tester);
-            final rows = find.descendant(
-              of: sheet,
-              matching: find.byWidgetPredicate(
-                (widget) => widget.key is ValueKey<String>,
+            final rect = tester.getRect(box);
+            expect(rect.left, greaterThanOrEqualTo(screen.left), reason: label);
+            expect(rect.right, lessThanOrEqualTo(screen.right), reason: label);
+            final paragraph = tester.renderObject<RenderParagraph>(
+              find.descendant(
+                of: choice(label),
+                matching: find.byType(RichText),
               ),
             );
-            expect(rows.hitTestable(), findsWidgets);
-            for (final element in rows.hitTestable().evaluate()) {
-              expect(
-                tester.getRect(find.byWidget(element.widget)).top,
-                lessThan(568 - 260),
-              );
-            }
-            expect(field.hitTestable(), findsOneWidget);
-            expect(tester.takeException(), isNull);
-          },
-        );
+            expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+          }
+
+          // The sheets too.
+          await tapShown(
+            tester,
+            choice(l10n.p2pBookFilterMore('Temple of Sats', 1)),
+          );
+          expect(tester.takeException(), isNull);
+          await closeSheet(tester);
+          // Nothing chosen, the longest label.
+          await tapShown(
+            tester,
+            choice(l10n.p2pBookFilterMore('Instant SEPA', 1)),
+          );
+          await pickRow(tester, l10n.p2pBookFilterAnyMethod);
+          expect(tester.takeException(), isNull);
+          await closeSheet(tester);
+          final any = find.ancestor(
+            of: choice(l10n.p2pBookFilterAnyMethod),
+            matching: find.byType(FilterChoice),
+          );
+          expect(tester.getRect(any).right, lessThanOrEqualTo(320));
+          expect(tester.takeException(), isNull);
+
+          // The payment method sheet, its counts and heading, then its search with the keyboard up: the field and a row stay above the keyboard.
+          await tapShown(tester, any);
+          expect(tester.takeException(), isNull);
+          // The user taps the field, then the keyboard comes up: the field, focused, keeps itself above the keyboard, and typing moves it no more.
+          await tester.showKeyboard(
+            find.descendant(of: sheet, matching: find.byType(TextField)),
+          );
+          tester.view.viewInsets = const FakeViewPadding(bottom: 260 * 3);
+          addTearDown(tester.view.resetViewInsets);
+          await settle(tester);
+          final fieldBefore = tester
+              .getRect(
+                find.descendant(of: sheet, matching: find.byType(TextField)),
+              )
+              .top;
+          await typeSearch(tester, 'e');
+          expect(
+            tester
+                .getRect(
+                  find.descendant(of: sheet, matching: find.byType(TextField)),
+                )
+                .top,
+            fieldBefore,
+          );
+          expect(tester.takeException(), isNull);
+          final field = find.descendant(
+            of: sheet,
+            matching: find.byType(TextField),
+          );
+          await tester.ensureVisible(field);
+          await settle(tester);
+          expect(tester.getRect(field).bottom, lessThanOrEqualTo(568 - 260));
+          expect(field.hitTestable(), findsOneWidget);
+          // The list ends above the keyboard, and once the title has scrolled away its rows show there, under the field.
+          final list = find.descendant(
+            of: sheet,
+            matching: find.byType(CustomScrollView),
+          );
+          expect(tester.getRect(list).bottom, lessThanOrEqualTo(568 - 260));
+          await tester.drag(list, const Offset(0, -600));
+          await settle(tester);
+          final rows = find.descendant(
+            of: sheet,
+            matching: find.byWidgetPredicate(
+              (widget) => widget.key is ValueKey<String>,
+            ),
+          );
+          expect(rows.hitTestable(), findsWidgets);
+          for (final element in rows.hitTestable().evaluate()) {
+            expect(
+              tester.getRect(find.byWidget(element.widget)).top,
+              lessThan(568 - 260),
+            );
+          }
+          expect(field.hitTestable(), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
       }
     }
   });

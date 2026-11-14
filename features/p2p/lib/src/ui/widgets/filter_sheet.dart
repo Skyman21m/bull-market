@@ -392,14 +392,15 @@ class _SheetFrame extends StatelessWidget {
             ),
           );
     // The keyboard's height below the sheet, so that a search field's keyboard never hides the rows: the sheet stands on it and its list shrinks.
+    // With a search field the sheet keeps its full height, so that narrowing the rows never moves the field under the finger: only the list changes, as in the official client's list.
+    final height = MediaQuery.sizeOf(context).height * 0.8;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.8,
-        ),
+        height: pinned == null ? null : height,
+        constraints: pinned == null ? BoxConstraints(maxHeight: height) : null,
         child: CustomScrollView(
-          shrinkWrap: true,
+          shrinkWrap: pinned == null,
           slivers: [
             SliverPadding(
               padding: const EdgeInsets.only(top: BullSpacing.md),
