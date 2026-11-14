@@ -22,8 +22,8 @@ import 'widgets/coordinator_avatar.dart';
 import 'widgets/coordinators_row.dart';
 import 'widgets/filter_choice.dart';
 import 'widgets/filter_sheet.dart';
-import 'widgets/no_robot_dialog.dart';
 import 'widgets/offer_row.dart';
+import 'widgets/order_search_miss_dialog.dart';
 
 /// The book of the P2P tab: the filter sentence, the row of the coordinators (`CoordinatorsRow`), one row per offer, and the choice of view.
 ///
@@ -182,7 +182,7 @@ class _BookViewState extends State<BookView> {
     );
   }
 
-  /// « Search order »: opens the order the URL names when the book received it, and otherwise says that a robot is needed.
+  /// « Search order »: opens the order the URL names when the book received it, or once the book of its coordinator, still awaited, brings it; otherwise says « Coordinator offline » when that book could not be had, « You do not have a Garage Key » when no Garage Key is stored for the network, and « This order is not available » when one is, or cannot be read.
   Future<void> _searchOrder() async {
     setState(() => _searches++);
     final outcome = await SearchOrderDialog.show(
@@ -193,8 +193,14 @@ class _BookViewState extends State<BookView> {
     switch (outcome) {
       case OrderSearchFound(:final order):
         widget.onOpenOrder(order);
-      case OrderSearchNeedsRobot():
-        await NoRobotDialog.show(context, onOpenGarage: widget.onOpenGarage);
+      case final OrderSearchNeedsRobot miss:
+        final cubit = context.read<BookCubit>();
+        final found = await OrderSearchMissDialog.show(
+          context,
+          settle: (asked) => cubit.settleSearchMiss(miss, asked: asked),
+          onOpenGarage: widget.onOpenGarage,
+        );
+        if (found != null && mounted) widget.onOpenOrder(found);
       case OrderSearchInvalidUrl() || null:
         break;
     }

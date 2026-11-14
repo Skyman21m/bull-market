@@ -54,9 +54,13 @@ import 'package:p2p/src/ui/garage/robot_coordinator_panel.dart';
 import 'package:p2p/src/ui/garage/robot_history_dialog.dart';
 import 'package:p2p/src/ui/garage/select_host_sheet.dart';
 import 'package:p2p/src/ui/garage/send_robot_dialog.dart';
+import 'package:p2p/src/ui/order_details_screen.dart';
+import 'package:p2p/src/ui/search_order_dialog.dart';
 import 'package:p2p/src/ui/widgets/garage_key_clipboard.dart';
 import 'package:p2p/src/ui/widgets/garage_key_field.dart';
 import 'package:p2p/src/ui/widgets/garage_key_view.dart';
+import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
+import 'package:p2p/src/ui/widgets/order_search_miss_dialog.dart';
 import 'package:p2p/testing.dart';
 import 'package:primitives/primitives.dart' show Failure;
 import 'package:robosats/robosats.dart';
@@ -265,10 +269,18 @@ void main() {
     bool withGarage = true,
     bool withReauthentication = true,
     bool databaseUnavailable = false,
+    Map<String, List<Map<String, Object?>>>? books,
+    Set<String>? held,
+    Map<String, CoordinatorTransportFailure>? failures,
   }) async {
     usePhoneScreen(tester);
     storage.install();
-    transport = FakeTransport(network: network.state);
+    transport = FakeTransport(
+      network: network.state,
+      books: books,
+      held: held,
+      failures: failures,
+    );
     setUpP2pForTesting(
       locator,
       transport: transport,
@@ -512,30 +524,372 @@ void main() {
     });
   });
 
-  testWidgets('« I have a Garage Key » opens the Garage from the book', (
-    tester,
-  ) async {
-    network.switchTo(RobosatsNetwork.mainnet);
-    keystoreHolding({_mainnetEntry: null});
-    await openTab(tester);
-    tor.add(P2pTorState.ready);
-    await settle(tester);
-    await tester.tap(find.text('Search'));
-    await settle(tester);
-    final temple = hostOf('temple', RobosatsNetwork.mainnet);
-    await tester.enterText(
-      find.byType(TextField),
-      'http://$temple/order/temple/1/',
+  group('« Search order », for an order the book does not hold', () {
+    final missDialog = find.byType(OrderSearchMissDialog);
+    final wait = find.descendant(
+      of: missDialog,
+      matching: find.byType(CircularProgressIndicator),
     );
-    await tester.tap(find.text('Search').last);
-    await settle(tester);
 
-    await tester.tap(find.text('I have a Garage Key'));
-    await settle(tester);
-    await letTheVaultSettle(tester);
+    /// Opens the book, Tor ready, and searches an order of temple that it does not hold, with the labels of [locale]; leaves the wait of the answer on screen.
+    Future<void> searchMissingOrder(
+      WidgetTester tester, {
+      Locale locale = const Locale('en'),
+      String search = 'Search',
+      Map<String, List<Map<String, Object?>>>? books,
+      Set<String>? held,
+      Map<String, CoordinatorTransportFailure>? failures,
+    }) async {
+      await openTab(
+        tester,
+        locale: locale,
+        books: books,
+        held: held,
+        failures: failures,
+      );
+      tor.add(P2pTorState.ready);
+      await settle(tester);
+      await tester.tap(find.text(search));
+      await settle(tester);
+      final searchDialog = find.byType(SearchOrderDialog);
+      await tester.enterText(
+        find.descendant(of: searchDialog, matching: find.byType(TextField)),
+        'http://${hostOf('temple', network.state)}/order/temple/1/',
+      );
+      await tester.tap(
+        find.descendant(of: searchDialog, matching: find.text(search)),
+      );
+      await settle(tester);
+    }
 
-    expect(find.byType(GarageView), findsOneWidget);
-    expect(find.text(fixedNickname), findsOneWidget);
+    testWidgets(
+      'no Garage Key stored: « You do not have a Garage Key », once the vault concluded, and « I have a Garage Key » opens the Garage',
+      (tester) async {
+        keystoreHolding({});
+        await searchMissingOrder(tester);
+        final requests = List.of(transport.requested);
+
+        // The vault believes an empty slot only after its full read budget: the dialog waits meanwhile, and says nothing yet.
+        expect(wait, findsOneWidget);
+        expect(find.byType(NoRobotDialog), findsNothing);
+        // Only the invisible copy that gives the wait its height.
+        expect(find.text('This order is not available'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byWidgetPredicate(
+              (widget) => widget is Visibility && !widget.visible,
+            ),
+            matching: find.text('This order is not available'),
+          ),
+          findsOneWidget,
+        );
+
+        await letTheVaultSettle(tester);
+
+        expect(wait, findsNothing);
+        expect(
+          find.descendant(of: missDialog, matching: find.byType(NoRobotDialog)),
+          findsOneWidget,
+        );
+        expect(find.text('You do not have a Garage Key'), findsOneWidget);
+        expect(find.text('This order is not available'), findsNothing);
+        final buttons = tester.widgetList<BullButton>(
+          find.descendant(of: missDialog, matching: find.byType(BullButton)),
+        );
+        expect(
+          [for (final button in buttons) (button.label, button.disabled)],
+          [('I have a Garage Key', false), ('Generate Garage Key', true)],
+        );
+        // Asked the slot of the network of the book only, wrote nothing, sent nothing, and opened no Garage.
+        expect(storage.readKeys.toSet(), {_testnetEntry});
+        expect(storage.entries, isEmpty);
+        expect(transport.requested, requests);
+        expect(find.byType(GarageView), findsNothing);
+        expect(privacyCalls, isEmpty);
+
+        await tester.tap(find.text('I have a Garage Key'));
+        await settle(tester);
+        await letTheVaultSettle(tester);
+
+        expect(missDialog, findsNothing);
+        expect(find.byType(GarageView), findsOneWidget);
+        expect(find.text('Start'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a Garage Key stored: « This order is not available », and nothing about a missing key',
+      (tester) async {
+        network.switchTo(RobosatsNetwork.mainnet);
+        keystoreHolding({_mainnetEntry: null});
+        await searchMissingOrder(tester);
+        final requests = List.of(transport.requested);
+
+        expect(wait, findsNothing);
+        expect(
+          find.descendant(
+            of: missDialog,
+            matching: find.text('This order is not available'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byType(NoRobotDialog), findsNothing);
+        expect(find.textContaining('Garage Key'), findsNothing);
+        expect(
+          [
+            for (final button in tester.widgetList<BullButton>(
+              find.descendant(
+                of: missDialog,
+                matching: find.byType(BullButton),
+              ),
+            ))
+              (button.label, button.disabled),
+          ],
+          [('Acknowledged', false)],
+        );
+        // Asked whether the key of the network of the book is stored: no key handed out, no robot, nothing sent, the keystore unchanged.
+        expect(storage.readKeys.toSet(), {_mainnetEntry});
+        expect(storage.entries, {
+          _mainnetEntry: storedFixedKeys[_mainnetEntry],
+        });
+        expect(transport.requested, requests);
+        expect(find.byType(GarageView), findsNothing);
+
+        await tester.tap(find.text('Acknowledged'));
+        await settle(tester);
+
+        expect(missDialog, findsNothing);
+        expect(find.byType(GarageView), findsNothing);
+        expect(find.text('Offers'), findsOneWidget);
+        expect(transport.requested, requests);
+      },
+    );
+
+    testWidgets('a Garage Key stored, in French', (tester) async {
+      keystoreHolding({_testnetEntry: null});
+      await searchMissingOrder(
+        tester,
+        locale: const Locale('fr'),
+        search: 'Rechercher',
+      );
+
+      expect(find.text('Cet ordre n\'est pas disponible'), findsOneWidget);
+      expect(find.text('Compris'), findsOneWidget);
+      expect(find.text('Vous n\'avez pas de clé de garage'), findsNothing);
+    });
+
+    // A failure is not an absence: « You do not have a Garage Key » would invite to make a key over one that may well be there.
+    for (final (name, held, locked, scripted) in [
+      ('the keystore locked', {_testnetEntry: null}, true, null),
+      ('a damaged entry', {_testnetEntry: 'not json at all'}, false, null),
+      (
+        'an entry the keystore keeps failing to read',
+        {_testnetEntry: null},
+        false,
+        List<Object?>.generate(5, (_) => PlatformException(code: 'read')),
+      ),
+    ]) {
+      testWidgets(
+        'a Garage Key that cannot be read, $name: « This order is not available »',
+        (tester) async {
+          keystoreHolding(held, locked: locked, scripted: scripted);
+          final stored = Map.of(storage.entries);
+          await searchMissingOrder(tester);
+          final requests = List.of(transport.requested);
+          await letTheVaultSettle(tester);
+
+          expect(wait, findsNothing);
+          expect(find.text('This order is not available'), findsOneWidget);
+          expect(find.text('Acknowledged'), findsOneWidget);
+          expect(find.byType(NoRobotDialog), findsNothing);
+          expect(find.text('You do not have a Garage Key'), findsNothing);
+          expect(storage.readKeys.toSet(), {_testnetEntry});
+          expect(storage.entries, stored);
+          expect(transport.requested, requests);
+        },
+      );
+    }
+
+    testWidgets(
+      'the wait is as tall as « This order is not available », which comes without a jump, and is announced',
+      (tester) async {
+        // An entry the keystore keeps failing to read: about 4.5 s of retries, then « This order is not available ».
+        keystoreHolding(
+          {_testnetEntry: null},
+          scripted: List<Object?>.generate(
+            5,
+            (_) => PlatformException(code: 'read'),
+          ),
+        );
+        await searchMissingOrder(tester);
+        final card = find
+            .descendant(
+              of: find.byType(Dialog),
+              matching: find.byType(Material),
+            )
+            .first;
+        expect(wait, findsOneWidget);
+        final waiting = tester.getSize(card);
+
+        await letTheVaultSettle(tester);
+
+        expect(wait, findsNothing);
+        expect(find.text('This order is not available'), findsOneWidget);
+        expect(tester.getSize(card), waiting);
+        // Far from the height of the screen, 844 points.
+        expect(waiting.height, lessThan(300));
+        expect(
+          tester
+              .widgetList<Semantics>(
+                find.ancestor(
+                  of: find.text('This order is not available'),
+                  matching: find.byType(Semantics),
+                ),
+              )
+              .any((semantics) => semantics.properties.liveRegion ?? false),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
+      'the invisible copy that sizes the wait is not read, not tapped and not focused',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        keystoreHolding(
+          {_testnetEntry: null},
+          scripted: List<Object?>.generate(
+            5,
+            (_) => PlatformException(code: 'read'),
+          ),
+        );
+        await searchMissingOrder(tester);
+        expect(wait, findsOneWidget);
+
+        // A screen reader reads neither the message nor its button while the answer may be another.
+        expect(find.bySemanticsLabel('Acknowledged'), findsNothing);
+        expect(find.bySemanticsLabel(RegExp('not available')), findsNothing);
+
+        // A tap where the invisible button lies does not close the dialog.
+        await tester.tapAt(tester.getCenter(find.text('Acknowledged')));
+        await settle(tester);
+        expect(missDialog, findsOneWidget);
+
+        // Nor does the keyboard reach it.
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await settle(tester);
+        var hiddenFocused = false;
+        FocusManager.instance.primaryFocus?.context?.visitAncestorElements((
+          element,
+        ) {
+          final widget = element.widget;
+          if (widget is Visibility && !widget.visible) hiddenFocused = true;
+          return !hiddenFocused;
+        });
+        expect(hiddenFocused, isFalse);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await settle(tester);
+        expect(missDialog, findsOneWidget);
+        expect(wait, findsOneWidget);
+
+        await letTheVaultSettle(tester);
+        expect(find.bySemanticsLabel('Acknowledged'), findsOneWidget);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets('an order the book holds opens without reading the vault', (
+      tester,
+    ) async {
+      keystoreHolding({_testnetEntry: null});
+      await searchMissingOrder(
+        tester,
+        books: {
+          'temple': [bookOrder(id: 1, makerSeed: 1)],
+        },
+      );
+
+      expect(missDialog, findsNothing);
+      expect(find.byType(OrderDetailsScreen), findsOneWidget);
+      expect(storage.reads, 0);
+    });
+
+    testWidgets(
+      'the book of the order\'s coordinator still awaited: the wait, then the order it brings, without reading the vault',
+      (tester) async {
+        keystoreHolding({_testnetEntry: null});
+        await searchMissingOrder(
+          tester,
+          books: {
+            'temple': [bookOrder(id: 1, makerSeed: 1)],
+          },
+          held: {'temple'},
+        );
+
+        expect(wait, findsOneWidget);
+        await letTheVaultSettle(tester);
+        expect(wait, findsOneWidget);
+        expect(storage.reads, 0);
+
+        transport.release('temple');
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 1));
+        await settle(tester);
+
+        expect(missDialog, findsNothing);
+        expect(find.byType(OrderDetailsScreen), findsOneWidget);
+        expect(storage.reads, 0);
+      },
+    );
+
+    for (final (locale, search, offline, acknowledged) in [
+      (const Locale('en'), 'Search', 'Coordinator offline', 'Acknowledged'),
+      (const Locale('fr'), 'Rechercher', 'Coordinateur hors ligne', 'Compris'),
+    ]) {
+      testWidgets(
+        'the book of the order\'s coordinator could not be had: « $offline », not the order\'s unavailability',
+        (tester) async {
+          keystoreHolding({_testnetEntry: null});
+          await searchMissingOrder(
+            tester,
+            locale: locale,
+            search: search,
+            failures: {'temple': const CoordinatorTransportFailed()},
+          );
+
+          expect(
+            find.descendant(of: missDialog, matching: find.text(offline)),
+            findsOneWidget,
+          );
+          expect(find.text(acknowledged), findsOneWidget);
+          expect(find.byType(NoRobotDialog), findsNothing);
+          expect(storage.reads, 0);
+
+          await tester.tap(find.text(acknowledged));
+          await settle(tester);
+          expect(missDialog, findsNothing);
+        },
+      );
+    }
+
+    testWidgets(
+      'closed during the wait: the answer that comes later changes nothing',
+      (tester) async {
+        keystoreHolding({});
+        await searchMissingOrder(tester);
+        expect(wait, findsOneWidget);
+
+        await tester.tapAt(const Offset(4, 4));
+        await settle(tester);
+        expect(missDialog, findsNothing);
+        await letTheVaultSettle(tester);
+
+        expect(missDialog, findsNothing);
+        expect(find.byType(NoRobotDialog), findsNothing);
+        expect(find.byType(GarageView), findsNothing);
+        expect(storage.entries, isEmpty);
+      },
+    );
   });
 
   group('the welcome screen', () {
@@ -4214,6 +4568,21 @@ void main() {
           expect(find.byType(SelectHostSheet), findsOneWidget);
           await tester.tap(find.byTooltip('Close'));
           await afterRoute(tester);
+          // « Search order » with the key stored, for an order the book does not hold (#121).
+          await tester.tap(find.text('Offers'));
+          await settle(tester);
+          await tester.tap(find.text('Search'));
+          await settle(tester);
+          await tester.enterText(
+            find.descendant(
+              of: find.byType(SearchOrderDialog),
+              matching: find.byType(TextField),
+            ),
+            'http://${hostOf('temple', network.state)}/order/temple/1/',
+          );
+          await tester.tap(find.text('Search').last);
+          await settle(tester);
+          expect(find.text('This order is not available'), findsOneWidget);
         },
         zoneSpecification: ZoneSpecification(
           print: (self, parent, zone, line) => printed.add(line),
