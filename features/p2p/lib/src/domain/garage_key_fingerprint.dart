@@ -56,6 +56,14 @@ final class GarageKeyFingerprint {
     return const Err(GarageRobotUnavailableFailure());
   }
 
+  /// The fingerprint a row of the feature's database stores as [hex], or `null` for a text that is not 64 lowercase hexadecimal characters, which no version writes.
+  ///
+  /// It proves nothing about a key: it is the value the row was written with, which a robot of a key matches only if that key has this fingerprint.
+  static GarageKeyFingerprint? stored(String hex) =>
+      RegExp(r'^[0-9a-f]{64}$').hasMatch(hex)
+      ? GarageKeyFingerprint._(hex)
+      : null;
+
   @override
   bool operator ==(Object other) =>
       other is GarageKeyFingerprint && other.hex == hex;
