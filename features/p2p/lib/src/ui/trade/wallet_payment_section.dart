@@ -46,7 +46,7 @@ final class WalletPaymentSlot {
   });
 }
 
-/// Where a payment of the bond from this wallet stands, as « Cancel » needs it (#100): [sending] while it is being sent, [sent] once its funds may have left the wallet.
+/// Where a payment of the bond from this wallet stands, as « Cancel » needs it (#100): [sending] while it is being sent, [sent] while it is on its way (sent, held, or not yet known; not refunded nor settled).
 @immutable
 final class WalletBondState {
   final bool sending;

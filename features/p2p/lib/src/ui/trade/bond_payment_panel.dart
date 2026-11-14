@@ -14,6 +14,7 @@ import '../../domain/trade_record.dart';
 import '../../presentation/bond_payment_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
+import '../../presentation/trade_cubit.dart';
 import '../widgets/trade_button.dart';
 import 'wallet_payment_section.dart';
 
@@ -48,7 +49,10 @@ class BondPaymentPanel extends StatefulWidget {
     }
     return switch (step) {
       // A payment may exist: the line says the panel cannot tell where it stands, and nothing invites paying again, the other way not opened.
-      BondPayUnreadable() => WalletPaymentSlot(panel),
+      BondPayUnreadable(:final paymentMayExist) => WalletPaymentSlot(
+        panel,
+        othersHidden: paymentMayExist,
+      ),
       // The user chose this wallet: the other way closes while the quote is asked and confirmed, and while the payment is sent.
       BondPayQuoting() ||
       BondPayConfirming() ||
@@ -87,15 +91,26 @@ class BondPaymentPanel extends StatefulWidget {
   };
 
   /// Where the payment of the bond stands, for « Cancel »: being sent, or sent (its funds may have left the wallet).
-  static WalletBondState bondOf(BuildContext context) => switch (context
-      .watch<BondPaymentCubit>()
-      .state
-      .step) {
-    BondPaySending() => const WalletBondState(sending: true, sent: false),
-    BondPayFollowing(:final progress) || BondPayPaidElsewhere(:final progress)
-        when progress.fundsMayHaveLeft =>
-      const WalletBondState(sending: false, sent: true),
-    _ => WalletBondState.none,
+  static WalletBondState bondOf(BuildContext context) =>
+      switch (context.watch<BondPaymentCubit>().state.step) {
+        BondPaySending() => const WalletBondState(sending: true, sent: false),
+        BondPayFollowing(:final progress) ||
+        BondPayPaidElsewhere(:final progress) when _onItsWay(progress) =>
+          const WalletBondState(sending: false, sent: true),
+        BondPayUnreadable(paymentMayExist: true) => const WalletBondState(
+          sending: false,
+          sent: true,
+        ),
+        _ => WalletBondState.none,
+      };
+
+  /// A payment on its way to the coordinator: sent, held, or not yet known; not refunded, being refunded, or settled.
+  static bool _onItsWay(P2pWalletPaymentProgress progress) => switch (progress) {
+    P2pWalletPaymentSent() ||
+    P2pWalletPaymentPending() ||
+    P2pWalletPaymentBroadcastUnknown() ||
+    P2pWalletPaymentUnderReview() => true,
+    _ => false,
   };
 
   @override
@@ -152,6 +167,10 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
     final state = context.watch<BondPaymentCubit>().state;
     final step = state.step;
     final coordinator = bondPaymentCoordinator(widget.request.record);
+    // A cancel of the order holds its lock: the payment waits for it, so the button waits too.
+    final cancelling = context.select<TradeCubit, bool>(
+      (trade) => trade.state.cancel is CancelRunning,
+    );
     final balance = switch (state.balance) {
       Ok(:final value) => value,
       _ => null,
@@ -197,7 +216,9 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
           if (offered && balance != null)
             TradeButton(
               label: l10n.p2pPayWithThisWallet,
-              onPressed: () => unawaited(cubit.ask(widget.request.seen)),
+              onPressed: cancelling
+                  ? null
+                  : () => unawaited(cubit.ask(widget.request.seen)),
             ),
         ],
         BondPayQuoting() => [
@@ -481,6 +502,7 @@ String bondPayRefusalText(
     BondPayTradeUnavailable() => l10n.p2pPayCoordinatorUnreachable(coordinator),
     BondPayNotOffered() => l10n.p2pPayWalletUnavailable,
     BondPayNotRecorded() => l10n.p2pPayNotRecorded,
+    BondPayRecordsUnreadable() => l10n.p2pRobotRecordsUnreadable,
     BondPayWalletRefused(:final refusal) => switch (refusal) {
       P2pWalletUnderMinimum(minimum: final minimum?) => l10n.p2pPayUnderMinimum(
         sats(minimum),

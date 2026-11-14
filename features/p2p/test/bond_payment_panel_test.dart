@@ -5,7 +5,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/bond_payment.dart';
+import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
@@ -40,6 +42,8 @@ Future<(BondPaymentCubit, Payments)> _show(
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
   DateTime Function()? now,
+  Future<Result<CancelOutcome, CancelRefusal>>? cancel,
+  BondPayRefusal? notOffered,
   double textScale = 1,
 }) async {
   tester.view
@@ -56,7 +60,7 @@ Future<(BondPaymentCubit, Payments)> _show(
     // The signals are listened to, as the watch does, so that the cubit's close completes.
     signals.listen((_) {});
     return watch.stream;
-  }, (record, seen, {bondLoss}) => throw StateError('no cancel'))..start();
+  }, (record, seen, {bondLoss}) => cancel ?? (throw StateError('no cancel')))..start();
   addTearDown(trade.close);
   final reads = FakeTransport();
   final page = TradeOrderPageCubit(
@@ -70,6 +74,7 @@ Future<(BondPaymentCubit, Payments)> _show(
   addTearDown(page.close);
   final payments = Payments();
   if (offered) payments.offer = Ok(_offer());
+  if (notOffered != null) payments.offer = Err(notOffered);
   final cubit = payments.cubit()..start();
   addTearDown(cubit.close);
   await tester.pumpWidget(
@@ -327,6 +332,83 @@ void main() {
       await tester.pump();
       expect(find.byType(QrImageView), findsNothing);
       expect(find.text('Copy to clipboard'), findsNothing);
+      // Opened again by the user: still neither the QR code nor the copy of the invoice this wallet paid.
+      await tester.ensureVisible(find.text('Pay with another wallet'));
+      await tester.pump();
+      await tester.tap(find.text('Pay with another wallet'));
+      await tester.pump();
+      expect(find.text('See Compatible Wallets'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'at 6, the cancel\'s dialog adds nothing: the bond is locked and the reference says it is lost',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'six');
+      _follow(payments, const P2pWalletPaymentPending());
+      await tester.pump();
+      await tester.pump();
+      final cancel = find.widgetWithText(TradeButton, 'Cancel');
+      await tester.ensureVisible(cancel.last);
+      await tester.pump();
+      await tester.tap(cancel.last);
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Confirm Cancel'), findsOneWidget);
+      expect(find.textContaining('on its way from this wallet'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'at 3, a payment being refunded is not on its way: the cancel\'s dialog adds nothing',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      _follow(payments, const P2pWalletPaymentRefundPending());
+      await tester.pump();
+      await tester.pump();
+      final cancel = find.widgetWithText(TradeButton, 'Cancel');
+      await tester.ensureVisible(cancel.last);
+      await tester.pump();
+      await tester.tap(cancel.last);
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('on its way from this wallet'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'records that cannot be read when the panel opens: said as such, never as the coordinator not reached',
+    (tester) async {
+      await _show(
+        tester,
+        state: 'bond',
+        notOffered: const BondPayRecordsUnreadable(P2pStorageFailure()),
+      );
+      await tester.pump();
+      expect(
+        find.text('Bull Market could not read its records on this device.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Could not reach'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'while a cancel of the order runs, « Pay with this wallet » waits',
+    (tester) async {
+      final answer = Completer<Result<CancelOutcome, CancelRefusal>>();
+      await _show(tester, state: 'bond', cancel: answer.future);
+      final trade = tester.element(find.byType(BondPaymentPanel)).read<TradeCubit>();
+      unawaited(trade.cancel(_bondSeen()));
+      await tester.pump();
+      final pay = find.widgetWithText(TradeButton, 'Pay with this wallet');
+      expect(tester.widget<TradeButton>(pay).onPressed, isNull);
+      answer.complete(Ok(CancelDone(_record, _bondSeen())));
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
     },
   );
 

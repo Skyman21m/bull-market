@@ -124,7 +124,10 @@ final class BondPayPaidElsewhere extends BondPayStep {
 
 /// The records, or the wallet's, could not be read: nothing is offered, since a payment may exist.
 final class BondPayUnreadable extends BondPayStep {
-  const BondPayUnreadable();
+  /// Whether a payment of the bond was answered or found before: then the other wallet offers no QR code nor copy, and a cancel at 3 says a payment may be on its way.
+  final bool paymentMayExist;
+
+  const BondPayUnreadable({this.paymentMayExist = false});
 }
 
 /// The wallet's payment of one trade's bond, as the trade screen shows it (#100): one per shown trade, which only the user's taps make pay.
@@ -250,7 +253,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     } finally {
       _stillWaiting?.cancel();
       if (!answered && !isClosed) {
-        emit(state._with(step: const BondPayUnreadable()));
+        emit(state._with(step: const BondPayUnreadable(paymentMayExist: true)));
         _followAgain(leavesSending: true, paymentExists: true);
       }
     }
@@ -310,7 +313,9 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
               final BondPayFollowing following => following,
               final BondPaySending sending when _running(record) != null =>
                 sending,
-              _ when paymentExists => const BondPayUnreadable(),
+              _ when paymentExists => const BondPayUnreadable(
+                paymentMayExist: true,
+              ),
               _ => const BondPayIdle(),
             },
             // A payment that moved nothing and is not left signed: being prepared by this process now, being sent; left by an earlier run, it may be tried again (the wallet pays it again only while it is provably unspent).
@@ -319,7 +324,12 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
                     progress is! P2pWalletPaymentSigned =>
               _sendingUntilDone() ?? const BondPayIdle(),
             BondPaymentFollowed(:final progress) => BondPayFollowing(progress),
-            BondPaymentUnreadable() => const BondPayUnreadable(),
+            BondPaymentUnreadable() => BondPayUnreadable(
+              paymentMayExist:
+                  paymentExists ||
+                  current is BondPayFollowing ||
+                  current is BondPaySending,
+            ),
           },
         ),
       );

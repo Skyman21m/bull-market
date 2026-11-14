@@ -67,7 +67,7 @@ final class PayBondFromWalletUsecase {
       case TradeNotRestorable() || TradeTakeNeverSent():
         return const Err(BondPayNotAtBondStep());
       case TradeNotOpened(:final failure):
-        return Err(BondPayTradeUnavailable(failure));
+        return Err(BondPayRecordsUnreadable(failure));
     }
     return _offered(terms, seen.status);
   }
@@ -110,7 +110,7 @@ final class PayBondFromWalletUsecase {
       case TradeNotRestorable() || TradeTakeNeverSent():
         return const Err(BondPayNotAtBondStep());
       case TradeNotOpened(:final failure):
-        return Err(BondPayTradeUnavailable(failure));
+        return Err(BondPayRecordsUnreadable(failure));
     }
     // One action of an order at a time in the process: its take, its payout and this payment (`TradeTakeLocks`, shared with the take and the payout); a second payment of the bond waits, reads the order again and finds the first.
     return _locks.run(record.network, trade.coordinator, record.orderId, () async {

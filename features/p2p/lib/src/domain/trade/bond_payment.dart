@@ -36,7 +36,7 @@ final class BondPayInvoiceChanged extends BondPayRefusal {
   const BondPayInvoiceChanged();
 }
 
-/// The trade could not be opened or read ([failure], of the records or of the coordinator): nothing was paid.
+/// The order could not be read again from the coordinator just before the payment ([failure]): nothing was paid.
 final class BondPayTradeUnavailable extends BondPayRefusal {
   final Failure failure;
 
@@ -44,6 +44,16 @@ final class BondPayTradeUnavailable extends BondPayRefusal {
 
   @override
   String toString() => 'BondPayTradeUnavailable($failure)';
+}
+
+/// The trade's records could not be read ([failure]): nothing was asked of the coordinator nor paid.
+final class BondPayRecordsUnreadable extends BondPayRefusal {
+  final Failure failure;
+
+  const BondPayRecordsUnreadable(this.failure);
+
+  @override
+  String toString() => 'BondPayRecordsUnreadable($failure)';
 }
 
 /// The start of the payment could not be written before the wallet was asked: nothing was paid, since a payment is never started without its record (design note § 3.5).

@@ -218,8 +218,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                                 view.status is WaitingForTakerBond)) ...[
                       bondLine(
                         context,
-                        // Locked only while the trade goes on after the lock.
-                        view is TradeContract && !view.status.isTerminal,
+                        // Locked only while the bond is (the reference's bond line « locked »).
+                        view is TradeContract &&
+                            view.bondLine == TradeBondLine.locked,
                       ),
                       const Gap(BullSpacing.sm),
                     ],
@@ -601,7 +602,8 @@ class _CancelRowState extends State<_CancelRow> {
     final cubit = context.read<TradeCubit>();
     final seen = widget.seen;
     // The project's line under the reference's text, when a payment of the bond is on its way from this wallet: informed, not stopped.
-    final note = widget.bond.sent
+    // Only at 3, where the cancel is free: from 6 on the bond is locked and the reference's text says it is lost.
+    final note = widget.bond.sent && widget.offer == TradeCancelOffer.free
         ? P2pLocalizations.of(context).p2pPayCancelNote
         : null;
     try {
