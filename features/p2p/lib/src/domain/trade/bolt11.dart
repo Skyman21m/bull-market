@@ -16,10 +16,10 @@ enum Bolt11Network {
   /// `lnbcrt`.
   regtest;
 
-  /// Whether an invoice of this network can belong to a trade on [network]: `lnbc` on mainnet, `lntb` or `lntbs` on testnet, as the design note says (§ 4.4) and the wallet port's invoice accepts; regtest never.
+  /// Whether an invoice of this network can belong to a trade on [network]: `lnbc` on mainnet, `lntb` on testnet; `lntbs`, `lnbcrt` and any other prefix are another network and are refused (design note § 4.4, #113): a testnet coordinator's node can neither issue nor pay a signet invoice.
   bool belongsTo(RobosatsNetwork network) => switch (network) {
     RobosatsNetwork.mainnet => this == mainnet,
-    RobosatsNetwork.testnet => this == testnet || this == signet,
+    RobosatsNetwork.testnet => this == testnet,
   };
 }
 

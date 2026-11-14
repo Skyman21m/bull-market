@@ -396,6 +396,8 @@ void main() {
     expect(TradeTolerances.percent, 0.005);
     expect(TradeTolerances.takerFeeCeiling, 0.01);
     expect(TradeTolerances.coordinatorLoops, const Duration(minutes: 1));
+    expect(TradeTolerances.clockStep, const Duration(minutes: 10));
+    expect(TradeTolerances.longestPreTake, const Duration(minutes: 30));
   });
 
   test('M13: the first hash of each step is the one pinned', () async {

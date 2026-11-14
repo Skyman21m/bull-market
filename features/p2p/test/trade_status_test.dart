@@ -951,11 +951,11 @@ void main() {
           );
           expect(status.has<InvoiceWrongNetwork>(), isTrue);
         }
-        // On testnet, `lntb` and `lntbs` belong; `lnbc` does not.
+        // On testnet, only `lntb` belongs: a signet invoice is another network (#113).
         final testnet = await tradeTerms(network: RobosatsNetwork.testnet);
         for (final (network, belongs) in [
           (Bolt11Network.testnet, true),
-          (Bolt11Network.signet, true),
+          (Bolt11Network.signet, false),
           (Bolt11Network.mainnet, false),
         ]) {
           final invoice = bondInvoice(network: network);
@@ -1777,6 +1777,7 @@ void main() {
           int? readAtMicros,
           int? orderId,
           int? bondStepSeenAtMicros,
+          int? deadlineMicros,
         }) => TradeTrailRecord(
           version: version ?? r.version,
           network: r.network,
@@ -1787,7 +1788,7 @@ void main() {
           readAtMicros: readAtMicros ?? r.readAtMicros,
           bondHash: bondHash ?? r.bondHash,
           escrowHash: r.escrowHash,
-          deadlineMicros: r.deadlineMicros,
+          deadlineMicros: deadlineMicros ?? r.deadlineMicros,
           bondStepSeenAtMicros: bondStepSeenAtMicros ?? r.bondStepSeenAtMicros,
           bondStepDeadlineMicros: r.bondStepDeadlineMicros,
           breached: r.breached,
@@ -1811,6 +1812,9 @@ void main() {
                 .microsecondsSinceEpoch,
           ),
           changed(bondStepSeenAtMicros: r.readAtMicros + 1),
+          // A time out of range, which only the range check sees (mutant Q33).
+          changed(deadlineMicros: -1),
+          changed(deadlineMicros: 253402300800000000),
         ]) {
           expect(
             switch (restore(bad)) {

@@ -312,6 +312,22 @@ void main() {
   });
 
   test(
+    'a refused answer records its read, so that no later write looks older (mutant S17)',
+    () async {
+      final pre = await taken();
+      final later = tradeNow.add(const Duration(minutes: 1));
+      final refused = next(
+        pre,
+        await answer(orderJson(3, role: TradeRole.seller)),
+        now: later,
+      );
+      expect(refused.has<TradeRoleMismatch>(), isTrue);
+      expect(refused.trail.readAt, later);
+      expect(refused.trail.record.whyNotReplace(pre.trail.record), isNull);
+    },
+  );
+
+  test(
     'a trail belongs to its trade: other terms are refused by from and by restore',
     () async {
       final pre = await taken();
