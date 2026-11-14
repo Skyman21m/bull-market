@@ -5,10 +5,12 @@ import 'package:convert/convert.dart' show hex;
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
+import 'package:robosats/src/bech32_checksum.dart';
 import 'package:robosats/src/bitcoin_address.dart'
     show SegwitProgram, decodeSegwit;
 import 'package:test/test.dart';
 
+import 'support/bech32_encode.dart';
 import 'support/pgp.dart';
 
 const _mainnet = RobosatsNetwork.mainnet;
@@ -189,6 +191,37 @@ PayoutDestinationFailure _err(String text, RobosatsNetwork network) =>
     expectErr(BitcoinAddress.check(text, network));
 
 void main() {
+  group('bech32 strings', () {
+    test('the separator is the last 1, the human-readable part may hold others', () {
+      for (final humanReadablePart in ['bc', 'ln1tb', 'lntb1639610n', '1', 'a1b1c']) {
+        for (final bech32m in [false, true]) {
+          final words = [for (var i = 0; i < 40; i++) (i * 7) % 32];
+          final read = readBech32(
+            encodeBech32(humanReadablePart, words, bech32m: bech32m),
+            maxLength: 200,
+          );
+          final parts = read.parts;
+          if (parts == null) fail('$humanReadablePart: ${read.refusal}');
+          expect(parts.humanReadablePart, humanReadablePart);
+          expect(parts.words, words);
+          expect(
+            parts.variant,
+            bech32m ? Bech32Variant.bech32m : Bech32Variant.bech32,
+          );
+        }
+      }
+    });
+
+    test('the length bound is read before anything else', () {
+      final text = encodeBech32('lntb', List.filled(100, 3));
+      expect(readBech32(text, maxLength: text.length).parts, isNotNull);
+      expect(
+        readBech32(text, maxLength: text.length - 1).refusal,
+        Bech32Refusal.malformed,
+      );
+    });
+  });
+
   group('BIP-173 and BIP-350 vectors', () {
     for (final MapEntry(key: address, value: script) in _bip350Valid.entries) {
       test('$address decodes to its scriptPubKey', () {
