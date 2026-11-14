@@ -477,6 +477,44 @@ void main() {
     },
   );
 
+  for (final (scale, above) in const [
+    (1.0, false),
+    (2.0, false),
+    (3.0, true),
+  ]) {
+    testWidgets(
+      'at ×$scale the close button is ${above ? 'above' : 'beside'} the title',
+      (tester) async {
+        await open(
+          tester,
+          locale: const Locale('fr'),
+          size: const Size(320, 568),
+        );
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await settle(tester);
+        await tapShown(tester, choice('Tout hôte'));
+
+        final title = tester.getRect(
+          find.descendant(
+            of: sheet,
+            matching: find.text("Sélectionner l'hôte"),
+          ),
+        );
+        final close = tester.getRect(
+          find.descendant(of: sheet, matching: find.byIcon(Icons.close)),
+        );
+        if (above) {
+          expect(close.bottom, lessThanOrEqualTo(title.top));
+        } else {
+          expect(close.top, lessThan(title.bottom));
+          expect(close.bottom, greaterThan(title.top));
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
