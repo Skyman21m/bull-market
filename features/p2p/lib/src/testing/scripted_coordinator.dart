@@ -223,6 +223,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The maker pauses the order, or resumes it: a paused order leaves the book, and its pre-takers get 1044 (`api/views.py:269-275`), their pre-takes kept.
   void pause({bool paused = true}) => _paused = paused;
 
+  /// A hostile coordinator: the deadline of the trade's step (`expires_at`) is moved to [deadline], earlier or later.
+  void moveDeadline(DateTime deadline) => _deadline = deadline.toUtc();
+
   /// A hostile coordinator: the live pre-take of [robot] gets another bond invoice.
   void replaceBondInvoice(RobotIdentity robot) {
     final pre = _preTakes[robot.sessionKey];
@@ -333,7 +336,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// `update_invoice` and `update_address` as the reference answers them (`api/views.py:617-649`, `api/logics.py:752-947`).
   CoordinatorResponse _payout(RobotIdentity robot, CoordinatorRequest request) {
     final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
-    final fields = body is Map<String, Object?> ? body : const <String, Object?>{};
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
     final invoice = fields['action'] == 'update_invoice';
     final key = robot.sessionKey;
     if (_taker != key) {
@@ -397,7 +402,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       }
       if (facts.amount.value.toInt() != asked) {
         return _json(400, {
-          'bad_invoice': 'The invoice provided is not for ${_grouped(asked)} Sats',
+          'bad_invoice':
+              'The invoice provided is not for ${_grouped(asked)} Sats',
         });
       }
       if (facts.expiresAt.isBefore(clock().toUtc())) {
@@ -445,7 +451,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       }
       final miningFee = (rate * 280).truncate();
       final sent =
-          (payout.toDouble() - payout.toDouble() * swapFeeRate / 100 - miningFee)
+          (payout.toDouble() -
+                  payout.toDouble() * swapFeeRate / 100 -
+                  miningFee)
               .truncate();
       if (sent < 20000) {
         return _json(400, {
@@ -761,7 +769,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
             ..['suggested_mining_fee_rate'] = suggestedMiningFeeRate
             ..['swap_fee_rate'] = swapFeeRate;
         } else {
-          data['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
+          data['swap_failure_reason'] =
+              'On-the-fly submarine swaps are disabled';
         }
       case 15 when buyer:
         data

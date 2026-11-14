@@ -47,7 +47,8 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
   Future<
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
   >
-  unlock(RobotPgpKey key, RobotIdentity identity) => _unlockApart(key, identity);
+  unlock(RobotPgpKey key, RobotIdentity identity) =>
+      _unlockApart(key, identity);
 
   static Future<
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>

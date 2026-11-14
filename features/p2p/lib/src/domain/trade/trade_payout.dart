@@ -76,7 +76,8 @@ final class PayoutAsk {
   bool get isNewInvoice => seen.status.position == TradePosition.routingFailed;
 
   /// The amount the invoice must be for with [budget]: `floor(n − n × ppm / 10⁶)` of [buyerSats], computed as the coordinator computes it ([RoutingBudgetPpm.invoiceSats], `api/logics.py:868-872`); `null` above the read bounds.
-  Sats? invoiceSatsFor(RoutingBudgetPpm budget) => budget.invoiceSats(buyerSats);
+  Sats? invoiceSatsFor(RoutingBudgetPpm budget) =>
+      budget.invoiceSats(buyerSats);
 
   /// What the coordinator asks of the buyer of [record] at [seen], or why it asks nothing that can be checked.
   ///
@@ -354,7 +355,6 @@ final class CheckedPayoutInvoice extends CheckedPayout {
 
   /// The invoice's own amount, which is what the coordinator pays.
   Sats get amount => facts.amount;
-
 
   /// When the invoice expires.
   DateTime get expiresAt => facts.expiresAt;

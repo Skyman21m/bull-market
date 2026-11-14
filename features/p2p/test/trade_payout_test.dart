@@ -8,6 +8,7 @@ import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade/trade_tolerances.dart';
+import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
@@ -267,7 +268,10 @@ void main() {
           ),
         );
         expect(short.warnings, [PayoutWarning.invoiceMayExpireFirst]);
-        expect(TradeTolerances.payoutInvoiceAfterStep, const Duration(hours: 24));
+        expect(
+          TradeTolerances.payoutInvoiceAfterStep,
+          const Duration(hours: 24),
+        );
       },
     );
 
@@ -310,74 +314,97 @@ void main() {
       },
     );
 
-    test('an address only where the swap is offered, of the trade\'s network', () async {
-      final (app, record, seen) = await atSix();
-      final rate = MiningFeeRate.of(3.5);
-      if (rate == null) throw StateError('no rate');
-      expect(
-        app.payout.check(
-          record,
-          seen,
-          PayoutAddressText(testnetAddress, rate: rate),
-        ),
-        refusedWith<PayoutOnchainNotOffered>(),
-      );
-
-      final (swap, swapRecord, swapSeen) = await atSix(swap: true);
-      final ask = switch (swap.payout.ask(swapRecord, swapSeen)) {
-        Ok(:final value) => value,
-        Err(:final failure) => throw StateError('$failure'),
-      };
-      final onchain = ask.onchain;
-      if (onchain == null) throw StateError('no swap offered');
-      expect(onchain.invoiceAmount, Sats.fromInt(buyerSats));
-      expect(onchain.swapFeePercent, 0.75);
-      expect(onchain.suggestedRate, rate);
-      // `floor(106713 × 0.75 / 100)` = `floor(800.3475)`.
-      expect(onchain.swapFeeSats, 800);
-      expect(onchain.miningFeeSatsFor(rate), 980);
-      // `int(106713 − 800.3475 − 980)`.
-      expect(onchain.sentSatsFor(rate), 104932);
-
-      final shown = checked(
-        swap.payout.check(
-          swapRecord,
-          swapSeen,
-          PayoutAddressText(testnetAddress, rate: rate),
-        ),
-      );
-      expect(shown, isA<CheckedPayoutAddress>());
-      expect(shown.text, testnetAddress);
-      expect((shown as CheckedPayoutAddress).sentSats, 104932);
-      expect(shown.warnings, isEmpty);
-      expect(
-        swap.payout.check(
-          swapRecord,
-          swapSeen,
-          PayoutAddressText(mainnetAddress, rate: rate),
-        ),
-        isA<Err<CheckedPayout, PayoutCheckRefusal>>().having(
-          (err) => err.failure,
-          'refusal',
-          isA<PayoutAddressUnusable>().having(
-            (r) => r.reason,
-            'reason',
-            isA<PayoutDestinationWrongNetwork>(),
+    test(
+      'an address only where the swap is offered, of the trade\'s network',
+      () async {
+        final (app, record, seen) = await atSix();
+        final rate = MiningFeeRate.of(3.5);
+        if (rate == null) throw StateError('no rate');
+        expect(
+          app.payout.check(
+            record,
+            seen,
+            PayoutAddressText(testnetAddress, rate: rate),
           ),
-        ),
-      );
-      // What would reach the address under 20,000 sats is said, not refused: the coordinator refuses it (4003).
-      final highest = MiningFeeRate.of(500);
-      if (highest == null) throw StateError('no rate');
-      final dust = checked(
-        swap.payout.check(
-          swapRecord,
-          swapSeen,
-          PayoutAddressText(testnetAddress, rate: highest),
-        ),
-      );
-      expect(dust.warnings, [PayoutWarning.sentBelowMinimum]);
-    });
+          refusedWith<PayoutOnchainNotOffered>(),
+        );
+
+        final (swap, swapRecord, swapSeen) = await atSix(swap: true);
+        final ask = switch (swap.payout.ask(swapRecord, swapSeen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        final onchain = ask.onchain;
+        if (onchain == null) throw StateError('no swap offered');
+        expect(onchain.invoiceAmount, Sats.fromInt(buyerSats));
+        expect(onchain.swapFeePercent, 0.75);
+        expect(onchain.suggestedRate, rate);
+        // `floor(106713 × 0.75 / 100)` = `floor(800.3475)`.
+        expect(onchain.swapFeeSats, 800);
+        expect(onchain.miningFeeSatsFor(rate), 980);
+        // `int(106713 − 800.3475 − 980)`.
+        expect(onchain.sentSatsFor(rate), 104932);
+
+        final shown = checked(
+          swap.payout.check(
+            swapRecord,
+            swapSeen,
+            PayoutAddressText(testnetAddress, rate: rate),
+          ),
+        );
+        expect(shown, isA<CheckedPayoutAddress>());
+        expect(shown.text, testnetAddress);
+        expect((shown as CheckedPayoutAddress).sentSats, 104932);
+        expect(shown.warnings, isEmpty);
+        expect(
+          swap.payout.check(
+            swapRecord,
+            swapSeen,
+            PayoutAddressText(mainnetAddress, rate: rate),
+          ),
+          isA<Err<CheckedPayout, PayoutCheckRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<PayoutAddressUnusable>().having(
+              (r) => r.reason,
+              'reason',
+              isA<PayoutDestinationWrongNetwork>(),
+            ),
+          ),
+        );
+        // What would reach the address under 20,000 sats is said, not refused: the coordinator refuses it (4003).
+        final highest = MiningFeeRate.of(500);
+        if (highest == null) throw StateError('no rate');
+        final dust = checked(
+          swap.payout.check(
+            swapRecord,
+            swapSeen,
+            PayoutAddressText(testnetAddress, rate: highest),
+          ),
+        );
+        expect(dust.warnings, [PayoutWarning.sentBelowMinimum]);
+        // At its bound: 20,000 sats received is enough, 19,999 is not.
+        for (final (satPerVbyte, received, warned) in [
+          (306.83, 20000, false),
+          (306.834, 19999, true),
+        ]) {
+          final bound = MiningFeeRate.of(satPerVbyte);
+          if (bound == null) throw StateError('no rate');
+          final atBound = checked(
+            swap.payout.check(
+              swapRecord,
+              swapSeen,
+              PayoutAddressText(testnetAddress, rate: bound),
+            ),
+          );
+          expect((atBound as CheckedPayoutAddress).sentSats, received);
+          expect(
+            atBound.warnings,
+            warned ? [PayoutWarning.sentBelowMinimum] : isEmpty,
+          );
+        }
+      },
+    );
   });
 
   group('what is signed and sent', () {
@@ -390,10 +417,14 @@ void main() {
           app.payout.check(
             record,
             seen,
-            PayoutInvoiceText('lightning:${invoice.text}', budget: defaultBudget),
+            PayoutInvoiceText(
+              'lightning:${invoice.text}',
+              budget: defaultBudget,
+            ),
           ),
         );
         final bodies = <Map<String, Object?>>[];
+        final keptWhileSent = <bool>[];
         app.coordinator.onRequest = (request) {
           final body = request.body;
           if (body == null) return;
@@ -401,6 +432,7 @@ void main() {
           if (decoded is Map<String, Object?> &&
               decoded['action'] == 'update_invoice') {
             bodies.add(decoded);
+            keptWhileSent.add(app.keyring.keepsKeyOf(record.robot));
           }
         };
 
@@ -429,63 +461,68 @@ void main() {
           ),
           isTrue,
         );
-        // Signed without a hold: the key was unlocked for that signature, then dropped.
+        // Signed without a hold: the key was unlocked for that signature, and dropped before the request left.
+        expect(keptWhileSent, [false]);
         expect(app.keys.unlocked, [app.robot(0).hashId]);
         expect(app.keyring.keepsKeyOf(record.robot), isFalse);
         expect(app.keyring.openOf(record.robot), (holds: 0, leases: 0));
       },
     );
 
-    test('at 8 an invoice brings the chat (9); an address at 6 with the swap', () async {
-      final (app, record, seen) = await atSix(moveTo: 8);
-      expect(seen.status, isA<WaitingForPayout>());
-      final shown = checked(
-        app.payout.check(
-          record,
-          seen,
-          PayoutInvoiceText(
-            invoiceOf(app, sats: askedWithDefaultBudget).text,
-            budget: defaultBudget,
+    test(
+      'at 8 an invoice brings the chat (9), with the budget the user chose; an address at 6 with the swap',
+      () async {
+        final (app, record, seen) = await atSix(moveTo: 8);
+        expect(seen.status, isA<WaitingForPayout>());
+        // No routing budget: the whole amount, and 0 sent, which the coordinator checks the amount against.
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(
+              invoiceOf(app, sats: buyerSats).text,
+              budget: RoutingBudgetPpm.of(0) ?? defaultBudget,
+            ),
           ),
-        ),
-      );
-      expect(
-        await app.payout.execute(record, shown),
-        isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
-          (ok) => ok.value,
-          'outcome',
-          isA<PayoutGiven>().having(
-            (g) => g.seen.status,
-            'status',
-            isA<Chatting>(),
+        );
+        expect(
+          await app.payout.execute(record, shown),
+          isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<PayoutGiven>().having(
+              (g) => g.seen.status,
+              'status',
+              isA<Chatting>(),
+            ),
           ),
-        ),
-      );
+        );
 
-      final (swap, swapRecord, swapSeen) = await atSix(swap: true);
-      final rate = MiningFeeRate.of(3.5);
-      if (rate == null) throw StateError('no rate');
-      final address = checked(
-        swap.payout.check(
-          swapRecord,
-          swapSeen,
-          PayoutAddressText(testnetAddress, rate: rate),
-        ),
-      );
-      expect(
-        await swap.payout.execute(swapRecord, address),
-        isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
-          (ok) => ok.value,
-          'outcome',
-          isA<PayoutGiven>().having(
-            (g) => g.seen.status,
-            'status',
-            isA<WaitingForEscrow>(),
+        final (swap, swapRecord, swapSeen) = await atSix(swap: true);
+        final rate = MiningFeeRate.of(3.5);
+        if (rate == null) throw StateError('no rate');
+        final address = checked(
+          swap.payout.check(
+            swapRecord,
+            swapSeen,
+            PayoutAddressText(testnetAddress, rate: rate),
           ),
-        ),
-      );
-      expect(swap.coordinator.payoutsRecorded, [testnetAddress]);
-    });
+        );
+        expect(
+          await swap.payout.execute(swapRecord, address),
+          isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<PayoutGiven>().having(
+              (g) => g.seen.status,
+              'status',
+              isA<WaitingForEscrow>(),
+            ),
+          ),
+        );
+        expect(swap.coordinator.payoutsRecorded, [testnetAddress]);
+      },
+    );
 
     test(
       'at 15, a new invoice once the failed one expired, without the warning of the first payout',
@@ -608,6 +645,79 @@ void main() {
       },
     );
   });
+
+  group(
+    'nothing signed from a read that is not stored, nor from what the user did not see',
+    () {
+      test(
+        'a read the database refuses: nothing signed, nothing sent',
+        () async {
+          final (app, record, seen) = await atSix();
+          final shown = checked(
+            app.payout.check(
+              record,
+              seen,
+              PayoutInvoiceText(
+                invoiceOf(app, sats: askedWithDefaultBudget).text,
+                budget: defaultBudget,
+              ),
+            ),
+          );
+          app.trails.storeFailure = const P2pStorageFailure();
+          expect(
+            await app.payout.execute(record, shown),
+            isA<Err<PayoutSubmission, PayoutNotSent>>().having(
+              (err) => err.failure,
+              'refusal',
+              isA<PayoutReadFailed>().having(
+                (r) => r.cause,
+                'cause',
+                isA<P2pStorageFailure>(),
+              ),
+            ),
+          );
+          expect(sent(app, payouts), 0);
+        },
+      );
+
+      test(
+        'a warning that came since it was shown (the deadline moved back): shown again, nothing sent',
+        () async {
+          final (app, record, seen) = await atSix();
+          final shown = checked(
+            app.payout.check(
+              record,
+              seen,
+              PayoutInvoiceText(
+                invoiceOf(app, sats: askedWithDefaultBudget).text,
+                budget: defaultBudget,
+              ),
+            ),
+          );
+          final deadline = switch (seen.status) {
+            WaitingForBoth(:final deadline) => deadline,
+            final other => throw StateError('$other'),
+          };
+          app.coordinator.moveDeadline(
+            deadline.subtract(const Duration(hours: 1)),
+          );
+          expect(
+            await app.payout.execute(record, shown),
+            isA<Err<PayoutSubmission, PayoutNotSent>>().having(
+              (err) => err.failure,
+              'refusal',
+              isA<PayoutChangedSinceShown>().having(
+                (c) => c.fresh.statusWarnings,
+                'warnings',
+                contains(isA<DeadlineMovedBack>()),
+              ),
+            ),
+          );
+          expect(sent(app, payouts), 0);
+        },
+      );
+    },
+  );
 
   group('what each answer gives', () {
     test(
@@ -758,31 +868,34 @@ void main() {
       },
     );
 
-    test('a busy transport: tried again as the limiter says, recorded once', () async {
-      final (app, record, seen) = await atSix();
-      final shown = checked(
-        app.payout.check(
-          record,
-          seen,
-          PayoutInvoiceText(
-            invoiceOf(app, sats: askedWithDefaultBudget).text,
-            budget: defaultBudget,
+    test(
+      'a busy transport: tried again as the limiter says, recorded once',
+      () async {
+        final (app, record, seen) = await atSix();
+        final shown = checked(
+          app.payout.check(
+            record,
+            seen,
+            PayoutInvoiceText(
+              invoiceOf(app, sats: askedWithDefaultBudget).text,
+              budget: defaultBudget,
+            ),
           ),
-        ),
-      );
-      app.coordinator.failNext(payouts, ScriptedFault.busy);
-      expect(
-        await app.payout.execute(record, shown),
-        isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
-          (ok) => ok.value,
-          'outcome',
-          isA<PayoutGiven>(),
-        ),
-      );
-      expect(sent(app, payouts), 2);
-      expect(app.busyWaits, hasLength(1));
-      expect(app.coordinator.payoutsRecorded, hasLength(1));
-    });
+        );
+        app.coordinator.failNext(payouts, ScriptedFault.busy);
+        expect(
+          await app.payout.execute(record, shown),
+          isA<Ok<PayoutSubmission, PayoutNotSent>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<PayoutGiven>(),
+          ),
+        );
+        expect(sent(app, payouts), 2);
+        expect(app.busyWaits, hasLength(1));
+        expect(app.coordinator.payoutsRecorded, hasLength(1));
+      },
+    );
 
     test(
       'a key that cannot be read back: nothing read, signed or sent',
@@ -799,7 +912,10 @@ void main() {
           ),
         );
         final reads = sent(app, ScriptedRequest.order);
-        app.coordinator.failNext(ScriptedRequest.robot, ScriptedFault.unreachable);
+        app.coordinator.failNext(
+          ScriptedRequest.robot,
+          ScriptedFault.unreachable,
+        );
         expect(
           await app.payout.execute(record, shown),
           isA<Err<PayoutSubmission, PayoutNotSent>>().having(
@@ -856,35 +972,38 @@ void main() {
       },
     );
 
-    test('nothing is printed or logged: no invoice, address, signature or key', () async {
-      final (app, record, seen) = await atSix(swap: true);
-      final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
-      final signedTexts = <String>[];
-      app.coordinator.onRequest = (request) {
-        final body = request.body;
-        if (body != null) signedTexts.add(utf8.decode(body));
-      };
-      final output = await captureKeyOutput(() async {
-        final hold = app.holdKey.execute(record);
-        final shown = checked(
-          app.payout.check(
-            record,
-            seen,
-            PayoutInvoiceText(invoice.text, budget: defaultBudget),
-          ),
-        );
-        final result = await app.payout.execute(record, shown);
-        hold.release();
-        // The values print their kind only.
-        Zone.current.print('$shown $result $hold ${shown.destination}');
-      });
-      expect(output.contains(invoice.text), isFalse);
-      expect(output.contains(invoice.text.substring(0, 40)), isFalse);
-      expect(output.contains(testnetAddress), isFalse);
-      expect(output.contains('PGP'), isFalse);
-      expect(signedTexts, isNotEmpty);
-      expectNoKeyIn(output, [tradeKey]);
-    });
+    test(
+      'nothing is printed or logged: no invoice, address, signature or key',
+      () async {
+        final (app, record, seen) = await atSix(swap: true);
+        final invoice = invoiceOf(app, sats: askedWithDefaultBudget);
+        final signedTexts = <String>[];
+        app.coordinator.onRequest = (request) {
+          final body = request.body;
+          if (body != null) signedTexts.add(utf8.decode(body));
+        };
+        final output = await captureKeyOutput(() async {
+          final hold = app.holdKey.execute(record);
+          final shown = checked(
+            app.payout.check(
+              record,
+              seen,
+              PayoutInvoiceText(invoice.text, budget: defaultBudget),
+            ),
+          );
+          final result = await app.payout.execute(record, shown);
+          hold.release();
+          // The values print their kind only.
+          Zone.current.print('$shown $result $hold ${shown.destination}');
+        });
+        expect(output.contains(invoice.text), isFalse);
+        expect(output.contains(invoice.text.substring(0, 40)), isFalse);
+        expect(output.contains(testnetAddress), isFalse);
+        expect(output.contains('PGP'), isFalse);
+        expect(signedTexts, isNotEmpty);
+        expectNoKeyIn(output, [tradeKey]);
+      },
+    );
   });
 
   group('the keyring\'s lifetime', () {

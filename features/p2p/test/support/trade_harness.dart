@@ -222,6 +222,9 @@ final class TestTrails implements TradeTrailRepository {
   /// How many trails were asked to be stored.
   int stores = 0;
 
+  /// What every [storeTrail] gives instead of writing, while set: the database refuses the write.
+  P2pFailure? storeFailure;
+
   TestTrails(this._inner, this._kill);
 
   @override
@@ -242,6 +245,7 @@ final class TestTrails implements TradeTrailRepository {
     TradeTrailRecord trail,
   ) {
     stores++;
+    if (storeFailure case final failure?) return Future.value(Err(failure));
     if (stores == 2 && _kill() == KillAt.beforeTrailOfAnswer) {
       throw AppKilled();
     }

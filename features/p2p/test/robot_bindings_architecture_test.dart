@@ -350,11 +350,9 @@ void main() {
         '${_tradeUseCases}cancel_trade_usecase.dart',
       });
       for (final member in ['submitPayoutInvoice', 'submitPayoutAddress']) {
-        expect(
-          referring((r) => r == 'request CoordinatorClient.$member'),
-          {'${_tradeUseCases}submit_payout_usecase.dart'},
-          reason: member,
-        );
+        expect(referring((r) => r == 'request CoordinatorClient.$member'), {
+          '${_tradeUseCases}submit_payout_usecase.dart',
+        }, reason: member);
       }
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
@@ -1722,7 +1720,10 @@ const _watched = {
   'RobotCoordinatorCubit': ('package:p2p/', {'putOn', 'retry', 'acknowledge'}),
   // The acknowledgement of a key of unknown history, which only the user's « I understand » records (#29, step 6).
   'AcknowledgeGarageKeyHistoryUsecase': ('package:p2p/', {'execute'}),
-  'ReadRobotOnCoordinatorUsecase': ('package:p2p/', {'execute', 'provenPairOf'}),
+  'ReadRobotOnCoordinatorUsecase': (
+    'package:p2p/',
+    {'execute', 'provenPairOf'},
+  ),
   // The keyring of the trades (#90): who unlocks a robot's key, who keeps it, who signs with it.
   'TradeKeyring': ('package:p2p/', {'hold', 'lease'}),
   'TradeKeyLease': ('package:p2p/', {'key'}),

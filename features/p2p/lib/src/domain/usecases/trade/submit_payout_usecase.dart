@@ -43,8 +43,10 @@ final class SubmitPayoutUsecase {
   );
 
   /// What the coordinator asks of the buyer of [record] at [seen], the status the screen shows (marked stored): the amounts and options the panel shows.
-  Result<PayoutAsk, PayoutCheckRefusal> ask(TradeRecord record, TradeSeen seen) =>
-      PayoutAsk.of(record, seen);
+  Result<PayoutAsk, PayoutCheckRefusal> ask(
+    TradeRecord record,
+    TradeSeen seen,
+  ) => PayoutAsk.of(record, seen);
 
   /// [destination] decoded and checked for the trade of [record] at [seen], now: the value to show, then to give to [execute].
   Result<CheckedPayout, PayoutCheckRefusal> check(
@@ -265,10 +267,10 @@ final class SubmitPayoutUsecase {
   }
 
   /// Whether the transport answered the payout busy: nothing reached the coordinator.
-  static bool _answeredBusy(
-    Result<PayoutOutcome, OrderActionFailure> answer,
-  ) => switch (answer) {
-    Err(failure: OrderActionRefused(cause: CoordinatorTransportBusy())) => true,
-    _ => false,
-  };
+  static bool _answeredBusy(Result<PayoutOutcome, OrderActionFailure> answer) =>
+      switch (answer) {
+        Err(failure: OrderActionRefused(cause: CoordinatorTransportBusy())) =>
+          true,
+        _ => false,
+      };
 }
