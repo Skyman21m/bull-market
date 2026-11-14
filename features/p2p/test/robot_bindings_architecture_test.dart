@@ -500,10 +500,10 @@ void main() {
           ),
           isEmpty,
         );
-        // The trade screen's cancel confirmation (#88) is to be the one file that builds it: add that file here, alone.
+        // The trade screen's cancel confirmation (#88) is the one file that builds it.
         expect(
           referring((r) => r == 'BondLossAcknowledged.fromConfirmationDialog'),
-          isEmpty,
+          {'lib/src/ui/trade/confirm_cancel_dialog.dart'},
         );
       },
     );

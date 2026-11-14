@@ -30,6 +30,7 @@ import 'domain/network_garage_key.dart';
 import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
 import 'domain/trade/bolt11.dart';
+import 'domain/trade_record.dart';
 import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
 import 'domain/usecases/close_coordinator_sessions_usecase.dart';
@@ -38,6 +39,7 @@ import 'domain/usecases/delete_garage_key_usecase.dart';
 import 'domain/usecases/derive_first_robot_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'domain/usecases/fetch_robot_usecase.dart';
+import 'domain/usecases/find_public_order_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
 import 'domain/usecases/has_garage_key_usecase.dart';
 import 'domain/usecases/import_garage_key_usecase.dart';
@@ -63,11 +65,15 @@ import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
+import 'presentation/active_trades_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
+import 'presentation/take_order_cubit.dart';
+import 'presentation/trade_cubit.dart';
+import 'presentation/trade_order_page_cubit.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
 
 /// Registers the internals of the feature: one Tor transport, shared by every request to the coordinators, the use-cases and the cubits of the screens.
@@ -324,6 +330,39 @@ final class P2pLocator {
         invoices(),
       ),
     );
+    // The screens of the trades (#88), their only callers: the take of an order of the book, one trade shown, and the list of the active trades of a network.
+    locator.registerFactoryParam<TakeOrderCubit, PublicOrder, RobosatsNetwork>(
+      (order, network) => TakeOrderCubit(
+        order,
+        network,
+        locator<TakeOrderUsecase>().execute,
+        locator<HasGarageKeyUsecase>().execute,
+      ),
+    );
+    // The same, from the trade screen of an order public again: the trade shown is given, so that a take refused for that very trade is not opened over itself.
+    locator.registerFactoryParam<TakeOrderCubit, PublicOrder, TradeRecord>(
+      (order, shown) => TakeOrderCubit(
+        order,
+        shown.network,
+        locator<TakeOrderUsecase>().execute,
+        locator<HasGarageKeyUsecase>().execute,
+        shownTrade: shown,
+      ),
+      instanceName: TakeOrderCubit.fromTrade,
+    );
+    locator.registerFactoryParam<TradeCubit, TradeRecord, void>(
+      (record, _) => TradeCubit(
+        record,
+        locator<WatchTradeUsecase>().execute,
+        locator<CancelTradeUsecase>().execute,
+      ),
+    );
+    locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(
+      (network, _) => ActiveTradesCubit(
+        network,
+        locator<ListActiveTradesUsecase>().execute,
+      ),
+    );
   }
 
   /// Registers the use-cases and the cubits over [transport], [tor], [clock], [waits] and [shuffle], which tests replace.
@@ -356,6 +395,20 @@ final class P2pLocator {
     locator.registerFactory<FetchCoordinatorInfoUsecase>(
       () => FetchCoordinatorInfoUsecase(
         CoordinatorClient(transport(), clock: clock),
+      ),
+    );
+    // Its only caller is the trade screen's order tab (#88), for an order public again.
+    locator.registerFactory<FindPublicOrderUsecase>(
+      () =>
+          FindPublicOrderUsecase(CoordinatorClient(transport(), clock: clock)),
+    );
+    // What the order tab of a trade shows besides the order: read without a robot, as the order details of the book.
+    locator.registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+      (record, _) => TradeOrderPageCubit(
+        Federation.robosats.byAlias(record.coordinatorAlias),
+        record.network,
+        locator<FetchCoordinatorInfoUsecase>().execute,
+        locator<FindPublicOrderUsecase>().execute,
       ),
     );
     // Its only caller is `ReleaseRobotUsecase`, registered with the Garage, and nothing outside the feature reaches it.

@@ -27,6 +27,8 @@ dependencies:
   intl: any
   meta: ^1.17.0
   primitives:
+  # The QR code of the bond invoice on the trade screen: the package the wallet's receive screen draws with (`QrDisplayWidget`), already in the workspace's lock.
+  qr_flutter: ^4.1.0
   robosats:
   # The capture protection of the screens that show a Garage Key, as the wallet's seed screens have it.
   screen_privacy:

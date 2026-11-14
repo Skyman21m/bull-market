@@ -7,6 +7,7 @@ import 'dart:async' show StreamController, StreamSubscription, Timer;
 import 'dart:io' show FileSystemException;
 
 import 'package:bull_tor/tor.dart';
+import 'package:drift/drift.dart' show DatabaseConnection;
 import 'package:drift/native.dart';
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
@@ -116,12 +117,17 @@ void setUpP2pForTesting(
       locator,
       garageKeys,
       database: () => P2pDatabase.forTesting(
-        NativeDatabase.memory(
-          // Each opening fails, as for a file that cannot be opened, and closing it has nothing to release.
-          setup: databaseUnavailable
-              ? (_) =>
-                    throw const FileSystemException('unavailable for the test')
-              : null,
+        // Query streams closed at once when their last listener goes, so that a screen the test disposes, such as the tab and its list of the active trades (#88), leaves no timer of drift behind.
+        DatabaseConnection(
+          NativeDatabase.memory(
+            // Each opening fails, as for a file that cannot be opened, and closing it has nothing to release.
+            setup: databaseUnavailable
+                ? (_) => throw const FileSystemException(
+                    'unavailable for the test',
+                  )
+                : null,
+          ),
+          closeStreamsSynchronously: true,
         ),
       ),
       transport: () => transport,
