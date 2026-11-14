@@ -17,7 +17,7 @@ import 'trade_reader.dart';
 ///
 /// At most one read is in flight; the next one starts the cadence's delay after it ended ([TradeCadence]), at once when the screen asks, and none once the trade is at a terminal status.
 /// Nothing runs once the subscription is cancelled: no timer, no new read; a read whose answer comes after the cancel is dropped, and the writes of an answer already being kept finish (`TradeTrailRepository.storeTrail` keeps the stored trail correct whatever their order).
-/// One subscription per trade ([TradeWatchRegistry]): a second one reads nothing ([TradeWatchAlreadyWatched]).
+/// One subscription reads a trade at a time ([TradeWatchRegistry]): the newest takes it over, the earlier one ends with [TradeWatchSuperseded], and the newest reads only once the earlier one's read in flight has ended, so that a trade never has two reads in flight.
 final class TradeWatchSession {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
@@ -26,7 +26,9 @@ final class TradeWatchSession {
   final Stream<TradeWatchSignal> _signals;
   final StreamController<TradeWatchState> _out;
   final TradeWatchRegistry _registry;
-  bool _registered = false;
+
+  /// Completes when the read in flight, and the writes of its answer, have ended.
+  Completer<void>? _inFlight;
 
   bool _onScreen;
   OpenTrade? _trade;
@@ -56,12 +58,10 @@ final class TradeWatchSession {
 
   /// Opens the trade from its stored records, emits what they give, and reads at once when the trade goes on.
   Future<void> start() async {
-    if (!_registry.claim(_record.robot)) {
-      _emit(TradeWatchAlreadyWatched(_record));
-      await _finish();
-      return;
-    }
-    _registered = true;
+    // The newest subscription takes the trade over, once the earlier one's read in flight has ended.
+    final previous = _registry.takeOver(_record.robot, this);
+    if (previous != null) await previous.supersede();
+    if (_stopped) return;
     _signalSubscription = _signals.listen(_onSignal);
     final opening = await _reader.open(_record);
     if (_stopped) return;
@@ -117,6 +117,21 @@ final class TradeWatchSession {
     }
   }
 
+  /// Stops this subscription because a newer one took its trade over: its stream says so ([TradeWatchSuperseded]) and ends; a read in flight is dropped as for a cancel.
+  ///
+  /// Completes once its read in flight, and the writes of its answer, have ended.
+  Future<void> supersede() {
+    if (!_stopped) {
+      _emit(TradeWatchSuperseded(_record));
+      _stopped = true;
+      _timer?.cancel();
+      _requests?.close();
+      unawaited(_signalSubscription?.cancel());
+      if (!_out.isClosed) unawaited(_out.close());
+    }
+    return _inFlight?.future ?? Future.value();
+  }
+
   /// Stops everything: the subscription was cancelled.
   Future<void> stop() async {
     _stopped = true;
@@ -149,10 +164,16 @@ final class TradeWatchSession {
       return;
     }
     _reading = true;
+    final inFlight = _inFlight = Completer<void>();
     _timer?.cancel();
     final trade = _trade;
-    if (trade != null) await _readTrade(requests, trade);
-    _reading = false;
+    try {
+      if (trade != null) await _readTrade(requests, trade);
+    } finally {
+      _reading = false;
+      inFlight.complete();
+      if (identical(_inFlight, inFlight)) _inFlight = null;
+    }
     if (_stopped || _out.isClosed) return;
     if (_readAgain) {
       _readAgain = false;
@@ -265,22 +286,27 @@ final class TradeWatchSession {
     if (!_out.isClosed) await _out.close();
   }
 
-  void _release() {
-    if (!_registered) return;
-    _registered = false;
-    _registry.release(_record.robot);
-  }
+  void _release() => _registry.release(_record.robot, this);
 }
 
-/// The trades watched in this process, one subscription each (a lazy singleton of the composition, `P2pLocator.registerTrades`): a second subscription to a trade reads nothing, so that a trade is never read twice at once by two screens, nor its trail written from two sessions.
+/// The subscriptions reading each trade in this process, one per trade (a lazy singleton of the composition, `P2pLocator.registerTrades`): the newest takes a trade over, the earlier one is superseded.
 ///
-/// Refused rather than shared: the two screens would send opposite signals (shown, not shown), and a trade screen is shown once at a time.
+/// The newest rather than the first: Flutter builds the route of a screen before it disposes the previous one, so a screen that opens a trade while the previous screen's subscription is alive must read it, at once, during a bond's 150 to 200 s; the previous one is going away (review of #117).
 final class TradeWatchRegistry {
-  final Set<RobotSlot> _watched = {};
+  final Map<RobotSlot, TradeWatchSession> _watched = {};
 
-  /// Whether [robot]'s trade was free to watch, now watched.
-  bool claim(RobotSlot robot) => _watched.add(robot);
+  /// Makes [session] the one reading [robot]'s trade, and gives the session it replaces, if any, for it to be superseded.
+  TradeWatchSession? takeOver(RobotSlot robot, TradeWatchSession session) {
+    final previous = _watched[robot];
+    _watched[robot] = session;
+    return identical(previous, session) ? null : previous;
+  }
 
-  /// [robot]'s trade is no longer watched.
-  void release(RobotSlot robot) => _watched.remove(robot);
+  /// [session] no longer reads [robot]'s trade, if it still was the one.
+  void release(RobotSlot robot, TradeWatchSession session) {
+    if (identical(_watched[robot], session)) _watched.remove(robot);
+  }
+
+  /// Whether a subscription reads [robot]'s trade.
+  bool isWatched(RobotSlot robot) => _watched.containsKey(robot);
 }
