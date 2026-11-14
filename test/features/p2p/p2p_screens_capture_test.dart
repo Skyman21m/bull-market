@@ -1159,10 +1159,7 @@ void main() {
       await tester.tap(find.text(l10n.p2pCommonSearch));
       await settle();
       final temple = Federation.robosats.byAlias('temple')?.testnet.onion;
-      await tester.enterText(
-        find.byType(TextField),
-        '$temple/order/temple/1',
-      );
+      await tester.enterText(find.byType(TextField), '$temple/order/temple/1');
       await tester.tap(find.text(l10n.p2pCommonSearch).last);
       await settle();
       if (find.text(l10n.p2pOrderNotAvailable).evaluate().isEmpty) {
