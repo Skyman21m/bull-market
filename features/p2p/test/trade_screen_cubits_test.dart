@@ -77,12 +77,28 @@ void main() {
 
     test('a double tap sends one take', () async {
       final harness = await TradeHarness.start();
-      final cubit = _takeCubit(harness, await harness.shownOrder());
+      // Counted at the cubit's door: the use case also runs the takes of one order in turn, which would hide a second call.
+      var calls = 0;
+      final cubit = TakeOrderCubit(
+        await harness.shownOrder(),
+        harness.network,
+        (shown, {required network, amount, password}) {
+          calls++;
+          return harness.take.execute(
+            shown,
+            network: network,
+            amount: amount,
+            password: password,
+          );
+        },
+        HasGarageKeyUsecase(_Keys(const Ok(true))).execute,
+      );
 
       await Future.wait([cubit.take(), cubit.take()]);
       await cubit.take();
       await harness.settle();
 
+      expect(calls, 1);
       expect(_requestsOf(harness, ScriptedRequest.take), 1);
       expect(cubit.state, isA<TakeSent>());
       await cubit.close();

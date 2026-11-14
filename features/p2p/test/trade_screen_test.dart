@@ -76,6 +76,7 @@ final class _Cancels {
 late TradeScreenStatuses _statuses;
 late TradeScreenStatuses _wrongNetwork;
 late TradeScreenStatuses _wrongAmount;
+late TradeScreenStatuses _expiredInvoice;
 late Map<String, TradeSeen> _seen;
 
 final _record = TradeScreenStatuses.record;
@@ -172,7 +173,11 @@ void main() {
       invoice: bondInvoice(sats: bookBond + 1),
       bondSatoshis: bookBond,
     );
+    _expiredInvoice = await TradeScreenStatuses.make(
+      invoice: bondInvoice(age: const Duration(minutes: 10)),
+    );
     _seen = {
+      'bondExpiredInvoice': await _expiredInvoice.bondStep(),
       'bond': await _statuses.bondStep(),
       'bondWrongNetwork': await _wrongNetwork.bondStep(),
       'bondWrongAmount': await _wrongAmount.bondStep(),
@@ -309,6 +314,20 @@ void main() {
       await tester.pump();
       expect(find.byType(QrImageView), findsOneWidget);
       expect(find.text('Copy to clipboard'), findsOneWidget);
+    });
+
+    testWidgets('an expired invoice: no QR code, no copy, no « Show anyway »', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: _watched('bondExpiredInvoice'),
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      expect(find.text('Show anyway'), findsNothing);
+      expect(find.text('This invoice has expired.'), findsOneWidget);
     });
 
     testWidgets('« Pay with another wallet » closes and opens', (tester) async {
@@ -674,6 +693,41 @@ void main() {
         expect(find.textContaining('bond'), findsNothing);
       });
     }
+
+    testWidgets(
+      'the trail re-read at the same position keeps the status shown; with a record problem, it does not',
+      (tester) async {
+        final watch = _Watch();
+        final bond = _seen['bond'] ?? (throw StateError('bond'));
+        final restored = TradeSeen(
+          TradeStatus.beforeFirstRead(bond.status.trail),
+          order: null,
+        );
+        await _show(tester, watch: watch, state: _watched('bond'));
+        expect(find.byType(QrImageView), findsOneWidget);
+
+        watch.emit(TradeScreenStatuses.watched(restored));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(QrImageView), findsOneWidget);
+
+        watch.emit(
+          TradeScreenStatuses.watched(
+            restored,
+            recordProblem: const P2pStorageFailure(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(QrImageView), findsNothing);
+        expect(
+          find.text(
+            'Bull Market could not write the records of this trade on this device.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('a status whose records could not be written: nothing payable', (
       tester,
