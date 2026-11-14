@@ -91,8 +91,10 @@ void main() {
   );
 
   group('the rule bites:', () {
-    test('the second review\'s evasion file fails: an extension and sync: true', () {
-      const evasion = '''
+    test(
+      'the second review\'s evasion file fails: an extension and sync: true',
+      () {
+        const evasion = '''
 import 'package:bb_mobile/core/wallet/data/repositories/liquid_wallet_repository.dart';
 import 'package:bb_mobile/core/wallet/domain/usecases/get_wallets_usecase.dart';
 extension Sign on LiquidWalletRepository {
@@ -103,17 +105,22 @@ Future<String> leak(LiquidWalletRepository liquid, GetWalletsUsecase wallets, St
   return liquid.execute(pset: pset, walletId: 'w');
 }
 ''';
-      // Its imports are both allowed: only its names give it away.
-      expect(_importOffences({'data/zz_evasion2.dart': evasion}), isEmpty);
-      expect(
-        _vocabularyOf([evasion]).difference(_shellVocabulary),
-        containsAll(['extension', 'sync']),
-      );
-    });
+        // Its imports are both allowed: only its names give it away.
+        expect(_importOffences({'data/zz_evasion2.dart': evasion}), isEmpty);
+        expect(
+          _vocabularyOf([evasion]).difference(_shellVocabulary),
+          containsAll(['extension', 'sync']),
+        );
+      },
+    );
 
     test('each way of reaching a member with an implicit this is seen', () {
       for (final (label, source, name) in [
-        ('extension', 'extension E on Object { void f() => g(); }', 'extension'),
+        (
+          'extension',
+          'extension E on Object { void f() => g(); }',
+          'extension',
+        ),
         ('extension type', 'extension type T(int i) {}', 'extension type'),
         ('mixin', 'mixin M on Object {}', 'mixin'),
         ('extends', 'class C extends LiquidWalletRepository {}', 'extends'),
@@ -420,6 +427,32 @@ const _shellVocabulary = {
   'value',
   'watchSyncs',
   'where',
+  // Labels of named arguments the feature passes, the ones not already above (`id:`, `balance:`, `isTestnet:`… are). No `sync:`: the wallet's reader is asked without a sync, by its default.
+  'amountSat',
+  'available',
+  'environment',
+  'feeRate',
+  'index',
+  'inNetwork',
+  'invoice',
+  'isInAmountFixed',
+  'maximum',
+  'minimum',
+  'minutes',
+  'needed',
+  'networkFee',
+  'onCancel',
+  'onDone',
+  'onError',
+  'onListen',
+  'onlyDefaults',
+  'onlyLiquid',
+  'outNetwork',
+  'pset',
+  'quotedAt',
+  'retryAfter',
+  'signsHere',
+  'walletId',
 };
 
 CompilationUnit _parse(String source) =>
