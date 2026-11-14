@@ -34,4 +34,14 @@ abstract final class TradeTolerances {
   ///
   /// The order cleaner runs every 5 s (`api/management/commands/clean_orders.py:114-120`, it expires orders and pre-takes past their `expires_at`), and so does the invoice follower (`follow_invoices.py:27,33-34`, it settles or returns a bond that locked); a minute covers both with room for a slow coordinator.
   static const Duration coordinatorLoops = Duration(minutes: 1);
+
+  /// How far ahead of the device's clock a stored trail's last read may be when the trade is resumed: 10 minutes.
+  ///
+  /// A phone corrects its clock from the network and may step it back by seconds or minutes between two runs of the app; a record from further ahead is not a clock step but a wrong record, and is refused.
+  static const Duration clockStep = Duration(minutes: 10);
+
+  /// The longest a pre-take can live when no answer has given its deadline yet: 30 minutes.
+  ///
+  /// A pre-take lasts the coordinator's taker-bond time (`EXP_TAKER_BOND_INVOICE`: 150 s by default in the code, `api/models/order.py:317-319`; 200 s in `.env-sample:167`), which nothing a taker reads before the pre-take states; 30 minutes is nine times the sample's, so that error 1044 right after a take becomes final within the hour even when the take's answer was lost.
+  static const Duration longestPreTake = Duration(minutes: 30);
 }

@@ -289,3 +289,20 @@ Future<TradeAnswer> readAnswer(
   Map<String, Object?> json, {
   RobosatsNetwork network = RobosatsNetwork.mainnet,
 }) async => TradeOrderRead(await readOrder(json, network: network));
+
+/// The take's own answer, `OrderTakeStarted`, for [json] (status 3 with its bond) answered to a take on a fake transport: only a take gives this outcome, as only the take's answer may start a trade (`TradeStatus.afterTake`).
+Future<OrderTakeStarted> takeStarted(
+  Map<String, Object?> json, {
+  RobosatsNetwork network = RobosatsNetwork.mainnet,
+}) async {
+  final taken = await CoordinatorClient(_OneAnswer(json)).takeOrder(
+    coordinator('temple'),
+    network,
+    identity: us,
+    orderId: tradeOrderId,
+  );
+  return switch (taken) {
+    Ok(value: final OrderTakeStarted started) => started,
+    final other => throw StateError('the take did not start: $other'),
+  };
+}

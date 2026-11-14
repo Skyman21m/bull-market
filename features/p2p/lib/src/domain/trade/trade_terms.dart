@@ -210,13 +210,13 @@ final class TradeTerms {
     takerFee: takerFee,
   );
 
-  /// The terms [record] holds, or [TradeRecordMalformed] when it is not one [record] wrote: an unknown version, a coordinator that is not in the federation list on its network, a role that does not follow from the order's type, any value out of the bounds the take checks.
-  static Result<TradeTerms, TradeRecordMalformed> restore(
+  /// The terms [record] holds, or why not: [TradeCoordinatorGone] when its coordinator is no longer in the federation list on its network (the trade is shown, never resumed), [TradeRecordMalformed] when it is not one [record] wrote (an unknown version or network, a role that does not follow from the order's type, any value out of the bounds the take checks).
+  ///
+  /// The terms are set once, at the take: their record is never written again (#87).
+  static Result<TradeTerms, TradeRecordRefusal> restore(
     TradeTermsRecord record,
   ) {
-    const refused = Err<TradeTerms, TradeRecordMalformed>(
-      TradeRecordMalformed(),
-    );
+    const refused = Err<TradeTerms, TradeRecordRefusal>(TradeRecordMalformed());
     if (record.version != TradeTermsRecord.currentVersion) return refused;
     final network = RobosatsNetwork.values
         .where((value) => value.name == record.network)
@@ -231,10 +231,11 @@ final class TradeTerms {
     final premium = Premium.tryCreate(record.premiumPercent);
     final bondSize = BondSize.tryCreate(record.bondSizePercent);
     final explicit = record.explicitSatoshis;
-    if (network == null ||
-        coordinator == null ||
-        !coordinator.isOn(network) ||
-        type == null ||
+    if (network == null) return refused;
+    if (coordinator == null || !coordinator.isOn(network)) {
+      return const Err(TradeCoordinatorGone());
+    }
+    if (type == null ||
         role == null ||
         role != tradeRoleTaking(type) ||
         currency == null ||

@@ -17,14 +17,21 @@ part 'checked_invoice.dart';
 
 /// What the trade remembers from one read to the next, so that each answer is checked against the trade's history and not only against itself.
 ///
-/// It must outlive the app: the trade's use cases store its [record] after each read and resume a recorded trade with [restore], never with a fresh trail, or a coordinator could swap an invoice, or make a breach forgotten, across a restart (#86, review of #106).
-/// A fresh trail comes only from [atTake], for the first read after this device took the order, and from [recovered], for a trade found by recovery, whose history is unknown and on which the wallet never pays.
+/// It must outlive the app: the trade's use cases store its [record] after each read, only when [TradeTrailRecord.mayReplace] allows it over the stored one, and resume a recorded trade with [restore], never with a fresh trail, or a coordinator could swap an invoice, or make a breach forgotten, across a restart (#86, reviews of #106).
+/// A fresh trail comes only from the take's own answer ([TradeStatus.afterTake]), from [forPendingTake] for a take whose answer was lost and which has no trail yet, and from [recovered], for a trade found by recovery, whose history is unknown and on which the wallet never pays.
+/// It belongs to one trade (order, coordinator, network, role): [TradeStatus.from] refuses terms of another trade, and [restore] a record of another trade.
 @immutable
 final class TradeTrail {
+  /// The trade this trail belongs to.
+  final RobosatsNetwork network;
+  final String coordinatorAlias;
+  final int orderId;
+  final TradeRole role;
+
   /// Where the trade stood at its last status.
   final TradePosition position;
 
-  /// When the answer of the last status was read (for [atTake], when the order was taken).
+  /// When the answer of the last status was read (for a fresh trail, when the order was taken or found).
   final DateTime readAt;
 
   /// The payment hash of the first bond invoice and of the first escrow invoice of the trade: a step never changes its invoice.
@@ -34,7 +41,7 @@ final class TradeTrail {
   /// The deadline (`expires_at`) of the last order read, for the position it was read at.
   final DateTime? deadline;
 
-  /// When an answer last showed the pre-take, and the pre-take's deadline it gave: a pre-take that ended earlier than the escrow duration after it cannot have locked and lost the bond, and one past its deadline is gone.
+  /// When an answer last showed the pre-take, and the pre-take's deadline it gave (or, before any pre-take was read, the latest it can be: the take and [TradeTolerances.longestPreTake]): a pre-take that ended earlier than the escrow duration after it cannot have locked and lost the bond, and one past its deadline is gone.
   final DateTime? bondStepSeenAt;
   final DateTime? bondStepDeadline;
 
@@ -45,6 +52,10 @@ final class TradeTrail {
   final bool historyUnknown;
 
   const TradeTrail._({
+    required this.network,
+    required this.coordinatorAlias,
+    required this.orderId,
+    required this.role,
     required this.position,
     required this.readAt,
     required this.bondHash,
@@ -56,40 +67,53 @@ final class TradeTrail {
     required this.historyUnknown,
   });
 
-  /// The trail of a trade this device has just taken, at [takenAt]: the first answer must be the take's own (the pre-take, or the order out of reach).
-  factory TradeTrail.atTake(DateTime takenAt) => TradeTrail._(
+  /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [forPendingTake] and [recovered] make one.
+  factory TradeTrail._fresh(
+    TradeTerms terms,
+    DateTime at, {
+    required bool historyUnknown,
+  }) => TradeTrail._(
+    network: terms.network,
+    coordinatorAlias: terms.coordinator.shortAlias,
+    orderId: terms.orderId,
+    role: terms.role,
     position: TradePosition.start,
-    readAt: takenAt.toUtc(),
+    readAt: at.toUtc(),
     bondHash: null,
     escrowHash: null,
     deadline: null,
     bondStepSeenAt: null,
     bondStepDeadline: null,
     breached: false,
-    historyUnknown: false,
+    historyUnknown: historyUnknown,
   );
 
-  /// The trail of a trade found by recovery at [now], whose history is lost: any first answer is taken, and the wallet never pays on it.
-  factory TradeTrail.recovered(DateTime now) => TradeTrail._(
-    position: TradePosition.start,
-    readAt: now.toUtc(),
-    bondHash: null,
-    escrowHash: null,
-    deadline: null,
-    bondStepSeenAt: null,
-    bondStepDeadline: null,
-    breached: false,
-    historyUnknown: true,
-  );
+  /// The trail of a take of [terms] made at [takenAt] whose answer was lost (the request timed out), for the first read of the order after it: the first answer must be one a take gives (the pre-take, or the order out of reach).
+  ///
+  /// Only for a pending take that has no trail recorded yet: a trade with a recorded trail resumes from it ([restore]), and a take whose answer came resumes from [TradeStatus.afterTake]. That is a written rule of #87, pinned by its architecture test (only the take use case and the resolution of a pending take name this factory): the domain cannot know whether a trail was recorded.
+  factory TradeTrail.forPendingTake(TradeTerms terms, DateTime takenAt) =>
+      TradeTrail._fresh(terms, takenAt, historyUnknown: false);
 
-  /// The trail [record] holds, or [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash that is not 64 lowercase hexadecimal characters, a time out of range.
-  static Result<TradeTrail, TradeRecordMalformed> restore(
-    TradeTrailRecord record,
-  ) {
-    const refused = Err<TradeTrail, TradeRecordMalformed>(
-      TradeRecordMalformed(),
-    );
+  /// The trail of a trade of [terms] found by recovery at [now], whose history is lost: any first answer is taken, and the wallet never pays on it.
+  factory TradeTrail.recovered(TradeTerms terms, DateTime now) =>
+      TradeTrail._fresh(terms, now, historyUnknown: true);
+
+  /// The trail [record] holds for the trade [terms], resumed at [now], or why not:
+  /// - [TradeRecordOfAnotherTrade] when the record is of another order, coordinator, network or role than [terms];
+  /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], or a last read of the pre-take after the last read.
+  static Result<TradeTrail, TradeRecordRefusal> restore(
+    TradeTrailRecord record, {
+    required TradeTerms terms,
+    required DateTime now,
+  }) {
+    const refused = Err<TradeTrail, TradeRecordRefusal>(TradeRecordMalformed());
     if (record.version != TradeTrailRecord.currentVersion) return refused;
+    if (record.network != terms.network.name ||
+        record.coordinatorAlias != terms.coordinator.shortAlias ||
+        record.orderId != terms.orderId ||
+        record.role != terms.role.name) {
+      return const Err(TradeRecordOfAnotherTrade());
+    }
     final position = TradePosition.values
         .where((value) => value.name == record.position)
         .firstOrNull;
@@ -108,11 +132,21 @@ final class TradeTrail {
     )) {
       return refused;
     }
+    final latest = now.toUtc().add(TradeTolerances.clockStep);
+    if (record.readAtMicros > latest.microsecondsSinceEpoch) return refused;
+    if (record.bondStepSeenAtMicros case final seen?
+        when seen > record.readAtMicros) {
+      return refused;
+    }
     DateTime? at(int? micros) => micros == null
         ? null
         : DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
     return Ok(
       TradeTrail._(
+        network: terms.network,
+        coordinatorAlias: terms.coordinator.shortAlias,
+        orderId: terms.orderId,
+        role: terms.role,
         position: position,
         readAt: DateTime.fromMicrosecondsSinceEpoch(
           record.readAtMicros,
@@ -134,9 +168,20 @@ final class TradeTrail {
   /// The year 9999, beyond any date a coordinator or the device's clock gives.
   static const _maxMicros = 253402300799999999;
 
-  /// The exact, storable form of this trail: store it after each read (#87).
+  /// Whether this trail belongs to the trade [terms].
+  bool isOf(TradeTerms terms) =>
+      network == terms.network &&
+      coordinatorAlias == terms.coordinator.shortAlias &&
+      orderId == terms.orderId &&
+      role == terms.role;
+
+  /// The exact, storable form of this trail: store it after each read, when it [TradeTrailRecord.mayReplace] the stored one (#87).
   TradeTrailRecord get record => TradeTrailRecord(
     version: TradeTrailRecord.currentVersion,
+    network: network.name,
+    coordinatorAlias: coordinatorAlias,
+    orderId: orderId,
+    role: role.name,
     position: position.name,
     readAtMicros: readAt.toUtc().microsecondsSinceEpoch,
     bondHash: bondHash,
@@ -158,6 +203,10 @@ final class TradeTrail {
     DateTime? bondStepDeadline,
     required bool breached,
   }) => TradeTrail._(
+    network: network,
+    coordinatorAlias: coordinatorAlias,
+    orderId: orderId,
+    role: role,
     position: position,
     readAt: readAt.toUtc(),
     bondHash: this.bondHash ?? bondHash,
@@ -169,9 +218,14 @@ final class TradeTrail {
     historyUnknown: historyUnknown,
   );
 
-  TradeTrail _breach() => TradeTrail._(
+  /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
+  TradeTrail _breach(DateTime now) => TradeTrail._(
+    network: network,
+    coordinatorAlias: coordinatorAlias,
+    orderId: orderId,
+    role: role,
     position: position,
-    readAt: readAt,
+    readAt: now.toUtc().isAfter(readAt) ? now.toUtc() : readAt,
     bondHash: bondHash,
     escrowHash: escrowHash,
     deadline: deadline,
@@ -189,7 +243,8 @@ final class TradeTrail {
   int get hashCode => record.hashCode;
 
   @override
-  String toString() => 'TradeTrail(${position.name}, breached: $breached)';
+  String toString() =>
+      'TradeTrail($coordinatorAlias#$orderId, ${position.name}, breached: $breached)';
 }
 
 /// What a screen may show, and the wallet may pay, of a taker's trade: one class per status a taker can see (design note § 3.2), built only by [TradeStatus.from] from the coordinator's answers, checked against the terms of the take and the trade's history.
@@ -209,11 +264,29 @@ sealed class TradeStatus {
 
   const TradeStatus._(this.seenAt, this.warnings, this.trail);
 
-  /// The status before any answer is understood on [trail]: a fresh trail at the take ([TradeTrail.atTake]) or after recovery ([TradeTrail.recovered]), or a trail restored when the app resumes a recorded trade ([TradeTrail.restore]). Pass it as `previous` to [from].
+  /// The status before any answer is understood on [trail]: a trail restored when the app resumes a recorded trade ([TradeTrail.restore]), a fresh one after recovery ([TradeTrail.recovered]) or for a pending take ([TradeTrail.forPendingTake]). Pass it as `previous` to [from]. A restored trail at an end gives an end at once.
   static TradeStatus beforeFirstRead(TradeTrail trail) => StatusUnknown._(
     trail.readAt,
     [if (trail.breached) const CoordinatorInconsistent()],
     trail,
+  );
+
+  /// The first status of a trade this device has just taken: [started], the take's own answer (`OrderTakeStarted`, which only `CoordinatorClient.takeOrder` gives), read at [now] on a fresh trail of [terms].
+  ///
+  /// The only way to start a trade from its take: a trade whose take answered `OrderAlreadyTakenByThisRobot` resumes from its recorded trail, or as [TradeTrail.recovered] when none was recorded; `OrderNotTaken` makes no trade.
+  static TradeStatus afterTake(
+    OrderTakeStarted started, {
+    required TradeTerms terms,
+    required DateTime now,
+    required Bolt11Reader reader,
+  }) => from(
+    previous: beforeFirstRead(
+      TradeTrail._fresh(terms, now, historyUnknown: false),
+    ),
+    answer: TradeOrderRead(started.order),
+    terms: terms,
+    now: now,
+    reader: reader,
   );
 
   /// Where the trade stands for the edges of [TradeEdges].
@@ -233,7 +306,8 @@ sealed class TradeStatus {
 
   /// The status of the trade [terms] after [answer], read at [now], when the last status was [previous]: a pure function, with no clock, no I/O and no randomness, which [reader] decodes invoices for.
   ///
-  /// [previous] is the last status, or [beforeFirstRead] of the trade's trail: there is no status without a trail, and a fresh trail only at the take or after recovery.
+  /// [previous] is the last status, or [beforeFirstRead] of the trade's trail: there is no status without a trail, and a fresh trail only at the take ([afterTake]), for a pending take, or after recovery.
+  /// Terms of another trade than the trail's are refused ([TradeOrderMismatch]), and the trail is left as it is.
   /// - A terminal [previous] is never left: any answer returns [previous] as it is, but an order of the same status (5, 14, 17, 18), which refreshes it.
   /// - An answer refused as a whole leaves [previous] in place with the reason added ([TradeOrderMismatch], [TradeRoleMismatch], [TradeStatusRegressed], or [TradeStatusUnexpected] for an unlisted edge into a terminal position).
   /// - Any other answer gives its status, with [TradeStatusUnexpected] when its edge is not one of [TradeEdges], and the warnings of the order's checks and of its invoice.
@@ -245,6 +319,11 @@ sealed class TradeStatus {
     required Bolt11Reader reader,
   }) {
     final trail = previous.trail;
+    if (!trail.isOf(terms)) {
+      return previous._rewarned([
+        if (!previous.has<TradeOrderMismatch>()) const TradeOrderMismatch(),
+      ], trail);
+    }
     final from = trail.position;
     final to = _positionOf(answer, from: from, trail: trail, now: now);
     // An end is refreshed only by an order of the same status, which may say more (a summary, a transaction): being out of the order again says nothing new.
@@ -264,7 +343,7 @@ sealed class TradeStatus {
           (warning) => warning.runtimeType == reason.runtimeType,
         ))
           reason,
-      ], trail._breach());
+      ], trail._breach(now));
     }
 
     final readWarnings = <TradeWarning>[
@@ -276,6 +355,12 @@ sealed class TradeStatus {
       position: to,
       readAt: now,
       deadline: null,
+      // Error 1044 before any pre-take was read: the pre-take ends at the latest a longest pre-take after the take.
+      bondStepDeadline:
+          to == TradePosition.preTakeUnavailable &&
+              trail.bondStepDeadline == null
+          ? trail.readAt.add(TradeTolerances.longestPreTake)
+          : null,
       breached: _breaches(readWarnings),
     );
     switch (answer) {
@@ -288,12 +373,14 @@ sealed class TradeStatus {
         );
       case TradeOrderNotAvailable():
         return switch (to) {
-          TradePosition.preTakeUnavailable => PreTakeUnavailable._(
-            now,
-            readWarnings,
-            outOfOrder(),
-            finalFrom: _preTakeGoneAt(trail),
-          ),
+          TradePosition.preTakeUnavailable => switch (outOfOrder()) {
+            final onHold => PreTakeUnavailable._(
+              now,
+              readWarnings,
+              onHold,
+              finalFrom: _preTakeGoneAt(onHold),
+            ),
+          },
           _ when _isPreTake(from) => TakenByAnother._(
             now,
             readWarnings,
@@ -338,7 +425,7 @@ sealed class TradeStatus {
       (trail.historyUnknown && trail.position == TradePosition.start) ||
       TradeEdges.allows(role, trail.position, to);
 
-  /// When error 1044 at the pre-take becomes final: the pre-take's deadline and [TradeTolerances.coordinatorLoops], by which the coordinator has expired the pre-take (`clean_orders.py:89-97`) or returned a bond that locked while the order was not public (`follow_invoices.py:252-261`); `null` while the deadline is unknown.
+  /// When error 1044 at the pre-take becomes final: the pre-take's deadline (or, before any pre-take was read, the take and [TradeTolerances.longestPreTake]) and [TradeTolerances.coordinatorLoops], by which the coordinator has expired the pre-take (`clean_orders.py:89-97`) or returned a bond that locked while the order was not public (`follow_invoices.py:252-261`); `null` only before the first answer.
   static DateTime? _preTakeGoneAt(TradeTrail trail) =>
       trail.bondStepDeadline?.add(TradeTolerances.coordinatorLoops);
 
@@ -1240,9 +1327,6 @@ final class StatusUnknown extends TradeStatus {
 
   @override
   TradePosition get position => trail.position;
-
-  @override
-  bool get isTerminal => false;
 
   @override
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>

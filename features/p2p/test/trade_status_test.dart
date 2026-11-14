@@ -63,7 +63,10 @@ void main() {
     DateTime? now,
   }) => TradeStatus.from(
     previous:
-        previous ?? TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt)),
+        previous ??
+        TradeStatus.beforeFirstRead(
+          TradeTrail.forPendingTake(terms ?? buyer, takenAt),
+        ),
     answer: answer,
     terms: terms ?? buyer,
     now: now ?? tradeNow,
@@ -77,14 +80,15 @@ void main() {
     DateTime? now,
   }) async {
     final invoice = bond ?? bondInvoice();
-    return next(
-      null,
-      await answer(
+    decoder.add(invoice);
+    // The first status of a trade comes from the take's own answer.
+    return TradeStatus.afterTake(
+      await takeStarted(
         orderJson(3, bond: invoice, role: (terms ?? buyer).role),
-        invoices: [invoice],
       ),
-      terms: terms,
-      now: now,
+      terms: terms ?? buyer,
+      now: now ?? tradeNow,
+      reader: reader,
     );
   }
 
@@ -273,14 +277,20 @@ void main() {
         isFalse,
       );
       final recovered = TradeStatus.beforeFirstRead(
-        TradeTrail.recovered(tradeNow),
+        TradeTrail.recovered(buyer, tradeNow),
       );
       final foundPublic = next(recovered, await answer(orderJson(1)));
       expect((foundPublic as PreTakeEnded).bondMayHaveBeenLost, isTrue);
       expect(foundPublic.has<TradeHistoryUnknown>(), isTrue);
       final afterTake = next(null, const TradeOrderNotAvailable());
       expect(afterTake, isA<PreTakeUnavailable>());
-      expect((afterTake as PreTakeUnavailable).finalFrom, isNull);
+      // Before any pre-take was read, the latest a pre-take can live.
+      expect(
+        (afterTake as PreTakeUnavailable).finalFrom,
+        takenAt
+            .add(TradeTolerances.longestPreTake)
+            .add(TradeTolerances.coordinatorLoops),
+      );
 
       // After the bond locked, every way back to the book settles it.
       final both = next(bond, await answer(orderJson(6)));
@@ -377,7 +387,9 @@ void main() {
       TradeTerms terms,
     ) async {
       if (position == TradePosition.start) {
-        return TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt));
+        return TradeStatus.beforeFirstRead(
+          TradeTrail.forPendingTake(terms, takenAt),
+        );
       }
       final bond = await preTake(terms: terms);
       if (position == TradePosition.bondStep) return bond;
@@ -949,7 +961,9 @@ void main() {
           final invoice = bondInvoice(network: network);
           decoder.add(invoice);
           final status = TradeStatus.from(
-            previous: TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt)),
+            previous: TradeStatus.beforeFirstRead(
+              TradeTrail.forPendingTake(testnet, takenAt),
+            ),
             answer: TradeOrderRead(
               await readOrder(
                 orderJson(3, bond: invoice),
@@ -1488,9 +1502,14 @@ void main() {
           var restarts = 0;
           for (var seed = 0; seed < 150; seed++) {
             final random = Random(seed);
+            // A quarter of the runs is of a trade found by recovery, on which the wallet never pays.
+            final recoveredRun = seed % 4 == 3;
             TradeStatus status = TradeStatus.beforeFirstRead(
-              TradeTrail.atTake(takenAt),
+              recoveredRun
+                  ? TradeTrail.recovered(terms, takenAt)
+                  : TradeTrail.forPendingTake(terms, takenAt),
             );
+            final records = <TradeTrailRecord>[status.trail.record];
             var now = tradeNow;
             final hashes = <InvoiceStep, String>{};
             final deadlines = <TradePosition, DateTime>{};
@@ -1517,6 +1536,8 @@ void main() {
                 );
               }
               if (after.position != from &&
+                  !(before.trail.historyUnknown &&
+                      from == TradePosition.start) &&
                   !TradeEdges.allows(terms.role, from, after.position)) {
                 expect(
                   after.has<TradeStatusUnexpected>(),
@@ -1525,13 +1546,32 @@ void main() {
                 );
               }
               // A restored trail is the trail, and decides the next read as the original does.
-              final restored = switch (TradeTrail.restore(after.trail.record)) {
+              final restored = switch (TradeTrail.restore(
+                after.trail.record,
+                terms: terms,
+                now: now,
+              )) {
                 Ok(:final value) => value,
                 Err(:final failure) => fail('seed $seed: $failure'),
               };
               expect(restored, after.trail);
+              // Every trail a run writes may replace the one before it; a trail of an earlier read never replaces a later one.
+              final record = after.trail.record;
+              expect(
+                record.whyNotReplace(records.last),
+                isNull,
+                reason: 'seed $seed step $step',
+              );
+              for (final earlier in records) {
+                if (earlier.readAtMicros < record.readAtMicros) {
+                  expect(earlier.mayReplace(record), isFalse);
+                }
+              }
+              records.add(record);
+              var restartedHere = false;
               if (!after.isTerminal && step < 11 && random.nextInt(3) == 0) {
                 restarts++;
+                restartedHere = true;
                 final probe = await randomAnswer(
                   Random(seed * 100 + step),
                   terms,
@@ -1630,6 +1670,7 @@ void main() {
                 );
                 if (decision is WalletPaymentOffered) {
                   offered++;
+                  expect(recoveredRun, isFalse, reason: 'seed $seed');
                   expect(breached, isFalse, reason: 'seed $seed step $step');
                   expect(made.termsChanged, isFalse, reason: 'seed $seed');
                   expect(
@@ -1654,7 +1695,10 @@ void main() {
                 deadlines[after.position] = order.expiresAt;
               }
               lastFrom = after.position;
-              status = after;
+              // After a restart, the run goes on from the restored trail.
+              status = restartedHere
+                  ? TradeStatus.beforeFirstRead(restored)
+                  : after;
             }
           }
           // The properties are not empty: some invoices passed every check, and some trails were restored mid-run.
@@ -1715,50 +1759,90 @@ void main() {
         ]) {
           expect(
             TradeTerms.restore(bad),
-            isA<Err<TradeTerms, TradeRecordMalformed>>(),
+            isA<Err<TradeTerms, TradeRecordRefusal>>(),
             reason: '$bad',
           );
         }
       },
     );
 
-    test('a trail record that is not one is refused', () async {
-      final r = (await preTake()).trail.record;
-      TradeTrailRecord changed({
-        int? version,
-        String? position,
-        String? bondHash,
-        int? readAtMicros,
-      }) => TradeTrailRecord(
-        version: version ?? r.version,
-        position: position ?? r.position,
-        readAtMicros: readAtMicros ?? r.readAtMicros,
-        bondHash: bondHash ?? r.bondHash,
-        escrowHash: r.escrowHash,
-        deadlineMicros: r.deadlineMicros,
-        bondStepSeenAtMicros: r.bondStepSeenAtMicros,
-        bondStepDeadlineMicros: r.bondStepDeadlineMicros,
-        breached: r.breached,
-        historyUnknown: r.historyUnknown,
-      );
-      expect(
-        TradeTrail.restore(r),
-        isA<Ok<TradeTrail, TradeRecordMalformed>>(),
-      );
-      for (final bad in [
-        changed(version: 0),
-        changed(position: 'somewhere'),
-        changed(bondHash: 'F' * 64),
-        changed(bondHash: 'f' * 63),
-        changed(readAtMicros: -1),
-      ]) {
-        expect(
-          TradeTrail.restore(bad),
-          isA<Err<TradeTrail, TradeRecordMalformed>>(),
-          reason: '$bad',
+    test(
+      'a trail record that is not one, or not this trade\'s, is refused',
+      () async {
+        final r = (await preTake()).trail.record;
+        TradeTrailRecord changed({
+          int? version,
+          String? position,
+          String? bondHash,
+          int? readAtMicros,
+          int? orderId,
+          int? bondStepSeenAtMicros,
+        }) => TradeTrailRecord(
+          version: version ?? r.version,
+          network: r.network,
+          coordinatorAlias: r.coordinatorAlias,
+          orderId: orderId ?? r.orderId,
+          role: r.role,
+          position: position ?? r.position,
+          readAtMicros: readAtMicros ?? r.readAtMicros,
+          bondHash: bondHash ?? r.bondHash,
+          escrowHash: r.escrowHash,
+          deadlineMicros: r.deadlineMicros,
+          bondStepSeenAtMicros: bondStepSeenAtMicros ?? r.bondStepSeenAtMicros,
+          bondStepDeadlineMicros: r.bondStepDeadlineMicros,
+          breached: r.breached,
+          historyUnknown: r.historyUnknown,
         );
-      }
-    });
+        Result<TradeTrail, TradeRecordRefusal> restore(
+          TradeTrailRecord record,
+        ) => TradeTrail.restore(record, terms: buyer, now: tradeNow);
+        expect(restore(r), isA<Ok<TradeTrail, TradeRecordRefusal>>());
+        for (final bad in [
+          changed(version: 0),
+          changed(position: 'somewhere'),
+          changed(bondHash: 'F' * 64),
+          changed(bondHash: 'f' * 63),
+          changed(readAtMicros: -1),
+          // A read after the resume, beyond a clock step; a pre-take seen after the last read.
+          changed(
+            readAtMicros: tradeNow
+                .add(TradeTolerances.clockStep)
+                .add(const Duration(seconds: 1))
+                .microsecondsSinceEpoch,
+          ),
+          changed(bondStepSeenAtMicros: r.readAtMicros + 1),
+        ]) {
+          expect(
+            switch (restore(bad)) {
+              Err(:final failure) => failure,
+              Ok() => null,
+            },
+            isA<TradeRecordMalformed>(),
+            reason: '$bad',
+          );
+        }
+        // Within a clock step ahead, the record is taken.
+        expect(
+          restore(
+            changed(
+              readAtMicros: tradeNow
+                  .add(TradeTolerances.clockStep)
+                  .microsecondsSinceEpoch,
+            ),
+          ),
+          isA<Ok<TradeTrail, TradeRecordRefusal>>(),
+        );
+        // Another trade's record, or this record with another trade's terms.
+        expect(switch (restore(changed(orderId: 43))) {
+          Err(:final failure) => failure,
+          Ok() => null,
+        }, isA<TradeRecordOfAnotherTrade>());
+        expect(switch (TradeTrail.restore(r, terms: seller, now: tradeNow)) {
+          Err(:final failure) => failure,
+          Ok() => null,
+        }, isA<TradeRecordOfAnotherTrade>());
+      },
+    );
   });
 
   test(

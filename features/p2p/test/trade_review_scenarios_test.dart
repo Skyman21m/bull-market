@@ -52,8 +52,10 @@ void main() {
     return readAnswer(json);
   }
 
-  TradeStatus atTake() =>
-      TradeStatus.beforeFirstRead(TradeTrail.atTake(takenAt));
+  /// The first read of a pending take of [terms] (buyer by default).
+  TradeStatus atTake([TradeTerms? terms]) => TradeStatus.beforeFirstRead(
+    TradeTrail.forPendingTake(terms ?? buyer, takenAt),
+  );
 
   TradeStatus next(
     TradeStatus previous,
@@ -79,9 +81,16 @@ void main() {
     now: tradeNow,
   );
 
+  TradeTerms termsOf(TradeStatus status) =>
+      status.trail.role == TradeRole.buyer ? buyer : seller;
+
   /// [status] after a restart: its trail and the terms stored, then read back.
   TradeStatus restarted(TradeStatus status) {
-    final trail = switch (TradeTrail.restore(status.trail.record)) {
+    final trail = switch (TradeTrail.restore(
+      status.trail.record,
+      terms: termsOf(status),
+      now: tradeNow,
+    )) {
       Ok(:final value) => value,
       Err(:final failure) => fail('$failure'),
     };
@@ -101,7 +110,7 @@ void main() {
       final escrowB = escrowInvoice(seed: 3);
       final bond = bondInvoice();
       final pre = next(
-        atTake(),
+        atTake(seller),
         await answer(
           orderJson(3, bond: bond, role: TradeRole.seller),
           invoices: [bond],
@@ -155,7 +164,7 @@ void main() {
       expect(backToA.trail.escrowHash, escrowA.facts.paymentHash);
       // A trade with no trail is a recovered one: the wallet never pays on it.
       final recovered = next(
-        TradeStatus.beforeFirstRead(TradeTrail.recovered(tradeNow)),
+        TradeStatus.beforeFirstRead(TradeTrail.recovered(seller, tradeNow)),
         await answer(
           orderJson(6, role: TradeRole.seller, escrow: escrowB),
           invoices: [escrowB],
@@ -408,7 +417,7 @@ void main() {
     final regtest = bondInvoice(network: Bolt11Network.regtest);
     decoder.add(regtest);
     final status = TradeStatus.from(
-      previous: atTake(),
+      previous: atTake(testnet),
       answer: TradeOrderRead(
         await readOrder(
           orderJson(3, bond: regtest),
@@ -429,7 +438,7 @@ void main() {
       final last = (bookSats * 1.2).round();
       final bond = bondInvoice(sats: last * 3 ~/ 100);
       final status = next(
-        atTake(),
+        atTake(terms),
         await answer(
           orderJson(3, range: true, bond: bond, changes: {'amount': null}),
           invoices: [bond],
