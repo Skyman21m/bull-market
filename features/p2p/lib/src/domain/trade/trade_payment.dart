@@ -1,6 +1,6 @@
 import 'package:meta/meta.dart';
 
-import 'checked_invoice.dart';
+import 'trade_status.dart';
 
 /// A payment of a trade's invoice this device asked the wallet for (#100): the invoice's payment hash, when the last attempt started, and the wallet's local id of the swap that pays it, once the wallet gave one.
 ///

@@ -100,7 +100,7 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
     final children = <Widget>[
       if (balance != null && step is! BondPayFollowing)
         Text(
-          l10n.p2pPayBalance(formats.sats(balance.value)),
+          l10n.p2pPayBalance(formats.sats(balance.value.toInt())),
           textAlign: TextAlign.center,
           style: text.bodyMedium?.copyWith(color: colors.textMuted),
         ),
@@ -115,8 +115,7 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
           if (offered && balance != null)
             TradeButton(
               label: l10n.p2pPayWithThisWallet,
-              onPressed: () =>
-                  unawaited(cubit.ask(widget.request.seen)),
+              onPressed: () => unawaited(cubit.ask(widget.request.seen)),
             ),
         ],
         BondPayQuoting() => [
@@ -187,7 +186,7 @@ class _Confirmation extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final formats = P2pFormats.of(context);
-    String sats(Sats amount) => formats.sats(amount.value);
+    String sats(Sats amount) => formats.sats(amount.value.toInt());
     final body = text.bodyMedium?.copyWith(color: colors.text);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -209,8 +208,14 @@ class _Confirmation extends StatelessWidget {
               ),
             ),
             const Gap(BullSpacing.sm),
-            Text(l10n.p2pPayServiceFee(sats(walletQuote.serviceFee)), style: body),
-            Text(l10n.p2pPayNetworkFee(sats(walletQuote.networkFee)), style: body),
+            Text(
+              l10n.p2pPayServiceFee(sats(walletQuote.serviceFee)),
+              style: body,
+            ),
+            Text(
+              l10n.p2pPayNetworkFee(sats(walletQuote.networkFee)),
+              style: body,
+            ),
             const Gap(BullSpacing.xs),
             Text(
               l10n.p2pPayTotal(
@@ -247,13 +252,11 @@ class _Confirmation extends StatelessWidget {
 /// [BondPaymentLine.new], after status 3: where the payment of a bond paid by this wallet stands (held by the swap service, refund pending, refunded, kept), from the trade's [BondPaymentCubit]; nothing when the bond was not paid by this wallet.
 class BondPaymentLine extends StatelessWidget {
   final String? _text;
-  final Color? _color;
+  final Color? color;
 
-  const BondPaymentLine({super.key}) : _text = null, _color = null;
+  const BondPaymentLine({super.key}) : _text = null, color = null;
 
-  const BondPaymentLine.text(String text, {super.key, Color? color})
-    : _text = text,
-      _color = color;
+  const BondPaymentLine.text(String this._text, {super.key, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -278,9 +281,9 @@ class BondPaymentLine extends StatelessWidget {
       child: Text(
         line,
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: _color ?? colors.text,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: color ?? colors.text),
       ),
     );
   }
@@ -312,10 +315,11 @@ String bondPaymentProgressText(
     P2pWalletPaymentRefundPending() => l10n.p2pPayRefundPending,
     P2pWalletPaymentRefunded() => l10n.p2pPayRefunded,
     P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
-    P2pWalletPaymentFailed(funds: P2pWalletFunds.notSent) =>
-      l10n.p2pPayWalletUnavailable,
-    P2pWalletPaymentExpired() || P2pWalletPaymentFailed() =>
-      l10n.p2pPayAskSupport,
+    P2pWalletPaymentFailed(
+      funds: P2pWalletFunds.notSent,
+    ) => l10n.p2pPayWalletUnavailable,
+    P2pWalletPaymentExpired() ||
+    P2pWalletPaymentFailed() => l10n.p2pPayAskSupport,
   };
 }
 
@@ -323,13 +327,13 @@ String bondPaymentProgressText(
 String bondPayRefusalText(BuildContext context, BondPayRefusal refusal) {
   final l10n = P2pLocalizations.of(context);
   final formats = P2pFormats.of(context);
-  String sats(Sats amount) => formats.sats(amount.value);
+  String sats(Sats amount) => formats.sats(amount.value.toInt());
   return switch (refusal) {
     BondPayNotAtBondStep() || BondPayInvoiceChanged() => l10n.p2pPayOrderMoved,
     BondPayNotOffered(reason: WalletPaymentRefusal.tooLate) =>
       l10n.p2pPayTooLate,
-    BondPayNotOffered() || BondPayTradeUnavailable() =>
-      l10n.p2pPayWalletUnavailable,
+    BondPayNotOffered() ||
+    BondPayTradeUnavailable() => l10n.p2pPayWalletUnavailable,
     BondPayNotRecorded() => l10n.p2pPayNotRecorded,
     BondPayWalletRefused(:final refusal) => switch (refusal) {
       P2pWalletUnderMinimum(minimum: final minimum?) => l10n.p2pPayUnderMinimum(
@@ -339,8 +343,8 @@ String bondPayRefusalText(BuildContext context, BondPayRefusal refusal) {
       P2pWalletOverMaximum(maximum: final maximum?) => l10n.p2pPayOverMaximum(
         sats(maximum),
       ),
-      P2pWalletOverMaximum() || P2pWalletOutsideServiceLimits() =>
-        l10n.p2pPayOutsideLimits,
+      P2pWalletOverMaximum() ||
+      P2pWalletOutsideServiceLimits() => l10n.p2pPayOutsideLimits,
       P2pWalletNotEnoughBalance(:final available, :final needed) =>
         l10n.p2pPayNotEnough(sats(available), sats(needed)),
       P2pWalletServiceUnreachable() => l10n.p2pPayUnreachable,

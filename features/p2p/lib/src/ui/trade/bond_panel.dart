@@ -138,6 +138,7 @@ class _OtherWalletState extends State<_OtherWallet> {
     super.didUpdateWidget(oldWidget);
     if (widget.opensNow && !oldWidget.opensNow) _open = true;
   }
+
   bool _shownAnyway = false;
   bool _copied = false;
   Timer? _copiedTimer;

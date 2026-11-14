@@ -5,14 +5,13 @@ import 'package:p2p/src/data/trade_payment_repository_impl.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
 import 'package:p2p/src/domain/trade/bond_payment.dart';
-import 'package:p2p/src/domain/trade/checked_invoice.dart';
+import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_payment.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/testing.dart';
-import 'package:primitives/primitives.dart';
 import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
@@ -65,8 +64,10 @@ final class _Wallet implements P2pWalletPort {
 /// Payments that cannot be written.
 final class _Unwritable implements TradePaymentRepository {
   @override
-  Future<Result<TradePaymentRecord?, P2pFailure>> paymentOf(trade, step) async =>
-      const Ok(null);
+  Future<Result<TradePaymentRecord?, P2pFailure>> paymentOf(
+    trade,
+    step,
+  ) async => const Ok(null);
 
   @override
   Future<Result<bool, P2pFailure>> recordStart(
@@ -106,7 +107,7 @@ final class _Setup {
     final harness = await TradeHarness.start();
     final record = TradeHarness.recordOf(await harness.takeShown());
     final stored = TradePaymentRepositoryImpl(harness.database);
-    final fake = FakeP2pWalletPort(const Ok(Sats(500000)));
+    final fake = FakeP2pWalletPort(Ok(Sats.fromInt(500000)));
     final wallet = _Wallet(fake, stored, () => record);
     return _Setup(
       harness,
@@ -141,9 +142,9 @@ final class _Setup {
   /// A quote of [invoice], as the wallet would give it.
   P2pWalletQuote quoteOf(CheckedBolt11Invoice invoice) => P2pWalletQuote(
     invoice: invoice,
-    payin: Sats(invoice.amount.value + 120),
-    networkFee: const Sats(27),
-    balance: const Sats(500000),
+    payin: Sats(invoice.amount.value + BigInt.from(120)),
+    networkFee: Sats.fromInt(27),
+    balance: Sats.fromInt(500000),
     quotedAt: harness.now,
   );
 
@@ -165,29 +166,32 @@ final class _Setup {
 }
 
 void main() {
-  test('the bond ceiling is the bond the order implies, with the state machine\'s tolerance', () async {
-    final setup = await _Setup.start();
-    final invoice = await setup.offered();
-    // The scripted coordinator's bond is the order's: within the ceiling, which is 2 % and 1 sat above the bond implied.
-    final opened = await setup.harness.reader.open(setup.record);
-    final terms = switch (opened) {
-      TradeOpened(:final trade) => trade.terms,
-      _ => throw StateError('not opened'),
-    };
-    expect(
-      terms.bondCeiling.value,
-      (terms.expectedBond * 1.02 + 1).floor(),
-    );
-    expect(invoice.amount.value, lessThanOrEqualTo(terms.bondCeiling.value));
-  });
+  test(
+    'the bond ceiling is the bond the order implies, with the state machine\'s tolerance',
+    () async {
+      final setup = await _Setup.start();
+      final invoice = await setup.offered();
+      // The scripted coordinator's bond is the order's: within the ceiling, which is 2 % and 1 sat above the bond implied.
+      final opened = await setup.harness.reader.open(setup.record);
+      final terms = switch (opened) {
+        TradeOpened(:final trade) => trade.terms,
+        _ => throw StateError('not opened'),
+      };
+      expect(terms.bondCeiling.value, (terms.expectedBond * 1.02 + 1).floor());
+      expect(invoice.amount.value, lessThanOrEqualTo(terms.bondCeiling.value));
+    },
+  );
 
-  test('the quote is asked for the invoice of the bond step, nothing paid', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    expect(setup.fake.quoted.single.paymentHash, quote.invoice.paymentHash);
-    expect(setup.fake.paid, isEmpty);
-    expect(await setup.recorded(), isNull);
-  });
+  test(
+    'the quote is asked for the invoice of the bond step, nothing paid',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      expect(setup.fake.quoted.single.paymentHash, quote.invoice.paymentHash);
+      expect(setup.fake.paid, isEmpty);
+      expect(await setup.recorded(), isNull);
+    },
+  );
 
   test('a status not marked stored is not quoted', () async {
     final setup = await _Setup.start();
@@ -204,39 +208,45 @@ void main() {
     expect(setup.fake.quoted, isEmpty);
   });
 
-  test('paid: the start recorded before the wallet is asked, its id after', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    final hash = quote.invoice.paymentHash;
-    setup.fake.scriptPayment(
-      Ok(P2pWalletPayment(id: 'swap-1', paymentHash: hash)),
-    );
-    final paid = await setup.payBond.payBond(setup.record, accepted: quote);
-    expect(paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
-    expect(setup.wallet.recordedAtPayment.single?.paymentHash, hash);
-    expect(setup.wallet.recordedAtPayment.single?.walletPaymentId, isNull);
-    final recorded = await setup.recorded();
-    expect(recorded?.paymentHash, hash);
-    expect(recorded?.walletPaymentId, 'swap-1');
-    expect(setup.fake.paid.single.$1.paymentHash, hash);
-  });
+  test(
+    'paid: the start recorded before the wallet is asked, its id after',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      final hash = quote.invoice.paymentHash;
+      setup.fake.scriptPayment(
+        Ok(P2pWalletPayment(id: 'swap-1', paymentHash: hash)),
+      );
+      final paid = await setup.payBond.payBond(setup.record, accepted: quote);
+      expect(paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
+      expect(setup.wallet.recordedAtPayment.single?.paymentHash, hash);
+      expect(setup.wallet.recordedAtPayment.single?.walletPaymentId, isNull);
+      final recorded = await setup.recorded();
+      expect(recorded?.paymentHash, hash);
+      expect(recorded?.walletPaymentId, 'swap-1');
+      expect(setup.fake.paid.single.$1.paymentHash, hash);
+    },
+  );
 
-  test('the order moved on before the payment: nothing paid, nothing recorded', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    setup.harness.coordinator.lockBond(setup.harness.robot(0));
-    final paid = await setup.payBond.payBond(setup.record, accepted: quote);
-    expect(
-      paid,
-      isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
-        (e) => e.failure,
-        'failure',
-        isA<BondPayNotAtBondStep>(),
-      ),
-    );
-    expect(setup.fake.paid, isEmpty);
-    expect(await setup.recorded(), isNull);
-  });
+  test(
+    'the order moved on before the payment: nothing paid, nothing recorded',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      setup.harness.coordinator.lockBond(setup.harness.robot(0));
+      final paid = await setup.payBond.payBond(setup.record, accepted: quote);
+      expect(
+        paid,
+        isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<BondPayNotAtBondStep>(),
+        ),
+      );
+      expect(setup.fake.paid, isEmpty);
+      expect(await setup.recorded(), isNull);
+    },
+  );
 
   test('the pre-take ended before the payment: nothing paid', () async {
     final setup = await _Setup.start();
@@ -250,32 +260,35 @@ void main() {
     expect(await setup.recorded(), isNull);
   });
 
-  test('a quote of another invoice is not paid: a new confirmation is needed', () async {
-    final setup = await _Setup.start();
-    final invoice = await setup.offered();
-    final other = checkedBolt11InvoiceForTesting(
-      bolt11: invoice.bolt11,
-      amount: invoice.amount,
-      network: invoice.network,
-      paymentHash: 'cd${'0' * 62}',
-      expiresAt: invoice.expiresAt,
-      payableUntil: invoice.payableUntil,
-      now: setup.harness.now,
-    );
-    final paid = await setup.payBond.payBond(
-      setup.record,
-      accepted: setup.quoteOf(other ?? (throw StateError('no invoice'))),
-    );
-    expect(
-      paid,
-      isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
-        (e) => e.failure,
-        'failure',
-        isA<BondPayInvoiceChanged>(),
-      ),
-    );
-    expect(setup.fake.paid, isEmpty);
-  });
+  test(
+    'a quote of another invoice is not paid: a new confirmation is needed',
+    () async {
+      final setup = await _Setup.start();
+      final invoice = await setup.offered();
+      final other = checkedBolt11InvoiceForTesting(
+        bolt11: invoice.bolt11,
+        amount: invoice.amount,
+        network: invoice.network,
+        paymentHash: 'cd${'0' * 62}',
+        expiresAt: invoice.expiresAt,
+        payableUntil: invoice.payableUntil,
+        now: setup.harness.now,
+      );
+      final paid = await setup.payBond.payBond(
+        setup.record,
+        accepted: setup.quoteOf(other ?? (throw StateError('no invoice'))),
+      );
+      expect(
+        paid,
+        isA<Err<P2pWalletPayment, BondPayRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<BondPayInvoiceChanged>(),
+        ),
+      );
+      expect(setup.fake.paid, isEmpty);
+    },
+  );
 
   test('a start that cannot be written: the wallet is not asked', () async {
     final setup = await _Setup.start(payments: _Unwritable());
@@ -292,68 +305,89 @@ void main() {
     expect(setup.fake.paid, isEmpty);
   });
 
-  test('a broadcast whose outcome is unknown: refused as such, its id recorded, the funds may have moved', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    final payment = P2pWalletPayment(
-      id: 'swap-2',
-      paymentHash: quote.invoice.paymentHash,
-    );
-    setup.fake.scriptPayment(Err(P2pWalletBroadcastUnknown(payment)));
-    final paid = await setup.payBond.payBond(setup.record, accepted: quote);
-    final failure = switch (paid) {
-      Err(:final failure) => failure,
-      Ok() => throw StateError('paid'),
-    };
-    expect(failure.fundsMayHaveMoved, isTrue);
-    expect((await setup.recorded())?.walletPaymentId, 'swap-2');
-  });
+  test(
+    'a broadcast whose outcome is unknown: refused as such, its id recorded, the funds may have moved',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      final payment = P2pWalletPayment(
+        id: 'swap-2',
+        paymentHash: quote.invoice.paymentHash,
+      );
+      setup.fake.scriptPayment(Err(P2pWalletBroadcastUnknown(payment)));
+      final paid = await setup.payBond.payBond(setup.record, accepted: quote);
+      final failure = switch (paid) {
+        Err(:final failure) => failure,
+        Ok() => throw StateError('paid'),
+      };
+      expect(failure.fundsMayHaveMoved, isTrue);
+      expect((await setup.recorded())?.walletPaymentId, 'swap-2');
+    },
+  );
 
-  test('a refusal that moved nothing may be tried again, after a new quote: one more start, one more payment', () async {
-    final setup = await _Setup.start();
-    final first = await setup.quoted();
-    setup.fake.scriptPayment(const Err(P2pWalletServiceUnreachable()));
-    final refused = await setup.payBond.payBond(setup.record, accepted: first);
-    expect(refused, isA<Err<P2pWalletPayment, BondPayRefusal>>());
-    final firstStart = (await setup.recorded())?.startedAt;
-    await setup.harness.elapse(const Duration(seconds: 5));
+  test(
+    'a refusal that moved nothing may be tried again, after a new quote: one more start, one more payment',
+    () async {
+      final setup = await _Setup.start();
+      final first = await setup.quoted();
+      setup.fake.scriptPayment(const Err(P2pWalletServiceUnreachable()));
+      final refused = await setup.payBond.payBond(
+        setup.record,
+        accepted: first,
+      );
+      expect(refused, isA<Err<P2pWalletPayment, BondPayRefusal>>());
+      final firstStart = (await setup.recorded())?.startedAt;
+      await setup.harness.elapse(const Duration(seconds: 5));
 
-    final second = await setup.quoted();
-    setup.fake.scriptPayment(
-      Ok(P2pWalletPayment(id: 'swap-3', paymentHash: second.invoice.paymentHash)),
-    );
-    final paid = await setup.payBond.payBond(setup.record, accepted: second);
-    expect(paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
-    expect(setup.fake.paid, hasLength(2));
-    final recorded = await setup.recorded();
-    expect(recorded?.walletPaymentId, 'swap-3');
-    expect(recorded?.startedAt.isAfter(firstStart ?? DateTime(2000)), isTrue);
-  });
+      final second = await setup.quoted();
+      setup.fake.scriptPayment(
+        Ok(
+          P2pWalletPayment(
+            id: 'swap-3',
+            paymentHash: second.invoice.paymentHash,
+          ),
+        ),
+      );
+      final paid = await setup.payBond.payBond(setup.record, accepted: second);
+      expect(paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
+      expect(setup.fake.paid, hasLength(2));
+      final recorded = await setup.recorded();
+      expect(recorded?.walletPaymentId, 'swap-3');
+      expect(recorded?.startedAt.isAfter(firstStart ?? DateTime(2000)), isTrue);
+    },
+  );
 
-  test('a quote presented twice pays once: the second is refused, nothing sent again', () async {
-    final setup = await _Setup.start();
-    final quote = await setup.quoted();
-    setup.fake.scriptPayment(
-      Ok(P2pWalletPayment(id: 'swap-4', paymentHash: quote.invoice.paymentHash)),
-    );
-    final results = await Future.wait([
-      setup.payBond.payBond(setup.record, accepted: quote),
-      setup.payBond.payBond(setup.record, accepted: quote),
-    ]);
-    expect(
-      results.whereType<Ok<P2pWalletPayment, BondPayRefusal>>(),
-      hasLength(1),
-    );
-    expect((await setup.recorded())?.walletPaymentId, 'swap-4');
-  });
+  test(
+    'a quote presented twice pays once: the second is refused, nothing sent again',
+    () async {
+      final setup = await _Setup.start();
+      final quote = await setup.quoted();
+      setup.fake.scriptPayment(
+        Ok(
+          P2pWalletPayment(
+            id: 'swap-4',
+            paymentHash: quote.invoice.paymentHash,
+          ),
+        ),
+      );
+      final results = await Future.wait([
+        setup.payBond.payBond(setup.record, accepted: quote),
+        setup.payBond.payBond(setup.record, accepted: quote),
+      ]);
+      expect(
+        results.whereType<Ok<P2pWalletPayment, BondPayRefusal>>(),
+        hasLength(1),
+      );
+      expect((await setup.recorded())?.walletPaymentId, 'swap-4');
+    },
+  );
 
   group('followBond', () {
     test('none recorded: none, and nothing asked of the wallet', () async {
       final setup = await _Setup.start();
-      expect(
-        await setup.payBond.followBond(setup.record).toList(),
-        [isA<BondPaymentNone>()],
-      );
+      expect(await setup.payBond.followBond(setup.record).toList(), [
+        isA<BondPaymentNone>(),
+      ]);
       expect(setup.fake.found, isEmpty);
     });
 
@@ -366,54 +400,61 @@ void main() {
         paymentHash: quote.invoice.paymentHash,
         at: setup.harness.now,
       );
-      expect(
-        await setup.payBond.followBond(setup.record).toList(),
-        [isA<BondPaymentNone>()],
-      );
+      expect(await setup.payBond.followBond(setup.record).toList(), [
+        isA<BondPaymentNone>(),
+      ]);
       expect(setup.fake.found, [quote.invoice.paymentHash]);
     });
 
-    test('a payment found: followed as the wallet records it, its id written when missing', () async {
-      final setup = await _Setup.start();
-      final quote = await setup.quoted();
-      final hash = quote.invoice.paymentHash;
-      final _ = await setup.payments.recordStart(
-        setup.record,
-        InvoiceStep.bond,
-        paymentHash: hash,
-        at: setup.harness.now,
-      );
-      final payment = P2pWalletPayment(id: 'swap-5', paymentHash: hash);
-      setup.fake
-        ..setFound(
-          hash,
-          P2pWalletPaymentFound(
-            payment: payment,
-            progress: const P2pWalletPaymentSent(),
-          ),
-        )
-        ..setProgress(payment, const Ok(P2pWalletPaymentSent()));
-      final seen = <BondPaymentWatch>[];
-      final following = setup.payBond.followBond(setup.record).listen(seen.add);
-      await setup.harness.settle();
-      setup.fake.setProgress(payment, const Ok(P2pWalletPaymentPending()));
-      await setup.harness.settle();
-      await following.cancel();
-      expect(seen.whereType<BondPaymentFollowed>().map((f) => f.progress), [
-        isA<P2pWalletPaymentSent>(),
-        isA<P2pWalletPaymentSent>(),
-        isA<P2pWalletPaymentPending>(),
-      ]);
-      expect((await setup.recorded())?.walletPaymentId, 'swap-5');
-    });
+    test(
+      'a payment found: followed as the wallet records it, its id written when missing',
+      () async {
+        final setup = await _Setup.start();
+        final quote = await setup.quoted();
+        final hash = quote.invoice.paymentHash;
+        final _ = await setup.payments.recordStart(
+          setup.record,
+          InvoiceStep.bond,
+          paymentHash: hash,
+          at: setup.harness.now,
+        );
+        final payment = P2pWalletPayment(id: 'swap-5', paymentHash: hash);
+        setup.fake
+          ..setFound(
+            hash,
+            P2pWalletPaymentFound(
+              payment: payment,
+              progress: const P2pWalletPaymentSent(),
+            ),
+          )
+          ..setProgress(payment, const Ok(P2pWalletPaymentSent()));
+        final seen = <BondPaymentWatch>[];
+        final following = setup.payBond
+            .followBond(setup.record)
+            .listen(seen.add);
+        await setup.harness.settle();
+        setup.fake.setProgress(payment, const Ok(P2pWalletPaymentPending()));
+        await setup.harness.settle();
+        await following.cancel();
+        expect(seen.whereType<BondPaymentFollowed>().map((f) => f.progress), [
+          isA<P2pWalletPaymentSent>(),
+          isA<P2pWalletPaymentSent>(),
+          isA<P2pWalletPaymentPending>(),
+        ]);
+        expect((await setup.recorded())?.walletPaymentId, 'swap-5');
+      },
+    );
   });
 
-  test('the use case asks the wallet nothing on its own: no quote and no payment without a call', () async {
-    final setup = await _Setup.start();
-    final run = setup.harness.watchOf(setup.record);
-    await setup.harness.elapse(const Duration(seconds: 30));
-    await run.subscription.cancel();
-    expect(setup.fake.quoted, isEmpty);
-    expect(setup.fake.paid, isEmpty);
-  });
+  test(
+    'the use case asks the wallet nothing on its own: no quote and no payment without a call',
+    () async {
+      final setup = await _Setup.start();
+      final run = setup.harness.watchOf(setup.record);
+      await setup.harness.elapse(const Duration(seconds: 30));
+      await run.subscription.cancel();
+      expect(setup.fake.quoted, isEmpty);
+      expect(setup.fake.paid, isEmpty);
+    },
+  );
 }

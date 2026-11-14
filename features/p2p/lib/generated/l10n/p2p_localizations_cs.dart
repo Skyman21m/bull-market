@@ -1490,4 +1490,136 @@ class P2pLocalizationsCs extends P2pLocalizations {
 
   @override
   String get p2pTradeYouAreSwappingIn => 'SWAPPING INTO Lightning';
+
+  @override
+  String p2pPayBalance(String balance) {
+    return 'Instant payments: $balance sats available';
+  }
+
+  @override
+  String get p2pPayWithThisWallet => 'Pay with this wallet';
+
+  @override
+  String get p2pPayQuoting => 'Asking the swap service for its fees…';
+
+  @override
+  String p2pPayConfirmTitle(String amount) {
+    return 'Pay $amount sats to lock your bond?';
+  }
+
+  @override
+  String p2pPayServiceFee(String serviceFee) {
+    return 'Swap service fee: $serviceFee sats';
+  }
+
+  @override
+  String p2pPayNetworkFee(String networkFee) {
+    return 'Network fee: about $networkFee sats';
+  }
+
+  @override
+  String p2pPayTotal(String total, String left) {
+    return 'Total: $total sats. Left in Instant payments: $left sats.';
+  }
+
+  @override
+  String get p2pPayCustody =>
+      'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds them to this wallet, without its fees.';
+
+  @override
+  String p2pPayConfirm(String total) {
+    return 'Pay $total sats';
+  }
+
+  @override
+  String get p2pPaySending => 'Sending the payment…';
+
+  @override
+  String p2pPaySent(String coordinator) {
+    return 'Payment sent. Waiting for $coordinator to see your bond locked.';
+  }
+
+  @override
+  String get p2pPayHeld =>
+      'Your bond is locked. Its sats are held by the swap service until the trade ends.';
+
+  @override
+  String get p2pPayRefundPending =>
+      'Your bond was returned. The swap service is refunding it to Instant payments, without its fees.';
+
+  @override
+  String get p2pPayRefunded =>
+      'Refunded: the bond is back in Instant payments, without the swap service’s fees.';
+
+  @override
+  String p2pPaySettled(String coordinator) {
+    return 'Your bond was kept by $coordinator.';
+  }
+
+  @override
+  String get p2pPayUnderReview =>
+      'The swap service is reviewing this payment. Your sats are with it; contact Bull Bitcoin support if it lasts.';
+
+  @override
+  String get p2pPayInterrupted =>
+      'The payment was interrupted before it was sent. Nothing left this wallet yet.';
+
+  @override
+  String get p2pPayMaybeSent =>
+      'The payment may have been sent. The wallet is checking with the swap service.';
+
+  @override
+  String get p2pPayAskSupport =>
+      'The swap service did not pay this bond, and its sats may have left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String p2pPayUnderMinimum(String min) {
+    return 'This bond is under the swap service’s minimum of $min sats.';
+  }
+
+  @override
+  String get p2pPayUnderMinimumUnknown =>
+      'This bond is under the swap service’s minimum.';
+
+  @override
+  String p2pPayOverMaximum(String max) {
+    return 'This bond is over the swap service’s maximum of $max sats.';
+  }
+
+  @override
+  String get p2pPayOutsideLimits =>
+      'This bond is outside the swap service’s limits.';
+
+  @override
+  String p2pPayNotEnough(String balance, String total) {
+    return 'Not enough in Instant payments ($balance sats) for $total sats.';
+  }
+
+  @override
+  String get p2pPayUnreachable => 'The swap service cannot be reached.';
+
+  @override
+  String get p2pPayBusy => 'The swap service asks to wait before trying again.';
+
+  @override
+  String get p2pPayTooLate =>
+      'Too little time is left to pay from this wallet.';
+
+  @override
+  String get p2pPayFeesChanged =>
+      'The fees changed since you confirmed. Check them again.';
+
+  @override
+  String get p2pPayAlreadyPaid => 'This wallet already paid this invoice.';
+
+  @override
+  String get p2pPayOrderMoved =>
+      'The order moved on before the payment. Nothing was paid.';
+
+  @override
+  String get p2pPayNotRecorded =>
+      'Bull Market could not write its records on this device. Nothing was paid.';
+
+  @override
+  String get p2pPayWalletUnavailable => 'This wallet cannot pay this bond now.';
 }

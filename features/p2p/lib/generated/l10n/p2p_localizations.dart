@@ -2536,6 +2536,198 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'SWAPPING INTO Lightning'**
   String get p2pTradeYouAreSwappingIn;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the Instant payments wallet's spendable balance, as the wallet reads it.
+  ///
+  /// In en, this message translates to:
+  /// **'Instant payments: {balance} sats available'**
+  String p2pPayBalance(String balance);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the button that asks the swap service for its quote; nothing is paid before the confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay with this wallet'**
+  String get p2pPayWithThisWallet;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: while the quote is asked.
+  ///
+  /// In en, this message translates to:
+  /// **'Asking the swap service for its fees…'**
+  String get p2pPayQuoting;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's title; {amount} is the invoice's own decoded amount.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay {amount} sats to lock your bond?'**
+  String p2pPayConfirmTitle(String amount);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service's fee in the confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Swap service fee: {serviceFee} sats'**
+  String p2pPayServiceFee(String serviceFee);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the wallet's estimate of the Liquid network fee in the confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Network fee: about {networkFee} sats'**
+  String p2pPayNetworkFee(String networkFee);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: what leaves the wallet and what stays, in the confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Total: {total} sats. Left in Instant payments: {left} sats.'**
+  String p2pPayTotal(String total, String left);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's explanation of the swap service's custody.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds them to this wallet, without its fees.'**
+  String get p2pPayCustody;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's button, the only tap that pays.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay {total} sats'**
+  String p2pPayConfirm(String total);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: while the payment is made.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending the payment…'**
+  String get p2pPaySending;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the payment left this wallet; the coordinator has not locked the bond yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment sent. Waiting for {coordinator} to see your bond locked.'**
+  String p2pPaySent(String coordinator);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: from status 6 on, for a bond paid by this wallet. The study's text named the amount, which the trade's later statuses do not carry: left out.
+  ///
+  /// In en, this message translates to:
+  /// **'Your bond is locked. Its sats are held by the swap service until the trade ends.'**
+  String get p2pPayHeld;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the coordinator cancelled the hold invoice and the swap service is to refund the wallet. The study's text named an amount, which the wallet does not give for a refund: left out.
+  ///
+  /// In en, this message translates to:
+  /// **'Your bond was returned. The swap service is refunding it to Instant payments, without its fees.'**
+  String get p2pPayRefundPending;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service refunded the wallet. No amount, as for the refund pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Refunded: the bond is back in Instant payments, without the swap service’s fees.'**
+  String get p2pPayRefunded;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the hold invoice was settled: the bond is lost, as with any wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Your bond was kept by {coordinator}.'**
+  String p2pPaySettled(String coordinator);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service holds the payment for a manual review.
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service is reviewing this payment. Your sats are with it; contact Bull Bitcoin support if it lasts.'**
+  String get p2pPayUnderReview;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a payment signed and saved but never broadcast; this wallet does not pay the invoice again.
+  ///
+  /// In en, this message translates to:
+  /// **'The payment was interrupted before it was sent. Nothing left this wallet yet.'**
+  String get p2pPayInterrupted;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a broadcast whose outcome is unknown; the wallet's watcher settles it.
+  ///
+  /// In en, this message translates to:
+  /// **'The payment may have been sent. The wallet is checking with the swap service.'**
+  String get p2pPayMaybeSent;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a payment that expired or failed with its funding possibly sent; only the swap service's support can tell where the sats are.
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service did not pay this bond, and its sats may have left this wallet. Contact Bull Bitcoin support.'**
+  String get p2pPayAskSupport;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal; « Pay with another wallet » opens.
+  ///
+  /// In en, this message translates to:
+  /// **'This bond is under the swap service’s minimum of {min} sats.'**
+  String p2pPayUnderMinimum(String min);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the same when the service gives no minimum.
+  ///
+  /// In en, this message translates to:
+  /// **'This bond is under the swap service’s minimum.'**
+  String get p2pPayUnderMinimumUnknown;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a refusal.
+  ///
+  /// In en, this message translates to:
+  /// **'This bond is over the swap service’s maximum of {max} sats.'**
+  String p2pPayOverMaximum(String max);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a refusal without the limit.
+  ///
+  /// In en, this message translates to:
+  /// **'This bond is outside the swap service’s limits.'**
+  String get p2pPayOutsideLimits;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough in Instant payments ({balance} sats) for {total} sats.'**
+  String p2pPayNotEnough(String balance, String total);
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal.
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service cannot be reached.'**
+  String get p2pPayUnreachable;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the service answered « too many requests ».
+  ///
+  /// In en, this message translates to:
+  /// **'The swap service asks to wait before trying again.'**
+  String get p2pPayBusy;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal.
+  ///
+  /// In en, this message translates to:
+  /// **'Too little time is left to pay from this wallet.'**
+  String get p2pPayTooLate;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal; nothing was sent.
+  ///
+  /// In en, this message translates to:
+  /// **'The fees changed since you confirmed. Check them again.'**
+  String get p2pPayFeesChanged;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal: the wallet never pays an invoice twice.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet already paid this invoice.'**
+  String get p2pPayAlreadyPaid;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the read just before the payment no longer offers the invoice confirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'The order moved on before the payment. Nothing was paid.'**
+  String get p2pPayOrderMoved;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the payment's record is written before the wallet is asked.
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market could not write its records on this device. Nothing was paid.'**
+  String get p2pPayNotRecorded;
+
+  /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the other refusals of the wallet (no Instant payments wallet, unreadable, other network, too many coins, a quote no longer valid).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet cannot pay this bond now.'**
+  String get p2pPayWalletUnavailable;
 }
 
 class _P2pLocalizationsDelegate

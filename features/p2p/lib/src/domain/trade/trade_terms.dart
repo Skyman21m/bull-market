@@ -292,7 +292,7 @@ final class TradeTerms {
   /// The most a bond invoice of this trade may ask: [expectedBond] with the state machine's tolerance on it ([TradeTolerances.price] and [TradeTolerances.roundingSats], as `BondAmountOutsideOrder` checks the order's bond), rounded down to the sat.
   ///
   /// It is what the user accepts by taking the order (#100): the wallet pays the invoice's own decoded amount, never more than this, and never the coordinator's `bond_satoshis`.
-  Sats get bondCeiling => Sats(
+  Sats get bondCeiling => Sats.fromInt(
     (expectedBond * (1 + TradeTolerances.price) + TradeTolerances.roundingSats)
         .floor(),
   );

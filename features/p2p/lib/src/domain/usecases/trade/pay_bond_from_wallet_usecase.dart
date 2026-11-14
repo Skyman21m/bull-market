@@ -8,7 +8,6 @@ import '../../p2p_failure.dart';
 import '../../repositories/trade_payment_repository.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bond_payment.dart';
-import '../../trade/checked_invoice.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_terms.dart';
@@ -225,14 +224,13 @@ final class PayBondFromWalletUsecase {
   Result<WalletPaymentOffered, BondPayRefusal> _offered(
     TradeTerms terms,
     TradeStatus status,
-  ) =>
-      switch (walletPaymentFor(
-        accepted: terms.bondCeiling,
-        status: status,
-        step: InvoiceStep.bond,
-        now: _reader.now(),
-      )) {
-        final WalletPaymentOffered offered => Ok(offered),
-        WalletPaymentRefused(:final reason) => Err(BondPayNotOffered(reason)),
-      };
+  ) => switch (walletPaymentFor(
+    accepted: terms.bondCeiling,
+    status: status,
+    step: InvoiceStep.bond,
+    now: _reader.now(),
+  )) {
+    final WalletPaymentOffered offered => Ok(offered),
+    WalletPaymentRefused(:final reason) => Err(BondPayNotOffered(reason)),
+  };
 }

@@ -1514,4 +1514,138 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeYouAreSwappingIn => 'SWAP VERS Lightning';
+
+  @override
+  String p2pPayBalance(String balance) {
+    return 'Paiements instantanés : $balance sats disponibles';
+  }
+
+  @override
+  String get p2pPayWithThisWallet => 'Payer avec ce portefeuille';
+
+  @override
+  String get p2pPayQuoting => 'Demande des frais au service d’échange…';
+
+  @override
+  String p2pPayConfirmTitle(String amount) {
+    return 'Payer $amount sats pour bloquer votre caution ?';
+  }
+
+  @override
+  String p2pPayServiceFee(String serviceFee) {
+    return 'Frais du service d’échange : $serviceFee sats';
+  }
+
+  @override
+  String p2pPayNetworkFee(String networkFee) {
+    return 'Frais de réseau : environ $networkFee sats';
+  }
+
+  @override
+  String p2pPayTotal(String total, String left) {
+    return 'Total : $total sats. Reste dans Paiements instantanés : $left sats.';
+  }
+
+  @override
+  String get p2pPayCustody =>
+      'Ce portefeuille paie en Lightning par un service d’échange. Tant que votre caution est bloquée, les sats sont gardés par ce service ; si la caution est rendue, il les rembourse sur ce portefeuille, sans ses frais.';
+
+  @override
+  String p2pPayConfirm(String total) {
+    return 'Payer $total sats';
+  }
+
+  @override
+  String get p2pPaySending => 'Envoi du paiement…';
+
+  @override
+  String p2pPaySent(String coordinator) {
+    return 'Paiement envoyé. En attente du blocage de la caution chez $coordinator.';
+  }
+
+  @override
+  String get p2pPayHeld =>
+      'Votre caution est bloquée. Ses sats sont gardés par le service d’échange jusqu’à la fin de l’échange.';
+
+  @override
+  String get p2pPayRefundPending =>
+      'Votre caution a été rendue. Le service d’échange la rembourse vers Paiements instantanés, sans ses frais.';
+
+  @override
+  String get p2pPayRefunded =>
+      'Remboursé : la caution est revenue dans Paiements instantanés, sans les frais du service d’échange.';
+
+  @override
+  String p2pPaySettled(String coordinator) {
+    return 'Votre caution a été conservée par $coordinator.';
+  }
+
+  @override
+  String get p2pPayUnderReview =>
+      'Le service d’échange vérifie ce paiement. Vos sats sont chez lui ; contactez le support de Bull Bitcoin si cela dure.';
+
+  @override
+  String get p2pPayInterrupted =>
+      'Le paiement a été interrompu avant l’envoi. Rien n’est encore sorti de ce portefeuille.';
+
+  @override
+  String get p2pPayMaybeSent =>
+      'Le paiement a peut-être été envoyé. Le portefeuille vérifie auprès du service d’échange.';
+
+  @override
+  String get p2pPayAskSupport =>
+      'Le service d’échange n’a pas payé cette caution, et ses sats sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
+  String p2pPayUnderMinimum(String min) {
+    return 'Cette caution est sous le minimum du service d’échange ($min sats).';
+  }
+
+  @override
+  String get p2pPayUnderMinimumUnknown =>
+      'Cette caution est sous le minimum du service d’échange.';
+
+  @override
+  String p2pPayOverMaximum(String max) {
+    return 'Cette caution dépasse le maximum du service d’échange ($max sats).';
+  }
+
+  @override
+  String get p2pPayOutsideLimits =>
+      'Cette caution est hors des limites du service d’échange.';
+
+  @override
+  String p2pPayNotEnough(String balance, String total) {
+    return 'Pas assez dans Paiements instantanés ($balance sats) pour $total sats.';
+  }
+
+  @override
+  String get p2pPayUnreachable => 'Le service d’échange est injoignable.';
+
+  @override
+  String get p2pPayBusy =>
+      'Le service d’échange demande d’attendre avant un nouvel essai.';
+
+  @override
+  String get p2pPayTooLate =>
+      'Il reste trop peu de temps pour payer depuis ce portefeuille.';
+
+  @override
+  String get p2pPayFeesChanged =>
+      'Les frais ont changé depuis votre confirmation. Vérifiez-les à nouveau.';
+
+  @override
+  String get p2pPayAlreadyPaid => 'Ce portefeuille a déjà payé cette facture.';
+
+  @override
+  String get p2pPayOrderMoved =>
+      'L’ordre a changé avant le paiement. Rien n’a été payé.';
+
+  @override
+  String get p2pPayNotRecorded =>
+      'Bull Market n’a pas pu écrire ses enregistrements sur cet appareil. Rien n’a été payé.';
+
+  @override
+  String get p2pPayWalletUnavailable =>
+      'Ce portefeuille ne peut pas payer cette caution maintenant.';
 }

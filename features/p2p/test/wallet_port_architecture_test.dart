@@ -44,19 +44,25 @@ void main() {
 
   test('only the bond\'s use case names a member of the payment', () {
     // The bond's panel (#100, W4): `PayBondFromWalletUsecase` is the one trade use case that pays, follows and finds a payment; the escrow's (#97) adds its own here.
-    expect([
-      for (final MapEntry(key: path, value: source) in sources.entries)
-        if ((_Names(_paymentMembers)..visit(_parse(source))).named.isNotEmpty)
-          path,
-    ], ['lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart']);
+    expect(
+      [
+        for (final MapEntry(key: path, value: source) in sources.entries)
+          if ((_Names(_paymentMembers)..visit(_parse(source))).named.isNotEmpty)
+            path,
+      ],
+      ['lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart'],
+    );
   });
 
   test('only the bond\'s use case pays', () {
-    expect([
-      for (final MapEntry(key: path, value: source) in sources.entries)
-        if ((_Names({'payInvoice'})..visit(_parse(source))).named.isNotEmpty)
-          path,
-    ], ['lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart']);
+    expect(
+      [
+        for (final MapEntry(key: path, value: source) in sources.entries)
+          if ((_Names({'payInvoice'})..visit(_parse(source))).named.isNotEmpty)
+            path,
+      ],
+      ['lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart'],
+    );
   });
 
   test('only the trade use cases name a member of the port', () {

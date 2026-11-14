@@ -4,7 +4,7 @@ import 'package:primitives/primitives.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/repositories/trade_payment_repository.dart';
 import '../domain/robot_binding.dart';
-import '../domain/trade/checked_invoice.dart';
+import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_payment.dart';
 import '../domain/trade_record.dart';
 import 'p2p_database.dart';

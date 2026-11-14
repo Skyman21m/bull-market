@@ -2,7 +2,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 
 import '../p2p_failure.dart';
-import '../trade/checked_invoice.dart';
+import '../trade/trade_status.dart';
 import '../trade/trade_payment.dart';
 import '../trade_record.dart';
 
