@@ -73,8 +73,12 @@ class _OrderSearchMissDialogState extends State<OrderSearchMissDialog> {
       null || OrderSearchMissFound() => Stack(
         alignment: Alignment.center,
         children: [
-          Visibility.maintain(
+          // Its size only: not read, not tapped, not focused.
+          Visibility(
             visible: false,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
             child: _message(context, l10n.p2pOrderNotAvailable),
           ),
           CircularProgressIndicator(color: colors.primary),

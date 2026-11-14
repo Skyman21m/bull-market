@@ -752,6 +752,52 @@ void main() {
       },
     );
 
+    testWidgets(
+      'the invisible copy that sizes the wait is not read, not tapped and not focused',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        keystoreHolding(
+          {_testnetEntry: null},
+          scripted: List<Object?>.generate(
+            5,
+            (_) => PlatformException(code: 'read'),
+          ),
+        );
+        await searchMissingOrder(tester);
+        expect(wait, findsOneWidget);
+
+        // A screen reader reads neither the message nor its button while the answer may be another.
+        expect(find.bySemanticsLabel('Acknowledged'), findsNothing);
+        expect(find.bySemanticsLabel(RegExp('not available')), findsNothing);
+
+        // A tap where the invisible button lies does not close the dialog.
+        await tester.tapAt(tester.getCenter(find.text('Acknowledged')));
+        await settle(tester);
+        expect(missDialog, findsOneWidget);
+
+        // Nor does the keyboard reach it.
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await settle(tester);
+        var hiddenFocused = false;
+        FocusManager.instance.primaryFocus?.context?.visitAncestorElements((
+          element,
+        ) {
+          final widget = element.widget;
+          if (widget is Visibility && !widget.visible) hiddenFocused = true;
+          return !hiddenFocused;
+        });
+        expect(hiddenFocused, isFalse);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await settle(tester);
+        expect(missDialog, findsOneWidget);
+        expect(wait, findsOneWidget);
+
+        await letTheVaultSettle(tester);
+        expect(find.bySemanticsLabel('Acknowledged'), findsOneWidget);
+        semantics.dispose();
+      },
+    );
+
     testWidgets('an order the book holds opens without reading the vault', (
       tester,
     ) async {
