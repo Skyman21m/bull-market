@@ -102,15 +102,21 @@ void main() {
       },
     );
 
-    test('the robot\'s sats within the tolerance of the book\'s but beyond it of the page\'s are refused', () async {
-      final app = await TradeHarness.start();
-      final shown = await app.shownOrder();
-      // The book 1.9 % above the page, the robot's read 1.8 % above the book: 3.7 % above what the user saw.
-      app.coordinator.satoshisNow = 108900;
-      app.coordinator.robotView['satoshis_now'] = 110900;
-      expect(await app.take.prepare(shown, network: app.network), refused<TakeOrderChanged>());
-      expect(count(app, take), 0);
-    });
+    test(
+      'the robot\'s sats within the tolerance of the book\'s but beyond it of the page\'s are refused',
+      () async {
+        final app = await TradeHarness.start();
+        final shown = await app.shownOrder();
+        // The book 1.9 % above the page, the robot's read 1.8 % above the book: 3.7 % above what the user saw.
+        app.coordinator.satoshisNow = 108900;
+        app.coordinator.robotView['satoshis_now'] = 110900;
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          refused<TakeOrderChanged>(),
+        );
+        expect(count(app, take), 0);
+      },
+    );
 
     test(
       'a second preparation of the order reuses its robot, and replaces the first',
