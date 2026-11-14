@@ -710,15 +710,33 @@ void main() {
       await settle();
       await tester.pump(const Duration(seconds: 1));
       await capture('filtres-petit-texte2-feuille');
-      await tester.tap(close);
+      // A tap above the sheet closes it, its title and button having scrolled away with the rows.
+      await tester.tapAt(const Offset(4, 4));
+      await settle();
+      await tester.ensureVisible(find.text(l10n.p2pBookFilterAnyHost));
       await settle();
       await tester.tap(find.text(l10n.p2pBookFilterAnyHost));
       await settle();
       await tester.tap(find.text(host('temple')).last);
       await settle();
-      await tester.tap(find.text(host('freeport')).last);
+      await tester.ensureVisible(find.text(host('lake')).last);
       await settle();
-      await tester.tap(close);
+      await tester.tap(find.text(host('lake')).last);
+      await settle();
+      await tester.tapAt(const Offset(4, 4));
+      await settle();
+      // The end of the sentence, the two hosts, at the top of the book.
+      final scroll = tester
+          .state<ScrollableState>(
+            find.descendant(of: book, matching: find.byType(Scrollable)).first,
+          )
+          .position;
+      scroll.jumpTo(
+        scroll.pixels +
+            tester.getRect(find.text(l10n.p2pBookFilterHostedBy)).top -
+            tester.getRect(book).top -
+            8,
+      );
       await settle();
       await capture('filtres-petit-texte2-plusieurs');
       tester.platformDispatcher.clearTextScaleFactorTestValue();
