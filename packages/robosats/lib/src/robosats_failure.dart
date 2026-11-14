@@ -113,7 +113,9 @@ final class PgpWrongPassphrase extends PgpFailure {
   const PgpWrongPassphrase();
 }
 
-/// The text cannot be clear-signed for a coordinator, whose parser would not hand it back intact: it is empty, starts or ends with whitespace, has a line that starts with a dash or ends with a space, or contains a carriage return.
+/// The text cannot be clear-signed for a coordinator, whose extraction (`api/utils.py:642-644`) would not hand it back intact: it is empty; it starts or ends with whitespace as Dart's `String.trim` sees it, or with U+001C to U+001F, which Python's `str.strip` removes; it contains a carriage return, `-----BEGIN PGP SIGNED MESSAGE-----` or `-----BEGIN PGP SIGNATURE-----` anywhere; or one of its lines starts with a dash or ends with a space or a tab.
+///
+/// Nothing else is refused: other control characters, U+0000 included, lone surrogates and any non-ASCII text are signed, and a coordinator may then refuse the message (its form check or its GnuPG fails), but it never reads another text from it. A payout's text is ASCII by construction (`UnlockedRobotPgpKey.signPayoutInvoice`, `signPayoutAddress`).
 final class PgpCleartextUnsuitable extends PgpFailure {
   const PgpCleartextUnsuitable();
 }
@@ -384,6 +386,171 @@ final class OrderRequestRefused extends CoordinatorOrderFailure {
   const OrderRequestRefused(this.errorCode);
 }
 
+/// The robot is neither the maker nor the taker of the order (error 1047, HTTP 403, `api/views.py:617-619`), which the coordinator checks before any action but a take or a cancel: a pre-taker is not yet the taker.
+final class OrderNotParticipant extends CoordinatorOrderFailure {
+  const OrderNotParticipant();
+}
+
+/// The coordinator refused the buyer's payout, an invoice or an address, or this package refused to send it (`Logics.update_invoice` and `Logics.update_address`, `api/logics.py:752-907`, commit ff1998c).
+///
+/// Each is a kind, never the coordinator's text: the reference sends some of these refusals without any code, as a bare `bad_invoice` or `bad_address` text, which is compared with the reference's exact wording and never kept.
+/// Every one of them comes before the coordinator records a payout, so after a submission refused this way the order has no new payout (see `CoordinatorClient.submitPayoutInvoice`).
+/// Some are decided by this package before anything is sent: [fromLastRead] says which come from the last read of the order, which may be stale.
+sealed class PayoutRefused extends CoordinatorOrderFailure {
+  const PayoutRefused();
+
+  /// Whether this package refused from the last read of the order, sending nothing, rather than the coordinator: [PayoutNotBuyer] and [PayoutNotNow] decided locally, and [PayoutSwapUnavailable].
+  ///
+  /// A last read may be stale: after such a refusal, read the order again and decide from the fresh read before telling the user anything.
+  bool get fromLastRead => false;
+}
+
+/// Why a payout invoice was refused.
+enum PayoutInvoiceRefusal {
+  /// The signed text holds no invoice (error 3000).
+  empty,
+
+  /// The coordinator's node cannot decode it: not an invoice, or, on a node that checks it, an invoice of another network (`validate_ln_invoice`, `api/lightning/lnd.py:463-469`, no code).
+  notAnInvoice,
+
+  /// The invoice's private route hints cost more than the routing budget allows (`lnd.py:486-506`, no code).
+  routeHintsUnpayable,
+
+  /// The invoice has no amount (`lnd.py:508-512`, no code).
+  noAmount,
+
+  /// The invoice is not for the amount the coordinator computes from the trade and the routing budget (`lnd.py:514-520`, no code).
+  wrongAmount,
+
+  /// The invoice has already expired (`lnd.py:529-533`, no code); the coordinator does not check how long it has left.
+  expired,
+
+  /// The invoice is the one already given, the same payment hash (error 3002): a new one is needed, as after a failed payout.
+  alreadySubmitted,
+
+  /// The invoice is for another network than the order's: refused by this package before anything is sent.
+  wrongNetwork,
+
+  /// A `bad_invoice` text the reference does not write.
+  unspecified,
+}
+
+/// The payout invoice was refused for [reason].
+final class PayoutInvoiceRefused extends PayoutRefused {
+  final PayoutInvoiceRefusal reason;
+
+  const PayoutInvoiceRefused(this.reason);
+}
+
+/// Why a payout address was refused.
+enum PayoutAddressRefusal {
+  /// The signed text holds no address (error 4000).
+  empty,
+
+  /// The coordinator's bitcoind says it is not an address (`validate_onchain_address`, `api/utils.py:113-114`, no code; 4004 is defined for it but not sent at the reference).
+  invalid,
+
+  /// The coordinator could not ask its bitcoind (`api/utils.py:115-119`, no code; 4005 is defined for it but not sent at the reference): nothing is wrong with the address as far as anyone knows.
+  unverifiable,
+
+  /// The address is for another network than the order's: refused by this package before anything is sent.
+  wrongNetwork,
+
+  /// A `bad_address` text the reference does not write.
+  unspecified,
+}
+
+/// The payout address was refused for [reason].
+final class PayoutAddressRefused extends PayoutRefused {
+  final PayoutAddressRefusal reason;
+
+  const PayoutAddressRefused(this.reason);
+}
+
+/// The mining fee rate is below what the coordinator accepts now, the larger of 2 sat/vB and its economy estimate (error 4001, `api/logics.py:780-793`).
+final class PayoutMiningFeeTooLow extends PayoutRefused {
+  /// The coordinator's minimum in sat/vB, 2 to 1,000, read from its message when it has the reference's exact wording, else `null`.
+  final double? minimumSatPerVbyte;
+
+  const PayoutMiningFeeTooLow(this.minimumSatPerVbyte);
+}
+
+/// The mining fee rate is above 500 sat/vB (error 4002, `api/logics.py:794-799`).
+final class PayoutMiningFeeTooHigh extends PayoutRefused {
+  const PayoutMiningFeeTooHigh();
+}
+
+/// What the address would receive after the swap fee and the mining fee of 280 vB is under 20,000 sats (error 4003, `api/logics.py:806-820`).
+final class PayoutBelowDustLimit extends PayoutRefused {
+  const PayoutBelowDustLimit();
+}
+
+/// The signed text is not a valid signature by the robot's key, as the coordinator's GnuPG reads it (error 1048, `api/utils.py:628-648`).
+final class PayoutSignatureRefused extends PayoutRefused {
+  const PayoutSignatureRefused();
+}
+
+/// The robot is not the buyer of the order (errors 1015 and 1017), or the last read does not show it as the buyer ([fromLastRead]).
+final class PayoutNotBuyer extends PayoutRefused {
+  @override
+  final bool fromLastRead;
+
+  const PayoutNotBuyer({required this.fromLastRead});
+}
+
+/// The order is not at a step that takes this payout: both bonds not locked (1018, 1019, 1016), a status other than 6 or 8, or 15 for an invoice once the failed one expired (3001, 1016), or a payout being sent (3001); or the last read already shows so ([fromLastRead]).
+final class PayoutNotNow extends PayoutRefused {
+  @override
+  final bool fromLastRead;
+
+  const PayoutNotNow({required this.fromLastRead});
+}
+
+/// The last read of the order does not offer an on-chain payout (`swap_allowed`): refused by this package before anything is sent, since the reference coordinator then fails with a `500` (`api/logics.py:800-803`, `order.payout_tx` is `None`).
+final class PayoutSwapUnavailable extends PayoutRefused {
+  const PayoutSwapUnavailable();
+
+  @override
+  bool get fromLastRead => true;
+}
+
+/// The payout was signed by the key of another robot than the one that submits it: refused by this package before anything is sent, since the coordinator checks the signature against the submitting robot's key (1048).
+final class PayoutSignedByAnotherRobot extends PayoutRefused {
+  const PayoutSignedByAnotherRobot();
+}
+
+/// A payout destination, an on-chain address or a Lightning invoice, that this package refuses to sign: checked before anything is signed or sent.
+///
+/// None carries the text: an address or an invoice is not secret, but it is never logged.
+sealed class PayoutDestinationFailure extends RobosatsFailure {
+  const PayoutDestinationFailure();
+}
+
+/// Not an address or an invoice of a kind this package reads: too long, a character outside the encoding, whitespace, mixed case, an unknown prefix or version, a program of the wrong length, or an invoice amount BOLT11 forbids (a leading zero, a `p` amount not ending in 0, not a whole number of satoshis).
+final class PayoutDestinationMalformed extends PayoutDestinationFailure {
+  const PayoutDestinationMalformed();
+}
+
+/// The checksum does not match: most likely a typo.
+final class PayoutDestinationBadChecksum extends PayoutDestinationFailure {
+  const PayoutDestinationBadChecksum();
+}
+
+/// A valid address or invoice of another network than the trade's: the other of mainnet and testnet, regtest, or, for an invoice, signet.
+final class PayoutDestinationWrongNetwork extends PayoutDestinationFailure {
+  const PayoutDestinationWrongNetwork();
+}
+
+/// A Lightning invoice without an amount: the coordinator refuses one (`validate_ln_invoice`, `api/lightning/lnd.py:508-512`), and the payout's amount is fixed by the order, so it is refused before signing.
+final class PayoutDestinationNoAmount extends PayoutDestinationFailure {
+  const PayoutDestinationNoAmount();
+}
+
+/// A valid segwit address of a kind this package does not sign for a payout: version 1 with a program other than 32 bytes, or versions 2 to 16.
+final class PayoutDestinationUnsupported extends PayoutDestinationFailure {
+  const PayoutDestinationUnsupported();
+}
+
 /// The robot the coordinator describes is not the one computed on this device: a security warning, and a robot not to use on this coordinator.
 sealed class RobotMismatchFailure extends CoordinatorRobotFailure {
   const RobotMismatchFailure();
@@ -411,7 +578,7 @@ final class RobotPgpKeyNotProven extends RobotMismatchFailure {
   const RobotPgpKeyNotProven();
 }
 
-/// Why an action on an order, a take or a cancel, gave no outcome: refused before anything was done, or ended in a way that does not say whether it was done.
+/// Why an action on an order, a take, a cancel or a payout, gave no outcome: refused before anything was done, or ended in a way that does not say whether it was done.
 ///
 /// The answer to a take or a cancel is the read of the order that follows the action (`api/views.py:593`, `:695`), so a refusal of that read, a malformed answer, a server error or a lost connection can come after the action happened: 1043 when the maker cancelled meanwhile, 1044 when another robot's bond locked between the take and the read, or when a pre-taker cancels a paused order, `kick_taker` succeeding before the read refuses (`api/views.py:270-275`).
 /// Only the failures known to come before the action are an [OrderActionRefused]; every other one is an [OrderActionOutcomeUnknown].
@@ -425,6 +592,7 @@ sealed class OrderActionFailure extends RobosatsFailure {
 /// Nothing was done: the coordinator refused before the action, or the request was never sent.
 ///
 /// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] for an order number out of range, which is never sent (a 1042 received after a `POST` comes from the read that follows the action, `api/views.py:542`, and is an [OrderActionOutcomeUnknown]), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
+/// For a payout, also every [PayoutRefused] and [OrderNotParticipant] (1047).
 final class OrderActionRefused extends OrderActionFailure {
   @override
   final CoordinatorFailure cause;

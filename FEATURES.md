@@ -14,7 +14,7 @@ graph TB
     BULL_LOGGER[Bull Logger Package<br/>Logger, diagnostics, log files]
     BULL_PAYJOIN[Bull Payjoin Package<br/>Public contract]
     BULL_PRICER[Bull Pricer Package<br/>Bitcoin price and history]
-    ROBOSATS[RoboSats Package<br/>Robot identity, coordinator client, robot on a coordinator, taker's order calls, trade chat]
+    ROBOSATS[RoboSats Package<br/>Robot identity, coordinator client, robot on a coordinator, taker's order and payout calls, on-chain address check, trade chat]
     SCREEN_PRIVACY[Screen Privacy Package<br/>Capture protection]
 
     %% Feature modules

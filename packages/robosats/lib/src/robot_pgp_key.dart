@@ -5,6 +5,9 @@ import 'dart:typed_data';
 import 'package:convert/convert.dart';
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/src/bitcoin_address.dart';
+import 'package:robosats/src/coordinator/payout.dart';
+import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/pgp/armor.dart';
 import 'package:robosats/src/pgp/bytes.dart';
 import 'package:robosats/src/pgp/key_packets.dart';
@@ -403,6 +406,45 @@ final class UnlockedRobotPgpKey {
     );
   }
 
+  /// Clear-signs [invoice], a Lightning invoice of [network], for the buyer's payout: see `CoordinatorClient.submitPayoutInvoice`.
+  ///
+  /// [invoice] is signed exactly as given, after a check of its shape only: a BOLT11 string of at most `CoordinatorOrder.maxInvoiceLength` printable ASCII characters (so the signed text is ASCII by construction) with a valid bech32 checksum and the human-readable part of [network] with an amount (`lnbc…` on mainnet, `lntb…` on testnet; signet's `lntbs` and regtest's `lnbcrt` are another network).
+  /// Its amount, expiry and payee are not read here: decode and check this very string, and show it, before signing it.
+  /// A signed payout is not tied to an order or a step: sign just before submitting, from a fresh read of the order.
+  /// Fails with a [PayoutDestinationFailure] when the shape is wrong, and otherwise as [signCleartext].
+  Result<SignedPayoutInvoice, RobosatsFailure> signPayoutInvoice(
+    String invoice,
+    RobosatsNetwork network, {
+    DateTime? now,
+  }) {
+    if (checkPayoutInvoice(invoice, network) case Err(:final failure)) {
+      return Err(failure);
+    }
+    return switch (signCleartext(invoice, now: now)) {
+      Ok(value: final signed) => Ok(
+        SignedPayoutInvoice.internal(
+          invoice,
+          signed,
+          network,
+          _identity.hashId,
+        ),
+      ),
+      Err(:final failure) => Err(failure),
+    };
+  }
+
+  /// Clear-signs [address], an on-chain address already checked for the trade's network, for the buyer's payout: see `CoordinatorClient.submitPayoutAddress`.
+  ///
+  /// The signed text is the address's, at most 90 ASCII letters and digits by construction ([BitcoinAddress.check]); sign just before submitting, from a fresh read of the order.
+  ///
+  /// Fails as [signCleartext].
+  Result<SignedPayoutAddress, PgpFailure> signPayoutAddress(
+    BitcoinAddress address, {
+    DateTime? now,
+  }) => signCleartext(address.text, now: now).map(
+    (signed) => SignedPayoutAddress.internal(address, signed, _identity.hashId),
+  );
+
   /// Encrypts [plaintext] to this robot and to [peer], and signs it: the armored `PGP MESSAGE` a robot posts to the chat of an order.
   ///
   /// It reproduces `encryptMessage` of `frontend/src/pgp/index.ts:39-62`: both recipients in that order, so that each trader can read the whole history, AES-256, no compression, and a signature dated 24 hours before [now].
@@ -595,11 +637,19 @@ SignatureBody? _tryParseSignature(Uint8List body) {
 final RegExp _dashAtLineStart = RegExp('^-', multiLine: true);
 final RegExp _spaceAtLineEnd = RegExp(r'[ \t]$', multiLine: true);
 
+/// Characters Python's `str.strip()` removes and Dart's `String.trim()` keeps: the separators U+001C to U+001F.
+final RegExp _pythonOnlyWhitespaceAtEnds = RegExp(r'^[\x1c-\x1f]|[\x1c-\x1f]$');
+
 /// Whether `signed.split(header)[1].split(footer)[0].strip()`, the coordinator's extraction (`api/utils.py:642-644`), returns [text] unchanged.
+///
+/// A text holding the header or the footer anywhere would be cut there, and one that starts or ends with a character `strip()` removes would come back shorter.
 bool _survivesCoordinatorParsing(String text) =>
     text.isNotEmpty &&
     text == text.trim() &&
+    !_pythonOnlyWhitespaceAtEnds.hasMatch(text) &&
     !text.contains('\r') &&
+    !text.contains('-----BEGIN PGP SIGNED MESSAGE-----') &&
+    !text.contains('-----BEGIN PGP SIGNATURE-----') &&
     !_dashAtLineStart.hasMatch(text) &&
     !_spaceAtLineEnd.hasMatch(text);
 
