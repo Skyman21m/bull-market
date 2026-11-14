@@ -208,7 +208,8 @@ Result<void, PayoutDestinationFailure> checkPayoutInvoice(
   }
   final lower = invoice.toLowerCase();
   final separator = lower.lastIndexOf('1');
-  if (separator < 0 || !_invoicePrefix.hasMatch(lower.substring(0, separator))) {
+  if (separator < 0 ||
+      !_invoicePrefix.hasMatch(lower.substring(0, separator))) {
     return const Err(PayoutDestinationMalformed());
   }
   final read = readBech32(
