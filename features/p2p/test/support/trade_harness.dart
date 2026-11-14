@@ -29,6 +29,8 @@ import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
 import 'package:p2p/testing.dart' show ScriptedCoordinator;
 import 'package:primitives/primitives.dart';
@@ -324,6 +326,7 @@ final class TradeHarness {
       reader,
       limiter,
       invoices,
+      TradeTakeLocks(),
     );
     watch = WatchTradeUsecase(
       reader,
@@ -336,6 +339,7 @@ final class TradeHarness {
         },
         random: () => 0.5,
       ),
+      TradeWatchRegistry(),
     );
     cancel = CancelTradeUsecase(client, reader, limiter);
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
@@ -346,6 +350,9 @@ final class TradeHarness {
     RobosatsNetwork network = RobosatsNetwork.testnet,
     int orderType = 1,
     double takerFee = 0.00175,
+    int orderId = 42,
+    bool range = false,
+    String? password,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -356,6 +363,9 @@ final class TradeHarness {
       clock: () => _clockOf[database] ?? now,
       orderType: orderType,
       takerFee: takerFee,
+      orderId: orderId,
+      range: range,
+      password: password,
     );
     final harness = TradeHarness._(network, database, coordinator, now);
     _clockOf[database] = now;
@@ -439,8 +449,13 @@ final class TradeHarness {
   /// Takes the order shown, and returns what the take gave.
   Future<Result<TakeOutcome, TakeRefusal>> takeShown({
     TakeAmount? amount,
-  }) async =>
-      take.execute(await shownOrder(), network: network, amount: amount);
+    OrderPassword? password,
+  }) async => take.execute(
+    await shownOrder(),
+    network: network,
+    amount: amount,
+    password: password,
+  );
 
   /// The record of a take that was sent.
   static TradeRecord recordOf(Result<TakeOutcome, TakeRefusal> taken) =>

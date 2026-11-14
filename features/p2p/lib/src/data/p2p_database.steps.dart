@@ -372,6 +372,7 @@ final class Schema4 extends i0.VersionedSchema {
   late final List<i1.DatabaseSchemaEntity> entities = [
     robotBindings,
     trades,
+    tradesOneOpenPerOrder,
     tradeTerms,
     tradeTermsNeverDeleted,
     tradeTermsSetOnce,
@@ -456,6 +457,10 @@ final class Schema4 extends i0.VersionedSchema {
     ),
     alias: null,
   );
+  final i1.Trigger tradesOneOpenPerOrder = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'an order has one open trade\');END',
+    'trades_one_open_per_order',
+  );
   late final Shape3 tradeTerms = Shape3(
     source: i0.VersionedTable(
       entityName: 'trade_terms',
@@ -463,6 +468,7 @@ final class Schema4 extends i0.VersionedSchema {
       isStrict: false,
       tableConstraints: [
         'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(version) = \'integer\' AND typeof(network) = \'text\' AND typeof(coordinator_alias) = \'text\' AND typeof(order_id) = \'integer\' AND typeof(role) = \'text\' AND typeof(order_type) = \'integer\' AND typeof(currency_id) = \'integer\' AND typeof(is_range) = \'integer\' AND(explicit_satoshis IS NULL OR typeof(explicit_satoshis) = \'integer\')AND typeof(escrow_seconds) = \'integer\')',
         'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
         'CHECK(robot_index BETWEEN 0 AND 2147483647)',
         'CHECK(version >= 1)',
@@ -534,6 +540,7 @@ final class Schema4 extends i0.VersionedSchema {
         'CHECK(length(coordinator_alias) > 0)',
         'CHECK(order_id BETWEEN 1 AND 9007199254740992)',
         'CHECK(role IN (\'buyer\', \'seller\'))',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(version) = \'integer\' AND typeof(network) = \'text\' AND typeof(coordinator_alias) = \'text\' AND typeof(order_id) = \'integer\' AND typeof(role) = \'text\' AND typeof(position) = \'text\' AND typeof(read_at) = \'integer\' AND(bond_hash IS NULL OR typeof(bond_hash) = \'text\')AND(escrow_hash IS NULL OR typeof(escrow_hash) = \'text\')AND(deadline IS NULL OR typeof(deadline) = \'integer\')AND(bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = \'integer\')AND(bond_step_deadline IS NULL OR typeof(bond_step_deadline) = \'integer\')AND typeof(breached) = \'integer\' AND typeof(history_unknown) = \'integer\')',
         'CHECK(position IN (\'start\', \'bondStep\', \'preTakeUnavailable\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\', \'chatting\', \'fiatSent\', \'inDispute\', \'sendingSats\', \'succeeded\', \'routingFailed\', \'waitingDisputeResolution\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\'))',
         'CHECK(read_at BETWEEN 0 AND 253402300799999999)',
         'CHECK(deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999)',

@@ -60,7 +60,7 @@ final class ActiveTradeAt extends ActiveTradeStanding {
   String toString() => 'ActiveTradeAt(${position.name}, breached: $breached)';
 }
 
-/// A pending take with no terms recorded: its request never left, and the watch of the trade closes it.
+/// A pending take whose terms or first trail were never written: its request never left, and the watch of the trade closes it at once.
 final class ActiveTradeTakeNeverSent extends ActiveTradeStanding {
   const ActiveTradeTakeNeverSent();
 

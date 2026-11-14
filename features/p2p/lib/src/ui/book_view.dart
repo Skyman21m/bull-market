@@ -367,9 +367,7 @@ class BookFilterSentence extends StatelessWidget {
               title: l10n.p2pBookFilterSelectMethod,
               anyLabel: l10n.p2pBookFilterAnyMethod,
               options: [
-                for (final method in filter.paymentMethodsIn(
-                  state.receivedOrders,
-                ))
+                for (final method in BookFilter.offeredPaymentMethods)
                   method.name,
               ],
               selected: filter.paymentMethods,

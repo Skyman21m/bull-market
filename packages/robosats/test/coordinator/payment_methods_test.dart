@@ -5,6 +5,24 @@ List<String> _names(String text) =>
     PaymentMethods.parse(text).recognized.map((m) => m.name).toList();
 
 void main() {
+  test('the fiat list is the official one, without the swap destinations', () {
+    final fiat = PaymentMethods.fiat.map((m) => m.name).toList();
+    expect(fiat.first, 'Advcash');
+    expect(fiat.last, 'Zelle');
+    expect(fiat, hasLength(95));
+    expect(fiat.toSet(), hasLength(95));
+    // A few places inside the list, so that two entries swapped are seen.
+    expect(fiat.indexOf('Bizum'), 26);
+    expect(fiat.indexOf('Instant SEPA'), 41);
+    expect(fiat.indexOf('Revolut'), 71);
+    expect(fiat.indexOf('Wise'), 92);
+    expect(PaymentMethods.known, containsAll(PaymentMethods.fiat));
+    expect(fiat, isNot(contains(PaymentMethods.notSpecified.name)));
+    for (final swap in ['On-Chain BTC', 'LBTC', 'WBTC', 'RBTC']) {
+      expect(fiat, isNot(contains(swap)), reason: swap);
+    }
+  });
+
   group('PaymentMethods.parse', () {
     test('recognises the methods of real orders, in list order', () {
       expect(_names('Revolut Wise Instant SEPA'), [

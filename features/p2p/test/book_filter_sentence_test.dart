@@ -113,11 +113,16 @@ void main() {
   }
 
   /// Scrolls the open sheet until the row [label] is built and shown, then taps it: the list builds only the rows near the screen.
-  Future<void> pickRow(WidgetTester tester, String label) async {
+  /// [step] is the scroll of each try, negative for a row above the ones shown.
+  Future<void> pickRow(
+    WidgetTester tester,
+    String label, {
+    double step = 100,
+  }) async {
     if (row(label).evaluate().isEmpty) {
       await tester.scrollUntilVisible(
         row(label),
-        100,
+        step,
         scrollable: find.descendant(
           of: sheet,
           matching: find.byType(Scrollable),
@@ -333,14 +338,14 @@ void main() {
     await tester.tap(choice('Any payment method'));
     await settle(tester);
     expect(find.text('Select Payment Method'), findsOneWidget);
-    await tester.tap(row('Wise'));
-    await settle(tester);
-    await tester.tap(row('Zelle'));
-    await settle(tester);
+    // The list is the official client's fixed one, in its order: it starts with a method no order of the book has.
+    expect(row('Advcash'), findsOneWidget);
+    // Far down the list: larger steps than the default.
+    await pickRow(tester, 'Wise', step: 300);
+    await pickRow(tester, 'Zelle');
     expect(listed(tester), [2, 3]);
     // The rule of the official client: « Instant SEPA » keeps every order whose text contains it.
-    await tester.tap(row('Instant SEPA'));
-    await settle(tester);
+    await pickRow(tester, 'Instant SEPA', step: -300);
     expect(listed(tester), [1, 2, 3, 5]);
     await closeSheet(tester);
 
@@ -350,7 +355,7 @@ void main() {
       findsOneWidget,
     );
 
-    // A method chosen stays in the list when another choice hides its orders, so that it can be taken back.
+    // The list does not shrink to the methods of the orders the other choices keep: with a currency no order has, every method is still offered, the ones chosen and the others.
     await tester.tap(choice('Any currency'));
     await settle(tester);
     await tester.tap(row('CHF'));
@@ -359,10 +364,10 @@ void main() {
     expect(listed(tester), isEmpty);
     await tester.tap(choice('Wise +2'));
     await settle(tester);
-    for (final method in ['Wise', 'Zelle', 'Instant SEPA', 'Bizum']) {
-      expect(row(method), findsOneWidget, reason: method);
-    }
-    expect(row('Revolut'), findsNothing);
+    expect(row('Advcash'), findsOneWidget);
+    await pickRow(tester, 'Revolut', step: 300);
+    await closeSheet(tester);
+    expect(choice('Wise +3'), findsOneWidget);
     semantics.dispose();
   });
 

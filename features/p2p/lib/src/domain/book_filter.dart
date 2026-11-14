@@ -98,7 +98,7 @@ final class BookFilter {
 
   /// Whether [order] passes the payment methods chosen, by the official client's rule (`filterByPayment` in `utils/filterOrders.ts`): with none chosen every order does, and otherwise an order does when its text contains the name of at least one of them.
   ///
-  /// « Contains » is the official client's `includes`: case included, anywhere in the text, so `SEPA` keeps an order of `Instant SEPA` and `Revolut` does not keep an order written `revolut`, which the list recognises.
+  /// « Contains » is the official client's `includes`: case included, anywhere in the text, so `SEPA` keeps an order of `Instant SEPA` and `Revolut` does not keep an order written `revolut`, although an offer's row shows that order with the method's name (`PaymentMethods.parse` ignores case).
   bool matchesPaymentMethods(PublicOrder order) =>
       paymentMethods.isEmpty ||
       paymentMethods.any(order.paymentMethods.text.contains);
@@ -142,18 +142,11 @@ final class BookFilter {
     return [for (final (_, order) in ranked) order];
   }
 
-  /// The payment methods the selector offers, in the order of the official list: those recognised in the orders that match every other choice, and those chosen, so that a choice the book no longer shows can still be taken back.
-  List<PaymentMethodInfo> paymentMethodsIn(Iterable<PublicOrder> orders) {
-    final found = <PaymentMethodInfo>{
-      for (final order in orders)
-        if (_matchesAllButMethod(order)) ...order.paymentMethods.recognized,
-    }..remove(PaymentMethods.notSpecified);
-    return [
-      for (final method in PaymentMethods.known)
-        if (found.contains(method) || paymentMethods.contains(method.name))
-          method,
-    ];
-  }
+  /// The payment methods the selector offers: the official client's fixed list of fiat methods, in its order, whatever the orders of the book and the other choices (`AutocompletePayments.tsx:301` at commit ff1998c, with `optionsType` `fiat`: the app offers no swap currency).
+  ///
+  /// It is not narrowed to the methods of the orders that match the other choices: a list that shrinks as one chooses a side or a currency reads as methods gone missing (the owner's report of 2026-11-14), and the reference does not do it.
+  static List<PaymentMethodInfo> get offeredPaymentMethods =>
+      PaymentMethods.fiat;
 
   @override
   bool operator ==(Object other) =>

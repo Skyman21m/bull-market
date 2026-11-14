@@ -10,20 +10,23 @@ import '../../trade/trade_answer.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_take.dart';
 import '../../trade/trade_terms.dart';
+import '../../trade/trade_tolerances.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
 import '../put_robot_on_coordinator_usecase.dart';
 import 'trade_reader.dart';
+import 'trade_take_locks.dart';
 
 /// Takes an order of the book as its taker, for a fresh robot of this device: the only place a trade starts (#87, design note § 2.1, `AGENTS.md` « Rules for the trade use cases (#87) » and « The rule for #87 »).
 ///
+/// One take of an order at a time in the process ([TradeTakeLocks]), and none of an order that already has an open trade here: [TakeOrderAlreadyTraded], with its record (the database refuses a second open trade of an order too, the trigger `trades_one_open_per_order`).
 /// In this order, each step only once the one before it succeeded:
-/// 1. the order is read again just before the take, from the coordinator's book (`GET /api/book/` of its currency and type) with its `/api/info/` (the taker fee), both anonymous: never from a book left open; the terms are built from that read ([TradeTerms.take]), and a take that cannot be checked (a taker fee above the ceiling, an order gone or changed, an amount outside the range, a buy order) stops here, nothing sent with a robot;
+/// 1. the order is read again just before the take, from the coordinator's book (`GET /api/book/` of its currency and type) with its `/api/info/` (the taker fee), both anonymous: never from a book left open; the terms are built from that read ([TradeTerms.take]), and a take that cannot be checked (a taker fee above the ceiling, an order gone or changed, its sats moved by more than [TradeTolerances.price] from what the user saw, an amount outside the range, a buy order) stops here, nothing sent with a robot;
 /// 2. a fresh robot is reserved for the trade, bound to the order's coordinator ([TradeRobots.robotForNewTrade]), then put on it ([PutRobotOnCoordinatorUsecase]: read back, then its first contact); a robot that already existed there, or held an order, is not used;
 /// 3. the pending take, its terms and the first trail of a pending take are written, in that order ([TradeRecordRepository.recordPendingTake], [TradeTrailRepository.recordTerms], [TradeTrailRepository.storeTrail]): the take is refused when any of them fails;
 /// 4. the take is sent once, through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again;
-/// 5. its answer: [OrderTakeStarted] starts the trade from [TradeStatus.afterTake], its trail stored and its record confirmed; [OrderAlreadyTakenByThisRobot] resumes it from its recorded trail; [OrderNotTaken], or a refusal that comes before the action, closes the pending take; an outcome unknown leaves it pending, for the next read of the trade to resolve (`WatchTradeUsecase`).
+/// 5. its answer: [OrderTakeStarted] starts the trade from [TradeStatus.afterTake], its trail stored and its record confirmed (when that trail cannot be stored, the status returned is the stored pending trail's, which holds no invoice: an invoice is shown or paid only from a status whose trail is stored); [OrderAlreadyTakenByThisRobot] resumes it from its recorded trail; [OrderNotTaken], or a refusal that comes before the action, closes the pending take; an outcome unknown leaves it pending, for the next read of the trade to resolve (`WatchTradeUsecase`).
 ///
 /// Nothing here pays: the bond is paid by the user, from the trade screen.
 final class TakeOrderUsecase {
@@ -35,6 +38,7 @@ final class TakeOrderUsecase {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final Bolt11Reader _invoices;
+  final TradeTakeLocks _locks;
 
   const TakeOrderUsecase(
     this._client,
@@ -45,6 +49,7 @@ final class TakeOrderUsecase {
     this._reader,
     this._limiter,
     this._invoices,
+    this._locks,
   );
 
   /// Takes [shown], the order of the book the user accepted, on [network], for [amount] when it has a range, with [password] when it is protected.
@@ -58,7 +63,30 @@ final class TakeOrderUsecase {
     OrderPassword? password,
   }) async {
     if (shown.type == OrderType.buy) return const Err(TakeOfBuyOrderRefused());
+    return _locks.run(
+      network,
+      shown.coordinator,
+      shown.id,
+      () => _take(shown, network: network, amount: amount, password: password),
+    );
+  }
+
+  Future<Result<TakeOutcome, TakeRefusal>> _take(
+    PublicOrder shown, {
+    required RobosatsNetwork network,
+    required TakeAmount? amount,
+    required OrderPassword? password,
+  }) async {
     final coordinator = shown.coordinator;
+    // 0. No second trade of an order that has one open here.
+    switch (await _openTradeOf(network, coordinator, shown.id)) {
+      case Err(:final failure):
+        return Err(TakeNotRecorded(failure));
+      case Ok(value: final open?):
+        return Err(TakeOrderAlreadyTraded(open));
+      case Ok(value: null):
+        break;
+    }
 
     // 1. A fresh read of the order and of the taker fee, with no robot.
     final (book, info) = await (
@@ -147,6 +175,12 @@ final class TakeOrderUsecase {
       case Ok(:final value):
         pending = value;
       case Err(:final failure):
+        // Another take of the order, from another connection, may have recorded its trade first.
+        if (await _openTradeOf(network, coordinator, terms.orderId) case Ok(
+          value: final open?,
+        )) {
+          return Err(TakeOrderAlreadyTraded(open));
+        }
         return Err(TakeNotRecorded(failure));
     }
     if (await _trails.recordTerms(pending, terms.record) case Err(
@@ -210,13 +244,19 @@ final class TakeOrderUsecase {
           now: _reader.now(),
           reader: _invoices,
         );
+        // From the pending trail stored before the take: what stays if the take's own trail cannot be stored.
         final step = await _reader.keep(
           OpenTrade(
             record: pending,
             robot: robot,
             coordinator: coordinator,
             terms: terms,
-            seen: TradeSeen(status, order: started.order),
+            seen: TradeSeen(
+              TradeStatus.beforeFirstRead(
+                TradeTrail.forPendingTake(terms, pending.takenAt),
+              ),
+              order: null,
+            ),
           ),
           TradeSeen(status, order: started.order),
           showsTaker: true,
@@ -250,7 +290,7 @@ final class TakeOrderUsecase {
     }
   }
 
-  /// Whether the order read just before the take is the one the user accepted: the same type, currency, amount or range, bond size, escrow duration, sats of an order priced in sats, and premium of an order priced against the market (the price may move; the premium of an order priced in sats moves with it).
+  /// Whether the order read just before the take is the one the user accepted on the order's page: the same type, currency, amount or range, bond size, escrow duration, sats of an order priced in sats, premium of an order priced against the market (the premium of an order priced in sats moves with its price), and sats at the current price within [TradeTolerances.price] of those the page showed, both ways, so that the bond the terms expect is the one the user saw (the reference's flow has no confirmation apart from the page).
   static bool _sameTerms(PublicOrder shown, PublicOrder fresh) =>
       fresh.coordinator == shown.coordinator &&
       fresh.type == shown.type &&
@@ -259,7 +299,37 @@ final class TakeOrderUsecase {
       fresh.bondSize == shown.bondSize &&
       fresh.escrowDuration == shown.escrowDuration &&
       fresh.explicitSatoshis == shown.explicitSatoshis &&
-      (shown.explicitSatoshis != null || fresh.premium == shown.premium);
+      (shown.explicitSatoshis != null || fresh.premium == shown.premium) &&
+      _nearSats(shown.satoshisNow, fresh.satoshisNow);
+
+  /// Whether [fresh] is within [TradeTolerances.price] of [shown], plus [TradeTolerances.roundingSats], both known.
+  static bool _nearSats(Sats? shown, Sats? fresh) {
+    if (shown == null || fresh == null) return shown == fresh;
+    final a = shown.value.toInt();
+    final b = fresh.value.toInt();
+    return (b - a).abs() <=
+        a * TradeTolerances.price + TradeTolerances.roundingSats;
+  }
+
+  /// The open trade of order [orderId] of [coordinator] on [network], if this device has one.
+  Future<Result<TradeRecord?, P2pFailure>> _openTradeOf(
+    RobosatsNetwork network,
+    Coordinator coordinator,
+    int orderId,
+  ) async {
+    switch (await _records.watchActiveTrades(network).first) {
+      case Ok(:final value):
+        for (final record in value) {
+          if (record.coordinatorAlias == coordinator.shortAlias &&
+              record.orderId == orderId) {
+            return Ok(record);
+          }
+        }
+        return const Ok(null);
+      case Err(:final failure):
+        return Err(failure);
+    }
+  }
 
   /// Whether the transport answered the take busy: nothing reached the coordinator ([OrderActionRefused]).
   static bool _answeredBusy(

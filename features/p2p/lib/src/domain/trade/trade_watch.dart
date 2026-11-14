@@ -43,9 +43,11 @@ final class TradeWatchStatus extends TradeWatchState {
   final Failure? lastReadFailure;
 
   /// A write of the trade's records that failed after the coordinator answered (the trail, the confirmation, the close), or a [TradeClosedFailure] when the record was closed and the coordinator now shows this robot as the taker: shown, never dropped (#87).
+  ///
+  /// When the trail could not be stored, [seen] is the stored trail's status, never the one the read computed: an invoice is shown or offered only from a status whose trail is stored (review of #117).
   final P2pFailure? recordProblem;
 
-  /// Whether the trade is a take whose answer was lost, and no read has shown yet whether it happened: the reads go on until one shows this robot as the taker, or shows it is not, once the time to lock the taker bond is over.
+  /// Whether the trade is a take whose answer was lost, and no read has shown yet whether it happened: the reads go on until one shows this robot as the taker, or brings the take to an end ([TradeWatchTakeNotMade]).
   final bool takePending;
 
   const TradeWatchStatus(
@@ -88,9 +90,9 @@ final class TradeWatchUnavailable extends TradeWatchState {
   String toString() => 'TradeWatchUnavailable($record, ${failure.runtimeType})';
 }
 
-/// A pending take with no terms recorded: its request never left, since the take sends nothing before its terms are written.
+/// A pending take whose terms or first trail were never written: its request never left, since the take sends nothing before both are written.
 ///
-/// Once the time to lock a taker bond is over and a read shows the robot is not the order's taker, the record is closed ([closed]); until then the reads go on, slowly.
+/// The record is closed at once, with no read ([closed]: false when the close could not be written, [recordProblem]); the stream ends.
 final class TradeWatchTakeNeverSent extends TradeWatchState {
   @override
   final TradeRecord record;
@@ -105,6 +107,36 @@ final class TradeWatchTakeNeverSent extends TradeWatchState {
 
   @override
   String toString() => 'TradeWatchTakeNeverSent($record, closed: $closed)';
+}
+
+/// A take this robot never held, closed: a pending take never confirmed, on which no pre-take (so no invoice) was ever seen, that a read brought to an end (the order public again with this robot no participant, cancelled, expired, or out of reach once the pre-take is certainly gone).
+///
+/// Nothing can have been paid from this app for it: the screen says the take was not made, never that a bond may have been lost. [closed] is false when the close could not be written ([recordProblem]); the stream ends.
+final class TradeWatchTakeNotMade extends TradeWatchState {
+  @override
+  final TradeRecord record;
+  final bool closed;
+  final P2pFailure? recordProblem;
+
+  const TradeWatchTakeNotMade(
+    this.record, {
+    required this.closed,
+    this.recordProblem,
+  });
+
+  @override
+  String toString() => 'TradeWatchTakeNotMade($record, closed: $closed)';
+}
+
+/// The trade is already watched by another subscription: one subscription per trade, so that a trade is never read twice at once; this one reads nothing, and ends.
+final class TradeWatchAlreadyWatched extends TradeWatchState {
+  @override
+  final TradeRecord record;
+
+  const TradeWatchAlreadyWatched(this.record);
+
+  @override
+  String toString() => 'TradeWatchAlreadyWatched($record)';
 }
 
 /// What the screen tells the watch of a trade.

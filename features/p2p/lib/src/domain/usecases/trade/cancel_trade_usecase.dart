@@ -12,7 +12,7 @@ import 'trade_reader.dart';
 /// Cancels a trade as its taker, with the last read the user saw, then reads the order again and keeps what it shows (#87, design note § 1.4, § 2.1).
 ///
 /// The guard `cancel_status` is the status the coordinator stores for that read, which the coordinator client sends with every cancel (`CoordinatorClient.cancelOrder`, #99): 1 for a pre-take shown as 3, so that a cancel arriving after the bond locked is refused (1020) instead of costing the bond.
-/// At the pre-take (3) the cancel is free; once the bond is locked and the escrow is not (6, 7) it loses the bond, and is sent only with [BondLossAcknowledged]; with the escrow locked (8, 9) only a collaborative cancel exists, a later slice; at any other status no cancel exists.
+/// At the pre-take (3) the cancel is free; once the bond is locked and the escrow is not (6, 7) it loses the bond, and is sent only with a [BondLossAcknowledged] given for this trade at the status seen; with the escrow locked (8, 9) only a collaborative cancel exists, a later slice; at any other status no cancel exists.
 /// The cancel is sent once, through the robot's places in `RobotRequestLimiter`, and never again: an outcome unknown is said as such, and the watch of the trade resolves it.
 final class CancelTradeUsecase {
   final CoordinatorClient _client;
@@ -37,6 +37,9 @@ final class CancelTradeUsecase {
       case CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
           CoordinatorOrderStatus.waitingForCollateral:
         if (bondLoss == null) return const Err(CancelLosesTheBond());
+        if (!bondLoss.covers(record, seen)) {
+          return const Err(CancelAcknowledgementMismatch());
+        }
       case CoordinatorOrderStatus.waitingForInvoice ||
           CoordinatorOrderStatus.sendingFiat:
         return const Err(CancelOnlyTogether());

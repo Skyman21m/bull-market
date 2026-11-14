@@ -271,6 +271,21 @@
       "references": [
         1
       ],
+      "type": "trigger",
+      "data": {
+        "on": 1,
+        "references_in_body": [
+          1
+        ],
+        "name": "trades_one_open_per_order",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades\nWHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'an order has one open trade');\nEND;"
+      }
+    },
+    {
+      "id": 3,
+      "references": [
+        1
+      ],
       "type": "table",
       "data": {
         "name": "trade_terms",
@@ -454,6 +469,7 @@
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(is_range) = 'integer' AND (explicit_satoshis IS NULL OR typeof(explicit_satoshis) = 'integer') AND typeof(escrow_seconds) = 'integer')",
           "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
           "CHECK (robot_index BETWEEN 0 AND 2147483647)",
           "CHECK (version >= 1)",
@@ -479,61 +495,61 @@
       }
     },
     {
-      "id": 3,
+      "id": 4,
       "references": [
-        2
+        3
       ],
       "type": "trigger",
       "data": {
-        "on": 2,
+        "on": 3,
         "references_in_body": [
-          2
+          3
         ],
         "name": "trade_terms_never_deleted",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are kept');\nEND;"
       }
     },
     {
-      "id": 4,
+      "id": 5,
       "references": [
-        2
+        3
       ],
       "type": "trigger",
       "data": {
-        "on": 2,
+        "on": 3,
         "references_in_body": [
-          2
+          3
         ],
         "name": "trade_terms_set_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are set once');\nEND;"
       }
     },
     {
-      "id": 5,
+      "id": 6,
       "references": [
-        2
+        3
       ],
       "type": "trigger",
       "data": {
-        "on": 2,
+        "on": 3,
         "references_in_body": [
-          2
+          3
         ],
         "name": "trade_terms_inserted_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms\nWHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
       }
     },
     {
-      "id": 6,
+      "id": 7,
       "references": [
-        2,
+        3,
         1
       ],
       "type": "trigger",
       "data": {
-        "on": 2,
+        "on": 3,
         "references_in_body": [
-          2,
+          3,
           1
         ],
         "name": "trade_terms_of_their_trade",
@@ -541,7 +557,7 @@
       }
     },
     {
-      "id": 7,
+      "id": 8,
       "references": [
         1
       ],
@@ -729,6 +745,7 @@
           "CHECK (length(coordinator_alias) > 0)",
           "CHECK (order_id BETWEEN 1 AND 9007199254740992)",
           "CHECK (role IN ('buyer', 'seller'))",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer')",
           "CHECK (position IN ('start', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable'))",
           "CHECK (read_at BETWEEN 0 AND 253402300799999999)",
           "CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999)",
@@ -745,65 +762,65 @@
       }
     },
     {
-      "id": 8,
+      "id": 9,
       "references": [
-        7
+        8
       ],
       "type": "trigger",
       "data": {
-        "on": 7,
+        "on": 8,
         "references_in_body": [
-          7
+          8
         ],
         "name": "trade_trails_never_deleted",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails\nBEGIN\n  SELECT RAISE(ABORT, 'the trail of a trade is kept');\nEND;"
       }
     },
     {
-      "id": 9,
+      "id": 10,
       "references": [
-        7
+        8
       ],
       "type": "trigger",
       "data": {
-        "on": 7,
+        "on": 8,
         "references_in_body": [
-          7
+          8
         ],
         "name": "trade_trails_inserted_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails\nWHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
       }
     },
     {
-      "id": 10,
+      "id": 11,
       "references": [
-        7,
+        8,
         1,
-        2
+        3
       ],
       "type": "trigger",
       "data": {
-        "on": 7,
+        "on": 8,
         "references_in_body": [
-          7,
+          8,
           1,
-          2
+          3
         ],
         "name": "trade_trails_of_their_trade",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails\nWHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a trail of no open trade');\nEND;"
       }
     },
     {
-      "id": 11,
+      "id": 12,
       "references": [
-        7,
+        8,
         1
       ],
       "type": "trigger",
       "data": {
-        "on": 7,
+        "on": 8,
         "references_in_body": [
-          7,
+          8,
           1
         ],
         "name": "trade_trails_closed",
@@ -811,22 +828,22 @@
       }
     },
     {
-      "id": 12,
+      "id": 13,
       "references": [
-        7
+        8
       ],
       "type": "trigger",
       "data": {
-        "on": 7,
+        "on": 8,
         "references_in_body": [
-          7
+          8
         ],
         "name": "trade_trails_forward",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.network IS NOT OLD.network\n  OR NEW.coordinator_alias IS NOT OLD.coordinator_alias\n  OR NEW.order_id IS NOT OLD.order_id\n  OR NEW.role IS NOT OLD.role\n  OR NEW.version < OLD.version\n  OR NEW.read_at < OLD.read_at\n  OR NEW.breached < OLD.breached\n  OR NEW.history_unknown IS NOT OLD.history_unknown\n  OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)\n  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash)\n  OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))\n  OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)\n  OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position)\nBEGIN\n  SELECT RAISE(ABORT, 'a trail only moves forward');\nEND;"
       }
     },
     {
-      "id": 13,
+      "id": 14,
       "references": [],
       "type": "table",
       "data": {
@@ -888,7 +905,7 @@
       }
     },
     {
-      "id": 14,
+      "id": 15,
       "references": [
         0
       ],
@@ -902,7 +919,7 @@
       }
     },
     {
-      "id": 15,
+      "id": 16,
       "references": [
         1
       ],
@@ -917,7 +934,7 @@
       }
     },
     {
-      "id": 16,
+      "id": 17,
       "references": [
         1
       ],
@@ -932,7 +949,7 @@
       }
     },
     {
-      "id": 17,
+      "id": 18,
       "references": [
         1
       ],
@@ -967,11 +984,20 @@
       ]
     },
     {
+      "name": "trades_one_open_per_order",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'an order has one open trade');END"
+        }
+      ]
+    },
+    {
       "name": "trade_terms",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"trade_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NOT NULL, \"is_range\" INTEGER NOT NULL CHECK (\"is_range\" IN (0, 1)), \"premium_percent\" REAL NOT NULL, \"explicit_satoshis\" INTEGER NULL, \"bond_size_percent\" REAL NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"book_price\" REAL NOT NULL, \"taker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller')), CHECK (currency_id > 0), CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000), CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000), CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000), CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_terms\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"order_type\" INTEGER NOT NULL, \"currency_id\" INTEGER NOT NULL, \"amount\" REAL NOT NULL, \"is_range\" INTEGER NOT NULL CHECK (\"is_range\" IN (0, 1)), \"premium_percent\" REAL NOT NULL, \"explicit_satoshis\" INTEGER NULL, \"bond_size_percent\" REAL NOT NULL, \"escrow_seconds\" INTEGER NOT NULL, \"book_price\" REAL NOT NULL, \"taker_fee\" REAL NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(is_range) = 'integer' AND (explicit_satoshis IS NULL OR typeof(explicit_satoshis) = 'integer') AND typeof(escrow_seconds) = 'integer'), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK ((order_type = 1 AND role = 'buyer') OR (order_type = 0 AND role = 'seller')), CHECK (currency_id > 0), CHECK (typeof(amount) = 'real' AND amount > 0 AND amount < 1000000000000000), CHECK (typeof(premium_percent) = 'real' AND premium_percent >= -100 AND premium_percent < 1000000000000000), CHECK (explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000), CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15), CHECK (escrow_seconds BETWEEN 1800 AND 36000), CHECK (typeof(book_price) = 'real' AND book_price > 0 AND book_price < 1000000000000000), CHECK (typeof(taker_fee) = 'real' AND taker_fee BETWEEN 0 AND 0.01), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
         }
       ]
     },
@@ -1016,7 +1042,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"trade_trails\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"position\" TEXT NOT NULL, \"read_at\" INTEGER NOT NULL, \"bond_hash\" TEXT NULL, \"escrow_hash\" TEXT NULL, \"deadline\" INTEGER NULL, \"bond_step_seen_at\" INTEGER NULL, \"bond_step_deadline\" INTEGER NULL, \"breached\" INTEGER NOT NULL CHECK (\"breached\" IN (0, 1)), \"history_unknown\" INTEGER NOT NULL CHECK (\"history_unknown\" IN (0, 1)), PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK (position IN ('start', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable')), CHECK (read_at BETWEEN 0 AND 253402300799999999), CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_step_seen_at IS NULL OR bond_step_seen_at BETWEEN 0 AND read_at), CHECK (bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_hash IS NULL OR (length(bond_hash) = 64 AND bond_hash NOT GLOB '*[^0-9a-f]*')), CHECK (escrow_hash IS NULL OR (length(escrow_hash) = 64 AND escrow_hash NOT GLOB '*[^0-9a-f]*')), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_trails\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"version\" INTEGER NOT NULL, \"network\" TEXT NOT NULL, \"coordinator_alias\" TEXT NOT NULL, \"order_id\" INTEGER NOT NULL, \"role\" TEXT NOT NULL, \"position\" TEXT NOT NULL, \"read_at\" INTEGER NOT NULL, \"bond_hash\" TEXT NULL, \"escrow_hash\" TEXT NULL, \"deadline\" INTEGER NULL, \"bond_step_seen_at\" INTEGER NULL, \"bond_step_deadline\" INTEGER NULL, \"breached\" INTEGER NOT NULL CHECK (\"breached\" IN (0, 1)), \"history_unknown\" INTEGER NOT NULL CHECK (\"history_unknown\" IN (0, 1)), PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (version >= 1), CHECK (network IN ('mainnet', 'testnet')), CHECK (length(coordinator_alias) > 0), CHECK (order_id BETWEEN 1 AND 9007199254740992), CHECK (role IN ('buyer', 'seller')), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer'), CHECK (position IN ('start', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable')), CHECK (read_at BETWEEN 0 AND 253402300799999999), CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_step_seen_at IS NULL OR bond_step_seen_at BETWEEN 0 AND read_at), CHECK (bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999), CHECK (bond_hash IS NULL OR (length(bond_hash) = 64 AND bond_hash NOT GLOB '*[^0-9a-f]*')), CHECK (escrow_hash IS NULL OR (length(escrow_hash) = 64 AND escrow_hash NOT GLOB '*[^0-9a-f]*')), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
         }
       ]
     },
