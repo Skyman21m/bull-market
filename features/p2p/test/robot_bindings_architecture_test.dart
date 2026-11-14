@@ -499,6 +499,24 @@ void main() {
     );
 
     test(
+      'only the take reaches the takes prepared, which hold reserved robots and their tokens',
+      () {
+        // A screen holds a prepared take, never its robot: only the take use case keeps, reads or forgets one (#119, review of #126).
+        expect(referring((r) => r.startsWith('PreparedTakes.')), {
+          _takeOrderUseCase,
+        });
+        expect(
+          referring((r) => r == 'type PreparedTakes').difference({
+            _takeOrderUseCase,
+            '${_tradeUseCases}prepared_takes.dart',
+            'lib/src/p2p_locator.dart',
+          }),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
       'only the key work in its own isolate proves a robot, or makes or unlocks a pair',
       () {
         // Each hashes 32 MiB or more: on the UI isolate, the screens would freeze.
@@ -1645,6 +1663,19 @@ const _watched = {
     },
   ),
   'BondLossAcknowledged': ('package:p2p/', {'fromConfirmationDialog'}),
+  // The takes prepared and not sent, which hold a reserved robot and its token (review of #126).
+  'PreparedTakes': (
+    'package:p2p/',
+    {
+      'robotFor',
+      'keepRobot',
+      'add',
+      'robotOf',
+      'forget',
+      'release',
+      'releaseOrder',
+    },
+  ),
   'GarageKeyRepository': ('package:p2p/', {'create', 'import'}),
   'GarageKeys': ('package:secrets/', {'create', 'import'}),
   'FetchRobotUsecase': ('package:p2p/', {'execute'}),

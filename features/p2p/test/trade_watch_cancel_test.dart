@@ -8,6 +8,7 @@ import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade_robots.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 
@@ -750,5 +751,9 @@ final class _RecordsOnly implements TradeRobots {
 
   @override
   Future<Result<NetworkRobot, P2pFailure>> robotOfTrade(TradeRecord record) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> robotOfSlot(RobotSlot slot) =>
       throw UnimplementedError();
 }

@@ -3,14 +3,14 @@ import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import '../../trade/trade_take.dart';
 import '../../trade_robots.dart';
 
-/// The takes prepared and not sent in this process (#119), and the robot each order's preparation reserved (a lazy singleton of the composition, `P2pLocator.registerTrades`).
+/// The take prepared and not sent in this process (#119), and the robot its order's preparation reserved (a lazy singleton of the composition, `P2pLocator.registerTrades`).
 ///
-/// A robot reserved and put on the coordinator for an order's preparation serves every new preparation of that order (a second tap, a read that failed, figures that changed) until the take is confirmed or the user abandons it: then it is forgotten, bound to that coordinator, without a trade, never returned again (the rule of a robot reserved by a take not made).
+/// One order at a time: a robot reserved and put on the coordinator for an order's preparation serves every new preparation of that order (a second tap, a read that failed, figures that changed) until the take is confirmed, the user abandons it, the order is gone or refused for good, or an order of another coordinator or id is prepared; then the robot is forgotten, bound to that coordinator, without a trade, never returned again (the rule of a robot reserved by a take not made).
+/// So no more than one robot and its token are held here, and only while its order's take is on the screen: `ReservedRobot`'s « no longer than the requests of the take ».
 /// In memory only: after a restart nothing is prepared, and the robots reserved stay bound, unused.
+/// Each change names the preparation it is about, compared by identity: a preparation replaced by a newer one changes nothing any more (review of #126).
 final class PreparedTakes {
-  final Map<(RobosatsNetwork, String, int), ReservedRobot> _robots = {};
-  final Map<PreparedTake, (RobosatsNetwork, String, int)> _prepared =
-      Map.identity();
+  _OrderPreparation? _current;
 
   static (RobosatsNetwork, String, int) _keyOf(PreparedTake prepared) => (
     prepared.terms.network,
@@ -20,36 +20,67 @@ final class PreparedTakes {
 
   /// The robot reserved for the preparation of order [orderId] of the coordinator [alias] on [network], if any.
   ReservedRobot? robotFor(RobosatsNetwork network, String alias, int orderId) =>
-      _robots[(network, alias, orderId)];
+      switch (_current) {
+        final current? when current.key == (network, alias, orderId) =>
+          current.robot,
+        _ => null,
+      };
 
-  /// Keeps [robot] for the preparations of that order.
+  /// Keeps [robot] for the preparations of that order: the order prepared before it, if another, is forgotten with its robot.
   void keepRobot(
     RobosatsNetwork network,
     String alias,
     int orderId,
     ReservedRobot robot,
-  ) => _robots[(network, alias, orderId)] = robot;
+  ) => _current = _OrderPreparation((network, alias, orderId), robot);
 
-  /// Records [prepared] as the order's current preparation: any earlier one of the same order can no longer be confirmed.
+  /// Records [prepared] as its order's current preparation, the one [robotOf] gives a robot for: any earlier one of the order can no longer be confirmed, nor abandoned.
+  ///
+  /// Only for the order whose robot is kept ([keepRobot]); anything else is a bug of the use case.
   void add(PreparedTake prepared) {
-    final key = _keyOf(prepared);
-    _prepared.removeWhere((_, other) => other == key);
-    _prepared[prepared] = key;
+    final current = _current;
+    if (current == null || current.key != _keyOf(prepared)) {
+      throw StateError('A preparation without its robot.');
+    }
+    current
+      ..latest = prepared
+      ..confirmable = true;
   }
 
-  /// The robot of [prepared] when it is the current preparation of its order, else `null`.
-  ReservedRobot? robotOf(PreparedTake prepared) {
-    final key = _prepared[prepared];
-    return key == null ? null : _robots[key];
+  /// The robot of [prepared] when it is its order's current preparation and can still be confirmed, else `null`.
+  ReservedRobot? robotOf(PreparedTake prepared) => switch (_current) {
+    final current?
+        when identical(current.latest, prepared) && current.confirmable =>
+      current.robot,
+    _ => null,
+  };
+
+  /// [prepared] can no longer be confirmed; its order's robot stays for a new preparation, and an [release] of [prepared] still forgets it.
+  void forget(PreparedTake prepared) {
+    if (_current case final current? when identical(current.latest, prepared)) {
+      current.confirmable = false;
+    }
   }
 
-  /// [prepared] can no longer be confirmed; its order's robot stays for a new preparation.
-  void forget(PreparedTake prepared) => _prepared.remove(prepared);
-
-  /// Forgets [prepared] and its order's robot: the take was sent, or abandoned.
+  /// Forgets [prepared] and its order's robot, when [prepared] is still its order's latest preparation: the take was sent, or abandoned.
   void release(PreparedTake prepared) {
-    final key = _keyOf(prepared);
-    _prepared.removeWhere((_, other) => other == key);
-    _robots.remove(key);
+    if (_current case final current? when identical(current.latest, prepared)) {
+      _current = null;
+    }
   }
+
+  /// Forgets the preparation of order [orderId] of the coordinator [alias] on [network], and its robot: the order is gone, refused for good, or left.
+  void releaseOrder(RobosatsNetwork network, String alias, int orderId) {
+    if (_current?.key == (network, alias, orderId)) _current = null;
+  }
+}
+
+/// The robot of one order's preparations, and the latest preparation made with it.
+final class _OrderPreparation {
+  final (RobosatsNetwork, String, int) key;
+  final ReservedRobot robot;
+  PreparedTake? latest;
+  bool confirmable = false;
+
+  _OrderPreparation(this.key, this.robot);
 }

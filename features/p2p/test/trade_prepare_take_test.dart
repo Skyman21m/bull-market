@@ -1,7 +1,13 @@
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
-import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
+import 'package:p2p/src/domain/usecases/trade/prepared_takes.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
+import 'package:p2p/testing.dart'
+    show ScriptedCoordinator, ScriptedFault, ScriptedRequest;
 import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart'
+    show CoordinatorHttpMethod, RobotHashId, RobotIdentity;
 import 'package:test/test.dart';
 
 import 'support/key_output.dart';
@@ -80,7 +86,7 @@ void main() {
     });
 
     test(
-      'a coordinator that answers the robot otherwise than the book is refused, and the robot is spent',
+      'a coordinator that answers the robot otherwise than the book is refused; nothing is taken, and a new preparation of the order reuses the robot',
       () async {
         for (final (label, change) in [
           ('premium', {'premium': '5.00'}),
@@ -98,6 +104,14 @@ void main() {
           );
           expect(count(app, take), 0, reason: label);
           expect(await app.allTrades(), isEmpty, reason: label);
+          app.coordinator.robotView.clear();
+          expect(
+            await app.take.prepare(shown, network: app.network),
+            isA<Ok<PreparedTake, TakeRefusal>>(),
+            reason: label,
+          );
+          expect(await bindings(app), 1, reason: label);
+          expect(count(app, take), 0, reason: label);
         }
       },
     );
@@ -324,6 +338,592 @@ void main() {
         expect(TradeHarness.recordOf(taken).robot.accountIndex, isNot(0));
         expect(await bindings(app), 2);
         expect(app.coordinator.hasPenalty(app.robot(0)), isFalse);
+      },
+    );
+  });
+
+  group('orders priced in sats (review of #126, I1)', () {
+    Future<TradeHarness> explicitOrder() async {
+      final app = await TradeHarness.start();
+      app.coordinator.explicitSatoshis = 106900;
+      return app;
+    }
+
+    test(
+      'prepared from the robot\'s read, whose premium is null, then taken: the premium is the coordinator\'s at the price now',
+      () async {
+        final app = await explicitOrder();
+        final prepared = switch (await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('not prepared: $failure'),
+        };
+        expect(prepared.order.premium, isNull);
+        expect(prepared.terms.explicitSatoshis?.value.toInt(), 106900);
+        expect(prepared.terms.premium.percent, 2.0);
+        final taken = await app.take.confirm(prepared);
+        final started = switch (taken) {
+          Ok(value: final TakeStarted started) => started,
+          final other => fail('$other'),
+        };
+        expect(started.stored, isTrue);
+        expect(started.status, isA<WaitingForTakerBond>());
+        // The terms stored are read back, and the trade is followed.
+        final history = switch (await app.trails.historyOf(started.record)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(history.terms, prepared.terms.record);
+        expect(await app.reader.open(started.record), isA<TradeOpened>());
+      },
+    );
+
+    test('taken in one step as before', () async {
+      final app = await explicitOrder();
+      final taken = await app.takeShown();
+      expect(
+        taken,
+        isA<Ok<TakeOutcome, TakeRefusal>>().having(
+          (ok) => ok.value,
+          'outcome',
+          isA<TakeStarted>(),
+        ),
+      );
+      expect(
+        await app.reader.open(TradeHarness.recordOf(taken)),
+        isA<TradeOpened>(),
+      );
+    });
+
+    test(
+      'the robot\'s sats of the order otherwise than the book\'s are refused, at the preparation and at the confirmation',
+      () async {
+        final app = await explicitOrder();
+        app.coordinator.robotView['satoshis'] = 107000;
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          refused<TakeOrderChanged>(),
+        );
+        app.coordinator.robotView.clear();
+        final prepared = switch (await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('not prepared: $failure'),
+        };
+        app.coordinator.robotView['satoshis'] = 107000;
+        expect(await app.take.confirm(prepared), refused<TakeOrderChanged>());
+        expect(count(app, take), 0);
+      },
+    );
+  });
+
+  group('a refusal that needs no robot costs none (review of #126, I2)', () {
+    // Each case: how to start, what to do to the coordinator once the page is shown, and the amount taken.
+    final cases =
+        <
+          (
+            String,
+            Future<TradeHarness> Function(),
+            void Function(TradeHarness),
+            TakeAmount?,
+          )
+        >[
+          (
+            'a taker fee above the ceiling',
+            () => TradeHarness.start(takerFee: 0.05),
+            (_) {},
+            null,
+          ),
+          (
+            'no sats at the current price',
+            TradeHarness.start,
+            (app) => app.coordinator.bookView['satoshis_now'] = null,
+            null,
+          ),
+          (
+            'figures changed since the page',
+            TradeHarness.start,
+            (app) => app.coordinator.bookView['premium'] = '5.00',
+            null,
+          ),
+          (
+            'an order gone from the book',
+            TradeHarness.start,
+            (app) => app.coordinator.takenByAnother(),
+            null,
+          ),
+          (
+            'an amount out of the range',
+            () => TradeHarness.start(range: true),
+            (_) {},
+            TakeAmount.tryCreate(300),
+          ),
+          (
+            'a coordinator that cannot be read',
+            TradeHarness.start,
+            (app) => app.coordinator.failNext(
+              ScriptedRequest.info,
+              ScriptedFault.unreachable,
+            ),
+            null,
+          ),
+        ];
+    for (final (label, start, change, amount) in cases) {
+      test(label, () async {
+        final one = await start();
+        final shownOne = await one.shownOrder();
+        change(one);
+        final executed = await one.take.execute(
+          shownOne,
+          network: one.network,
+          amount: amount,
+        );
+        final two = await start();
+        final shownTwo = await two.shownOrder();
+        change(two);
+        final prepared = await two.take.prepare(
+          shownTwo,
+          network: two.network,
+          amount: amount,
+        );
+        final refusalOne = switch (executed) {
+          Err(:final failure) => failure,
+          Ok() => fail('taken'),
+        };
+        final refusalTwo = switch (prepared) {
+          Err(:final failure) => failure,
+          Ok() => fail('prepared'),
+        };
+        expect(refusalTwo.runtimeType, refusalOne.runtimeType);
+        if ((refusalOne, refusalTwo) case (
+          TakeTermsRefused(reason: final a),
+          TakeTermsRefused(reason: final b),
+        )) {
+          expect(b.runtimeType, a.runtimeType);
+        }
+        for (final app in [one, two]) {
+          expect(await bindings(app), 0);
+          expect(count(app, ScriptedRequest.robot), 0);
+          expect(count(app, ScriptedRequest.order), 0);
+        }
+      });
+    }
+  });
+
+  group('the Garage Key changed since the preparation (review of #126, I3)', () {
+    for (final (label, change) in [
+      ('deleted', (TradeHarness app) => app.deleteKey()),
+      ('replaced by another', (TradeHarness app) => app.replaceKey()),
+    ]) {
+      test(
+        '$label: the take is not sent, and the preparation is gone',
+        () async {
+          final (app, prepared) = await prepareOne();
+          change(app);
+          expect(
+            await app.take.confirm(prepared),
+            refused<TakePreparationGone>(),
+          );
+          expect(count(app, take), 0);
+          expect(await app.allTrades(), isEmpty);
+          expect(
+            await app.take.confirm(prepared),
+            refused<TakePreparationGone>(),
+          );
+          // No second read: the preparation was forgotten.
+          expect(count(app, ScriptedRequest.order), 2);
+        },
+      );
+    }
+
+    test(
+      'deleted while a take in one step puts its robot on the coordinator: not sent',
+      () async {
+        final app = await TradeHarness.start();
+        final shown = await app.shownOrder();
+        app.coordinator.onRequest = (request) {
+          if (request.url.path == '/api/robot/') app.deleteKey();
+        };
+        expect(
+          await app.take.execute(shown, network: app.network),
+          isA<Err<TakeOutcome, TakeRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<TakeRobotRefused>().having(
+              (r) => r.failure,
+              'failure',
+              isA<TradeKeyMissingFailure>(),
+            ),
+          ),
+        );
+        expect(count(app, take), 0);
+        expect(await app.allTrades(), isEmpty);
+      },
+    );
+  });
+
+  group('the robot\'s read again at the confirmation (review of #126, I4)', () {
+    final maker = switch (RobotHashId.parse(
+      '0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0',
+    )) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    for (final (label, change) in <(String, Map<String, Object?>)>[
+      ('bond size', {'bond_size': '4.00'}),
+      ('amount', {'amount': '101.00000000'}),
+      ('premium', {'premium': '2.50', 'premium_now': 2.5}),
+      ('escrow duration', {'escrow_duration': 7200}),
+      ('currency', {'currency': 1}),
+      ('type', {'type': 0}),
+      ('payment methods', {'payment_method': 'Wise'}),
+      ('maker', {'maker_hash_id': maker.hex, 'maker_nick': maker.nickname}),
+    ]) {
+      test(
+        'a $label changed since the read is refused, and the robot kept for a new preparation',
+        () async {
+          final (app, prepared) = await prepareOne();
+          app.coordinator.robotView.addAll(change);
+          expect(await app.take.confirm(prepared), refused<TakeOrderChanged>());
+          expect(count(app, take), 0);
+          expect(await app.allTrades(), isEmpty);
+          app.coordinator.robotView.clear();
+          expect(
+            await app.take.prepare(
+              await app.shownOrder(),
+              network: app.network,
+            ),
+            isA<Ok<PreparedTake, TakeRefusal>>(),
+          );
+          expect(await bindings(app), 1);
+        },
+      );
+    }
+  });
+
+  group('the robot\'s read against the book (review of #126, I4, m4)', () {
+    final maker = switch (RobotHashId.parse(
+      '0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0',
+    )) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    for (final (label, change) in <(String, Map<String, Object?>)>[
+      ('type', {'type': 0}),
+      ('currency', {'currency': 1}),
+      ('amount', {'amount': '101.00000000'}),
+      (
+        'range',
+        {
+          'has_range': true,
+          'amount': null,
+          'min_amount': '50.00000000',
+          'max_amount': '200.00000000',
+        },
+      ),
+      ('payment methods', {'payment_method': 'Wise'}),
+      ('maker', {'maker_hash_id': maker.hex, 'maker_nick': maker.nickname}),
+    ]) {
+      test('a $label otherwise than the book\'s is refused', () async {
+        final app = await TradeHarness.start();
+        app.coordinator.robotView.addAll(change);
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          refused<TakeOrderChanged>(),
+        );
+        expect(count(app, take), 0);
+      });
+    }
+
+    test(
+      'the robot\'s sats beyond the tolerance of the book\'s, though each is within it of the page\'s, are refused',
+      () async {
+        final app = await TradeHarness.start();
+        final shown = await app.shownOrder();
+        // The book 1.9 % above the page, the robot's read 1.8 % below it: 3.6 % apart.
+        app.coordinator.satoshisNow = 108900;
+        app.coordinator.robotView['satoshis_now'] = 104950;
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          refused<TakeOrderChanged>(),
+        );
+        expect(count(app, take), 0);
+      },
+    );
+
+    // A read of an order that is not public by a robot that takes no part in it is refused by the package itself (`CoordinatorOrder`): only a participant's read can show one.
+    for (final (label, change)
+        in <(String, Map<String, Object?> Function(RobotIdentity))>[
+          (
+            'a public order the robot is said to have taken',
+            (robot) => {
+              'is_participant': true,
+              'is_taker': true,
+              'taker': 8,
+              'taker_hash_id': robot.hashId.hex,
+              'taker_nick': robot.nickname,
+              'is_buyer': true,
+              'is_seller': false,
+              'ur_nick': robot.nickname,
+            },
+          ),
+          ('an order with a password', (_) => {'has_password': true}),
+        ]) {
+      test('$label is gone, and its robot is never used again', () async {
+        final app = await TradeHarness.start();
+        app.coordinator.robotView.addAll(change(app.robot(0)));
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          refused<TakeOrderGone>(),
+        );
+        app.coordinator.robotView.clear();
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      });
+    }
+  });
+
+  group('the robot of a preparation (review of #126, I4, m1, m2, m3)', () {
+    test(
+      'a take refused after its confirmation: a new preparation takes a fresh robot',
+      () async {
+        final (app, prepared) = await prepareOne();
+        app.coordinator.takesNotMade = true;
+        expect(
+          await app.take.confirm(prepared),
+          isA<Ok<TakeOutcome, TakeRefusal>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<TakeNotMade>(),
+          ),
+        );
+        app.coordinator.takesNotMade = false;
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'an order gone at the confirmation: the preparation is forgotten with its robot',
+      () async {
+        final (app, prepared) = await prepareOne();
+        app.coordinator.takenByAnother();
+        expect(await app.take.confirm(prepared), refused<TakeOrderGone>());
+        expect(
+          await app.take.confirm(prepared),
+          refused<TakePreparationGone>(),
+        );
+        expect(count(app, ScriptedRequest.order), 2);
+        app.coordinator.backToPublic();
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'an order gone from the book at a new preparation: its robot is forgotten',
+      () async {
+        final (app, _) = await prepareOne();
+        final shown = await app.shownOrder();
+        app.coordinator.takenByAnother();
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          refused<TakeOrderGone>(),
+        );
+        app.coordinator.backToPublic();
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'a preparation, then a take in one step, then its confirmation: already traded, nothing more sent',
+      () async {
+        final (app, prepared) = await prepareOne();
+        final record = TradeHarness.recordOf(await app.takeShown());
+        final orderReads = count(app, ScriptedRequest.order);
+        expect(
+          await app.take.confirm(prepared),
+          isA<Err<TakeOutcome, TakeRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<TakeOrderAlreadyTraded>().having(
+              (r) => r.record,
+              'record',
+              record,
+            ),
+          ),
+        );
+        expect(count(app, ScriptedRequest.order), orderReads);
+        expect(count(app, take), 1);
+      },
+    );
+
+    test(
+      'a confirmation behind a take in one step of the same order waits for it, and sends nothing',
+      () async {
+        final (app, prepared) = await prepareOne();
+        final shown = await app.shownOrder();
+        final orderReads = count(app, ScriptedRequest.order);
+        final results = await Future.wait([
+          app.take.execute(shown, network: app.network),
+          app.take.confirm(prepared),
+        ]);
+        expect(results.first, isA<Ok<TakeOutcome, TakeRefusal>>());
+        expect(results.last, refused<TakeOrderAlreadyTraded>());
+        expect(count(app, ScriptedRequest.order), orderReads);
+        expect(count(app, take), 1);
+      },
+    );
+
+    test(
+      'abandoned while the confirmation reads the order: the take is not sent',
+      () async {
+        final (app, prepared) = await prepareOne();
+        app.coordinator.onRequest = (request) {
+          if (request.url.path == '/api/order/' &&
+              request.method == CoordinatorHttpMethod.get) {
+            app.take.abandon(prepared);
+          }
+        };
+        expect(
+          await app.take.confirm(prepared),
+          refused<TakePreparationGone>(),
+        );
+        expect(count(app, take), 0);
+        expect(await app.allTrades(), isEmpty);
+      },
+    );
+
+    test(
+      'the abandon of a preparation replaced by a newer one leaves the newer one',
+      () async {
+        final (app, first) = await prepareOne();
+        final second = switch (await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        app.take.abandon(first);
+        expect(
+          await app.take.confirm(second),
+          isA<Ok<TakeOutcome, TakeRefusal>>().having(
+            (ok) => ok.value,
+            'outcome',
+            isA<TakeStarted>(),
+          ),
+        );
+      },
+    );
+
+    test(
+      'the abandon of a preparation refused at its confirmation forgets its robot',
+      () async {
+        final (app, prepared) = await prepareOne();
+        app.coordinator.satoshisNow = 110107;
+        expect(await app.take.confirm(prepared), refused<TakeOrderChanged>());
+        app.take.abandon(prepared);
+        app.coordinator.satoshisNow = ScriptedCoordinator.bookSats;
+        expect(
+          await app.take.prepare(await app.shownOrder(), network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'a screen that leaves after a preparation that failed abandons the order: its robot is forgotten',
+      () async {
+        final app = await TradeHarness.start();
+        final shown = await app.shownOrder();
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          refused<TakeCoordinatorUnreadable>(),
+        );
+        app.take.abandonOrder(shown, network: app.network);
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'abandoned while it reads the order: the preparation is gone, and its robot not kept',
+      () async {
+        final app = await TradeHarness.start();
+        final shown = await app.shownOrder();
+        app.coordinator.onRequest = (request) {
+          if (request.url.path == '/api/order/') {
+            app.take.abandonOrder(shown, network: app.network);
+          }
+        };
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          refused<TakePreparationGone>(),
+        );
+        app.coordinator.onRequest = null;
+        expect(
+          await app.take.prepare(shown, network: app.network),
+          isA<Ok<PreparedTake, TakeRefusal>>(),
+        );
+        expect(await bindings(app), 2);
+      },
+    );
+
+    test(
+      'one order prepared at a time: another order\'s forgets the first\'s robot',
+      () async {
+        final app = await TradeHarness.start();
+        final coordinator = app.coordinator.coordinator;
+        final first = switch (await app.robots.robotForNewTrade(
+          app.network,
+          coordinator,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final second = switch (await app.robots.robotForNewTrade(
+          app.network,
+          coordinator,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final takes = PreparedTakes()
+          ..keepRobot(app.network, coordinator.shortAlias, 42, first);
+        expect(takes.robotFor(app.network, coordinator.shortAlias, 42), first);
+        takes.keepRobot(app.network, coordinator.shortAlias, 43, second);
+        expect(takes.robotFor(app.network, coordinator.shortAlias, 42), isNull);
+        expect(takes.robotFor(app.network, coordinator.shortAlias, 43), second);
+        takes.releaseOrder(app.network, coordinator.shortAlias, 42);
+        expect(takes.robotFor(app.network, coordinator.shortAlias, 43), second);
+        takes.releaseOrder(app.network, coordinator.shortAlias, 43);
+        expect(takes.robotFor(app.network, coordinator.shortAlias, 43), isNull);
       },
     );
   });
