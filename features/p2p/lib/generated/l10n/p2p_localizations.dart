@@ -3606,6 +3606,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This wallet cannot give an address now.'**
   String get p2pPayoutWalletNoAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.'**
+  String get p2pPayoutWalletAnotherWaiting;
 }
 
 class _P2pLocalizationsDelegate

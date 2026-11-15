@@ -2245,4 +2245,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayoutWalletNoAddress =>
       'Ce portefeuille ne peut pas donner d’adresse pour le moment.';
+
+  @override
+  String get p2pPayoutWalletAnotherWaiting =>
+      'Ce portefeuille attend déjà un paiement de ce montant. Réessayez dans quelques minutes, ou collez une facture d’un autre portefeuille.';
 }

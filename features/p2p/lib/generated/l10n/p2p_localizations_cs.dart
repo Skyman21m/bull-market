@@ -2215,4 +2215,8 @@ class P2pLocalizationsCs extends P2pLocalizations {
   @override
   String get p2pPayoutWalletNoAddress =>
       'This wallet cannot give an address now.';
+
+  @override
+  String get p2pPayoutWalletAnotherWaiting =>
+      'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.';
 }
