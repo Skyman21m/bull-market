@@ -2316,10 +2316,17 @@ void main() {
         await tester.tap(find.text(fiatSent));
         await settle();
         await capture('fin-9-dialogue');
+        // The read before sending held by the coordinator, so that the wait it says is captured.
+        final held = Completer<void>();
+        coordinator.hold = held.future;
         await tester.tap(find.text(l10n.p2pEndConfirm));
-        await tester.pump();
-        await tester.pump();
+        await waitFor(
+          find.text(l10n.p2pEndStepReading(coordinator.coordinator.longAlias)),
+        );
+        await settle();
         await capture('fin-9-envoi');
+        coordinator.hold = null;
+        held.complete();
         await waitFor(find.text(l10n.p2pEndWaitSeller));
         await capture('fin-10');
         coordinator.moveTo(13);
