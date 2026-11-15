@@ -1,0 +1,6 @@
+features/p2p/lib/p2p.dart
+features/p2p/lib/public/p2p_wallet_port.dart
+features/p2p/lib/src/ui/trade/bond_payment_panel.dart
+features/p2p/test/wallet_port_test.dart
+lib/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart
+test/features/p2p_wallet/receive_wallet_invoice_usecase_test.dart
