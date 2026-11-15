@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
+import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
@@ -17,6 +18,8 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/presentation/chat_cubit.dart';
+import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -131,6 +134,7 @@ Future<TradeCubit> _show(
   _FiatSent? undoFiatSent,
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
+  ChatPanelBuilder? chat,
   TradeWatchState? state,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -182,6 +186,7 @@ Future<TradeCubit> _show(
             now: () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             moneyActionRunning: (_) => moneyActionRunning,
+            chat: chat,
           ),
         ),
       ),
@@ -194,6 +199,30 @@ Future<TradeCubit> _show(
     await tester.pump();
   }
   return cubit;
+}
+
+/// The chat panel (#93) as the route gives it, over a cubit whose use cases answer an empty chat whose peer's key is not known yet: nothing leaves.
+ChatPanelBuilder _chatPanel(WidgetTester tester) {
+  final cubit = ChatCubit(
+    _record,
+    (record, seen) async => const Ok(ChatView(connected: true)),
+    (record, seen, text) async => const Err(ChatPeerKeyNotKnown()),
+    (record, seen, id) async => const Err(ChatPeerKeyNotKnown()),
+    (record, seen) => const Err(ChatSkipNeedsOrderRead()),
+    (record) => const ChatView(),
+    (record) async => const Err(ChatNotOpen()),
+    (record) => () {},
+  );
+  addTearDown(cubit.close);
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+  messenger.setMockMethodCallHandler(privacy, (call) async => true);
+  addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
+  return (context, request) => BlocProvider.value(
+    value: cubit,
+    child: ChatPanel(request: request),
+  );
 }
 
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
@@ -264,6 +293,48 @@ void main() {
       expect(find.text(_confirmLabel), findsOneWidget);
       expect(find.text('Your taker bond is locked'), findsOneWidget);
       expect(find.text('Bull Market cannot show this step yet.'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    '9 and 10 with the chat panel (#93): in the step\'s place, between the prompt\'s text and the buttons, and nothing shown twice',
+    (tester) async {
+      final watch = _Watch();
+      await _show(
+        tester,
+        watch: watch,
+        chat: _chatPanel(tester),
+        state: _watched('nine'),
+      );
+      await tester.pump();
+      final panel = find.byKey(const ValueKey('trade-chat-panel'));
+      expect(panel, findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(ChatStepPanel),
+          matching: find.byType(ChatPanel),
+        ),
+        findsOneWidget,
+      );
+      for (final text in [_hi, '⚠️ Beware scams', _confirmLabel]) {
+        expect(find.text(text), findsOneWidget, reason: text);
+      }
+      expect(find.text('Type a message'), findsOneWidget);
+      final top = tester.getTopLeft(panel).dy;
+      expect(tester.getBottomLeft(find.text(_hi)).dy, lessThanOrEqualTo(top));
+      expect(
+        tester.getTopLeft(find.text(_confirmLabel)).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(panel).dy),
+      );
+      watch.emit(_watched('ten'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(ChatPanel), findsOneWidget);
+      expect(find.text(_waitSeller), findsOneWidget);
+      watch.emit(_watched('fourteen'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(ChatPanel), findsNothing);
     },
   );
 
@@ -1487,6 +1558,24 @@ void main() {
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
+        testWidgets(
+          '${locale.languageCode} at ×$scale: 9 with the chat panel in its place, nothing cut',
+          (tester) async {
+            await _show(
+              tester,
+              watch: _Watch(),
+              chat: _chatPanel(tester),
+              locale: locale,
+              size: const Size(320, 640),
+              textScale: scale,
+              state: _watched('nine'),
+            );
+            await tester.pump();
+            expect(find.byType(ChatPanel), findsOneWidget);
+            _expectNothingCut(tester, 'nine with the chat');
+          },
+        );
+
         testWidgets('${locale.languageCode} at ×$scale: nothing is cut', (
           tester,
         ) async {

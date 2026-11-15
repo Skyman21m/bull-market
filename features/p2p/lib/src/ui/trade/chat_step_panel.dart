@@ -48,7 +48,7 @@ class ChatStepPanel extends StatefulWidget {
   final bool offersUndoFiatSent;
   final bool offersCollaborativeCancel;
 
-  /// The chat of the trade (#93), where the reference puts it: between the prompt's text and the action buttons; `null` until the chat panel is wired, and the step is shown without it.
+  /// The chat of the trade (#93, `ChatPanel`), where the reference puts it: between the prompt's text and the action buttons; `null` where the feature holds no robot, and the step is shown without it.
   final Widget? chat;
 
   const ChatStepPanel({
