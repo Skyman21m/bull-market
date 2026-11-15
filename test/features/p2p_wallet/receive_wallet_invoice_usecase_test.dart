@@ -159,13 +159,16 @@ void main() {
       expect(swaps.quotes, isEmpty);
     });
 
-    test('the wallet\'s orders unreadable, when the invoice made earlier for the payout is to be read', () async {
-      expect(await make(), isA<Ok>());
-      swaps.ordersFailure = const SwapStorageFailure();
-      expect(refusalOf(await make()), isA<P2pWalletUnavailable>());
-      expect(swaps.quotes, hasLength(1));
-      expect(swaps.created, hasLength(1));
-    });
+    test(
+      'the wallet\'s orders unreadable, when the invoice made earlier for the payout is to be read',
+      () async {
+        expect(await make(), isA<Ok>());
+        swaps.ordersFailure = const SwapStorageFailure();
+        expect(refusalOf(await make()), isA<P2pWalletUnavailable>());
+        expect(swaps.quotes, hasLength(1));
+        expect(swaps.created, hasLength(1));
+      },
+    );
   });
 
   group('the service\'s answers', () {
