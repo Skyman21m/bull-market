@@ -183,10 +183,7 @@ void main() {
       await _reveal(tester, find.text('Pay with this wallet'));
       await tester.tap(find.text('Pay with this wallet'));
       await tester.pump();
-      expect(
-        find.text('Getting the swap fees…'),
-        findsOneWidget,
-      );
+      expect(find.text('Getting the swap fees…'), findsOneWidget);
       expect(payments.quotes, hasLength(1));
       payments.quotes.single.complete(Ok(walletQuote()));
       await tester.pump();
@@ -288,9 +285,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(
-        find.text(
-          'Amount below minimum swap limit: 25,000 sats',
-        ),
+        find.text('Amount below minimum swap limit: 25,000 sats'),
         findsOneWidget,
       );
       expect(find.byType(QrImageView), findsOneWidget);
