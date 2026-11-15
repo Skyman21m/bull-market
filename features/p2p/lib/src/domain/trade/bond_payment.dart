@@ -36,6 +36,11 @@ final class BondPayInvoiceChanged extends BondPayRefusal {
   const BondPayInvoiceChanged();
 }
 
+/// The read just before the payment was superseded twice by a read that left before it (#141), which does not happen while the watch sends no read during the payment's read: nothing was paid, and the order did not necessarily move on.
+final class BondPayReadSuperseded extends BondPayRefusal {
+  const BondPayReadSuperseded();
+}
+
 /// The order could not be read again from the coordinator just before the payment ([failure]): nothing was paid.
 final class BondPayTradeUnavailable extends BondPayRefusal {
   final Failure failure;

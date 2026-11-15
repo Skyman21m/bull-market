@@ -14,19 +14,22 @@ import 'package:p2p/p2p.dart';
 ///
 /// In this order:
 /// 1. the Instant Payments wallet, on the trade's network;
-/// 2. the invoice this use case made in this run for the same payout key, when its order is still waiting for its payment (this feature's note, a receive order to this wallet on this network) and its invoice still passes step 6 for the same amount, is given again rather than a new order created, so that taps do not pile up orders at the service; an invoice is never given for another key, nor one the wallet's own Receive screen made (it is not in the use case's memory). The keys are kept in memory only: after a restart a new invoice is made, and the old one's order expires at its deadline;
-/// 3. the quote, the amount fixed on the Lightning side (`isInAmountFixed: true`): the invoice asks exactly the amount, and the service's fee comes out of what arrives;
-/// 4. a new address of the Instant Payments wallet, the destination of the service's payout (the Receive screen's, `generateNew: true`);
-/// 5. the order, retried once when the service asks to wait a short time (a create right after a quote is the request it most often refuses, `ExchangeAutoswapProvider`);
-/// 6. the invoice the order carries, read by the wallet's own decoder: exactly the amount, the trade's network, at least [minimumLife] left, and expiring with the order, no earlier than its deadline and no later than [deadlineTolerance] after it: what the service does with a payment that reaches it after its own deadline cannot be read in the wallet's code (the order has no refund address), so such an invoice is never given ([P2pWalletServiceRefused]).
+/// 2. the wallet's orders, read once: [P2pWalletUnavailable] if they cannot be;
+/// 3. the invoice this use case made in this run for the same payout key, when its order is among them, still waiting for its payment (this feature's note, a receive order on this network) and its invoice still passes step 7 for the same amount, is given again rather than a new order created, so that taps do not pile up orders at the service. The keys are kept in memory only;
+/// 4. the quote, the amount fixed on the Lightning side (`isInAmountFixed: true`): the invoice asks exactly the amount, and the service's fee comes out of what arrives;
+/// 5. the destination of the service's payout: the Receive screen's address of the Instant Payments wallet (`generateNew: true`), which on Liquid is the wallet's next unused address, the same at each call until something pays it (`WalletAddressRepository.generateNewReceiveAddress` records nothing);
+/// 6. the order, retried once when the service asks to wait a short time (a create right after a quote is the request it most often refuses, `ExchangeAutoswapProvider`). The wallet's store answers an earlier active order of the same request (purpose, network, amount, destination) instead of a new one (`OrderSwapRepositoryImpl._createOrderLocked`), and with the address of step 5 a second payout of the same amount would get the first one's order: an order answered that was already listed at step 2 and is not the one made for this key is refused with [P2pWalletAnotherInvoiceWaiting] and never remembered, whoever made it (another payout, the wallet's Receive screen, an earlier run, or an order a check refused before);
+/// 7. the invoice the order carries, read by the wallet's own decoder: exactly the amount, the trade's network, at least [minimumLife] left, and expiring with the order, no earlier than its deadline (to the second, for parity with the Receive screen) and no later than [deadlineTolerance] after it: what the service does with a payment that reaches it after its own deadline cannot be read in the wallet's code (the order has no refund address), so such an invoice is never given ([P2pWalletServiceRefused]);
+/// 8. its payment hash never given for another key in this run ([P2pWalletAnotherInvoiceWaiting] otherwise): the direct statement of « one invoice, one payout ».
 ///
-/// It moves none of the user's funds. An invoice given and never paid leaves its order at the service, which expires at its deadline; the wallet marks it expired when it next reads it, and its history shows it so. Two calls at once run one after the other, so that the second one finds the first one's invoice. It logs nothing.
+/// It moves none of the user's funds. An invoice given and never paid leaves its order at the service, which expires at its deadline; the wallet marks it expired when it next reads it, and its history shows it so. A refused order is left the same way. Two calls at once run one after the other, so that the second one finds the first one's invoice; a call that throws lets the next one run. It logs nothing.
+/// Not covered here, a risk of the wallet's own store: its Receive screen, asked for the same amount while an order of this feature waits, is answered that order by the same lookup and could show the trade's invoice. Fixing it belongs to the Swap feature (the request's note in its lookup), left unchanged to keep the changes to the wallet's own code minimal.
 class ReceiveWalletInvoiceUsecase {
   /// The least time an invoice given must still live: enough to submit it to the coordinator.
   static const minimumLife = Duration(minutes: 1);
 
-  /// How long after the order's deadline its invoice may still expire: the deadline and the invoice's expiry are written at different precisions (`CreateReceiveOrderSwapUsecase` compares them to the second).
-  static const deadlineTolerance = Duration(seconds: 10);
+  /// How long after the order's deadline its invoice may still expire: an invoice's expiry is written in whole seconds, the deadline to the millisecond, so a second covers the rounding, and each second more would be a window where a payment could reach the service after its deadline.
+  static const deadlineTolerance = Duration(seconds: 1);
 
   /// The longest wait taken on a service that asks to wait before the order: past it, the refusal is given.
   static const maximumRetryWait = Duration(seconds: 30);
@@ -42,6 +45,9 @@ class ReceiveWalletInvoiceUsecase {
 
   /// The local id of the order made for each payout key in this run.
   final Map<String, String> _made = {};
+
+  /// The payout key each payment hash given in this run was given for.
+  final Map<String, String> _givenFor = {};
 
   ReceiveWalletInvoiceUsecase(
     this._wallets,
@@ -93,20 +99,23 @@ class ReceiveWalletInvoiceUsecase {
       RobosatsNetwork.testnet => OrderSwapEnvironment.testnet,
     };
 
+    // The wallet's orders before any creation: what the store may answer instead of a new order.
+    final List<OrderSwapRecord> listed;
+    switch (await _swaps.getOrders(walletId: wallet.id)) {
+      case Ok(:final value):
+        listed = value;
+      case Err():
+        return const Err(P2pWalletUnavailable());
+    }
+    final madeForPayout = _made[payout];
+
     // The invoice made for this payout in this run, given again while it is still waiting.
-    if (_made[payout] case final localId?) {
-      switch (await _swaps.getOrders(walletId: wallet.id)) {
-        case Ok(:final value):
-          for (final record in value) {
-            if (record.localId != localId) continue;
-            if (!_mayReuse(record, environment)) break;
-            final invoice = await _invoiceOf(record, network, amount);
-            if (invoice case Ok()) return invoice;
-            break;
-          }
-        case Err():
-          return const Err(P2pWalletUnavailable());
-      }
+    for (final record in listed) {
+      if (record.localId != madeForPayout) continue;
+      if (!_mayReuse(record, environment)) break;
+      final invoice = await _invoiceOf(record, network, amount, payout);
+      if (invoice case Ok()) return invoice;
+      break;
     }
 
     final OrderSwapQuote quote;
@@ -165,6 +174,15 @@ class ReceiveWalletInvoiceUsecase {
       case Err(:final failure):
         return Err(_refusalOf(failure));
     }
+    // An order that was there before is another invoice, whoever made it: the store answered it for the same request.
+    if (record.localId != madeForPayout &&
+        listed.any((earlier) => earlier.localId == record.localId)) {
+      return const Err(P2pWalletAnotherInvoiceWaiting());
+    }
+    // This payout's own earlier order, answered again although it no longer waits for its payment: not given again.
+    if (record.localId == madeForPayout && !_mayReuse(record, environment)) {
+      return const Err(P2pWalletServiceRefused());
+    }
     if (record.purpose != OrderSwapPurpose.receiveLightning ||
         record.destinationWalletId != wallet.id ||
         record.destination != destination ||
@@ -172,7 +190,7 @@ class ReceiveWalletInvoiceUsecase {
         record.note != WalletPaymentRepository.note) {
       return const Err(P2pWalletServiceRefused());
     }
-    final invoice = await _invoiceOf(record, network, amount);
+    final invoice = await _invoiceOf(record, network, amount, payout);
     // Only an invoice given is remembered: a refused order is left to expire at the service, never given.
     if (invoice case Ok()) _made[payout] = record.localId;
     return invoice;
@@ -185,11 +203,12 @@ class ReceiveWalletInvoiceUsecase {
       record.environment == environment &&
       record.localStatus == OrderSwapLocalStatus.awaitingUserConfirmation;
 
-  /// The invoice of [record], once the wallet's decoder read it as the port promises it; [P2pWalletServiceRefused] otherwise.
+  /// The invoice of [record] for [payout], once the wallet's decoder read it as the port promises it ([P2pWalletServiceRefused] otherwise) and its payment hash was given for no other key ([P2pWalletAnotherInvoiceWaiting] otherwise).
   Future<Result<P2pWalletInvoice, P2pWalletRefusal>> _invoiceOf(
     OrderSwapRecord record,
     RobosatsNetwork network,
     Sats amount,
+    String payout,
   ) async {
     final order = record.order;
     final text = order?.lightningInvoice;
@@ -216,6 +235,11 @@ class ReceiveWalletInvoiceUsecase {
         received > amount.value) {
       return const Err(P2pWalletServiceRefused());
     }
+    final hash = read.paymentHash.toLowerCase();
+    if (_givenFor[hash] case final other? when other != payout) {
+      return const Err(P2pWalletAnotherInvoiceWaiting());
+    }
+    _givenFor[hash] = payout;
     return Ok(
       P2pWalletInvoice(
         bolt11: text,

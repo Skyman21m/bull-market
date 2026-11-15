@@ -572,19 +572,27 @@ final class TakeOrderUsecase {
     final requests = _limiter.open(robot.identity.sessionKey);
     final Result<Result<TakeOrderOutcome, OrderActionFailure>, P2pFailure>
     taken;
+    // Ranked when the take leaves and when its answer arrives: its answer, and a read of the trade it resumes, give the trade's first status; an action of the trade, during which the watch sends no read (#141).
+    final takeTimes = _reader.request();
     try {
-      taken = await requests.send(
-        network,
-        coordinator,
-        () => _client.takeOrder(
-          coordinator,
+      taken = await _reader.duringAction(
+        pending,
+        () => requests.send(
           network,
-          identity: robot.identity,
-          orderId: terms.orderId,
-          amount: chosen,
-          password: password?.text,
+          coordinator,
+          () => _reader.timed(
+            takeTimes,
+            () => _client.takeOrder(
+              coordinator,
+              network,
+              identity: robot.identity,
+              orderId: terms.orderId,
+              amount: chosen,
+              password: password?.text,
+            ),
+          ),
+          isBusy: _answeredBusy,
         ),
-        isBusy: _answeredBusy,
       );
     } finally {
       requests.close();
@@ -624,6 +632,7 @@ final class TakeOrderUsecase {
           ),
           TradeSeen(status, order: started.order),
           showsTaker: true,
+          request: takeTimes,
         );
         return Ok(
           TakeStarted(
@@ -641,6 +650,7 @@ final class TakeOrderUsecase {
               trade,
               TradeOrderRead(order),
               at: _reader.now(),
+              request: takeTimes,
             );
             return Ok(
               TakeResumed(

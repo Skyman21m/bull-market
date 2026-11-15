@@ -506,6 +506,7 @@ String bondPayRefusalText(
     BondPayNotOffered(reason: WalletPaymentRefusal.tooLate) =>
       l10n.p2pPayTooLate,
     BondPayTradeUnavailable() => l10n.p2pPayCoordinatorUnreachable(coordinator),
+    BondPayReadSuperseded() => l10n.p2pPayReadSuperseded(coordinator),
     BondPayNotOffered() => l10n.p2pPayWalletUnavailable,
     BondPayNotRecorded() => l10n.p2pPayNotRecorded,
     BondPayRecordsUnreadable() => l10n.p2pRobotRecordsUnreadable,
@@ -533,6 +534,7 @@ String bondPayRefusalText(
       P2pWalletNeedsConsolidation() ||
       P2pWalletNoInstantWallet() ||
       P2pWalletNoBitcoinWallet() ||
+      P2pWalletAnotherInvoiceWaiting() ||
       P2pWalletUnavailable() ||
       P2pWalletWrongNetwork() ||
       P2pWalletInvoiceUnreadable() ||
