@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:bb_mobile/core/themes/app_theme.dart';
@@ -1939,10 +1940,30 @@ void main() {
           for (var i = 0; i < 12; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
         ];
+        // The maker: a robot of the RoboSats example key, with the key the official client would make for it, so that its chat messages are its own (#93).
+        final maker = switch (GarageKey.parse(_exampleGarageKey())) {
+          Ok(:final value) => switch (value.deriveIdentity(0)) {
+            Ok(:final value) => value,
+            Err() => throw StateError('no maker'),
+          },
+          Err() => throw StateError('not a key'),
+        };
+        final makerKey = switch (RobotPgpKey.generateWith(
+          maker,
+          now: now,
+          random: Random(93),
+        )) {
+          Ok(:final value) => switch (value.unlock(maker)) {
+            Ok(:final value) => value,
+            Err() => throw StateError('not unlocked'),
+          },
+          Err() => throw StateError('no maker key'),
+        };
         final coordinator = ScriptedCoordinator(
           network: RobosatsNetwork.mainnet,
           robots: identities,
           clock: () => now,
+          maker: maker,
         );
         transport.temple = coordinator;
         await tester.tap(find.text(l10n.p2pCommonContinue));
@@ -2296,6 +2317,56 @@ void main() {
         await waitFor(find.text(l10n.p2pPayoutInvoiceExpiredSubmitNew));
         await capture('reception-15-nouvelle-facture');
         // The trade ends (14), so that the order's next take is a new trade.
+        coordinator.moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
+        await backToTab();
+
+        // Take 5: the chat at 9 (#93), the maker's messages encrypted to this robot's key as the official client does, then an address typed alone, refused before anything leaves.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9)
+          ..peerPublicKey = makerKey.key.publicKey.armored;
+        final ownKey = switch (PgpPublicKey.parse(
+          coordinator.publicKeyOf(taker()) ?? '',
+        )) {
+          Ok(:final value) => value,
+          Err() => throw StateError('no key'),
+        };
+        // This robot's key is made on the real clock, a day back: signed at the screen's clock while that key could receive then (a tick), otherwise when it could (a cross: a signature after the screen's clock).
+        final signedAt = ownKey.createdAt.isAfter(now) ? ownKey.createdAt : now;
+        for (final text in locale.languageCode == 'fr'
+            ? [
+                'Bonjour ! Je vous envoie les euros par Revolut dans quelques minutes.',
+                'C’est envoyé, la référence est 4821.',
+              ]
+            : [
+                'Hi! I am sending the euros with Revolut in a few minutes.',
+                'Sent, the reference is 4821.',
+              ]) {
+          coordinator.peerSays(switch (makerKey.encryptChatMessageToPost(
+            text,
+            peer: ownKey,
+            now: signedAt,
+          )) {
+            Ok(:final value) => value,
+            Err() => throw StateError('not encrypted'),
+          });
+        }
+        await nextRead();
+        await waitFor(find.text(l10n.p2pChatTypeMessage));
+        await reveal(find.text(l10n.p2pChatTypeMessage));
+        await capture('chat');
+        await tester.enterText(
+          find.byType(TextField).last,
+          'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+        );
+        await settle();
+        await reveal(find.text(l10n.p2pChatPayoutBlocked));
+        await capture('chat-adresse-seule');
+        await tester.enterText(find.byType(TextField).last, '');
         coordinator.moveTo(14);
         await nextRead();
         await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));

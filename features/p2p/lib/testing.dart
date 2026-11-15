@@ -44,6 +44,7 @@ export 'package:robosats/robosats.dart'
         Federation,
         GarageKey,
         NostrKeyDerivation,
+        PgpPublicKey,
         RobotIdentity,
         RobotKeysRefused,
         RobotPgpKey,
