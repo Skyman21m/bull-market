@@ -304,10 +304,20 @@ class TakeOrderFeeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final read = canTake
-        ? TakeOrderDetailsCard.readOf(context.watch<TakeOrderCubit>().state)
-        : null;
-    return OrderFeeRow(info: info, takerFee: read?.terms.takerFee);
+    final state = canTake ? context.watch<TakeOrderCubit>().state : null;
+    final read = state == null ? null : TakeOrderDetailsCard.readOf(state);
+    final before = switch (state) {
+      TakeReady(:final previous) => previous,
+      _ => null,
+    };
+    return OrderFeeRow(
+      info: info,
+      takerFee: read?.terms.takerFee,
+      takerFeeChanged:
+          read != null &&
+          before != null &&
+          before.terms.takerFee != read.terms.takerFee,
+    );
   }
 }
 

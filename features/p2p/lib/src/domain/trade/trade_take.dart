@@ -305,7 +305,7 @@ final class PreparedTake {
   /// The largest bond, in sats, that the state machine takes for these terms without a [BondAmountOutsideOrder] warning: [TradeTerms.bondCeiling], the very value the wallet's payment of the bond accepts (#100), never a second computation.
   int get bondCeiling => terms.bondCeiling.value.toInt();
 
-  /// Whether [other] shows the user what this read shows: the same payment methods, maker, description, price and premium, sats, expiry, escrow duration, amount and bond (security review of #133: a read made again must say when it changed).
+  /// Whether [other] shows the user what this read shows: the same payment methods, maker, description, price and premium, sats, expiry, escrow duration, amount, bond and taker fee (security reviews of #133: a read made again must say when it changed).
   bool showsTheSameAs(PreparedTake other) {
     final a = order;
     final b = other.order;
@@ -320,7 +320,8 @@ final class PreparedTake {
         terms.explicitSatoshis == other.terms.explicitSatoshis &&
         amount?.amount == other.amount?.amount &&
         bondCeiling == other.bondCeiling &&
-        expectedBond.round() == other.expectedBond.round();
+        expectedBond.round() == other.expectedBond.round() &&
+        terms.takerFee == other.terms.takerFee;
   }
 
   @override

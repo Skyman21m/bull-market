@@ -308,6 +308,196 @@ void main() {
     },
   );
 
+  group(
+    '« Store your garage key » closed without « Done » (second interface review of #133, I-A): what stays safe',
+    () {
+      /// Closes the open dialog by [exit]: its « Go back », a tap beside it, or a system back.
+      Future<void> close(WidgetTester tester, String exit) async {
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        switch (exit) {
+          case 'its « Go back »':
+            await tester.tap(
+              find.descendant(
+                of: find.byType(StoreTokenDialog),
+                matching: _backButton,
+              ),
+            );
+          case 'a tap beside it':
+            await tester.tapAt(const Offset(4, 4));
+          default:
+            await tester.binding.handlePopRoute();
+        }
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+      }
+
+      const exits = ['its « Go back »', 'a tap beside it', 'a system back'];
+      for (final exit in exits) {
+        testWidgets(
+          'closed by $exit: nothing sent nor abandoned, then « Go back » of the order details abandons the read',
+          (tester) async {
+            final take = _Take();
+            final (taken, cubit) = await _show(
+              tester,
+              await _order(),
+              take: take,
+            );
+            await _prepare(tester);
+            await _tap(tester, _continueButton);
+            await close(tester, exit);
+            expect(cubit.state, isA<TakeReady>());
+            expect(take.abandoned, isEmpty);
+            expect(take.abandonedOrders, 0);
+            expect(take.confirmed, isEmpty);
+
+            await _tap(tester, _backButton);
+            expect(take.abandoned, [_read]);
+            expect(take.confirmed, isEmpty);
+            expect(taken, isEmpty);
+          },
+        );
+
+        testWidgets(
+          'closed by $exit, then the page left (its cubit closed): the read abandoned, nothing sent',
+          (tester) async {
+            final take = _Take();
+            final (taken, cubit) = await _show(
+              tester,
+              await _order(),
+              take: take,
+            );
+            await _prepare(tester);
+            await _tap(tester, _continueButton);
+            await close(tester, exit);
+            await tester.runAsync(cubit.close);
+            expect(take.abandoned, [_read]);
+            expect(take.abandonedOrders, 0);
+            expect(take.confirmed, isEmpty);
+            expect(taken, isEmpty);
+          },
+        );
+      }
+
+      testWidgets(
+        '« Done » after the dialog opened again sends nothing before the confirmation reads the order again: changed meanwhile, the new read shown with « The order changed. », nothing taken',
+        (tester) async {
+          final take = _Take(prepared: [Ok(_read), Ok(_readFresh)])
+            ..answer = () => const Err(TakeOrderChanged());
+          final (taken, cubit) = await _show(
+            tester,
+            await _order(),
+            take: take,
+          );
+          await _prepare(tester);
+          await _tap(tester, _continueButton);
+          await close(tester, 'a tap beside it');
+
+          await _confirm(tester);
+          // The confirmation is the use case's, of the read still shown, which reads the order again before anything is sent.
+          expect(take.confirmed, [_read]);
+          expect(
+            cubit.state,
+            isA<TakeReady>()
+                .having((s) => s.changed, 'changed', isTrue)
+                .having((s) => s.previous, 'previous', same(_read))
+                .having((s) => s.prepared, 'prepared', same(_readFresh)),
+          );
+          await _reveal(tester, find.text('The order changed.'));
+          expect(find.text('The order changed.'), findsOneWidget);
+          expect(taken, isEmpty);
+
+          // The new read is taken only by « Continue » and « Done » again.
+          take.answer = null;
+          await _confirm(tester);
+          expect(take.confirmed, [_read, _readFresh]);
+          expect(taken, [TradeScreenStatuses.record]);
+        },
+      );
+
+      testWidgets(
+        '« Continue » tapped twice opens one dialog at most, sending and abandoning nothing, and « Done » tapped three times confirms once',
+        (tester) async {
+          final take = _Take()
+            ..confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
+          final (taken, _) = await _show(tester, await _order(), take: take);
+          await _prepare(tester);
+          await _tap(tester, _continueButton);
+          await close(tester, 'its « Go back »');
+
+          await _reveal(tester, _continueButton);
+          final go = tester.getCenter(_continueButton);
+          await tester.tapAt(go);
+          await tester.pump(const Duration(milliseconds: 16));
+          await tester.tapAt(go);
+          await settle(tester);
+          // The second tap opens no second dialog: it lands on the first one's barrier, which closes it, and that only closes it.
+          expect(
+            find.byType(StoreTokenDialog).evaluate().length,
+            lessThanOrEqualTo(1),
+          );
+          expect(take.confirmed, isEmpty);
+          expect(take.abandoned, isEmpty);
+          if (find.byType(StoreTokenDialog).evaluate().isEmpty) {
+            await _tap(tester, _continueButton);
+          }
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+
+          final done = tester.getCenter(find.text('Done'));
+          await tester.tapAt(done);
+          await tester.pump(const Duration(milliseconds: 16));
+          await tester.tapAt(done);
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.tapAt(done);
+          await settle(tester);
+          expect(take.confirmed, [_read]);
+          expect(find.byType(OrderDetailsScreen), findsOneWidget);
+
+          take.confirming?.complete(
+            Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)),
+          );
+          await settle(tester);
+          expect(take.confirmed, [_read]);
+          expect(taken, [TradeScreenStatuses.record]);
+        },
+      );
+
+      testWidgets(
+        'a dialog opened over the read, whose order is read again meanwhile: its « Done » cannot confirm the old read',
+        (tester) async {
+          final take = _Take(prepared: [Ok(_read), Ok(_readFresh)])
+            ..answer = () => const Err(TakeOrderChanged());
+          final (taken, cubit) = await _show(
+            tester,
+            await _order(),
+            take: take,
+          );
+          await _prepare(tester);
+          await _tap(tester, _continueButton);
+          expect(find.byType(StoreTokenDialog), findsOneWidget);
+
+          // The order read again under the open dialog (here started by the test, as no gesture of the page can while the dialog is open).
+          final again = Completer<Result<PreparedTake, TakeRefusal>>();
+          take.preparing = again;
+          unawaited(cubit.confirm());
+          await tester.pump();
+          expect(cubit.state, isA<TakePreparing>());
+          expect(take.confirmed, [_read]);
+
+          await tester.tap(find.text('Done'));
+          await settle(tester);
+          expect(take.confirmed, [_read]);
+
+          take.preparing = null;
+          again.complete(Ok(_readFresh));
+          await settle(tester);
+          expect(cubit.state, isA<TakeReady>());
+          expect(take.confirmed, [_read]);
+          expect(taken, isEmpty);
+        },
+      );
+    },
+  );
+
   testWidgets(
     'the order read: its description in the order details, as plain text, then the read\'s figures, the bond and the time of the read',
     (tester) async {
@@ -639,6 +829,80 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'the preparation gone at « Done », read again with its figures alone changed: « The order changed. », the price and sats rows marked, the description not (second security review of #133)',
+    (tester) async {
+      final figures = await tester.runAsync(
+        () => preparedTake(
+          description: _description,
+          changes: {'price_now': 95000.0, 'satoshis_now': 105263},
+        ),
+      );
+      final take = _Take(prepared: [Ok(_read), Ok(figures!)])
+        ..answer = () => const Err(TakePreparationGone());
+      final (taken, _) = await _show(tester, await _order(), take: take);
+      await _prepare(tester);
+      await _confirm(tester);
+      await _reveal(tester, find.text('The order changed.'));
+      expect(find.text('The order changed.'), findsOneWidget);
+      OrderDetailRow row(String label) => tester.widget<OrderDetailRow>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(OrderDetailRow),
+        ),
+      );
+      await _revealAbove(tester, find.text('Price and Premium'));
+      expect(row('Price and Premium').changed, isTrue);
+      await _revealAbove(tester, find.text(_description));
+      expect(
+        tester
+            .widget<OrderDescriptionRow>(find.byType(OrderDescriptionRow))
+            .changed,
+        isFalse,
+      );
+      await _revealAbove(tester, find.text('You receive'));
+      expect(row('You receive').changed, isTrue);
+      expect(row('Amount').changed, isFalse);
+      expect(taken, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'the preparation gone at « Done », read again with another taker fee alone: « The order changed. », the fee and the sats marked (second security review of #133)',
+    (tester) async {
+      final fee = await tester.runAsync(
+        () => preparedTake(description: _description, fee: 0.002),
+      );
+      final take = _Take(prepared: [Ok(_read), Ok(fee!)])
+        ..answer = () => const Err(TakePreparationGone());
+      final (taken, _) = await _show(
+        tester,
+        await _order(),
+        take: take,
+        withFees: true,
+      );
+      await _prepare(tester);
+      await _confirm(tester);
+      await _reveal(tester, find.text('The order changed.'));
+      expect(find.text('The order changed.'), findsOneWidget);
+      await _revealAbove(tester, find.textContaining('0.200'));
+      final shown = tester.widget<Text>(find.textContaining('0.200'));
+      expect(shown.semanticsLabel, 'New value: ${shown.data}');
+      expect(shown.style?.fontWeight, FontWeight.w700);
+      OrderDetailRow row(String label) => tester.widget<OrderDetailRow>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(OrderDetailRow),
+        ),
+      );
+      await _reveal(tester, find.text('You receive'));
+      expect(row('You receive').changed, isTrue);
+      await _reveal(tester, find.text('Price and Premium'));
+      expect(row('Price and Premium').changed, isFalse);
+      expect(taken, isEmpty);
+    },
+  );
 
   testWidgets(
     'the payment methods, the « You send via » sentence and the maker shown are the read\'s, those the take goes out on (security review of #133, I1)',

@@ -285,6 +285,24 @@ void main() {
     );
 
     test(
+      'the payment methods changed between the read and « Done », in the book and for the robot: never taken (second security review of #133, PB6)',
+      () async {
+        final harness = await TradeHarness.start();
+        final cubit = _takeCubit(harness, await harness.shownOrder());
+        await cubit.take();
+        expect(cubit.state, isA<TakeReady>());
+        harness.coordinator.bookView['payment_method'] = 'Wise';
+        harness.coordinator.robotView['payment_method'] = 'Wise';
+
+        await cubit.confirm();
+
+        expect(_requestsOf(harness, ScriptedRequest.take), 0);
+        expect(cubit.state, isNot(isA<TakeSent>()));
+        await cubit.close();
+      },
+    );
+
+    test(
       'the order changed again at that new preparation: said, nothing taken, never confirmed by itself',
       () async {
         final harness = await TradeHarness.start();

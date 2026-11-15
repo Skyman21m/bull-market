@@ -233,7 +233,15 @@ class OrderFeeRow extends StatelessWidget {
   final CoordinatorInfo? info;
   final double? takerFee;
 
-  const OrderFeeRow({super.key, required this.info, this.takerFee});
+  /// Whether [takerFee] differs from the read the user saw before (#119): marked as a changed row of the order details, and « New value: … » for a screen reader.
+  final bool takerFeeChanged;
+
+  const OrderFeeRow({
+    super.key,
+    required this.info,
+    this.takerFee,
+    this.takerFeeChanged = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -259,9 +267,23 @@ class OrderFeeRow extends StatelessWidget {
         Text('·', style: style),
         Tooltip(
           message: l10n.p2pOrderFeeTakerTooltip,
-          child: Text(
-            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(takerFee ?? info.takerFee)}',
-            style: style,
+          child: Builder(
+            builder: (context) {
+              final taker =
+                  '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(takerFee ?? info.takerFee)}';
+              return Text(
+                taker,
+                semanticsLabel: takerFeeChanged
+                    ? l10n.p2pOrderNewValue(taker)
+                    : null,
+                style: takerFeeChanged
+                    ? style?.copyWith(
+                        color: colors.warning,
+                        fontWeight: FontWeight.w700,
+                      )
+                    : style,
+              );
+            },
           ),
         ),
         Text('·', style: style),

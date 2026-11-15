@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart'
 import 'package:test/test.dart';
 
 import 'support/key_output.dart';
+import 'support/prepared_takes.dart';
 import 'support/trade_harness.dart';
 
 /// The take in two steps (#119): prepared up to a read of the order by the robot that will take it, the maker's description and the read's figures shown, then confirmed, or abandoned with nothing more sent.
@@ -1102,4 +1103,42 @@ void main() {
       );
     },
   );
+
+  group('PreparedTake.showsTheSameAs (second security review of #133)', () {
+    test('the same read shows the same', () async {
+      expect(
+        (await preparedTake()).showsTheSameAs(await preparedTake()),
+        isTrue,
+      );
+    });
+
+    test(
+      'another taker fee alone does not: the sats shown depend on it',
+      () async {
+        expect(
+          (await preparedTake()).showsTheSameAs(await preparedTake(fee: 0.002)),
+          isFalse,
+        );
+      },
+    );
+
+    test('another price and sats alone do not', () async {
+      final figures = await preparedTake(
+        changes: {'price_now': 95000.0, 'satoshis_now': 105263},
+      );
+      expect((await preparedTake()).showsTheSameAs(figures), isFalse);
+    });
+
+    test('another expiry alone does not', () async {
+      final read = await preparedTake();
+      final later = await preparedTake(
+        changes: {
+          'expires_at': read.order.expiresAt
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+      );
+      expect(read.showsTheSameAs(later), isFalse);
+    });
+  });
 }
