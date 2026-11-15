@@ -1776,6 +1776,9 @@ void main() {
         wallet.progress(const P2pWalletPaymentRefundPending());
         await settle();
         await capture('paiement-service-n-a-pas-paye');
+        wallet.progress(const P2pWalletPaymentRefunded());
+        await settle();
+        await capture('paiement-rembourse-3');
         wallet.progress(const P2pWalletPaymentPending());
         await settle();
 
@@ -1794,6 +1797,8 @@ void main() {
         await tester.tap(find.text(l10n.p2pTradeConfirmCancel));
         await settle();
         await nextRead();
+        // The order cancelled, the wallet not yet told of the bond's fate: the payment is in progress.
+        await capture('paiement-en-cours-apres');
         wallet.progress(const P2pWalletPaymentPaid());
         await settle();
         await capture('paiement-caution-conservee');
