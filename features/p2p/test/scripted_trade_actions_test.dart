@@ -167,6 +167,31 @@ void main() {
       expect(coordinator.status, 13);
     });
 
+    test(
+      'a request that lands late: the read after still shows 9, then 10 once it lands, and a second tap changes nothing',
+      () async {
+        await traded();
+        coordinator.moveTo(9);
+        final chat = await read();
+        coordinator.failNext(ScriptedRequest.confirm, ScriptedFault.landsLate);
+        final first = await client.confirmFiat(identity: taker, lastRead: chat);
+        expect(
+          (first as Err<TradeActionOutcome, OrderActionFailure>).failure,
+          isA<OrderActionOutcomeUnknown>(),
+        );
+        final before = await read();
+        expect(before.status, CoordinatorOrderStatus.sendingFiat);
+        coordinator.landLate();
+        expect(coordinator.status, 10);
+        // A second tap from the read that showed 9: one confirmed state, no error.
+        final second = accepted(
+          await client.confirmFiat(identity: taker, lastRead: before),
+        );
+        expect(second.status, CoordinatorOrderStatus.fiatSent);
+        expect(coordinator.status, 10);
+      },
+    );
+
     test('an answer lost after the coordinator acted: a read tells', () async {
       await traded();
       coordinator.moveTo(9);
@@ -244,6 +269,38 @@ void main() {
       },
     );
 
+    test('asked by this robot, accepted by the peer: 12 for both', () async {
+      await traded();
+      coordinator.moveTo(9);
+      final chat = await read();
+      expect(
+        await client.cancelOrder(identity: taker, lastRead: chat),
+        isA<Ok<CancelOrderOutcome, OrderActionFailure>>(),
+      );
+      coordinator.peerAcceptsCancel();
+      expect(coordinator.status, 12);
+      expect(
+        await client.fetchOrder(
+          coordinator.coordinator,
+          network,
+          identity: taker,
+          orderId: coordinator.orderId,
+        ),
+        isA<Err<CoordinatorOrder, CoordinatorFailure>>().having(
+          (r) => r.failure,
+          'failure',
+          isA<OrderCancelled>(),
+        ),
+      );
+    });
+
+    test('the peer cannot accept what was not asked', () async {
+      await traded();
+      coordinator.moveTo(9);
+      expect(coordinator.peerAcceptsCancel, throwsStateError);
+      expect(coordinator.status, 9);
+    });
+
     test('refused once the fiat is sent: the guard, then 1021', () async {
       await traded();
       coordinator.moveTo(9);
@@ -295,6 +352,8 @@ void main() {
       );
       expect(open.status, CoordinatorOrderStatus.inDispute);
       expect(open.statementSubmitted, isFalse);
+      // The dispute's own time: a day from its opening (`api/logics.py:510-512`, `t_to_expire(11)`).
+      expect(open.expiresAt, now.add(const Duration(days: 1)));
     });
 
     test('refused outside 9 and 10', () async {
@@ -342,6 +401,11 @@ void main() {
       final unrated = await raw(taker, {'action': 'rate_platform'});
       expect(unrated.$1, 501);
       expect(codeOf(unrated), 1049);
+      final blank = await raw(taker, {'action': 'rate_platform', 'rating': ''});
+      expect(blank.$1, 501);
+      expect(codeOf(blank), 1049);
+      final unknown = await raw(taker, {'action': 'rate_user', 'rating': 5});
+      expect(unknown, (400, null));
       for (final rating in [0, 6, 'five']) {
         final answer = await raw(taker, {
           'action': 'rate_platform',
