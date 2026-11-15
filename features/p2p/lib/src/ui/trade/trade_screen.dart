@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
+import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
@@ -241,6 +242,14 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       TradeMessage(:final kind) => _Message(
                         text: kind.toText(context, coordinator: coordinator),
                         waits: kind == TradeMessageKind.takePending,
+                        notice: switch (state.chatStep) {
+                          ChatStepIdle(:final notice?, :final action) => (
+                            notice,
+                            action,
+                          ),
+                          _ => null,
+                        },
+                        coordinator: coordinator,
                       ),
                       TradeOrderOnly(:final order) => _PublicAgain(
                         order: order,
@@ -365,7 +374,16 @@ class _Message extends StatelessWidget {
   final String text;
   final bool waits;
 
-  const _Message({required this.text, required this.waits});
+  /// What an action of the chat step gave, when the order it was sent for is now shown as a message (cancelled, ended): said under it, as the reference says its `bad_request` whatever the status (#95).
+  final (ChatStepNotice, ChatStepAction)? notice;
+  final String coordinator;
+
+  const _Message({
+    required this.text,
+    required this.waits,
+    this.notice,
+    required this.coordinator,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -389,6 +407,14 @@ class _Message extends StatelessWidget {
           if (waits) ...[
             const Gap(BullSpacing.md),
             LinearProgressIndicator(color: colors.primary),
+          ],
+          if (notice case (final notice, final action)) ...[
+            const Gap(BullSpacing.md),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
           ],
         ],
       ),
@@ -514,6 +540,16 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status),
+        // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it.
+        if (contract.prompt != TradePrompt.chat)
+          if (chatStep case ChatStepIdle(:final notice?, :final action)) ...[
+            const Gap(BullSpacing.md),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
+          ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
           _BondLine(line: contract.bondLine),

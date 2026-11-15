@@ -268,29 +268,31 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         confirm
             ? l10n.p2pEndNotRecordedMovedOn(coordinator)
             : l10n.p2pEndRequestNotRecordedMovedOn(coordinator),
-      // The request never left: a busy transport, a coordinator not on the network, in the robot panel's words; any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: said as the coordinator's, not « this robot ».
-      ChatStepWasNotDone(
-        cause: final CoordinatorFailure failure &&
-            (CoordinatorTransportBusy() || CoordinatorNotOnNetwork()),
-      ) =>
-        notSent(failure.toRobotText(context, coordinator: coordinator)),
+      // The request never left: a busy transport (the robot panel's sentence, which ends with its full stop), a coordinator not on the network (its own sentence: the label « Coordinator offline » has no full stop to join).
+      ChatStepWasNotDone(cause: CoordinatorTransportBusy()) => notSent(
+        l10n.p2pRobotBusy,
+      ),
+      ChatStepWasNotDone(cause: CoordinatorNotOnNetwork()) =>
+        confirm
+            ? l10n.p2pEndOffline(coordinator)
+            : l10n.p2pEndRequestOffline(coordinator),
       // Refused here before sending: never left.
       ChatStepWasNotDone(cause: OrderReadElsewhere()) => notSent(
         l10n.p2pBookError,
       ),
+      // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
       ChatStepWasNotDone(cause: CoordinatorFailure()) =>
         confirm
             ? l10n.p2pEndRefusedBy(coordinator)
             : l10n.p2pEndRequestRefusedBy(coordinator),
-      // The robot's places in the limiter: never sent.
-      ChatStepWasNotDone(cause: final P2pFailure failure) => notSent(
-        failure.toTranslated(context),
-      ),
+      // The robot's places in the limiter, busy or released: never sent, said in the robot panel's full sentence.
+      ChatStepWasNotDone(
+        cause: RobotCoordinatorBusyFailure() || RobotReleasedFailure(),
+      ) =>
+        notSent(l10n.p2pRobotBusy),
       ChatStepWasNotDone() => notSent(l10n.p2pBookError),
       ChatStepWasUnknown() =>
-        action == ChatStepAction.confirmFiatSent
-            ? l10n.p2pEndUnknown
-            : l10n.p2pEndUnknownRequest,
+        confirm ? l10n.p2pEndUnknown : l10n.p2pEndUnknownRequest,
     };
   }
 }

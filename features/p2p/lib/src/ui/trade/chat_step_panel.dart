@@ -359,6 +359,38 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
 String withoutLeadingEmoji(String text) =>
     text.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
 
+/// What an action of the chat step gave, read out as it appears: in the warning colour for an outcome unknown, which is no failure (the confirmation may well have gone through, as the payout's notice of the same kind), red only where it was not recorded; shown by the chat step's panel at 9 and 10, and by the trade screen under any other status the order moved to.
+class ChatStepNoticeLine extends StatelessWidget {
+  final ChatStepNotice notice;
+  final String coordinator;
+
+  /// The action the notice is about, whose words it takes.
+  final ChatStepAction action;
+
+  const ChatStepNoticeLine({
+    super.key,
+    required this.notice,
+    required this.coordinator,
+    required this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Text(
+        notice.toText(context, coordinator: coordinator, action: action),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: notice is ChatStepWasUnknown ? colors.warning : colors.error,
+        ),
+      ),
+    );
+  }
+}
+
 /// « … », which opens « Order options » (`Prompts/Chat.tsx:205-215`: an outlined button with the reference's « open options » label).
 class _OptionsButton extends StatelessWidget {
   final VoidCallback? onPressed;

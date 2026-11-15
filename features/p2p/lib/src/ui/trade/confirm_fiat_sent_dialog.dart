@@ -41,6 +41,7 @@ class ConfirmFiatSentDialog extends StatelessWidget {
       ),
       text: l10n.p2pEndConfirmSentText,
       warning: l10n.p2pEndCannotBeUndone,
+      semanticWarning: withoutLeadingEmoji(l10n.p2pEndCannotBeUndone),
       afterWarning: l10n.p2pEndFalseConfirmRisk,
       backLabel: l10n.p2pCommonGoBack,
       onBack: () => Navigator.of(context).pop(false),

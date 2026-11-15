@@ -2162,7 +2162,7 @@ class P2pLocalizationsHi extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator now gives $readAmount $readCurrency; the trade was taken for $amount $currencyCode.';
+    return '$coordinator now gives $readAmount $readCurrency; the order was taken for $amount $currencyCode.';
   }
 
   @override
@@ -2171,7 +2171,7 @@ class P2pLocalizationsHi extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator gives no amount for this trade; it was taken for $amount $currencyCode.';
+    return '$coordinator gives no amount for this order; it was taken for $amount $currencyCode.';
   }
 
   @override
@@ -2250,6 +2250,16 @@ class P2pLocalizationsHi extends P2pLocalizations {
   @override
   String p2pEndRequestNotDoneAfter(String reason) {
     return '$reason Your request was not sent.';
+  }
+
+  @override
+  String p2pEndOffline(String coordinator) {
+    return '$coordinator is offline: your confirmation was not sent.';
+  }
+
+  @override
+  String p2pEndRequestOffline(String coordinator) {
+    return '$coordinator is offline: your request was not sent.';
   }
 }
 

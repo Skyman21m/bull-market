@@ -37,10 +37,11 @@ final class TradeScreenStatuses {
     Bolt11TestInvoice? invoice,
     bool decodable = true,
     int? bondSatoshis,
+    double? amount,
   }) async {
     final bond = invoice ?? bondInvoice();
     return TradeScreenStatuses._(
-      await tradeTerms(),
+      await tradeTerms(amount: amount),
       bond,
       Bolt11Reader(Bolt11TestDecoder([if (decodable) bond])),
       bondSatoshis,

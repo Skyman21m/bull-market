@@ -3522,7 +3522,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives another amount or currency than the trade's terms, which the button keeps (#95; a warning informs, it does not block).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} now gives {readAmount} {readCurrency}; the trade was taken for {amount} {currencyCode}.'**
+  /// **'{coordinator} now gives {readAmount} {readCurrency}; the order was taken for {amount} {currencyCode}.'**
   String p2pEndAmountDiffers(
     String coordinator,
     String readAmount,
@@ -3534,7 +3534,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives no amount for a range order, the button keeping the trade's terms (#95).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} gives no amount for this trade; it was taken for {amount} {currencyCode}.'**
+  /// **'{coordinator} gives no amount for this order; it was taken for {amount} {currencyCode}.'**
   String p2pEndAmountMissing(
     String coordinator,
     String amount,
@@ -3660,6 +3660,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{reason} Your request was not sent.'**
   String p2pEndRequestNotDoneAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, the confirmation never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: your confirmation was not sent.'**
+  String p2pEndOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: your request was not sent.'**
+  String p2pEndRequestOffline(String coordinator);
 }
 
 class _P2pLocalizationsDelegate
