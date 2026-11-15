@@ -1,6 +1,7 @@
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import '../../robot_key_compute_port.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/trade_chat.dart';
 import '../../trade/trade_watch.dart';
@@ -20,6 +21,7 @@ final class SendChatMessageUsecase {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final TradeKeyring _keyring;
+  final RobotKeyComputePort _compute;
   final TradeChats _chats;
 
   const SendChatMessageUsecase(
@@ -27,6 +29,7 @@ final class SendChatMessageUsecase {
     this._reader,
     this._limiter,
     this._keyring,
+    this._compute,
     this._chats,
   );
 
@@ -216,7 +219,7 @@ final class SendChatMessageUsecase {
       }
       final index = page?.indexOf(message);
       if (page != null) {
-        await ChatPages.take(_keyring, _reader, chat, trade, page);
+        await ChatPages.take(_keyring, _compute, _reader, chat, trade, page);
       }
       // A page that shows it took it off the pending messages too.
       if (index != null) return Ok(ChatSentStored(index));

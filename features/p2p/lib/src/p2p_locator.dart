@@ -361,11 +361,13 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        locator(),
       ),
     );
     locator.registerFactory<SendChatMessageUsecase>(
       () => SendChatMessageUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
         locator(),
         locator(),

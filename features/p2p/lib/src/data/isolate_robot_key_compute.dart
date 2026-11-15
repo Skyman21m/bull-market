@@ -4,6 +4,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
     show
         CoordinatorRobot,
+        DecryptedChatMessage,
         PgpClockOutOfRange,
         PgpFailure,
         RobotIdentity,
@@ -49,6 +50,37 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
   >
   unlock(RobotPgpKey key, RobotIdentity identity) =>
       _unlockApart(key, identity);
+
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) => _decryptApart(key, jobs, now);
+
+  /// The chat's messages decrypted apart: the unlocked key is copied to the isolate for the work, as the unlock's result comes back from one; only the decrypted messages come back.
+  static Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  _decryptApart(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs,
+    DateTime now,
+  ) => _run(
+    () => [
+      for (final job in jobs)
+        key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+    ],
+  );
 
   static Future<
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>

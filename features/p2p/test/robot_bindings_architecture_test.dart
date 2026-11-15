@@ -625,10 +625,14 @@ void main() {
           referring((r) => r == 'UnlockedRobotPgpKey.encryptChatMessageToPost'),
           {chatSend},
         );
+        // Decrypted away from the UI isolate, by the key work's own file, which only the chat's read asks for it.
         expect(
           referring((r) => r == 'UnlockedRobotPgpKey.decryptChatMessage'),
-          {chatRead},
+          {'lib/src/data/isolate_robot_key_compute.dart'},
         );
+        expect(referring((r) => r == 'RobotKeyComputePort.decryptChat'), {
+          chatRead,
+        });
         expect(
           referring(
             (r) =>
@@ -1832,7 +1836,7 @@ const _watched = {
   // The keyring of the trades (#90): who unlocks a robot's key, who keeps it, who signs with it.
   'TradeKeyring': ('package:p2p/', {'hold', 'lease'}),
   'TradeKeyLease': ('package:p2p/', {'key'}),
-  'RobotKeyComputePort': ('package:p2p/', {'unlock'}),
+  'RobotKeyComputePort': ('package:p2p/', {'unlock', 'decryptChat'}),
   'UnlockedRobotPgpKey': (
     'package:robosats/',
     {

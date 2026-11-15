@@ -1,6 +1,7 @@
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import '../../robot_key_compute_port.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/trade_chat.dart';
 import '../../trade/trade_watch.dart';
@@ -18,6 +19,7 @@ final class WatchChatUsecase {
   final TradeReader _reader;
   final RobotRequestLimiter _limiter;
   final TradeKeyring _keyring;
+  final RobotKeyComputePort _compute;
   final TradeChats _chats;
 
   const WatchChatUsecase(
@@ -25,6 +27,7 @@ final class WatchChatUsecase {
     this._reader,
     this._limiter,
     this._keyring,
+    this._compute,
     this._chats,
   );
 
@@ -73,6 +76,7 @@ final class WatchChatUsecase {
         case Ok(value: Ok(value: final page)):
           return switch (await ChatPages.take(
             _keyring,
+            _compute,
             _reader,
             chat,
             trade,
@@ -100,6 +104,7 @@ final class WatchChatUsecase {
 abstract final class ChatPages {
   static Future<Result<void, Failure>> take(
     TradeKeyring keyring,
+    RobotKeyComputePort compute,
     TradeReader reader,
     TradeChat chat,
     OpenTrade trade,
@@ -118,12 +123,20 @@ abstract final class ChatPages {
     }
     try {
       final key = lease.key;
-      final now = reader.now();
+      final own = key.key.publicKey;
+      final jobs = chat.jobsFor(page, own);
+      // Decrypted away from the UI isolate (#93): dozens of messages would freeze the screen.
+      final List<Result<DecryptedChatMessage, PgpFailure>> decrypted;
+      switch (await compute.decryptChat(key, jobs, now: reader.now())) {
+        case Err(:final failure):
+          return Err(failure);
+        case Ok(:final value):
+          decrypted = value;
+      }
       chat.take(
         page,
-        decrypt: (armored, sender) =>
-            key.decryptChatMessage(armored, sender: sender, now: now),
-        ownKey: key.key.publicKey,
+        decrypt: TradeChat.decryptorOf(jobs, decrypted),
+        ownKey: own,
       );
       return const Ok(null);
     } finally {

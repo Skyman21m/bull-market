@@ -2,6 +2,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../robot_binding.dart';
+import '../../robot_key_compute_port.dart';
 import '../../trade/trade_chat.dart';
 import '../../trade_record.dart';
 
@@ -96,6 +97,50 @@ final class TradeChat {
         (ChatPeerKeyBreach(:final pinned), _) => pinned,
         _ => null,
       };
+
+  /// The messages [page] would have decrypted, once [ownKey] is known: the peer's messages read before the key, once the key is known, and each new encrypted message (this robot's and neither party's checked with [ownKey], the peer's with its key).
+  List<ChatDecryptJob> jobsFor(ChatPage page, PgpPublicKey ownKey) {
+    final peerKey = _keyForPeerAfter(page);
+    return [
+      if (peerKey != null)
+        for (final kept in _entries.values)
+          if (kept.awaitingPeerKey)
+            if (_armored[kept.index] case final armored?)
+              (armored: armored, sender: peerKey),
+      for (final message in page.messages)
+        if (!_entries.containsKey(message.index) &&
+            message.content == ChatMessageContent.pgpMessage)
+          if (message.armored case final armored?)
+            if (switch (message.sender) {
+                  ChatSender.peer => peerKey,
+                  ChatSender.self || ChatSender.unknown => ownKey,
+                }
+                case final sender?)
+              (armored: armored, sender: sender),
+    ];
+  }
+
+  /// The key the peer's messages of [page] are checked with once [page] is taken: the pinned key, or [page]'s if it pins one now; the key pinned before a breach.
+  PgpPublicKey? _keyForPeerAfter(ChatPage page) =>
+      switch (_keyAfter(page.peerKey)) {
+        ChatPeerKeyPinned(:final key) => key,
+        ChatPeerKeyBreach(:final pinned) => pinned,
+        ChatPeerKeyAwaited() => null,
+      };
+
+  /// [decrypted], the results of [jobsFor] in its order, as the decryptor [take] needs.
+  static ChatDecryptor decryptorOf(
+    List<ChatDecryptJob> jobs,
+    List<Result<DecryptedChatMessage, PgpFailure>> decrypted,
+  ) {
+    final byJob = {
+      for (var i = 0; i < jobs.length && i < decrypted.length; i++)
+        '${jobs[i].sender.fingerprint}:${jobs[i].armored}': decrypted[i],
+    };
+    return (armored, sender) =>
+        byJob['${sender.fingerprint}:$armored'] ??
+        const Err(PgpMessageUndecryptable());
+  }
 
   /// Takes [page], read from [offset]: the peer's key pinned or compared, each new message decrypted once with [decrypt] ([ownKey] for this robot's, the pinned key for the peer's), marked, and the offset moved on.
   ///
