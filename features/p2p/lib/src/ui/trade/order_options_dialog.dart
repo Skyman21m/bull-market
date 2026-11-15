@@ -14,7 +14,7 @@ class OrderOptionsDialog extends StatelessWidget {
   /// The places of « Audit Chat » and « Export » (#93) and of « Open Dispute » (#95), `null` for now.
   final Widget? auditChat;
   final Widget? export;
-  final Widget? openDispute;
+  final Widget? dispute;
 
   /// Whether « Collaborative Cancel » may be pressed: at 9, before « fiat sent ».
   final bool collaborativeCancel;
@@ -24,7 +24,7 @@ class OrderOptionsDialog extends StatelessWidget {
     required this.collaborativeCancel,
     this.auditChat,
     this.export,
-    this.openDispute,
+    this.dispute,
   });
 
   /// What the user chose, or `null` when the dialog was closed.
@@ -55,7 +55,7 @@ class OrderOptionsDialog extends StatelessWidget {
               style: styles.headlineLarge?.copyWith(color: colors.text),
             ),
           ),
-          for (final place in [auditChat, export, openDispute])
+          for (final place in [auditChat, export, dispute])
             if (place != null) ...[const Gap(BullSpacing.md), place],
           const Gap(BullSpacing.md),
           TradeButton(
