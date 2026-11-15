@@ -41,7 +41,6 @@ final class SendChatMessageUsecase {
       return const ChatTextTooLong();
     }
     if (_garageKey.hasMatch(text)) return const ChatTextHoldsGarageKey();
-    if (_isPayout(text)) return const ChatTextIsPayout();
     return null;
   }
 
@@ -49,36 +48,6 @@ final class SendChatMessageUsecase {
   static final RegExp _garageKey = RegExp(
     r'robo1[02-9ac-hj-np-z]{58}',
     caseSensitive: false,
-  );
-
-  /// A Lightning invoice by its shape (BOLT 11: `ln`, a network's prefix, an amount, the separator, bech32 data), with or without the `lightning:` prefix.
-  static final RegExp _invoice = RegExp(
-    r'^(lightning:)?ln(bcrt|bc|tbs|tb)[0-9]*[munp]?1[02-9ac-hj-np-z]{50,}$',
-    caseSensitive: false,
-  );
-
-  /// Whether [text], stripped as the coordinator strips a clear-signed text, is on its own a Lightning invoice or a Bitcoin address of either network, with or without its URI prefix (review of #93).
-  ///
-  /// A chat message's signature is the same text signature as a clear-signed payout's (`UnlockedRobotPgpKey.signCleartext`): for a text of one line the signed bytes are identical, so the message can be turned into this robot's signed payout. The peer alone cannot use it, since a coordinator checks a payout against the key of the robot that sends it, authenticated by its token's hash; whoever holds that hash, any coordinator this robot was shown to, colluding with the peer, can: at status 15 of this trade, or at the payout step of any later trade where this robot buys, the signature being tied to no order. The dangerous text is the attacker's destination pasted back by the user, not the user's own. The reference refuses nothing (`AGENTS.md`, a deviation the owner is asked about); the design note's § 4.2 refused the trade's own payout text, the wrong text.
-  static bool _isPayout(String text) {
-    final stripped = text.replaceAll(_pythonSpace, '');
-    if (_invoice.hasMatch(stripped)) return true;
-    final lower = stripped.toLowerCase();
-    final address = lower.startsWith('bitcoin:')
-        ? stripped.substring('bitcoin:'.length).split('?').first
-        : stripped;
-    // The segwit versions this wallet's check leaves out (version 1 of another length, 2 to 16) are valid to the coordinator's bitcoind, and anyone can spend them.
-    return RobosatsNetwork.values.any(
-      (network) => switch (BitcoinAddress.check(address, network)) {
-        Ok() || Err(failure: PayoutDestinationUnsupported()) => true,
-        Err() => false,
-      },
-    );
-  }
-
-  /// What Python's `str.strip()` removes from both ends, as the coordinator does before it checks a clear-signed text (`api/utils.py:642-644`): Dart's whitespace, which lacks U+001C to U+001F and U+0085, and those.
-  static final RegExp _pythonSpace = RegExp(
-    r'^[\s\x1c-\x1f\x85]+|[\s\x1c-\x1f\x85]+$',
   );
 
   /// Sends [text] in the chat of [record], about the order of [seen], the status the screen shows.
@@ -185,18 +154,30 @@ final class SendChatMessageUsecase {
     final offset = chat.offset;
     final identity = trade.robot.identity;
     final requests = _limiter.open(identity.sessionKey);
+    // Checked again right before the request leaves: a breach read while the limiter waited for a place, or after a busy answer, stops it too (review of #93).
+    var breached = false;
+    Future<Result<ChatPage, OrderActionFailure>> post() async {
+      if (chat.pinnedKey?.fingerprint != message.peerFingerprint) {
+        breached = true;
+        // Nothing leaves; the answer is never read.
+        return const Err(OrderActionRefused(CoordinatorUnreachable()));
+      }
+      return _client.postChat(
+        identity: identity,
+        lastRead: order,
+        message: message,
+        offset: offset,
+      );
+    }
+
     try {
       final posted = await requests.send(
         trade.record.network,
         trade.coordinator,
-        () => _client.postChat(
-          identity: identity,
-          lastRead: order,
-          message: message,
-          offset: offset,
-        ),
+        post,
         isBusy: _answeredBusy,
       );
+      if (breached) return const Err(ChatPeerKeyChanged());
       final ChatPage? page;
       switch (posted) {
         // The limiter sent nothing (a busy coordinator every time).

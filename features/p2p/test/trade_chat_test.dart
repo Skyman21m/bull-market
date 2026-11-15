@@ -6,6 +6,7 @@ import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/send_chat_message_usecase.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
@@ -324,6 +325,30 @@ void main() {
     );
 
     test(
+      'the decryption that could not run takes nothing: the next read decrypts the page (second pass of the review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        app.coordinator.peerSays(written(app, 'Hello'));
+        app.keys.chatDecryptFailure = const RobotKeyComputeFailure();
+        expect(
+          await app.chatRead.read(record, seen),
+          isA<Err<ChatView, ChatReadFailure>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<ChatTradeUnavailable>(),
+          ),
+        );
+        expect(app.chatRead.current(record).entries, isEmpty);
+        expect(app.chats.of(record).offset, 0);
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
+        app.keys.chatDecryptFailure = null;
+        final view = await read(app, record, seen);
+        expect(view.entries.single.text, 'Hello');
+        expect(view.entries.single.validSignature, isTrue);
+      },
+    );
+
+    test(
       'a message the peer\'s key did not sign is marked; one from neither party is never checked as the peer\'s; one that is not an encrypted message is unreadable',
       () async {
         final (app, record, seen) = await atNine();
@@ -458,15 +483,6 @@ void main() {
             isA<ChatTextTooLong>(),
           ),
           ('my key ${tradeKey.revealBech32()}', isA<ChatTextHoldsGarageKey>()),
-          (' lntb1066060n1pjunk${'q' * 120} ', isA<ChatTextIsPayout>()),
-          (
-            'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx',
-            isA<ChatTextIsPayout>(),
-          ),
-          (
-            'bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=1',
-            isA<ChatTextIsPayout>(),
-          ),
           ('token: ${app.robot(0).token.reveal()}', isA<ChatTextHoldsToken>()),
         ]) {
           expect(
@@ -484,13 +500,6 @@ void main() {
               .where((r) => r.url.path == '/api/chat/' && r.body != null)
               .length,
           posts,
-        );
-        // A text that only mentions an address is no payout.
-        expect(
-          SendChatMessageUsecase.refusalOf(
-            'send to tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx please',
-          ),
-          isNull,
         );
       },
     );
@@ -650,6 +659,36 @@ void main() {
     );
 
     test(
+      'a breach read while the limiter waits after a busy answer stops the post before it leaves (second pass of the review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        final wait = Completer<void>();
+        app.holdBusyWait = wait.future;
+        app.coordinator.failNext(ScriptedRequest.chatPost, ScriptedFault.busy);
+        final sending = app.chatSend.send(record, seen, 'Hello');
+        await app.settle();
+        expect(app.busyWaits, isNotEmpty);
+        app.holdBusyWait = null;
+        app.coordinator.peerPublicKey = keyOf(maker, 936).key.publicKey.armored;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyBreach>(),
+        );
+        wait.complete();
+        expect(
+          await sending,
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(app.coordinator.chat, isEmpty);
+      },
+    );
+
+    test(
       'a message not confirmed is not sent again after a breach (review of #93)',
       () async {
         final (app, record, seen) = await atNine();
@@ -755,6 +794,19 @@ void main() {
         ),
         'FR76 300060001 123456',
       );
+      // The separators render as line breaks; private use, noncharacters and letters that show nothing are dropped; a run of combining marks keeps four (second pass of the review of #93).
+      expect(ChatEntry.displayable('a\u2028b\u2029c'), 'a\nb\nc');
+      expect(
+        ChatEntry.displayable(
+          'I\uE000B\u{F0000}A\uFDD0N\uFFFE \u{10FFFF}F\u3164R\u2800\u115F\u1160\uFFA07\u034F6',
+        ),
+        'IBAN FR76',
+      );
+      expect(
+        ChatEntry.displayable('e\u0301\u0302\u0303\u0304\u0305\u0306\u0307x'),
+        'e\u0301\u0302\u0303\u0304x',
+      );
+      expect(ChatEntry.displayable('Vi\u1EC7t Nam'), 'Vi\u1EC7t Nam');
       // The zero-width joiner is dropped too: an emoji sequence shows as its parts.
       expect(
         ChatEntry.displayable('\u{1F468}\u200D\u{1F469}'),
@@ -764,7 +816,7 @@ void main() {
   );
 
   test(
-    'as the user types: too long said before any key, at the byte, and an invoice or address alone refused however the coordinator would strip it (review of #93)',
+    'as the user types: too long said before any key, at the byte (review of #93)',
     () {
       expect(
         SendChatMessageUsecase.refusalOf(
@@ -778,30 +830,11 @@ void main() {
         ),
         isA<ChatTextTooLong>(),
       );
-      const address = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
-      for (final text in [
-        '\x1c$address',
-        '$address\x1f',
-        '\x1d\x1e $address \u0085',
-        '\n\n$address\n',
-        address.toUpperCase(),
-        // BIP-350's vectors: version 1 with a 40-byte program, version 16, version 2, valid to bitcoind and anyone can spend them.
-        'bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y',
-        'BC1SW50QGDZ25J',
-        'bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs',
-      ]) {
-        expect(
-          SendChatMessageUsecase.refusalOf(text),
-          isA<ChatTextIsPayout>(),
-          reason: text,
-        );
-      }
-      expect(SendChatMessageUsecase.refusalOf('to $address'), isNull);
     },
   );
 
   test(
-    'an invoice made as a wallet makes one is refused alone, not inside a sentence',
+    'an invoice or an address alone is sent, as the reference sends it: the owner chose to stay with the reference (`AGENTS.md`)',
     () {
       final invoice = Bolt11TestInvoice(
         network: Bolt11Network.testnet,
@@ -810,17 +843,14 @@ void main() {
         createdAt: realNow,
         expiry: const Duration(days: 1),
       );
-      expect(
-        SendChatMessageUsecase.refusalOf(invoice.text),
-        isA<ChatTextIsPayout>(),
-      );
-      expect(
-        SendChatMessageUsecase.refusalOf(
-          'lightning:${invoice.text.toUpperCase()}',
-        ),
-        isA<ChatTextIsPayout>(),
-      );
-      expect(SendChatMessageUsecase.refusalOf('here: ${invoice.text}'), isNull);
+      for (final text in [
+        invoice.text,
+        'lightning:${invoice.text.toUpperCase()}',
+        'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+        'bitcoin:tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx?amount=1',
+      ]) {
+        expect(SendChatMessageUsecase.refusalOf(text), isNull, reason: text);
+      }
     },
   );
 

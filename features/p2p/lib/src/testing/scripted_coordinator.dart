@@ -500,7 +500,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// `POST /api/chat/` as the reference answers it (`chat/views.py:116-218`, `chat/serializers.py:57-84`): a message empty or missing, an order id or an offset that is not a non-negative integer 6003, an unknown order a server error; stored at 9 and 10 as the next index, then the page above the offset when one is given, and `{}` otherwise.
   ///
-  /// Known gap: the reference lets the maker post too (`views.py:131`), which these tests, a taker's, never need.
+  /// Known gaps: the reference lets the maker post too (`views.py:131`), which these tests, a taker's, never need; and its `IntegerField` takes an `order_id` sent as a string such as "42", refused here, which the package never sends.
   CoordinatorResponse _chatPost(
     RobotIdentity robot,
     CoordinatorRequest request,
