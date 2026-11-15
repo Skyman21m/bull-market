@@ -79,7 +79,7 @@ void main() {
     final run = app.watchOf(record);
     await app.settle();
     app.coordinator.lockBond(app.robot(0));
-    await app.elapse(realNow.difference(app.now));
+    if (realNow.isAfter(app.now)) await app.elapse(realNow.difference(app.now));
     app.coordinator.moveTo(9);
     if (peerKey) app.coordinator.peerPublicKey = makerKey.key.publicKey.armored;
     await app.elapse(const Duration(seconds: 11));

@@ -113,6 +113,28 @@ final class HarnessKeys implements RobotKeyComputePort {
   >
   prove(UnprovenCoordinatorRobot robot) async => Ok(robot.prove());
 
+  /// How many chat messages were decrypted, in how many works.
+  int chatDecrypts = 0;
+
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) async {
+    chatDecrypts++;
+    return Ok([
+      for (final job in jobs)
+        key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+    ]);
+  }
+
   @override
   Future<
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
@@ -407,8 +429,15 @@ final class TradeHarness {
       locks,
       invoices,
     );
-    chatRead = WatchChatUsecase(client, reader, limiter, keyring, chats);
-    chatSend = SendChatMessageUsecase(client, reader, limiter, keyring, chats);
+    chatRead = WatchChatUsecase(client, reader, limiter, keyring, keys, chats);
+    chatSend = SendChatMessageUsecase(
+      client,
+      reader,
+      limiter,
+      keyring,
+      keys,
+      chats,
+    );
     watch = WatchTradeUsecase(
       reader,
       limiter,
