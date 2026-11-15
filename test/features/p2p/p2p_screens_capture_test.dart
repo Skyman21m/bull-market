@@ -1936,7 +1936,7 @@ void main() {
           Err() => throw StateError('not a key'),
         };
         final identities = [
-          for (var i = 0; i < 12; i++)
+          for (var i = 0; i < 16; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
         ];
         final coordinator = ScriptedCoordinator(
@@ -2327,6 +2327,9 @@ void main() {
         );
         await settle();
         await capture('fin-9-envoi');
+        // 30 s on: the long wait's line.
+        await tester.pump(const Duration(seconds: 31));
+        await capture('fin-9-attente-longue');
         coordinator.hold = null;
         held.complete();
         await waitFor(find.text(l10n.p2pEndWaitSeller));
@@ -2339,6 +2342,51 @@ void main() {
         await nextRead();
         await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await capture('fin-14');
+        await backToTab();
+
+        // Take 6: the notices of « Confirm … sent » (#95): a request that lands late (the answer lost, the order still read at 9), then a confirmation whose order expired before it was sent.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9);
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        coordinator.failNext(ScriptedRequest.confirm, ScriptedFault.landsLate);
+        await tester.ensureVisible(find.text(fiatSent));
+        await settle();
+        await tester.tap(find.text(fiatSent));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndConfirm));
+        await waitFor(find.text(l10n.p2pEndUnknown));
+        await settle();
+        await capture('fin-avis-inconnu');
+        coordinator.landLate();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndWaitSeller));
+        // Back to 9 by « Payment failed? » is the next pull request's: the trade ends here.
+        coordinator.moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
+        await backToTab();
+
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9);
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        // The order expires while the dialog is open: the read before sending finds it expired.
+        await tester.ensureVisible(find.text(fiatSent));
+        await settle();
+        await tester.tap(find.text(fiatSent));
+        await settle();
+        coordinator.expire();
+        await tester.tap(find.text(l10n.p2pEndConfirm));
+        await waitFor(find.text(l10n.p2pEndMovedOn));
+        await settle();
+        await capture('fin-avis-non-envoye');
         await backToTab();
 
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
