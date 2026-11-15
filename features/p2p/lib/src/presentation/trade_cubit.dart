@@ -5,10 +5,12 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 
 import '../domain/trade/trade_cancel.dart';
+import '../domain/trade/trade_chat_step.dart';
 import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade_record.dart';
 import '../domain/usecases/trade/cancel_trade_usecase.dart';
+import '../domain/usecases/trade/chat_step_action_usecase.dart';
 import '../domain/usecases/trade/watch_trade_usecase.dart';
 
 /// [WatchTradeUsecase.execute], which the locator gives the cubit.
@@ -27,6 +29,14 @@ typedef TradeCanceller =
       BondLossAcknowledged? bondLoss,
     });
 
+/// [ChatStepActionUsecase.confirmFiatSent], which the locator gives the cubit.
+typedef TradeFiatSender =
+    Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
+      TradeRecord record,
+      TradeSeen seen, {
+      void Function(ChatStepProgress step)? onProgress,
+    });
+
 /// What the trade screen shows of one trade (#88).
 @immutable
 final class TradeScreenState {
@@ -36,11 +46,19 @@ final class TradeScreenState {
   final TradeWatchState? watch;
   final TradeCancelState cancel;
 
+  /// Where an action of the chat step stands (#95).
+  final ChatStepState chatStep;
+
   const TradeScreenState(
     this.record, {
     this.watch,
     this.cancel = const CancelIdle(),
+    this.chatStep = const ChatStepIdle(),
   });
+
+  /// Whether an action of the trade runs, a cancel or an action of the chat step: every button that could cross it is off meanwhile.
+  bool get actionRunning =>
+      cancel is CancelRunning || chatStep is ChatStepRunning;
 
   /// The status the user sees, with the order it was read from, when the trade has one.
   TradeSeen? get seen => switch (watch) {
@@ -48,12 +66,16 @@ final class TradeScreenState {
     _ => null,
   };
 
-  TradeScreenState _with({TradeWatchState? watch, TradeCancelState? cancel}) =>
-      TradeScreenState(
-        watch?.record ?? record,
-        watch: watch ?? this.watch,
-        cancel: cancel ?? this.cancel,
-      );
+  TradeScreenState _with({
+    TradeWatchState? watch,
+    TradeCancelState? cancel,
+    ChatStepState? chatStep,
+  }) => TradeScreenState(
+    watch?.record ?? record,
+    watch: watch ?? this.watch,
+    cancel: cancel ?? this.cancel,
+    chatStep: chatStep ?? this.chatStep,
+  );
 }
 
 /// Where a cancel of the trade stands.
@@ -99,20 +121,75 @@ final class CancelWasUnknown extends TradeCancelNotice {
   const CancelWasUnknown();
 }
 
-/// Follows one shown trade and cancels it (#88): the only caller of [WatchTradeUsecase] and [CancelTradeUsecase], which the locator gives it as their `execute`.
+/// Where an action of the chat step stands (#95).
+@immutable
+sealed class ChatStepState {
+  const ChatStepState();
+}
+
+/// No action of the chat step runs; [notice] says what the last one gave, when one was tried and it says something.
+final class ChatStepIdle extends ChatStepState {
+  final ChatStepNotice? notice;
+
+  const ChatStepIdle({this.notice});
+}
+
+/// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for.
+final class ChatStepRunning extends ChatStepState {
+  final ChatStepAction action;
+  final ChatStepProgress? progress;
+
+  const ChatStepRunning(this.action, {this.progress});
+}
+
+/// What an action of the chat step gave that the screen says, as a type: never a coordinator's text.
+@immutable
+sealed class ChatStepNotice {
+  const ChatStepNotice();
+}
+
+/// The action was not sent ([ChatStepRefusal]).
+final class ChatStepWasRefused extends ChatStepNotice {
+  final ChatStepRefusal refusal;
+
+  const ChatStepWasRefused(this.refusal);
+}
+
+/// The action was refused before the coordinator acted, or never left: nothing was done ([ChatStepNotDone.cause]).
+final class ChatStepWasNotDone extends ChatStepNotice {
+  final Failure cause;
+
+  const ChatStepWasNotDone(this.cause);
+}
+
+/// The action may have happened: the status shown is the read after it, and the next reads tell.
+final class ChatStepWasUnknown extends ChatStepNotice {
+  const ChatStepWasUnknown();
+}
+
+/// Follows one shown trade, cancels it (#88) and sends the actions of its chat step (#95): the only caller of [WatchTradeUsecase], [CancelTradeUsecase] and [ChatStepActionUsecase], which the locator gives it as their methods.
 ///
 /// One watch at a time for the trade: [start] listens, [suspend] (the app hidden or paused) cancels the subscription, [resume] (the app back) listens again, which reads at once; [signal] passes what the screen says (shown or not, read now) to the subscription in place.
 /// Closing the cubit cancels the subscription: no timer is left, and a read in flight writes nothing.
-/// A cancel runs once at a time, a second [cancel] meanwhile doing nothing, and is never sent again by the screen.
+/// One action of the trade runs at a time, a cancel or an action of the chat step: a second one meanwhile does nothing, and none is ever sent again by the screen.
 class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
+  final TradeFiatSender? _confirmFiatSent;
   StreamSubscription<TradeWatchState>? _subscription;
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
-  TradeCubit(TradeRecord record, this._watch, this._cancel)
-    : super(TradeScreenState(record));
+  /// [confirmFiatSent] is `null` where the screen offers no action of the chat step.
+  TradeCubit(
+    TradeRecord record,
+    this._watch,
+    this._cancel, {
+    this._confirmFiatSent,
+  }) : super(TradeScreenState(record));
+
+  /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
+  bool get offersFiatSent => _confirmFiatSent != null;
 
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
@@ -197,7 +274,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   /// Cancels the trade at [seen], the status the screen showed when the user asked; [bondLoss] only from the confirmation of a cancel that loses the bond.
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
-    if (isClosed || state.cancel is CancelRunning) return;
+    if (isClosed || state.actionRunning) return;
     emit(state._with(cancel: const CancelRunning()));
     final result = await _cancel(state.record, seen, bondLoss: bondLoss);
     if (isClosed) return;
@@ -227,6 +304,60 @@ class TradeCubit extends Cubit<TradeScreenState> {
         // The watch reads again at once, so that what follows the cancel is shown as soon as the coordinator tells it.
         _signals?.add(TradeWatchSignal.readNow);
     }
+  }
+
+  /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
+  Future<void> confirmFiatSent(TradeSeen seen) async {
+    final send = _confirmFiatSent;
+    if (send == null || isClosed || state.actionRunning) return;
+    const action = ChatStepAction.confirmFiatSent;
+    emit(state._with(chatStep: const ChatStepRunning(action)));
+    final result = await send(
+      state.record,
+      seen,
+      onProgress: (step) {
+        if (!isClosed && state.chatStep is ChatStepRunning) {
+          emit(state._with(chatStep: ChatStepRunning(action, progress: step)));
+        }
+      },
+    );
+    if (isClosed) return;
+    switch (result) {
+      case Err(:final failure):
+        emit(
+          state._with(
+            // A read kept before the refusal is shown: the status now.
+            watch: switch (failure) {
+              ChatStepStatusMoved(:final seen) ||
+              ChatStepReadFailed(
+                seen: final seen?,
+              ) => TradeWatchStatus(state.record, seen, takePending: false),
+              _ => null,
+            },
+            chatStep: ChatStepIdle(notice: ChatStepWasRefused(failure)),
+          ),
+        );
+      case Ok(value: final outcome):
+        emit(
+          state._with(
+            watch: TradeWatchStatus(
+              outcome.record,
+              outcome.seen,
+              recordProblem: outcome.recordProblem,
+              takePending: false,
+            ),
+            chatStep: ChatStepIdle(
+              notice: switch (outcome) {
+                ChatStepDone() => null,
+                ChatStepNotDone(:final cause) => ChatStepWasNotDone(cause),
+                ChatStepOutcomeUnknown() => const ChatStepWasUnknown(),
+              },
+            ),
+          ),
+        );
+    }
+    // The watch reads again at once, so that what follows is shown as soon as the coordinator tells it.
+    _signals?.add(TradeWatchSignal.readNow);
   }
 
   @override

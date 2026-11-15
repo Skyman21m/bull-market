@@ -33,13 +33,16 @@ enum TradeTitle {
   unknown,
 }
 
-/// The prompt under a title: the bond's invoice, the payout's (`Prompts/Payout.tsx`), the wait for the escrow, the expiry's reason, a failed payout's (`Prompts/RoutingFailed.tsx`, #91), or a step a later version shows.
+/// The prompt under a title: the bond's invoice, the payout's (`Prompts/Payout.tsx`), the wait for the escrow, the expiry's reason, a failed payout's (`Prompts/RoutingFailed.tsx`, #91), the buyer's chat step (`Prompts/Chat.tsx`, #95), the buyer being paid (`Prompts/SendingSats.tsx`, #95), the trade finished (`Prompts/Successful.tsx`, #95), or a step a later version shows.
 enum TradePrompt {
   lockInvoice,
   payout,
   escrowWait,
   expired,
   routingFailed,
+  chat,
+  sendingSats,
+  finished,
   later,
 }
 
@@ -206,6 +209,9 @@ final class TradeContract extends TradeView {
     WaitingForPayout(role: TradeRole.buyer) => TradePrompt.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradePrompt.escrowWait,
     RoutingFailed(role: TradeRole.buyer) => TradePrompt.routingFailed,
+    Chatting(role: TradeRole.buyer) => TradePrompt.chat,
+    SendingSats(role: TradeRole.buyer) => TradePrompt.sendingSats,
+    Succeeded() => TradePrompt.finished,
     Expired() => TradePrompt.expired,
     _ => TradePrompt.later,
   };

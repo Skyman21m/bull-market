@@ -58,6 +58,7 @@ import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/trade/bond_payments_in_flight.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
+import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
@@ -329,6 +330,15 @@ final class P2pLocator {
         locator(),
       ),
     );
+    // The chat step's actions (#95): « fiat sent », as the cancel, under the order's lock.
+    locator.registerFactory<ChatStepActionUsecase>(
+      () => ChatStepActionUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+      ),
+    );
     locator.registerFactory<ListActiveTradesUsecase>(
       () => ListActiveTradesUsecase(locator(), locator(), clock: clock),
     );
@@ -384,6 +394,7 @@ final class P2pLocator {
         record,
         locator<WatchTradeUsecase>().execute,
         locator<CancelTradeUsecase>().execute,
+        confirmFiatSent: locator<ChatStepActionUsecase>().confirmFiatSent,
       ),
     );
     // The payout panel of one shown trade (#91), the only caller of the payout use case and of the key's hold.

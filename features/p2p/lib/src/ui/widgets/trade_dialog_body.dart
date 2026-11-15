@@ -15,6 +15,10 @@ class TradeDialogBody extends StatelessWidget {
   final VoidCallback onBack;
   final String goLabel;
 
+  /// The reference's warning under its text, in the warning colour and bold (« ⚠️ This action cannot be undone! », `TradeBox/Dialogs/ConfirmFiatSent.tsx`), and the reference's text after it; `null` for a dialog without them.
+  final String? warning;
+  final String? afterWarning;
+
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
   final VoidCallback onGo;
@@ -31,6 +35,8 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.warning,
+    this.afterWarning,
     this.note,
   });
 
@@ -56,6 +62,23 @@ class TradeDialogBody extends StatelessWidget {
             text,
             style: styles.bodyMedium?.copyWith(color: colors.textMuted),
           ),
+          if (warning case final warning?) ...[
+            const Gap(BullSpacing.md),
+            Text(
+              warning,
+              style: styles.bodyMedium?.copyWith(
+                color: colors.warning,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+          if (afterWarning case final after?) ...[
+            const Gap(BullSpacing.md),
+            Text(
+              after,
+              style: styles.bodyMedium?.copyWith(color: colors.textMuted),
+            ),
+          ],
           if (note case final note?) ...[
             const Gap(BullSpacing.sm),
             Text(note, style: styles.bodyMedium?.copyWith(color: colors.text)),

@@ -2067,4 +2067,94 @@ class P2pLocalizationsZh extends P2pLocalizations {
   @override
   String get p2pPayAskSupportExpiredSent =>
       'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String get p2pEndChatBuyerHi =>
+      'Say hi! Ask for payment details and click \'Confirm Sent\' as soon as the payment is sent.';
+
+  @override
+  String get p2pEndBewareScams => '⚠️ Beware scams';
+
+  @override
+  String p2pEndConfirmSent(String amount, String currencyCode) {
+    return 'Confirm $amount $currencyCode sent';
+  }
+
+  @override
+  String p2pEndConfirmSentTitle(String amount, String currencyCode) {
+    return '✅ Confirm you sent $amount $currencyCode?';
+  }
+
+  @override
+  String get p2pEndConfirmSentText =>
+      'Confirming will allow your peer to finalize the trade.';
+
+  @override
+  String get p2pEndCannotBeUndone => '⚠️ This action cannot be undone!';
+
+  @override
+  String get p2pEndFalseConfirmRisk =>
+      'If you have not yet sent it and you still proceed to falsely confirm, you risk losing your bond.';
+
+  @override
+  String get p2pEndConfirm => 'Confirm';
+
+  @override
+  String get p2pEndWaitSeller =>
+      'Wait for the seller to confirm they have received the payment.';
+
+  @override
+  String get p2pEndStepOpening => 'Opening the trade…';
+
+  @override
+  String get p2pEndStepWaitingForOrder =>
+      'Waiting for another action on this order to end…';
+
+  @override
+  String p2pEndStepReading(String coordinator) {
+    return 'Reading the order from $coordinator…';
+  }
+
+  @override
+  String p2pEndStepSending(String coordinator) {
+    return 'Sending your confirmation to $coordinator…';
+  }
+
+  @override
+  String p2pEndStepReadingAfter(String coordinator) {
+    return 'Reading the order again from $coordinator…';
+  }
+
+  @override
+  String get p2pEndNeedsRead =>
+      'Wait until the order is read again. Nothing was sent.';
+
+  @override
+  String get p2pEndMovedOn =>
+      'The order moved on before your confirmation: nothing was sent.';
+
+  @override
+  String p2pEndReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: nothing was sent.';
+  }
+
+  @override
+  String p2pEndNotDoneAfter(String reason) {
+    return '$reason Nothing was sent.';
+  }
+
+  @override
+  String get p2pEndUnknown =>
+      'Bull Market does not know yet whether your confirmation went through. It keeps checking.';
+
+  @override
+  String get p2pEndSendingSats =>
+      'RoboSats is trying to pay your lightning invoice. Remember that lightning nodes must be online in order to receive payments.';
+
+  @override
+  String get p2pEndTakingTooLong => 'Taking too long?';
+
+  @override
+  String get p2pEndTakingTooLongText =>
+      'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.';
 }

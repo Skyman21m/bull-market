@@ -30,6 +30,7 @@ import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
+import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'payout_panel.dart';
 import 'trade_order_details.dart';
@@ -278,6 +279,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         now: _now,
                         record: record,
                         cancel: state.cancel,
+                        chatStep: state.chatStep,
+                        offersFiatSent: context
+                            .read<TradeCubit>()
+                            .offersFiatSent,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
@@ -396,6 +401,8 @@ class _Contract extends StatelessWidget {
   final TradeContract contract;
   final TradeRecord record;
   final TradeCancelState cancel;
+  final ChatStepState chatStep;
+  final bool offersFiatSent;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
@@ -408,6 +415,8 @@ class _Contract extends StatelessWidget {
     required this.now,
     required this.record,
     required this.cancel,
+    required this.chatStep,
+    required this.offersFiatSent,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
@@ -533,6 +542,41 @@ class _Contract extends StatelessWidget {
         center: true,
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
+      // The buyer's chat step (#95): the chat's place stays empty until the chat panel (#93) fills it.
+      (TradePrompt.chat, _) => ChatStepPanel(
+        seen: contract.seen,
+        order: order,
+        coordinator: coordinator,
+        chatStep: chatStep,
+        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        offersFiatSent: offersFiatSent,
+      ),
+      (TradePrompt.sendingSats, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pEndSendingSats),
+          const Gap(BullSpacing.sm),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: l10n.p2pEndTakingTooLong,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: ' '),
+                TextSpan(text: l10n.p2pEndTakingTooLongText),
+              ],
+            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.text),
+          ),
+          const Gap(BullSpacing.md),
+          Center(child: CircularProgressIndicator(color: colors.primary)),
+        ],
+      ),
+      // « Trade finished! » with its title alone: the rating and the summary come with a later pull request of #95.
+      (TradePrompt.finished, _) => const SizedBox.shrink(),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
