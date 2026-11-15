@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
@@ -63,13 +64,21 @@ final class _Watch {
 final class _Cancels {
   final List<TradeSeen> asked = [];
 
+  /// What the cancel waits for, when set, and what it answers.
+  Completer<void>? gate;
+  Result<CancelOutcome, CancelRefusal> Function(TradeRecord, TradeSeen)? answer;
+
   Future<Result<CancelOutcome, CancelRefusal>> call(
     TradeRecord record,
     TradeSeen seen, {
     BondLossAcknowledged? bondLoss,
   }) async {
     asked.add(seen);
-    return Ok(CancelDone(record, seen));
+    if (gate case final gate?) await gate.future;
+    return (answer ?? (record, seen) => Ok(CancelDone(record, seen)))(
+      record,
+      seen,
+    );
   }
 }
 
@@ -97,6 +106,23 @@ late Map<String, TradeSeen> _seen;
 late TradeSeen _longNine;
 final _record = TradeScreenStatuses.record;
 
+/// The app's own font (`assets/fonts/GolosText.ttf`), loaded once: the checks of words broken are made in it, since Flutter's test font draws every glyph as a square of the text's size, words about twice as wide as the app draws them.
+final _appTheme = testTheme.copyWith(
+  textTheme: testTheme.textTheme.apply(fontFamily: 'Golos Text'),
+);
+
+Future<void> _loadAppFont() async {
+  final golos = FontLoader('Golos Text')
+    ..addFont(
+      Future.value(
+        ByteData.sublistView(
+          File('../../assets/fonts/GolosText.ttf').readAsBytesSync(),
+        ),
+      ),
+    );
+  await golos.load();
+}
+
 TradeWatchStatus _watched(String name) =>
     TradeScreenStatuses.watched(_seen[name] ?? (throw StateError(name)));
 
@@ -105,6 +131,7 @@ Future<TradeCubit> _show(
   required _Watch watch,
   _Cancels? cancels,
   _FiatSent? fiatSent,
+  _FiatSent? undoFiatSent,
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
   ChatPanelBuilder? chat,
@@ -112,6 +139,7 @@ Future<TradeCubit> _show(
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
   double textScale = 1,
+  bool appFont = false,
 }) async {
   tester.view
     ..physicalSize = size * 3
@@ -122,6 +150,7 @@ Future<TradeCubit> _show(
     watch.call,
     (cancels ?? _Cancels()).call,
     confirmFiatSent: offersFiatSent ? (fiatSent ?? _FiatSent()).call : null,
+    undoFiatSent: offersFiatSent ? (undoFiatSent ?? _FiatSent()).call : null,
   )..start();
   addTearDown(cubit.close);
   final reads = FakeTransport();
@@ -136,7 +165,7 @@ Future<TradeCubit> _show(
   addTearDown(page.close);
   await tester.pumpWidget(
     MaterialApp(
-      theme: testTheme,
+      theme: appFont ? _appTheme : testTheme,
       locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
       supportedLocales: P2pLocalizations.supportedLocales,
@@ -213,6 +242,7 @@ const _waitSeller =
 
 void main() {
   setUpAll(() async {
+    await _loadAppFont();
     _statuses = await TradeScreenStatuses.make();
     _longNine = await (await TradeScreenStatuses.make(
       amount: 1234567.1234,
@@ -222,6 +252,17 @@ void main() {
       'ten': await _statuses.fiatSent(),
       'thirteen': await _statuses.sendingSats(),
       'fourteen': await _statuses.succeeded(),
+      'nineAsked': await _statuses.read(
+        await _statuses.waitingForPayout(),
+        orderJson(9, changes: {'asked_for_cancel': true}),
+      ),
+      'ninePeerAsked': await _statuses.read(
+        await _statuses.waitingForPayout(),
+        orderJson(
+          9,
+          changes: {'pending_cancel': true, 'asked_for_cancel': null},
+        ),
+      ),
       // The coordinator reads 200 EUR for a trade taken for 100 (review of #95's second pull request).
       'eleven': await _statuses.read(await _statuses.chatting(), orderJson(11)),
       'fiveFromNine': await _statuses.read(
@@ -684,6 +725,9 @@ void main() {
                   coordinator: 'Temple of Sats',
                   chatStep: const ChatStepIdle(),
                   otherActionRunning: false,
+                  cancel: const CancelIdle(),
+                  offersUndoFiatSent: true,
+                  offersCollaborativeCancel: true,
                   offersFiatSent: true,
                 ),
               ),
@@ -894,6 +938,623 @@ void main() {
     handle.dispose();
   });
 
+  group('« Payment failed? » (#95)', () {
+    testWidgets(
+      '10: the button, the reference\'s dialog in full, « Wait (60) » then « Confirm », sent once',
+      (tester) async {
+        final undo = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          undoFiatSent: undo,
+          state: _watched('ten'),
+        );
+        await _reveal(tester, find.text('Payment failed?'));
+        await tester.tap(find.text('Payment failed?'));
+        await _settleDialog(tester);
+        expect(
+          find.text('Revert the confirmation of fiat sent?'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('READ. In case your payment'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Make 100% sure your payment has failed'),
+          findsOneWidget,
+        );
+        expect(find.text('Wait (60)'), findsOneWidget);
+        await tester.ensureVisible(find.text('Wait (60)'));
+        await tester.pump();
+        await tester.tap(find.text('Wait (60)'), warnIfMissed: false);
+        await tester.pump();
+        expect(undo.asked, isEmpty);
+        await tester.pump(const Duration(seconds: 30));
+        expect(find.text('Wait (30)'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 30));
+        expect(find.text('Confirm'), findsOneWidget);
+        // Under the reference's long text: the dialog scrolls to it.
+        await tester.ensureVisible(find.text('Confirm'));
+        await tester.pump();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        expect(undo.asked, [_seen['ten']]);
+        expect(
+          find.text('Sending your request to Temple of Sats…'),
+          findsNothing,
+        );
+        undo.progress?.call(ChatStepProgress.sending);
+        await tester.pump();
+        expect(
+          find.text('Sending your request to Temple of Sats…'),
+          findsOneWidget,
+        );
+        undo.gate?.complete(Ok(ChatStepDone(_record, _seen['nine']!)));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.text(_confirmLabel), findsOneWidget);
+      },
+    );
+
+    testWidgets('« Go back » sends nothing', (tester) async {
+      final undo = _FiatSent();
+      await _show(
+        tester,
+        watch: _Watch(),
+        undoFiatSent: undo,
+        state: _watched('ten'),
+      );
+      await _reveal(tester, find.text('Payment failed?'));
+      await tester.tap(find.text('Payment failed?'));
+      await _settleDialog(tester);
+      await tester.ensureVisible(find.text('Go back'));
+      await tester.pump();
+      await tester.tap(find.text('Go back'));
+      await _settleDialog(tester);
+      expect(undo.asked, isEmpty);
+    });
+
+    testWidgets('not at 9: no « Payment failed? »', (tester) async {
+      await _show(tester, watch: _Watch(), state: _watched('nine'));
+      expect(find.text('Payment failed?'), findsNothing);
+    });
+
+    testWidgets(
+      'the trade moved on: said with « request », the request never left',
+      (tester) async {
+        final undo = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          undoFiatSent: undo,
+          state: _watched('ten'),
+        );
+        await _reveal(tester, find.text('Payment failed?'));
+        await tester.tap(find.text('Payment failed?'));
+        await _settleDialog(tester);
+        await tester.pump(const Duration(seconds: 61));
+        await tester.ensureVisible(find.text('Confirm'));
+        await tester.pump();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        // The read before sending no longer offered it (here, the same 10 not marked stored): the panel stays, and says so.
+        undo.gate?.complete(Err(ChatStepStatusMoved(_seen['ten']!)));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(
+          find.text('The trade moved on: your request was not sent.'),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
+  group('« Order options » and the collaborative cancel (#95)', () {
+    testWidgets('a cancel running, from wherever it was asked: « … » off', (
+      tester,
+    ) async {
+      final cancels = _Cancels()..gate = Completer<void>();
+      final cubit = await _show(
+        tester,
+        watch: _Watch(),
+        cancels: cancels,
+        state: _watched('nine'),
+      );
+      unawaited(cubit.cancel(_seen['nine']!));
+      await tester.pump();
+      await _reveal(tester, find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(Icons.more_horiz), warnIfMissed: false);
+      await _settleDialog(tester);
+      expect(find.text('Order options'), findsNothing);
+      cancels.gate?.complete();
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+
+    testWidgets(
+      '9: « … » opens « Order options »; « Collaborative Cancel », the reference\'s dialog, « Ask for Cancel » sends once',
+      (tester) async {
+        final cancels = _Cancels();
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('nine'),
+        );
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        expect(find.text('Order options'), findsOneWidget);
+        // The places of « Audit Chat », « Export » and « Open Dispute »: empty for now.
+        expect(find.text('Audit Chat'), findsNothing);
+        expect(find.text('Export'), findsNothing);
+        expect(find.text('Open Dispute'), findsNothing);
+        await tester.tap(find.text('Collaborative Cancel'));
+        await _settleDialog(tester);
+        expect(find.text('Collaborative cancel the order?'), findsOneWidget);
+        expect(
+          find.text(
+            'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Accept Cancelation'), findsNothing);
+        await tester.tap(find.text('Go back'));
+        await _settleDialog(tester);
+        expect(cancels.asked, isEmpty);
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Collaborative Cancel'));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Ask for Cancel'));
+        await _settleDialog(tester);
+        expect(cancels.asked, [_seen['nine']]);
+      },
+    );
+
+    testWidgets(
+      'asked by us: the reference\'s alert says it waits for the peer',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('nineAsked'));
+        expect(
+          find.text('You asked for a collaborative cancellation'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'asked by the peer: its alert, then « Accept Cancelation » only on the user\'s tap',
+      (tester) async {
+        final cancels = _Cancels();
+        final seen = _seen['ninePeerAsked']!;
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('ninePeerAsked'),
+        );
+        final peer = seen.order!.maker.nickname;
+        expect(
+          find.text('$peer is asking for a collaborative cancel'),
+          findsOneWidget,
+        );
+        expect(cancels.asked, isEmpty);
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Collaborative Cancel'));
+        await _settleDialog(tester);
+        expect(
+          find.textContaining('Your peer has asked for cancellation'),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Accept Cancelation'));
+        await _settleDialog(tester);
+        expect(cancels.asked, [seen]);
+      },
+    );
+
+    testWidgets(
+      '10: « Collaborative Cancel » off, with the reference\'s reason',
+      (tester) async {
+        final cancels = _Cancels();
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('ten'),
+        );
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        expect(
+          find.text("Orders can't be cancelled if fiat has been sent."),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.text('Collaborative Cancel'),
+          warnIfMissed: false,
+        );
+        await _settleDialog(tester);
+        expect(find.text('Collaborative cancel the order?'), findsNothing);
+        expect(cancels.asked, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'while the ask is sent: « … » and « Confirm … sent » off, the wait said; an ask that lands after « fiat sent »: the trade moved on',
+      (tester) async {
+        final cancels = _Cancels()
+          ..gate = Completer<void>()
+          ..answer = (record, seen) => Ok(
+            CancelNotDone(
+              record,
+              _seen['ten']!,
+              cause: const OrderStatusChanged(),
+            ),
+          );
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('nine'),
+        );
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Collaborative Cancel'));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Ask for Cancel'));
+        await _settleDialog(tester);
+        expect(
+          find.text('Sending your request to Temple of Sats…'),
+          findsOneWidget,
+        );
+        expect(_button(tester, _confirmLabel).onPressed, isNull);
+        await tester.tap(find.byIcon(Icons.more_horiz), warnIfMissed: false);
+        await _settleDialog(tester);
+        expect(find.text('Order options'), findsNothing);
+        cancels.gate?.complete();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(
+          find.text(
+            'The order moved on before the cancel: nothing was cancelled.',
+          ),
+          findsOneWidget,
+        );
+        expect(cancels.asked, hasLength(1));
+      },
+    );
+  });
+
+  group('the reviews of « Payment failed? » and the collaborative cancel (#95)', () {
+    testWidgets(
+      '« … » is one button for a screen reader, with its tap and the reference\'s label',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await _show(tester, watch: _Watch(), state: _watched('nine'));
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('open options')),
+          matchesSemantics(
+            label: 'open options',
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: true,
+            hasTapAction: true,
+          ),
+        );
+        expect(find.bySemanticsLabel('Order options'), findsNothing);
+        handle.dispose();
+      },
+    );
+
+    testWidgets(
+      'the peer asks while the cancel\'s dialog is open: the button turns into « Accept Cancelation »',
+      (tester) async {
+        final watch = _Watch();
+        final cancels = _Cancels();
+        await _show(
+          tester,
+          watch: watch,
+          cancels: cancels,
+          state: _watched('nine'),
+        );
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        await tester.tap(find.text('Collaborative Cancel'));
+        await _settleDialog(tester);
+        expect(find.text('Ask for Cancel'), findsOneWidget);
+        watch.emit(_watched('ninePeerAsked'));
+        await _settleDialog(tester);
+        expect(find.text('Ask for Cancel'), findsNothing);
+        expect(find.text('Accept Cancelation'), findsOneWidget);
+        expect(
+          find.textContaining('Your peer has asked for cancellation'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'an ask whose answer was lost: said as a request; gone once the read shows it, or at 10',
+      (tester) async {
+        const unknown =
+            'Bull Market does not know yet whether your request went through. It keeps checking.';
+        for (final next in ['nineAsked', 'ten']) {
+          final watch = _Watch();
+          final cancels = _Cancels()
+            ..answer = (record, seen) => Ok(CancelOutcomeUnknown(record, seen));
+          await _show(
+            tester,
+            watch: watch,
+            cancels: cancels,
+            state: _watched('nine'),
+          );
+          await _reveal(tester, find.byIcon(Icons.more_horiz));
+          await tester.tap(find.byIcon(Icons.more_horiz));
+          await _settleDialog(tester);
+          await tester.tap(find.text('Collaborative Cancel'));
+          await _settleDialog(tester);
+          await tester.tap(find.text('Ask for Cancel'));
+          await _settleDialog(tester);
+          expect(find.text(unknown), findsOneWidget, reason: next);
+          expect(
+            find.textContaining('whether the cancel went through'),
+            findsNothing,
+          );
+          // The same 9 read again: still said.
+          watch.emit(_watched('nine'));
+          await _settleDialog(tester);
+          expect(find.text(unknown), findsOneWidget, reason: next);
+          watch.emit(_watched(next));
+          await _settleDialog(tester);
+          expect(find.text(unknown), findsNothing, reason: next);
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      },
+    );
+
+    testWidgets(
+      '« Payment failed? » unknown at 10, then the watch reads 10 again: the notice stays',
+      (tester) async {
+        final watch = _Watch();
+        final undo = _FiatSent();
+        await _show(
+          tester,
+          watch: watch,
+          undoFiatSent: undo,
+          state: _watched('ten'),
+        );
+        await _reveal(tester, find.text('Payment failed?'));
+        await tester.tap(find.text('Payment failed?'));
+        await _settleDialog(tester);
+        await tester.pump(const Duration(seconds: 61));
+        await tester.ensureVisible(find.text('Confirm'));
+        await tester.pump();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        undo.gate?.complete(Ok(ChatStepOutcomeUnknown(_record, _seen['ten']!)));
+        await _settleDialog(tester);
+        const unknown =
+            'Bull Market does not know yet whether your request went through. It keeps checking.';
+        expect(find.text(unknown), findsOneWidget);
+        watch.emit(_watched('ten'));
+        await _settleDialog(tester);
+        expect(find.text(unknown), findsOneWidget);
+        watch.emit(_watched('nine'));
+        await _settleDialog(tester);
+        expect(find.text(unknown), findsNothing);
+      },
+    );
+
+    for (final (locale, two, one) in const [
+      (Locale('en'), 'Wait 2 seconds', 'Wait 1 second'),
+      (Locale('fr'), 'Attendez 2 secondes', 'Attendez 1 seconde'),
+    ]) {
+      testWidgets(
+        '${locale.languageCode}: the undo\'s counter read « $two », then « $one » (second pass of the review of #145)',
+        (tester) async {
+          final handle = tester.ensureSemantics();
+          await _show(
+            tester,
+            watch: _Watch(),
+            locale: locale,
+            undoFiatSent: _FiatSent(),
+            state: _watched('ten'),
+          );
+          final quiet = find.byType(Expanded).last;
+          await _reveal(tester, quiet);
+          await tester.tap(quiet);
+          await _settleDialog(tester);
+          // Built at 60, one tick a second once open, as in the test below.
+          await tester.pump(const Duration(seconds: 58));
+          expect(find.bySemanticsLabel(two), findsOneWidget);
+          await tester.pump(const Duration(seconds: 1));
+          expect(find.bySemanticsLabel(one), findsOneWidget);
+          handle.dispose();
+        },
+      );
+    }
+
+    testWidgets(
+      'the undo\'s counter: kept across openings, running only while open, 300 after « Confirm », read in seconds',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final undo = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          undoFiatSent: undo,
+          state: _watched('ten'),
+        );
+        Future<void> open() async {
+          await _reveal(tester, find.text('Payment failed?'));
+          await tester.tap(find.text('Payment failed?'));
+          await _settleDialog(tester);
+        }
+
+        Future<void> back() async {
+          await tester.ensureVisible(find.text('Go back'));
+          await tester.pump();
+          await tester.tap(find.text('Go back'));
+          await _settleDialog(tester);
+        }
+
+        await open();
+        // The dialog's counter starts once it is built: 20 s, 20 ticks.
+        await tester.pump(const Duration(seconds: 20));
+        expect(find.text('Wait (40)'), findsOneWidget);
+        expect(find.bySemanticsLabel('Wait 40 seconds'), findsOneWidget);
+        await back();
+        // Closed: the counter does not run.
+        await tester.pump(const Duration(seconds: 30));
+        await open();
+        // Kept from the first opening, not set back to 60.
+        expect(
+          find.textContaining(RegExp(r'^Wait \((3[5-9]|40)\)$')),
+          findsOneWidget,
+        );
+        await tester.pump(const Duration(seconds: 45));
+        await tester.ensureVisible(find.text('Confirm'));
+        await tester.pump();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        undo.gate?.complete(
+          Ok(
+            ChatStepNotDone(
+              _record,
+              _seen['ten']!,
+              cause: const CoordinatorTransportBusy(),
+            ),
+          ),
+        );
+        await _settleDialog(tester);
+        undo.gate = null;
+        await open();
+        // 300 after « Confirm ».
+        expect(
+          find.textContaining(RegExp(r'^Wait \((300|29\d)\)$')),
+          findsOneWidget,
+        );
+        handle.dispose();
+      },
+    );
+
+    testWidgets('the ask\'s wait: a bar, then the long wait\'s line', (
+      tester,
+    ) async {
+      final cancels = _Cancels()..gate = Completer<void>();
+      await _show(
+        tester,
+        watch: _Watch(),
+        cancels: cancels,
+        state: _watched('nine'),
+      );
+      await _reveal(tester, find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await _settleDialog(tester);
+      await tester.tap(find.text('Collaborative Cancel'));
+      await _settleDialog(tester);
+      await tester.tap(find.text('Ask for Cancel'));
+      await _settleDialog(tester);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      const still = 'Still waiting for Temple of Sats. Tor can take a minute.';
+      expect(find.text(still), findsNothing);
+      await tester.pump(const Duration(seconds: 31));
+      expect(find.text(still), findsOneWidget);
+      cancels.gate?.complete();
+      await _settleDialog(tester);
+      expect(find.text(still), findsNothing);
+    });
+
+    testWidgets(
+      'at 9 from a status not marked stored: « Collaborative Cancel » off',
+      (tester) async {
+        final nine = _seen['nine']!;
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: TradeScreenStatuses.watched(
+            TradeSeen(nine.status, order: nine.order),
+          ),
+        );
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await _settleDialog(tester);
+        await tester.tap(
+          find.text('Collaborative Cancel'),
+          warnIfMissed: false,
+        );
+        await _settleDialog(tester);
+        expect(find.text('Collaborative cancel the order?'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'the peer asked, the status kept from no order: the reference\'s words without a nickname',
+      (tester) async {
+        final seen = _seen['ninePeerAsked']!;
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: TradeScreenStatuses.watched(
+            TradeSeen(seen.status, order: null, stored: true),
+          ),
+        );
+        expect(
+          find.text('Your peer has asked for cancellation'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      for (final scale in const [2.0, 3.0]) {
+        testWidgets(
+          '${locale.languageCode} at ×$scale on 320 points, in the app font: no word broken in « Order options » at 10, the two dialogs and « Payment failed? »',
+          (tester) async {
+            for (final (name, open) in [
+              ('ten', 'options'),
+              ('ten', 'undo'),
+              ('nine', 'collab'),
+            ]) {
+              await _show(
+                tester,
+                watch: _Watch(),
+                locale: locale,
+                size: const Size(320, 640),
+                textScale: scale,
+                appFont: true,
+                state: _watched(name),
+              );
+              _expectNoWordBroken(tester, '$name panel');
+              final options = find.byIcon(Icons.more_horiz);
+              if (open == 'undo') {
+                final button = find.byType(Expanded).last;
+                await _reveal(tester, button);
+                await tester.tap(button);
+                await _settleDialog(tester);
+              } else {
+                await _reveal(tester, options);
+                await tester.tap(options);
+                await _settleDialog(tester);
+                if (open == 'collab') {
+                  final collab = find.byIcon(Icons.handshake_outlined);
+                  await tester.ensureVisible(collab);
+                  await tester.pump();
+                  await tester.tap(collab);
+                  await _settleDialog(tester);
+                }
+              }
+              _expectNoWordBroken(tester, '$name $open');
+              await tester.pumpWidget(const SizedBox.shrink());
+            }
+          },
+        );
+      }
+    }
+  });
+
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
@@ -998,43 +1659,63 @@ void main() {
               ..physicalSize = const Size(320, 640) * 3
               ..devicePixelRatio = 3;
             addTearDown(tester.view.reset);
-            await tester.pumpWidget(
-              MaterialApp(
-                theme: testTheme,
-                locale: locale,
-                localizationsDelegates: P2pLocalizations.localizationsDelegates,
-                supportedLocales: P2pLocalizations.supportedLocales,
-                builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context).copyWith(
-                    disableAnimations: true,
-                    textScaler: TextScaler.linear(scale),
-                  ),
-                  child: child ?? const SizedBox.shrink(),
+            Widget app(ThemeData theme) => MaterialApp(
+              theme: theme,
+              // The app's font at once, not over the theme's animation.
+              themeAnimationDuration: Duration.zero,
+              locale: locale,
+              localizationsDelegates: P2pLocalizations.localizationsDelegates,
+              supportedLocales: P2pLocalizations.supportedLocales,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  disableAnimations: true,
+                  textScaler: TextScaler.linear(scale),
                 ),
-                home: Scaffold(
-                  body: BlocProvider.value(
-                    value: cubit,
-                    child: SingleChildScrollView(
-                      child: ChatStepPanel(
-                        seen: nine,
-                        order: order,
-                        coordinator:
-                            'The Very Long Name Of A Coordinator Of The Federation',
-                        chatStep: const ChatStepRunning(
-                          ChatStepAction.confirmFiatSent,
-                          progress: ChatStepProgress.readingOrder,
-                          waitedLong: true,
-                        ),
-                        otherActionRunning: false,
-                        offersFiatSent: true,
+                child: child ?? const SizedBox.shrink(),
+              ),
+              home: Scaffold(
+                body: BlocProvider.value(
+                  value: cubit,
+                  child: SingleChildScrollView(
+                    child: ChatStepPanel(
+                      seen: nine,
+                      order: order,
+                      coordinator:
+                          'The Very Long Name Of A Coordinator Of The Federation',
+                      chatStep: const ChatStepRunning(
+                        ChatStepAction.confirmFiatSent,
+                        progress: ChatStepProgress.readingOrder,
+                        waitedLong: true,
                       ),
+                      otherActionRunning: false,
+                      cancel: const CancelIdle(),
+                      offersUndoFiatSent: true,
+                      offersCollaborativeCancel: true,
+                      offersFiatSent: true,
                     ),
                   ),
                 ),
               ),
             );
+            await tester.pumpWidget(app(testTheme));
             await tester.pump();
             _expectNothingCut(tester, 'long');
+            // The reviewer's case (second pass of #145): « Confirmer l'envoi de 1 234 567,1234 EUR », the amount's groups joined by non-breaking spaces, one word, never broken inside; checked in the app's font.
+            if (locale.languageCode == 'fr') {
+              expect(
+                find.byWidgetPredicate(
+                  (w) =>
+                      w is TradeButton &&
+                      RegExp(
+                        '^Confirmer l\'envoi de 1[\u00a0\u202f]234[\u00a0\u202f]567,1234 EUR\$',
+                      ).hasMatch(w.label),
+                ),
+                findsOneWidget,
+              );
+            }
+            await tester.pumpWidget(app(_appTheme));
+            await tester.pump();
+            _expectNoWordBroken(tester, 'long');
             expect(
               find.byWidgetPredicate(
                 (w) =>
@@ -1069,5 +1750,44 @@ void _expectNothingCut(WidgetTester tester, String reason) {
       isFalse,
       reason: '$reason: ${paragraph.text.toPlainText()}',
     );
+  }
+}
+
+/// Every paragraph of the chat step's panel and of the dialog open breaks its lines between words only, never inside one (letter by letter at the larger text sizes); the screen's own chrome (its tabs) is not this pull request's.
+void _expectNoWordBroken(WidgetTester tester, String reason) {
+  // The buttons and the dialogs of this step; the panel's prose is laid out at the test font's width, where every glyph is a square of the text's size.
+  final ours = find.byWidgetPredicate(
+    (w) => const {
+      'OrderOptionsDialog',
+      'TradeDialogBody',
+      'TradeButton',
+      '_QuietButton',
+    }.contains(w.runtimeType.toString()),
+  );
+  for (final paragraph in tester.renderObjectList<RenderParagraph>(
+    find.descendant(of: ours, matching: find.byType(RichText)),
+  )) {
+    final text = paragraph.text.toPlainText();
+    final style = paragraph.text.style;
+    final room = paragraph.constraints.maxWidth;
+    // A word wider than the paragraph's room can only break letter by letter.
+    // Split as the line breaks: at breaking spaces only, a group joined by a non-breaking space (U+00A0, U+202F) being one word.
+    for (final word in text.split(RegExp(r'[ \t\n]+'))) {
+      if (word.isEmpty) continue;
+      final painter = TextPainter(
+        text: TextSpan(text: word, style: style),
+        textDirection: paragraph.textDirection,
+        textScaler: paragraph.textScaler,
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      expect(
+        width <= room + 0.5,
+        isTrue,
+        reason:
+            '$reason: « $word » ($width > $room) of « $text » is wider than its room',
+      );
+    }
   }
 }

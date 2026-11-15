@@ -262,6 +262,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
     _preTakes.clear();
     _taker = robot.sessionKey;
+    // A new trade: no ask of a collaborative cancel yet.
+    _makerAskedCancel = false;
+    _takerAskedCancel = false;
     _lastSatoshis = _satsOf(_chosen[robot.sessionKey] ?? bookAmount);
     _status = 6;
     _deadline = clock().toUtc().add(const Duration(seconds: escrowSeconds));
