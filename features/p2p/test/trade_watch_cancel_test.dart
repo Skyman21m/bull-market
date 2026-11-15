@@ -575,7 +575,7 @@ void main() {
           final other => fail('not opened: $other'),
         };
         // The early read, sent at the pre-take, ends after a later one that saw the bond locked. Both are given the same time of leaving, so that the order of their requests (#141) does not decide: the trail's own rule, by the time of the answers, does.
-        final sentAt = app.reader.requestLeaves();
+        final sent = app.reader.requestLeaves();
         final early = await CoordinatorClient(app.coordinator).fetchOrder(
           app.coordinator.coordinator,
           app.network,
@@ -594,14 +594,14 @@ void main() {
           opened,
           TradeAnswer.ofRead(late) ?? fail('no answer'),
           at: app.now,
-          sentAt: sentAt,
+          sent: sent,
         );
         expect(later.trade.seen.status, isA<WaitingForBoth>());
         final stale = await app.reader.advance(
           opened,
           TradeAnswer.ofRead(early) ?? fail('no answer'),
           at: app.now.subtract(const Duration(seconds: 10)),
-          sentAt: sentAt,
+          sent: sent,
         );
         expect(stale.trade.seen.status.position, TradePosition.waitingForBoth);
         expect(stale.trade.seen.order, isNull);

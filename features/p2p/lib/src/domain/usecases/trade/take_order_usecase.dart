@@ -626,7 +626,7 @@ final class TakeOrderUsecase {
           ),
           TradeSeen(status, order: started.order),
           showsTaker: true,
-          sentAt: takeLeft,
+          sent: takeLeft,
         );
         return Ok(
           TakeStarted(
@@ -644,7 +644,7 @@ final class TakeOrderUsecase {
               trade,
               TradeOrderRead(order),
               at: _reader.now(),
-              sentAt: takeLeft,
+              sent: takeLeft,
             );
             return Ok(
               TakeResumed(

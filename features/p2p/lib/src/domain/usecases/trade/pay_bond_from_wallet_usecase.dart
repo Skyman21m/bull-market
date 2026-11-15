@@ -142,7 +142,7 @@ final class PayBondFromWalletUsecase {
           trade,
           answer,
           at: _reader.now(),
-          sentAt: readLeft,
+          sent: readLeft,
         );
       } finally {
         requests.close();

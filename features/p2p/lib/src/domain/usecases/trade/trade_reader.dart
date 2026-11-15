@@ -136,8 +136,8 @@ final class TradeReader {
 
   DateTime now() => _clock().toUtc();
 
-  /// When a request that gives a status of a trade (a read, or an action whose answer is kept) leaves now: [now], never earlier than a request that left before ([TradeReadOrder.leaving]). Every [advance] and [keep] is given it.
-  DateTime requestLeaves() => _requestOrder.leaving(now());
+  /// A request that gives a status of a trade (a read, or an action whose answer is kept) leaves now: its time on this device ([now]) and its rank among the requests of this process ([TradeReadOrder.leaving]). Taken just before the request is sent, and given to [advance] or [keep] with its answer.
+  RequestLeft requestLeaves() => _requestOrder.leaving(now());
 
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
   Future<TradeOpening> open(TradeRecord record) async {
@@ -278,13 +278,13 @@ final class TradeReader {
   /// A pending take never confirmed, on which no pre-take was ever seen, that the answer brings to an end without showing this robot as the taker, is a take not made ([TradeStep.takeNotMade]): the coordinator never showed this robot an invoice, so nothing can have been paid from here, whatever the end says of a bond.
   /// Such an end comes at once when the order is public again with this robot no participant (the coordinator shows a live pre-take to its robot as 3, `api/views.py:381-396`, so this robot holds none), cancelled or expired; error 1044 stays `PreTakeUnavailable` until the pre-take is certainly gone (`TradeStatus.from`).
   ///
-  /// [sentAt] is when the request [answer] answers left ([requestLeaves]): what orders it against the other answers of the trade ([keep]). With [keepsSentAt], the status keeps it too ([TradeSeen.requestedAt]): the watch's reads and the payout's.
+  /// [sent] is when the request [answer] answers left ([requestLeaves]): what orders it against the other answers of the trade ([keep]). With [keepsTime], the status keeps its time too ([TradeSeen.requestedAt]), as the watch's reads and the payout's do since #132; the other answers keep none, as before, which the payout panel reads as not after its payout.
   Future<TradeStep> advance(
     OpenTrade trade,
     TradeAnswer answer, {
     required DateTime at,
-    required DateTime sentAt,
-    bool keepsSentAt = false,
+    required RequestLeft sent,
+    bool keepsTime = false,
   }) async {
     // A terminal status is never left, and its trail and record are kept already: nothing to write.
     if (trade.seen.status.isTerminal) {
@@ -298,12 +298,12 @@ final class TradeReader {
         answer,
         trade.terms,
         at,
-        requestedAt: keepsSentAt ? sentAt : null,
+        requestedAt: keepsTime ? sent.at : null,
       ),
       showsTaker: taker,
       answer: answer,
       at: at,
-      sentAt: sentAt,
+      sent: sent,
     );
     // From the trail now on disk (stored or kept), never from one only in memory.
     final notMade =
@@ -354,16 +354,16 @@ final class TradeReader {
   /// - Kept (the stored trail changed, or was refused over): when [answer] read at [at] is newer than the stored trail, [answer] is read again over the stored trail and stored, once; at an end the stored trail already holds, [seen] stays, unmarked (an end holds no invoice, and says what the end means); otherwise the status is the stored trail's own.
   /// Only a status marked [TradeSeen.stored] may show an invoice or offer a payment.
   ///
-  /// [sentAt] is when the request [seen] comes from left ([requestLeaves]). The answer of a request that left before the newest status stored for the trade in this process never replaces it, whatever it says and whenever it came (#141): nothing is written, and the trade stands at that newest status, with its record, the step marked as storing nothing ([TradeStep.stored] false), so that no use case acts on it as its own read.
+  /// [sent] is when the request [seen] comes from left ([requestLeaves]). The answer of a request that left before the newest status stored for the trade in this process never replaces it, whatever it says and whenever it came (#141): nothing is written, and the trade stands at that newest status, with its record, the step marked as storing nothing ([TradeStep.stored] false), so that no use case acts on it as its own read.
   Future<TradeStep> keep(
     OpenTrade trade,
     TradeSeen seen, {
     required bool showsTaker,
-    required DateTime sentAt,
+    required RequestLeft sent,
     TradeAnswer? answer,
     DateTime? at,
   }) async {
-    if (_requestOrder.newerThan(trade.record.robot, sentAt)
+    if (_requestOrder.newerThan(trade.record.robot, sent)
         case (final newerRecord, final newer)?) {
       return TradeStep(
         trade._with(record: newerRecord, seen: newer),
@@ -448,7 +448,7 @@ final class TradeReader {
           problem ??= failure;
       }
     }
-    if (current.stored) _requestOrder.stored(record, current, sentAt);
+    if (current.stored) _requestOrder.stored(record, current, sent);
     return TradeStep(
       trade._with(record: record, seen: current),
       recordProblem: problem,

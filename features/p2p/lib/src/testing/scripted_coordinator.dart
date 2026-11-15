@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -24,6 +25,9 @@ enum ScriptedFault {
 
   /// The request is still on its way when its answer times out (`CoordinatorTimedOut`): the coordinator acts on it only when the test calls `ScriptedCoordinator.landLate`, after the reads that follow, as a request held up over Tor.
   landsLate,
+
+  /// The coordinator answers the request as the order stands when it arrives, and the answer reaches the app only when the test calls `ScriptedCoordinator.deliverDelayed`, after later requests were answered: a read overtaken on its way back over Tor (#141).
+  answerDelayed,
 }
 
 /// The kinds of request the scripted coordinator answers, to aim a [ScriptedFault] at.
@@ -283,6 +287,17 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
   }
 
+  /// The answers held by [ScriptedFault.answerDelayed] reach the app now, in order.
+  void deliverDelayed() {
+    final held = List.of(_delayed);
+    _delayed.clear();
+    for (final delivered in held) {
+      delivered.complete();
+    }
+  }
+
+  final List<Completer<void>> _delayed = [];
+
   /// The requests held by [ScriptedFault.landsLate], not landed yet.
   final List<(ScriptedRequest, CoordinatorRequest)> _late = [];
 
@@ -346,6 +361,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedFault.landsLate:
         _late.add((kind, request));
         return const Err(CoordinatorTimedOut());
+      case ScriptedFault.answerDelayed:
+        final answer = _answer(kind, request);
+        final delivered = Completer<void>();
+        _delayed.add(delivered);
+        await delivered.future;
+        return Ok(answer);
       case null:
         return Ok(_answer(kind, request));
     }

@@ -943,7 +943,7 @@ void main() {
           opened,
           TradeAnswer.ofRead(read) ?? fail('no answer'),
           at: app.now,
-          sentAt: reader.requestLeaves(),
+          sent: reader.requestLeaves(),
         );
         expect(kept.calls, 2);
         expect(step.stored, isTrue);

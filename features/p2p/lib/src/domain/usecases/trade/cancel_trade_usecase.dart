@@ -7,6 +7,7 @@ import '../../trade/trade_answer.dart';
 import '../../trade/trade_cancel.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -91,12 +92,12 @@ final class CancelTradeUsecase {
           );
           var current = trade;
           P2pFailure? problem;
-          Future<void> keep(TradeAnswer answer, DateTime sentAt) async {
+          Future<void> keep(TradeAnswer answer, RequestLeft sent) async {
             final step = await _reader.advance(
               current,
               answer,
               at: _reader.now(),
-              sentAt: sentAt,
+              sent: sent,
             );
             current = step.trade;
             problem ??= step.recordProblem;

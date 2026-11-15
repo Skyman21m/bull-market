@@ -12,6 +12,7 @@ import '../../trade/trade_payout_outcome.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import 'trade_keyring.dart';
+import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -135,15 +136,15 @@ final class SubmitPayoutUsecase {
     P2pFailure? problem;
     Future<void> keep(
       TradeAnswer answer, {
-      required DateTime sentAt,
-      bool keepsSentAt = false,
+      required RequestLeft sent,
+      bool keepsTime = false,
     }) async {
       final step = await _reader.advance(
         current,
         answer,
         at: _reader.now(),
-        sentAt: sentAt,
-        keepsSentAt: keepsSentAt,
+        sent: sent,
+        keepsTime: keepsTime,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -161,7 +162,7 @@ final class SubmitPayoutUsecase {
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
-      final requestedAt = _reader.requestLeaves();
+      final readLeft = _reader.requestLeaves();
       final TradeAnswer answer;
       switch (await _reader.readOrder(
         requests,
@@ -190,8 +191,8 @@ final class SubmitPayoutUsecase {
         current,
         answer,
         at: _reader.now(),
-        sentAt: requestedAt,
-        keepsSentAt: true,
+        sent: readLeft,
+        keepsTime: true,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -280,7 +281,7 @@ final class SubmitPayoutUsecase {
     // The answer first, then a read after it.
     onProgress?.call(PayoutProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
-      await keep(TradeOrderRead(value.order), sentAt: submitLeft);
+      await keep(TradeOrderRead(value.order), sent: submitLeft);
     }
     final readFrom = _reader.requestLeaves();
     final read = await _reader.readOrder(
@@ -291,7 +292,7 @@ final class SubmitPayoutUsecase {
     );
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final answer?) {
-        await keep(answer, sentAt: readFrom, keepsSentAt: true);
+        await keep(answer, sent: readFrom, keepsTime: true);
       }
     }
     return Ok(switch (sent) {
