@@ -958,6 +958,27 @@ void main() {
 
   group('« Order options » and the collaborative cancel (#95)', () {
     testWidgets(
+      'a cancel running, from wherever it was asked: « … » off',
+      (tester) async {
+        final cancels = _Cancels()..gate = Completer<void>();
+        final cubit = await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('nine'),
+        );
+        unawaited(cubit.cancel(_seen['nine']!));
+        await tester.pump();
+        await _reveal(tester, find.byIcon(Icons.more_horiz));
+        await tester.tap(find.byIcon(Icons.more_horiz), warnIfMissed: false);
+        await _settleDialog(tester);
+        expect(find.text('Order options'), findsNothing);
+        cancels.gate?.complete();
+        await tester.pump(const Duration(milliseconds: 500));
+      },
+    );
+
+    testWidgets(
       '9: « … » opens « Order options »; « Collaborative Cancel », the reference\'s dialog, « Ask for Cancel » sends once',
       (tester) async {
         final cancels = _Cancels();
