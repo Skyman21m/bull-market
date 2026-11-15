@@ -256,22 +256,22 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       // The request left and the coordinator did nothing (1029, 1030, 1031): it says the order moved on.
       ChatStepWasNotDone(cause: TradeActionRefused()) =>
         l10n.p2pEndNotRecordedMovedOn(coordinator),
-      // The request never left: a busy transport, a coordinator not on the network, in the robot panel's words; any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: said as the coordinator's, not « this robot ».
-      ChatStepWasNotDone(
-        cause: final CoordinatorFailure failure &&
-            (CoordinatorTransportBusy() || CoordinatorNotOnNetwork()),
-      ) =>
-        l10n.p2pEndNotDoneAfter(
-          failure.toRobotText(context, coordinator: coordinator),
-        ),
-      // Refused here before sending: never left.
+      // The request never left: a busy transport (the robot panel's sentence, which ends with its full stop), a coordinator not on the network (its own sentence: the label « Coordinator offline » has no full stop to join).
+      ChatStepWasNotDone(cause: CoordinatorTransportBusy()) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
+      ChatStepWasNotDone(cause: CoordinatorNotOnNetwork()) =>
+        l10n.p2pEndOffline(coordinator),
       ChatStepWasNotDone(cause: OrderReadElsewhere()) =>
         l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
+      // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
       ChatStepWasNotDone(cause: CoordinatorFailure()) => l10n.p2pEndRefusedBy(
         coordinator,
       ),
-      ChatStepWasNotDone(cause: final P2pFailure failure) =>
-        l10n.p2pEndNotDoneAfter(failure.toTranslated(context)),
+      // The robot's places in the limiter, busy or released: never sent, said in the robot panel's full sentence.
+      ChatStepWasNotDone(
+        cause: RobotCoordinatorBusyFailure() || RobotReleasedFailure(),
+      ) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
       ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
       ChatStepWasUnknown() => l10n.p2pEndUnknown,
     };
