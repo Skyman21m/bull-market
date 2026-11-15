@@ -15,6 +15,7 @@ import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
 import 'confirm_collab_cancel_dialog.dart';
+import 'confirm_dispute_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
 import 'confirm_undo_fiat_sent_dialog.dart';
 import 'order_options_dialog.dart';
@@ -47,6 +48,12 @@ class ChatStepPanel extends StatefulWidget {
   final bool offersUndoFiatSent;
   final bool offersCollaborativeCancel;
 
+  /// Whether « Open Dispute » may be offered in « Order options »: the screen's cubit sends it.
+  final bool offersDispute;
+
+  /// The screen's clock, for « Open Dispute »'s countdown.
+  final DateTime Function() now;
+
   /// The chat of the trade (#93), where the reference puts it: between the prompt's text and the action buttons; `null` until the chat panel is wired, and the step is shown without it.
   final Widget? chat;
 
@@ -61,6 +68,8 @@ class ChatStepPanel extends StatefulWidget {
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
     required this.offersCollaborativeCancel,
+    this.offersDispute = false,
+    required this.now,
     this.chat,
   });
 
@@ -156,11 +165,27 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     cubit,
     seen,
   ) async {
+    final status = seen.status;
     final chosen = await OrderOptionsDialog.show(
       context,
       collaborativeCancel: collaborativeCancel,
+      // « Open Dispute » where the status shown offers it, with its time; not drawn otherwise.
+      disputeOpensAt:
+          widget.offersDispute &&
+              status is Chatting &&
+              ChatStepAction.openDispute.offeredAt(seen)
+          ? ChatStepAction.disputeOpensAt(status)
+          : null,
+      now: widget.now,
     );
-    if (chosen != OrderOption.collaborativeCancel || !mounted) return;
+    if (!mounted) return;
+    if (chosen == OrderOption.openDispute) {
+      if (await ConfirmDisputeDialog.show(context)) {
+        await cubit.openDispute(seen);
+      }
+      return;
+    }
+    if (chosen != OrderOption.collaborativeCancel) return;
     final peerAsked = switch (seen.status) {
       Chatting(:final peerAskedToCancel) => peerAskedToCancel,
       _ => false,

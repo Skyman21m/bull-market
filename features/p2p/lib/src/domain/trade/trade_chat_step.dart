@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart' show CoordinatorOrderStatus;
+import 'package:robosats/robosats.dart'
+    show CoordinatorClient, CoordinatorOrderStatus;
 
 import '../p2p_failure.dart';
 import '../trade_record.dart';
@@ -14,7 +15,14 @@ enum ChatStepAction {
   confirmFiatSent,
 
   /// « Payment failed? »: the buyer takes back « fiat sent », 10 → 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`: the buyer only, 1030, at 10 only, 1031, with no time limit).
-  undoFiatSent;
+  undoFiatSent,
+
+  /// « Open Dispute »: either side opens a dispute at 9 or 10, not earlier than 18 hours before the chat's end (`Logics.open_dispute`, `api/logics.py:485-533`: 1013 outside 9 and 10, 1054 too early); the escrow and both bonds go to the coordinator at once.
+  openDispute;
+
+  /// When « Open Dispute » becomes possible at [status]: the chat's end less `CoordinatorClient.disputeWindow` (18 hours, a constant of the reference's code), as the reference's prompt computes it (`Prompts/Chat.tsx:100-104`).
+  static DateTime disputeOpensAt(Chatting status) =>
+      status.deadline.subtract(CoordinatorClient.disputeWindow);
 
   /// Whether [seen] offers this action, as the reference's prompt offers its button (`Prompts/Chat.tsx:98-149`), and only from a status marked stored (`TradeSeen.stored`) that comes from an order read: « fiat sent » to the buyer at 9, « Payment failed? » to the buyer at 10, exactly where the coordinator takes each.
   bool offeredAt(TradeSeen seen) => switch (this) {
@@ -32,6 +40,12 @@ enum ChatStepAction {
             Chatting(role: TradeRole.buyer, fiatSent: true) => true,
             _ => false,
           },
+    // At 9 or 10; its time is checked apart ([disputeOpensAt]), against the clock.
+    ChatStepAction.openDispute =>
+      seen.stored &&
+          (seen.order?.status == CoordinatorOrderStatus.sendingFiat ||
+              seen.order?.status == CoordinatorOrderStatus.fiatSent) &&
+          seen.status is Chatting,
   };
 
   /// Whether [seen] shows this action as recorded already: « fiat sent » at 10, or past it once the seller confirmed (13, 14, 15). A request that landed late, after the read that followed it, is found this way by the next tap's fresh read: nothing is sent again, and the action is done.
@@ -46,6 +60,14 @@ enum ChatStepAction {
     // Back at 9: only the buyer moves 10 to 9, so an earlier request of this robot landed.
     ChatStepAction.undoFiatSent => switch (seen.status) {
       Chatting(role: TradeRole.buyer, fiatSent: false) => true,
+      _ => false,
+    },
+    // A dispute open, its statements, its decision.
+    ChatStepAction.openDispute => switch (seen.status) {
+      InDispute() ||
+      WaitingDisputeResolution() ||
+      DisputeWon() ||
+      DisputeLost() => true,
       _ => false,
     },
   };
@@ -72,6 +94,16 @@ sealed class ChatStepRefusal extends Failure {
 
   @override
   String toString() => runtimeType.toString();
+}
+
+/// « Open Dispute » before its time ([ChatStepAction.disputeOpensAt]), by this device's clock: nothing was sent.
+final class ChatStepTooEarly extends ChatStepRefusal {
+  final DateTime opensAt;
+
+  /// How long was left then, by this device's clock.
+  final Duration left;
+
+  const ChatStepTooEarly(this.opensAt, this.left);
 }
 
 /// The status seen does not offer the action ([ChatStepAction.offeredAt]): it comes from no order read, is not marked stored, or is another status or role.

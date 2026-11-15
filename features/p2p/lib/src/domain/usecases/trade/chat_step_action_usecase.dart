@@ -12,7 +12,7 @@ import '../../trade_record.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]) and « Payment failed? » ([undoFiatSent]).
+/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([openDispute]).
 ///
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
@@ -66,6 +66,20 @@ final class ChatStepActionUsecase {
         _client.undoConfirmFiat(identity: identity, lastRead: lastRead),
   );
 
+  /// « Open Dispute » for the trade of [record] at [seen] (9 or 10), the status the screen showed when the user agreed to the reference's dialog: refused before its time ([ChatStepTooEarly], [ChatStepAction.disputeOpensAt], by this device's clock; the coordinator's 1054 stays the judge), then the same steps and outcomes as [confirmFiatSent].
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> openDispute(
+    TradeRecord record,
+    TradeSeen seen, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) => _run(
+    ChatStepAction.openDispute,
+    record,
+    seen,
+    onProgress: onProgress,
+    send: (identity, lastRead) =>
+        _client.openDispute(identity: identity, lastRead: lastRead),
+  );
+
   Future<Result<ChatStepOutcome, ChatStepRefusal>> _run(
     ChatStepAction action,
     TradeRecord record,
@@ -81,6 +95,9 @@ final class ChatStepActionUsecase {
     final shown = seen.order;
     if (shown == null || !action.offeredAt(seen)) {
       return const Err(ChatStepNotOffered());
+    }
+    if (_tooEarly(action, seen) case final opensAt?) {
+      return Err(ChatStepTooEarly(opensAt, opensAt.difference(_reader.now())));
     }
     final OpenTrade trade;
     switch (await _reader.open(record)) {
@@ -195,6 +212,9 @@ final class ChatStepActionUsecase {
     if (lastRead == null || !action.offeredAt(fresh)) {
       return Err(ChatStepStatusMoved(fresh, record: current.record));
     }
+    if (_tooEarly(action, fresh) case final opensAt?) {
+      return Err(ChatStepTooEarly(opensAt, opensAt.difference(_reader.now())));
+    }
 
     // Sent once: never again by this use case, whatever the outcome.
     tell?.call(ChatStepProgress.sending);
@@ -255,6 +275,15 @@ final class ChatStepActionUsecase {
         recordProblem: problem,
       ),
     });
+  }
+
+  /// When « Open Dispute » becomes possible at [seen], if that is still ahead by this device's clock; `null` for any other action, or once the time has come.
+  DateTime? _tooEarly(ChatStepAction action, TradeSeen seen) {
+    if (action != ChatStepAction.openDispute) return null;
+    final status = seen.status;
+    if (status is! Chatting) return null;
+    final opensAt = ChatStepAction.disputeOpensAt(status);
+    return _reader.now().isBefore(opensAt) ? opensAt : null;
   }
 
   /// [onProgress], which reports to the zone what it throws instead of stopping the step it announces.

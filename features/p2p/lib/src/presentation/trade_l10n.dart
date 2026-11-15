@@ -247,6 +247,7 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
         ChatStepNotOffered() => l10n.p2pEndNeedsReadNotSent,
+        ChatStepTooEarly(:final left) => disputeWait(l10n, left),
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
@@ -311,13 +312,25 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       null => l10n.p2pPayoutStepOpening,
       ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
       ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
-      ChatStepProgress.sending =>
-        action == ChatStepAction.confirmFiatSent
-            ? l10n.p2pEndStepSending(coordinator)
-            : l10n.p2pEndStepSendingUndo(coordinator),
+      ChatStepProgress.sending => switch (action) {
+        ChatStepAction.confirmFiatSent => l10n.p2pEndStepSending(coordinator),
+        ChatStepAction.undoFiatSent => l10n.p2pEndStepSendingUndo(coordinator),
+        ChatStepAction.openDispute => l10n.p2pEndStepSendingDispute(
+          coordinator,
+        ),
+      },
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
         coordinator,
       ),
     };
   }
+}
+
+/// « To open a dispute you need to wait {{hours}}h {{minutes}}m » for [left], as the reference's countdown writes it (`Prompts/Chat.tsx:86-96`: whole hours, then the minutes on two digits); nothing below zero.
+String disputeWait(P2pLocalizations l10n, Duration left) {
+  final minutes = left.isNegative ? 0 : left.inMinutes;
+  return l10n.p2pEndDisputeWait(
+    '${minutes ~/ 60}',
+    '${minutes % 60}'.padLeft(2, '0'),
+  );
 }

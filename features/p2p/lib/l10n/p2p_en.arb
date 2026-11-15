@@ -3183,5 +3183,111 @@
         "type": "String"
       }
     }
+  },
+  "p2pEndOpenDispute": "Open Dispute",
+  "@p2pEndOpenDispute": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:310-324`): the button of « Order options » (#95)."
+  },
+  "p2pEndDisputeWait": "To open a dispute you need to wait {hours}h {minutes}m",
+  "@p2pEndDisputeWait": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), and the countdown its prompt adds (`Prompts/Chat.tsx:86-96`, « {{hours}}h {{minutes}}m », the minutes on two digits): under « Open Dispute », off until 18 hours before the chat's end (#95).",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeTitle": "Do you want to open a dispute?",
+  "@p2pEndDisputeTitle": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Dialogs/ConfirmDispute.tsx`) (#95)."
+  },
+  "p2pEndDisputeText": "The RoboSats staff will examine the statements and evidence provided. You need to build a complete case, as the staff cannot read the chat. It is best to provide a burner contact method with your statement. The satoshis in the trade escrow will be sent to the dispute winner, while the dispute loser will lose the bond.",
+  "@p2pEndDisputeText": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95)."
+  },
+  "p2pEndDisputeExport": "Make sure to EXPORT the chat log. The staff might request your exported chat log JSON in order to solve discrepancies. It is your responsibility to store it.",
+  "@p2pEndDisputeExport": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95)."
+  },
+  "p2pEndDisagree": "Disagree",
+  "@p2pEndDisagree": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the dialog's button that goes back, its focus (#95)."
+  },
+  "p2pEndAgreeDispute": "Agree and open dispute",
+  "@p2pEndAgreeDispute": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the button that sends (#95)."
+  },
+  "p2pEndStepSendingDispute": "Opening the dispute at {coordinator}…",
+  "@p2pEndStepSendingDispute": {
+    "description": "Not in the RoboSats texts: the project's own: « Open Dispute » sent, its answer awaited (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeWaitPeer": "We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.",
+  "@p2pEndDisputeWaitPeer": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitPeer.tsx`): 11, this robot's statement received (#95)."
+  },
+  "p2pEndDisputeSaveInfoPeer": "Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.",
+  "@p2pEndDisputeSaveInfoPeer": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitPeer.tsx`): 11 (#95)."
+  },
+  "p2pEndDisputeWaitResolution": "Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.",
+  "@p2pEndDisputeWaitResolution": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitResolution.tsx`): 16 (#95)."
+  },
+  "p2pEndDisputeSaveInfoResolution": "Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).",
+  "@p2pEndDisputeSaveInfoResolution": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitResolution.tsx`): 16 (#95)."
+  },
+  "p2pEndDisputeWinner": "You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to {email} (or via your provided burner contact method).",
+  "@p2pEndDisputeWinner": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWinner.tsx`): 17 for a taker; {email} is the coordinator's (#95).",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeLoser": "Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to {email}",
+  "@p2pEndDisputeLoser": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeLoser.tsx`), without a full stop as the reference: 18 for a taker; {email} is the coordinator's (#95).",
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndStatementLater": "Bull Market cannot send a dispute statement yet. Contact {coordinator} through one of its contacts below, with the information to identify your order.",
+  "@p2pEndStatementLater": {
+    "description": "Not in the RoboSats texts: the project's own: at 11, in place of the reference's statement form, which comes in a later phase (#95, design note § 2.7).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRewardsLater": "Bull Market cannot claim rewards yet: contact {coordinator} through one of its contacts below.",
+  "@p2pEndRewardsLater": {
+    "description": "Not in the RoboSats texts: the project's own: at 17, the reference's « claim from your profile rewards » not being in Bull Market yet (#95, design note § 2.7).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndOrderId": "Order ID: {id}",
+  "@p2pEndOrderId": {
+    "description": "Not in the RoboSats texts: the project's own: at 11 and 16, the order's number to give the coordinator, which the reference asks to save (#95).",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
   }
 }

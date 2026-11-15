@@ -182,6 +182,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
   final TradeFiatSender? _undoFiatSent;
+  final TradeFiatSender? _openDispute;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -197,6 +198,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._cancel, {
     this._confirmFiatSent,
     this._undoFiatSent,
+    this._openDispute,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
@@ -204,6 +206,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   /// Whether the screen may offer « Payment failed? ».
   bool get offersUndoFiatSent => _undoFiatSent != null;
+
+  /// Whether the screen may offer « Open Dispute ».
+  bool get offersDispute => _openDispute != null;
 
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
@@ -352,6 +357,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Sends the buyer's « Payment failed? » at [seen], the status the screen showed when the user confirmed the reference's dialog: as [confirmFiatSent].
   Future<void> undoFiatSent(TradeSeen seen) =>
       _chatStep(ChatStepAction.undoFiatSent, _undoFiatSent, seen);
+
+  /// Opens a dispute at [seen], the status the screen showed when the user agreed to the reference's dialog: as [confirmFiatSent].
+  Future<void> openDispute(TradeSeen seen) =>
+      _chatStep(ChatStepAction.openDispute, _openDispute, seen);
 
   Future<void> _chatStep(
     ChatStepAction action,
