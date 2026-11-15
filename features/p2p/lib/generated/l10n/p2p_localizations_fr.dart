@@ -1421,7 +1421,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeCancelOnlyTogether =>
-      'Seule une annulation collaborative est possible maintenant ; elle arrive dans une prochaine version.';
+      'À cette étape, seule une annulation collaborative existe, que RoboSats propose depuis le chat.';
 
   @override
   String get p2pTradeCancelNotPossible =>
@@ -2138,20 +2138,20 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String get p2pEndNeedsRead => 'Attendez que l\'ordre soit relu.';
+  String get p2pEndNeedsRead => 'Attendez que l’ordre soit relu.';
 
   @override
   String get p2pEndMovedOn =>
-      'L\'ordre a changé : votre confirmation n\'a pas été envoyée.';
+      'L’ordre a changé : votre confirmation n’a pas été envoyée.';
 
   @override
   String p2pEndReadFailed(String coordinator) {
-    return 'L\'ordre n\'a pas pu être relu chez $coordinator : votre confirmation n\'a pas été envoyée.';
+    return 'L’ordre n’a pas pu être relu chez $coordinator : votre confirmation n’a pas été envoyée.';
   }
 
   @override
   String p2pEndNotDoneAfter(String reason) {
-    return '$reason Votre confirmation n\'a pas été envoyée.';
+    return '$reason Votre confirmation n’a pas été envoyée.';
   }
 
   @override
@@ -2171,16 +2171,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pEndNeedsReadNotSent =>
-      'Attendez que l\'ordre soit relu. Votre confirmation n\'a pas été envoyée.';
+      'Attendez que l’ordre soit relu. Votre confirmation n’a pas été envoyée.';
 
   @override
   String p2pEndRefusedBy(String coordinator) {
-    return '$coordinator n\'a pas enregistré votre confirmation.';
+    return '$coordinator n’a pas enregistré votre confirmation.';
   }
 
   @override
   String p2pEndNotRecordedMovedOn(String coordinator) {
-    return 'L\'ordre a changé : $coordinator n\'a pas enregistré votre confirmation.';
+    return 'L’ordre a changé : $coordinator n’a pas enregistré votre confirmation.';
   }
 
   @override
@@ -2191,7 +2191,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator indique maintenant $readAmount $readCurrency ; l\'ordre a été pris pour $amount $currencyCode.';
+    return '$coordinator indique maintenant $readAmount $readCurrency ; l’ordre a été pris pour $amount $currencyCode.';
   }
 
   @override
@@ -2200,7 +2200,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator n\'indique aucun montant pour cet ordre ; il a été pris pour $amount $currencyCode.';
+    return '$coordinator n’indique aucun montant pour cet ordre ; il a été pris pour $amount $currencyCode.';
   }
 
   @override
@@ -2244,7 +2244,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Vous avez demandé une annulation collaborative';
 
   @override
-  String get p2pEndOrderOptions => 'Options de l\'ordre';
+  String get p2pEndOrderOptions => 'Options de l’ordre';
 
   @override
   String get p2pEndCollabCancel => 'Annulation collaborative';
@@ -2254,40 +2254,48 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Les ordres ne peuvent pas être annulés si le fiat a été envoyé.';
 
   @override
-  String p2pEndStepSendingUndo(String coordinator) {
+  String p2pEndStepSendingRequest(String coordinator) {
     return 'Envoi de votre demande à $coordinator…';
   }
 
   @override
   String get p2pEndTradeMovedOn =>
-      'L\'échange a changé : votre demande n\'a pas été envoyée.';
+      'L’échange a changé : votre demande n’a pas été envoyée.';
 
   @override
   String get p2pEndUnknownRequest =>
-      'Bull Market ne sait pas encore si votre demande est passée. Il continue de vérifier.';
+      'Bull Market ne sait pas encore si votre demande est passée et continue de vérifier.';
 
   @override
   String p2pEndRequestNotRecordedMovedOn(String coordinator) {
-    return 'L\'échange a changé : $coordinator n\'a pas enregistré votre demande.';
+    return 'L’échange a changé : $coordinator n’a pas enregistré votre demande.';
   }
 
   @override
   String p2pEndRequestRefusedBy(String coordinator) {
-    return '$coordinator n\'a pas enregistré votre demande.';
+    return '$coordinator n’a pas enregistré votre demande.';
   }
 
   @override
   String p2pEndRequestNotDoneAfter(String reason) {
-    return '$reason Votre demande n\'a pas été envoyée.';
+    return '$reason Votre demande n’a pas été envoyée.';
   }
 
   @override
   String p2pEndOffline(String coordinator) {
-    return '$coordinator est hors ligne : votre confirmation n\'a pas été envoyée.';
+    return '$coordinator est hors ligne : votre confirmation n’a pas été envoyée.';
   }
 
   @override
   String p2pEndRequestOffline(String coordinator) {
-    return '$coordinator est hors ligne : votre demande n\'a pas été envoyée.';
+    return '$coordinator est hors ligne : votre demande n’a pas été envoyée.';
+  }
+
+  @override
+  String get p2pEndOpenOptions => 'ouvrir les options';
+
+  @override
+  String p2pEndWaitSeconds(String seconds) {
+    return 'Attendez $seconds secondes';
   }
 }

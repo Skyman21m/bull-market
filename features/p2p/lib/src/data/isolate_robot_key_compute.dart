@@ -3,7 +3,9 @@ import 'dart:isolate';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
     show
+        ChatDecryptionKey,
         CoordinatorRobot,
+        DecryptedChatMessage,
         PgpClockOutOfRange,
         PgpFailure,
         RobotIdentity,
@@ -49,6 +51,39 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
   >
   unlock(RobotPgpKey key, RobotIdentity identity) =>
       _unlockApart(key, identity);
+
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) => _decryptApart(key.chatDecryption, jobs, now);
+
+  /// The chat's messages decrypted apart, in an isolate of its own for each page that holds something to decrypt (review of #93).
+  ///
+  /// What is copied there: [key], the key and the scalar of its encryption subkey only, never the robot's identity or token nor the seed that signs; the jobs, armored messages and public keys; and [now]. What comes back: the decrypted results, their texts included. The worker's memory is freed when it exits, not wiped, as for the unlock; the work is bounded by `PgpLimits`, and nothing cancels it.
+  static Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  _decryptApart(
+    ChatDecryptionKey key,
+    List<ChatDecryptJob> jobs,
+    DateTime now,
+  ) => _run(
+    () => [
+      for (final job in jobs)
+        key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+    ],
+  );
 
   static Future<
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>

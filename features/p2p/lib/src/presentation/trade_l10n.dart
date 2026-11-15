@@ -314,7 +314,7 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       ChatStepProgress.sending =>
         action == ChatStepAction.confirmFiatSent
             ? l10n.p2pEndStepSending(coordinator)
-            : l10n.p2pEndStepSendingUndo(coordinator),
+            : l10n.p2pEndStepSendingRequest(coordinator),
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
         coordinator,
       ),

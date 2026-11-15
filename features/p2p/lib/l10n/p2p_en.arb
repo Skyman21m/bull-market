@@ -1939,9 +1939,9 @@
   "@p2pTradeCancelNeedsRead": {
     "description": "Not in the RoboSats texts: the project's own: the status shown comes from no order read, so a cancel cannot be sent yet."
   },
-  "p2pTradeCancelOnlyTogether": "Only a collaborative cancel is possible now, which comes in a later version.",
+  "p2pTradeCancelOnlyTogether": "At this step only a collaborative cancel exists, which RoboSats offers from the chat.",
   "@p2pTradeCancelOnlyTogether": {
-    "description": "Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9)."
+    "description": "Not in the RoboSats texts: the project's own: a cancel asked at 8, where the coordinator takes only a collaborative cancel and the reference offers it from the chat only (#95); no screen offers a cancel at 8."
   },
   "p2pTradeCancelNotPossible": "You cannot cancel this order",
   "@p2pTradeCancelNotPossible": {
@@ -3122,9 +3122,9 @@
   "@p2pEndCollabAfterFiat": {
     "description": "The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95)."
   },
-  "p2pEndStepSendingUndo": "Sending your request to {coordinator}…",
-  "@p2pEndStepSendingUndo": {
-    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » sent, its answer awaited (#95).",
+  "p2pEndStepSendingRequest": "Sending your request to {coordinator}…",
+  "@p2pEndStepSendingRequest": {
+    "description": "Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -3180,6 +3180,19 @@
     "description": "Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).",
     "placeholders": {
       "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndOpenOptions": "open options",
+  "@p2pEndOpenOptions": {
+    "description": "The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95)."
+  },
+  "p2pEndWaitSeconds": "Wait {seconds} seconds",
+  "@p2pEndWaitSeconds": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95).",
+    "placeholders": {
+      "seconds": {
         "type": "String"
       }
     }

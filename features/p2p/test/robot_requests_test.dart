@@ -288,6 +288,22 @@ String? _sentPublicKey(CoordinatorRequest request) {
 
 /// The key work of the robots on the test's own isolate: each robot gets, in turn, the pairs the test made for it, and the proofs are the package's.
 final class _Keys implements RobotKeyComputePort {
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) async => Ok([
+    for (final job in jobs)
+      key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+  ]);
+
   final Map<RobotHashId, List<RobotPgpKey>> _pairs;
   final List<RobotHashId> generated = [];
   final List<RobotHashId> proved = [];
