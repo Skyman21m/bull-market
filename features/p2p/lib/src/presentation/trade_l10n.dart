@@ -262,7 +262,8 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         ChatStepTradeUnrestorable() => l10n.p2pTradeUnrestorable,
       },
       // « Open Dispute » too early, by the coordinator's clock (1054) or the package's for the last read: the reference coordinator's own words.
-      ChatStepWasNotDone(cause: DisputeTooEarly()) => l10n.p2pEndDisputeTooEarly,
+      ChatStepWasNotDone(cause: DisputeTooEarly()) =>
+        l10n.p2pEndDisputeTooEarly,
       // Decided here from the read, nothing sent: as the read before sending would have said.
       ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
         movedOn,

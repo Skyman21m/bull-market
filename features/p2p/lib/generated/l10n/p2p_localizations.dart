@@ -3792,6 +3792,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}'**
   String p2pEndWaitSeconds(int seconds);
+
+  /// The reference coordinator's own text of its error 1054 (`api/errors.py:62` at commit ff1998c), which the official client shows as the answer's `bad_request`: « Open Dispute » refused as too early by the coordinator, its clock the judge (#95). Not in `en.json` nor `fr.json`: the French is ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot open a dispute yet. You need to wait until 18 hours before expiry.'**
+  String get p2pEndDisputeTooEarly;
 }
 
 class _P2pLocalizationsDelegate

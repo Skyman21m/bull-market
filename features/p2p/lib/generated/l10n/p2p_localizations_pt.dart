@@ -2351,6 +2351,10 @@ class P2pLocalizationsPt extends P2pLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).

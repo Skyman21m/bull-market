@@ -2351,6 +2351,10 @@ class P2pLocalizationsHi extends P2pLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

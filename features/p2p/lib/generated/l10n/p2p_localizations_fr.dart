@@ -2349,17 +2349,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pEndStatementLater(String coordinator) {
-    return 'Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez $coordinator par l\'un de ses contacts ci-dessous, avec les informations qui identifient votre ordre.';
+    return 'Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez $coordinator par l’un de ses contacts ci-dessous, avec les informations qui identifient votre ordre.';
   }
 
   @override
   String p2pEndRewardsLater(String coordinator) {
-    return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator par l\'un de ses contacts ci-dessous.';
+    return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator par l’un de ses contacts ci-dessous.';
   }
 
   @override
   String p2pEndOrderId(String id) {
-    return 'ID de l\'ordre : $id';
+    return 'ID de l’ordre : $id';
   }
 
   @override
@@ -2380,4 +2380,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Impossible d’ouvrir un litige pour l’instant. Vous devez attendre jusqu’à 18 heures avant l’expiration.';
 }
