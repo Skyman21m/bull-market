@@ -354,6 +354,19 @@ void main() {
           '${_tradeUseCases}submit_payout_usecase.dart',
         }, reason: member);
       }
+      // The chat step's actions (#95): one use case, which reads and sends under the order's lock.
+      for (final member in ['confirmFiat']) {
+        expect(referring((r) => r == 'request CoordinatorClient.$member'), {
+          '${_tradeUseCases}chat_step_action_usecase.dart',
+        }, reason: member);
+      }
+      for (final member in ['undoConfirmFiat', 'openDispute', 'ratePlatform']) {
+        expect(
+          referring((r) => r == 'request CoordinatorClient.$member'),
+          isEmpty,
+          reason: member,
+        );
+      }
       // The chat of a trade (#93): read by its own use case, and read again by the one that sends, after a post whose outcome is unknown; posted by the one that sends.
       expect(referring((r) => r == 'request CoordinatorClient.fetchChat'), {
         '${_tradeUseCases}watch_chat_usecase.dart',
@@ -375,6 +388,7 @@ void main() {
               'request CoordinatorClient.cancelOrder',
               'request CoordinatorClient.submitPayoutInvoice',
               'request CoordinatorClient.submitPayoutAddress',
+              'request CoordinatorClient.confirmFiat',
               'request CoordinatorClient.fetchChat',
               'request CoordinatorClient.postChat',
             }),
