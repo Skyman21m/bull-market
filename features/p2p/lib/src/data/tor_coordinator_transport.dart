@@ -29,6 +29,12 @@ final coordinatorRequestDeadline = torConnectDeadline * 2;
 /// Retries of an idempotent request after a connection failure, each on a new Tor session.
 const coordinatorConnectRetries = 2;
 
+/// Retries of the connection to a Nostr relay after a connection failure, on a new Tor session: one, publishing the same events again being harmless (same ids).
+const relayConnectRetries = 1;
+
+/// The longest message of a relay that is read: an `OK` takes less than 200 characters; anything longer is ignored.
+const maxRelayFrameLength = 4096;
+
 /// Places for robot Tor sessions, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
 ///
 /// A session holds a place from the moment it starts to open until it is closed, the sessions replaced after a connection failure included while a request still uses them.
@@ -105,11 +111,17 @@ const maxTotalHeaderLength = 32 * 1024;
 /// An answer that is not valid HTTP (garbage, an invalid or duplicated `Content-Length`, a forbidden character or an endless header section) means the coordinator answered: it fails with [CoordinatorTransportFailed], without retry.
 /// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress, once the other requests of that session end.
 ///
+/// Nostr relays ([publish], #94): a relay is the coordinator's own origin (`ws://<onion>/relay/`), so its websocket goes through the robot's session to that origin, the one its requests use, with the same `HttpClient` (`WebSocket.connect` with `customClient`, which opens the upgrade request through the client's SOCKS connection factory).
+/// [publish] always completes within [coordinatorRequestDeadline] too, with a [NostrRelayOutcome]; a connection failure replaces the session and is retried [relayConnectRetries] time; frames longer than [maxRelayFrameLength] and binary frames are ignored; only the outcome's fixed label is logged, never the relay, the robot, an event id or a relay's text.
+///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
 /// `Accept-Encoding` is `identity` for every request, where `dart:io` would ask for `gzip`, and a body is never decompressed: the size cap counts the bytes that arrive, so a small compressed body cannot inflate in memory.
 final class TorCoordinatorTransport
-    implements CoordinatorTransport, CoordinatorSessionsPort {
+    implements
+        CoordinatorTransport,
+        CoordinatorSessionsPort,
+        NostrRelayTransport {
   final OpenTorSession _openSession;
   final CreateTorHttpClient _createHttpClient;
   final Duration _deadline;
@@ -238,6 +250,46 @@ final class TorCoordinatorTransport
   }
 
   /// The counts behind the bounds, for tests.
+  /// Publishes the events of [message] on [relay] through a Tor session of [robot], then closes the websocket: see the class doc.
+  @override
+  Future<NostrRelayOutcome> publish(
+    Uri relay,
+    OutgoingNostrChatMessage message, {
+    required RobotSessionKey robot,
+  }) {
+    final completer = Completer<NostrRelayOutcome>();
+    final deadline = _Deadline();
+    final timer = Timer(_deadline, () {
+      deadline.expire();
+      if (!completer.isCompleted) {
+        completer.complete(const NostrRelayTimedOut());
+      }
+    });
+    _publishOnRelay(relay, message, robot, deadline).then(
+      (outcome) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.complete(outcome);
+      },
+      onError: (Object error, StackTrace trace) {
+        timer.cancel();
+        if (completer.isCompleted) {
+          Zone.current.handleUncaughtError(error, trace);
+        } else if (error is Exception) {
+          completer.complete(const NostrRelayFailed());
+        } else {
+          completer.completeError(error, trace);
+        }
+      },
+    );
+    return completer.future.then((outcome) {
+      // The fixed label only: the relay, the robot, the event ids and the message never go to a log (#94, decision D3).
+      if (outcome is! NostrRelayAccepted) {
+        log.info('P2P Nostr chat publication: ${outcome.label}');
+      }
+      return outcome;
+    });
+  }
+
   @visibleForTesting
   TorTransportCounts get countsForTesting => TorTransportCounts(
     places: _robotPlaces,
@@ -283,6 +335,176 @@ final class TorCoordinatorTransport
       requests.running--;
       if (requests.running == 0 && identical(_robotRequests[robot], requests)) {
         _robotRequests.remove(robot);
+      }
+    }
+  }
+
+  Future<NostrRelayOutcome> _publishOnRelay(
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    RobotSessionKey robot,
+    _Deadline deadline,
+  ) async {
+    // The relay of a coordinator, `getRelayUrl` of the reference: checked here as a request URL is.
+    if (!relay.isScheme('ws') ||
+        relay.host.isEmpty ||
+        relay.userInfo.isNotEmpty ||
+        relay.path != '/relay/' ||
+        relay.hasQuery ||
+        relay.hasFragment ||
+        !_acceptsHost(relay.host)) {
+      return const NostrRelayFailed();
+    }
+    final origin = Uri(
+      scheme: 'http',
+      host: relay.host,
+      port: relay.hasPort ? relay.port : null,
+    ).origin;
+    final requests = _robotRequests.putIfAbsent(robot, _RobotRequests.new);
+    requests.running++;
+    try {
+      return await _runOnRelay(
+        (origin: origin, robot: robot),
+        relay,
+        message,
+        deadline,
+        requests,
+      );
+    } finally {
+      requests.running--;
+      if (requests.running == 0 && identical(_robotRequests[robot], requests)) {
+        _robotRequests.remove(robot);
+      }
+    }
+  }
+
+  Future<NostrRelayOutcome> _runOnRelay(
+    _RouteKey key,
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    _Deadline deadline,
+    _RobotRequests requests,
+  ) async {
+    final epoch = _epoch;
+    final generation = requests.generation;
+    bool closed() => epoch != _epoch || generation != requests.generation;
+    for (var attempt = 0; ; attempt++) {
+      if (deadline.passed) return const NostrRelayTimedOut();
+      if (closed()) return const NostrRelayFailed();
+      final slot = _slotFor(key);
+      if (slot == null) return const NostrRelayBusy();
+      final _Route route;
+      slot.waiting++;
+      try {
+        route = await slot.opening;
+      } on _RouteException catch (exception) {
+        return switch (exception.failure) {
+          CoordinatorTransportBusy() => const NostrRelayBusy(),
+          CoordinatorUnreachable() => const NostrRelayUnreachable(),
+          CoordinatorTimedOut() => const NostrRelayTimedOut(),
+          _ => const NostrRelayFailed(),
+        };
+      } finally {
+        slot.waiting--;
+      }
+      if (closed()) return const NostrRelayFailed();
+      if (deadline.passed) return const NostrRelayTimedOut();
+
+      route.acquire();
+      final _RelayAttempt outcome;
+      try {
+        outcome = await _relayAttempt(route, relay, message, deadline);
+      } finally {
+        route.release();
+      }
+      switch (outcome) {
+        case _RelayAnswered(:final outcome):
+          return outcome;
+        case _RelayConnectFailed(:final reason):
+          _retire(key, slot, route);
+          if (attempt >= relayConnectRetries || deadline.passed) {
+            return const NostrRelayUnreachable();
+          }
+          // The reason only, as for a request: the relay and the robot never go to a log.
+          log.info(
+            'P2P Nostr relay connection failed (${reason.name}), retrying on a new Tor session',
+          );
+      }
+    }
+  }
+
+  /// One websocket to [relay] on [route]: connect, send the events in order, wait for an `OK` to each, close.
+  Future<_RelayAttempt> _relayAttempt(
+    _Route route,
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    _Deadline deadline,
+  ) async {
+    final WebSocket socket;
+    try {
+      socket = await WebSocket.connect(
+        relay.toString(),
+        customClient: route.client,
+      ).timeout(_attemptTimeout);
+    } on TimeoutException {
+      return const _RelayConnectFailed(TorConnectFailure.timeout);
+    } on WebSocketException {
+      // The service answered, without a websocket: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
+      return const _RelayAnswered(NostrRelayUnreachable());
+    } on HttpException {
+      return const _RelayAnswered(NostrRelayUnreachable());
+    } on Exception catch (exception) {
+      return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
+    }
+    final waiting = {...message.eventIds};
+    var refused = false;
+    final answered = Completer<NostrRelayOutcome>();
+    void finish(NostrRelayOutcome outcome) {
+      if (!answered.isCompleted) answered.complete(outcome);
+    }
+
+    final subscription = socket.listen(
+      (Object? frame) {
+        // Binary frames and long ones are ignored: an `OK` is short text.
+        if (frame is! String || frame.length > maxRelayFrameLength) return;
+        final ok = NostrRelayOk.parse(frame);
+        if (ok == null || !waiting.remove(ok.eventId)) return;
+        if (!ok.accepted) refused = true;
+        if (waiting.isEmpty) {
+          finish(
+            refused ? const NostrRelayRefused() : const NostrRelayAccepted(),
+          );
+        }
+      },
+      // Closed by the relay, or broken, before every event was answered.
+      onError: (Object _) => finish(
+        refused ? const NostrRelayRefused() : const NostrRelayFailed(),
+      ),
+      onDone: () => finish(
+        refused ? const NostrRelayRefused() : const NostrRelayFailed(),
+      ),
+      cancelOnError: true,
+    );
+    deadline.watchSocket(socket);
+    try {
+      for (final frame in message.relayMessages) {
+        socket.add(frame);
+      }
+      return _RelayAnswered(
+        await answered.future.timeout(
+          _attemptTimeout,
+          onTimeout: () => const NostrRelayTimedOut(),
+        ),
+      );
+    } finally {
+      deadline.forgetSocket(socket);
+      await subscription.cancel();
+      try {
+        await socket
+            .close(WebSocketStatus.normalClosure)
+            .timeout(_closeTimeout);
+      } on Exception {
+        // Closing is best effort: the session's client is closed with the session anyway.
       }
     }
   }
@@ -863,6 +1085,9 @@ final class _Route {
   final void Function(_Route route) _onClosed;
   final Dio dio;
   int _users = 0;
+
+  /// The client of the session, which a relay's websocket connects through.
+  HttpClient get client => _client;
   bool _retired = false;
   Future<bool>? _closing;
 
@@ -959,6 +1184,23 @@ final class _ConnectFailed extends _Attempt {
   const _ConnectFailed(this.reason);
 }
 
+/// What one websocket to a relay gave.
+sealed class _RelayAttempt {
+  const _RelayAttempt();
+}
+
+final class _RelayAnswered extends _RelayAttempt {
+  final NostrRelayOutcome outcome;
+
+  const _RelayAnswered(this.outcome);
+}
+
+final class _RelayConnectFailed extends _RelayAttempt {
+  final TorConnectFailure reason;
+
+  const _RelayConnectFailed(this.reason);
+}
+
 /// Why no session could serve a request.
 final class _RouteException implements Exception {
   final CoordinatorTransportFailure failure;
@@ -970,10 +1212,22 @@ final class _RouteException implements Exception {
 final class _Deadline {
   bool passed = false;
   CancelToken? _current;
+  WebSocket? _socket;
 
   void expire() {
     passed = true;
     _current?.cancel();
+    _socket?.close().ignore();
+  }
+
+  /// The websocket of a relay publication: closed when the deadline passes.
+  void watchSocket(WebSocket socket) {
+    _socket = socket;
+    if (passed) socket.close().ignore();
+  }
+
+  void forgetSocket(WebSocket socket) {
+    if (identical(_socket, socket)) _socket = null;
   }
 
   void watch(CancelToken cancel) {

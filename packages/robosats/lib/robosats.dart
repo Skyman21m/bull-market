@@ -77,6 +77,18 @@ export 'src/coordinator/payout.dart'
 export 'src/coordinator/public_order.dart' show PublicOrder;
 export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
 export 'src/coordinator/nostr_chat.dart' show OutgoingNostrChatMessage;
+export 'src/coordinator/nostr_relay.dart'
+    show
+        NostrRelayAccepted,
+        NostrRelayBusy,
+        NostrRelayFailed,
+        NostrRelayOk,
+        NostrRelayOutcome,
+        NostrRelayRefused,
+        NostrRelayTimedOut,
+        NostrRelayTransport,
+        NostrRelayUnreachable,
+        nostrRelaysFor;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
 export 'src/coordinator/robot_session_key.dart' show RobotSessionKey;
