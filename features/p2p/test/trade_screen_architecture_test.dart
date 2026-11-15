@@ -8,10 +8,10 @@ import 'package:test/test.dart';
 /// Who may name what around the trade screens (#88), read from the syntax tree of every Dart file of `features/p2p/lib` (names in code only: comments, doc comments and strings are not code).
 ///
 /// - Only the cancel's confirmation dialog builds the acknowledgement that a cancel loses the bond: `BondLossAcknowledged.fromConfirmationDialog` is named in `lib/src/ui/trade/confirm_cancel_dialog.dart` and in the file that declares it, nowhere else.
-/// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`, the payout and the key's hold by `PayoutCubit` (#91); no other file names them but the domain and the locator.
+/// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`, the payout and the key's hold by `PayoutCubit` (#91), the chat's read and send by `ChatCubit` (#93); no other file names them but the domain and the locator.
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
-/// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice) and the trade screen (the order's address) write to the clipboard.
+/// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message) and « Don't trust, verify » (a public key) use the clipboard.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -57,6 +57,9 @@ void main() {
         // The payout panel's cubit (#91), the only caller of the payout use case and of the key's hold.
         ('SubmitPayoutUsecase', 'lib/src/presentation/payout_cubit.dart'),
         ('HoldTradeKeyUsecase', 'lib/src/presentation/payout_cubit.dart'),
+        // The chat panel's cubit (#93), the only caller of the chat's use cases.
+        ('WatchChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
+        ('SendChatMessageUsecase', 'lib/src/presentation/chat_cubit.dart'),
       ]) {
         final outside = {
           for (final path in _whereNamed(sources, useCase))
@@ -108,6 +111,9 @@ void main() {
         // The payout panel (#91): « Paste » reads the clipboard once on the user's tap, and the copy beside « Submit invoice for … » writes the amount asked, as the reference's (`Forms/LightningPayout.tsx:321-330`, `:565-576`).
         'lib/src/ui/trade/payout_panel.dart',
         'lib/src/ui/trade/trade_screen.dart',
+        // The chat (#93): the copy of a message (`MessageCard/index.tsx`) and of a public key (`Dialogs/AuditPGP.tsx`), on the user's tap.
+        'lib/src/ui/trade/chat_panel.dart',
+        'lib/src/ui/trade/chat_actions.dart',
       });
     },
   );
@@ -209,6 +215,9 @@ const _notForScreens = {
   'FindPublicOrderUsecase',
   'SubmitPayoutUsecase',
   'HoldTradeKeyUsecase',
+  'WatchChatUsecase',
+  'SendChatMessageUsecase',
+  'TradeChats',
   'TradeKeyring',
   'TradeKeyHold',
   'TakeOrderUsecase',
