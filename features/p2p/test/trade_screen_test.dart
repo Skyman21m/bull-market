@@ -913,15 +913,19 @@ void main() {
       expect(find.text('Copy URL'), findsNothing);
     });
 
-    testWidgets('9: the reference\'s title, a later version', (tester) async {
-      await _show(tester, watch: _Watch(), state: _watched('nine'));
-      expect(find.text('Chat with the seller (3/4)'), findsOneWidget);
-      expect(
-        find.text('Bull Market cannot show this step yet.'),
-        findsOneWidget,
-      );
-      expect(find.text('Cancel'), findsNothing);
-    });
+    testWidgets(
+      '9: the reference\'s title and the chat step (#95), no « Cancel »',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('nine'));
+        expect(find.text('Chat with the seller (3/4)'), findsOneWidget);
+        expect(find.text('⚠️ Beware scams'), findsOneWidget);
+        expect(
+          find.text('Bull Market cannot show this step yet.'),
+          findsNothing,
+        );
+        expect(find.text('Cancel'), findsNothing);
+      },
+    );
   });
 
   group('ends and states the reference has no screen for', () {

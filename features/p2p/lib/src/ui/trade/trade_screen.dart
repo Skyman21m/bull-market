@@ -31,6 +31,7 @@ import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
 import 'chat_panel.dart';
+import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'payout_panel.dart';
 import 'trade_order_details.dart';
@@ -245,6 +246,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       TradeMessage(:final kind) => _Message(
                         text: kind.toText(context, coordinator: coordinator),
                         waits: kind == TradeMessageKind.takePending,
+                        notice: switch (state.chatStep) {
+                          ChatStepIdle(:final notice?) => notice,
+                          _ => null,
+                        },
+                        coordinator: coordinator,
                       ),
                       TradeOrderOnly(:final order) => _PublicAgain(
                         order: order,
@@ -283,6 +289,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         now: _now,
                         record: record,
                         cancel: state.cancel,
+                        chatStep: state.chatStep,
+                        offersFiatSent: context
+                            .read<TradeCubit>()
+                            .offersFiatSent,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
@@ -363,7 +373,16 @@ class _Message extends StatelessWidget {
   final String text;
   final bool waits;
 
-  const _Message({required this.text, required this.waits});
+  /// What an action of the chat step gave, when the order it was sent for is now shown as a message (cancelled, ended): said under it, as the reference says its `bad_request` whatever the status (#95).
+  final ChatStepNotice? notice;
+  final String coordinator;
+
+  const _Message({
+    required this.text,
+    required this.waits,
+    this.notice,
+    required this.coordinator,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -388,6 +407,10 @@ class _Message extends StatelessWidget {
             const Gap(BullSpacing.md),
             LinearProgressIndicator(color: colors.primary),
           ],
+          if (notice case final notice?) ...[
+            const Gap(BullSpacing.md),
+            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+          ],
         ],
       ),
     );
@@ -402,6 +425,8 @@ class _Contract extends StatelessWidget {
   final TradeContract contract;
   final TradeRecord record;
   final TradeCancelState cancel;
+  final ChatStepState chatStep;
+  final bool offersFiatSent;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
@@ -415,6 +440,8 @@ class _Contract extends StatelessWidget {
     required this.now,
     required this.record,
     required this.cancel,
+    required this.chatStep,
+    required this.offersFiatSent,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
@@ -449,16 +476,36 @@ class _Contract extends StatelessWidget {
           container: true,
           header: true,
           liveRegion: true,
-          child: Text(
-            step == null
-                ? title
-                : '$title ${l10n.p2pTradeStep('${step.$1}', '${step.$2}')}',
-            textAlign: TextAlign.center,
-            style: text.headlineLarge?.copyWith(
-              color: contract.title == TradeTitle.finished
-                  ? colors.success
-                  : colors.primary,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // « Trade finished! » between the reference's two bolts, in its warning colour (`TradeBox/index.tsx:633-636`).
+              if (contract.title == TradeTitle.finished) ...[
+                ExcludeSemantics(
+                  child: Icon(Icons.bolt, color: colors.warning),
+                ),
+                const Gap(BullSpacing.xs),
+              ],
+              Flexible(
+                child: Text(
+                  step == null
+                      ? title
+                      : '$title ${l10n.p2pTradeStep('${step.$1}', '${step.$2}')}',
+                  textAlign: TextAlign.center,
+                  style: text.headlineLarge?.copyWith(
+                    color: contract.title == TradeTitle.finished
+                        ? colors.success
+                        : colors.primary,
+                  ),
+                ),
+              ),
+              if (contract.title == TradeTitle.finished) ...[
+                const Gap(BullSpacing.xs),
+                ExcludeSemantics(
+                  child: Icon(Icons.bolt, color: colors.warning),
+                ),
+              ],
+            ],
           ),
         ),
         Divider(height: BullSpacing.lg, color: colors.outlineVariant),
@@ -471,6 +518,12 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status),
+        // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it.
+        if (contract.prompt != TradePrompt.chat)
+          if (chatStep case ChatStepIdle(:final notice?)) ...[
+            const Gap(BullSpacing.md),
+            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+          ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
           _BondLine(line: contract.bondLine),
@@ -542,25 +595,55 @@ class _Contract extends StatelessWidget {
         center: true,
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
-      // The chat step (#93): the chat between the prompt's text and its buttons, which #95 brings.
-      (TradePrompt.later, Chatting()) when chat != null => Column(
+      // The buyer's chat step (#95), with the chat panel (#93) in its place when the screen was given one.
+      (TradePrompt.chat, _) => ChatStepPanel(
+        seen: contract.seen,
+        order: order,
+        coordinator: coordinator,
+        chatStep: chatStep,
+        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        offersFiatSent: offersFiatSent,
+        // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
+        chat: chat == null
+            ? null
+            : KeyedSubtree(
+                key: const ValueKey('trade-chat-panel'),
+                child: chat(
+                  context,
+                  ChatPanelRequest(
+                    record: record,
+                    seen: contract.seen,
+                    coordinator: coordinator,
+                  ),
+                ),
+              ),
+      ),
+      (TradePrompt.sendingSats, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
-          const Gap(BullSpacing.md),
-          KeyedSubtree(
-            key: const ValueKey('trade-chat-panel'),
-            child: chat(
-              context,
-              ChatPanelRequest(
-                record: record,
-                seen: contract.seen,
-                coordinator: coordinator,
-              ),
+          _Line(l10n.p2pEndSendingSats),
+          const Gap(BullSpacing.sm),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: l10n.p2pEndTakingTooLong,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const TextSpan(text: ' '),
+                TextSpan(text: l10n.p2pEndTakingTooLongText),
+              ],
             ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.text),
           ),
+          const Gap(BullSpacing.md),
+          Center(child: CircularProgressIndicator(color: colors.primary)),
         ],
       ),
+      // « Trade finished! » with its title alone: the rating and the summary come with a later pull request of #95.
+      (TradePrompt.finished, _) => const SizedBox.shrink(),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }

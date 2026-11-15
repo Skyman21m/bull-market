@@ -2097,6 +2097,118 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Swap expiré. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
+  String get p2pEndChatBuyerHi =>
+      'Dites bonjour ! Demandez les détails du paiement et appuyez sur « Confirmer l\'envoi » dès que le paiement est envoyé.';
+
+  @override
+  String get p2pEndBewareScams => '⚠️ Attention aux arnaques';
+
+  @override
+  String p2pEndConfirmSent(String amount, String currencyCode) {
+    return 'Confirmer l\'envoi de $amount $currencyCode';
+  }
+
+  @override
+  String p2pEndConfirmSentTitle(String amount, String currencyCode) {
+    return '✅ Confirmez-vous avoir envoyé $amount $currencyCode ?';
+  }
+
+  @override
+  String get p2pEndConfirmSentText =>
+      'Confirmer permettra à votre pair de finaliser la transaction.';
+
+  @override
+  String get p2pEndCannotBeUndone =>
+      '⚠️ Cette action ne peut pas être annulée !';
+
+  @override
+  String get p2pEndFalseConfirmRisk =>
+      'Si vous ne l\'avez pas encore envoyé et que vous continuez à confirmer faussement, vous risquez de perdre votre caution.';
+
+  @override
+  String get p2pEndConfirm => 'Confirmer';
+
+  @override
+  String get p2pEndWaitSeller =>
+      'Attendez que le vendeur confirme avoir reçu le paiement.';
+
+  @override
+  String p2pEndStepSending(String coordinator) {
+    return 'Envoi de votre confirmation à $coordinator…';
+  }
+
+  @override
+  String get p2pEndNeedsRead => 'Attendez que l\'ordre soit relu.';
+
+  @override
+  String get p2pEndMovedOn =>
+      'L\'ordre a changé : votre confirmation n\'a pas été envoyée.';
+
+  @override
+  String p2pEndReadFailed(String coordinator) {
+    return 'L\'ordre n\'a pas pu être relu chez $coordinator : votre confirmation n\'a pas été envoyée.';
+  }
+
+  @override
+  String p2pEndNotDoneAfter(String reason) {
+    return '$reason Votre confirmation n\'a pas été envoyée.';
+  }
+
+  @override
+  String get p2pEndUnknown =>
+      'Bull Market ne sait pas encore si votre confirmation est passée et continue de vérifier.';
+
+  @override
+  String get p2pEndSendingSats =>
+      'RoboSats tente de payer votre facture lightning. Rappelez-vous que les nœuds lightning doivent être en ligne pour recevoir les paiements.';
+
+  @override
+  String get p2pEndTakingTooLong => 'Trop long ?';
+
+  @override
+  String get p2pEndTakingTooLongText =>
+      'Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille.';
+
+  @override
+  String get p2pEndNeedsReadNotSent =>
+      'Attendez que l\'ordre soit relu. Votre confirmation n\'a pas été envoyée.';
+
+  @override
+  String p2pEndRefusedBy(String coordinator) {
+    return '$coordinator n\'a pas enregistré votre confirmation.';
+  }
+
+  @override
+  String p2pEndNotRecordedMovedOn(String coordinator) {
+    return 'L\'ordre a changé : $coordinator n\'a pas enregistré votre confirmation.';
+  }
+
+  @override
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator indique maintenant $readAmount $readCurrency ; l\'ordre a été pris pour $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator n\'indique aucun montant pour cet ordre ; il a été pris pour $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndOffline(String coordinator) {
+    return '$coordinator est hors ligne : votre confirmation n\'a pas été envoyée.';
+  }
+
+  @override
   String p2pChatYouState(String state) {
     return 'Vous : $state';
   }
