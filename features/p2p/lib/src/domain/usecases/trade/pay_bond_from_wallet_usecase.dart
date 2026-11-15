@@ -115,38 +115,61 @@ final class PayBondFromWalletUsecase {
     // One action of an order at a time in the process: its take, its payout and this payment (`TradeTakeLocks`, shared with the take and the payout); a second payment of the bond waits, reads the order again and finds the first.
     return _locks.run(record.network, trade.coordinator, record.orderId, () async {
       final requests = _limiter.open(trade.robot.identity.sessionKey);
-      final TradeStep step;
+      TradeStep step;
       try {
-        final readLeft = _reader.requestLeaves();
-        final read = await _reader.readOrder(
-          requests,
-          record,
-          trade.robot,
-          trade.coordinator,
-        );
-        final answer = switch (read) {
-          Ok(:final value) => TradeAnswer.ofRead(value),
-          Err() => null,
-        };
-        if (answer == null) {
-          return Err(
-            BondPayTradeUnavailable(switch (read) {
-              Err(:final failure) => failure,
-              Ok(value: Err(:final failure)) => failure,
-              // An order this robot read, which every read gives an answer for: never here.
-              Ok(value: Ok()) => const P2pStorageFailure(),
-            }),
+        // Its read is this action's only request to the coordinator: the watch sends no read while it runs, and a read superseded (one of the watch's, which left before, answered after it left) is read once more (#141).
+        final read = await _reader.duringAction(record, () async {
+          var current = trade;
+          TradeStep? last;
+          for (
+            var reads = 0;
+            reads < 2 && (last?.superseded ?? true);
+            reads++
+          ) {
+            final times = _reader.request();
+            final read = await _reader.readOrder(
+              requests,
+              record,
+              current.robot,
+              current.coordinator,
+              times: times,
+            );
+            final answer = switch (read) {
+              Ok(:final value) => TradeAnswer.ofRead(value),
+              Err() => null,
+            };
+            if (answer == null) {
+              return Err<TradeStep, BondPayRefusal>(
+                BondPayTradeUnavailable(switch (read) {
+                  Err(:final failure) => failure,
+                  Ok(value: Err(:final failure)) => failure,
+                  // An order this robot read, which every read gives an answer for: never here.
+                  Ok(value: Ok()) => const P2pStorageFailure(),
+                }),
+              );
+            }
+            last = await _reader.advance(
+              current,
+              answer,
+              at: _reader.now(),
+              request: times,
+            );
+            current = last.trade;
+          }
+          return Ok<TradeStep, BondPayRefusal>(
+            last ?? (throw StateError('no read')),
           );
+        });
+        switch (read) {
+          case Err(:final failure):
+            return Err(failure);
+          case Ok(:final value):
+            step = value;
         }
-        step = await _reader.advance(
-          trade,
-          answer,
-          at: _reader.now(),
-          sent: readLeft,
-        );
       } finally {
         requests.close();
       }
+      if (step.superseded) return const Err(BondPayReadSuperseded());
       final status = step.trade.seen.status;
       if (!step.stored || status is! WaitingForTakerBond) {
         return const Err(BondPayNotAtBondStep());

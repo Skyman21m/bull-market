@@ -92,14 +92,15 @@ final class ChatStepActionUsecase {
       record.network,
       trade.coordinator,
       record.orderId,
-      () async {
+      // An action of the trade: the watch sends no read while it runs (#141).
+      () => _reader.duringAction(record, () async {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
           return await _send(requests, trade, action, send, tell);
         } finally {
           requests.close();
         }
-      },
+      }),
     );
   }
 
@@ -120,14 +121,14 @@ final class ChatStepActionUsecase {
     P2pFailure? problem;
     Future<void> keep(
       TradeAnswer answer, {
-      required RequestLeft sent,
+      required RequestTimes request,
       bool keepsTime = false,
     }) async {
       final step = await _reader.advance(
         current,
         answer,
         at: _reader.now(),
-        sent: sent,
+        request: request,
         keepsTime: keepsTime,
       );
       current = step.trade;
@@ -136,40 +137,47 @@ final class ChatStepActionUsecase {
 
     // The order as it is now, kept: the action leaves only if this read still offers it.
     tell?.call(ChatStepProgress.readingOrder);
-    final readLeft = _reader.requestLeaves();
-    final TradeAnswer answer;
-    switch (await _reader.readOrder(
-      requests,
-      record,
-      robot,
-      trade.coordinator,
-    )) {
-      case Err(:final failure):
-        return Err(ChatStepReadFailed(cause: failure));
-      case Ok(value: final result):
-        switch (TradeAnswer.ofRead(result)) {
-          case final read?:
-            answer = read;
-          case null:
-            return Err(
-              ChatStepReadFailed(
-                cause: switch (result) {
-                  Err(:final failure) => failure,
-                  Ok() => null,
-                },
-              ),
-            );
-        }
-    }
-    final step = await _reader.advance(
-      current,
-      answer,
-      at: _reader.now(),
-      sent: readLeft,
-      keepsTime: true,
-    );
-    current = step.trade;
-    problem ??= step.recordProblem;
+    // Superseded (a read of the watch that left before the action began answered after it left), it is read once more: no read of the watch leaves while the action runs, so the second read cannot be superseded; if it is, nothing is sent (#141).
+    TradeStep step;
+    var reads = 0;
+    do {
+      reads++;
+      final times = _reader.request();
+      final TradeAnswer answer;
+      switch (await _reader.readOrder(
+        requests,
+        record,
+        robot,
+        trade.coordinator,
+        times: times,
+      )) {
+        case Err(:final failure):
+          return Err(ChatStepReadFailed(cause: failure));
+        case Ok(value: final result):
+          switch (TradeAnswer.ofRead(result)) {
+            case final read?:
+              answer = read;
+            case null:
+              return Err(
+                ChatStepReadFailed(
+                  cause: switch (result) {
+                    Err(:final failure) => failure,
+                    Ok() => null,
+                  },
+                ),
+              );
+          }
+      }
+      step = await _reader.advance(
+        current,
+        answer,
+        at: _reader.now(),
+        request: times,
+        keepsTime: true,
+      );
+      current = step.trade;
+      problem ??= step.recordProblem;
+    } while (step.superseded && reads < 2);
     final fresh = current.seen;
     if (!step.stored) {
       return Err(
@@ -191,29 +199,30 @@ final class ChatStepActionUsecase {
 
     // Sent once: never again by this use case, whatever the outcome.
     tell?.call(ChatStepProgress.sending);
-    final actionLeft = _reader.requestLeaves();
+    final actionTimes = _reader.request();
     final sent = await requests.send(
       record.network,
       trade.coordinator,
-      () => send(robot.identity, lastRead),
+      () => _reader.timed(actionTimes, () => send(robot.identity, lastRead)),
       isBusy: _answeredBusy,
     );
 
     // The answer first, then a read after it.
     tell?.call(ChatStepProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
-      await keep(TradeOrderRead(value.order), sent: actionLeft);
+      await keep(TradeOrderRead(value.order), request: actionTimes);
     }
-    final readFrom = _reader.requestLeaves();
+    final readAfter = _reader.request();
     final read = await _reader.readOrder(
       requests,
       record,
       robot,
       trade.coordinator,
+      times: readAfter,
     );
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final after?) {
-        await keep(after, sent: readFrom, keepsTime: true);
+        await keep(after, request: readAfter, keepsTime: true);
       }
     }
     // The read after shows the action recorded (an earlier request that landed, or this one whose answer was lost or refused as busy after a late landing): done, whatever the answer said, so that no notice contradicts the status shown.

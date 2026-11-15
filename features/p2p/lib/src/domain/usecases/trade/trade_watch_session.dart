@@ -38,6 +38,10 @@ final class TradeWatchSession {
   bool _reading = false;
   bool _readAgain = false;
   bool _stopped = false;
+
+  /// Whether the screen asked for a read ([TradeWatchSignal.readNow]) that an action of the trade held back: sent once the action ends (#141).
+  bool _askedNow = false;
+  bool _waitingForAction = false;
   DateTime? _lastReadEnded;
   int _failedReads = 0;
   Failure? _lastReadFailure;
@@ -145,6 +149,7 @@ final class TradeWatchSession {
     if (_stopped) return;
     switch (signal) {
       case TradeWatchSignal.readNow:
+        _askedNow = true;
         unawaited(_read());
       case TradeWatchSignal.onScreen || TradeWatchSignal.offScreen:
         final onScreen = signal == TradeWatchSignal.onScreen;
@@ -184,18 +189,38 @@ final class TradeWatchSession {
   }
 
   Future<void> _readTrade(RobotRequests requests, OpenTrade trade) async {
-    // When the read leaves: what it shows is no older than that (`TradeSeen.requestedAt`), and it never replaces the status of a request that left after it (#141).
-    final left = _reader.requestLeaves();
+    // Ranked when it leaves (what it shows is no older than that, `TradeSeen.requestedAt`) and when its answer arrives; not sent while an action of the trade runs (#141).
+    final times = _reader.request();
+    final asked = _askedNow;
+    _askedNow = false;
     final read = await _reader.readOrder(
       requests,
       trade.record,
       trade.robot,
       trade.coordinator,
+      times: times,
+      watch: true,
     );
     // Cancelled while the read was in flight: its answer is dropped.
     if (_stopped) return;
     final at = _reader.now();
     _lastReadEnded = at;
+    if (times.heldBack) {
+      // Nothing was sent: the next tick reads, and a read the screen asked for is sent once the action ends.
+      if (asked && !_waitingForAction) {
+        _waitingForAction = true;
+        unawaited(
+          _reader.actionEnded(trade.record).then((_) {
+            _waitingForAction = false;
+            if (!_stopped) {
+              _askedNow = true;
+              unawaited(_read());
+            }
+          }),
+        );
+      }
+      return;
+    }
     final TradeAnswer answer;
     switch (read) {
       case Err(:final failure):
@@ -218,7 +243,7 @@ final class TradeWatchSession {
       trade,
       answer,
       at: at,
-      sent: left,
+      request: times,
       keepsTime: true,
     );
     if (_stopped) return;
@@ -226,6 +251,8 @@ final class TradeWatchSession {
     _lastReadFailure = null;
     final next = step.trade;
     _trade = next;
+    // Superseded: an action's answer, accepted while this read flew, is the trade's newest status; nothing to say until the next read, unless it is an end.
+    if (step.superseded && !next.seen.status.isTerminal) return;
     if (step.recordProblem case final TradeClosedFailure closed) {
       _closedButTaken = closed;
     }
