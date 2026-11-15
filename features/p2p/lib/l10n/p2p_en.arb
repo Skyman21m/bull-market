@@ -2086,9 +2086,9 @@
   "@p2pPayWithThisWallet": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the button that asks the swap service for its quote; nothing is paid before the confirmation."
   },
-  "p2pPayQuoting": "Asking the swap service for its fees…",
+  "p2pPayQuoting": "Getting the swap fees…",
   "@p2pPayQuoting": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: while the quote is asked."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, with the wallet's label « Swap fees » (`transactionDetailLabelSwapFees`); the wallet has no text for asking them."
   },
   "p2pPayConfirmTitle": "Pay {amount} sats to lock your bond?",
   "@p2pPayConfirmTitle": {
@@ -2099,9 +2099,9 @@
       }
     }
   },
-  "p2pPayServiceFee": "Swap service fee: {serviceFee} sats",
+  "p2pPayServiceFee": "Swap fees: {serviceFee} sats",
   "@p2pPayServiceFee": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service's fee in the confirmation.",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's label for the same fee (`transactionDetailLabelSwapFees`, « Swap fees » / « Frais d'échange »).",
     "placeholders": {
       "serviceFee": {
         "type": "String"
@@ -2129,10 +2129,6 @@
       }
     }
   },
-  "p2pPayCustody": "This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds the bond’s sats to Instant payments, and its fees are not refunded.",
-  "@p2pPayCustody": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's explanation of the swap service's custody."
-  },
   "p2pPayConfirm": "Pay {total} sats",
   "@p2pPayConfirm": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's button, the only tap that pays.",
@@ -2155,17 +2151,13 @@
       }
     }
   },
-  "p2pPayHeld": "Your bond is locked. The sats of this bond are held by the swap service until the trade ends.",
-  "@p2pPayHeld": {
-    "description": "The panel of « Pay with this wallet » (#100): from status 6 until the trade's end, for a bond paid by this wallet, from the study of #100 § 4 without its amount (the trade's later statuses do not carry it)."
-  },
-  "p2pPayRefundPending": "Your bond was returned. The swap service is refunding the bond’s sats to Instant payments; its fees are not refunded.",
+  "p2pPayRefundPending": "Swap will be refunded shortly. The swap fees are not refunded.",
   "@p2pPayRefundPending": {
-    "description": "The panel of « Pay with this wallet » (#100): after status 3, the coordinator cancelled the hold invoice and the swap service refunds the bond (the study of #100 observed a refund equal to the bond; its fees are not returned), from the study's § 4 without an amount."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailedRefunding`, then ours for the fees (the wallet has no text for it)."
   },
-  "p2pPayRefunded": "Refunded: the bond’s sats are back in Instant payments; the swap service’s fees are not refunded.",
+  "p2pPayRefunded": "Swap has been refunded. The swap fees are not refunded.",
   "@p2pPayRefunded": {
-    "description": "The panel of « Pay with this wallet » (#100): after status 3, the swap service refunded the bond, from the study's § 4 without an amount."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendCompletedRefunded`, then ours for the fees."
   },
   "p2pPaySettled": "Your bond was kept by {coordinator}.",
   "@p2pPaySettled": {
@@ -2176,47 +2168,47 @@
       }
     }
   },
-  "p2pPayUnderReview": "The swap service is reviewing this payment. Your sats are with it; contact Bull Bitcoin support if it lasts.",
+  "p2pPayUnderReview": "Swap is under review. Contact Bull Bitcoin support if it lasts.",
   "@p2pPayUnderReview": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the swap service holds the payment for a manual review."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours (the wallet shows no text for a manual review), worded as its swap statuses."
   },
   "p2pPayInterrupted": "The payment was interrupted before it was sent. Nothing left this wallet yet.",
   "@p2pPayInterrupted": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a payment signed and saved but never broadcast; this wallet does not pay the invoice again."
   },
-  "p2pPayMaybeSent": "The payment may have been sent. The wallet is checking with the swap service.",
+  "p2pPayMaybeSent": "The payment may have been sent. Its status will update shortly.",
   "@p2pPayMaybeSent": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a broadcast whose outcome is unknown; the wallet's watcher settles it."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours: a broadcast whose outcome is unknown, which the wallet's watcher settles."
   },
-  "p2pPayAskSupport": "The swap service did not pay this bond, and the sats of this bond may have left this wallet. Contact Bull Bitcoin support.",
+  "p2pPayAskSupport": "Swap Failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.",
   "@p2pPayAskSupport": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a payment that expired or failed with its funding possibly sent; only the swap service's support can tell where the sats are."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed`, then ours: support is the only way out."
   },
-  "p2pPayUnderMinimum": "This bond is under the swap service’s minimum of {min} sats.",
+  "p2pPayUnderMinimum": "Amount below minimum swap limit: {min} sats",
   "@p2pPayUnderMinimum": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal; « Pay with another wallet » opens.",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowMinimum`.",
     "placeholders": {
       "min": {
         "type": "String"
       }
     }
   },
-  "p2pPayUnderMinimumUnknown": "This bond is under the swap service’s minimum.",
+  "p2pPayUnderMinimumUnknown": "Amount is below swap limits",
   "@p2pPayUnderMinimumUnknown": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: a refusal when the swap service gives no minimum."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowSwapLimits`, when the service gives no minimum."
   },
-  "p2pPayOverMaximum": "This bond is over the swap service’s maximum of {max} sats.",
+  "p2pPayOverMaximum": "Amount above maximum swap limit: {max} sats",
   "@p2pPayOverMaximum": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a refusal.",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountAboveMaximum`.",
     "placeholders": {
       "max": {
         "type": "String"
       }
     }
   },
-  "p2pPayOutsideLimits": "This bond is outside the swap service’s limits.",
+  "p2pPayOutsideLimits": "Amount is outside swap limits",
   "@p2pPayOutsideLimits": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: a refusal without the limit."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, worded on the wallet's `sendErrorAmountBelowSwapLimits` / `sendErrorAmountAboveSwapLimits`: the service did not say which limit."
   },
   "p2pPayNotEnough": "Not enough in Instant payments ({balance} sats) for {total} sats.",
   "@p2pPayNotEnough": {
@@ -2230,13 +2222,13 @@
       }
     }
   },
-  "p2pPayUnreachable": "The swap service cannot be reached.",
+  "p2pPayUnreachable": "Server is unavailable. Please try again later.",
   "@p2pPayUnreachable": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: a refusal."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `mempoolErrorServerUnavailable`."
   },
-  "p2pPayBusy": "The swap service asks to wait before trying again.",
+  "p2pPayBusy": "Rate limited. Please try again later.",
   "@p2pPayBusy": {
-    "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the service answered « too many requests »."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `recoverbullErrorRateLimited`, without the delay the service does not always give."
   },
   "p2pPayTooLate": "Too little time is left to pay from this wallet.",
   "@p2pPayTooLate": {
@@ -2262,13 +2254,13 @@
   "@p2pPayWalletUnavailable": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the other refusals of the wallet (no Instant payments wallet, unreadable, other network, too many coins, a quote no longer valid)."
   },
-  "p2pPayServiceCouldNotPay": "The swap service could not pay this invoice. It is refunding the sats to Instant payments; its fees are not refunded.",
+  "p2pPayServiceCouldNotPay": "Swap Failed. Swap will be refunded shortly. The swap fees are not refunded.",
   "@p2pPayServiceCouldNotPay": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: at status 3, a refund pending or done (the bond was never locked); « Pay with another wallet » opens."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` and `coreSwapsLnSendFailedRefunding`, then ours for the fees; at status 3, where the bond was never locked."
   },
-  "p2pPayWithSwapService": "The sats of this bond are with the swap service.",
+  "p2pPayWithSwapService": "Your swap is in progress.",
   "@p2pPayWithSwapService": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: after status 3, outside a trade going on (an order public again, cancelled or ended), for a payment sent whose end the wallet has not reported yet."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the first sentence of the wallet's `transactionSwapDescLnSendDefault`: a payment sent, outside a trade going on."
   },
   "p2pPayCoordinatorUnreachable": "Could not reach {coordinator}. Nothing was paid.",
   "@p2pPayCoordinatorUnreachable": {
@@ -2279,20 +2271,20 @@
       }
     }
   },
-  "p2pPayStillSending": "Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a few minutes.",
+  "p2pPayStillSending": "Still sending. This can take a few minutes.",
   "@p2pPayStillSending": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: after 30 s of « Sending the payment… », as the take says it still waits; the screen cannot tell which of the two steps is waiting."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours: after 30 s of « Sending the payment… »."
   },
-  "p2pPayAskSupportSent": "The swap service did not pay this bond, and the sats of this bond left this wallet. Contact Bull Bitcoin support.",
+  "p2pPayAskSupportSent": "Swap Failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.",
   "@p2pPayAskSupportSent": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: a payment that expired or failed after its funding was broadcast."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed`, then ours: its funding was broadcast."
   },
   "p2pPayUnreadable": "Bull Market cannot read where this payment stands.",
   "@p2pPayUnreadable": {
     "description": "The panel of « Pay with this wallet » (#100), the project's own text, not in the study's table: the records, or the wallet's, cannot be read; nothing is paid."
   },
-  "p2pPayCancelNote": "A payment of this bond is on its way from this wallet. Cancelling now costs the swap service’s fees, and its refund may take time.",
+  "p2pPayCancelNote": "A payment of this bond is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.",
   "@p2pPayCancelNote": {
-    "description": "The panel of « Pay with this wallet » (#100), the project's own text, not the reference's: under the reference's text of the cancel dialogs, when a payment of the bond from this wallet may have left it; the user is informed, the cancel is not stopped."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, not the reference's: under its text of the cancel dialog at status 3, for a payment on its way; with the wallet's label « Swap fees »."
   }
 }

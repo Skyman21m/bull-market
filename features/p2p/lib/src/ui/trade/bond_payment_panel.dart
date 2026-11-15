@@ -350,13 +350,15 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
+            // The reference's sentence on a hold invoice, word for word (the owner's decision, #135): here while the confirmation is open, the other wallet's section then not showing it.
             Text(
-              l10n.p2pPayCustody,
+              l10n.p2pTradeHoldInvoiceBond,
               style: text.bodySmall?.copyWith(color: colors.textMuted),
             ),
             const Gap(BullSpacing.md),
+            // The reference's word for stepping back in its dialogs (#134): never the trade's « Cancel », a few rows below.
             TradeButton(
-              label: l10n.p2pCommonCancel,
+              label: l10n.p2pCommonGoBack,
               outlined: true,
               onPressed: onCancel,
             ),
@@ -473,7 +475,8 @@ String? bondPaymentAfterText(
     P2pWalletPaymentPreparing() || P2pWalletPaymentSigned() => null,
     P2pWalletPaymentBroadcastUnknown() => l10n.p2pPayMaybeSent,
     P2pWalletPaymentSent() || P2pWalletPaymentPending() =>
-      bondHeld ? l10n.p2pPayHeld : l10n.p2pPayWithSwapService,
+      // While the bond is locked the reference's own bond line says so: nothing of ours is added (#135).
+      bondHeld ? null : l10n.p2pPayWithSwapService,
     P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
     P2pWalletPaymentPaid() => l10n.p2pPaySettled(coordinator),
     P2pWalletPaymentRefundPending() => l10n.p2pPayRefundPending,
