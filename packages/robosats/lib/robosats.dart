@@ -9,7 +9,8 @@
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 ///
-/// The client also reads the encrypted chat of a trade as a [ChatPage] and posts to it an [OutgoingChatMessage], which only the robot's unlocked key makes ([UnlockedRobotPgpKey.encryptChatMessageToPost]); nothing in the app calls them yet.
+/// The client also reads the encrypted chat of a trade as a [ChatPage] and posts to it an [OutgoingChatMessage], which only the robot's unlocked key makes ([UnlockedRobotPgpKey.encryptChatMessageToPost]).
+/// As the official client, a message is also sent over Nostr: an [OutgoingNostrChatMessage] holds its two NIP-59 gift wraps (NIP-44 v2, BIP-340 signatures through the `bip340` package), which the app publishes to the coordinators' relays.
 library;
 
 export 'src/bitcoin_address.dart' show BitcoinAddress, BitcoinAddressKind;
@@ -75,6 +76,7 @@ export 'src/coordinator/payout.dart'
         SignedPayoutInvoice;
 export 'src/coordinator/public_order.dart' show PublicOrder;
 export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
+export 'src/coordinator/nostr_chat.dart' show OutgoingNostrChatMessage;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
 export 'src/coordinator/robot_session_key.dart' show RobotSessionKey;
