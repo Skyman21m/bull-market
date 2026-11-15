@@ -4,12 +4,14 @@ import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
+import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
 import 'package:p2p/testing.dart'
@@ -19,6 +21,8 @@ import 'package:robosats/robosats.dart' show RoutingBudgetPpm;
 import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
+import 'support/trade_orders.dart';
+import 'support/trade_screens.dart';
 
 /// #152 (from #148): a trade screen whose app was hidden then shown again, or which is opened again in the same run, keeps the last full status this run read while its first read is in flight, silently, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, a failed read keeping the order as it is, `frontend/src/models/Order.model.ts:264-281`).
 ///
@@ -413,12 +417,47 @@ void main() {
     );
   });
 
+  group('#152: the memory, dropped when the trade ends', () {
+    test(
+      'a status at an end, or a record closed, is never given: the end is shown from the stored trail',
+      () async {
+        final statuses = await TradeScreenStatuses.make();
+        final record = TradeScreenStatuses.record;
+        final bond = await statuses.bondStep();
+        final expired = await statuses.expired();
+        expect(expired.status.isTerminal, isTrue);
+        final closed = TradeRecord(
+          robot: record.robot,
+          coordinatorAlias: record.coordinatorAlias,
+          coordinatorOnion: record.coordinatorOnion,
+          orderId: record.orderId,
+          role: record.role,
+          origin: record.origin,
+          takenAt: record.takenAt,
+          confirmedAt: record.confirmedAt,
+          closedAt: tradeNow,
+        );
+
+        final going = TradeReadOrder()..stored(record, bond);
+        expect(going.lastStored(record.robot)?.seen, same(bond));
+        // An end whose record could not be closed.
+        final ended = TradeReadOrder()..stored(record, expired);
+        expect(ended.lastStored(record.robot), isNull);
+        // A record closed under a status that goes on (as a later close leaves it).
+        final shut = TradeReadOrder()..stored(closed, bond);
+        expect(shut.lastStored(record.robot), isNull);
+      },
+    );
+  });
+
   group('#152: the kept status and the stored trail must agree', () {
     /// A cubit over a watch the test plays, the memory giving [memory].
     (TradeCubit, StreamController<TradeWatchState>) played(
       TradeRecord record,
-      TradeSeen? memory,
-    ) {
+      TradeSeen? memory, {
+      TradeCanceller? cancel,
+      TradeFiatSender? confirmFiatSent,
+    }) {
       final out = StreamController<TradeWatchState>.broadcast();
       final cubit = TradeCubit(
         record,
@@ -427,7 +466,9 @@ void main() {
           signals.listen((_) {});
           return out.stream;
         },
-        (record, seen, {bondLoss}) async => throw StateError('not sent'),
+        cancel ??
+            (record, seen, {bondLoss}) async => throw StateError('not sent'),
+        confirmFiatSent: confirmFiatSent,
         lastStored: (_) => memory,
       )..start();
       return (cubit, out);
@@ -487,6 +528,106 @@ void main() {
           ),
           isA<TradeWaiting>(),
         );
+      },
+    );
+
+    test(
+      'kept, then the stored trail\'s own status no longer matching (a write that failed, another position): the wait, and no longer kept',
+      () async {
+        final (harness, cubit) = await taken();
+        await shownAt(harness, cubit, 3);
+        final bond = cubit.state.seen!;
+        harness.coordinator.lockBond(harness.robot(0));
+        cubit.signal(TradeWatchSignal.readNow);
+        await harness.settle();
+        final six = cubit.state.seen!;
+        final record = cubit.state.record;
+        await cubit.close();
+        final (played1, out) = played(record, six);
+        out.add(trailOf(record, six));
+        await Future<void>.delayed(Duration.zero);
+        expect(played1.showsKept, isTrue);
+        out.add(trailOf(record, six, recordProblem: const P2pStorageFailure()));
+        await Future<void>.delayed(Duration.zero);
+        expect(viewOf(played1), isA<TradeWaiting>());
+        expect(played1.showsKept, isFalse);
+        out.add(
+          TradeWatchStatus(
+            record,
+            TradeSeen(
+              TradeStatus.beforeFirstRead(six.status.trail),
+              order: null,
+            ),
+            takePending: false,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(played1.showsKept, isTrue);
+        // Then a stored trail of another position: nothing kept over it.
+        out.add(trailOf(record, bond));
+        await Future<void>.delayed(Duration.zero);
+        expect(viewOf(played1), isA<TradeWaiting>());
+        expect(played1.showsKept, isFalse);
+        // A status that matches nothing (no memory, nothing shown at its trail).
+        final (played2, out2) = played(record, null);
+        out2.add(trailOf(record, six));
+        await Future<void>.delayed(Duration.zero);
+        expect(played2.showsKept, isFalse);
+        expect(viewOf(played2), isA<TradeWaiting>());
+        await played1.close();
+        await played2.close();
+      },
+    );
+
+    test(
+      'an action\'s fresh read ends the keeping: a cancel kept over during its run, a chat step done or refused with a read',
+      () async {
+        final (harness, cubit) = await taken();
+        await shownAt(harness, cubit, 9);
+        final nine = cubit.state.seen!;
+        final record = cubit.state.record;
+        await cubit.close();
+
+        // A cancel that runs while the screen reopens the trade: what it read is the status now.
+        final gate = Completer<void>();
+        final (cancelling, out) = played(
+          record,
+          nine,
+          cancel: (record, seen, {bondLoss}) async {
+            await gate.future;
+            return Ok(
+              CancelNotDone(record, seen, cause: const P2pStorageFailure()),
+            );
+          },
+        );
+        out.add(TradeWatchStatus(record, nine, takePending: false));
+        await Future<void>.delayed(Duration.zero);
+        final running = cancelling.cancel(nine);
+        await Future<void>.delayed(Duration.zero);
+        out.add(trailOf(record, nine));
+        await Future<void>.delayed(Duration.zero);
+        expect(cancelling.showsKept, isTrue);
+        gate.complete();
+        await running;
+        expect(cancelling.showsKept, isFalse);
+        await cancelling.close();
+
+        for (final answer in <Result<ChatStepOutcome, ChatStepRefusal>>[
+          Ok(ChatStepDone(record, nine)),
+          Err(ChatStepStatusMoved(nine, record: record)),
+        ]) {
+          final (sending, out) = played(
+            record,
+            nine,
+            confirmFiatSent: (record, seen, {onProgress}) async => answer,
+          );
+          out.add(trailOf(record, nine));
+          await Future<void>.delayed(Duration.zero);
+          expect(sending.showsKept, isTrue);
+          await sending.confirmFiatSent(nine);
+          expect(sending.showsKept, isFalse, reason: '$answer');
+          await sending.close();
+        }
       },
     );
 

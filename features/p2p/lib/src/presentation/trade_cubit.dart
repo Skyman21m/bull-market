@@ -268,7 +268,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
     bool storedWith(TradeSeen? candidate) =>
         candidate != null &&
         candidate.stored &&
-        candidate.status is! StatusUnknown &&
         candidate.status.position == onDisk.position &&
         candidate.status.trail.readAt.microsecondsSinceEpoch ==
             onDisk.readAt.microsecondsSinceEpoch;

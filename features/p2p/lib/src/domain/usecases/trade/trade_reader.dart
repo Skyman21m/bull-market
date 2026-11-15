@@ -160,8 +160,8 @@ final class TradeReader {
     final last = _requestOrder.lastStored(record.robot);
     if (last == null) return null;
     final known = last.record;
+    // Kept per robot already ([TradeReadOrder.lastStored]): the rest of the trade must match.
     final same =
-        known.robot == record.robot &&
         known.coordinatorAlias == record.coordinatorAlias &&
         known.coordinatorOnion == record.coordinatorOnion &&
         known.orderId == record.orderId &&
