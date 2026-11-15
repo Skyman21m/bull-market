@@ -2133,48 +2133,30 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Attendez que le vendeur confirme avoir reçu le paiement.';
 
   @override
-  String get p2pEndStepOpening => 'Ouverture de l\'échange…';
-
-  @override
-  String get p2pEndStepWaitingForOrder =>
-      'En attente de la fin d\'une autre action sur cet ordre…';
-
-  @override
-  String p2pEndStepReading(String coordinator) {
-    return 'Lecture de l\'ordre chez $coordinator…';
-  }
-
-  @override
   String p2pEndStepSending(String coordinator) {
     return 'Envoi de votre confirmation à $coordinator…';
   }
 
   @override
-  String p2pEndStepReadingAfter(String coordinator) {
-    return 'Nouvelle lecture de l\'ordre chez $coordinator…';
-  }
-
-  @override
-  String get p2pEndNeedsRead =>
-      'Attendez que l\'ordre soit relu. Rien n\'a été envoyé.';
+  String get p2pEndNeedsRead => 'Attendez que l\'ordre soit relu.';
 
   @override
   String get p2pEndMovedOn =>
-      'L\'ordre a changé avant votre confirmation : rien n\'a été envoyé.';
+      'L\'ordre a changé : votre confirmation n\'a pas été envoyée.';
 
   @override
   String p2pEndReadFailed(String coordinator) {
-    return 'L\'ordre n\'a pas pu être relu chez $coordinator : rien n\'a été envoyé.';
+    return 'L\'ordre n\'a pas pu être relu chez $coordinator : votre confirmation n\'a pas été envoyée.';
   }
 
   @override
   String p2pEndNotDoneAfter(String reason) {
-    return '$reason Rien n\'a été envoyé.';
+    return '$reason Votre confirmation n\'a pas été envoyée.';
   }
 
   @override
   String get p2pEndUnknown =>
-      'Bull Market ne sait pas encore si votre confirmation est passée. Il continue de vérifier.';
+      'Bull Market ne sait pas encore si votre confirmation est passée. Bull Market continue de vérifier.';
 
   @override
   String get p2pEndSendingSats =>
@@ -2186,4 +2168,13 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pEndTakingTooLongText =>
       'Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille.';
+
+  @override
+  String get p2pEndNeedsReadNotSent =>
+      'Attendez que l\'ordre soit relu. Votre confirmation n\'a pas été envoyée.';
+
+  @override
+  String p2pEndRefusedBy(String coordinator) {
+    return '$coordinator a refusé votre confirmation.';
+  }
 }

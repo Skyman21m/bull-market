@@ -3447,58 +3447,34 @@ abstract class P2pLocalizations {
   /// **'Wait for the seller to confirm they have received the payment.'**
   String get p2pEndWaitSeller;
 
-  /// Not in the RoboSats texts: the project's own: the first wait after « Confirm » (#95; the owner's rule: each wait says what it waits for).
-  ///
-  /// In en, this message translates to:
-  /// **'Opening the trade…'**
-  String get p2pEndStepOpening;
-
-  /// Not in the RoboSats texts: the project's own: another action of the order (a cancel, a payout) is under way, and the confirmation waits for it (#95).
-  ///
-  /// In en, this message translates to:
-  /// **'Waiting for another action on this order to end…'**
-  String get p2pEndStepWaitingForOrder;
-
-  /// Not in the RoboSats texts: the project's own: the read just before the confirmation is sent; it is sent only if the order is still at the status shown (#95).
-  ///
-  /// In en, this message translates to:
-  /// **'Reading the order from {coordinator}…'**
-  String p2pEndStepReading(String coordinator);
-
   /// Not in the RoboSats texts: the project's own: the confirmation sent, its answer awaited (#95).
   ///
   /// In en, this message translates to:
   /// **'Sending your confirmation to {coordinator}…'**
   String p2pEndStepSending(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: the read after the answer, which shows what the coordinator recorded (#95).
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », off while the status shown does not offer it (not read from an order, not stored) (#95).
   ///
   /// In en, this message translates to:
-  /// **'Reading the order again from {coordinator}…'**
-  String p2pEndStepReadingAfter(String coordinator);
-
-  /// Not in the RoboSats texts: the project's own: the status shown no longer offers the action (not read yet, not stored) (#95).
-  ///
-  /// In en, this message translates to:
-  /// **'Wait until the order is read again. Nothing was sent.'**
+  /// **'Wait until the order is read again.'**
   String get p2pEndNeedsRead;
 
   /// Not in the RoboSats texts: the project's own: the read just before sending, or the coordinator, shows another status than the one the user confirmed at (#95).
   ///
   /// In en, this message translates to:
-  /// **'The order moved on before your confirmation: nothing was sent.'**
+  /// **'The order moved on: your confirmation was not sent.'**
   String get p2pEndMovedOn;
 
   /// Not in the RoboSats texts: the project's own: the read just before sending failed or could not be stored (#95).
   ///
   /// In en, this message translates to:
-  /// **'The order could not be read again from {coordinator}: nothing was sent.'**
+  /// **'The order could not be read again from {coordinator}: your confirmation was not sent.'**
   String p2pEndReadFailed(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: the confirmation refused before the coordinator acted, or never sent; {reason} says why (#95).
   ///
   /// In en, this message translates to:
-  /// **'{reason} Nothing was sent.'**
+  /// **'{reason} Your confirmation was not sent.'**
   String p2pEndNotDoneAfter(String reason);
 
   /// Not in the RoboSats texts: the project's own: the answer was lost; the screen shows the order as read again, and nothing is sent again by itself (#95).
@@ -3524,6 +3500,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.'**
   String get p2pEndTakingTooLongText;
+
+  /// Not in the RoboSats texts: the project's own: the status shown no longer offered « Confirm … sent » when it was confirmed (not read yet, not stored) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again. Your confirmation was not sent.'**
+  String get p2pEndNeedsReadNotSent;
+
+  /// Not in the RoboSats texts: the project's own: the coordinator refused the confirmation before acting, for a reason that is neither a status that moved nor a busy or unreachable transport (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} refused your confirmation.'**
+  String p2pEndRefusedBy(String coordinator);
 }
 
 class _P2pLocalizationsDelegate

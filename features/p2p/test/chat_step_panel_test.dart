@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -14,6 +15,7 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:robosats/robosats.dart';
@@ -360,9 +362,7 @@ void main() {
     fiatSent.gate?.complete(Err(ChatStepStatusMoved(_seen['ten']!)));
     await tester.pumpAndSettle();
     expect(
-      find.text(
-        'The order moved on before your confirmation: nothing was sent.',
-      ),
+      find.text('The order moved on: your confirmation was not sent.'),
       findsOneWidget,
     );
     // The status now is shown: the seller's wait, no button.
@@ -435,6 +435,109 @@ void main() {
     expect(find.text('Bull Market cannot show this step yet.'), findsNothing);
   });
 
+  testWidgets(
+    'an answer lost, then the watch reads 10: the notice goes, the seller\'s wait stays',
+    (tester) async {
+      final fiatSent = _FiatSent();
+      final watch = _Watch();
+      await _show(
+        tester,
+        watch: watch,
+        fiatSent: fiatSent,
+        state: _watched('nine'),
+      );
+      await _reveal(tester, find.text(_confirmLabel));
+      await tester.tap(find.text(_confirmLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await _settleDialog(tester);
+      fiatSent.gate?.complete(
+        Ok(ChatStepOutcomeUnknown(_record, _seen['nine']!)),
+      );
+      await tester.pumpAndSettle();
+      final unknown = find.text(
+        'Bull Market does not know yet whether your confirmation went through. It keeps checking.',
+      );
+      expect(unknown, findsOneWidget);
+      // In the warning colour: no failure is said.
+      expect(tester.widget<Text>(unknown).style?.color, testBullTheme.warning);
+      watch.emit(_watched('ten'));
+      await tester.pumpAndSettle();
+      expect(find.text(_waitSeller), findsOneWidget);
+      expect(unknown, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'while sent: a bar named by the step, and after 30 s the long wait\'s line',
+    (tester) async {
+      final fiatSent = _FiatSent();
+      await _show(
+        tester,
+        watch: _Watch(),
+        fiatSent: fiatSent,
+        state: _watched('nine'),
+      );
+      await _reveal(tester, find.text(_confirmLabel));
+      await tester.tap(find.text(_confirmLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await _settleDialog(tester);
+      fiatSent.progress?.call(ChatStepProgress.sending);
+      await tester.pump();
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      expect(
+        bar.semanticsLabel,
+        'Sending your confirmation to Temple of Sats…',
+      );
+      const still = 'Still waiting for Temple of Sats. Tor can take a minute.';
+      expect(find.text(still), findsNothing);
+      await tester.pump(const Duration(seconds: 31));
+      expect(find.text(still), findsOneWidget);
+      fiatSent.gate?.complete(Ok(ChatStepDone(_record, _seen['ten']!)));
+      await tester.pumpAndSettle();
+      expect(find.text(still), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+    },
+  );
+
+  testWidgets('at 9 from a status not marked stored: the button off, and why', (
+    tester,
+  ) async {
+    final fiatSent = _FiatSent();
+    final nine = _seen['nine']!;
+    await _show(
+      tester,
+      watch: _Watch(),
+      fiatSent: fiatSent,
+      state: TradeScreenStatuses.watched(
+        TradeSeen(nine.status, order: nine.order),
+      ),
+    );
+    expect(_button(tester, _confirmLabel).onPressed, isNull);
+    expect(find.text('Wait until the order is read again.'), findsOneWidget);
+  });
+
+  testWidgets('14: the title between the reference\'s two bolts', (
+    tester,
+  ) async {
+    await _show(tester, watch: _Watch(), state: _watched('fourteen'));
+    expect(find.byIcon(Icons.bolt), findsNWidgets(2));
+  });
+
+  testWidgets('the emoji are not read out', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _show(tester, watch: _Watch(), state: _watched('nine'));
+    expect(find.bySemanticsLabel('Beware scams'), findsOneWidget);
+    await _reveal(tester, find.text(_confirmLabel));
+    await tester.tap(find.text(_confirmLabel));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Confirm you sent 100 EUR?'), findsOneWidget);
+    handle.dispose();
+  });
+
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
@@ -458,6 +561,103 @@ void main() {
           await tester.pumpAndSettle();
           _expectNothingCut(tester, 'dialog');
         });
+
+        testWidgets(
+          '${locale.languageCode} at ×$scale: 10, 13, 14, the wait and the notice are not cut',
+          (tester) async {
+            final watch = _Watch();
+            final fiatSent = _FiatSent();
+            await _show(
+              tester,
+              watch: watch,
+              fiatSent: fiatSent,
+              locale: locale,
+              size: const Size(320, 640),
+              textScale: scale,
+              state: _watched('nine'),
+            );
+            final button = find.byType(TradeButton).first;
+            await _reveal(tester, button);
+            await tester.tap(button);
+            await tester.pumpAndSettle();
+            await tester.tap(find.byType(TradeButton).last);
+            await _settleDialog(tester);
+            fiatSent.progress?.call(ChatStepProgress.readingAfter);
+            await tester.pump(const Duration(seconds: 31));
+            _expectNothingCut(tester, 'wait');
+            fiatSent.gate?.complete(
+              Ok(ChatStepOutcomeUnknown(_record, _seen['nine']!)),
+            );
+            await tester.pumpAndSettle();
+            _expectNothingCut(tester, 'notice');
+            for (final name in ['ten', 'thirteen', 'fourteen']) {
+              watch.emit(_watched(name));
+              // 13 spins: no settling.
+              await tester.pump();
+              await tester.pump(const Duration(milliseconds: 500));
+              _expectNothingCut(tester, name);
+            }
+          },
+        );
+
+        testWidgets(
+          '${locale.languageCode} at ×$scale: a long coordinator name and a long amount are not cut',
+          (tester) async {
+            final nine = _seen['nine']!;
+            final order = await readOrder(
+              orderJson(9, changes: {'amount': '1234567.12340000'}),
+            );
+            final cubit = TradeCubit(
+              _record,
+              _Watch().call,
+              _Cancels().call,
+              confirmFiatSent: _FiatSent().call,
+            );
+            addTearDown(cubit.close);
+            tester.view
+              ..physicalSize = const Size(320, 640) * 3
+              ..devicePixelRatio = 3;
+            addTearDown(tester.view.reset);
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: testTheme,
+                locale: locale,
+                localizationsDelegates: P2pLocalizations.localizationsDelegates,
+                supportedLocales: P2pLocalizations.supportedLocales,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    disableAnimations: true,
+                    textScaler: TextScaler.linear(scale),
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                ),
+                home: Scaffold(
+                  body: BlocProvider.value(
+                    value: cubit,
+                    child: SingleChildScrollView(
+                      child: ChatStepPanel(
+                        seen: nine,
+                        order: order,
+                        coordinator:
+                            'The Very Long Name Of A Coordinator Of The Federation',
+                        chatStep: const ChatStepRunning(
+                          ChatStepAction.confirmFiatSent,
+                          progress: ChatStepProgress.readingOrder,
+                          waitedLong: true,
+                        ),
+                        otherActionRunning: false,
+                        offersFiatSent: true,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pump();
+            _expectNothingCut(tester, 'long');
+            expect(find.textContaining('567'), findsAny);
+          },
+        );
       }
     }
   });

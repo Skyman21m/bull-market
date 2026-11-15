@@ -450,16 +450,36 @@ class _Contract extends StatelessWidget {
           container: true,
           header: true,
           liveRegion: true,
-          child: Text(
-            step == null
-                ? title
-                : '$title ${l10n.p2pTradeStep('${step.$1}', '${step.$2}')}',
-            textAlign: TextAlign.center,
-            style: text.headlineLarge?.copyWith(
-              color: contract.title == TradeTitle.finished
-                  ? colors.success
-                  : colors.primary,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // « Trade finished! » between the reference's two bolts, in its warning colour (`TradeBox/index.tsx:633-636`).
+              if (contract.title == TradeTitle.finished) ...[
+                ExcludeSemantics(
+                  child: Icon(Icons.bolt, color: colors.warning),
+                ),
+                const Gap(BullSpacing.xs),
+              ],
+              Flexible(
+                child: Text(
+                  step == null
+                      ? title
+                      : '$title ${l10n.p2pTradeStep('${step.$1}', '${step.$2}')}',
+                  textAlign: TextAlign.center,
+                  style: text.headlineLarge?.copyWith(
+                    color: contract.title == TradeTitle.finished
+                        ? colors.success
+                        : colors.primary,
+                  ),
+                ),
+              ),
+              if (contract.title == TradeTitle.finished) ...[
+                const Gap(BullSpacing.xs),
+                ExcludeSemantics(
+                  child: Icon(Icons.bolt, color: colors.warning),
+                ),
+              ],
+            ],
           ),
         ),
         Divider(height: BullSpacing.lg, color: colors.outlineVariant),
