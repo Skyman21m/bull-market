@@ -2,7 +2,9 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
     show
         CoordinatorRobot,
+        DecryptedChatMessage,
         PgpFailure,
+        PgpPublicKey,
         RobotIdentity,
         RobotPgpKey,
         RobotPgpKeyNotProven,
@@ -10,6 +12,9 @@ import 'package:robosats/robosats.dart'
         UnprovenCoordinatorRobot;
 
 import 'p2p_failure.dart';
+
+/// One chat message to decrypt: its canonical armor, and the key its signature is checked with.
+typedef ChatDecryptJob = ({String armored, PgpPublicKey sender});
 
 /// Runs the work on the OpenPGP key pair of a robot that costs seconds of CPU, away from the UI isolate: tests replace it.
 ///
@@ -41,4 +46,19 @@ abstract interface class RobotKeyComputePort {
     Result<Result<UnlockedRobotPgpKey, PgpFailure>, RobotKeyComputeFailure>
   >
   unlock(RobotPgpKey key, RobotIdentity identity);
+
+  /// Each of [jobs] decrypted with [key] and its signature checked, as of [now], as `UnlockedRobotPgpKey.decryptChatMessage` does, in order (#93): a page of the chat can hold dozens of messages, each an X25519 agreement and an Ed25519 verification in pure Dart, which on the UI isolate would freeze the screen (measured: about 6 ms a message on a desktop).
+  ///
+  /// The outer [RobotKeyComputeFailure] when the work could not be started: nothing was decrypted.
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  });
 }

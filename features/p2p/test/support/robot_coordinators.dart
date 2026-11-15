@@ -176,6 +176,22 @@ final class FakeRobotCoordinators implements CoordinatorTransport {
 
 /// The key work of the robots on the test's own isolate: each robot gets the pair the test made for it, and the proofs are the package's.
 final class PairsByRobot implements RobotKeyComputePort {
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) async => Ok([
+    for (final job in jobs)
+      key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+  ]);
+
   final Map<RobotHashId, RobotPgpKey> _pairs;
   final List<RobotHashId> generated = [];
   final List<RobotHashId> proved = [];
