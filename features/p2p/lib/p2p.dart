@@ -57,6 +57,7 @@ export 'public/p2p_wallet_port.dart'
         P2pWalletInvoiceExpired,
         P2pWalletInvoiceUnreadable,
         P2pWalletNeedsConsolidation,
+        P2pWalletAnotherInvoiceWaiting,
         P2pWalletNoBitcoinWallet,
         P2pWalletNoInstantWallet,
         P2pWalletNotEnoughBalance,

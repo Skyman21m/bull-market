@@ -534,6 +534,7 @@ String bondPayRefusalText(
       P2pWalletNeedsConsolidation() ||
       P2pWalletNoInstantWallet() ||
       P2pWalletNoBitcoinWallet() ||
+      P2pWalletAnotherInvoiceWaiting() ||
       P2pWalletUnavailable() ||
       P2pWalletWrongNetwork() ||
       P2pWalletInvoiceUnreadable() ||
