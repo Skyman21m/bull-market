@@ -1311,7 +1311,10 @@ void main() {
         undo.gate = null;
         await open();
         // 300 after « Confirm ».
-        expect(find.textContaining(RegExp(r'^Wait \((300|29\d)\)$')), findsOneWidget);
+        expect(
+          find.textContaining(RegExp(r'^Wait \((300|29\d)\)$')),
+          findsOneWidget,
+        );
         handle.dispose();
       },
     );
