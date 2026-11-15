@@ -767,8 +767,13 @@ void main() {
             await _reveal(tester, button);
             await tester.tap(button);
             await tester.pumpAndSettle();
-            await tester.tap(find.byType(TradeButton).last);
+            // The dialog's « Confirm », scrolled into view at the larger sizes.
+            final confirm = find.byType(TradeButton).last;
+            await tester.ensureVisible(confirm);
+            await tester.pump();
+            await tester.tap(confirm);
             await _settleDialog(tester);
+            expect(fiatSent.asked, hasLength(1));
             fiatSent.progress?.call(ChatStepProgress.readingAfter);
             await tester.pump(const Duration(seconds: 31));
             _expectNothingCut(tester, 'wait');
