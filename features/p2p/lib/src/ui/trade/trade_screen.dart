@@ -798,6 +798,7 @@ class _CancelRowState extends State<_CancelRow> {
         : null;
     try {
       // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
+      // A status kept while the trade is opened anew (#152) is cancelled as the reference cancels from the order it holds (`TradeBox/index.tsx:244-253`): the request carries that status's guard, which the coordinator refuses for another status (1020).
       if (seen.order == null) {
         await cubit.cancel(seen);
         return;
