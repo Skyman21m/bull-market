@@ -1524,7 +1524,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pPayWithThisWallet => 'Payer avec ce portefeuille';
 
   @override
-  String get p2pPayQuoting => 'Calcul des frais d’échange…';
+  String get p2pPayQuoting => 'Calcul des frais de swap…';
 
   @override
   String p2pPayConfirmTitle(String amount) {
@@ -1533,7 +1533,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayServiceFee(String serviceFee) {
-    return 'Frais d’échange : $serviceFee sats';
+    return 'Frais de swap : $serviceFee sats';
   }
 
   @override
@@ -1561,11 +1561,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayRefundPending =>
-      'L’échange sera remboursé sous peu. Les frais d’échange ne sont pas remboursés.';
+      'Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.';
 
   @override
   String get p2pPayRefunded =>
-      'L’échange a été remboursé. Les frais d’échange ne sont pas remboursés.';
+      'Le swap a été remboursé. Les frais de swap ne sont pas remboursés.';
 
   @override
   String p2pPaySettled(String coordinator) {
@@ -1574,7 +1574,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayUnderReview =>
-      'L’échange est en cours de vérification. Contactez le support de Bull Bitcoin si cela dure.';
+      'Le swap est en cours de vérification. Contactez le support de Bull Bitcoin si cela dure.';
 
   @override
   String get p2pPayInterrupted =>
@@ -1586,24 +1586,24 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayAskSupport =>
-      'Échange échoué. Les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+      'Swap échoué. Les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
   String p2pPayUnderMinimum(String min) {
-    return 'Montant inférieur à la limite d’échange minimale : $min sats';
+    return 'Montant inférieur à la limite de swap minimale : $min sats';
   }
 
   @override
   String get p2pPayUnderMinimumUnknown =>
-      'Le montant est inférieur aux limites d’échange';
+      'Le montant est inférieur aux limites de swap';
 
   @override
   String p2pPayOverMaximum(String max) {
-    return 'Montant supérieur à la limite d’échange maximale : $max sats';
+    return 'Montant supérieur à la limite de swap maximale : $max sats';
   }
 
   @override
-  String get p2pPayOutsideLimits => 'Le montant est hors des limites d’échange';
+  String get p2pPayOutsideLimits => 'Le montant est hors des limites de swap';
 
   @override
   String p2pPayNotEnough(String balance, String total) {
@@ -1612,11 +1612,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayUnreachable =>
-      'Serveur indisponible. Veuillez réessayer plus tard.';
+      'Serveur de swap indisponible. Veuillez réessayer plus tard.';
 
   @override
-  String get p2pPayBusy =>
-      'Limite de taux atteinte. Veuillez réessayer plus tard.';
+  String get p2pPayBusy => 'Trop de demandes. Veuillez réessayer plus tard.';
 
   @override
   String get p2pPayTooLate =>
@@ -1643,10 +1642,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayServiceCouldNotPay =>
-      'Échange échoué. L’échange sera remboursé sous peu. Les frais d’échange ne sont pas remboursés.';
+      'Swap échoué. Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.';
 
   @override
-  String get p2pPayWithSwapService => 'Votre échange est en cours.';
+  String get p2pPayWithSwapService => 'Votre swap est en cours.';
 
   @override
   String p2pPayCoordinatorUnreachable(String coordinator) {
@@ -1659,7 +1658,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayAskSupportSent =>
-      'Échange échoué. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+      'Swap échoué. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
   String get p2pPayUnreadable =>
@@ -1667,5 +1666,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayCancelNote =>
-      'Un paiement de cette caution est en route depuis ce portefeuille. Annuler maintenant coûte les frais d’échange, et le remboursement peut tarder.';
+      'Un paiement de cette caution est en route depuis ce portefeuille. Annuler maintenant coûte les frais de swap, et le remboursement peut tarder.';
+
+  @override
+  String get p2pPayServiceRefunded =>
+      'Swap échoué. Le swap a été remboursé. Les frais de swap ne sont pas remboursés.';
+
+  @override
+  String get p2pPayAskSupportExpired =>
+      'Swap expiré. Les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
+  String get p2pPayAskSupportExpiredSent =>
+      'Swap expiré. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 }
