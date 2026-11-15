@@ -34,18 +34,33 @@ void main() {
   testWidgets(
     'a group joined by non-breaking spaces is one word: the scale is lowered for the whole group, not its pieces',
     (tester) async {
-      // « 1 234 567,1234 », 14 glyphs: 420 wide at ×3, in a room of 200.
+      // « 1 234 567,1234 », about 400 wide at ×3, in a room of 200.
       final scale = await scaleOf(
         tester,
-        'de 1 234 567,1234 EUR',
+        'de 1\u202f234\u202f567,1234 EUR',
         width: 200,
         scale: 3,
       );
-      expect(scale * 10 * 14, lessThanOrEqualTo(200));
+      final group = TextPainter(
+        text: const TextSpan(
+          text: '1\u202f234\u202f567,1234',
+          style: TextStyle(fontSize: 10),
+        ),
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.linear(scale),
+        maxLines: 1,
+      )..layout();
+      expect(group.width, lessThanOrEqualTo(200));
+      group.dispose();
       expect(scale, greaterThan(1));
       // The same with U+00A0, whose pieces alone (« 1 », « 234 ») would fit at ×3.
       expect(
-        await scaleOf(tester, 'de 1 234 567 EUR', width: 200, scale: 3),
+        await scaleOf(
+          tester,
+          'de 1\u00a0234\u00a0567 EUR',
+          width: 200,
+          scale: 3,
+        ),
         lessThan(3),
       );
     },
