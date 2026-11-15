@@ -89,6 +89,7 @@ export 'src/robot_hash_id.dart' show RobotHashId;
 export 'src/robot_identity.dart' show NostrKeyDerivation, RobotIdentity;
 export 'src/robot_pgp_key.dart'
     show
+        ChatDecryptionKey,
         ChatSignatureKey,
         DecryptedChatMessage,
         PgpPublicKey,
