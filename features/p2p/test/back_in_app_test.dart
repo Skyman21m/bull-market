@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -117,6 +118,111 @@ void main() {
         // The status 6 the user saw, with its age: the screen says it cannot reach the coordinator above it (#87).
         expect(cubit.state.seen?.status, isA<WaitingForBoth>());
         await cubit.close();
+      },
+    );
+
+    test(
+      'the bond locked while the buyer was in his other wallet (3 → 6): the watch opened again gives the stored trail at 3, the position shown, never 6',
+      () async {
+        final (harness, cubit) = await taken();
+        cubit.start();
+        await harness.settle();
+        final record = cubit.state.record;
+        await cubit.suspend();
+
+        // Paid from the other wallet: the coordinator moved on while nothing read.
+        harness.coordinator.lockBond(harness.robot(0));
+        final held = Completer<void>();
+        harness.coordinator.hold = held.future;
+        final first = await harness.watch.execute(record).first;
+
+        // Nothing read while away, so the trail on disk is still at the position shown.
+        expect(first, isA<TradeWatchStatus>());
+        final seen = (first as TradeWatchStatus).seen;
+        expect(seen.status, isA<StatusUnknown>());
+        expect(seen.status.position, TradePosition.bondStep);
+        expect(seen.stored, isFalse);
+        held.complete();
+        harness.coordinator.hold = null;
+        await harness.settle();
+        await cubit.close();
+      },
+    );
+
+    test(
+      'the bond locked while away (3 → 6), the first read after the return held: the last status shown stays until the read, then 6',
+      () async {
+        final (harness, cubit) = await taken();
+        cubit.start();
+        await harness.settle();
+        await cubit.suspend();
+        harness.coordinator.lockBond(harness.robot(0));
+
+        final held = Completer<void>();
+        harness.coordinator.hold = held.future;
+        final views = <TradeView>[];
+        final listening = cubit.stream.listen(
+          (state) => views.add(TradeView.of(state.watch)),
+        );
+        cubit.resume();
+        await harness.settle();
+        final whileReading = viewOf(cubit);
+        held.complete();
+        harness.coordinator.hold = null;
+        await harness.settle();
+        await listening.cancel();
+
+        expect(
+          views.whereType<TradeWaiting>(),
+          isEmpty,
+          reason:
+              'the screen fell back to « Your robot reads the order » after the return: ${views.map((v) => v.runtimeType).toList()}',
+        );
+        expect(whileReading, isA<TradeContract>());
+        expect(cubit.state.seen?.status, isA<WaitingForBoth>());
+        await cubit.close();
+      },
+    );
+  });
+
+  group('#148: the trade left and opened again, the process alive', () {
+    test(
+      'the trade\'s route left (the Wallet tab, or back) and the trade opened again by « Order »: the new screen shows the last status shown at once, never the first read\'s wait',
+      () async {
+        final (harness, first) = await taken();
+        first.start();
+        await harness.settle();
+        expect(first.state.seen?.status, isA<WaitingForTakerBond>());
+        final record = first.state.record;
+        // The route is gone with its cubits (`P2pRouter.tradePage`, the shell's `go` to another tab).
+        await first.close();
+
+        final held = Completer<void>();
+        harness.coordinator.hold = held.future;
+        final again = TradeCubit(
+          record,
+          harness.watch.execute,
+          harness.cancel.execute,
+        );
+        final views = <TradeView>[viewOf(again)];
+        final listening = again.stream.listen(
+          (state) => views.add(TradeView.of(state.watch)),
+        );
+        again.start();
+        await harness.settle();
+        held.complete();
+        harness.coordinator.hold = null;
+        await harness.settle();
+        await listening.cancel();
+
+        expect(
+          views.whereType<TradeWaiting>(),
+          isEmpty,
+          reason:
+              'the trade opened again showed « Your robot reads the order »: ${views.map((v) => v.runtimeType).toList()}',
+        );
+        expect(again.state.seen?.status, isA<WaitingForTakerBond>());
+        await again.close();
       },
     );
   });
