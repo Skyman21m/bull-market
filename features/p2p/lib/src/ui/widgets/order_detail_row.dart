@@ -216,10 +216,13 @@ final class OrderSentence {
 }
 
 /// « M 0.025% · T 0.175% » and the on-chain payout fee, as the coordinator announces them; nothing until it answers.
+///
+/// [takerFee], once a take is prepared, is the taker fee of its terms, shown in place of the announced one (#119).
 class OrderFeeRow extends StatelessWidget {
   final CoordinatorInfo? info;
+  final double? takerFee;
 
-  const OrderFeeRow({super.key, required this.info});
+  const OrderFeeRow({super.key, required this.info, this.takerFee});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +249,7 @@ class OrderFeeRow extends StatelessWidget {
         Tooltip(
           message: l10n.p2pOrderFeeTakerTooltip,
           child: Text(
-            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(info.takerFee)}',
+            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(takerFee ?? info.takerFee)}',
             style: style,
           ),
         ),

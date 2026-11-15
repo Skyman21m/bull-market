@@ -117,7 +117,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                   ),
                   const Gap(BullSpacing.sm),
-                  OrderFeeRow(info: state.info),
+                  TakeOrderFeeRow(info: state.info, canTake: widget.canTake),
                   const Gap(BullSpacing.sm),
                   TakeOrderDetailsCard(
                     order: order,
@@ -199,7 +199,10 @@ class PublicOrderDetailsCard extends StatelessWidget {
     bool differs(Object? Function(_Figures figures) of) =>
         before != null && of(before) != of(shown);
     final changedColor = colors.warning;
-    final methods = order.paymentMethods.text;
+    // The payment methods the take goes out on: the read's, once there is one (security review of #133).
+    final paymentMethods = readOrder?.paymentMethods ?? order.paymentMethods;
+    final methods = paymentMethods.text;
+    final methodsChanged = differs((f) => f.methods);
     final (send, receive) = switch (order.type) {
       // The taker of a sell order buys bitcoin: pays fiat, receives sats.
       OrderType.sell => (
@@ -252,29 +255,36 @@ class PublicOrderDetailsCard extends StatelessWidget {
             OrderDetailRow(
               send.label,
               send.value,
-              color: order.type == OrderType.buy && satsChanged
+              color:
+                  (order.type == OrderType.buy && satsChanged) ||
+                      (order.type == OrderType.sell && methodsChanged)
                   ? changedColor
                   : null,
-              bold: order.type == OrderType.buy && satsChanged,
+              bold:
+                  (order.type == OrderType.buy && satsChanged) ||
+                  (order.type == OrderType.sell && methodsChanged),
             ),
             OrderDetailRow(
               receive.label,
               receive.value,
-              color: order.type == OrderType.sell && satsChanged
+              color:
+                  (order.type == OrderType.sell && satsChanged) ||
+                      (order.type == OrderType.buy && methodsChanged)
                   ? changedColor
                   : null,
-              bold: order.type == OrderType.sell && satsChanged,
+              bold:
+                  (order.type == OrderType.sell && satsChanged) ||
+                  (order.type == OrderType.buy && methodsChanged),
             ),
             OrderDetailRow(
               order.currency.isBitcoin
                   ? l10n.p2pOrderSwapDestination
                   : l10n.p2pOrderAcceptedMethods,
-              OfferRow.paymentMethodsLine(order.paymentMethods, l10n),
-              warning: order.paymentMethods.hasReversible
-                  ? () => ReversiblePaymentsDialog.show(
-                      context,
-                      order.paymentMethods,
-                    )
+              OfferRow.paymentMethodsLine(paymentMethods, l10n),
+              color: methodsChanged ? changedColor : null,
+              bold: methodsChanged,
+              warning: paymentMethods.hasReversible
+                  ? () => ReversiblePaymentsDialog.show(context, paymentMethods)
                   : null,
             ),
             if (description != null && description.trim().isNotEmpty)
@@ -349,6 +359,7 @@ class PublicOrderDetailsCard extends StatelessWidget {
 
 /// The values the order details show of the book's order, or of a robot's read, as text: what tells two reads apart.
 final class _Figures {
+  final String methods;
   final String sats;
   final String priceLabel;
   final String priceValue;
@@ -358,6 +369,7 @@ final class _Figures {
   final String? bond;
 
   const _Figures({
+    required this.methods,
     required this.sats,
     required this.priceLabel,
     required this.priceValue,
@@ -402,6 +414,7 @@ final class _Figures {
       formats,
     );
     return _Figures(
+      methods: order.paymentMethods.text,
       sats: estimate == null ? '-' : formats.estimate(estimate),
       priceLabel: label,
       priceValue: value,
@@ -432,6 +445,7 @@ final class _Figures {
       formats,
     );
     return _Figures(
+      methods: order.paymentMethods.text,
       sats: estimate == null ? '-' : formats.estimate(estimate),
       priceLabel: label,
       priceValue: value,

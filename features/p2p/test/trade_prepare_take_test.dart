@@ -324,6 +324,48 @@ void main() {
     );
   });
 
+  group('the page against the book read again (security review of #133, I1)', () {
+    final maker = switch (RobotHashId.parse(
+      '0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0',
+    )) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    for (final (label, book, robot)
+        in <(String, Map<String, Object?>, Map<String, Object?>)>[
+          (
+            'payment methods',
+            {'payment_method': 'Wise'},
+            {'payment_method': 'Wise'},
+          ),
+          (
+            'maker',
+            {'maker_hash_id': maker.hex},
+            {'maker_hash_id': maker.hex, 'maker_nick': maker.nickname},
+          ),
+        ]) {
+      test(
+        'the $label of the book read again other than the page\'s: the order changed, before any robot, in both ways of taking',
+        () async {
+          final app = await TradeHarness.start();
+          final shown = await app.shownOrder();
+          app.coordinator.bookView.addAll(book);
+          app.coordinator.robotView.addAll(robot);
+          expect(
+            await app.take.prepare(shown, network: app.network),
+            refused<TakeOrderChanged>(),
+          );
+          expect(
+            await app.take.execute(shown, network: app.network),
+            refused<TakeOrderChanged>(),
+          );
+          expect(count(app, ScriptedRequest.robot), 0);
+          expect(count(app, take), 0);
+        },
+      );
+    }
+  });
+
   group('the steps a take says (#119)', () {
     test(
       'a first preparation: the order checked, the robot built, the order read; a confirmation: read again, the take sent',

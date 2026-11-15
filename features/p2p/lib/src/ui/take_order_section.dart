@@ -73,9 +73,11 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   );
 
   /// « Take Order »: without a Garage Key « You do not have a Garage Key », else the take is prepared, the robot that will take the order reading it.
-  Future<void> _press(TakeAmountInput input) async {
+  ///
+  /// The amount field is locked from the press, and the amount is read from it just before the preparation starts, which locks it for good: the amount prepared is the one shown (security review of #133).
+  Future<void> _press() async {
     if (_asking) return;
-    _asking = true;
+    setState(() => _asking = true);
     try {
       if (!widget.canTake) {
         await _showNoRobot();
@@ -88,16 +90,22 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
         return;
       }
       if (!mounted) return;
-      unawaited(
-        cubit.take(
-          amount: switch (input) {
-            TakeAmountValid(:final amount) => amount,
-            _ => null,
-          },
-        ),
-      );
+      final order = widget.order;
+      final TakeAmount? amount;
+      if (order.amount is RangeOrderAmount) {
+        if (TakeAmountInput.read(_amount.text, order) case TakeAmountValid(
+          amount: final valid,
+        )) {
+          amount = valid;
+        } else {
+          return;
+        }
+      } else {
+        amount = null;
+      }
+      unawaited(cubit.take(amount: amount));
     } finally {
-      _asking = false;
+      if (mounted) setState(() => _asking = false);
     }
   }
 
@@ -141,7 +149,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     // The read the order details show: while it is there, « Continue » and « Go back » stand in place of « Take Order », down to the trade's screen.
     final read = TakeOrderDetailsCard.readOf(state);
     final changed = switch (state) {
-      TakePreparing(previous: _?) => true,
+      TakePreparing(changed: true) => true,
       TakeReady(changed: true) => true,
       _ => false,
     };
@@ -170,7 +178,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
             label: l10n.p2pTakeOrder,
             busy: state is TakePreparing || state is TakeSent,
             onPressed: ready && !(state is TakeIdle && state.orderGone)
-                ? () => unawaited(_press(input))
+                ? () => unawaited(_press())
                 : null,
           );
     final coordinator = CoordinatorText.of(
@@ -214,7 +222,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
             controller: _amount,
             input: input,
             takerFee: widget.takerFee,
-            enabled: state is TakeIdle,
+            enabled: state is TakeIdle && !_asking,
             onChanged: () => setState(() {}),
             button: ready
                 ? button
@@ -291,7 +299,23 @@ class TakeOrderDetailsCard extends StatelessWidget {
   }
 }
 
-/// [OrderMakerRow] of the order, with the maker's activity as the robot's read gives it once the take is prepared (#119).
+/// [OrderFeeRow] of the order's coordinator, with the taker fee of the terms once the take is prepared (#119): the fee the take is checked against (security review of #133).
+class TakeOrderFeeRow extends StatelessWidget {
+  final CoordinatorInfo? info;
+  final bool canTake;
+
+  const TakeOrderFeeRow({super.key, required this.info, required this.canTake});
+
+  @override
+  Widget build(BuildContext context) {
+    final read = canTake
+        ? TakeOrderDetailsCard.readOf(context.watch<TakeOrderCubit>().state)
+        : null;
+    return OrderFeeRow(info: info, takerFee: read?.terms.takerFee);
+  }
+}
+
+/// [OrderMakerRow] of the order, with the maker and its activity as the robot's read gives them once the take is prepared (#119).
 class TakeOrderMakerRow extends StatelessWidget {
   final PublicOrder order;
   final bool canTake;
@@ -308,7 +332,7 @@ class TakeOrderMakerRow extends StatelessWidget {
         ? TakeOrderDetailsCard.readOf(context.watch<TakeOrderCubit>().state)
         : null;
     return OrderMakerRow(
-      maker: order.maker,
+      maker: read?.order.maker ?? order.maker,
       activity: read?.order.makerActivity ?? order.makerActivity,
     );
   }
@@ -355,13 +379,14 @@ class _RangeTake extends StatelessWidget {
       _ => null,
     };
     final read = this.read;
+    final prepared = read?.amount;
     final sats = switch (input) {
-      TakeAmountValid(:final value) when read != null =>
-        TakerEstimate.takeSatsOfRead(
-          read.order,
-          value,
-          takerFee: read.terms.takerFee,
-        ),
+      // Once read, the amount prepared at the read's rate, with its terms' taker fee: what the take sends.
+      _ when read != null && prepared != null => TakerEstimate.takeSatsOfRead(
+        read.order,
+        prepared.amount.value,
+        takerFee: read.terms.takerFee,
+      ),
       TakeAmountValid(:final value) => TakerEstimate.takeSats(
         order,
         value,

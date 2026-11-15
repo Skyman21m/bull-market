@@ -309,6 +309,24 @@ final class PreparedTake {
               TradeTolerances.roundingSats)
           .floor();
 
+  /// Whether [other] shows the user what this read shows: the same payment methods, maker, description, price and premium, sats, expiry, escrow duration, amount and bond (security review of #133: a read made again must say when it changed).
+  bool showsTheSameAs(PreparedTake other) {
+    final a = order;
+    final b = other.order;
+    return a.paymentMethods == b.paymentMethods &&
+        a.maker == b.maker &&
+        a.description == b.description &&
+        a.priceNow == b.priceNow &&
+        a.satoshisNow == b.satoshisNow &&
+        a.expiresAt == b.expiresAt &&
+        a.escrowDuration == b.escrowDuration &&
+        terms.premium == other.terms.premium &&
+        terms.explicitSatoshis == other.terms.explicitSatoshis &&
+        amount?.amount == other.amount?.amount &&
+        bondCeiling == other.bondCeiling &&
+        expectedBond.round() == other.expectedBond.round();
+  }
+
   @override
   String toString() => 'PreparedTake($terms)';
 }

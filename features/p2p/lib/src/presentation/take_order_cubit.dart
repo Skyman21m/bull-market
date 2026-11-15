@@ -79,18 +79,24 @@ final class TakeIdle extends TakeOrderState {
 
 /// The order is read by the robot that will take it (the order read again, a robot put on the coordinator, its read of the order): it can take a minute over Tor; [step] is what it does now, `null` until the first one starts, and [slow] says it has run for a while.
 ///
-/// [previous] is the read the user saw, when the order changed at the confirmation and is read again: it stays shown meanwhile.
+/// [previous] is the read the user saw, when the confirmation found the order changed or its preparation gone and the order is read again: it stays shown meanwhile; [changed] says the order changed, which the screen says at once.
 final class TakePreparing extends TakeOrderState {
   final TakeStep? step;
   final bool slow;
   final PreparedTake? previous;
+  final bool changed;
 
-  const TakePreparing({this.step, this.slow = false, this.previous});
+  const TakePreparing({
+    this.step,
+    this.slow = false,
+    this.previous,
+    this.changed = false,
+  });
 }
 
 /// The robot read the order: the order details show [prepared], and the user goes on (« Continue », then « Store your garage key » and its « Done ») or goes back.
 ///
-/// [previous] is the read the user saw before, when the order changed at the confirmation: the rows that differ from it are marked.
+/// [previous] is the read the user saw before, when the order changed at the confirmation, or when a read made again after its preparation was gone shows it otherwise: the rows that differ from it are marked.
 final class TakeReady extends TakeOrderState {
   final PreparedTake prepared;
   final PreparedTake? previous;
@@ -189,7 +195,7 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     final current = state;
     if (isClosed || current is! TakeIdle || current.orderGone) return;
     _amount = amount;
-    final next = await _prepared(previous: null);
+    final next = await _prepared(previous: null, changed: false);
     if (!isClosed) emit(next);
   }
 
@@ -209,15 +215,19 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       },
     );
     _stillWaiting?.cancel();
-    if (isClosed) return;
+    if (isClosed) {
+      // The page was left while the confirmation ran, and it was refused: the order's robot, kept for a new preparation, is forgotten (security review of #133).
+      if (result is Err) _calls.abandonOrder(order, network: network);
+      return;
+    }
     switch (result) {
       // Read again by the robot, the order is no longer the one shown: prepared again, once, the read the user saw kept on screen meanwhile; never confirmed by itself.
       case Err(failure: TakeOrderChanged()):
-        final next = await _prepared(previous: prepared);
+        final next = await _prepared(previous: prepared, changed: true);
         if (!isClosed) emit(next);
-      // The preparation is gone (its key changed, or another one replaced it): prepared again, once.
+      // The preparation is gone (its key changed, or another one replaced it): prepared again, once, said changed when the new read shows the order otherwise.
       case Err(failure: TakePreparationGone()):
-        final next = await _prepared(previous: null);
+        final next = await _prepared(previous: prepared, changed: false);
         if (!isClosed) emit(next);
       case Err(failure: final refusal):
         emit(_refused(refusal));
@@ -240,9 +250,14 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
     emit(const TakeIdle());
   }
 
-  /// The state after a preparation: [TakePreparing] meanwhile, with [previous], the read the user saw, when the order is read again because it changed.
-  Future<TakeOrderState> _prepared({required PreparedTake? previous}) async {
-    emit(TakePreparing(previous: previous));
+  /// The state after a preparation: [TakePreparing] meanwhile, with [previous], the read the user saw, when the order is read again, and [changed] when it is because it changed.
+  ///
+  /// The new read is said changed when [changed], or when it shows the order otherwise than [previous] ([PreparedTake.showsTheSameAs]).
+  Future<TakeOrderState> _prepared({
+    required PreparedTake? previous,
+    required bool changed,
+  }) async {
+    emit(TakePreparing(previous: previous, changed: changed));
     _startWaiting();
     final result = await _calls.prepare(
       order,
@@ -250,7 +265,14 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       amount: _amount,
       onStep: (step) {
         if (!isClosed && state is TakePreparing) {
-          emit(TakePreparing(step: step, slow: _slow, previous: previous));
+          emit(
+            TakePreparing(
+              step: step,
+              slow: _slow,
+              previous: previous,
+              changed: changed,
+            ),
+          );
         }
       },
     );
@@ -261,7 +283,13 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       return state;
     }
     return switch (result) {
-      Ok(value: final prepared) => TakeReady(prepared, previous: previous),
+      Ok(value: final prepared) => TakeReady(
+        prepared,
+        previous:
+            previous != null && (changed || !prepared.showsTheSameAs(previous))
+            ? previous
+            : null,
+      ),
       // Abandoned while it ran, or another order prepared meanwhile: nothing to say.
       Err(failure: TakePreparationGone()) => const TakeIdle(),
       Err(failure: final refusal) => _refused(refusal),
@@ -287,8 +315,15 @@ class TakeOrderCubit extends Cubit<TakeOrderState> {
       _slow = true;
       if (isClosed) return;
       switch (state) {
-        case TakePreparing(:final step, :final previous):
-          emit(TakePreparing(step: step, slow: true, previous: previous));
+        case TakePreparing(:final step, :final previous, :final changed):
+          emit(
+            TakePreparing(
+              step: step,
+              slow: true,
+              previous: previous,
+              changed: changed,
+            ),
+          );
         case TakeConfirming(:final prepared, :final step):
           emit(TakeConfirming(prepared, step: step, slow: true));
         case _:

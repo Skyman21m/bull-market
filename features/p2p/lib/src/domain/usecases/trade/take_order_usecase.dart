@@ -656,12 +656,16 @@ final class TakeOrderUsecase {
     }
   }
 
-  /// Whether the order read just before the take is the one the user accepted on the order's page: the same type, currency, amount or range, bond size, escrow duration, sats of an order priced in sats, premium of an order priced against the market (the premium of an order priced in sats moves with its price), and sats at the current price within [TradeTolerances.price] of those the page showed, both ways, so that the bond the terms expect is the one the user saw (the reference's flow has no confirmation apart from the page).
+  /// Whether the order read just before the take is the one the user accepted on the order's page: the same type, currency, amount or range, payment methods, maker, bond size, escrow duration, sats of an order priced in sats, premium of an order priced against the market (the premium of an order priced in sats moves with its price), and sats at the current price within [TradeTolerances.price] of those the page showed, both ways, so that the bond the terms expect is the one the user saw (the reference's flow has no confirmation apart from the page).
+  ///
+  /// The payment methods and the maker are compared too (security review of #133): otherwise a book could show one method on the page and the take go out on another.
   static bool _sameTerms(PublicOrder shown, PublicOrder fresh) =>
       fresh.coordinator == shown.coordinator &&
       fresh.type == shown.type &&
       fresh.currency == shown.currency &&
       fresh.amount == shown.amount &&
+      fresh.paymentMethods == shown.paymentMethods &&
+      fresh.maker == shown.maker &&
       fresh.bondSize == shown.bondSize &&
       fresh.escrowDuration == shown.escrowDuration &&
       fresh.explicitSatoshis == shown.explicitSatoshis &&

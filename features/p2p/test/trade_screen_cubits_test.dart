@@ -479,6 +479,48 @@ void main() {
       },
     );
 
+    for (final (label, before) in <(String, void Function(TradeHarness))>[
+      (
+        'the order changed',
+        (h) => h.coordinator.description = 'Now pay first.',
+      ),
+      (
+        'the coordinator could not be read',
+        (h) => h.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        ),
+      ),
+    ]) {
+      test(
+        'closed while the confirmation runs, which finds $label: the order\'s robot is not kept (security review of #133)',
+        () async {
+          final harness = await TradeHarness.start();
+          final shown = await harness.shownOrder();
+          final cubit = _takeCubit(harness, shown);
+          await cubit.take();
+          before(harness);
+          final hold = Completer<void>();
+          harness.coordinator.hold = hold.future;
+
+          final confirming = cubit.confirm();
+          await harness.settle();
+          await cubit.close();
+          harness.coordinator.hold = null;
+          hold.complete();
+          await confirming;
+          await harness.settle();
+
+          expect(_requestsOf(harness, ScriptedRequest.take), 0);
+          // Kept, the robot would serve a new page of the order (one binding): forgotten, a fresh one is reserved.
+          final again = _takeCubit(harness, shown);
+          await again.take();
+          expect(await _bindings(harness), 2);
+          await again.close();
+        },
+      );
+    }
+
     test(
       'the wait says each step as it starts, in order, and never one that has not started',
       () async {

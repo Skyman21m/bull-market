@@ -4,13 +4,14 @@ import 'package:primitives/primitives.dart';
 
 import 'trade_orders.dart';
 
-/// A take prepared as `TakeOrderUsecase.prepare` gives it (#119): the book's order 42 on temple, on mainnet, read by a robot that takes no part in it (`orderJson(1)`), with [description] and [changes] to that answer, and its terms built from that read, for [amount] of a [range] order, read at [readAt].
+/// A take prepared as `TakeOrderUsecase.prepare` gives it (#119): the book's order 42 on temple, on mainnet, read by a robot that takes no part in it (`orderJson(1)`), with [description] and [changes] to that answer, and its terms built from that read, for [amount] of a [range] order, read at [readAt], with the taker fee [fee].
 Future<PreparedTake> preparedTake({
   String? description,
   Map<String, Object?> changes = const {},
   bool range = false,
   TakeAmount? amount,
   DateTime? readAt,
+  double fee = takerFee,
 }) async {
   final order = await readOrder(
     orderJson(
@@ -22,7 +23,7 @@ Future<PreparedTake> preparedTake({
   final terms = switch (TradeTerms.takeRead(
     order,
     rangeAmount: amount?.amount,
-    takerFee: takerFee,
+    takerFee: fee,
   )) {
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),

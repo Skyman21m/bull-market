@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -96,11 +98,22 @@ Future<PublicOrder> _order({
   ),
 ])).single;
 
+/// What temple says of itself on mainnet, its fees included (a taker fee of 0.175 %).
+Map<String, Object?> _templeInfo() =>
+    jsonDecode(
+          File(
+            '../../packages/robosats/test/fixtures/coordinator/temple-mainnet-info.json',
+          ).readAsStringSync(),
+        )
+        as Map<String, Object?>;
+
 Future<(List<TradeRecord>, TakeOrderCubit)> _show(
   WidgetTester tester,
   PublicOrder order, {
   _Take? take,
   Result<bool, P2pFailure> keys = const Ok(true),
+  Future<Result<bool, P2pFailure>> Function()? vault,
+  bool withFees = false,
   bool canTake = true,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -113,14 +126,19 @@ Future<(List<TradeRecord>, TakeOrderCubit)> _show(
   final details = OrderDetailsCubit(
     order,
     RobosatsNetwork.mainnet,
-    FetchCoordinatorInfoUsecase(CoordinatorClient(FakeTransport())),
+    FetchCoordinatorInfoUsecase(
+      CoordinatorClient(
+        FakeTransport(infos: {if (withFees) 'temple': _templeInfo()}),
+      ),
+    ),
   );
   addTearDown(details.close);
+  if (withFees) await tester.runAsync(details.load);
   final taking = TakeOrderCubit(
     order,
     RobosatsNetwork.mainnet,
     (take ?? _Take()).calls,
-    (network) async => keys,
+    (network) => vault?.call() ?? Future.value(keys),
   );
   addTearDown(taking.close);
   final taken = <TradeRecord>[];
@@ -480,19 +498,146 @@ void main() {
     },
   );
 
+  for (final (label, again, changed)
+      in <(String, PreparedTake Function(), bool)>[
+        ('showing the order as before', () => _read, false),
+        ('showing it otherwise (no description now)', () => _readWithout, true),
+      ]) {
+    testWidgets(
+      'the preparation gone at « Done », read again $label: waiting for « Continue »${changed ? ', « The order changed. » said (security review of #133, M3)' : ''}',
+      (tester) async {
+        final take = _Take(prepared: [Ok(_read), Ok(again())])
+          ..answer = () => const Err(TakePreparationGone());
+        final (taken, _) = await _show(tester, await _order(), take: take);
+        await _prepare(tester);
+        await _confirm(tester);
+        expect(take.amounts, hasLength(2));
+        await _reveal(tester, _continueButton);
+        expect(
+          find.text('The order changed.'),
+          changed ? findsOneWidget : findsNothing,
+        );
+        expect(_continueButton, findsOneWidget);
+        expect(taken, isEmpty);
+      },
+    );
+  }
+
   testWidgets(
-    'the preparation gone at « Done »: prepared again, waiting for « Continue »',
+    'the payment methods, the « You send via » sentence and the maker shown are the read\'s, those the take goes out on (security review of #133, I1)',
     (tester) async {
-      final take = _Take(prepared: [Ok(_read), Ok(_readWithout)])
-        ..answer = () => const Err(TakePreparationGone());
-      final (taken, _) = await _show(tester, await _order(), take: take);
+      final maker = switch (RobotHashId.parse(
+        '0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0',
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      final read = await tester.runAsync(
+        () => preparedTake(
+          description: 'Wise only, no notes in the transfer.',
+          changes: {
+            'payment_method': 'Wise',
+            'maker_hash_id': maker.hex,
+            'maker_nick': maker.nickname,
+          },
+        ),
+      );
+      await _show(tester, await _order(), take: _Take(prepared: [Ok(read!)]));
+      expect(find.textContaining('Wise'), findsNothing);
+      await _prepare(tester);
+      await _revealAbove(tester, find.text('You send via Wise'));
+      expect(find.text('You send via Wise'), findsOneWidget);
+      expect(find.textContaining('Revolut'), findsNothing);
+      await _reveal(tester, find.text(maker.nickname));
+      expect(find.text(maker.nickname), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a range order: the amount field locked from « Take Order » while the vault is read, the amount prepared the one shown (security review of #133, I2)',
+    (tester) async {
+      final vault = Completer<Result<bool, P2pFailure>>();
+      final take = _Take(prepared: [Ok(_readRange)]);
+      await _show(
+        tester,
+        await _order(range: true),
+        take: take,
+        vault: () => vault.future,
+      );
+      await _reveal(tester, _takeButton);
+      final field = find.byType(TextField);
+      await tester.enterText(field, '100');
+      await tester.pump();
+      await tester.tap(_takeButton);
+      await tester.pump();
+      expect(tester.widget<TextField>(field).enabled, isFalse);
+      vault.complete(const Ok(true));
+      await settle(tester);
+      expect(take.amounts.single?.amount.value, 100);
+      await _reveal(tester, field);
+      expect(find.text('100'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a range order prepared again after « The order changed. » keeps its amount, and its estimate is the amount prepared at the read\'s rate',
+    (tester) async {
+      final take = _Take(prepared: [Ok(_readRange), Ok(_readRange)])
+        ..answer = () => const Err(TakeOrderChanged());
+      await _show(tester, await _order(range: true), take: take);
+      await _reveal(tester, _takeButton);
+      await tester.enterText(find.byType(TextField), '120,5');
+      await tester.pump();
       await _prepare(tester);
       await _confirm(tester);
-      expect(take.amounts, hasLength(2));
-      await _reveal(tester, _continueButton);
-      expect(find.text('The order changed.'), findsNothing);
-      expect(_continueButton, findsOneWidget);
-      expect(taken, isEmpty);
+      expect(take.amounts.map((a) => a?.amount.value), [120.5, 120.5]);
+      await _reveal(tester, find.byType(TextField));
+      expect(
+        find.text('You will receive 60,145 Sats (Approx)'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'the sats the order details say are the read\'s, at its terms\' taker fee, also while the take is sent (security review of #133, M5)',
+    (tester) async {
+      final take = _Take(prepared: [Ok(_readFresh)])
+        ..confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
+      await _show(tester, await _order(), take: take);
+      // The book's: 106,900 sats, no fee known, the routing budget off.
+      expect(find.textContaining('106,793'), findsOneWidget);
+      await _prepare(tester);
+      // The read's: 105,263 sats, its taker fee of 0.175 % on, the routing budget off.
+      await _revealAbove(tester, find.textContaining('105,342'));
+      expect(find.textContaining('105,342'), findsOneWidget);
+      expect(find.textContaining('106,793'), findsNothing);
+      await _confirm(tester);
+      await _revealAbove(tester, find.textContaining('105,342'));
+      expect(find.textContaining('105,342'), findsOneWidget);
+      expect(find.textContaining('95,000'), findsOneWidget);
+      take.confirming?.complete(
+        Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)),
+      );
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'the taker fee shown is the terms\' once the order is read (security review of #133, M2)',
+    (tester) async {
+      final read = await tester.runAsync(() => preparedTake(fee: 0.002));
+      await _show(
+        tester,
+        await _order(),
+        take: _Take(prepared: [Ok(read!)]),
+        withFees: true,
+      );
+      expect(find.textContaining('0.175'), findsOneWidget);
+      await _prepare(tester);
+      await _revealAbove(tester, find.textContaining('0.200'));
+      expect(find.textContaining('0.200'), findsOneWidget);
+      expect(find.textContaining('0.175'), findsNothing);
     },
   );
 

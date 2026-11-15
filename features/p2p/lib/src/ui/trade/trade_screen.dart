@@ -781,7 +781,7 @@ class _PublicAgain extends StatelessWidget {
                 onTap: onOpenCoordinator,
               ),
               const Gap(BullSpacing.sm),
-              OrderFeeRow(info: info),
+              TakeOrderFeeRow(info: info, canTake: true),
               const Gap(BullSpacing.sm),
               TakeOrderDetailsCard(
                 order: public,
