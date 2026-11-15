@@ -315,9 +315,7 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       ChatStepProgress.sending => switch (action) {
         ChatStepAction.confirmFiatSent => l10n.p2pEndStepSending(coordinator),
         ChatStepAction.undoFiatSent => l10n.p2pEndStepSendingUndo(coordinator),
-        ChatStepAction.dispute => l10n.p2pEndStepSendingDispute(
-          coordinator,
-        ),
+        ChatStepAction.dispute => l10n.p2pEndStepSendingDispute(coordinator),
       },
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
         coordinator,
