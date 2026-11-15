@@ -2067,4 +2067,133 @@ class P2pLocalizationsEs extends P2pLocalizations {
   @override
   String get p2pPayAskSupportExpiredSent =>
       'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String p2pChatYouState(String state) {
+    return 'You: $state';
+  }
+
+  @override
+  String p2pChatPeerState(String state) {
+    return 'Peer: $state';
+  }
+
+  @override
+  String get p2pChatConnected => 'connected';
+
+  @override
+  String get p2pChatDisconnected => 'disconnected';
+
+  @override
+  String get p2pChatWaitingShort => '...waiting';
+
+  @override
+  String get p2pChatTypeMessage => 'Type a message';
+
+  @override
+  String get p2pChatWaitingForPeer => 'Waiting for peer...';
+
+  @override
+  String get p2pChatSend => 'Send';
+
+  @override
+  String p2pChatSignatureVerified(String nickname) {
+    return 'Verified signature by $nickname';
+  }
+
+  @override
+  String p2pChatSignatureUnverified(String nickname) {
+    return 'Cannot verify signature of $nickname';
+  }
+
+  @override
+  String get p2pChatTokenBlocked =>
+      'Aye! You just sent your own robot token to your peer in chat, that\'s a catastrophic idea! So bad your message was blocked.';
+
+  @override
+  String get p2pChatGarageKeyBlocked =>
+      'This message holds your Garage Key, which controls all your robots. It was not sent.';
+
+  @override
+  String get p2pChatPayoutBlocked =>
+      'An invoice or an address is not sent alone. Add a word beside it to send it.';
+
+  @override
+  String get p2pChatTooLong =>
+      'This message is too long. Shorten it to send it.';
+
+  @override
+  String get p2pChatClosed => 'Messages are not sent at this step.';
+
+  @override
+  String get p2pChatKeyChanged =>
+      'Your peer’s public key changed during this trade, so nothing more is sent in this chat.';
+
+  @override
+  String p2pChatKeyMisnamed(String coordinator) {
+    return '$coordinator gave a public key that is not your peer’s, so nothing is sent in this chat.';
+  }
+
+  @override
+  String p2pChatSending(String coordinator) {
+    return 'Sending the message to $coordinator…';
+  }
+
+  @override
+  String p2pChatNotConfirmed(String coordinator) {
+    return 'Not confirmed by $coordinator. It may still reach your peer.';
+  }
+
+  @override
+  String get p2pChatSendAgain => 'Send again';
+
+  @override
+  String get p2pChatSendFailed => 'The message was not sent. Try again.';
+
+  @override
+  String p2pChatSendRefused(String coordinator) {
+    return '$coordinator did not take the message. Try again.';
+  }
+
+  @override
+  String get p2pChatTradeMoved =>
+      'The message was not sent: the trade has moved on.';
+
+  @override
+  String p2pChatReadFailed(String coordinator) {
+    return 'Cannot read the chat from $coordinator. Trying again…';
+  }
+
+  @override
+  String get p2pChatUnavailable => 'The chat cannot be read on this device.';
+
+  @override
+  String get p2pChatHistoryTooLarge =>
+      'This chat is too long to be read from its first message.';
+
+  @override
+  String get p2pChatReadNewer => 'Read only the newer messages';
+
+  @override
+  String get p2pChatEarlierHidden => 'Earlier messages are not shown.';
+
+  @override
+  String get p2pChatScreenPrivacyUnavailable =>
+      'Screen protection could not be turned on, so the chat stays hidden.';
+
+  @override
+  String get p2pChatUnreadable => 'This message cannot be read.';
+
+  @override
+  String get p2pChatMarkAfterGap => 'A message may be missing before this one.';
+
+  @override
+  String get p2pChatMarkRepeat => 'This message was already shown above.';
+
+  @override
+  String get p2pChatMarkSentTwice => 'You sent this message twice.';
+
+  @override
+  String get p2pChatMarkOutOfOrder =>
+      'This message was signed before an earlier one.';
 }

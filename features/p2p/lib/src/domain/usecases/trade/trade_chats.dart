@@ -397,8 +397,36 @@ final class TradeChat {
     );
   }
 
-  /// The encrypted messages by index, in canonical armor, for the export: never logged.
-  Map<int, String> get armored => Map.unmodifiable(_armored);
+  /// The chat as the export gives it (#93), as the official client's `complete_log_chat_<id>.json` lays it out (`Prompts/Chat.tsx:162-172`): the public keys, with their fingerprints, and every message with its encrypted text; never the robot's token nor its private key, even encrypted (the owner's decision is pending, `AGENTS.md`): [credentials] adds fields to the keys' part, should it change.
+  Map<String, Object?> export({Map<String, Object?> credentials = const {}}) {
+    final pinned = switch (_peerKey) {
+      ChatPeerKeyPinned(:final key) => key,
+      ChatPeerKeyBreach(:final pinned) => pinned,
+      ChatPeerKeyAwaited() => null,
+    };
+    final indexes = _entries.keys.toList()..sort();
+    return {
+      'credentials': {
+        'own_public_key': _ownKey?.armored,
+        'own_fingerprint': _ownKey?.fingerprint,
+        'peer_public_key': pinned?.armored,
+        'peer_fingerprint': pinned?.fingerprint,
+        ...credentials,
+      },
+      'messages': [
+        for (final index in indexes)
+          if (_entries[index] case final entry?)
+            {
+              'index': entry.index,
+              'time': entry.time.toIso8601String(),
+              'userNick': entry.nick,
+              'validSignature': entry.validSignature,
+              'plainTextMessage': entry.text,
+              'encryptedMessage': _armored[index],
+            },
+      ],
+    };
+  }
 
   @override
   String toString() =>

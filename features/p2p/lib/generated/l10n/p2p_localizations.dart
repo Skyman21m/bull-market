@@ -3392,6 +3392,210 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.'**
   String get p2pPayAskSupportExpiredSent;
+
+  /// The chat panel (#93): the reference's header, `t('You') + ': '` and the state (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'You: {state}'**
+  String p2pChatYouState(String state);
+
+  /// The chat panel (#93): the reference's header, `t('Peer') + ': '` and the state (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Peer: {state}'**
+  String p2pChatPeerState(String state);
+
+  /// The chat panel (#93): the reference's (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'connected'**
+  String get p2pChatConnected;
+
+  /// The chat panel (#93): the reference's (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'disconnected'**
+  String get p2pChatDisconnected;
+
+  /// The chat panel (#93): the reference's, the peer's state while its key is not known (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'...waiting'**
+  String get p2pChatWaitingShort;
+
+  /// The chat panel (#93): the reference's label of the field (`EncryptedApiChat/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Type a message'**
+  String get p2pChatTypeMessage;
+
+  /// The chat panel (#93): the reference's tooltip of the disabled send, also in place of a peer's message that waits for the peer's key; the reference leaves it untranslated in French: ours, with its word « Pair ».
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for peer...'**
+  String get p2pChatWaitingForPeer;
+
+  /// The chat panel (#93): ours: the spoken name and tooltip of the send button, which in the reference has only an icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get p2pChatSend;
+
+  /// The chat panel (#93): the reference's tooltip of a message's tick (`MessageCard/index.tsx`); the reference has no French for it: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified signature by {nickname}'**
+  String p2pChatSignatureVerified(String nickname);
+
+  /// The chat panel (#93): the reference's tooltip of a message's cross (`MessageCard/index.tsx`); the reference has no French for it: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot verify signature of {nickname}'**
+  String p2pChatSignatureUnverified(String nickname);
+
+  /// The chat panel (#93): the reference's alert when the text holds the robot's token (`EncryptedApiChat/index.tsx:210`, its « robot robot.token » read as « robot token »), not translated by the reference: ours in French.
+  ///
+  /// In en, this message translates to:
+  /// **'Aye! You just sent your own robot token to your peer in chat, that\'s a catastrophic idea! So bad your message was blocked.'**
+  String get p2pChatTokenBlocked;
+
+  /// The chat panel (#93): ours: the text holds a Garage Key.
+  ///
+  /// In en, this message translates to:
+  /// **'This message holds your Garage Key, which controls all your robots. It was not sent.'**
+  String get p2pChatGarageKeyBlocked;
+
+  /// The chat panel (#93): ours: the text is only a Lightning invoice or a Bitcoin address.
+  ///
+  /// In en, this message translates to:
+  /// **'An invoice or an address is not sent alone. Add a word beside it to send it.'**
+  String get p2pChatPayoutBlocked;
+
+  /// The chat panel (#93): ours: the text is over the coordinator's limit.
+  ///
+  /// In en, this message translates to:
+  /// **'This message is too long. Shorten it to send it.'**
+  String get p2pChatTooLong;
+
+  /// The chat panel (#93): ours: the status shown is not one where a message is posted.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages are not sent at this step.'**
+  String get p2pChatClosed;
+
+  /// The chat panel (#93): ours: the peer's key is not the one pinned at the first read.
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer’s public key changed during this trade, so nothing more is sent in this chat.'**
+  String get p2pChatKeyChanged;
+
+  /// The chat panel (#93): ours: the key given is not named after the peer.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} gave a public key that is not your peer’s, so nothing is sent in this chat.'**
+  String p2pChatKeyMisnamed(String coordinator);
+
+  /// The chat panel (#93): ours: the wait of a send.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending the message to {coordinator}…'**
+  String p2pChatSending(String coordinator);
+
+  /// The chat panel (#93): ours: a message whose post had no known outcome and that the chat does not show; never « not sent ».
+  ///
+  /// In en, this message translates to:
+  /// **'Not confirmed by {coordinator}. It may still reach your peer.'**
+  String p2pChatNotConfirmed(String coordinator);
+
+  /// The chat panel (#93): ours: sends a message not confirmed again, the user's tap only.
+  ///
+  /// In en, this message translates to:
+  /// **'Send again'**
+  String get p2pChatSendAgain;
+
+  /// The chat panel (#93): ours: the trade or the robot's key could not be opened; nothing left.
+  ///
+  /// In en, this message translates to:
+  /// **'The message was not sent. Try again.'**
+  String get p2pChatSendFailed;
+
+  /// The chat panel (#93): ours: the coordinator refused the message before storing it.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not take the message. Try again.'**
+  String p2pChatSendRefused(String coordinator);
+
+  /// The chat panel (#93): ours: the last read of the order no longer allows a message.
+  ///
+  /// In en, this message translates to:
+  /// **'The message was not sent: the trade has moved on.'**
+  String get p2pChatTradeMoved;
+
+  /// The chat panel (#93): ours: the last read failed; the chat as it was stays shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot read the chat from {coordinator}. Trying again…'**
+  String p2pChatReadFailed(String coordinator);
+
+  /// The chat panel (#93): ours: the trade or the robot's key could not be opened for a read.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat cannot be read on this device.'**
+  String get p2pChatUnavailable;
+
+  /// The chat panel (#93): ours: the history from the start is over what a read takes.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is too long to be read from its first message.'**
+  String get p2pChatHistoryTooLarge;
+
+  /// The chat panel (#93): ours: the user's choice when the history is too long.
+  ///
+  /// In en, this message translates to:
+  /// **'Read only the newer messages'**
+  String get p2pChatReadNewer;
+
+  /// The chat panel (#93): ours: after « Read only the newer messages ».
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier messages are not shown.'**
+  String get p2pChatEarlierHidden;
+
+  /// The chat panel (#93): the Garage's text, for the chat.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen protection could not be turned on, so the chat stays hidden.'**
+  String get p2pChatScreenPrivacyUnavailable;
+
+  /// The chat panel (#93): ours: a message that is not encrypted, too long, or not for this robot.
+  ///
+  /// In en, this message translates to:
+  /// **'This message cannot be read.'**
+  String get p2pChatUnreadable;
+
+  /// The chat panel (#93): ours: a gap in the coordinator's numbering.
+  ///
+  /// In en, this message translates to:
+  /// **'A message may be missing before this one.'**
+  String get p2pChatMarkAfterGap;
+
+  /// The chat panel (#93): ours: the same signed message at a second number.
+  ///
+  /// In en, this message translates to:
+  /// **'This message was already shown above.'**
+  String get p2pChatMarkRepeat;
+
+  /// The chat panel (#93): ours: a message this robot sent again after a post with no known outcome.
+  ///
+  /// In en, this message translates to:
+  /// **'You sent this message twice.'**
+  String get p2pChatMarkSentTwice;
+
+  /// The chat panel (#93): ours: its signature is older than an earlier message of the same author.
+  ///
+  /// In en, this message translates to:
+  /// **'This message was signed before an earlier one.'**
+  String get p2pChatMarkOutOfOrder;
 }
 
 class _P2pLocalizationsDelegate
