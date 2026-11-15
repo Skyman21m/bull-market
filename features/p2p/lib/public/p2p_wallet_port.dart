@@ -7,6 +7,7 @@ import '../src/domain/checked_bolt11_invoice.dart';
 ///
 /// The shell implements it in `lib/features/p2p_wallet` and passes it to `P2pFeature.setup` in the foreground composition only; the feature works without it.
 /// It reads the balance, asks the swap service for a quote, and pays: [payInvoice] moves money and triggers a signature, and is reviewed as money code (and key material). [watchPayment] and [findPayment] only read what the wallet recorded.
+/// For the buyer's payout (#90) it also gives a Lightning invoice of the wallet ([newLightningInvoice], which creates an order at the swap service but moves none of the user's funds) and a new address of its Bitcoin wallet ([newReceiveAddress]).
 /// Only the trade use cases (`lib/src/domain/usecases/trade/`) may reach it: `wallet_port_architecture_test.dart`.
 /// Its types carry no wallet type and no text: a refusal is a type, with at most a number; a payment is an opaque handle.
 abstract interface class P2pWalletPort {
@@ -52,6 +53,66 @@ abstract interface class P2pWalletPort {
   Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
     String paymentHash,
   );
+
+  /// A new Lightning invoice of exactly [amount] on [network], which pays the Instant Payments wallet through the wallet's swap service, as the wallet's own Receive screen makes one; or a refusal.
+  ///
+  /// It runs only when called, and moves none of the user's funds: nothing is signed, nothing is broadcast. It creates an order at the swap service (the service is the invoice's payee, and pays [P2pWalletInvoice.received] to a new address of the Instant Payments wallet once the invoice is paid), and the wallet records it, so that its history shows the order, as « expired » if no one pays the invoice in time.
+  /// The invoice given is of exactly [amount] and [network], unexpired, and expires with the order: no earlier than the order's deadline and no later than a few seconds after it, so that the invoice is never paid after the service stopped waiting for it ([P2pWalletServiceRefused] otherwise). Its life is the service's to choose, often short: an invoice that expired before the coordinator pays it is replaced by a new one.
+  /// What the swap service learns, through the wallet's own client over clearnet: a JSON-RPC `getBestSwapOption` with [amount] fixed on the Lightning side and the two networks, then a `createOrderSwap` with the same amount and a new address of the Instant Payments wallet as the destination; the user's IP address, no API key, the default Dart user agent; the quote's id `mobile-<microsecond timestamp>-<counter>` shared with the wallet's own polling of its swap orders, the order's `mobile-<random hex>`. Nothing of the trade; but the amount, with the public book, can point to the order.
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount,
+  );
+
+  /// A new receive address of the wallet's default Bitcoin wallet on [network], as the wallet's Receive screen gives one with « New address »: the next address is revealed, nothing is created anywhere and nothing is sent; or a refusal ([P2pWalletNoBitcoinWallet], [P2pWalletUnavailable], [P2pWalletWrongNetwork]).
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  );
+}
+
+/// A Lightning invoice the wallet made for the payout ([P2pWalletPort.newLightningInvoice]): its exact text, the amount it asks, when it expires, and what the Instant Payments wallet receives once it is paid, the swap service's fee taken out of the amount.
+///
+/// Its [toString] names none of it.
+final class P2pWalletInvoice {
+  /// The BOLT11 text, as the swap service gave it.
+  final String bolt11;
+
+  /// The amount the invoice asks: the one asked of the wallet.
+  final Sats amount;
+
+  /// When the invoice expires, in UTC.
+  final DateTime expiresAt;
+
+  /// What arrives in the Instant Payments wallet once the invoice is paid: [amount] less the swap service's fee.
+  final Sats received;
+
+  /// Throws an [ArgumentError] when [received] is zero or above [amount]: the implementation of the port refuses such an order before it builds an invoice.
+  P2pWalletInvoice({
+    required this.bolt11,
+    required this.amount,
+    required DateTime expiresAt,
+    required this.received,
+  }) : expiresAt = expiresAt.toUtc() {
+    if (received.value <= BigInt.zero || received.value > amount.value) {
+      throw ArgumentError('An invoice pays out a part of its amount');
+    }
+  }
+
+  /// The swap service's fee: what it keeps of [amount].
+  Sats get fee => Sats(amount.value - received.value);
+
+  @override
+  String toString() => 'P2pWalletInvoice';
+}
+
+/// A new address of the wallet's default Bitcoin wallet ([P2pWalletPort.newReceiveAddress]). Its [toString] names none of it.
+final class P2pWalletAddress {
+  final String address;
+
+  const P2pWalletAddress(this.address);
+
+  @override
+  String toString() => 'P2pWalletAddress';
 }
 
 /// A payment the wallet started: the swap's local id in the wallet's records and the invoice's payment hash. No key, address or transaction id.
@@ -357,6 +418,11 @@ final class P2pWalletNeedsConsolidation extends P2pWalletRefusal {
 /// The app has no Instant Payments wallet.
 final class P2pWalletNoInstantWallet extends P2pWalletRefusal {
   const P2pWalletNoInstantWallet();
+}
+
+/// The app has no default Bitcoin wallet (the « Secure Bitcoin » wallet), for an on-chain payout.
+final class P2pWalletNoBitcoinWallet extends P2pWalletRefusal {
+  const P2pWalletNoBitcoinWallet();
 }
 
 /// The Instant Payments wallet cannot be read, or cannot pay without a device of its own.

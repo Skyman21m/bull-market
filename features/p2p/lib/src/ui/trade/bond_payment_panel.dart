@@ -532,6 +532,7 @@ String bondPayRefusalText(
       P2pWalletPaymentInterrupted() => l10n.p2pPayInterrupted,
       P2pWalletNeedsConsolidation() ||
       P2pWalletNoInstantWallet() ||
+      P2pWalletNoBitcoinWallet() ||
       P2pWalletUnavailable() ||
       P2pWalletWrongNetwork() ||
       P2pWalletInvoiceUnreadable() ||
