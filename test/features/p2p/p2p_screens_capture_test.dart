@@ -2301,6 +2301,37 @@ void main() {
         await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await backToTab();
 
+        // Take 5: the buyer's straight path (#95): the chat step with « Confirm … sent » and the reference's dialog, the wait for the seller, then the buyer being paid and the trade finished.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9);
+        await nextRead();
+        final fiatSent = l10n.p2pEndConfirmSent('100', 'EUR');
+        await waitFor(find.text(fiatSent));
+        await capture('fin-9');
+        await tester.ensureVisible(find.text(fiatSent));
+        await settle();
+        await tester.tap(find.text(fiatSent));
+        await settle();
+        await capture('fin-9-dialogue');
+        await tester.tap(find.text(l10n.p2pEndConfirm));
+        await tester.pump();
+        await tester.pump();
+        await capture('fin-9-envoi');
+        await waitFor(find.text(l10n.p2pEndWaitSeller));
+        await capture('fin-10');
+        coordinator.moveTo(13);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleSendingSats));
+        await capture('fin-13');
+        coordinator.moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
+        await capture('fin-14');
+        await backToTab();
+
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
         coordinator.backToPublic();
         await take();
