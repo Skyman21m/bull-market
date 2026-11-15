@@ -290,6 +290,56 @@ void main() {
       }
     });
 
+    test(
+      'an answer at a status the action cannot lead to is an outcome unknown',
+      () async {
+        // `api/logics.py` at ff1998c: « fiat sent » gives 10, its undo 9, a dispute 11, and the backend moves on from there only as `fiatSentFollows`, `fiatSentUndoneFollows` and `disputeFollows` say.
+        for (final (name, statuses) in [
+          ('confirm', [6, 8, 9, 12, 5]),
+          ('undo_confirm', [8, 10, 13, 14, 15]),
+          ('dispute', [8, 9, 10, 13, 14]),
+        ]) {
+          for (final status in statuses) {
+            serveJson(_answer(status));
+            final failure = expectErr(await actions[name]!());
+            expect(
+              failure,
+              isA<OrderActionOutcomeUnknown>(),
+              reason: '$name $status',
+            );
+            expect(
+              failure.cause,
+              isA<CoordinatorResponseMalformed>().having(
+                (f) => f.field,
+                'field',
+                'status',
+              ),
+              reason: '$name $status',
+            );
+          }
+        }
+      },
+    );
+
+    test('an answer at a status that can follow the action is done', () async {
+      for (final (name, statuses) in [
+        ('confirm', [10, 11, 13, 14, 15, 16, 17, 18]),
+        ('undo_confirm', [9, 11, 16, 17, 18]),
+        ('dispute', [11, 16, 17, 18]),
+        // A rating changes no status.
+        ('rate_platform', [6, 9, 10, 11, 13, 14, 15, 17]),
+      ]) {
+        for (final status in statuses) {
+          serveJson(_answer(status));
+          expect(
+            expectOk(await actions[name]!()).order.status.wire,
+            status,
+            reason: '$name $status',
+          );
+        }
+      }
+    });
+
     test('an answer of another order is malformed', () async {
       serveJson(_answer(10, changes: {'id': 43}));
       final failure = expectErr(await confirm());
@@ -408,12 +458,20 @@ void main() {
                 const Err(CoordinatorTransportFailed()),
                 const Err(CoordinatorResponseTooLarge()),
               ]) {
-            serve(answer);
+            // A coordinator that would accept a second request: the client never sends one.
+            var calls = 0;
+            transport
+              ..requests.clear()
+              ..route(temple, _testnet, '/api/order/', (_) async {
+                calls++;
+                return calls == 1 ? answer : Ok(jsonResponse(_answer(11)));
+              });
             expect(
               expectErr(await action()),
               isA<OrderActionOutcomeUnknown>(),
               reason: '$name $answer',
             );
+            expect(transport.requests, hasLength(1), reason: '$name $answer');
           }
         }
       },
