@@ -1,10 +1,17 @@
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
     show
         ChatDecryptionKey,
+        Coordinator,
+        CoordinatorOrder,
         CoordinatorRobot,
+        NostrChatFailure,
+        NostrKeyPair,
+        OutgoingNostrChatMessage,
+        RobosatsNetwork,
         DecryptedChatMessage,
         PgpClockOutOfRange,
         PgpFailure,
@@ -64,6 +71,48 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
     List<ChatDecryptJob> jobs, {
     required DateTime now,
   }) => _decryptApart(key.chatDecryption, jobs, now);
+
+  @override
+  Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+  }) => _composeApart(sender, order, coordinator, network, text, now);
+
+  /// The Nostr copy composed apart, in an isolate of its own for each message (#94): see [RobotKeyComputePort.composeNostrChat] for what is copied there.
+  static Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  _composeApart(
+    NostrKeyPair sender,
+    CoordinatorOrder order,
+    Coordinator coordinator,
+    RobosatsNetwork network,
+    String text,
+    DateTime now,
+  ) => _run(
+    () => OutgoingNostrChatMessage.composeFor(
+      sender,
+      order: order,
+      coordinator: coordinator,
+      network: network,
+      text: text,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
 
   /// The chat's messages decrypted apart, in an isolate of its own for each page that holds something to decrypt (review of #93).
   ///

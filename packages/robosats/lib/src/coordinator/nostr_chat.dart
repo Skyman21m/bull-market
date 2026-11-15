@@ -9,6 +9,7 @@ import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/nostr/gift_wrap.dart';
 import 'package:robosats/src/nostr/nip44.dart';
 import 'package:robosats/src/nostr/nostr_event.dart';
+import 'package:robosats/src/nostr_key_pair.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 
@@ -64,6 +65,25 @@ final class OutgoingNostrChatMessage {
     required String text,
     required DateTime now,
     required Random random,
+  }) => composeFor(
+    identity.nostrKeyPair(),
+    order: order,
+    coordinator: coordinator,
+    network: network,
+    text: text,
+    now: now,
+    random: random,
+  );
+
+  /// [compose] from the robot's Nostr key pair [sender] alone, the robot's `NostrKeyDerivation.currentFrontend` key: what an isolate is given, so that the robot's token never goes there.
+  static Result<OutgoingNostrChatMessage, NostrChatFailure> composeFor(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+    required Random random,
   }) {
     final makerKey = order.makerNostrPublicKeyHex;
     final takerKey = order.takerNostrPublicKeyHex;
@@ -76,7 +96,6 @@ final class OutgoingNostrChatMessage {
     }
     final ownKey = order.isMaker ? makerKey : takerKey;
     final peerKey = order.isMaker ? takerKey : makerKey;
-    final sender = identity.nostrKeyPair();
     if (ownKey != sender.publicKeyHex) return const Err(NostrChatKeyNotOurs());
     final relay = relayUrl(coordinator, network);
     if (relay == null) return const Err(NostrChatNoRelay());

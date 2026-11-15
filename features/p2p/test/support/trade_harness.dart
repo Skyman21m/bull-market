@@ -126,6 +126,32 @@ final class HarnessKeys implements RobotKeyComputePort {
   @override
   Future<
     Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingNostrChatMessage.composeFor(
+      sender,
+      order: order,
+      coordinator: coordinator,
+      network: network,
+      text: text,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
+  @override
+  Future<
+    Result<
       List<Result<DecryptedChatMessage, PgpFailure>>,
       RobotKeyComputeFailure
     >
@@ -685,6 +711,9 @@ final class RecordingRelays implements NostrRelayTransport {
 
   NostrRelayOutcome answer = const NostrRelayAccepted();
 
+  /// When set, what each relay answers, in place of [answer]: relays that answer differently.
+  NostrRelayOutcome Function(Uri relay)? answerFor;
+
   /// When set, each publication waits for it before answering: one that never completes is a relay that never answers.
   Future<void>? hold;
 
@@ -696,7 +725,7 @@ final class RecordingRelays implements NostrRelayTransport {
   }) async {
     published.add((relay: relay, message: message, robot: robot));
     if (hold case final gate?) await gate;
-    return answer;
+    return answerFor?.call(relay) ?? answer;
   }
 
   /// The distinct messages published, in order.

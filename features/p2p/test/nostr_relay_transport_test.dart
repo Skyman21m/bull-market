@@ -272,6 +272,125 @@ void main() {
   );
 
   test(
+    'the deadline passing while the websocket connects, which succeeds later: timed out, nothing written, the socket closed, no error outside the future (review of #158, R1)',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSockets = <WebSocket>[];
+      final received = <Object?>[];
+      final closed = Completer<void>();
+      server.listen((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        final socket = await WebSocketTransformer.upgrade(request);
+        serverSockets.add(socket);
+        socket.listen(received.add, onDone: closed.complete);
+      });
+      final errors = <Object>[];
+      try {
+        await runZonedGuarded(() async {
+          final outcome =
+              await transport(
+                deadline: const Duration(milliseconds: 300),
+                attemptTimeout: const Duration(seconds: 5),
+              ).publish(
+                Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+                message,
+                robot: us.sessionKey,
+              );
+          expect(outcome, isA<NostrRelayTimedOut>());
+          await closed.future.timeout(const Duration(seconds: 3));
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }, (error, _) => errors.add(error));
+      } finally {
+        await server.close(force: true);
+      }
+      expect(errors, isEmpty);
+      expect(serverSockets, hasLength(1));
+      expect(received, isEmpty);
+    },
+  );
+
+  group('onSending of a coordinator request (#94, review of #158)', () {
+    test('is called once when the request is handed to a connection', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        request.response.statusCode = 200;
+        await request.response.close();
+      });
+      var calls = 0;
+      try {
+        final result = await transport().send(
+          CoordinatorRequest(
+            method: CoordinatorHttpMethod.post,
+            url: Uri.parse('http://127.0.0.1:${server.port}/api/chat/'),
+            headers: const {},
+            maxResponseBytes: 1024,
+            body: utf8.encode('{}'),
+            robot: us.sessionKey,
+            onSending: () => calls++,
+          ),
+        );
+        expect(
+          result,
+          isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+      } finally {
+        await server.close(force: true);
+      }
+      expect(calls, 1);
+    });
+
+    test(
+      'is never called when nothing is sent: a URL the transport refuses',
+      () async {
+        var calls = 0;
+        final result = await transport().send(
+          CoordinatorRequest(
+            method: CoordinatorHttpMethod.post,
+            url: Uri.parse('http://example.com/api/chat/'),
+            headers: const {},
+            maxResponseBytes: 1024,
+            robot: us.sessionKey,
+            onSending: () => calls++,
+          ),
+        );
+        expect(
+          result,
+          isA<Err<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        expect(calls, 0);
+        expect(opened, isEmpty);
+      },
+    );
+
+    test('is never called when no session can be opened', () async {
+      var calls = 0;
+      final tor = TorCoordinatorTransport.withSeams(
+        openSession: () async => throw const SocketException('no Tor'),
+        createHttpClient: (_) => HttpClient(),
+        deadline: const Duration(seconds: 2),
+        attemptTimeout: const Duration(seconds: 1),
+        acceptsHost: (host) => host == '127.0.0.1',
+      );
+      transports.add(tor);
+      final result = await tor.send(
+        CoordinatorRequest(
+          method: CoordinatorHttpMethod.post,
+          url: Uri.parse('http://127.0.0.1:1/api/chat/'),
+          headers: const {},
+          maxResponseBytes: 1024,
+          robot: us.sessionKey,
+          onSending: () => calls++,
+        ),
+      );
+      expect(
+        result,
+        isA<Err<CoordinatorResponse, CoordinatorTransportFailure>>(),
+      );
+      expect(calls, 0);
+    });
+  });
+
+  test(
     'the websocket goes through a real SOCKS5 proxy with the client factory of the Tor sessions',
     () async {
       final fake = await relay(_RelayBehaviour.accept);
@@ -303,26 +422,45 @@ void main() {
   );
 }
 
+/// The message of a line of the app's log, without its time, its level or the console's colour codes: `<time>\t<level>\t<message>\t…`, so that nothing is ever looked for in the time (a test once failed on « 42 » in its microseconds).
+String _messageOf(String line) {
+  final plain = line.replaceAll(RegExp(r'\x1B\[[0-9;]*m'), '');
+  final fields = plain.split('\t');
+  return (fields.length >= 3 ? fields[2] : plain).trim();
+}
+
+/// Every line printed is one of the transport's fixed lines, with a fixed word where a word varies, and holds nothing of the relay, the message, the robot or the order.
 void _expectNothingTelling(
   List<String> printed,
   _FakeRelay relay,
   OutgoingNostrChatMessage message,
 ) {
   for (final line in printed) {
+    final text = _messageOf(line);
+    expect(
+      text,
+      matches(
+        RegExp(
+          r'^P2P Nostr (chat publication: [A-Za-z]+|relay connection failed \([A-Za-z]+\), retrying on a new Tor session)$',
+        ),
+      ),
+    );
     for (final secret in [
       '127.0.0.1',
-      '${relay.url.port}',
-      'ws:',
-      '/relay',
-      'a text',
+      'ws://',
+      '/relay/',
+      'a text that never reaches a log',
       ...message.eventIds,
       us.nostrKeyPair().publicKeyHex,
       us.hashId.hex,
-      'temple',
-      '$tradeOrderId',
+      'temple/$tradeOrderId',
       'RobotSessionKey',
     ]) {
-      expect(line, isNot(contains(secret)), reason: secret);
+      expect(text, isNot(contains(secret)), reason: secret);
+    }
+    // The relay's port and the order's number, as whole numbers in the message only.
+    for (final number in [relay.url.port, tradeOrderId]) {
+      expect(text, isNot(matches(RegExp('\\b$number\\b'))), reason: '$number');
     }
   }
 }

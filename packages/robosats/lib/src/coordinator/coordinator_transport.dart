@@ -31,6 +31,11 @@ final class CoordinatorRequest {
   /// The adapter must never let two requests with different values, `null` included, share a connection or a Tor circuit: a coordinator, or anyone watching it, would otherwise tie a robot to another robot or to the anonymous reads of the same device.
   final RobotSessionKey? robot;
 
+  /// Called by the adapter once, when it hands the request to a connection to the coordinator, and never when nothing is sent: no place, a URL or header refused, sessions closed, the deadline passed before.
+  ///
+  /// For a caller that must act only when the request really leaves: the chat's Nostr copy, which the official client publishes as it posts the message (#94). It must return at once and never throw.
+  final void Function()? onSending;
+
   const CoordinatorRequest({
     required this.method,
     required this.url,
@@ -38,6 +43,7 @@ final class CoordinatorRequest {
     required this.maxResponseBytes,
     this.body,
     this.robot,
+    this.onSending,
   });
 
   /// The method and the path, which are public: requests in this package carry no credential in the URL, and the headers and the robot are left out.

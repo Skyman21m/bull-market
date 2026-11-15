@@ -456,6 +456,11 @@ final class TorCoordinatorTransport
     } on Exception catch (exception) {
       return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
     }
+    // The deadline passed while the websocket connected: nothing is written, and the socket is closed here, inside this future, so that no late write or close can fail outside it.
+    if (deadline.passed) {
+      await _closeRelaySocket(socket);
+      return const _RelayAnswered(NostrRelayTimedOut());
+    }
     final waiting = {...message.eventIds};
     var refused = false;
     final answered = Completer<NostrRelayOutcome>();
@@ -499,13 +504,15 @@ final class TorCoordinatorTransport
     } finally {
       deadline.forgetSocket(socket);
       await subscription.cancel();
-      try {
-        await socket
-            .close(WebSocketStatus.normalClosure)
-            .timeout(_closeTimeout);
-      } on Exception {
-        // Closing is best effort: the session's client is closed with the session anyway.
-      }
+      await _closeRelaySocket(socket);
+    }
+  }
+
+  Future<void> _closeRelaySocket(WebSocket socket) async {
+    try {
+      await socket.close(WebSocketStatus.normalClosure).timeout(_closeTimeout);
+    } on Exception {
+      // Closing is best effort: the session's client is closed with the session anyway.
     }
   }
 
@@ -544,6 +551,7 @@ final class TorCoordinatorTransport
     final retries = request.method == CoordinatorHttpMethod.get
         ? coordinatorConnectRetries
         : 0;
+    var handedOver = false;
     final epoch = _epoch;
     final generation = requests?.generation;
     // Whether [closeSessions], or [closeRobotSessions] for the robot of this request, ran since the request started.
@@ -569,6 +577,11 @@ final class TorCoordinatorTransport
       if (deadline.passed) return const Err(CoordinatorTimedOut());
 
       route.acquire();
+      // The request leaves now, on this session: told once, never when nothing was sent (#94).
+      if (!handedOver) {
+        handedOver = true;
+        request.onSending?.call();
+      }
       final _Attempt outcome;
       try {
         outcome = await _attempt(route, request, deadline);

@@ -24,23 +24,75 @@ void main() {
     Ok(:final value) => value.identity,
     Err(:final failure) => throw StateError('$failure'),
   };
+  // A third robot: a key the coordinator could give in the peer's place.
+  final stranger = switch (NetworkGarageKey(
+    RobosatsNetwork.testnet,
+    otherTradeKey,
+  ).firstUsableRobot(1)) {
+    Ok(:final value) => value.identity,
+    Err(:final failure) => throw StateError('$failure'),
+  };
   late UnlockedRobotPgpKey makerKey;
+  late UnlockedRobotPgpKey strangerKey;
   final realNow = DateTime.now().toUtc();
 
-  setUpAll(() {
+  UnlockedRobotPgpKey keyOf(RobotIdentity identity, int seed) {
     final key = switch (RobotPgpKey.generateWith(
-      maker,
+      identity,
       now: realNow,
-      random: Random(93),
+      random: Random(seed),
     )) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };
-    makerKey = switch (key.unlock(maker)) {
+    return switch (key.unlock(identity)) {
       Ok(:final value) => value,
       Err(:final failure) => throw StateError('$failure'),
     };
+  }
+
+  setUpAll(() {
+    makerKey = keyOf(maker, 93);
+    strangerKey = keyOf(stranger, 94);
   });
+
+  /// The trade's status as a new read of the order stores it.
+  Future<TradeSeen> readAgain(TradeHarness app, TradeRecord record) async {
+    final run = app.watchOf(record);
+    await app.elapse(const Duration(seconds: 11));
+    final seen = run.lastStatus.seen;
+    await run.subscription.cancel();
+    return seen;
+  }
+
+  /// A send whose post gets no known answer, then a read that does not show it: the message is pending.
+  Future<ChatPendingMessage> pendingAfter(
+    TradeHarness app,
+    TradeRecord record,
+    TradeSeen seen,
+    String text,
+  ) async {
+    Map<String, Object?>? hidden;
+    app.coordinator.onRequest = (request) {
+      if (request.url.path == '/api/chat/' &&
+          request.body == null &&
+          app.coordinator.chat.isNotEmpty &&
+          hidden == null) {
+        hidden = app.coordinator.chat.removeLast();
+      }
+    };
+    app.coordinator.failNext(
+      ScriptedRequest.chatPost,
+      ScriptedFault.answerLost,
+    );
+    final sent = await app.chatSend.send(record, seen, text);
+    app.coordinator.onRequest = null;
+    await pumpEventQueue();
+    return switch (sent) {
+      Ok(value: ChatSentNotConfirmed(:final pending)) => pending,
+      final other => throw StateError('$other'),
+    };
+  }
 
   /// A trade at the chat step, its chat read once with the peer's key pinned.
   ///
@@ -255,4 +307,156 @@ void main() {
       },
     );
   });
+
+  group(
+    'the copy leaves only when the post to the coordinator leaves (review of #158, decision A)',
+    () {
+      test(
+        'nothing leaves when the last read shows the chat closed: refused before sending',
+        () async {
+          final (app, record, _) = await chatting();
+          app.coordinator.moveTo(11);
+          final closed = await readAgain(app, record);
+          final posts = app.coordinator.requests
+              .where((r) => r.url.path == '/api/chat/' && r.body != null)
+              .length;
+          final sent = await app.chatSend.send(record, closed, 'Hello');
+          await pumpEventQueue();
+          expect(sent, isA<Err<ChatSent, ChatSendRefusal>>());
+          expect(
+            app.coordinator.requests
+                .where((r) => r.url.path == '/api/chat/' && r.body != null)
+                .length,
+            posts,
+          );
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        'nothing leaves when the transport has no place for the post every time',
+        () async {
+          final (app, record, seen) = await chatting();
+          for (var i = 0; i < 20; i++) {
+            app.coordinator.failNext(
+              ScriptedRequest.chatPost,
+              ScriptedFault.busy,
+            );
+          }
+          final sent = await app.chatSend.send(record, seen, 'Hello');
+          await pumpEventQueue();
+          expect(sent, isA<Err<ChatSent, ChatSendRefusal>>());
+          expect(app.coordinator.chat, isEmpty);
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        'nothing leaves when a key breach is read while the post waits for a place',
+        () async {
+          final (app, record, seen) = await chatting();
+          final gate = Completer<void>();
+          app.holdBusyWait = gate.future;
+          app.coordinator.failNext(
+            ScriptedRequest.chatPost,
+            ScriptedFault.busy,
+          );
+          final sending = app.chatSend.send(record, seen, 'Hello');
+          while (app.busyWaits.isEmpty) {
+            await pumpEventQueue(times: 1);
+          }
+          app.coordinator.peerPublicKey = strangerKey.key.publicKey.armored;
+          final read = await app.chatRead.read(record, seen);
+          expect(
+            read,
+            isA<Ok<ChatView, ChatReadFailure>>().having(
+              (ok) => ok.value.peerKey,
+              'peer key',
+              isA<ChatPeerKeyBreach>(),
+            ),
+          );
+          gate.complete();
+          final sent = await sending;
+          await pumpEventQueue();
+          expect(
+            sent,
+            isA<Err<ChatSent, ChatSendRefusal>>().having(
+              (e) => e.failure,
+              'refusal',
+              isA<ChatPeerKeyChanged>(),
+            ),
+          );
+          expect(app.coordinator.chat, isEmpty);
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        'declared, as the reference: when the coordinator refuses the post it received, the copy has left',
+        () async {
+          final (app, record, seen) = await chatting();
+          app.coordinator.moveTo(11);
+          final sent = await app.chatSend.send(record, seen, 'Hello');
+          await pumpEventQueue();
+          expect(sent, isA<Err<ChatSent, ChatSendRefusal>>());
+          expect(app.relays.messages, hasLength(1));
+        },
+      );
+    },
+  );
+
+  group('a relay accepted it: one is enough (review of #158)', () {
+    test(
+      'one relay accepting and the others failing: « Send again » publishes nothing again',
+      () async {
+        final (app, record, seen) = await chatting();
+        final first = OutgoingNostrChatMessage.relayUrl(
+          Federation.robosats.byAlias('temple') ?? (throw StateError('temple')),
+          RobosatsNetwork.testnet,
+        );
+        app.relays.answerFor = (relay) => relay == first
+            ? const NostrRelayAccepted()
+            : const NostrRelayUnreachable();
+        final pending = await pendingAfter(app, record, seen, 'Hello?');
+        final count = app.relays.published.length;
+        expect(count, greaterThan(1));
+        await app.chatSend.sendAgain(record, seen, pending.id);
+        await pumpEventQueue();
+        expect(app.relays.published, hasLength(count));
+      },
+    );
+
+    test(
+      'no relay accepting: « Send again » publishes the same events again',
+      () async {
+        final (app, record, seen) = await chatting();
+        app.relays.answerFor = (_) => const NostrRelayRefused();
+        final pending = await pendingAfter(app, record, seen, 'Hello?');
+        final count = app.relays.published.length;
+        app.relays.answerFor = null;
+        await app.chatSend.sendAgain(record, seen, pending.id);
+        await pumpEventQueue();
+        expect(app.relays.published, hasLength(count * 2));
+        expect(app.relays.messages, hasLength(1));
+      },
+    );
+  });
+
+  test(
+    '« Send again » composes the copy when the first send could not (review of #158)',
+    () async {
+      final (app, record, seen) = await chatting(
+        configure: (app) => app.coordinator.makerNostrPublicKey = null,
+      );
+      final pending = await pendingAfter(app, record, seen, 'Hello?');
+      expect(app.relays.published, isEmpty);
+      app.coordinator.makerNostrPublicKey =
+          'f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9';
+      final withKeys = await readAgain(app, record);
+      expect(withKeys.order?.makerNostrPublicKeyHex, isNotNull);
+      await app.chatSend.sendAgain(record, withKeys, pending.id);
+      await pumpEventQueue();
+      expect(app.relays.messages, hasLength(1));
+    },
+  );
 }

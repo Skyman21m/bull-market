@@ -404,6 +404,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     final kind = _kindOf(request);
     final queue = _faults[kind];
     final fault = queue == null || queue.isEmpty ? null : queue.removeAt(0);
+    // As the Tor transport: the request leaves unless no place could be had for it (`CoordinatorRequest.onSending`).
+    if (fault != ScriptedFault.busy) request.onSending?.call();
     switch (fault) {
       case ScriptedFault.busy:
         return const Err(CoordinatorTransportBusy());

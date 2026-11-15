@@ -290,4 +290,66 @@ void main() {
       );
     }
   });
+
+  group('nostrRelaysFor builds the pool of RoboPool.updateRelays', () {
+    List<Uri> relaysOn(RobosatsNetwork network) => [
+      for (final coordinator in Federation.robosats.coordinators)
+        ?OutgoingNostrChatMessage.relayUrl(coordinator, network),
+    ];
+
+    test(
+      'min(3, n) relays, the order\'s coordinator\'s first, distinct, all of the federation; the others drawn at random',
+      () {
+        final mainnet = relaysOn(RobosatsNetwork.mainnet);
+        expect(mainnet.length, greaterThanOrEqualTo(4));
+        final first = OutgoingNostrChatMessage.relayUrl(
+          temple,
+          RobosatsNetwork.mainnet,
+        );
+        final drawn = <Uri>{};
+        for (var seed = 0; seed < 200; seed++) {
+          final relays = nostrRelaysFor(
+            temple,
+            Federation.robosats,
+            RobosatsNetwork.mainnet,
+            Random(seed),
+          );
+          expect(relays, hasLength(3));
+          expect(relays.first, first);
+          expect(relays.toSet(), hasLength(3));
+          expect(mainnet, containsAll(relays));
+          drawn.addAll(relays.skip(1));
+        }
+        expect(drawn, mainnet.where((relay) => relay != first).toSet());
+      },
+    );
+
+    test('every relay when the network has fewer than three', () {
+      final testnet = relaysOn(RobosatsNetwork.testnet);
+      expect(testnet.length, lessThan(3));
+      final relays = nostrRelaysFor(
+        temple,
+        Federation.robosats,
+        RobosatsNetwork.testnet,
+        Random(1),
+      );
+      expect(relays.toSet(), testnet.toSet());
+      expect(relays.first.toString(), relay);
+    });
+
+    test('none when the order\'s coordinator has no relay on the network', () {
+      final noTestnet = Federation.robosats.coordinators.firstWhere(
+        (coordinator) => coordinator.testnet.onion == null,
+      );
+      expect(
+        nostrRelaysFor(
+          noTestnet,
+          Federation.robosats,
+          RobosatsNetwork.testnet,
+          Random(1),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

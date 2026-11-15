@@ -20,7 +20,8 @@ import 'watch_chat_usecase.dart';
 /// A post the coordinator refused stored nothing; a post whose outcome is unknown is looked for in a read from the offset it was posted with ([ChatPage.indexOf]): found, it is stored; not found, it is pending, « not confirmed », and only the user sends it again ([sendAgain]), the same encrypted message, never a new encryption of the text.
 ///
 /// As the official client (`onSendMessage`, `frontend/src/components/TradeBox/EncryptedChat/index.tsx:201-239`, commit ff1998c), a message is also published over Nostr (#94), so that a peer on the official client, which shows only the Nostr messages by default, reads it: an [OutgoingNostrChatMessage] for the order's two Nostr keys, published to the relays [nostrRelaysFor] chooses, through the robot's Tor sessions.
-/// That publication never delays nor blocks the post to the coordinator: it is built and started once the post has started, its outcome changes nothing of the message's state and is shown nowhere, as in the reference (decision D3); only the transport logs a fixed word when a relay did not take it.
+/// It starts when the transport hands the post to the coordinator (`CoordinatorRequest.onSending`), as the reference starts it as it posts, and never when nothing is sent: a refusal before sending, a transport without a place every time, a key breach seen while the post waited (review of #158, decision A). It never delays nor blocks the post: it is composed apart (`RobotKeyComputePort.composeNostrChat`) and published without being awaited; its outcome changes nothing of the message's state and is shown nowhere, as in the reference (decision D3); only the transport logs a fixed word when a relay did not take it.
+/// When the coordinator then refuses the post, the copy has left already, as in the reference: the screen says the coordinator did not take the message while a peer in the official client's Nostr view may read it, and a message typed again shows twice there (declared deviation, nothing built to avoid it).
 /// Nothing is built when the order lacks a Nostr key or holds for this robot a key that is not the robot's ([OutgoingNostrChatMessage.compose]).
 /// « Send again » publishes the same Nostr events again only when no relay accepted them, so that a peer never sees a message twice.
 /// Nothing here is printed, logged or stored.
@@ -118,26 +119,53 @@ final class SendChatMessageUsecase {
     } finally {
       lease.close();
     }
-    final posting = _post(chat, trade, order, message, text, pending: null);
-    // Once the post has started, never before it: its outcome is the message's state, whatever Nostr does.
+    final sent = await _post(
+      chat,
+      trade,
+      order,
+      message,
+      text,
+      pending: null,
+      nostrText: text,
+    );
+    // A message refused, or never sent, is not pending: its Nostr copy, if one left, will never be published again.
+    if (sent is Err) chat.forgetNostrCopy(message);
+    return sent;
+  }
+
+  /// Called when the transport hands the post of [message] to the coordinator: publishes its Nostr copy, composed now from [text] when there is none yet, unless a relay already accepted it or it is being composed.
+  void _sendOverNostr(
+    TradeChat chat,
+    OpenTrade trade,
+    CoordinatorOrder order,
+    OutgoingChatMessage message,
+    String? text,
+  ) {
+    if (chat.nostrCopyToPublish(message) case final copy?) {
+      unawaited(Future(() => _publishOverNostr(chat, message, copy, trade)));
+      return;
+    }
+    if (text == null || chat.hasNostrCopy(message)) return;
+    chat.nostrCopyComposing(message);
+    final sender = trade.robot.identity.nostrKeyPair();
     unawaited(
-      Future(() {
-        final composed = OutgoingNostrChatMessage.compose(
-          identity: trade.robot.identity,
+      Future(() async {
+        final composed = await _compute.composeNostrChat(
+          sender,
           order: order,
           coordinator: trade.coordinator,
           network: trade.record.network,
           text: text,
           now: _reader.now(),
-          random: _random,
         );
-        if (composed case Ok(value: final copy)) {
+        if (composed case Ok(value: Ok(value: final copy))) {
           chat.keepNostrCopy(message, copy);
           _publishOverNostr(chat, message, copy, trade);
+        } else {
+          chat.forgetNostrCopy(message);
         }
       }),
     );
-    return posting;
   }
 
   /// Publishes [copy] on the relays of the trade's network, each through a Tor session of the robot, all at once; marks it delivered when one relay accepted it.
@@ -186,12 +214,16 @@ final class SendChatMessageUsecase {
       case Ok(:final value):
         trade = value;
     }
-    final posting = _post(chat, trade, order, message, null, pending: id);
-    // The same events, and only when no relay accepted them: a peer on the official client counts them once (same ids).
-    if (chat.nostrCopyToPublish(message) case final copy?) {
-      unawaited(Future(() => _publishOverNostr(chat, message, copy, trade)));
-    }
-    return posting;
+    // The same events when the post leaves, and only when no relay accepted them, so that a peer on the official client counts them once (same ids); composed from the pending text when the first composition failed.
+    return _post(
+      chat,
+      trade,
+      order,
+      message,
+      null,
+      pending: id,
+      nostrText: _pendingView(chat, id)?.text,
+    );
   }
 
   Future<Result<OpenTrade, ChatSendRefusal>> _open(TradeRecord record) async =>
@@ -210,6 +242,7 @@ final class SendChatMessageUsecase {
     OutgoingChatMessage message,
     String? text, {
     required int? pending,
+    required String? nostrText,
   }) async {
     // Encrypted to the key pinned for the trade as it is now, right before the post: a breach read while this send waited stops it.
     if (chat.pinnedKey?.fingerprint != message.peerFingerprint) {
@@ -232,6 +265,7 @@ final class SendChatMessageUsecase {
         lastRead: order,
         message: message,
         offset: offset,
+        onSending: () => _sendOverNostr(chat, trade, order, message, nostrText),
       );
     }
 

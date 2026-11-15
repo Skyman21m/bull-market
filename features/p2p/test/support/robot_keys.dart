@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_key_compute_port.dart';
 import 'package:primitives/primitives.dart';
@@ -7,6 +9,32 @@ import 'package:robosats/robosats.dart';
 ///
 /// `generate` gives [pair], a pair the test made once, since making one hashes 32 MiB, or [generateFailure]; `prove` proves as the package proves, or gives [proveFailure].
 final class RecordingRobotKeys implements RobotKeyComputePort {
+  @override
+  Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingNostrChatMessage.composeFor(
+      sender,
+      order: order,
+      coordinator: coordinator,
+      network: network,
+      text: text,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
   @override
   Future<
     Result<

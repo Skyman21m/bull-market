@@ -397,16 +397,24 @@ final class TradeChat {
     return null;
   }
 
-  /// Keeps [copy], the Nostr copy of [message], for « Send again ».
+  /// The Nostr copy of [message] is being composed, its post having left.
+  void nostrCopyComposing(OutgoingChatMessage message) =>
+      _nostrCopies[message.armored] = _NostrCopy(message);
+
+  /// Keeps [copy], the Nostr copy of [message], for « Send again », while [message] may still be sent again: not once it was forgotten ([forgetNostrCopy]).
   void keepNostrCopy(
     OutgoingChatMessage message,
     OutgoingNostrChatMessage copy,
-  ) => _nostrCopies[message.armored] = _NostrCopy(message, copy);
+  ) => _nostrCopies[message.armored]?.copy = copy;
 
-  /// The Nostr copy of [message] while no relay has accepted it, or `null`: none was made, or a relay has it.
+  /// Whether a Nostr copy of [message] exists or is being composed.
+  bool hasNostrCopy(OutgoingChatMessage message) =>
+      _nostrCopies.containsKey(message.armored);
+
+  /// The Nostr copy of [message] while no relay has accepted it, or `null`: none was made, it is being composed, or a relay has it.
   OutgoingNostrChatMessage? nostrCopyToPublish(OutgoingChatMessage message) =>
       switch (_nostrCopies[message.armored]) {
-        _NostrCopy(delivered: false, :final copy) => copy,
+        _NostrCopy(delivered: false, :final copy?) => copy,
         _ => null,
       };
 
@@ -414,7 +422,7 @@ final class TradeChat {
   void nostrCopyDelivered(OutgoingChatMessage message) =>
       _nostrCopies[message.armored]?.delivered = true;
 
-  /// [message] is stored by the coordinator: its Nostr copy will not be published again.
+  /// [message] is stored by the coordinator, refused, or never sent: its Nostr copy will not be published again, and is let go.
   void forgetNostrCopy(OutgoingChatMessage message) =>
       _nostrCopies.remove(message.armored);
 
@@ -480,10 +488,12 @@ final class TradeChat {
 
 final class _NostrCopy {
   final OutgoingChatMessage message;
-  final OutgoingNostrChatMessage copy;
+
+  /// `null` while it is composed.
+  OutgoingNostrChatMessage? copy;
   bool delivered = false;
 
-  _NostrCopy(this.message, this.copy);
+  _NostrCopy(this.message);
 }
 
 final class _Pending {
