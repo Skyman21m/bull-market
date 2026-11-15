@@ -2325,12 +2325,13 @@ void main() {
         // Take 5: the chat at 9 (#93), the maker's messages encrypted to this robot's key as the official client does, then an address typed alone, refused before anything leaves.
         coordinator.backToPublic();
         await take();
+        final chatter = taker();
         coordinator
-          ..lockBond(taker())
+          ..lockBond(chatter)
           ..moveTo(9)
           ..peerPublicKey = makerKey.key.publicKey.armored;
         final ownKey = switch (PgpPublicKey.parse(
-          coordinator.publicKeyOf(taker()) ?? '',
+          coordinator.publicKeyOf(chatter) ?? '',
         )) {
           Ok(:final value) => value,
           Err() => throw StateError('no key'),
