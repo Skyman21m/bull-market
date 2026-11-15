@@ -103,6 +103,9 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// What the next decryptions of the chat give instead, when set: the work could not run.
   RobotKeyComputeFailure? chatDecryptFailure;
 
+  /// When set, each composition of a Nostr copy throws it: a bug in the work, or an error out of its isolate.
+  Object? composeThrows;
+
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
@@ -138,15 +141,17 @@ final class HarnessKeys implements RobotKeyComputePort {
     required String text,
     required DateTime now,
   }) async => Ok(
-    OutgoingNostrChatMessage.composeFor(
-      sender,
-      order: order,
-      coordinator: coordinator,
-      network: network,
-      text: text,
-      now: now,
-      random: Random.secure(),
-    ),
+    composeThrows != null
+        ? throw composeThrows ?? StateError('unreachable')
+        : OutgoingNostrChatMessage.composeFor(
+            sender,
+            order: order,
+            coordinator: coordinator,
+            network: network,
+            text: text,
+            now: now,
+            random: Random.secure(),
+          ),
   );
 
   @override
@@ -717,6 +722,9 @@ final class RecordingRelays implements NostrRelayTransport {
   /// When set, each publication waits for it before answering: one that never completes is a relay that never answers.
   Future<void>? hold;
 
+  /// When set, each publication throws it once it has waited: an adapter that breaks its contract.
+  Object? thrown;
+
   @override
   Future<NostrRelayOutcome> publish(
     Uri relay,
@@ -725,6 +733,7 @@ final class RecordingRelays implements NostrRelayTransport {
   }) async {
     published.add((relay: relay, message: message, robot: robot));
     if (hold case final gate?) await gate;
+    if (thrown case final error?) throw error;
     return answerFor?.call(relay) ?? answer;
   }
 

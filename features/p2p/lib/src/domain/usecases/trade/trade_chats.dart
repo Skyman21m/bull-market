@@ -47,6 +47,11 @@ final class TradeChat {
   /// The Nostr copy of each message this robot sent and the coordinator has not yet shown as stored, by its canonical armor, and whether a relay accepted it (#94): « Send again » publishes the same events again only when none did.
   final Map<String, _NostrCopy> _nostrCopies = {};
 
+  /// The Nostr keys of the trade, the peer's and this robot's, pinned at its first copy, and whether the order changed one since (review of #158).
+  String? _nostrPeerKey;
+  String? _nostrOwnKey;
+  bool _nostrKeysChanged = false;
+
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
   bool _peerConnected = false;
   bool _connected = false;
@@ -395,6 +400,27 @@ final class TradeChat {
       if (p.view.id == id) return p.message;
     }
     return null;
+  }
+
+  /// Whether the Nostr copies of this trade may go on, given the order's Nostr keys as last read, the peer's [peer] and this robot's [own] (review of #158): yes until a key differs from the one pinned at the first copy ([pinNostrKeys]), then never again for the trade. A missing key is no change: no copy can be made without it anyway.
+  ///
+  /// What it covers: a coordinator that substitutes a key during the trade. What it does not: one that substitutes it from the first read, and the pins are lost when the app restarts, as the PGP pin is (#139). The official client pins nothing.
+  bool admitNostrKeys({required String? peer, required String? own}) {
+    if (_nostrKeysChanged) return false;
+    final pinnedPeer = _nostrPeerKey;
+    final pinnedOwn = _nostrOwnKey;
+    if ((peer != null && pinnedPeer != null && peer != pinnedPeer) ||
+        (own != null && pinnedOwn != null && own != pinnedOwn)) {
+      _nostrKeysChanged = true;
+      return false;
+    }
+    return true;
+  }
+
+  /// Pins [peer] and [own], the Nostr keys of the trade's first copy, unless keys are pinned already.
+  void pinNostrKeys({required String peer, required String own}) {
+    _nostrPeerKey ??= peer;
+    _nostrOwnKey ??= own;
   }
 
   /// The Nostr copy of [message] is being composed, its post having left.

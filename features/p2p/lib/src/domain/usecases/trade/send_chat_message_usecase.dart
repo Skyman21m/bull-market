@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:bull_logger/bull_logger.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -24,7 +25,7 @@ import 'watch_chat_usecase.dart';
 /// When the coordinator then refuses the post, the copy has left already, as in the reference: the screen says the coordinator did not take the message while a peer in the official client's Nostr view may read it, and a message typed again shows twice there (declared deviation, nothing built to avoid it).
 /// Nothing is built when the order lacks a Nostr key or holds for this robot a key that is not the robot's ([OutgoingNostrChatMessage.compose]).
 /// « Send again » publishes the same Nostr events again only when no relay accepted them, so that a peer never sees a message twice.
-/// Nothing here is printed, logged or stored.
+/// Nothing here is printed or stored; the Nostr copy logs only fixed words.
 final class SendChatMessageUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;
@@ -133,7 +134,9 @@ final class SendChatMessageUsecase {
     return sent;
   }
 
-  /// Called when the transport hands the post of [message] to the coordinator: publishes its Nostr copy, composed now from [text] when there is none yet, unless a relay already accepted it or it is being composed.
+  /// Called when the transport writes the post of [message] to the coordinator: publishes its Nostr copy, composed now from [text] when there is none yet, unless a relay already accepted it, it is being composed, or the order changed a Nostr key pinned for the trade.
+  ///
+  /// Nothing of it, synchronous or not, reaches the post, the screen or the zone: a failure lets the copy go and logs a fixed word (owner's decision on the review of #158).
   void _sendOverNostr(
     TradeChat chat,
     OpenTrade trade,
@@ -141,15 +144,27 @@ final class SendChatMessageUsecase {
     OutgoingChatMessage message,
     String? text,
   ) {
-    if (chat.nostrCopyToPublish(message) case final copy?) {
-      unawaited(Future(() => _publishOverNostr(chat, message, copy, trade)));
-      return;
-    }
-    if (text == null || chat.hasNostrCopy(message)) return;
-    chat.nostrCopyComposing(message);
-    final sender = trade.robot.identity.nostrKeyPair();
-    unawaited(
-      Future(() async {
+    try {
+      final peer = order.isMaker
+          ? order.takerNostrPublicKeyHex
+          : order.makerNostrPublicKeyHex;
+      final own = order.isMaker
+          ? order.makerNostrPublicKeyHex
+          : order.takerNostrPublicKeyHex;
+      if (!chat.admitNostrKeys(peer: peer, own: own)) {
+        log.info('P2P Nostr copy not sent: a Nostr key of the trade changed');
+        return;
+      }
+      if (chat.nostrCopyToPublish(message) case final copy?) {
+        _guarded(chat, message, () async {
+          await _publishOverNostr(chat, message, copy, trade);
+        });
+        return;
+      }
+      if (text == null || chat.hasNostrCopy(message)) return;
+      chat.nostrCopyComposing(message);
+      final sender = trade.robot.identity.nostrKeyPair();
+      _guarded(chat, message, () async {
         final composed = await _compute.composeNostrChat(
           sender,
           order: order,
@@ -159,22 +174,46 @@ final class SendChatMessageUsecase {
           now: _reader.now(),
         );
         if (composed case Ok(value: Ok(value: final copy))) {
+          // The keys it was composed for, valid ones: pinned for the trade at the first copy.
+          if (peer != null && own != null) {
+            chat.pinNostrKeys(peer: peer, own: own);
+          }
           chat.keepNostrCopy(message, copy);
-          _publishOverNostr(chat, message, copy, trade);
+          await _publishOverNostr(chat, message, copy, trade);
         } else {
           chat.forgetNostrCopy(message);
         }
-      }),
+      });
+    } on Object {
+      chat.forgetNostrCopy(message);
+      log.info('P2P Nostr copy failed');
+    }
+  }
+
+  /// Runs [work] later, its failure, whatever it is, kept from the zone: the copy is let go and a fixed word logged.
+  static void _guarded(
+    TradeChat chat,
+    OutgoingChatMessage message,
+    Future<void> Function() work,
+  ) {
+    unawaited(
+      Future(work).then(
+        (_) {},
+        onError: (Object _) {
+          chat.forgetNostrCopy(message);
+          log.info('P2P Nostr copy failed');
+        },
+      ),
     );
   }
 
   /// Publishes [copy] on the relays of the trade's network, each through a Tor session of the robot, all at once; marks it delivered when one relay accepted it.
-  void _publishOverNostr(
+  Future<void> _publishOverNostr(
     TradeChat chat,
     OutgoingChatMessage message,
     OutgoingNostrChatMessage copy,
     OpenTrade trade,
-  ) {
+  ) async {
     final relays = nostrRelaysFor(
       trade.coordinator,
       _federation,
@@ -182,15 +221,12 @@ final class SendChatMessageUsecase {
       _random,
     );
     final robot = trade.robot.identity.sessionKey;
-    unawaited(
-      Future.wait([
-        for (final relay in relays) _relays.publish(relay, copy, robot: robot),
-      ]).then((outcomes) {
-        if (outcomes.any((outcome) => outcome is NostrRelayAccepted)) {
-          chat.nostrCopyDelivered(message);
-        }
-      }),
-    );
+    final outcomes = await Future.wait([
+      for (final relay in relays) _relays.publish(relay, copy, robot: robot),
+    ]);
+    if (outcomes.any((outcome) => outcome is NostrRelayAccepted)) {
+      chat.nostrCopyDelivered(message);
+    }
   }
 
   /// Sends again the pending message [id] of the chat of [record], the user's choice: the same encrypted message, so that a reader can tell a duplicate by its text.

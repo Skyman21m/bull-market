@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:bull_logger/bull_logger.dart';
 import 'package:bull_tor/tor.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:meta/meta.dart';
@@ -34,6 +37,14 @@ const relayConnectRetries = 1;
 
 /// The longest message of a relay that is read: an `OK` takes less than 200 characters; anything longer is ignored.
 const maxRelayFrameLength = 4096;
+
+/// The most bytes read from a relay's socket in one publication, frame headers included: about 300 times what two `OK`s take. Beyond, the socket is destroyed and the publication fails (review of #158).
+///
+/// It bounds memory too: `dart:io` assembles a message whole before it delivers it, so the bytes are counted as they come off the socket, before any assembly; what is held at most is this bound plus one read of the socket.
+const maxRelayBytes = 64 * 1024;
+
+/// The most messages read from a relay in one publication: two `OK`s are expected, and a relay may add a few notices. Beyond, the publication fails.
+const maxRelayFrames = 64;
 
 /// Places for robot Tor sessions, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
 ///
@@ -111,8 +122,8 @@ const maxTotalHeaderLength = 32 * 1024;
 /// An answer that is not valid HTTP (garbage, an invalid or duplicated `Content-Length`, a forbidden character or an endless header section) means the coordinator answered: it fails with [CoordinatorTransportFailed], without retry.
 /// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress, once the other requests of that session end.
 ///
-/// Nostr relays ([publish], #94): a relay is the coordinator's own origin (`ws://<onion>/relay/`), so its websocket goes through the robot's session to that origin, the one its requests use, with the same `HttpClient` (`WebSocket.connect` with `customClient`, which opens the upgrade request through the client's SOCKS connection factory).
-/// [publish] always completes within [coordinatorRequestDeadline] too, with a [NostrRelayOutcome]; a connection failure replaces the session and is retried [relayConnectRetries] time; frames longer than [maxRelayFrameLength] and binary frames are ignored; only the outcome's fixed label is logged, never the relay, the robot, an event id or a relay's text.
+/// Nostr relays ([publish], #94): a relay is the coordinator's own origin (`ws://<onion>/relay/`), so its websocket goes through the robot's session to that origin, the one its requests use, with the same `HttpClient`, through its SOCKS connection factory, and a handshake of this transport's own: no redirect followed, no extension offered or accepted (so no compression), the accept key checked; then the bytes read are counted before `dart:io` assembles a message, at most [maxRelayBytes] and [maxRelayFrames] messages, beyond which the socket is destroyed (security review of #158).
+/// [publish] always completes within [coordinatorRequestDeadline] too, with a [NostrRelayOutcome]; a connection failure replaces the session and is retried [relayConnectRetries] time; messages longer than [maxRelayFrameLength] and binary ones are ignored; only the outcome's fixed label is logged, never the relay, the robot, an event id or a relay's text.
 ///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
@@ -440,27 +451,60 @@ final class TorCoordinatorTransport
     OutgoingNostrChatMessage message,
     _Deadline deadline,
   ) async {
-    final WebSocket socket;
+    // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension is offered, compression included (a small compressed message could inflate in memory), and the bytes that come back are counted before `dart:io` assembles a message (review of #158).
+    final Socket upgraded;
     try {
-      socket = await WebSocket.connect(
-        relay.toString(),
-        customClient: route.client,
-      ).timeout(_attemptTimeout);
+      final key = base64.encode(
+        List<int>.generate(16, (_) => _handshakeRandom.nextInt(256)),
+      );
+      final request = await route.client
+          .openUrl(
+            'GET',
+            Uri(
+              scheme: 'http',
+              host: relay.host,
+              port: relay.hasPort ? relay.port : null,
+              path: relay.path,
+            ),
+          )
+          .timeout(_attemptTimeout);
+      request
+        ..followRedirects = false
+        ..maxRedirects = 0
+        ..persistentConnection = false;
+      request.headers
+        ..set(HttpHeaders.connectionHeader, 'Upgrade')
+        ..set(HttpHeaders.upgradeHeader, 'websocket')
+        ..set('Sec-WebSocket-Key', key)
+        ..set('Sec-WebSocket-Version', '13');
+      final response = await request.close().timeout(_attemptTimeout);
+      final accepted = _isWebSocketUpgrade(response, key);
+      // Taken off the client in every case, so that an answer that is not an upgrade, a redirect among them, is dropped with its connection and never followed.
+      final socket = await response.detachSocket().timeout(_attemptTimeout);
+      if (accepted != null) {
+        socket.destroy();
+        return _RelayAnswered(accepted);
+      }
+      upgraded = socket;
     } on TimeoutException {
       return const _RelayConnectFailed(TorConnectFailure.timeout);
-    } on WebSocketException {
-      // The service answered, without a websocket: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
-      return const _RelayAnswered(NostrRelayUnreachable());
     } on HttpException {
+      // The service answered, not in HTTP: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
       return const _RelayAnswered(NostrRelayUnreachable());
     } on Exception catch (exception) {
       return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
     }
     // The deadline passed while the websocket connected: nothing is written, and the socket is closed here, inside this future, so that no late write or close can fail outside it.
     if (deadline.passed) {
-      await _closeRelaySocket(socket);
+      upgraded.destroy();
       return const _RelayAnswered(NostrRelayTimedOut());
     }
+    final socket = WebSocket.fromUpgradedSocket(
+      _CappedSocket(upgraded, maxRelayBytes),
+      serverSide: false,
+      compression: CompressionOptions.compressionOff,
+    );
+    var frames = 0;
     final waiting = {...message.eventIds};
     var refused = false;
     final answered = Completer<NostrRelayOutcome>();
@@ -470,6 +514,10 @@ final class TorCoordinatorTransport
 
     final subscription = socket.listen(
       (Object? frame) {
+        if (++frames > maxRelayFrames) {
+          finish(const NostrRelayFailed());
+          return;
+        }
         // Binary frames and long ones are ignored: an `OK` is short text.
         if (frame is! String || frame.length > maxRelayFrameLength) return;
         final ok = NostrRelayOk.parse(frame);
@@ -506,6 +554,41 @@ final class TorCoordinatorTransport
       await subscription.cancel();
       await _closeRelaySocket(socket);
     }
+  }
+
+  /// Draws the handshake's `Sec-WebSocket-Key`, which RFC 6455 wants random, though it protects nothing secret.
+  static final Random _handshakeRandom = Random.secure();
+
+  /// The GUID of RFC 6455 that an accepted handshake hashes with the key.
+  static const _webSocketGuid = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+
+  /// `null` when [response] accepts the websocket of [key] as RFC 6455 wants it, with no extension; otherwise what the publication gives: a redirect, never followed, is a failure, and anything else that is not an upgrade means no relay there.
+  static NostrRelayOutcome? _isWebSocketUpgrade(
+    HttpClientResponse response,
+    String key,
+  ) {
+    if (response.isRedirect ||
+        (response.statusCode >= 300 && response.statusCode < 400)) {
+      return const NostrRelayFailed();
+    }
+    final headers = response.headers;
+    final upgrade = headers.value(HttpHeaders.upgradeHeader)?.toLowerCase();
+    final connection = headers[HttpHeaders.connectionHeader] ?? const [];
+    final expected = base64.encode(
+      sha1.convert(ascii.encode('$key$_webSocketGuid')).bytes,
+    );
+    if (response.statusCode != HttpStatus.switchingProtocols ||
+        upgrade != 'websocket' ||
+        !connection.any((value) => value.toLowerCase().contains('upgrade')) ||
+        headers.value('Sec-WebSocket-Accept') != expected) {
+      return const NostrRelayUnreachable();
+    }
+    // An extension this client did not offer, compression above all, is refused.
+    if (headers['Sec-WebSocket-Extensions'] case final extensions?
+        when extensions.any((value) => value.trim().isNotEmpty)) {
+      return const NostrRelayFailed();
+    }
+    return null;
   }
 
   Future<void> _closeRelaySocket(WebSocket socket) async {
@@ -552,6 +635,18 @@ final class TorCoordinatorTransport
         ? coordinatorConnectRetries
         : 0;
     var handedOver = false;
+    // Told once, when the body of the request starts to be written on a connection to the coordinator (#94, review of #158): never when nothing was written. Whatever the hook does stays out of the request.
+    void written() {
+      if (handedOver) return;
+      handedOver = true;
+      try {
+        request.onSending?.call();
+        // The hook is the caller's: a bug in it must neither stop this request nor reach the zone (owner's decision on the review of #158).
+      } on Object {
+        log.info('P2P coordinator request hook failed');
+      }
+    }
+
     final epoch = _epoch;
     final generation = requests?.generation;
     // Whether [closeSessions], or [closeRobotSessions] for the robot of this request, ran since the request started.
@@ -577,14 +672,9 @@ final class TorCoordinatorTransport
       if (deadline.passed) return const Err(CoordinatorTimedOut());
 
       route.acquire();
-      // The request leaves now, on this session: told once, never when nothing was sent (#94).
-      if (!handedOver) {
-        handedOver = true;
-        request.onSending?.call();
-      }
       final _Attempt outcome;
       try {
-        outcome = await _attempt(route, request, deadline);
+        outcome = await _attempt(route, request, deadline, written);
       } finally {
         route.release();
       }
@@ -847,6 +937,7 @@ final class TorCoordinatorTransport
     _Route route,
     CoordinatorRequest request,
     _Deadline deadline,
+    void Function() written,
   ) async {
     final cancel = CancelToken();
     deadline.watch(cancel);
@@ -865,6 +956,10 @@ final class TorCoordinatorTransport
             },
           ),
           cancelToken: cancel,
+          // Called by Dio as the body is written on the connection it obtained: the moment `CoordinatorRequest.onSending` is for.
+          onSendProgress: request.onSending == null
+              ? null
+              : (_, _) => written(),
         );
       } on DioException catch (exception) {
         return _failureBeforeHeaders(exception);
@@ -1251,4 +1346,100 @@ final class _Deadline {
   void forget(CancelToken cancel) {
     if (identical(_current, cancel)) _current = null;
   }
+}
+
+/// The socket of a relay's websocket, whose incoming bytes are counted as they come off the socket, before `dart:io` assembles a message: past the bound, the socket is destroyed and the stream ends, which fails the publication (review of #158).
+final class _CappedSocket extends StreamView<Uint8List> implements Socket {
+  final Socket _inner;
+
+  _CappedSocket._(this._inner, Stream<Uint8List> counted) : super(counted);
+
+  factory _CappedSocket(Socket inner, int maxBytes) {
+    var received = 0;
+    var capped = false;
+    final counted = inner.transform(
+      StreamTransformer<Uint8List, Uint8List>.fromHandlers(
+        handleData: (data, sink) {
+          // Bytes already on their way when the socket was destroyed are dropped.
+          if (capped) return;
+          received += data.length;
+          if (received > maxBytes) {
+            capped = true;
+            inner.destroy();
+            // Ended here, once: the websocket sees its socket close, and the publication fails.
+            sink.close();
+            return;
+          }
+          sink.add(data);
+        },
+        handleDone: (sink) {
+          if (!capped) sink.close();
+        },
+      ),
+    );
+    return _CappedSocket._(inner, counted);
+  }
+
+  @override
+  Encoding get encoding => _inner.encoding;
+
+  @override
+  set encoding(Encoding value) => _inner.encoding = value;
+
+  @override
+  void add(List<int> data) => _inner.add(data);
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) =>
+      _inner.addError(error, stackTrace);
+
+  @override
+  Future<void> addStream(Stream<List<int>> stream) => _inner.addStream(stream);
+
+  @override
+  Future<void> close() => _inner.close();
+
+  @override
+  Future<void> get done => _inner.done;
+
+  @override
+  Future<void> flush() => _inner.flush();
+
+  @override
+  void write(Object? object) => _inner.write(object);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _inner.writeAll(objects, separator);
+
+  @override
+  void writeCharCode(int charCode) => _inner.writeCharCode(charCode);
+
+  @override
+  void writeln([Object? object = '']) => _inner.writeln(object);
+
+  @override
+  InternetAddress get address => _inner.address;
+
+  @override
+  int get port => _inner.port;
+
+  @override
+  InternetAddress get remoteAddress => _inner.remoteAddress;
+
+  @override
+  int get remotePort => _inner.remotePort;
+
+  @override
+  void destroy() => _inner.destroy();
+
+  @override
+  bool setOption(SocketOption option, bool enabled) =>
+      _inner.setOption(option, enabled);
+
+  @override
+  Uint8List getRawOption(RawSocketOption option) => _inner.getRawOption(option);
+
+  @override
+  void setRawOption(RawSocketOption option) => _inner.setRawOption(option);
 }

@@ -1147,7 +1147,7 @@ final class CoordinatorClient {
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included; the transport never retries a request that is not a `GET`.
   ///
-  /// [onSending] is called when the transport hands the post to a connection ([CoordinatorRequest.onSending]), never when nothing is sent: a refusal above, a transport without a place for it.
+  /// [onSending] is called when the transport starts writing the post on a connection to the coordinator ([CoordinatorRequest.onSending]), never when nothing is written: a refusal above, a transport without a place or a session for it, a connection that fails first.
   Future<Result<ChatPage, OrderActionFailure>> postChat({
     required RobotIdentity identity,
     required CoordinatorOrder lastRead,

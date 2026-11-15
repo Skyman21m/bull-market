@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:bull_tor/tor.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:primitives/primitives.dart';
@@ -309,6 +310,132 @@ void main() {
     },
   );
 
+  group('what a relay can make this client do (security review of #158)', () {
+    /// A relay whose handshake [answer] writes by hand: the request it got is kept.
+    Future<(HttpServer, List<HttpRequest>)> rawRelay(
+      Future<void> Function(HttpRequest request) answer,
+    ) async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final requests = <HttpRequest>[];
+      server.listen((request) async {
+        requests.add(request);
+        await answer(request);
+      });
+      return (server, requests);
+    }
+
+    String acceptOf(HttpRequest request) => base64.encode(
+      sha1
+          .convert(
+            ascii.encode(
+              '${request.headers.value('sec-websocket-key')}258EAFA5-E914-47DA-95CA-C5AB0DC85B11',
+            ),
+          )
+          .bytes,
+    );
+
+    test(
+      'no extension is offered, and a relay that forces compression gets nothing',
+      () async {
+        final written = <int>[];
+        final (server, requests) = await rawRelay((request) async {
+          request.response
+            ..statusCode = HttpStatus.switchingProtocols
+            ..headers.set(HttpHeaders.connectionHeader, 'Upgrade')
+            ..headers.set(HttpHeaders.upgradeHeader, 'websocket')
+            ..headers.set('Sec-WebSocket-Accept', acceptOf(request))
+            ..headers.set('Sec-WebSocket-Extensions', 'permessage-deflate');
+          final socket = await request.response.detachSocket();
+          socket.listen(written.addAll, onError: (Object _) {});
+        });
+        try {
+          final outcome = await transport().publish(
+            Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+            message,
+            robot: us.sessionKey,
+          );
+          expect(outcome, isA<NostrRelayFailed>());
+          expect(
+            requests.single.headers.value('sec-websocket-extensions'),
+            isNull,
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(written, isEmpty);
+        } finally {
+          await server.close(force: true);
+        }
+      },
+    );
+
+    test(
+      'a relay that sends more than maxRelayBytes: failed at once, its socket destroyed, nothing more read',
+      () async {
+        final fake = await relay(_RelayBehaviour.silent);
+        fake.onConnect = (socket) => socket.add('x' * (10 * 1024 * 1024));
+        final watch = Stopwatch()..start();
+        final outcome = await transport(
+          attemptTimeout: const Duration(seconds: 10),
+        ).publish(fake.url, message, robot: us.sessionKey);
+        expect(outcome, isA<NostrRelayFailed>());
+        expect(watch.elapsed, lessThan(const Duration(seconds: 5)));
+        await fake.closed.future.timeout(const Duration(seconds: 3));
+      },
+    );
+
+    test(
+      'a relay that sends more than maxRelayFrames messages: failed, without waiting for the bound',
+      () async {
+        final fake = await relay(_RelayBehaviour.silent);
+        fake.onConnect = (socket) {
+          for (var i = 0; i <= maxRelayFrames; i++) {
+            socket.add(jsonEncode(['NOTICE', 'n$i']));
+          }
+        };
+        final outcome = await transport(
+          attemptTimeout: const Duration(seconds: 10),
+        ).publish(fake.url, message, robot: us.sessionKey);
+        expect(outcome, isA<NostrRelayFailed>());
+      },
+    );
+
+    for (final (name, target) in [
+      ('another host', (int port) => 'http://localhost:$port/relay/'),
+      (
+        'another path of the same host',
+        (int port) => 'http://127.0.0.1:$port/elsewhere',
+      ),
+    ]) {
+      test(
+        'a redirect to $name is never followed: failed, nothing published',
+        () async {
+          final elsewhere = await relay(_RelayBehaviour.accept);
+          final (server, _) = await rawRelay((request) async {
+            request.response
+              ..statusCode = HttpStatus.found
+              ..headers.set(
+                HttpHeaders.locationHeader,
+                target(elsewhere.url.port),
+              );
+            await request.response.close();
+          });
+          try {
+            final outcome = await transport().publish(
+              Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+              message,
+              robot: us.sessionKey,
+            );
+            expect(outcome, isA<NostrRelayFailed>());
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+            expect(elsewhere.paths, isEmpty);
+            expect(elsewhere.received, isEmpty);
+          } finally {
+            await server.close(force: true);
+          }
+        },
+      );
+    }
+  });
+
   group('onSending of a coordinator request (#94, review of #158)', () {
     test('is called once when the request is handed to a connection', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -359,6 +486,80 @@ void main() {
         );
         expect(calls, 0);
         expect(opened, isEmpty);
+      },
+    );
+
+    test(
+      'is never called when the connection to the coordinator fails before the request is written',
+      () async {
+        var calls = 0;
+        final result =
+            await transport(
+              createHttpClient: (_) =>
+                  _socksRefusal(CommandReplyCode.hostUnreachable),
+            ).send(
+              CoordinatorRequest(
+                method: CoordinatorHttpMethod.post,
+                url: Uri.parse('http://127.0.0.1:1/api/chat/'),
+                headers: const {},
+                maxResponseBytes: 1024,
+                body: utf8.encode('{}'),
+                robot: us.sessionKey,
+                onSending: () => calls++,
+              ),
+            );
+        expect(
+          result,
+          isA<Err<CoordinatorResponse, CoordinatorTransportFailure>>(),
+        );
+        expect(calls, 0);
+      },
+    );
+
+    test(
+      'a hook that throws stops neither the request nor reaches the zone: a fixed word is logged',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final bodies = <String>[];
+        server.listen((request) async {
+          bodies.add(await utf8.decodeStream(request));
+          request.response.statusCode = 200;
+          await request.response.close();
+        });
+        final printed = <String>[];
+        final print = debugPrint;
+        debugPrint = (String? line, {int? wrapWidth}) {
+          if (line != null) printed.add(line);
+        };
+        final errors = <Object>[];
+        try {
+          await runZonedGuarded(() async {
+            final result = await transport().send(
+              CoordinatorRequest(
+                method: CoordinatorHttpMethod.post,
+                url: Uri.parse('http://127.0.0.1:${server.port}/api/chat/'),
+                headers: const {},
+                maxResponseBytes: 1024,
+                body: utf8.encode('{"a":1}'),
+                robot: us.sessionKey,
+                onSending: () => throw StateError('a bug in the hook'),
+              ),
+            );
+            expect(
+              result,
+              isA<Ok<CoordinatorResponse, CoordinatorTransportFailure>>(),
+            );
+          }, (error, _) => errors.add(error));
+        } finally {
+          debugPrint = print;
+          await server.close(force: true);
+        }
+        expect(errors, isEmpty);
+        expect(bodies, ['{"a":1}']);
+        expect(
+          printed.map(_messageOf),
+          contains('P2P coordinator request hook failed'),
+        );
       },
     );
 
@@ -488,6 +689,9 @@ final class _FakeRelay {
   final Completer<void> connected = Completer<void>();
   final Completer<void> closed = Completer<void>();
 
+  /// What the relay sends as soon as the websocket is open, when set.
+  void Function(WebSocket socket)? onConnect;
+
   _FakeRelay._(this._server, this._behaviour) {
     _server.listen(_serve);
   }
@@ -510,6 +714,7 @@ final class _FakeRelay {
     }
     final socket = await WebSocketTransformer.upgrade(request);
     if (!connected.isCompleted) connected.complete();
+    onConnect?.call(socket);
     if (_behaviour == _RelayBehaviour.closeAtOnce) {
       await socket.close();
       return;

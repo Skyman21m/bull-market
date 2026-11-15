@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
@@ -457,6 +458,123 @@ void main() {
       await app.chatSend.sendAgain(record, withKeys, pending.id);
       await pumpEventQueue();
       expect(app.relays.messages, hasLength(1));
+    },
+  );
+
+  group(
+    'the trade\'s Nostr keys pinned at its first copy (security review of #158)',
+    () {
+      test(
+        'a peer key the order changes during the trade stops every later copy; a fixed word is logged; the coordinator still gets the messages',
+        () async {
+          final (app, record, seen) = await chatting();
+          await app.chatSend.send(record, seen, 'First');
+          await pumpEventQueue();
+          expect(app.relays.messages, hasLength(1));
+          // Another valid key: the x-only key of the secret key 2, public.
+          app.coordinator.makerNostrPublicKey =
+              'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5';
+          final changed = await readAgain(app, record);
+          expect(
+            changed.order?.makerNostrPublicKeyHex,
+            app.coordinator.makerNostrPublicKey,
+          );
+          final printed = <String>[];
+          final print = debugPrint;
+          debugPrint = (String? line, {int? wrapWidth}) {
+            if (line != null) printed.add(line);
+          };
+          final Result<ChatSent, ChatSendRefusal> sent;
+          try {
+            sent = await app.chatSend.send(record, changed, 'Second');
+            await pumpEventQueue();
+          } finally {
+            debugPrint = print;
+          }
+          expect(sent, isA<Ok<ChatSent, ChatSendRefusal>>());
+          expect(app.coordinator.chat, hasLength(2));
+          expect(app.relays.messages, hasLength(1));
+          // Even when the order gives the first key back.
+          app.coordinator.makerNostrPublicKey =
+              'f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9';
+          final back = await readAgain(app, record);
+          await app.chatSend.send(record, back, 'Third');
+          await pumpEventQueue();
+          expect(app.relays.messages, hasLength(1));
+          expect(
+            printed.where(
+              (line) => line.contains(
+                'P2P Nostr copy not sent: a Nostr key of the trade changed',
+              ),
+            ),
+            isNotEmpty,
+          );
+          for (final line in printed) {
+            expect(line, isNot(contains('c6047f94')));
+            expect(line, isNot(contains('Second')));
+          }
+        },
+      );
+
+      test(
+        'our own key changed by the order during the trade stops the copies too',
+        () async {
+          final (app, record, seen) = await chatting();
+          await app.chatSend.send(record, seen, 'First');
+          await pumpEventQueue();
+          expect(app.relays.messages, hasLength(1));
+          app.coordinator.takerNostrPublicKey =
+              'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5';
+          final changed = await readAgain(app, record);
+          app.coordinator.takerNostrPublicKey = null;
+          final back = await readAgain(app, record);
+          await app.chatSend.send(record, changed, 'Second');
+          await app.chatSend.send(record, back, 'Third');
+          await pumpEventQueue();
+          expect(app.relays.messages, hasLength(1));
+          expect(app.coordinator.chat, hasLength(3));
+        },
+      );
+    },
+  );
+
+  group(
+    'no failure of the Nostr copy reaches the post, the screen or the zone (security review of #158)',
+    () {
+      test('a composition that throws', () async {
+        final (app, record, seen) = await chatting();
+        app.keys.composeThrows = StateError('a bug in the composition');
+        final errors = <Object>[];
+        Result<ChatSent, ChatSendRefusal>? sent;
+        await runZonedGuarded(() async {
+          sent = await app.chatSend.send(record, seen, 'Hello');
+          await pumpEventQueue();
+        }, (error, _) => errors.add(error));
+        expect(errors, isEmpty);
+        expect(
+          sent,
+          isA<Ok<ChatSent, ChatSendRefusal>>().having(
+            (ok) => ok.value,
+            'sent',
+            isA<ChatSentStored>(),
+          ),
+        );
+        expect(app.relays.published, isEmpty);
+      });
+
+      test('a publication that fails asynchronously', () async {
+        final (app, record, seen) = await chatting();
+        app.relays.thrown = StateError('an adapter that breaks its contract');
+        final errors = <Object>[];
+        Result<ChatSent, ChatSendRefusal>? sent;
+        await runZonedGuarded(() async {
+          sent = await app.chatSend.send(record, seen, 'Hello');
+          await pumpEventQueue();
+        }, (error, _) => errors.add(error));
+        expect(errors, isEmpty);
+        expect(sent, isA<Ok<ChatSent, ChatSendRefusal>>());
+        expect(app.relays.published, isNotEmpty);
+      });
     },
   );
 }
