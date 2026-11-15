@@ -60,11 +60,23 @@ final class PayoutWalletRequest {
   final PayoutKind kind;
   final ValueChanged<String> use;
 
+  /// What the invoice must be for with the form's routing budget (`PayoutAsk.invoiceSatsFor`), the amount the Lightning tab shows; `null` above the read bounds.
+  final Sats? invoiceSats;
+
+  /// The text of the tab's field now, so that the slot says what it put there only while the field holds it.
+  final String field;
+
+  /// Whether the form may be edited: not while a payout is given, nor once it told something.
+  final bool editable;
+
   const PayoutWalletRequest({
     required this.record,
     required this.ask,
     required this.kind,
     required this.use,
+    this.invoiceSats,
+    this.field = '',
+    this.editable = true,
   });
 }
 
@@ -95,7 +107,7 @@ class PayoutTold extends StatelessWidget {
 /// Everything typed or chosen lives in the cubit ([PayoutForm]): a panel built again (another tab of the trade, a line added above it) shows exactly what is checked, and the figures of what « Submit » gives are the check's own.
 /// « Submit » gives the cubit the payout shown, once; while it is given, each wait says what it waits for, and after 30 s that it still waits; what it gave is said under « Submit », a refusal of the coordinator under the field, as the reference's helper text.
 /// The robot's key is held while the panel is shown with the app in the foreground and its tab visible, and let go otherwise.
-/// [wallet] fills the slot of the wallet's address and invoice (#90): `null` today, and the slot draws nothing.
+/// [wallet] fills the slot of the wallet's invoice and address (#90), « Generate Invoice » and « Generate New Address » (`PayoutWalletSection`), where the wallet's port was lent; with `null`, the slot draws nothing.
 class PayoutPanel extends StatefulWidget {
   final PayoutPanelRequest request;
   final PayoutWalletBuilder? wallet;
@@ -349,6 +361,12 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
                 PayoutKind.onchain => _cubit.editAddress(text),
               },
             ),
+            invoiceSats: ask.invoiceSatsFor(state.form.budget),
+            field: switch (kind) {
+              PayoutKind.lightning => state.form.invoice,
+              PayoutKind.onchain => state.form.address,
+            },
+            editable: state.phase is PayoutEditing && !state.outcomeTold,
           ),
         ),
         switch ((kind, onchain)) {

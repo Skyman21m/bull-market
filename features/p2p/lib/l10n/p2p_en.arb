@@ -3064,5 +3064,46 @@
         "type": "String"
       }
     }
+  },
+  "p2pPayoutWalletGenerateInvoice": "Generate Invoice",
+  "@p2pPayoutWalletGenerateInvoice": {
+    "description": "The wallet's slot of the payout panel (#90): the button of the Lightning tab, the wallet's own words for the same act (`receiveGenerateInvoice`, « Generate Invoice » / « Générer une facture »); the reference has no wallet."
+  },
+  "p2pPayoutWalletGenerateAddress": "Generate New Address",
+  "@p2pPayoutWalletGenerateAddress": {
+    "description": "The wallet's slot of the payout panel (#90): the button of the Onchain tab, the wallet's own words (`receiveGenerateAddress`, « Generate New Address » / « Générer une nouvelle adresse »)."
+  },
+  "p2pPayoutWalletMakingInvoice": "Generating the invoice…",
+  "@p2pPayoutWalletMakingInvoice": {
+    "description": "The wallet's slot of the payout panel (#90): ours, what the wait for the wallet's invoice waits for, with the bar (the owner's rule: every wait says what it waits for)."
+  },
+  "p2pPayoutWalletMakingAddress": "Generating a new address…",
+  "@p2pPayoutWalletMakingAddress": {
+    "description": "The wallet's slot of the payout panel (#90): ours, the wait for a new address of the wallet."
+  },
+  "p2pPayoutWalletStillWaiting": "Still waiting for the wallet.",
+  "@p2pPayoutWalletStillWaiting": {
+    "description": "The wallet's slot of the payout panel (#90): ours, after 30 s of a wait for the wallet."
+  },
+  "p2pPayoutWalletReceived": "Receive Amount: {amount} sats",
+  "@p2pPayoutWalletReceived": {
+    "description": "The wallet's slot of the payout panel (#90): what arrives in Instant payments once the invoice is paid, the swap fees taken; the wallet's label (`receiveReceiveAmount`, « Receive Amount » / « Montant à recevoir »).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPayoutWalletFeeTaken": "This fee will be deducted from the amount sent",
+  "@p2pPayoutWalletFeeTaken": {
+    "description": "The wallet's slot of the payout panel (#90): the wallet's own sentence under its receive fees (`receiveFeeExplanation`, « This fee will be deducted from the amount sent » / « Ces frais seront déduits du montant envoyé »)."
+  },
+  "p2pPayoutWalletNoInvoice": "This wallet cannot create an invoice now.",
+  "@p2pPayoutWalletNoInvoice": {
+    "description": "The wallet's slot of the payout panel (#90): ours, when the wallet cannot give an invoice for another reason than the swap's limits or its server (no Instant payments wallet, a wallet that cannot be read, an answer that does not fit)."
+  },
+  "p2pPayoutWalletNoAddress": "This wallet cannot give an address now.",
+  "@p2pPayoutWalletNoAddress": {
+    "description": "The wallet's slot of the payout panel (#90): ours, when the wallet cannot give a new address of its Bitcoin wallet (none, or it cannot be read)."
   }
 }

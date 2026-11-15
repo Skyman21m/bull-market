@@ -562,5 +562,14 @@
   "p2pEndNotRecordedMovedOn": "L'ordre a changé : {coordinator} n'a pas enregistré votre confirmation.",
   "p2pEndAmountDiffers": "{coordinator} indique maintenant {readAmount} {readCurrency} ; l'ordre a été pris pour {amount} {currencyCode}.",
   "p2pEndAmountMissing": "{coordinator} n'indique aucun montant pour cet ordre ; il a été pris pour {amount} {currencyCode}.",
-  "p2pEndOffline": "{coordinator} est hors ligne : votre confirmation n'a pas été envoyée."
+  "p2pEndOffline": "{coordinator} est hors ligne : votre confirmation n'a pas été envoyée.",
+  "p2pPayoutWalletGenerateInvoice": "Générer une facture",
+  "p2pPayoutWalletGenerateAddress": "Générer une nouvelle adresse",
+  "p2pPayoutWalletMakingInvoice": "Création de la facture…",
+  "p2pPayoutWalletMakingAddress": "Création d’une nouvelle adresse…",
+  "p2pPayoutWalletStillWaiting": "Toujours en attente du portefeuille.",
+  "p2pPayoutWalletReceived": "Montant à recevoir : {amount} sats",
+  "p2pPayoutWalletFeeTaken": "Ces frais seront déduits du montant envoyé",
+  "p2pPayoutWalletNoInvoice": "Ce portefeuille ne peut pas créer de facture pour le moment.",
+  "p2pPayoutWalletNoAddress": "Ce portefeuille ne peut pas donner d’adresse pour le moment."
 }
