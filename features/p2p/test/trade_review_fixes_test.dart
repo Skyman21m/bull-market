@@ -933,17 +933,21 @@ void main() {
         };
         app.coordinator.lockBond(app.robot(0));
         await app.elapse(const Duration(seconds: 10));
-        final read = await CoordinatorClient(app.coordinator).fetchOrder(
-          app.coordinator.coordinator,
-          app.network,
-          identity: app.robot(0),
-          orderId: record.orderId,
+        final times = reader.request();
+        final read = await reader.timed(
+          times,
+          () => CoordinatorClient(app.coordinator).fetchOrder(
+            app.coordinator.coordinator,
+            app.network,
+            identity: app.robot(0),
+            orderId: record.orderId,
+          ),
         );
         final step = await reader.advance(
           opened,
           TradeAnswer.ofRead(read) ?? fail('no answer'),
           at: app.now,
-          sent: reader.requestLeaves(),
+          request: times,
         );
         expect(kept.calls, 2);
         expect(step.stored, isTrue);

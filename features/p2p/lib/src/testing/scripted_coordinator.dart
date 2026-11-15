@@ -28,6 +28,9 @@ enum ScriptedFault {
 
   /// The coordinator answers the request as the order stands when it arrives, and the answer reaches the app only when the test calls `ScriptedCoordinator.deliverDelayed`, after later requests were answered: a read overtaken on its way back over Tor (#141).
   answerDelayed,
+
+  /// The request reaches the coordinator but is served only when the test calls `ScriptedCoordinator.serveLate`, after requests that left later were served and answered: a request that leaves earlier but is served later (#141).
+  servedLate,
 }
 
 /// The kinds of request the scripted coordinator answers, to aim a [ScriptedFault] at.
@@ -319,16 +322,27 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
   }
 
-  /// The answers held by [ScriptedFault.answerDelayed] reach the app now, in order.
-  void deliverDelayed() {
-    final held = List.of(_delayed);
-    _delayed.clear();
+  /// The answers held by [ScriptedFault.answerDelayed] reach the app now, in order: all of them, or the first [count].
+  void deliverDelayed([int? count]) {
+    final held = _delayed.take(count ?? _delayed.length).toList();
+    _delayed.removeRange(0, held.length);
     for (final delivered in held) {
       delivered.complete();
     }
   }
 
   final List<Completer<void>> _delayed = [];
+
+  /// The requests held by [ScriptedFault.servedLate] are served now, in order, as the order then stands, and their answers go back.
+  void serveLate() {
+    final held = List.of(_servedLate);
+    _servedLate.clear();
+    for (final served in held) {
+      served.complete();
+    }
+  }
+
+  final List<Completer<void>> _servedLate = [];
 
   /// The requests held by [ScriptedFault.landsLate], not landed yet.
   final List<(ScriptedRequest, CoordinatorRequest)> _late = [];
@@ -393,6 +407,11 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedFault.landsLate:
         _late.add((kind, request));
         return const Err(CoordinatorTimedOut());
+      case ScriptedFault.servedLate:
+        final served = Completer<void>();
+        _servedLate.add(served);
+        await served.future;
+        return Ok(_answer(kind, request));
       case ScriptedFault.answerDelayed:
         final answer = _answer(kind, request);
         final delivered = Completer<void>();
