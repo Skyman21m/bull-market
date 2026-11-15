@@ -1914,7 +1914,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
   String get p2pPayWithThisWallet => 'Pay with this wallet';
 
   @override
-  String get p2pPayQuoting => 'Asking the swap service for its fees…';
+  String get p2pPayQuoting => 'Getting the swap fees…';
 
   @override
   String p2pPayConfirmTitle(String amount) {
@@ -1923,7 +1923,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String p2pPayServiceFee(String serviceFee) {
-    return 'Swap service fee: $serviceFee sats';
+    return 'Swap fees: $serviceFee sats';
   }
 
   @override
@@ -1935,10 +1935,6 @@ class P2pLocalizationsZh extends P2pLocalizations {
   String p2pPayTotal(String total, String left) {
     return 'Total: $total sats. Left in Instant payments: $left sats.';
   }
-
-  @override
-  String get p2pPayCustody =>
-      'This wallet pays Lightning through a swap service. While your bond is locked, the sats are held by that service; if the bond is returned, the service refunds the bond’s sats to Instant payments, and its fees are not refunded.';
 
   @override
   String p2pPayConfirm(String total) {
@@ -1954,16 +1950,12 @@ class P2pLocalizationsZh extends P2pLocalizations {
   }
 
   @override
-  String get p2pPayHeld =>
-      'Your bond is locked. The sats of this bond are held by the swap service until the trade ends.';
-
-  @override
   String get p2pPayRefundPending =>
-      'Your bond was returned. The swap service is refunding the bond’s sats to Instant payments; its fees are not refunded.';
+      'Swap will be refunded shortly. The swap fees are not refunded.';
 
   @override
   String get p2pPayRefunded =>
-      'Refunded: the bond’s sats are back in Instant payments; the swap service’s fees are not refunded.';
+      'Swap has been refunded. The swap fees are not refunded.';
 
   @override
   String p2pPaySettled(String coordinator) {
@@ -1972,7 +1964,7 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pPayUnderReview =>
-      'The swap service is reviewing this payment. Your sats are with it; contact Bull Bitcoin support if it lasts.';
+      'Swap is under review. Contact Bull Bitcoin support if it lasts.';
 
   @override
   String get p2pPayInterrupted =>
@@ -1980,29 +1972,27 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pPayMaybeSent =>
-      'The payment may have been sent. The wallet is checking with the swap service.';
+      'The payment may have been sent. Its status will update shortly.';
 
   @override
   String get p2pPayAskSupport =>
-      'The swap service did not pay this bond, and the sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
+      'Swap failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
 
   @override
   String p2pPayUnderMinimum(String min) {
-    return 'This bond is under the swap service’s minimum of $min sats.';
+    return 'Amount below minimum swap limit: $min sats';
   }
 
   @override
-  String get p2pPayUnderMinimumUnknown =>
-      'This bond is under the swap service’s minimum.';
+  String get p2pPayUnderMinimumUnknown => 'Amount is below swap limits';
 
   @override
   String p2pPayOverMaximum(String max) {
-    return 'This bond is over the swap service’s maximum of $max sats.';
+    return 'Amount above maximum swap limit: $max sats';
   }
 
   @override
-  String get p2pPayOutsideLimits =>
-      'This bond is outside the swap service’s limits.';
+  String get p2pPayOutsideLimits => 'Amount is outside swap limits';
 
   @override
   String p2pPayNotEnough(String balance, String total) {
@@ -2010,10 +2000,11 @@ class P2pLocalizationsZh extends P2pLocalizations {
   }
 
   @override
-  String get p2pPayUnreachable => 'The swap service cannot be reached.';
+  String get p2pPayUnreachable =>
+      'Swap server is unavailable. Please try again later.';
 
   @override
-  String get p2pPayBusy => 'The swap service asks to wait before trying again.';
+  String get p2pPayBusy => 'Too many requests. Please try again later.';
 
   @override
   String get p2pPayTooLate =>
@@ -2039,11 +2030,10 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pPayServiceCouldNotPay =>
-      'The swap service could not pay this invoice. It is refunding the sats to Instant payments; its fees are not refunded.';
+      'Swap failed. Swap will be refunded shortly. The swap fees are not refunded.';
 
   @override
-  String get p2pPayWithSwapService =>
-      'The sats of this bond are with the swap service.';
+  String get p2pPayWithSwapService => 'Your swap is in progress.';
 
   @override
   String p2pPayCoordinatorUnreachable(String coordinator) {
@@ -2052,11 +2042,11 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pPayStillSending =>
-      'Still sending: the order is read again through Tor, then the swap service creates the payment. This can take a few minutes.';
+      'Still sending. This can take a few minutes.';
 
   @override
   String get p2pPayAskSupportSent =>
-      'The swap service did not pay this bond, and the sats of this bond left this wallet. Contact Bull Bitcoin support.';
+      'Swap failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
 
   @override
   String get p2pPayUnreadable =>
@@ -2064,5 +2054,17 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pPayCancelNote =>
-      'A payment of this bond is on its way from this wallet. Cancelling now costs the swap service’s fees, and its refund may take time.';
+      'A payment of this bond is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.';
+
+  @override
+  String get p2pPayServiceRefunded =>
+      'Swap failed. Swap has been refunded. The swap fees are not refunded.';
+
+  @override
+  String get p2pPayAskSupportExpired =>
+      'Swap expired. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String get p2pPayAskSupportExpiredSent =>
+      'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
 }

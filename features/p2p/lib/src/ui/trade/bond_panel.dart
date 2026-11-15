@@ -258,13 +258,17 @@ class _OtherWalletState extends State<_OtherWallet> {
                       ),
                     ],
                   ],
-                  // The reference's line on a hold invoice, which holds for another Lightning wallet only (this wallet pays through a swap service: its confirmation says what happens then).
-                  const Gap(BullSpacing.md),
-                  Text(
-                    l10n.p2pTradeHoldInvoiceBond,
-                    textAlign: TextAlign.center,
-                    style: text.labelMedium?.copyWith(color: colors.textMuted),
-                  ),
+                  // The reference's line on a hold invoice, word for word; not while this wallet quotes, confirms, sends or paid (its confirmation shows the same line), so that it is never on screen twice (#135).
+                  if (!widget.heldByWallet) ...[
+                    const Gap(BullSpacing.md),
+                    Text(
+                      l10n.p2pTradeHoldInvoiceBond,
+                      textAlign: TextAlign.center,
+                      style: text.labelMedium?.copyWith(
+                        color: colors.textMuted,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
