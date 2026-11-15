@@ -114,7 +114,7 @@ void main() {
     }) async {
       cancels?.add(seen);
       return Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen));
-    })..start();
+    }, lastStored: (_) => watch.lastStored)..start();
     addTearDown(cubit.close);
     final reads = FakeTransport();
     final page = TradeOrderPageCubit(
@@ -427,6 +427,7 @@ void main() {
             watch.call,
             (record, seen, {bondLoss}) async =>
                 Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
+            lastStored: (_) => watch.lastStored,
           ),
         )
         ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
@@ -506,6 +507,9 @@ final class _Watch {
   final _states = StreamController<TradeWatchState>.broadcast();
   int listens = 0;
 
+  /// The newest status marked stored it emitted: what `TradeReadOrder` holds of the run, as `WatchTradeUsecase.lastStored` gives it.
+  TradeSeen? lastStored;
+
   Stream<TradeWatchState> call(
     TradeRecord record, {
     Stream<TradeWatchSignal> signals = const Stream.empty(),
@@ -528,5 +532,10 @@ final class _Watch {
     return out.stream;
   }
 
-  void emit(TradeWatchState state) => _states.add(state);
+  void emit(TradeWatchState state) {
+    if (state case TradeWatchStatus(:final seen) when seen.stored) {
+      lastStored = seen;
+    }
+    _states.add(state);
+  }
 }

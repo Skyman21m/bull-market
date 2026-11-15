@@ -141,13 +141,18 @@ Future<TradeCubit> _show(
   TakeOrderCubit Function(PublicOrder order)? takeCubitFor,
   List<TradeRecord>? taken,
   DateTime Function()? now,
+  TradeLastStored? lastStored,
 }) async {
   tester.view
     ..physicalSize = size * 3
     ..devicePixelRatio = 3;
   addTearDown(tester.view.reset);
-  final cubit = TradeCubit(_record, watch.call, (cancels ?? _Cancels()).call)
-    ..start();
+  final cubit = TradeCubit(
+    _record,
+    watch.call,
+    (cancels ?? _Cancels()).call,
+    lastStored: lastStored,
+  )..start();
   addTearDown(cubit.close);
   final reads = transport ?? FakeTransport();
   final page = TradeOrderPageCubit(
@@ -1253,7 +1258,13 @@ void main() {
           order: null,
           stored: true,
         );
-        await _show(tester, watch: watch, state: _watched('bond'));
+        // The run's memory holds the bond step shown (#152): the newest status stored.
+        await _show(
+          tester,
+          watch: watch,
+          state: _watched('bond'),
+          lastStored: (_) => bond,
+        );
         expect(find.byType(QrImageView), findsOneWidget);
 
         watch.emit(TradeScreenStatuses.watched(restored));

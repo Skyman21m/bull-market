@@ -85,17 +85,20 @@ final class TradeReadOrder {
     final newest = _newest[record.robot] ??= _Newest(0);
     newest
       ..seen = seen
+      ..storedArrived = newest.arrived
       ..record = _furthest(newest.record, record);
   }
 
-  /// The newest status stored for [robot]'s trade in this process, with its record, while the trade goes on: what a trade screen shows again, at once, while its first read after a return is in flight (#152); `null` when none was stored in this run, or once the trade is at an end or its record closed (the end is shown from the stored trail, as before).
+  /// The newest status stored for [robot]'s trade in this process, with its record, while the trade goes on: what a trade screen shows again, at once, while its first read after a return is in flight (#152); `null` when none was stored in this run, when a newer answer was accepted and its trail not stored (its write failed, or another trail was kept over it), or once the trade is at an end or its record closed (the end is shown from the stored trail, as before).
   ///
   /// Memory only, as everything here: a restart of the app forgets it. It is the very status the trade's screen showed, no copy of a key or a token (an order keeps the hash id of the robot that read it, never its token).
   ({TradeRecord record, TradeSeen seen})? lastStored(RobotSlot robot) {
     final newest = _newest[robot];
     final record = newest?.record;
     final seen = newest?.seen;
-    if (record == null || seen == null) return null;
+    if (newest == null || record == null || seen == null) return null;
+    // A newer answer was claimed and its trail not stored (a write that failed, a trail kept over it): [seen] is older than what the trade was read at, and is given no more until a later answer is stored (review of #152).
+    if (newest.storedArrived != newest.arrived) return null;
     if (record.closedAt != null || seen.status.isTerminal) return null;
     return (record: record, seen: seen);
   }
@@ -161,6 +164,9 @@ final class _Newest {
   int arrived;
   TradeRecord? record;
   TradeSeen? seen;
+
+  /// [arrived] when [seen] was stored: another value means a newer answer was claimed and not stored.
+  int? storedArrived;
 
   _Newest(this.arrived);
 }

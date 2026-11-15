@@ -205,6 +205,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
   @visibleForTesting
   bool get watching => _subscription != null;
 
+  /// What [TradeLastStored] gives for this trade now, `null` without one: for the tests of the composition.
+  @visibleForTesting
+  TradeSeen? get lastStoredNow => _lastStored?.call(state.record);
+
   /// Starts following the trade: does nothing when it is already followed.
   void start() {
     if (isClosed || _subscription != null) return;
@@ -247,9 +251,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
     return null;
   }
 
-  /// [watch], or, when it is the stored trail's own status ([StatusUnknown]: the watch opened the trade anew, on the app's return or on a new screen, and its first read is not in, or has failed since) and that trail is the very one a status of this run was stored with, that status, with what [watch] says of its reads: the screen does not fall back to its wait for a status this run has already read, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, `models/Order.model.ts:264-281`) (#152).
+  /// [watch], or, when it is the stored trail's own status ([StatusUnknown]: the watch opened the trade anew, on the app's return or on a new screen, and its first read is not in, or has failed since) and that trail is the very one the newest status this run stored was stored with, that status, with what [watch] says of its reads: the screen does not fall back to its wait for a status this run has already read, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, `models/Order.model.ts:264-281`) (#152).
   ///
-  /// The status kept is the newest this run stored for the trade ([TradeLastStored]), else the one this screen shows: only a status marked [TradeSeen.stored] (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Nothing is sent from it alone: the actions read the order first, and « Cancel » sends that status's guard, as the reference cancels from the order it holds.
+  /// The status kept is the newest this run stored for the trade ([TradeLastStored]): every status marked [TradeSeen.stored] is stored there by `TradeReader.keep`, the status this screen shows included, so it is the only source, and it gives nothing once a newer answer was accepted and its trail not stored (review of #152). Only a status marked stored (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). Without [TradeLastStored], nothing is kept. The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Nothing is sent from it alone: the actions read the order first, and « Cancel » sends that status's guard, as the reference cancels from the order it holds.
   /// The watch's own status is never marked stored (`TradeReader.open` and `keep` give the trail's own status unmarked by design): requiring `stored` of it, as this did before, kept nothing.
   TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
     if (watch is! TradeWatchStatus ||
@@ -258,20 +262,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
       return watch;
     }
     final onDisk = watch.seen.status.trail;
-    bool storedWith(TradeSeen? candidate) =>
-        candidate != null &&
-        candidate.stored &&
-        candidate.status.position == onDisk.position &&
-        candidate.status.trail.readAt.microsecondsSinceEpoch ==
-            onDisk.readAt.microsecondsSinceEpoch;
-    final last = _lastStored?.call(state.record);
-    final shown = state.seen;
-    final kept = storedWith(last)
-        ? last
-        : storedWith(shown)
-        ? shown
-        : null;
-    if (kept == null) {
+    final kept = _lastStored?.call(state.record);
+    if (kept == null ||
+        !kept.stored ||
+        kept.status.position != onDisk.position ||
+        kept.status.trail.readAt.microsecondsSinceEpoch !=
+            onDisk.readAt.microsecondsSinceEpoch) {
       return watch;
     }
     return TradeWatchStatus(

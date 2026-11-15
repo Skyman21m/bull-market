@@ -293,6 +293,87 @@ void main() {
     );
   });
 
+  group('#152: after a write that failed, nothing older comes back (review)', () {
+    /// The bond step shown, then a read of 6 whose trail cannot be written: the screen shows the wait.
+    Future<(TradeHarness, TradeCubit)> failedWriteAtSix() async {
+      final (harness, cubit) = await taken();
+      await shownAt(harness, cubit, 3);
+      expect(
+        viewOf(cubit),
+        isA<TradeContract>().having((c) => c.payable, 'payable', isTrue),
+      );
+      harness.trails.storeFailure = const P2pStorageFailure();
+      harness.coordinator.lockBond(harness.robot(0));
+      cubit.signal(TradeWatchSignal.readNow);
+      await harness.settle();
+      expect(viewOf(cubit), isA<TradeWaiting>());
+      expect(harness.watch.lastStored(cubit.state.record), isNull);
+      return (harness, cubit);
+    }
+
+    test(
+      'then a return, the write working again and the first read held: the wait, never the bond step read before 6',
+      () async {
+        final (harness, cubit) = await failedWriteAtSix();
+        await cubit.suspend();
+        harness.trails.storeFailure = null;
+        final held = Completer<void>();
+        harness.coordinator.hold = held.future;
+        cubit.resume();
+        await harness.settle();
+        expect(viewOf(cubit), isA<TradeWaiting>());
+        held.complete();
+        harness.coordinator.hold = null;
+        await harness.settle();
+        expect(cubit.state.seen?.status, isA<WaitingForBoth>());
+        await cubit.close();
+      },
+    );
+
+    test(
+      'then a read that fails, with no return: the wait, never the bond step read before 6',
+      () async {
+        final (harness, cubit) = await failedWriteAtSix();
+        harness.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        cubit.signal(TradeWatchSignal.readNow);
+        await harness.settle();
+        final watch = cubit.state.watch;
+        expect(watch, isA<TradeWatchStatus>());
+        expect((watch! as TradeWatchStatus).failedReads, 1);
+        expect(viewOf(cubit), isA<TradeWaiting>());
+        await cubit.close();
+      },
+    );
+
+    test(
+      'once a later write succeeds, the memory is that status, and a return keeps it',
+      () async {
+        final (harness, cubit) = await failedWriteAtSix();
+        harness.trails.storeFailure = null;
+        cubit.signal(TradeWatchSignal.readNow);
+        await harness.settle();
+        final six = cubit.state.seen;
+        expect(six?.status, isA<WaitingForBoth>());
+        expect(harness.watch.lastStored(cubit.state.record), same(six));
+
+        await cubit.suspend();
+        final held = Completer<void>();
+        harness.coordinator.hold = held.future;
+        cubit.resume();
+        await harness.settle();
+        expect(cubit.state.seen, same(six));
+        expect(viewOf(cubit), isA<TradeContract>());
+        held.complete();
+        harness.coordinator.hold = null;
+        await harness.settle();
+        await cubit.close();
+      },
+    );
+  });
+
   group('#152: the trade opened again in the same run', () {
     test(
       'the trade\'s route left (the Wallet tab, or back) and opened again by « Order »: once the trade is opened from its records, the last status shown, never the first read\'s wait',
