@@ -9,6 +9,7 @@ import '../../trade/trade_answer.dart';
 import '../../trade/trade_chat_step.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -117,12 +118,17 @@ final class ChatStepActionUsecase {
     final robot = trade.robot;
     var current = trade;
     P2pFailure? problem;
-    Future<void> keep(TradeAnswer answer, {DateTime? requestedAt}) async {
+    Future<void> keep(
+      TradeAnswer answer, {
+      required RequestLeft sent,
+      bool keepsTime = false,
+    }) async {
       final step = await _reader.advance(
         current,
         answer,
         at: _reader.now(),
-        requestedAt: requestedAt,
+        sent: sent,
+        keepsTime: keepsTime,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -130,7 +136,7 @@ final class ChatStepActionUsecase {
 
     // The order as it is now, kept: the action leaves only if this read still offers it.
     tell?.call(ChatStepProgress.readingOrder);
-    final requestedAt = _reader.now();
+    final readLeft = _reader.requestLeaves();
     final TradeAnswer answer;
     switch (await _reader.readOrder(
       requests,
@@ -159,7 +165,8 @@ final class ChatStepActionUsecase {
       current,
       answer,
       at: _reader.now(),
-      requestedAt: requestedAt,
+      sent: readLeft,
+      keepsTime: true,
     );
     current = step.trade;
     problem ??= step.recordProblem;
@@ -184,6 +191,7 @@ final class ChatStepActionUsecase {
 
     // Sent once: never again by this use case, whatever the outcome.
     tell?.call(ChatStepProgress.sending);
+    final actionLeft = _reader.requestLeaves();
     final sent = await requests.send(
       record.network,
       trade.coordinator,
@@ -194,9 +202,9 @@ final class ChatStepActionUsecase {
     // The answer first, then a read after it.
     tell?.call(ChatStepProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
-      await keep(TradeOrderRead(value.order));
+      await keep(TradeOrderRead(value.order), sent: actionLeft);
     }
-    final readFrom = _reader.now();
+    final readFrom = _reader.requestLeaves();
     final read = await _reader.readOrder(
       requests,
       record,
@@ -205,7 +213,7 @@ final class ChatStepActionUsecase {
     );
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final after?) {
-        await keep(after, requestedAt: readFrom);
+        await keep(after, sent: readFrom, keepsTime: true);
       }
     }
     // The read after shows the action recorded (an earlier request that landed, or this one whose answer was lost or refused as busy after a late landing): done, whatever the answer said, so that no notice contradicts the status shown.

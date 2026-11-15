@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
+import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
@@ -368,6 +371,173 @@ void main() {
           isFalse,
         );
         await run.subscription.cancel();
+      },
+    );
+
+    /// Whether [seen] shows « fiat sent » (10).
+    bool fiatSentShown(TradeSeen seen) => switch (seen.status) {
+      Chatting(:final fiatSent) => fiatSent,
+      _ => false,
+    };
+
+    test(
+      'the watch\'s read sent at 9, answered after « fiat sent » stored 10: 10 stays, nothing is written, « Confirm … sent » is not offered again, no breach',
+      () async {
+        final (app, record, seen, run) = await watchedAt(9);
+        expect(fiatSentShown(seen), isFalse);
+        expect(ChatStepAction.confirmFiatSent.offeredAt(seen), isTrue);
+
+        // The watch's next read is answered at 9, and its answer held on the way back.
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.answerDelayed,
+        );
+        await app.elapse(const Duration(minutes: 1));
+
+        // Meanwhile « fiat sent »: its fresh read at 9, the action, the coordinator at 10, its read after at 10.
+        final confirmed = await app.chat.confirmFiatSent(record, seen);
+        final done = switch (confirmed) {
+          Ok(value: final ChatStepDone done) => done,
+          final other => fail('$other'),
+        };
+        expect(fiatSentShown(done.seen), isTrue);
+        expect(await positionOnDisk(app, record), 'fiatSent');
+        final trailBefore = switch (await app.trails.historyOf(record)) {
+          Ok(:final value) => value.trail,
+          Err(:final failure) => fail('$failure'),
+        };
+
+        // The watch's read at 9 arrives now, a second later: by the time of the answers alone, the edge back (10 → 9) would store it.
+        await app.elapse(const Duration(seconds: 1));
+        app.coordinator.deliverDelayed();
+        await app.settle();
+        final last = run.lastStatus;
+        expect(fiatSentShown(last.seen), isTrue);
+        expect(last.seen, same(done.seen));
+        expect(ChatStepAction.confirmFiatSent.offeredAt(last.seen), isFalse);
+        expect(last.seen.status.has<CoordinatorInconsistent>(), isFalse);
+        expect(await breachOnDisk(app, record), isFalse);
+        // Nothing written: the trail on disk is the one « fiat sent » stored.
+        final trailAfter = switch (await app.trails.historyOf(record)) {
+          Ok(:final value) => value.trail,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(trailAfter, trailBefore);
+        await run.subscription.cancel();
+      },
+    );
+
+    test(
+      '« fiat sent » that landed late, found by a second tap\'s read: the watch\'s read sent at 9 before it, answered after, never takes 10 back',
+      () async {
+        final (app, record, seen, run) = await watchedAt(9);
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.answerDelayed,
+        );
+        await app.elapse(const Duration(minutes: 1));
+
+        // The first tap: the action held up over Tor, its answer timed out; the read after still shows 9.
+        app.coordinator.failNext(
+          ScriptedRequest.confirm,
+          ScriptedFault.landsLate,
+        );
+        final first = await app.chat.confirmFiatSent(record, seen);
+        final unknown = switch (first) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(fiatSentShown(unknown.seen), isFalse);
+        // It lands now; the second tap's fresh read finds it recorded.
+        app.coordinator.landLate();
+        expect(app.coordinator.status, 10);
+        final second = await app.chat.confirmFiatSent(record, unknown.seen);
+        final done = switch (second) {
+          Ok(value: final ChatStepDone done) => done,
+          final other => fail('$other'),
+        };
+        expect(fiatSentShown(done.seen), isTrue);
+
+        // The watch's read, sent at 9 before both taps, arrives now.
+        await app.elapse(const Duration(seconds: 1));
+        app.coordinator.deliverDelayed();
+        await app.settle();
+        expect(fiatSentShown(run.lastStatus.seen), isTrue);
+        expect(
+          run.lastStatus.seen.status.has<CoordinatorInconsistent>(),
+          isFalse,
+        );
+        expect(await positionOnDisk(app, record), 'fiatSent');
+        await run.subscription.cancel();
+      },
+    );
+
+    test(
+      'a read of the trade that leaves between the payout and the payout\'s read after it, and answers after that read: the read after stays (its rank is its own, not the payout\'s)',
+      () async {
+        final (app, record, seen, run) = await watchedAt(8);
+        await run.subscription.cancel();
+        // An answer at 9, as the other read will give it (the coordinator at 9 once the payout is in).
+        app.coordinator.moveTo(9);
+        final atNine = await readNow(app, record);
+        app.coordinator.moveTo(8);
+
+        RequestLeft? otherLeft;
+        var payoutIn = false;
+        app.coordinator.onRequest = (request) {
+          final body = request.body;
+          final decoded = body == null ? null : jsonDecode(utf8.decode(body));
+          if (decoded is Map<String, Object?> &&
+              decoded['action'] == 'update_invoice') {
+            // The other read leaves now, after the payout and before its read after.
+            otherLeft = app.reader.requestLeaves();
+            payoutIn = true;
+          } else if (payoutIn &&
+              body == null &&
+              request.url.path.endsWith('/api/order/')) {
+            // The maker's side moves on before the payout's read after is answered: it reads 10.
+            app.coordinator.moveTo(10);
+          }
+        };
+        final invoice = Bolt11TestInvoice(
+          network: Bolt11Network.testnet,
+          sats: buyerSats,
+          seed: 943,
+          createdAt: app.now,
+          expiry: const Duration(days: 2),
+        );
+        app.coordinator.decoder.add(invoice);
+        final shown = switch (app.payout.check(
+          record,
+          seen,
+          PayoutInvoiceText(
+            invoice.text,
+            budget: RoutingBudgetPpm.of(0) ?? RoutingBudgetPpm.referenceDefault,
+          ),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('refused: $failure'),
+        };
+        final given = await app.payout.execute(record, shown);
+        app.coordinator.onRequest = null;
+        final after = switch (given) {
+          Ok(value: PayoutGiven(:final seen)) => seen,
+          final other => fail('$other'),
+        };
+        expect(after.status.position, TradePosition.fiatSent);
+        expect(otherLeft, isNotNull);
+
+        // The other read's answer at 9 comes now, after the read after.
+        await app.elapse(const Duration(seconds: 1));
+        final stale = await app.reader.advance(
+          await opened(app, record),
+          atNine,
+          at: app.now,
+          sent: otherLeft ?? fail('no read left'),
+        );
+        expect(stale.stored, isFalse);
+        expect(stale.trade.seen.status.position, TradePosition.fiatSent);
+        expect(await positionOnDisk(app, record), 'fiatSent');
       },
     );
   });
