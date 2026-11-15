@@ -3074,6 +3074,269 @@
       }
     }
   },
+  "p2pChatYouState": "You: {state}",
+  "@p2pChatYouState": {
+    "description": "The chat panel (#93): the reference's header, `t('You') + ': '` and the state (`ChatHeader/index.tsx`).",
+    "placeholders": {
+      "state": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatPeerState": "Peer: {state}",
+  "@p2pChatPeerState": {
+    "description": "The chat panel (#93): the reference's header, `t('Peer') + ': '` and the state (`ChatHeader/index.tsx`).",
+    "placeholders": {
+      "state": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatConnected": "connected",
+  "@p2pChatConnected": {
+    "description": "The chat panel (#93): the reference's (`ChatHeader/index.tsx`)."
+  },
+  "p2pChatDisconnected": "disconnected",
+  "@p2pChatDisconnected": {
+    "description": "The chat panel (#93): the reference's (`ChatHeader/index.tsx`)."
+  },
+  "p2pChatWaitingShort": "...waiting",
+  "@p2pChatWaitingShort": {
+    "description": "The chat panel (#93): the reference's, the peer's state while its key is not known (`ChatHeader/index.tsx`)."
+  },
+  "p2pChatTypeMessage": "Type a message",
+  "@p2pChatTypeMessage": {
+    "description": "The chat panel (#93): the reference's label of the field (`EncryptedApiChat/index.tsx`)."
+  },
+  "p2pChatWaitingForPeer": "Waiting for peer...",
+  "@p2pChatWaitingForPeer": {
+    "description": "The chat panel (#93): the reference's tooltip of the disabled send, also in place of a peer's message that waits for the peer's key; the reference leaves it untranslated in French: ours, with its word « Pair »."
+  },
+  "p2pChatSend": "Send",
+  "@p2pChatSend": {
+    "description": "The chat panel (#93): ours: the spoken name and tooltip of the send button, which in the reference has only an icon."
+  },
+  "p2pChatSignatureVerified": "Verified signature by {nickname}",
+  "@p2pChatSignatureVerified": {
+    "description": "The chat panel (#93): the reference's tooltip of a message's tick (`MessageCard/index.tsx`); the reference has no French for it: ours.",
+    "placeholders": {
+      "nickname": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSignatureUnverified": "Cannot verify signature of {nickname}",
+  "@p2pChatSignatureUnverified": {
+    "description": "The chat panel (#93): the reference's tooltip of a message's cross (`MessageCard/index.tsx`); the reference has no French for it: ours.",
+    "placeholders": {
+      "nickname": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatTokenBlocked": "Aye! You just sent your own robot token to your peer in chat, that's a catastrophic idea! So bad your message was blocked.",
+  "@p2pChatTokenBlocked": {
+    "description": "The chat panel (#93): the reference's alert when the text holds the robot's token (`EncryptedApiChat/index.tsx:210`, its « robot robot.token » read as « robot token »), not translated by the reference: ours in French."
+  },
+  "p2pChatGarageKeyBlocked": "This message holds your Garage Key, which controls all your robots. It will not be sent.",
+  "@p2pChatGarageKeyBlocked": {
+    "description": "The chat panel (#93): ours: the text holds a Garage Key, said as the user types."
+  },
+  "p2pChatTooLong": "This message is too long. Shorten it to send it.",
+  "@p2pChatTooLong": {
+    "description": "The chat panel (#93): ours: the text is over the coordinator's limit."
+  },
+  "p2pChatClosed": "Messages are not sent at this step.",
+  "@p2pChatClosed": {
+    "description": "The chat panel (#93): ours: the status shown is not one where a message is posted."
+  },
+  "p2pChatKeyChanged": "This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.",
+  "@p2pChatKeyChanged": {
+    "description": "The chat panel (#93): ours: one wording for a peer's key that changed after it was pinned and one that is not the peer's; also the greyed « Send »'s tooltip."
+  },
+  "p2pChatSending": "Sending the message to {coordinator}…",
+  "@p2pChatSending": {
+    "description": "The chat panel (#93): ours: the wait of a send.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatNotConfirmed": "Not confirmed by {coordinator}. It may still reach your peer.",
+  "@p2pChatNotConfirmed": {
+    "description": "The chat panel (#93): ours: a message whose post had no known outcome and that the chat does not show; never « not sent ».",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSendAgain": "Send again",
+  "@p2pChatSendAgain": {
+    "description": "The chat panel (#93): ours: sends a message not confirmed again, the user's tap only."
+  },
+  "p2pChatSendFailed": "The message was not sent. Try again.",
+  "@p2pChatSendFailed": {
+    "description": "The chat panel (#93): ours: the trade or the robot's key could not be opened; nothing left."
+  },
+  "p2pChatSendRefused": "{coordinator} did not take the message. Try again.",
+  "@p2pChatSendRefused": {
+    "description": "The chat panel (#93): ours: the coordinator refused the message before storing it.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatTradeMoved": "The message was not sent: the trade has moved on.",
+  "@p2pChatTradeMoved": {
+    "description": "The chat panel (#93): ours: the last read of the order no longer allows a message."
+  },
+  "p2pChatReadFailed": "Cannot read the chat from {coordinator}. Trying again…",
+  "@p2pChatReadFailed": {
+    "description": "The chat panel (#93): ours: the last read failed; the chat as it was stays shown.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatUnavailable": "The chat cannot be read on this device.",
+  "@p2pChatUnavailable": {
+    "description": "The chat panel (#93): ours: the trade or the robot's key could not be opened for a read."
+  },
+  "p2pChatHistoryTooLarge": "This chat is too long to be read from its first message.",
+  "@p2pChatHistoryTooLarge": {
+    "description": "The chat panel (#93): ours: the history from the start is over what a read takes."
+  },
+  "p2pChatReadNewer": "Read only the newer messages",
+  "@p2pChatReadNewer": {
+    "description": "The chat panel (#93): ours: the user's choice when the history is too long."
+  },
+  "p2pChatReading": "Reading the chat from {coordinator}…",
+  "@p2pChatReading": {
+    "description": "The chat panel (#93): ours: the first read of the chat (Tor, and the robot's key for the messages), until one succeeds or fails.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSkipAwaited": "Reading the newer messages…",
+  "@p2pChatSkipAwaited": {
+    "description": "The chat panel (#93): ours: « Read only the newer messages » chosen, waiting for a newer read of the order."
+  },
+  "p2pChatEarlierHidden": "Earlier messages are not shown.",
+  "@p2pChatEarlierHidden": {
+    "description": "The chat panel (#93): ours: after « Read only the newer messages »."
+  },
+  "p2pChatScreenPrivacyUnavailable": "Screen protection could not be turned on, so the chat stays hidden.",
+  "@p2pChatScreenPrivacyUnavailable": {
+    "description": "The chat panel (#93): the Garage's text, for the chat."
+  },
+  "p2pChatUnreadable": "This message cannot be read.",
+  "@p2pChatUnreadable": {
+    "description": "The chat panel (#93): ours: a message that is not encrypted, too long, or not for this robot."
+  },
+  "p2pChatMarkAfterGap": "A message may be missing before this one.",
+  "@p2pChatMarkAfterGap": {
+    "description": "The chat panel (#93): ours: a gap in the coordinator's numbering."
+  },
+  "p2pChatMarkRepeat": "This message was already shown above.",
+  "@p2pChatMarkRepeat": {
+    "description": "The chat panel (#93): ours: the same signed message at a second number."
+  },
+  "p2pChatMarkSentTwice": "You sent this message twice.",
+  "@p2pChatMarkSentTwice": {
+    "description": "The chat panel (#93): ours: a message this robot sent again after a post with no known outcome."
+  },
+  "p2pChatMarkOutOfOrder": "This message may be older than it looks.",
+  "@p2pChatMarkOutOfOrder": {
+    "description": "The chat panel (#93): ours: its signature is older than an earlier message of the same author."
+  },
+  "p2pChatAuditChat": "Audit Chat",
+  "@p2pChatAuditChat": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`); the reference leaves it untranslated in French: ours."
+  },
+  "p2pChatExport": "Export",
+  "@p2pChatExport": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`)."
+  },
+  "p2pChatAuditTitle": "Don't trust, verify",
+  "@p2pChatAuditTitle": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French."
+  },
+  "p2pChatAuditText": "Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.",
+  "@p2pChatAuditText": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's (`Dialogs/AuditPGP.tsx`)."
+  },
+  "p2pChatYourPublicKey": "Your public key",
+  "@p2pChatYourPublicKey": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's."
+  },
+  "p2pChatYourPublicKeyTooltip": "Your PGP public key. Your peer uses it to encrypt messages only you can read.",
+  "@p2pChatYourPublicKeyTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
+  },
+  "p2pChatPeerPublicKey": "Peer public key",
+  "@p2pChatPeerPublicKey": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's."
+  },
+  "p2pChatPeerPublicKeyTooltip": "Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.",
+  "@p2pChatPeerPublicKeyTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip (its English source, the English file's text having a typo)."
+  },
+  "p2pChatYourEncryptedPrivateKey": "Your encrypted private key",
+  "@p2pChatYourEncryptedPrivateKey": {
+    "description": "« Don't trust, verify » (#93): the reference's (`Dialogs/AuditPGP.tsx`)."
+  },
+  "p2pChatYourEncryptedPrivateKeyTooltip": "Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.",
+  "@p2pChatYourEncryptedPrivateKeyTooltip": {
+    "description": "« Don't trust, verify » (#93): the reference's tooltip."
+  },
+  "p2pChatPassphrase": "Your private key passphrase (keep secure!)",
+  "@p2pChatPassphrase": {
+    "description": "« Don't trust, verify » (#93): the reference's; the value shown is the robot's token."
+  },
+  "p2pChatPassphraseTooltip": "The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.",
+  "@p2pChatPassphraseTooltip": {
+    "description": "« Don't trust, verify » (#93): the reference's tooltip (its English source)."
+  },
+  "p2pChatAuditKeyFailed": "The key of your robot could not be read from {coordinator}.",
+  "@p2pChatAuditKeyFailed": {
+    "description": "« Don't trust, verify » (#93): ours, the payout panel's words: the robot's key could not be had for the export; with « Retry ».",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatFingerprint": "Fingerprint: {fingerprint}",
+  "@p2pChatFingerprint": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSaveKeys": "Keys",
+  "@p2pChatSaveKeys": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button; hands the public keys to the share sheet."
+  },
+  "p2pChatSaveKeysTooltip": "Save credentials as a JSON file",
+  "@p2pChatSaveKeysTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
+  },
+  "p2pChatSaveMessages": "Messages",
+  "@p2pChatSaveMessages": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button; hands the messages to the share sheet."
+  },
+  "p2pChatSaveMessagesTooltip": "Save messages as a JSON file",
+  "@p2pChatSaveMessagesTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
+  },
   "p2pPayoutWalletGenerateInvoice": "Generate Invoice",
   "@p2pPayoutWalletGenerateInvoice": {
     "description": "The wallet's slot of the payout panel (#90): the button of the Lightning tab, the wallet's own words for the same act (`receiveGenerateInvoice`, « Generate Invoice » / « Générer une facture »); the reference has no wallet."

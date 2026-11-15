@@ -11,7 +11,7 @@ import 'p2p_failure.dart';
 /// What ties the state the feature keeps about the robots of a Garage Key, such as the coordinator each robot index is bound to, to that key, without revealing it.
 ///
 /// It is the HMAC-SHA256, keyed by the token of the first robot of the key whose token derives, from index 0, of a text that names this use.
-/// The token never leaves the device: a coordinator receives only its SHA-256, and publishes the hash id, so no coordinator can compute the fingerprint.
+/// No coordinator receives the token: it receives only its SHA-256, and publishes the hash id, so no coordinator can compute the fingerprint. (The token leaves the app only when the user exports a chat, as the reference's export holds it, #93.)
 /// The fingerprint does not give the token back, and the text keeps it apart from every value RoboSats derives from a token.
 /// It is the same for the same key on both networks, as the robots' tokens are (`GarageKey.deriveToken` takes no network): so a robot index has one binding, whatever the network.
 /// It is not secret, but it lets whoever holds the key, or a robot token, recognise the database: it is not printed.
