@@ -1315,7 +1315,7 @@ void main() {
               'swap_allowed': true,
               'swap_failure_reason': null,
               'suggested_mining_fee_rate': 40,
-              'swap_fee_rate': 0.75,
+              'swap_fee_rate': 1.5,
             },
           ),
           after: const Duration(seconds: 31),
@@ -1346,18 +1346,21 @@ void main() {
         expect(
           (cubit.state.address as Ok<CheckedPayout, PayoutCheckRefusal>?)
               ?.value,
-          isA<CheckedPayoutAddress>().having(
-            (a) => a.rate,
-            'rate',
-            MiningFeeRate.of(3.5),
-          ),
+          isA<CheckedPayoutAddress>()
+              .having((a) => a.rate, 'rate', MiningFeeRate.of(3.5))
+              .having((a) => a.swapFeePercent, 'swap fee', 0.75),
         );
+        expect(cubit.state.seen, same(sixSwap));
         gate.complete();
         await running;
         // Applied once the payout told something; the rate, taken once, stays.
         expect(cubit.state.seen, same(later));
         expect(cubit.state.rate, MiningFeeRate.of(3.5));
-        expect(cubit.state.submittable(PayoutKind.onchain), isNotNull);
+        expect(
+          (cubit.state.submittable(PayoutKind.onchain) as CheckedPayoutAddress?)
+              ?.swapFeePercent,
+          1.5,
+        );
       },
     );
 
@@ -1744,6 +1747,35 @@ void main() {
         },
       );
     }
+
+    test(
+      'a payout received: the outcome is dated when it came back, not by the read after it (second security review of #132)',
+      () async {
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
+        final cubit = cubitOf(sender)
+          ..show(six)
+          ..editInvoice(invoice.text);
+        await cubit.submitShown(PayoutKind.lightning);
+        final stale = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(6),
+          after: const Duration(minutes: 2),
+        );
+        // Sent after the read after the payout (at 7), but before the outcome came back: still not after it.
+        cubit.show(
+          TradeSeen(
+            stale.status,
+            order: stale.order,
+            stored: true,
+            requestedAt: seven.status.seenAt.add(
+              const Duration(milliseconds: 500),
+            ),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+      },
+    );
 
     testWidgets(
       'a payout received at 8, the read after it at 9: said, not « does not ask »',
