@@ -2411,10 +2411,10 @@ abstract class P2pLocalizations {
   /// **'Wait until the order is read again before cancelling.'**
   String get p2pTradeCancelNeedsRead;
 
-  /// Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9).
+  /// Not in the RoboSats texts: the project's own: a cancel asked at 8, where the coordinator takes only a collaborative cancel and the reference offers it from the chat only (#95); no screen offers a cancel at 8.
   ///
   /// In en, this message translates to:
-  /// **'Only a collaborative cancel is possible now, which comes in a later version.'**
+  /// **'At this step only a collaborative cancel exists, which RoboSats offers from the chat.'**
   String get p2pTradeCancelOnlyTogether;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1021 (`api/errors.py`); the French is the project's.
@@ -3547,11 +3547,149 @@ abstract class P2pLocalizations {
     String currencyCode,
   );
 
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:228-237`): the buyer's button at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Payment failed?'**
+  String get p2pEndPaymentFailed;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Revert the confirmation of fiat sent?'**
+  String get p2pEndUndoTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (« » and non-breaking spaces) (`Dialogs/ConfirmUndoFiatSent.tsx`), in full (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.'**
+  String get p2pEndUndoText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`): the button that sends, off for 60 seconds from the dialog's opening, {time} the seconds left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait ({time})'**
+  String p2pEndWaitCountdown(String time);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative cancel the order?'**
+  String get p2pEndCollabTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.'**
+  String get p2pEndCollabText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), after the text when the peer asked (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer has asked for cancellation'**
+  String get p2pEndCollabPeerAsked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), the reference's spelling (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Accept Cancelation'**
+  String get p2pEndCollabAccept;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for Cancel'**
+  String get p2pEndCollabAsk;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`): {nickname} is the peer's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{nickname} is asking for a collaborative cancel'**
+  String p2pEndCollabPeerAlert(String nickname);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'You asked for a collaborative cancellation'**
+  String get p2pEndCollabAskedAlert;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:262`): the dialog behind « … » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Order options'**
+  String get p2pEndOrderOptions;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:345`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative Cancel'**
+  String get p2pEndCollabCancel;
+
+  /// The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Orders can\'t be cancelled if fiat has been sent.'**
+  String get p2pEndCollabAfterFiat;
+
+  /// Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your request to {coordinator}…'**
+  String p2pEndStepSendingRequest(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: your request was not sent.'**
+  String get p2pEndTradeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: the answer of « Payment failed? » was lost; nothing is sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your request went through. It keeps checking.'**
+  String get p2pEndUnknownRequest;
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it, the order no longer at 10 (1031) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: {coordinator} did not record your request.'**
+  String p2pEndRequestNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it before acting (1030, 1047, the empty 400, the authentication's) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not record your request.'**
+  String p2pEndRequestRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » never left; {reason} says why (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} Your request was not sent.'**
+  String p2pEndRequestNotDoneAfter(String reason);
+
   /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, the confirmation never left (#95).
   ///
   /// In en, this message translates to:
   /// **'{coordinator} is offline: your confirmation was not sent.'**
   String p2pEndOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: your request was not sent.'**
+  String p2pEndRequestOffline(String coordinator);
+
+  /// The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'open options'**
+  String get p2pEndOpenOptions;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95), plural-aware.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}'**
+  String p2pEndWaitSeconds(int seconds);
 
   /// The chat panel (#93): the reference's header, `t('You') + ': '` and the state (`ChatHeader/index.tsx`).
   ///

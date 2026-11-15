@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
+import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
@@ -247,7 +248,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         text: kind.toText(context, coordinator: coordinator),
                         waits: kind == TradeMessageKind.takePending,
                         notice: switch (state.chatStep) {
-                          ChatStepIdle(:final notice?) => notice,
+                          ChatStepIdle(:final notice?, :final action) => (
+                            notice,
+                            action,
+                          ),
                           _ => null,
                         },
                         coordinator: coordinator,
@@ -293,6 +297,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         offersFiatSent: context
                             .read<TradeCubit>()
                             .offersFiatSent,
+                        offersUndoFiatSent: context
+                            .read<TradeCubit>()
+                            .offersUndoFiatSent,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
@@ -374,7 +381,7 @@ class _Message extends StatelessWidget {
   final bool waits;
 
   /// What an action of the chat step gave, when the order it was sent for is now shown as a message (cancelled, ended): said under it, as the reference says its `bad_request` whatever the status (#95).
-  final ChatStepNotice? notice;
+  final (ChatStepNotice, ChatStepAction)? notice;
   final String coordinator;
 
   const _Message({
@@ -407,9 +414,13 @@ class _Message extends StatelessWidget {
             const Gap(BullSpacing.md),
             LinearProgressIndicator(color: colors.primary),
           ],
-          if (notice case final notice?) ...[
+          if (notice case (final notice, final action)) ...[
             const Gap(BullSpacing.md),
-            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
           ],
         ],
       ),
@@ -427,6 +438,7 @@ class _Contract extends StatelessWidget {
   final TradeCancelState cancel;
   final ChatStepState chatStep;
   final bool offersFiatSent;
+  final bool offersUndoFiatSent;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
@@ -442,6 +454,7 @@ class _Contract extends StatelessWidget {
     required this.cancel,
     required this.chatStep,
     required this.offersFiatSent,
+    required this.offersUndoFiatSent,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
@@ -468,9 +481,29 @@ class _Contract extends StatelessWidget {
     );
     final step = contract.step;
     final warnings = warningsOf(status, now: now);
+    // The reference's alert of a collaborative cancel, above the title, at 9 only (`TradeBox/CollabCancelAlert.tsx`): the peer's ask, or this robot's.
+    final collabAlert = switch ((status, contract.order)) {
+      (Chatting(fiatSent: false, peerAskedToCancel: true), final order?) =>
+        l10n.p2pEndCollabPeerAlert(order.maker.nickname),
+      // A status kept from no order (a read refused as a whole): no nickname to name, so the reference's own words for the peer's ask (`Dialogs/ConfirmCollabCancel.tsx`).
+      (Chatting(fiatSent: false, peerAskedToCancel: true), null) =>
+        l10n.p2pEndCollabPeerAsked,
+      (Chatting(fiatSent: false, askedToCancel: true), _) =>
+        l10n.p2pEndCollabAskedAlert,
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (collabAlert != null) ...[
+          _Line(
+            collabAlert,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+            live: true,
+          ),
+          const Gap(BullSpacing.md),
+        ],
         // The title is what a screen reader reads out when the status changes, rather than each line of the panel.
         Semantics(
           container: true,
@@ -520,9 +553,13 @@ class _Contract extends StatelessWidget {
         _prompt(context, status),
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it.
         if (contract.prompt != TradePrompt.chat)
-          if (chatStep case ChatStepIdle(:final notice?)) ...[
+          if (chatStep case ChatStepIdle(:final notice?, :final action)) ...[
             const Gap(BullSpacing.md),
-            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
           ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
@@ -601,8 +638,11 @@ class _Contract extends StatelessWidget {
         order: order,
         coordinator: coordinator,
         chatStep: chatStep,
-        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        cancel: cancel,
+        otherActionRunning: moneyActionRunning,
         offersFiatSent: offersFiatSent,
+        offersUndoFiatSent: offersUndoFiatSent,
+        offersCollaborativeCancel: true,
         // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
         chat: chat == null
             ? null
@@ -758,6 +798,7 @@ class _CancelRowState extends State<_CancelRow> {
         : null;
     try {
       // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
+      // A status kept while the trade is opened anew (#152) is cancelled as the reference cancels from the order it holds (`TradeBox/index.tsx:244-253`): the request carries that status's guard, which the coordinator refuses for another status (1020).
       if (seen.order == null) {
         await cubit.cancel(seen);
         return;

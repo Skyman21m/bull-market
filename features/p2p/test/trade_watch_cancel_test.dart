@@ -470,7 +470,7 @@ void main() {
     });
 
     test(
-      'with the escrow locked, only together (a later slice); with no order seen, a read first',
+      'at 8, only together, which the reference offers from the chat only; with no order seen, a read first',
       () async {
         final (app, record) = await takenTrade();
         final run = app.watchOf(record);

@@ -24,12 +24,16 @@ import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
+import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/testing.dart'
     show hasGarageKeysForTesting, hasP2pDatabaseForTesting;
 import 'package:robosats/robosats.dart' show Federation;
 import 'package:secrets/secrets.dart' show Secrets;
 import 'package:secrets/testing.dart';
+
+import 'support/trade_screens.dart';
 
 /// What `P2pFeature.setup` registers with and without the vault's Garage Key handle and the directory of the feature's database, and the use-cases it registers, run over the real vault on its in-memory keystore and a real database in a temporary directory.
 void main() {
@@ -128,6 +132,24 @@ void main() {
     expect(locator.isRegistered<P2pFacade>(), isFalse);
     expect(directoryAsked, 0);
   });
+
+  test(
+    'with both, the trade screen\'s cubit is given the run\'s memory of each trade (#152): the newest status stored, through `WatchTradeUsecase.lastStored`',
+    () async {
+      setUpWithGarage();
+      final record = TradeScreenStatuses.record;
+      final bond = await (await TradeScreenStatuses.make()).bondStep();
+      final order = locator<TradeReadOrder>();
+      final times = order.request();
+      await order.send(times, DateTime.now(), () async {});
+      expect(order.claim(record.robot, times), isNull);
+      order.stored(record, bond);
+
+      final cubit = locator<TradeCubit>(param1: record);
+      addTearDown(cubit.close);
+      expect(cubit.lastStoredNow, same(bond));
+    },
+  );
 
   test('with both, the database is one object, so one connection (#128)', () {
     setUpWithGarage();
