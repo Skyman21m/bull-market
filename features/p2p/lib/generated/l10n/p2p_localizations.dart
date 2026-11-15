@@ -3613,10 +3613,10 @@ abstract class P2pLocalizations {
   /// **'Aye! You just sent your own robot token to your peer in chat, that\'s a catastrophic idea! So bad your message was blocked.'**
   String get p2pChatTokenBlocked;
 
-  /// The chat panel (#93): ours: the text holds a Garage Key.
+  /// The chat panel (#93): ours: the text holds a Garage Key, said as the user types.
   ///
   /// In en, this message translates to:
-  /// **'This message holds your Garage Key, which controls all your robots. It was not sent.'**
+  /// **'This message holds your Garage Key, which controls all your robots. It will not be sent.'**
   String get p2pChatGarageKeyBlocked;
 
   /// The chat panel (#93): ours: the text is over the coordinator's limit.
@@ -3631,17 +3631,11 @@ abstract class P2pLocalizations {
   /// **'Messages are not sent at this step.'**
   String get p2pChatClosed;
 
-  /// The chat panel (#93): ours: the peer's key is not the one pinned at the first read.
+  /// The chat panel (#93): ours: one wording for a peer's key that changed after it was pinned and one that is not the peer's; also the greyed « Send »'s tooltip.
   ///
   /// In en, this message translates to:
-  /// **'Your peer’s public key changed during this trade, so nothing more is sent in this chat.'**
+  /// **'This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.'**
   String get p2pChatKeyChanged;
-
-  /// The chat panel (#93): ours: the key given is not named after the peer.
-  ///
-  /// In en, this message translates to:
-  /// **'{coordinator} gave a public key that is not your peer’s, so nothing is sent in this chat.'**
-  String p2pChatKeyMisnamed(String coordinator);
 
   /// The chat panel (#93): ours: the wait of a send.
   ///
@@ -3703,10 +3697,16 @@ abstract class P2pLocalizations {
   /// **'Read only the newer messages'**
   String get p2pChatReadNewer;
 
-  /// The chat panel (#93): ours: « Read only the newer messages » chosen while the order shown was read before those messages; the skip is done at the next read of the order.
+  /// The chat panel (#93): ours: the first read of the chat (Tor, and the robot's key for the messages), until one succeeds or fails.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for the next read of the order…'**
+  /// **'Reading the chat from {coordinator}…'**
+  String p2pChatReading(String coordinator);
+
+  /// The chat panel (#93): ours: « Read only the newer messages » chosen, waiting for a newer read of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the newer messages…'**
   String get p2pChatSkipAwaited;
 
   /// The chat panel (#93): ours: after « Read only the newer messages ».
@@ -3748,7 +3748,7 @@ abstract class P2pLocalizations {
   /// The chat panel (#93): ours: its signature is older than an earlier message of the same author.
   ///
   /// In en, this message translates to:
-  /// **'This message was signed before an earlier one.'**
+  /// **'This message may be older than it looks.'**
   String get p2pChatMarkOutOfOrder;
 
   /// « Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`); the reference leaves it untranslated in French: ours.
@@ -3822,6 +3822,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.'**
   String get p2pChatPassphraseTooltip;
+
+  /// « Don't trust, verify » (#93): ours, the payout panel's words: the robot's key could not be had for the export; with « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'The key of your robot could not be read from {coordinator}.'**
+  String p2pChatAuditKeyFailed(String coordinator);
 
   /// « Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).
   ///

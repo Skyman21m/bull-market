@@ -156,7 +156,8 @@ class ChatCubit extends Cubit<ChatPanelState> {
   void show(TradeSeen seen) {
     final changed = !identical(seen, _seen);
     _seen = seen;
-    if (changed && state.skipAwaited) readNewerOnly();
+    // Only while active: hidden, the skip waits for [activate] (review of #93).
+    if (changed && state.skipAwaited && _timer != null) readNewerOnly();
   }
 
   /// The panel is shown, the app in the foreground: the key held, the chat read now and every [pollEvery]. A second call does nothing.
@@ -164,7 +165,11 @@ class ChatCubit extends Cubit<ChatPanelState> {
     if (isClosed || _timer != null) return;
     _hold ??= _holdKey(record);
     _timer = Timer.periodic(_pollEvery, (_) => unawaited(_poll()));
-    unawaited(_poll());
+    if (state.skipAwaited) {
+      readNewerOnly();
+    } else {
+      unawaited(_poll());
+    }
   }
 
   /// The panel left, the app hidden or paused, or another tab shown: no more reads, the key let go. A second call does nothing.
@@ -178,7 +183,8 @@ class ChatCubit extends Cubit<ChatPanelState> {
 
   Future<void> _poll() async {
     final seen = _seen;
-    if (isClosed || _reading || seen == null) return;
+    // Never while inactive: nothing is shown, so nothing is read and no key is leased (review of #93).
+    if (isClosed || _reading || seen == null || _timer == null) return;
     _reading = true;
     try {
       final read = await _read(record, seen);
@@ -265,13 +271,6 @@ class ChatCubit extends Cubit<ChatPanelState> {
         Ok(:final value) => value,
         Err() => null,
       };
-
-  /// The fingerprint of the peer's key pinned for the trade, kept after a breach; `null` before one is known.
-  String? get pinnedPeerFingerprint => switch (state.view.peerKey) {
-    ChatPeerKeyPinned(:final key) => key.fingerprint,
-    ChatPeerKeyBreach(:final pinned) => pinned?.fingerprint,
-    ChatPeerKeyAwaited() => null,
-  };
 
   /// What « Export » copies on a phone, as the reference does (`utils/saveFile.ts`: `JSON.stringify(data, null, 2)` to the clipboard).
   static String exportText(Map<String, Object?> exported) =>

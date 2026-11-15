@@ -2223,7 +2223,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pChatGarageKeyBlocked =>
-      'This message holds your Garage Key, which controls all your robots. It was not sent.';
+      'This message holds your Garage Key, which controls all your robots. It will not be sent.';
 
   @override
   String get p2pChatTooLong =>
@@ -2234,12 +2234,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pChatKeyChanged =>
-      'Your peer’s public key changed during this trade, so nothing more is sent in this chat.';
-
-  @override
-  String p2pChatKeyMisnamed(String coordinator) {
-    return '$coordinator gave a public key that is not your peer’s, so nothing is sent in this chat.';
-  }
+      'This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.';
 
   @override
   String p2pChatSending(String coordinator) {
@@ -2282,7 +2277,12 @@ class P2pLocalizationsFa extends P2pLocalizations {
   String get p2pChatReadNewer => 'Read only the newer messages';
 
   @override
-  String get p2pChatSkipAwaited => 'Waiting for the next read of the order…';
+  String p2pChatReading(String coordinator) {
+    return 'Reading the chat from $coordinator…';
+  }
+
+  @override
+  String get p2pChatSkipAwaited => 'Reading the newer messages…';
 
   @override
   String get p2pChatEarlierHidden => 'Earlier messages are not shown.';
@@ -2305,7 +2305,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String get p2pChatMarkOutOfOrder =>
-      'This message was signed before an earlier one.';
+      'This message may be older than it looks.';
 
   @override
   String get p2pChatAuditChat => 'Audit Chat';
@@ -2347,6 +2347,11 @@ class P2pLocalizationsFa extends P2pLocalizations {
   @override
   String get p2pChatPassphraseTooltip =>
       'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.';
+
+  @override
+  String p2pChatAuditKeyFailed(String coordinator) {
+    return 'The key of your robot could not be read from $coordinator.';
+  }
 
   @override
   String p2pChatFingerprint(String fingerprint) {

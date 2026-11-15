@@ -426,7 +426,8 @@ final class TradeChat {
     return {
       'credentials': {
         'own_public_key': own.armored,
-        'peer_public_key': pinned?.armored,
+        // Left out before the peer's key is known, as the reference leaves `peerPubKey` undefined.
+        'peer_public_key': ?pinned?.armored,
         'encrypted_private_key': encryptedPrivateKey,
         'passphrase': passphrase,
       },

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show PgpPublicKey;
 import 'package:screen_privacy/screen_privacy.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
@@ -24,31 +26,88 @@ Future<bool> _copy(String text) async {
 class ChatAuditButton extends StatelessWidget {
   final ChatCubit cubit;
 
-  const ChatAuditButton({super.key, required this.cubit});
+  /// The long alias of the trade's coordinator, for the waits.
+  final String coordinator;
+
+  const ChatAuditButton({
+    super.key,
+    required this.cubit,
+    required this.coordinator,
+  });
 
   @override
   Widget build(BuildContext context) => TradeButton(
     label: P2pLocalizations.of(context).p2pChatAuditChat,
     icon: Icons.key,
-    onPressed: () => unawaited(ChatAuditDialog.show(context, cubit: cubit)),
+    onPressed: () => unawaited(
+      ChatAuditDialog.show(
+        context,
+        exported: cubit.exported,
+        coordinator: coordinator,
+      ),
+    ),
+  );
+}
+
+/// The reference's « Copied! », read out, under what was copied: ours for the buttons, whose reference copies without a sign.
+class _CopiedLine extends StatelessWidget {
+  const _CopiedLine();
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    child: Text(
+      P2pLocalizations.of(context).p2pCommonCopied,
+      textAlign: TextAlign.center,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: context.bull.textMuted),
+    ),
   );
 }
 
 /// « Export » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx:288`): on a phone the reference copies `complete_log_chat_<order id>.json` to the clipboard (`utils/saveFile.ts`), and so does this button: the keys, the encrypted private key, its passphrase, which is the robot's token, and the messages (the owner's choice, as the reference). The dialog of the chat step's options (#95) places it.
-class ChatExportButton extends StatelessWidget {
+class ChatExportButton extends StatefulWidget {
   final ChatCubit cubit;
 
   const ChatExportButton({super.key, required this.cubit});
 
   @override
-  Widget build(BuildContext context) => TradeButton(
-    label: P2pLocalizations.of(context).p2pChatExport,
-    icon: Icons.ios_share,
-    onPressed: () async {
-      if (await cubit.exported() case final exported?) {
-        await _copy(ChatCubit.exportText(exported));
-      }
-    },
+  State<ChatExportButton> createState() => _ChatExportButtonState();
+}
+
+class _ChatExportButtonState extends State<ChatExportButton> {
+  bool _busy = false;
+  bool _copied = false;
+
+  Future<void> _export() async {
+    setState(() {
+      _busy = true;
+      _copied = false;
+    });
+    final exported = await widget.cubit.exported();
+    final copied =
+        exported != null && await _copy(ChatCubit.exportText(exported));
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _copied = copied;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TradeButton(
+        label: P2pLocalizations.of(context).p2pChatExport,
+        icon: Icons.ios_share,
+        busy: _busy,
+        onPressed: _busy ? null : () => unawaited(_export()),
+      ),
+      if (_copied) const _CopiedLine(),
+    ],
   );
 }
 
@@ -56,16 +115,28 @@ class ChatExportButton extends StatelessWidget {
 ///
 /// Beyond the reference: each public key's fingerprint in groups of four, to compare with the peer outside the app (the rules of #92); the dialog is protected from screen capture as the Garage is, since it shows the token, and draws nothing until the protection is on; its link « Learn how to verify » is not shown (the trade screens open no link).
 class ChatAuditDialog extends StatefulWidget {
-  final ChatCubit cubit;
+  /// The export it shows: [ChatCubit.exported], or `null` when it could not be made.
+  final Future<Map<String, Object?>?> Function() exported;
 
-  const ChatAuditDialog({super.key, required this.cubit});
+  /// The long alias of the trade's coordinator, for the waits.
+  final String coordinator;
 
-  /// Opens it for the chat of [cubit].
-  static Future<void> show(BuildContext context, {required ChatCubit cubit}) =>
-      BullDialog.show<void>(
-        context: context,
-        builder: (_) => ChatAuditDialog(cubit: cubit),
-      );
+  const ChatAuditDialog({
+    super.key,
+    required this.exported,
+    required this.coordinator,
+  });
+
+  /// Opens it over [exported], made when it opens and again on « Retry ».
+  static Future<void> show(
+    BuildContext context, {
+    required Future<Map<String, Object?>?> Function() exported,
+    required String coordinator,
+  }) => BullDialog.show<void>(
+    context: context,
+    builder: (_) =>
+        ChatAuditDialog(exported: exported, coordinator: coordinator),
+  );
 
   @override
   State<ChatAuditDialog> createState() => _ChatAuditDialogState();
@@ -73,7 +144,10 @@ class ChatAuditDialog extends StatefulWidget {
 
 class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
   late Future<bool> _protection = enableScreenPrivacy();
-  late Future<Map<String, Object?>?> _exported = widget.cubit.exported();
+  late Future<Map<String, Object?>?> _exported = widget.exported();
+
+  /// What « Keys » or « Messages » copied last, for its « Copied! ».
+  String? _copied;
 
   @override
   void dispose() {
@@ -84,26 +158,39 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
   Widget _failure(BuildContext context, String text, VoidCallback onRetry) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          text,
-          textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: colors.error),
-        ),
-        const Gap(BullSpacing.sm),
-        TradeButton(
-          label: l10n.p2pCommonRetry,
-          outlined: true,
-          onPressed: onRetry,
-        ),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.error),
+          ),
+          const Gap(BullSpacing.sm),
+          TradeButton(
+            label: l10n.p2pCommonRetry,
+            outlined: true,
+            onPressed: onRetry,
+          ),
+        ],
+      ),
     );
   }
+
+  Widget _title(BuildContext context) => Semantics(
+    container: true,
+    header: true,
+    child: Text(
+      P2pLocalizations.of(context).p2pChatAuditTitle,
+      style: Theme.of(
+        context,
+      ).textTheme.titleLarge?.copyWith(color: context.bull.onSurface),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -111,8 +198,9 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
     return FutureBuilder<bool>(
       future: _protection,
       builder: (context, protection) {
+        // The title while the screen's protection turns on: nothing secret is drawn before it.
         if (protection.connectionState != ConnectionState.done) {
-          return const SizedBox.shrink();
+          return _title(context);
         }
         if (protection.data != true) {
           return _failure(
@@ -127,15 +215,41 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
           future: _exported,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
+              // The robot's key is unlocked for the encrypted private key: the payout panel's words for that wait.
+              return SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _title(context),
+                    const Gap(BullSpacing.md),
+                    Center(
+                      child: CircularProgressIndicator(
+                        color: context.bull.primary,
+                      ),
+                    ),
+                    const Gap(BullSpacing.sm),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        l10n.p2pPayoutStepUnlocking(widget.coordinator),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: context.bull.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
             }
             final exported = snapshot.data;
             if (exported == null) {
               return _failure(
                 context,
-                l10n.p2pChatUnavailable,
+                l10n.p2pChatAuditKeyFailed(widget.coordinator),
                 () => setState(() {
-                  _exported = widget.cubit.exported();
+                  _exported = widget.exported();
                 }),
               );
             }
@@ -145,6 +259,20 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
       },
     );
   }
+
+  Future<void> _copyPart(String part, String text) async {
+    final copied = await _copy(text);
+    if (copied && mounted) setState(() => _copied = part);
+  }
+
+  /// The fingerprint of an armored public key of the export, as soon as the dialog has it; `null` when it cannot be read.
+  static String? _fingerprintOf(String? armored) => switch (armored) {
+    final armored? => switch (PgpPublicKey.parse(armored)) {
+      Ok(:final value) => value.fingerprint,
+      Err() => null,
+    },
+    null => null,
+  };
 
   Widget _body(BuildContext context, Map<String, Object?> exported) {
     final l10n = P2pLocalizations.of(context);
@@ -167,14 +295,7 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(
-            container: true,
-            header: true,
-            child: Text(
-              l10n.p2pChatAuditTitle,
-              style: styles.titleLarge?.copyWith(color: colors.onSurface),
-            ),
-          ),
+          _title(context),
           const Gap(BullSpacing.sm),
           Text(
             l10n.p2pChatAuditText,
@@ -186,7 +307,7 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
               label: l10n.p2pChatYourPublicKey,
               tooltip: l10n.p2pChatYourPublicKeyTooltip,
               value: own,
-              fingerprint: widget.cubit.state.view.ownKey?.fingerprint,
+              fingerprint: _fingerprintOf(own),
             ),
           if (peer != null) ...[
             const Gap(BullSpacing.sm),
@@ -194,7 +315,7 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
               label: l10n.p2pChatPeerPublicKey,
               tooltip: l10n.p2pChatPeerPublicKeyTooltip,
               value: peer,
-              fingerprint: widget.cubit.pinnedPeerFingerprint,
+              fingerprint: _fingerprintOf(peer),
             ),
           ],
           if (private != null) ...[
@@ -203,6 +324,7 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
               label: l10n.p2pChatYourEncryptedPrivateKey,
               tooltip: l10n.p2pChatYourEncryptedPrivateKeyTooltip,
               value: private,
+              secret: true,
             ),
           ],
           if (passphrase != null) ...[
@@ -211,6 +333,7 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
               label: l10n.p2pChatPassphrase,
               tooltip: l10n.p2pChatPassphraseTooltip,
               value: passphrase,
+              secret: true,
             ),
           ],
           const Gap(BullSpacing.md),
@@ -222,8 +345,9 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
                   child: TradeButton(
                     label: l10n.p2pChatSaveKeys,
                     icon: Icons.key,
-                    onPressed: () =>
-                        unawaited(_copy(ChatCubit.keysText(exported))),
+                    onPressed: () => unawaited(
+                      _copyPart('keys', ChatCubit.keysText(exported)),
+                    ),
                   ),
                 ),
               ),
@@ -234,13 +358,15 @@ class _ChatAuditDialogState extends State<ChatAuditDialog> with PrivacyScreen {
                   child: TradeButton(
                     label: l10n.p2pChatSaveMessages,
                     icon: Icons.forum,
-                    onPressed: () =>
-                        unawaited(_copy(ChatCubit.messagesText(exported))),
+                    onPressed: () => unawaited(
+                      _copyPart('messages', ChatCubit.messagesText(exported)),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
+          if (_copied != null) const _CopiedLine(),
           const Gap(BullSpacing.sm),
           TradeButton(
             label: l10n.p2pCommonGoBack,
@@ -260,11 +386,15 @@ class _CredentialField extends StatefulWidget {
   final String value;
   final String? fingerprint;
 
+  /// The encrypted private key or its passphrase, the robot's token: not read out by a screen reader's continuous reading; its copy stays.
+  final bool secret;
+
   const _CredentialField({
     required this.label,
     required this.tooltip,
     required this.value,
     this.fingerprint,
+    this.secret = false,
   });
 
   @override
@@ -325,10 +455,13 @@ class _CredentialFieldState extends State<_CredentialField> {
           SizedBox(
             height: 64,
             child: SingleChildScrollView(
-              child: Text(
-                widget.value,
-                textDirection: TextDirection.ltr,
-                style: styles.bodySmall?.copyWith(color: colors.textMuted),
+              child: ExcludeSemantics(
+                excluding: widget.secret,
+                child: Text(
+                  widget.value,
+                  textDirection: TextDirection.ltr,
+                  style: styles.bodySmall?.copyWith(color: colors.textMuted),
+                ),
               ),
             ),
           ),

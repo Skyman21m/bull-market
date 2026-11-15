@@ -3129,9 +3129,9 @@
   "@p2pChatTokenBlocked": {
     "description": "The chat panel (#93): the reference's alert when the text holds the robot's token (`EncryptedApiChat/index.tsx:210`, its « robot robot.token » read as « robot token »), not translated by the reference: ours in French."
   },
-  "p2pChatGarageKeyBlocked": "This message holds your Garage Key, which controls all your robots. It was not sent.",
+  "p2pChatGarageKeyBlocked": "This message holds your Garage Key, which controls all your robots. It will not be sent.",
   "@p2pChatGarageKeyBlocked": {
-    "description": "The chat panel (#93): ours: the text holds a Garage Key."
+    "description": "The chat panel (#93): ours: the text holds a Garage Key, said as the user types."
   },
   "p2pChatTooLong": "This message is too long. Shorten it to send it.",
   "@p2pChatTooLong": {
@@ -3141,18 +3141,9 @@
   "@p2pChatClosed": {
     "description": "The chat panel (#93): ours: the status shown is not one where a message is posted."
   },
-  "p2pChatKeyChanged": "Your peer’s public key changed during this trade, so nothing more is sent in this chat.",
+  "p2pChatKeyChanged": "This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.",
   "@p2pChatKeyChanged": {
-    "description": "The chat panel (#93): ours: the peer's key is not the one pinned at the first read."
-  },
-  "p2pChatKeyMisnamed": "{coordinator} gave a public key that is not your peer’s, so nothing is sent in this chat.",
-  "@p2pChatKeyMisnamed": {
-    "description": "The chat panel (#93): ours: the key given is not named after the peer.",
-    "placeholders": {
-      "coordinator": {
-        "type": "String"
-      }
-    }
+    "description": "The chat panel (#93): ours: one wording for a peer's key that changed after it was pinned and one that is not the peer's; also the greyed « Send »'s tooltip."
   },
   "p2pChatSending": "Sending the message to {coordinator}…",
   "@p2pChatSending": {
@@ -3214,9 +3205,18 @@
   "@p2pChatReadNewer": {
     "description": "The chat panel (#93): ours: the user's choice when the history is too long."
   },
-  "p2pChatSkipAwaited": "Waiting for the next read of the order…",
+  "p2pChatReading": "Reading the chat from {coordinator}…",
+  "@p2pChatReading": {
+    "description": "The chat panel (#93): ours: the first read of the chat (Tor, and the robot's key for the messages), until one succeeds or fails.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSkipAwaited": "Reading the newer messages…",
   "@p2pChatSkipAwaited": {
-    "description": "The chat panel (#93): ours: « Read only the newer messages » chosen while the order shown was read before those messages; the skip is done at the next read of the order."
+    "description": "The chat panel (#93): ours: « Read only the newer messages » chosen, waiting for a newer read of the order."
   },
   "p2pChatEarlierHidden": "Earlier messages are not shown.",
   "@p2pChatEarlierHidden": {
@@ -3242,7 +3242,7 @@
   "@p2pChatMarkSentTwice": {
     "description": "The chat panel (#93): ours: a message this robot sent again after a post with no known outcome."
   },
-  "p2pChatMarkOutOfOrder": "This message was signed before an earlier one.",
+  "p2pChatMarkOutOfOrder": "This message may be older than it looks.",
   "@p2pChatMarkOutOfOrder": {
     "description": "The chat panel (#93): ours: its signature is older than an earlier message of the same author."
   },
@@ -3293,6 +3293,15 @@
   "p2pChatPassphraseTooltip": "The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.",
   "@p2pChatPassphraseTooltip": {
     "description": "« Don't trust, verify » (#93): the reference's tooltip (its English source)."
+  },
+  "p2pChatAuditKeyFailed": "The key of your robot could not be read from {coordinator}.",
+  "@p2pChatAuditKeyFailed": {
+    "description": "« Don't trust, verify » (#93): ours, the payout panel's words: the robot's key could not be had for the export; with « Retry ».",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   },
   "p2pChatFingerprint": "Fingerprint: {fingerprint}",
   "@p2pChatFingerprint": {

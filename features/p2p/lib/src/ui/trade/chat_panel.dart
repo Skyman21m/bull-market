@@ -59,7 +59,10 @@ class ChatPanel extends StatefulWidget {
 
 class _ChatPanelState extends State<ChatPanel>
     with PrivacyScreen, WidgetsBindingObserver {
-  late Future<bool> _protection = enableScreenPrivacy();
+  late Future<bool> _protection = _protect();
+
+  /// Whether the screen's protection is on: the chat is read and the key held only then (review of #93).
+  bool _protected = false;
   final _text = TextEditingController();
   final _scroll = ScrollController();
   late final ChatCubit _cubit;
@@ -108,9 +111,19 @@ class _ChatPanelState extends State<ChatPanel>
     _keepActive();
   }
 
-  /// Reads and holds the key while shown in the foreground with its tab visible; neither otherwise.
+  /// Turns the protection on, and the reads with it once it is.
+  Future<bool> _protect() async {
+    final on = await enableScreenPrivacy();
+    if (mounted) {
+      _protected = on;
+      _keepActive();
+    }
+    return on;
+  }
+
+  /// Reads and holds the key while protected, shown in the foreground with its tab visible; neither otherwise.
   void _keepActive() {
-    if (_foreground && _tickerEnabled) {
+    if (_protected && _foreground && _tickerEnabled) {
       _cubit.activate();
     } else {
       _cubit.deactivate();
@@ -171,7 +184,7 @@ class _ChatPanelState extends State<ChatPanel>
                 label: l10n.p2pCommonRetry,
                 outlined: true,
                 onPressed: () => setState(() {
-                  _protection = enableScreenPrivacy();
+                  _protection = _protect();
                 }),
               ),
             ],
@@ -200,11 +213,25 @@ class _ChatPanelState extends State<ChatPanel>
         : order.isMaker
         ? order.maker.nickname
         : order.taker?.nickname;
+    // The robot's face, seeded as the Garage and the order seed it, by its hash id (`MessageCard/index.tsx:181`).
+    String faceOf(String nick) => switch (order) {
+      final order? when nick == takerNick => order.taker?.hex ?? nick,
+      final order? => order.maker.hex,
+      null => nick,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Header(view: view),
         const Gap(BullSpacing.xs),
+        // The first read (Tor, and the robot's key for the messages), until one succeeds or fails.
+        if (!view.connected && state.readFailure == null)
+          _Line(
+            l10n.p2pChatReading(coordinator),
+            color: colors.textMuted,
+            small: true,
+            live: true,
+          ),
         if (view.historyTooLarge) ...[
           _Line(l10n.p2pChatHistoryTooLarge, color: colors.warning),
           if (state.skipAwaited)
@@ -242,6 +269,7 @@ class _ChatPanelState extends State<ChatPanel>
               for (final entry in view.entries)
                 _MessageCard(
                   entry: entry,
+                  face: faceOf(entry.nick),
                   isTaker: entry.nick == takerNick,
                   connected:
                       entry.author == ChatAuthor.self || view.peerConnected,
@@ -250,6 +278,7 @@ class _ChatPanelState extends State<ChatPanel>
                 _PendingCard(
                   pending: pending,
                   nick: ownNick ?? '',
+                  face: faceOf(ownNick ?? ''),
                   isTaker: ownNick != null && ownNick == takerNick,
                   coordinator: coordinator,
                   sending: state.sending == pending.id,
@@ -263,7 +292,8 @@ class _ChatPanelState extends State<ChatPanel>
         const Gap(BullSpacing.sm),
         ..._keyLines(context, view, coordinator),
         _fieldAndSend(context, state),
-        if (state.sending == 0)
+        // The wait of a send, or of a message sent again.
+        if (state.sending != null)
           _Line(
             l10n.p2pChatSending(coordinator),
             color: colors.textMuted,
@@ -316,10 +346,12 @@ class _ChatPanelState extends State<ChatPanel>
       ],
     );
     final send = Tooltip(
-      // The reference's tooltip while the peer's key is not known.
-      message: view.peerKey is ChatPeerKeyAwaited
-          ? l10n.p2pChatWaitingForPeer
-          : l10n.p2pChatSend,
+      // The reference's tooltip while the peer's key is not known; after a breach, why nothing is sent.
+      message: switch (view.peerKey) {
+        ChatPeerKeyAwaited() => l10n.p2pChatWaitingForPeer,
+        ChatPeerKeyBreach() => l10n.p2pChatKeyChanged,
+        ChatPeerKeyPinned() => l10n.p2pChatSend,
+      },
       child: IconButton.filled(
         onPressed: state.canSend ? () => unawaited(_cubit.send()) : null,
         style: IconButton.styleFrom(
@@ -364,17 +396,10 @@ class _ChatPanelState extends State<ChatPanel>
   ) {
     final l10n = P2pLocalizations.of(context);
     final colors = context.bull;
+    // One wording for a key that changed and one that is not the peer's: what it means and what to do. A pointer to « Open Dispute » goes here once the chat step's options dialog exists (#95).
     return switch (view.peerKey) {
-      ChatPeerKeyBreach(pinned: _?) => [
-        _Line(l10n.p2pChatKeyChanged, color: colors.error, live: true),
-        const Gap(BullSpacing.xs),
-      ],
       ChatPeerKeyBreach() => [
-        _Line(
-          l10n.p2pChatKeyMisnamed(coordinator),
-          color: colors.error,
-          live: true,
-        ),
+        _Line(l10n.p2pChatKeyChanged, color: colors.error, live: true),
         const Gap(BullSpacing.xs),
       ],
       _ => const [],
@@ -458,10 +483,11 @@ Color _cardColor(BuildContext context, {required bool isTaker}) {
 
 /// The author's avatar with the reference's dot, green while connected and red otherwise (`MessageCard/index.tsx`: `statusColor`).
 class _Author extends StatelessWidget {
-  final String nick;
+  /// The robot's hash id, its face's seed everywhere in the app.
+  final String face;
   final bool connected;
 
-  const _Author({required this.nick, required this.connected});
+  const _Author({required this.face, required this.connected});
 
   @override
   Widget build(BuildContext context) {
@@ -470,7 +496,7 @@ class _Author extends StatelessWidget {
       dimension: 28,
       child: Stack(
         children: [
-          RobotAvatar(seed: nick, size: 28),
+          RobotAvatar(seed: face, size: 28),
           PositionedDirectional(
             end: 0,
             bottom: 0,
@@ -493,11 +519,13 @@ class _Author extends StatelessWidget {
 /// One message (`MessageCard/index.tsx`): the author's avatar and nickname, the tick or the cross of its signature with the reference's tooltip, a copy of its text, the text, and the marks of the app.
 class _MessageCard extends StatefulWidget {
   final ChatEntry entry;
+  final String face;
   final bool isTaker;
   final bool connected;
 
   const _MessageCard({
     required this.entry,
+    required this.face,
     required this.isTaker,
     required this.connected,
   });
@@ -536,106 +564,111 @@ class _MessageCardState extends State<_MessageCard> {
     final colors = context.bull;
     final entry = widget.entry;
     final text = entry.text;
-    final signature = entry.validSignature
-        ? l10n.p2pChatSignatureVerified(entry.nick)
-        : l10n.p2pChatSignatureUnverified(entry.nick);
-    return Card(
-      color: _cardColor(context, isTaker: widget.isTaker),
-      margin: const EdgeInsets.only(bottom: BullSpacing.xs),
-      child: Padding(
-        padding: const EdgeInsets.all(BullSpacing.xs),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (entry.afterGap)
-              _Line(
-                l10n.p2pChatMarkAfterGap,
-                color: colors.warning,
-                small: true,
-              ),
-            Row(
-              children: [
-                _Author(nick: entry.nick, connected: widget.connected),
-                const Gap(BullSpacing.xs),
-                Expanded(
-                  child: Tooltip(
-                    message: signature,
-                    triggerMode: TooltipTriggerMode.tap,
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            entry.nick,
-                            style: Theme.of(context).textTheme.labelMedium
-                                ?.copyWith(color: colors.textMuted),
-                          ),
-                        ),
-                        Icon(
-                          entry.validSignature ? Icons.check : Icons.close,
-                          size: 16,
-                          color: entry.validSignature
-                              ? colors.success
-                              : colors.error,
-                          semanticLabel: signature,
-                        ),
-                      ],
-                    ),
-                  ),
+    // One expression for the icon, its colour and its words.
+    final (signature, mark, markColor) = entry.validSignature
+        ? (
+            l10n.p2pChatSignatureVerified(entry.nick),
+            Icons.check,
+            colors.success,
+          )
+        : (
+            l10n.p2pChatSignatureUnverified(entry.nick),
+            Icons.close,
+            colors.error,
+          );
+    // One stop for a screen reader per message, its signature said once (the tooltip's).
+    return MergeSemantics(
+      child: Card(
+        color: _cardColor(context, isTaker: widget.isTaker),
+        margin: const EdgeInsets.only(bottom: BullSpacing.xs),
+        child: Padding(
+          padding: const EdgeInsets.all(BullSpacing.xs),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (entry.afterGap)
+                _Line(
+                  l10n.p2pChatMarkAfterGap,
+                  color: colors.warning,
+                  small: true,
                 ),
-                if (text != null)
-                  IconButton(
-                    tooltip: _copied
-                        ? l10n.p2pCommonCopied
-                        : l10n.p2pCommonCopy,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => unawaited(_copy(text)),
-                    icon: Icon(
-                      Icons.content_copy,
-                      size: 16,
-                      color: colors.textMuted,
+              Row(
+                children: [
+                  _Author(face: widget.face, connected: widget.connected),
+                  const Gap(BullSpacing.xs),
+                  Expanded(
+                    child: Tooltip(
+                      message: signature,
+                      triggerMode: TooltipTriggerMode.tap,
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              entry.nick,
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(color: colors.textMuted),
+                            ),
+                          ),
+                          Icon(mark, size: 16, color: markColor),
+                        ],
+                      ),
                     ),
                   ),
-              ],
-            ),
-            if (text != null)
-              // Plain text in a forced direction: no markup, no link, nothing tappable, and no paragraph direction a peer's text could choose (review of #93).
-              SelectableText(
-                text,
-                textDirection: TextDirection.ltr,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: colors.onSurface),
-              )
-            else
-              _Line(
-                entry.awaitingPeerKey
-                    ? l10n.p2pChatWaitingForPeer
-                    : l10n.p2pChatUnreadable,
-                color: colors.textMuted,
-                small: true,
+                  if (text != null)
+                    IconButton(
+                      tooltip: _copied
+                          ? l10n.p2pCommonCopied
+                          : l10n.p2pCommonCopy,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => unawaited(_copy(text)),
+                      icon: Icon(
+                        Icons.content_copy,
+                        size: 16,
+                        color: colors.textMuted,
+                      ),
+                    ),
+                ],
               ),
-            if (_copied)
-              _Line(
-                l10n.p2pCommonCopied,
-                color: colors.textMuted,
-                small: true,
-                live: true,
-              ),
-            if (entry.repeatOf != null)
-              _Line(
-                entry.sentTwice
-                    ? l10n.p2pChatMarkSentTwice
-                    : l10n.p2pChatMarkRepeat,
-                color: entry.sentTwice ? colors.textMuted : colors.warning,
-                small: true,
-              ),
-            if (entry.signedOutOfOrder)
-              _Line(
-                l10n.p2pChatMarkOutOfOrder,
-                color: colors.warning,
-                small: true,
-              ),
-          ],
+              if (text != null)
+                // Plain text in a forced direction: no markup, no link, nothing tappable, and no paragraph direction a peer's text could choose (review of #93).
+                SelectableText(
+                  text,
+                  textDirection: TextDirection.ltr,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: colors.onSurface),
+                )
+              else
+                _Line(
+                  entry.awaitingPeerKey
+                      ? l10n.p2pChatWaitingForPeer
+                      : l10n.p2pChatUnreadable,
+                  color: colors.textMuted,
+                  small: true,
+                ),
+              if (_copied)
+                _Line(
+                  l10n.p2pCommonCopied,
+                  color: colors.textMuted,
+                  small: true,
+                  live: true,
+                ),
+              if (entry.repeatOf != null)
+                _Line(
+                  entry.sentTwice
+                      ? l10n.p2pChatMarkSentTwice
+                      : l10n.p2pChatMarkRepeat,
+                  color: entry.sentTwice ? colors.textMuted : colors.warning,
+                  small: true,
+                ),
+              if (entry.signedOutOfOrder)
+                _Line(
+                  l10n.p2pChatMarkOutOfOrder,
+                  color: colors.warning,
+                  small: true,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -646,6 +679,7 @@ class _MessageCardState extends State<_MessageCard> {
 class _PendingCard extends StatelessWidget {
   final ChatPendingMessage pending;
   final String nick;
+  final String face;
   final bool isTaker;
   final String coordinator;
   final bool sending;
@@ -654,6 +688,7 @@ class _PendingCard extends StatelessWidget {
   const _PendingCard({
     required this.pending,
     required this.nick,
+    required this.face,
     required this.isTaker,
     required this.coordinator,
     required this.sending,
@@ -674,7 +709,7 @@ class _PendingCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _Author(nick: nick, connected: true),
+                _Author(face: face, connected: true),
                 const Gap(BullSpacing.xs),
                 Expanded(
                   child: Text(

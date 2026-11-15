@@ -25,6 +25,7 @@ import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/p2p_waits.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
+import 'src/domain/robot_key_compute_port.dart';
 import 'src/domain/trade/bolt11.dart';
 import 'src/testing/bolt11_test_invoice.dart';
 import 'src/p2p_locator.dart';
@@ -44,16 +45,20 @@ export 'package:robosats/robosats.dart'
         Federation,
         GarageKey,
         NostrKeyDerivation,
+        OutgoingChatMessage,
         PgpPublicKey,
         RobotIdentity,
         RobotKeysRefused,
         RobotPgpKey,
         RobotPgpKeyNotProven,
         RobotUnknown,
+        UnlockedRobotPgpKey,
         UnprovenCoordinatorRobot;
 
 // The port that makes and proves a robot's key pair in isolates of their own, for the live test to prove what a coordinator returns on the path of the app.
 export 'src/data/isolate_robot_key_compute.dart' show IsolateRobotKeyCompute;
+// The port of that work, for a test that gives its own (#93).
+export 'src/domain/robot_key_compute_port.dart' show RobotKeyComputePort;
 export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
 // BOLT11 invoices made by the tests (never real ones), for the tests of the app's decoder against the trade's checks (#86).
 export 'src/testing/bolt11_test_invoice.dart'
@@ -70,6 +75,8 @@ export 'src/domain/map_marks.dart' show MapGroup, MapMark, MapPin;
 // The world map of the « Map » view and its pinned source, which the app's tests load through the app's own asset bundle.
 export 'src/domain/world_map.dart' show WorldMap, WorldMapSource;
 export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
+// « Don't trust, verify » over an export the test gives, for the app's captures (#93): test values, never a robot's.
+export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
@@ -92,6 +99,7 @@ void setUpP2pForTesting(
   bool databaseUnavailable = false,
   Bolt11Decoder? bolt11Decoder,
   P2pWalletPort? wallet,
+  RobotKeyComputePort? robotKeys,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -138,6 +146,12 @@ void setUpP2pForTesting(
     );
   }
   if (wallet != null) locator.registerSingleton<P2pWalletPort>(wallet);
+  // The key work of the robots, when the test gives its own (#93: the captures date the robots' keys by the screen's clock, so that the chat's messages sign and verify at it).
+  if (robotKeys != null) {
+    locator
+      ..unregister<RobotKeyComputePort>()
+      ..registerSingleton<RobotKeyComputePort>(robotKeys);
+  }
 }
 
 /// The draw in the middle of the range, which spreads no wait.

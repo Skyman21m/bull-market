@@ -11,7 +11,7 @@ import 'package:test/test.dart';
 /// - Each trade use case is called by one cubit, which the locator gives its `execute`: the take by `TakeOrderCubit`, the watch and the cancel by `TradeCubit`, the list by `ActiveTradesCubit`, the payout and the key's hold by `PayoutCubit` (#91), the chat's read and send by `ChatCubit` (#93); no other file names them but the domain and the locator.
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
-/// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message) and « Don't trust, verify » (a public key) use the clipboard.
+/// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message) and the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) use the clipboard.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -112,7 +112,7 @@ void main() {
         // The payout panel (#91): « Paste » reads the clipboard once on the user's tap, and the copy beside « Submit invoice for … » writes the amount asked, as the reference's (`Forms/LightningPayout.tsx:321-330`, `:565-576`).
         'lib/src/ui/trade/payout_panel.dart',
         'lib/src/ui/trade/trade_screen.dart',
-        // The chat (#93): the copy of a message (`MessageCard/index.tsx`) and of a public key (`Dialogs/AuditPGP.tsx`), on the user's tap.
+        // The chat (#93): the copy of a message (`MessageCard/index.tsx`), and the export's copies (`Prompts/Chat.tsx`, `Dialogs/AuditPGP.tsx`: the keys, the token and the encrypted private key among them, as the reference's mobile client), on the user's tap.
         'lib/src/ui/trade/chat_panel.dart',
         'lib/src/ui/trade/chat_actions.dart',
       });

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:bull_ui/bull_ui.dart' show BullTheme;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -150,6 +151,38 @@ void main() {
       expect(chat.released, 1);
       expect(cubit.polling, isFalse);
     });
+
+    testWidgets(
+      'hidden, a skip that waits for a newer order reads nothing; it is done when the panel is shown again (review of #93)',
+      (tester) async {
+        final chat = _Chat()
+          ..view = const ChatView(historyTooLarge: true)
+          ..skipRefused = true;
+        final cubit = chat.cubit(record)..show(nine);
+        addTearDown(cubit.close);
+        cubit.activate();
+        await tester.pump();
+        cubit.readNewerOnly();
+        expect(cubit.state.skipAwaited, isTrue);
+        cubit.deactivate();
+        final reads = chat.reads;
+        final skips = chat.skips;
+        chat
+          ..skipRefused = false
+          ..skipped = const ChatView(skippedEarlier: true);
+        cubit.show(nineAgain);
+        await tester.pump();
+        expect(chat.reads, reads, reason: 'no read while hidden');
+        expect(chat.skips, skips);
+        expect(cubit.holdsKey, isFalse);
+        cubit.activate();
+        await tester.pump();
+        expect(chat.skips, skips + 1);
+        expect(chat.reads, reads + 1);
+        expect(cubit.state.view.skippedEarlier, isTrue);
+        cubit.deactivate();
+      },
+    );
 
     testWidgets('a read that fails keeps the chat shown and says why', (
       tester,
@@ -432,12 +465,15 @@ void main() {
       await tester.pump();
     }
 
+    /// The send button: the only filled icon button of the panel.
     bool sendEnabled(WidgetTester tester) =>
         tester
             .widget<IconButton>(
-              find.descendant(
-                of: find.byTooltip('Send'),
-                matching: find.byType(IconButton),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.icon is Icon &&
+                    (widget.icon as Icon).icon == Icons.send,
               ),
             )
             .onPressed !=
@@ -455,10 +491,17 @@ void main() {
         expect(privacyCalls, contains('screenshotOff'));
         expect(find.text('Hello'), findsNothing);
         expect(find.text('Type a message'), findsNothing);
+        // Nothing is read, and the key is not held, while the protection is awaited or refused (review of #93).
+        expect(cubit.holdsKey, isFalse);
+        expect(chat.reads, 0);
         gate.complete(false);
         await tester.pump();
         await tester.pump();
         expect(find.text('Hello'), findsNothing);
+        expect(cubit.holdsKey, isFalse);
+        expect(cubit.polling, isFalse);
+        await tester.pump(ChatCubit.pollEvery * 2);
+        expect(chat.reads, 0);
         expect(
           find.text(
             'Screen protection could not be turned on, so the chat stays hidden.',
@@ -470,12 +513,38 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.text('Hello'), findsOneWidget);
+        expect(cubit.holdsKey, isTrue);
+        expect(cubit.polling, isTrue);
+        expect(chat.reads, 1);
         privacyCalls.clear();
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();
         expect(privacyCalls, contains('screenshotOn'));
         expect(cubit.holdsKey, isFalse);
         expect(cubit.polling, isFalse);
+      },
+    );
+
+    testWidgets(
+      'the first read is said while it runs, read out, and gone once a read succeeded (review of #93)',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final chat = _Chat()..gate = Completer<void>();
+        final cubit = chat.cubit(record);
+        addTearDown(cubit.close);
+        await show(tester, cubit);
+        const reading = 'Reading the chat from Temple of Sats…';
+        expect(
+          tester.getSemantics(find.text(reading)),
+          matchesSemantics(label: reading, isLiveRegion: true),
+        );
+        chat.view = pinned();
+        chat.gate!.complete();
+        chat.gate = null;
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(reading), findsNothing);
+        semantics.dispose();
       },
     );
 
@@ -518,14 +587,17 @@ void main() {
         await show(tester, cubit);
         expect(find.text('You: connected'), findsOneWidget);
         expect(find.text('Peer: disconnected'), findsOneWidget);
-        expect(
-          find.bySemanticsLabel(RegExp('Verified signature by $peerNick')),
-          findsWidgets,
+        // The tick for a valid signature, the cross in the error colour for one that is not, each with the reference's words.
+        final valid = find.byTooltip('Verified signature by $peerNick').first;
+        final invalid = find.byTooltip('Cannot verify signature of $peerNick');
+        expect(invalid, findsOneWidget);
+        Icon markOf(Finder tooltip) => tester.widget<Icon>(
+          find.descendant(of: tooltip, matching: find.byType(Icon)),
         );
-        expect(
-          find.bySemanticsLabel(RegExp('Cannot verify signature of $peerNick')),
-          findsOneWidget,
-        );
+        expect(markOf(valid).icon, Icons.check);
+        expect(markOf(valid).color, testTheme.extension<BullTheme>()!.success);
+        expect(markOf(invalid).icon, Icons.close);
+        expect(markOf(invalid).color, testTheme.extension<BullTheme>()!.error);
         expect(
           find.text('A message may be missing before this one.'),
           findsOneWidget,
@@ -533,7 +605,7 @@ void main() {
         for (final mark in [
           'This message was already shown above.',
           'You sent this message twice.',
-          'This message was signed before an earlier one.',
+          'This message may be older than it looks.',
         ]) {
           await seeMessage(tester, find.text(mark));
           expect(find.text(mark), findsOneWidget);
@@ -589,7 +661,7 @@ void main() {
           );
         }
         expect(find.byType(Image), findsNothing);
-        // No span of the messages answers a tap.
+        // No span of the messages answers a tap: each is a plain string, never a span of its own.
         for (final paragraph in tester.renderObjectList<RenderParagraph>(
           find.byType(RichText),
         )) {
@@ -597,6 +669,12 @@ void main() {
             expect(span is TextSpan ? span.recognizer : null, isNull);
             return true;
           });
+        }
+        for (final message in tester.widgetList<SelectableText>(
+          find.byType(SelectableText),
+        )) {
+          expect(message.data, isNotNull);
+          expect(message.textSpan, isNull);
         }
         final copies = find.byTooltip('Copy');
         await seeMessage(tester, find.text(cleaned));
@@ -617,10 +695,7 @@ void main() {
         await show(tester, cubit);
         await tester.tap(find.text('Read only the newer messages'));
         await tester.pump();
-        expect(
-          find.text('Waiting for the next read of the order…'),
-          findsOneWidget,
-        );
+        expect(find.text('Reading the newer messages…'), findsOneWidget);
         expect(find.text('Read only the newer messages'), findsNothing);
         chat
           ..skipRefused = false
@@ -733,18 +808,19 @@ void main() {
     testWidgets(
       'a peer key that changed, or that is not the peer\'s, is said and nothing more is sent',
       (tester) async {
-        for (final (state, line) in [
-          (
-            ChatPeerKeyBreach(pinned: peerKey),
-            'Your peer’s public key changed during this trade, so nothing more is sent in this chat.',
-          ),
-          (
-            const ChatPeerKeyBreach(),
-            'Temple of Sats gave a public key that is not your peer’s, so nothing is sent in this chat.',
-          ),
+        // One wording for both: what it means and what to do.
+        const line =
+            'This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.';
+        for (final state in [
+          ChatPeerKeyBreach(pinned: peerKey),
+          const ChatPeerKeyBreach(),
         ]) {
           final chat = _Chat()
-            ..view = ChatView(peerKey: state, connected: true);
+            ..view = ChatView(
+              peerKey: state,
+              connected: true,
+              pending: [ChatPendingMessage(1, 'Paid', at)],
+            );
           final cubit = chat.cubit(record);
           addTearDown(cubit.close);
           await tester.pumpWidget(const SizedBox.shrink());
@@ -753,6 +829,16 @@ void main() {
           await tester.enterText(find.byKey(ChatPanel.field), 'Hello');
           await tester.pump();
           expect(sendEnabled(tester), isFalse);
+          // The greyed « Send » says why, and « Send again » is off too.
+          expect(find.byTooltip(line), findsOneWidget);
+          expect(
+            tester
+                .widget<TradeButton>(
+                  find.widgetWithText(TradeButton, 'Send again'),
+                )
+                .onPressed,
+            isNull,
+          );
         }
       },
     );
@@ -846,6 +932,12 @@ void main() {
                   entry(2, 'OK', own: true),
                   entry(3, 'Unsigned', valid: false, afterGap: true),
                   entry(4, 'Again', repeatOf: 1, outOfOrder: true),
+                  // A long word without spaces, emoji, right-to-left text.
+                  entry(5, 'FR7630006000011234567890189${'X' * 60}'),
+                  entry(6, 'Merci 🙏👍🏽 ok'),
+                  entry(7, 'شكرا جزيلا، تم الدفع'),
+                  // Many messages.
+                  for (var i = 8; i < 40; i++) entry(i, 'Message $i'),
                 ],
                 pending: [ChatPendingMessage(1, 'Paid, ref 12', at)],
               ),
@@ -896,6 +988,7 @@ void main() {
     late List<String> copied;
     late List<String> privacyCalls;
     late Future<bool> Function() protection;
+    late _Chat lastChat;
 
     setUp(() {
       copied = [];
@@ -949,6 +1042,7 @@ void main() {
       final chat = _Chat()
         ..view = view ?? pinned()
         ..exported = exported ?? exportOf();
+      lastChat = chat;
       final cubit = chat.cubit(record);
       addTearDown(cubit.close);
       await tester.pumpWidget(
@@ -967,7 +1061,7 @@ void main() {
           home: Scaffold(
             body: ListView(
               children: [
-                ChatAuditButton(cubit: cubit),
+                ChatAuditButton(cubit: cubit, coordinator: coordinatorName),
                 ChatExportButton(cubit: cubit),
               ],
             ),
@@ -976,6 +1070,37 @@ void main() {
       );
       return cubit;
     }
+
+    testWidgets(
+      '« Export » waits busy; the dialog says the key\'s unlock while it waits, under its title (review of #93)',
+      (tester) async {
+        await showActions(tester);
+        final gate = Completer<void>();
+        lastChat.exportGate = gate;
+        await tester.tap(find.text('Export'));
+        await tester.pump();
+        expect(
+          tester
+              .widget<TradeButton>(find.widgetWithText(TradeButton, 'Export'))
+              .busy,
+          isTrue,
+        );
+        await tester.tap(find.text('Audit Chat'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text("Don't trust, verify"), findsOneWidget);
+        expect(
+          find.text(
+            'Reading your robot from Temple of Sats and unlocking its key. The first time takes a few seconds.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(passphrase), findsNothing);
+        gate.complete();
+        await settle(tester);
+        expect(find.text(passphrase), findsOneWidget);
+      },
+    );
 
     Future<void> tapInDialog(WidgetTester tester, String text) async {
       await tester.ensureVisible(find.text(text));
@@ -995,6 +1120,7 @@ void main() {
         expect(copied, [
           const JsonEncoder.withIndent('  ').convert(exportOf()),
         ]);
+        expect(find.text('Copied!'), findsOneWidget);
         await tester.tap(find.text('Audit Chat'));
         await settle(tester);
         expect(privacyCalls, contains('screenshotOff'));
@@ -1023,7 +1149,15 @@ void main() {
         );
         expect(find.text(otherKey.armored), findsNothing);
         await tapInDialog(tester, 'Keys');
+        await tester.pump();
         expect(copied.last, jsonEncode(exportOf()['credentials']));
+        expect(
+          find.descendant(
+            of: find.byType(ChatAuditDialog),
+            matching: find.text('Copied!'),
+          ),
+          findsOneWidget,
+        );
         await tapInDialog(tester, 'Messages');
         expect(copied.last, jsonEncode(exportOf()['messages']));
         privacyCalls.clear();
@@ -1101,6 +1235,7 @@ final class _Chat {
   Result<ChatSent, ChatSendRefusal> Function(int id)? repostAnswer;
   Map<String, Object?> exported = const {};
   bool exportFails = false;
+  Completer<void>? exportGate;
 
   ChatCubit cubit(TradeRecord record) => ChatCubit(
     record,
@@ -1125,9 +1260,12 @@ final class _Chat {
       return Ok(skipped);
     },
     (record) => view,
-    (record) async => exportFails
-        ? const Err<Map<String, Object?>, ChatReadFailure>(ChatNotOpen())
-        : Ok(exported),
+    (record) async {
+      await exportGate?.future;
+      return exportFails
+          ? const Err<Map<String, Object?>, ChatReadFailure>(ChatNotOpen())
+          : Ok(exported);
+    },
     (record) {
       held++;
       return () => released++;

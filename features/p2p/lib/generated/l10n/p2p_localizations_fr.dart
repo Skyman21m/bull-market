@@ -574,7 +574,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pCoordinatorSimplex => 'Simplex';
 
   @override
-  String get p2pCommonCopied => 'Copié !';
+  String get p2pCommonCopied => 'Copié !';
 
   @override
   String get p2pSearchOrderTitle => 'Rechercher un ordre';
@@ -2248,11 +2248,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pChatTokenBlocked =>
-      'Aïe ! Vous venez d’envoyer le jeton de votre robot à votre pair dans le chat, c’est une idée catastrophique ! Si grave que votre message a été bloqué.';
+      'Aïe ! Vous venez d’envoyer le jeton de votre robot à votre pair dans le chat, c’est une idée catastrophique ! Tellement grave que votre message a été bloqué.';
 
   @override
   String get p2pChatGarageKeyBlocked =>
-      'Ce message contient votre clé de garage, qui contrôle tous vos robots. Il n’a pas été envoyé.';
+      'Ce message contient votre clé de garage, qui contrôle tous vos robots. Il ne sera pas envoyé.';
 
   @override
   String get p2pChatTooLong =>
@@ -2263,12 +2263,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pChatKeyChanged =>
-      'La clé publique de votre pair a changé pendant cet échange, donc plus rien n’est envoyé dans ce chat.';
-
-  @override
-  String p2pChatKeyMisnamed(String coordinator) {
-    return '$coordinator a donné une clé publique qui n’est pas celle de votre pair, donc rien n’est envoyé dans ce chat.';
-  }
+      'Ce chat n’est plus sûr : la clé de votre pair a changé. Plus rien n’est envoyé ici. Ne vous fiez pas aux coordonnées de paiement reçues à partir de maintenant.';
 
   @override
   String p2pChatSending(String coordinator) {
@@ -2288,7 +2283,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pChatSendRefused(String coordinator) {
-    return '$coordinator n’a pas pris le message. Réessayez.';
+    return '$coordinator n’a pas accepté le message. Réessayez.';
   }
 
   @override
@@ -2312,8 +2307,12 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pChatReadNewer => 'Lire seulement les messages récents';
 
   @override
-  String get p2pChatSkipAwaited =>
-      'En attente de la prochaine lecture de l’ordre…';
+  String p2pChatReading(String coordinator) {
+    return 'Lecture du chat chez $coordinator…';
+  }
+
+  @override
+  String get p2pChatSkipAwaited => 'Lecture des messages plus récents…';
 
   @override
   String get p2pChatEarlierHidden =>
@@ -2338,7 +2337,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pChatMarkOutOfOrder =>
-      'Ce message a été signé avant un message précédent.';
+      'Ce message est peut-être plus ancien qu’il n’y paraît.';
 
   @override
   String get p2pChatAuditChat => 'Auditer le chat';
@@ -2381,6 +2380,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pChatPassphraseTooltip =>
       'La phrase de passe pour décrypter votre clé privée. Vous êtes le seul à la connaître ! Ne la partagez pas. C’est aussi votre jeton du robot.';
+
+  @override
+  String p2pChatAuditKeyFailed(String coordinator) {
+    return 'La clé de votre robot n’a pas pu être lue chez $coordinator.';
+  }
 
   @override
   String p2pChatFingerprint(String fingerprint) {
