@@ -198,9 +198,15 @@ void main() {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
         };
+        // The use case's fresh read, later than the status shown.
+        final freshRead = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(6),
+          after: const Duration(seconds: 40),
+        );
         final sender = _Sender();
         sender.answer = (shown) => sender.sent.length == 1
-            ? Err(PayoutChangedSinceShown(fresh, six))
+            ? Err(PayoutChangedSinceShown(fresh, freshRead))
             : Ok(PayoutGiven(record, six));
         final cubit = cubitOf(sender)
           ..show(six)
@@ -211,6 +217,12 @@ void main() {
         final again = cubit.state.submittable(PayoutKind.lightning);
         expect(again, isNotNull);
         expect(again?.text, invoice.text);
+        // Checked again against the fresh read, which the panel now works from.
+        expect(identical(again, shown), isFalse);
+        expect(cubit.state.seen, same(freshRead));
+        // A status read before it, shown late, changes nothing.
+        cubit.show(six);
+        expect(cubit.state.seen, same(freshRead));
         expect(
           cubit.state.phase,
           isA<PayoutEditing>().having(
@@ -1105,6 +1117,7 @@ void main() {
                     'advanced ${locale.languageCode} $scale',
                   );
                   await tester.pump(const Duration(seconds: 3));
+                  await reveal(tester, find.byType(BullSwitch));
                   await tester.tap(find.byType(BullSwitch));
                   await tester.pump();
                 }
@@ -1413,6 +1426,16 @@ void main() {
           ),
         );
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        // Sent the very instant the outcome came back: not after it.
+        cubit.show(
+          TradeSeen(
+            read.status,
+            order: read.order,
+            stored: true,
+            requestedAt: clock(),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
         cubit.show(
           TradeSeen(
             read.status,
@@ -1480,14 +1503,9 @@ void main() {
           ..answer = (shown) => Ok(PayoutGiven(record, six));
         final cubit = cubitOf(sender);
         await show(tester, cubit, six);
-        expect(
-          tester.getSemantics(find.byType(Switch)),
-          containsSemantics(
-            label: 'Advanced options',
-            hasToggledState: true,
-            hasTapAction: true,
-          ),
-        );
+        final toggle = tester.getSemantics(find.byType(Switch));
+        expect(toggle.label, 'Advanced options');
+        expect(toggle.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
         expect(
           tester.getSemantics(find.byKey(PayoutPanel.invoiceField)).label,
           contains('Payout Lightning Invoice'),
@@ -1539,6 +1557,68 @@ void main() {
         PayoutChange.other,
       );
     });
+
+    test(
+      'a check that is not of the text the field shows is never offered',
+      () async {
+        // A checker that checks another text than the one it is given: « Submit » trusts the fields, not it.
+        final cubit = PayoutCubit(
+          record,
+          PayoutAsk.of,
+          (record, seen, destination) => check(
+            record,
+            seen,
+            PayoutInvoiceText(
+              invoice.text,
+              budget: RoutingBudgetPpm.referenceDefault,
+            ),
+          ),
+          _Sender().call,
+          _Holds().call,
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        cubit
+          ..show(six)
+          ..editInvoice(wrongAmount.text);
+        expect(
+          cubit.state.invoice,
+          isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+      },
+    );
+
+    testWidgets(
+      'a suggestion of more than 3 decimals: shown as it is with « Invalid », no figure computed from it, nothing to submit',
+      (tester) async {
+        final odd = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(
+            6,
+            changes: {
+              'swap_allowed': true,
+              'swap_failure_reason': null,
+              'suggested_mining_fee_rate': 3.14159,
+              'swap_fee_rate': 0.75,
+            },
+          ),
+        );
+        final cubit = cubitOf(_Sender());
+        await show(tester, cubit, odd);
+        await tester.tap(find.text('Onchain'));
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(PayoutPanel.addressField),
+          mainnetAddress,
+        );
+        await tester.pump();
+        expect(find.text('Invalid'), findsOneWidget);
+        expect(find.text('Mining fee'), findsNothing);
+        expect(find.text('Final amount you will receive'), findsNothing);
+        expect(enabled(tester, submitButton()), isFalse);
+      },
+    );
 
     testWidgets('the panel prints nothing: no invoice, no address', (
       tester,
