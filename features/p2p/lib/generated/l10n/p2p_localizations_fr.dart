@@ -2069,6 +2069,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayReadSuperseded(String coordinator) {
+    return 'Impossible de lire l’ordre chez $coordinator pour l’instant. Rien n’a été payé.';
+  }
+
+  @override
   String get p2pPayStillSending =>
       'Envoi toujours en cours. Cela peut prendre quelques minutes.';
 
@@ -2295,7 +2300,13 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pEndOpenOptions => 'ouvrir les options';
 
   @override
-  String p2pEndWaitSeconds(String seconds) {
-    return 'Attendez $seconds secondes';
+  String p2pEndWaitSeconds(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Attendez $seconds secondes',
+      one: 'Attendez 1 seconde',
+    );
+    return '$_temp0';
   }
 }

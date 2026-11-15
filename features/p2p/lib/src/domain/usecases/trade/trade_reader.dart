@@ -18,6 +18,7 @@ import '../../trade/trade_terms.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
+import 'trade_read_order.dart';
 
 /// A recorded trade opened for reading: its record, its robot, its coordinator, its terms and the last status seen.
 @immutable
@@ -97,11 +98,15 @@ final class TradeStep {
   /// Whether the step ended a take this robot never held: a pending take, never confirmed, on which no pre-take (so no invoice) was ever seen, now at an end; it is closed as a take not made, whatever the end says of a bond (none can have been paid from here).
   final bool takeNotMade;
 
+  /// Whether the answer was superseded ([TradeReadOrder.claim]): nothing was written, [trade] stands at the newest status stored in this process, and [stored] is false, since this step stored nothing (#141). Not a failed write: [recordProblem] stays `null`.
+  final bool superseded;
+
   const TradeStep(
     this.trade, {
     this.recordProblem,
     required this.stored,
     this.takeNotMade = false,
+    this.superseded = false,
   });
 }
 
@@ -119,6 +124,7 @@ final class TradeReader {
   final Federation _federation;
   final Bolt11Reader _invoices;
   final DateTime Function() _clock;
+  final TradeReadOrder _requestOrder;
 
   const TradeReader(
     this._robots,
@@ -129,9 +135,25 @@ final class TradeReader {
     this._federation,
     this._invoices, {
     required this._clock,
+    required this._requestOrder,
   });
 
   DateTime now() => _clock().toUtc();
+
+  /// The times of a new request that gives a status of a trade (a read, or an action whose answer is kept): filled when it is sent, through [readOrder] or [timed], and given to [advance] or [keep] with its answer.
+  RequestTimes request() => _requestOrder.request();
+
+  /// [call], an action's request, sent now from the closure handed to the request limiter: ranked in [times] at each attempt, when it leaves and when its answer arrives ([TradeReadOrder.send]).
+  Future<T> timed<T>(RequestTimes times, Future<T> Function() call) =>
+      _requestOrder.send(times, now(), call);
+
+  /// [body], an action of [record]'s trade (its take, payout, bond payment, cancel or chat step, each under the order's lock): while it runs, the watch sends no read of the trade ([readOrder] with `watch`).
+  Future<T> duringAction<T>(TradeRecord record, Future<T> Function() body) =>
+      _requestOrder.duringAction(record.robot, body);
+
+  /// Completes once no action of [record]'s trade runs.
+  Future<void> actionEnded(TradeRecord record) =>
+      _requestOrder.actionEnded(record.robot);
 
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
   Future<TradeOpening> open(TradeRecord record) async {
@@ -230,15 +252,37 @@ final class TradeReader {
     return Ok((robot, coordinator));
   }
 
-  /// One read of the order of the trade of [record], by [robot] on [coordinator], through [requests], the robot's places in [RobotRequestLimiter]: a busy answer is sent again as the limiter says.
+  /// One read of the order of the trade of [record], by [robot] on [coordinator], through [requests], the robot's places in [RobotRequestLimiter]: a busy answer is sent again as the limiter says. [times] is filled at each attempt ([timed]).
+  ///
+  /// With [watch], the read is not sent while an action of the trade runs: checked inside the closure the limiter runs, once a place is held, at each attempt; [RequestTimes.heldBack] then says so, and the answer is no read of the order.
   Future<Result<Result<CoordinatorOrder, CoordinatorFailure>, P2pFailure>>
   readOrder(
     RobotRequests requests,
     TradeRecord record,
     NetworkRobot robot,
-    Coordinator coordinator,
-  ) =>
-      readOrderOf(requests, record.network, record.orderId, robot, coordinator);
+    Coordinator coordinator, {
+    required RequestTimes times,
+    bool watch = false,
+  }) => requests.send(
+    record.network,
+    coordinator,
+    () {
+      if (watch && _requestOrder.actionRunning(record.robot)) {
+        _requestOrder.heldBack(times);
+        return Future.value(const Err(CoordinatorTransportBusy()));
+      }
+      return timed(
+        times,
+        () => _client.fetchOrder(
+          coordinator,
+          record.network,
+          identity: robot.identity,
+          orderId: record.orderId,
+        ),
+      );
+    },
+    isBusy: (answer) => !times.heldBack && answeredBusy(answer),
+  );
 
   /// One read of order [orderId] of [coordinator] on [network], by [robot], through [requests]: the read of a take being prepared, which has no record yet (#119); a busy answer is sent again as the limiter says.
   Future<Result<Result<CoordinatorOrder, CoordinatorFailure>, P2pFailure>>
@@ -272,12 +316,13 @@ final class TradeReader {
   /// A pending take never confirmed, on which no pre-take was ever seen, that the answer brings to an end without showing this robot as the taker, is a take not made ([TradeStep.takeNotMade]): the coordinator never showed this robot an invoice, so nothing can have been paid from here, whatever the end says of a bond.
   /// Such an end comes at once when the order is public again with this robot no participant (the coordinator shows a live pre-take to its robot as 3, `api/views.py:381-396`, so this robot holds none), cancelled or expired; error 1044 stays `PreTakeUnavailable` until the pre-take is certainly gone (`TradeStatus.from`).
   ///
-  /// [requestedAt] is when the read of [answer] was sent, when it was one, kept in the status it gives ([TradeSeen.requestedAt]).
+  /// [request] holds when the request [answer] answers left and when its answer arrived ([readOrder], [timed]): what orders it against the other answers of the trade ([keep]). With [keepsTime], the status keeps the time it left ([TradeSeen.requestedAt]), as the watch's reads and the payout's do since #132; the other answers keep none, as before, which the payout panel reads as not after its payout.
   Future<TradeStep> advance(
     OpenTrade trade,
     TradeAnswer answer, {
     required DateTime at,
-    DateTime? requestedAt,
+    required RequestTimes request,
+    bool keepsTime = false,
   }) async {
     // A terminal status is never left, and its trail and record are kept already: nothing to write.
     if (trade.seen.status.isTerminal) {
@@ -291,11 +336,12 @@ final class TradeReader {
         answer,
         trade.terms,
         at,
-        requestedAt: requestedAt,
+        requestedAt: keepsTime ? request.leftAt : null,
       ),
       showsTaker: taker,
       answer: answer,
       at: at,
+      request: request,
     );
     // From the trail now on disk (stored or kept), never from one only in memory.
     final notMade =
@@ -304,7 +350,7 @@ final class TradeReader {
         trade.record.origin == TradeOrigin.takenHere &&
         step.trade.seen.status.trail.bondStepSeenAt == null &&
         step.trade.seen.status.isTerminal;
-    if (!notMade) return step;
+    if (!notMade || step.superseded) return step;
     return TradeStep(
       step.trade,
       recordProblem: step.recordProblem,
@@ -345,13 +391,30 @@ final class TradeReader {
   /// - Not stored (the database refused the write): the status is the trail on disk's own (`TradeStatus.beforeFirstRead`, no invoice, no order), never [seen], whose invoice and pinned hash are on no disk, nor the last status shown, whose invoice may be stale (review of #117); [TradeStep.recordProblem] says why.
   /// - Kept (the stored trail changed, or was refused over): when [answer] read at [at] is newer than the stored trail, [answer] is read again over the stored trail and stored, once; at an end the stored trail already holds, [seen] stays, unmarked (an end holds no invoice, and says what the end means); otherwise the status is the stored trail's own.
   /// Only a status marked [TradeSeen.stored] may show an invoice or offer a payment.
+  ///
+  /// [request] holds the ranks of the request [seen] comes from, when it left and when its answer arrived. Its answer replaces the stored status only if it left after the answer of the newest status accepted for the trade in this process arrived ([TradeReadOrder.claim], claimed here before anything is awaited, #141). Otherwise it is superseded: nothing is written, and the trade stands at that newest status with its record (or at [trade] while none was stored in this process), the step marked [TradeStep.superseded] and not [TradeStep.stored], so that no use case acts on it as its own read.
   Future<TradeStep> keep(
     OpenTrade trade,
     TradeSeen seen, {
     required bool showsTaker,
+    required RequestTimes request,
     TradeAnswer? answer,
     DateTime? at,
   }) async {
+    if (_requestOrder.claim(trade.record.robot, request) case final newer?) {
+      final newerRecord = newer.record;
+      return TradeStep(
+        trade._with(
+          record:
+              newerRecord != null && _furtherOn(newerRecord, than: trade.record)
+              ? newerRecord
+              : trade.record,
+          seen: newer.seen ?? trade.seen,
+        ),
+        stored: false,
+        superseded: true,
+      );
+    }
     var record = trade.record;
     // The trail last known on disk, and its own status: what stays when nothing is stored.
     var onDiskTrail = trade.seen.status.trail;
@@ -430,12 +493,19 @@ final class TradeReader {
           problem ??= failure;
       }
     }
+    _requestOrder.noted(record);
+    if (current.stored) _requestOrder.stored(record, current);
     return TradeStep(
       trade._with(record: record, seen: current),
       recordProblem: problem,
       stored: current.stored,
     );
   }
+
+  /// Whether [record] is further on than [than]: confirmed where it was not, or closed where it was not.
+  static bool _furtherOn(TradeRecord record, {required TradeRecord than}) =>
+      (record.closedAt != null && than.closedAt == null) ||
+      (record.confirmedAt != null && than.confirmedAt == null);
 
   /// Closes [record] at an end its stored trail already holds (the app was killed between the trail and the close).
   Future<Result<TradeRecord, P2pFailure>> closeAtEnd(TradeRecord record) =>

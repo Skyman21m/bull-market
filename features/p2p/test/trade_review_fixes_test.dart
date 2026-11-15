@@ -23,6 +23,7 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade/wallet_payment.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
@@ -924,6 +925,7 @@ void main() {
           Federation.robosats,
           Bolt11Reader(app.coordinator.decoder),
           clock: () => app.now,
+          requestOrder: TradeReadOrder(),
         );
         final opened = switch (await reader.open(record)) {
           TradeOpened(:final trade) => trade,
@@ -931,16 +933,21 @@ void main() {
         };
         app.coordinator.lockBond(app.robot(0));
         await app.elapse(const Duration(seconds: 10));
-        final read = await CoordinatorClient(app.coordinator).fetchOrder(
-          app.coordinator.coordinator,
-          app.network,
-          identity: app.robot(0),
-          orderId: record.orderId,
+        final times = reader.request();
+        final read = await reader.timed(
+          times,
+          () => CoordinatorClient(app.coordinator).fetchOrder(
+            app.coordinator.coordinator,
+            app.network,
+            identity: app.robot(0),
+            orderId: record.orderId,
+          ),
         );
         final step = await reader.advance(
           opened,
           TradeAnswer.ofRead(read) ?? fail('no answer'),
           at: app.now,
+          request: times,
         );
         expect(kept.calls, 2);
         expect(step.stored, isTrue);

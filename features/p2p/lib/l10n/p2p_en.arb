@@ -2867,6 +2867,15 @@
       }
     }
   },
+  "p2pPayReadSuperseded": "Could not read the order from {coordinator} just now. Nothing was paid.",
+  "@p2pPayReadSuperseded": {
+    "description": "The panel of « Pay with this wallet » (#100), the project's own text: the read just before the payment was overtaken twice by another read of the trade, so its answer was not kept (#141); the order did not necessarily move on. « Pay with this wallet » stays offered.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
   "p2pPayStillSending": "Still sending. This can take a few minutes.",
   "@p2pPayStillSending": {
     "description": "The panel of « Pay with this wallet » (#100, #135): ours: after 30 s of « Sending the payment… »."
@@ -3188,12 +3197,12 @@
   "@p2pEndOpenOptions": {
     "description": "The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95)."
   },
-  "p2pEndWaitSeconds": "Wait {seconds} seconds",
+  "p2pEndWaitSeconds": "{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}",
   "@p2pEndWaitSeconds": {
-    "description": "Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95).",
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95), plural-aware.",
     "placeholders": {
       "seconds": {
-        "type": "String"
+        "type": "int"
       }
     }
   }

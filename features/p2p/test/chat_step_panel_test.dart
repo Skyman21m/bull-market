@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bull_ui/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
@@ -101,6 +103,23 @@ late Map<String, TradeSeen> _seen;
 late TradeSeen _longNine;
 final _record = TradeScreenStatuses.record;
 
+/// The app's own font (`assets/fonts/GolosText.ttf`), loaded once: the checks of words broken are made in it, since Flutter's test font draws every glyph as a square of the text's size, words about twice as wide as the app draws them.
+final _appTheme = testTheme.copyWith(
+  textTheme: testTheme.textTheme.apply(fontFamily: 'Golos Text'),
+);
+
+Future<void> _loadAppFont() async {
+  final golos = FontLoader('Golos Text')
+    ..addFont(
+      Future.value(
+        ByteData.sublistView(
+          File('../../assets/fonts/GolosText.ttf').readAsBytesSync(),
+        ),
+      ),
+    );
+  await golos.load();
+}
+
 TradeWatchStatus _watched(String name) =>
     TradeScreenStatuses.watched(_seen[name] ?? (throw StateError(name)));
 
@@ -116,6 +135,7 @@ Future<TradeCubit> _show(
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
   double textScale = 1,
+  bool appFont = false,
 }) async {
   tester.view
     ..physicalSize = size * 3
@@ -141,7 +161,7 @@ Future<TradeCubit> _show(
   addTearDown(page.close);
   await tester.pumpWidget(
     MaterialApp(
-      theme: testTheme,
+      theme: appFont ? _appTheme : testTheme,
       locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
       supportedLocales: P2pLocalizations.supportedLocales,
@@ -193,6 +213,7 @@ const _waitSeller =
 
 void main() {
   setUpAll(() async {
+    await _loadAppFont();
     _statuses = await TradeScreenStatuses.make();
     _longNine = await (await TradeScreenStatuses.make(
       amount: 1234567.1234,
@@ -1255,6 +1276,35 @@ void main() {
       },
     );
 
+    for (final (locale, two, one) in const [
+      (Locale('en'), 'Wait 2 seconds', 'Wait 1 second'),
+      (Locale('fr'), 'Attendez 2 secondes', 'Attendez 1 seconde'),
+    ]) {
+      testWidgets(
+        '${locale.languageCode}: the undo\'s counter read « $two », then « $one » (second pass of the review of #145)',
+        (tester) async {
+          final handle = tester.ensureSemantics();
+          await _show(
+            tester,
+            watch: _Watch(),
+            locale: locale,
+            undoFiatSent: _FiatSent(),
+            state: _watched('ten'),
+          );
+          final quiet = find.byType(Expanded).last;
+          await _reveal(tester, quiet);
+          await tester.tap(quiet);
+          await _settleDialog(tester);
+          // Built at 60, one tick a second once open, as in the test below.
+          await tester.pump(const Duration(seconds: 58));
+          expect(find.bySemanticsLabel(two), findsOneWidget);
+          await tester.pump(const Duration(seconds: 1));
+          expect(find.bySemanticsLabel(one), findsOneWidget);
+          handle.dispose();
+        },
+      );
+    }
+
     testWidgets(
       'the undo\'s counter: kept across openings, running only while open, 300 after « Confirm », read in seconds',
       (tester) async {
@@ -1390,7 +1440,7 @@ void main() {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
         testWidgets(
-          '${locale.languageCode} at ×$scale on 320 points: no word broken in « Order options » at 10, the two dialogs and « Payment failed? »',
+          '${locale.languageCode} at ×$scale on 320 points, in the app font: no word broken in « Order options » at 10, the two dialogs and « Payment failed? »',
           (tester) async {
             for (final (name, open) in [
               ('ten', 'options'),
@@ -1403,6 +1453,7 @@ void main() {
                 locale: locale,
                 size: const Size(320, 640),
                 textScale: scale,
+                appFont: true,
                 state: _watched(name),
               );
               _expectNoWordBroken(tester, '$name panel');
@@ -1519,46 +1570,63 @@ void main() {
               ..physicalSize = const Size(320, 640) * 3
               ..devicePixelRatio = 3;
             addTearDown(tester.view.reset);
-            await tester.pumpWidget(
-              MaterialApp(
-                theme: testTheme,
-                locale: locale,
-                localizationsDelegates: P2pLocalizations.localizationsDelegates,
-                supportedLocales: P2pLocalizations.supportedLocales,
-                builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context).copyWith(
-                    disableAnimations: true,
-                    textScaler: TextScaler.linear(scale),
-                  ),
-                  child: child ?? const SizedBox.shrink(),
+            Widget app(ThemeData theme) => MaterialApp(
+              theme: theme,
+              // The app's font at once, not over the theme's animation.
+              themeAnimationDuration: Duration.zero,
+              locale: locale,
+              localizationsDelegates: P2pLocalizations.localizationsDelegates,
+              supportedLocales: P2pLocalizations.supportedLocales,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  disableAnimations: true,
+                  textScaler: TextScaler.linear(scale),
                 ),
-                home: Scaffold(
-                  body: BlocProvider.value(
-                    value: cubit,
-                    child: SingleChildScrollView(
-                      child: ChatStepPanel(
-                        seen: nine,
-                        order: order,
-                        coordinator:
-                            'The Very Long Name Of A Coordinator Of The Federation',
-                        chatStep: const ChatStepRunning(
-                          ChatStepAction.confirmFiatSent,
-                          progress: ChatStepProgress.readingOrder,
-                          waitedLong: true,
-                        ),
-                        otherActionRunning: false,
-                        cancel: const CancelIdle(),
-                        offersUndoFiatSent: true,
-                        offersCollaborativeCancel: true,
-                        offersFiatSent: true,
+                child: child ?? const SizedBox.shrink(),
+              ),
+              home: Scaffold(
+                body: BlocProvider.value(
+                  value: cubit,
+                  child: SingleChildScrollView(
+                    child: ChatStepPanel(
+                      seen: nine,
+                      order: order,
+                      coordinator:
+                          'The Very Long Name Of A Coordinator Of The Federation',
+                      chatStep: const ChatStepRunning(
+                        ChatStepAction.confirmFiatSent,
+                        progress: ChatStepProgress.readingOrder,
+                        waitedLong: true,
                       ),
+                      otherActionRunning: false,
+                      cancel: const CancelIdle(),
+                      offersUndoFiatSent: true,
+                      offersCollaborativeCancel: true,
+                      offersFiatSent: true,
                     ),
                   ),
                 ),
               ),
             );
+            await tester.pumpWidget(app(testTheme));
             await tester.pump();
             _expectNothingCut(tester, 'long');
+            // The reviewer's case (second pass of #145): « Confirmer l'envoi de 1 234 567,1234 EUR », the amount's groups joined by non-breaking spaces, one word, never broken inside; checked in the app's font.
+            if (locale.languageCode == 'fr') {
+              expect(
+                find.byWidgetPredicate(
+                  (w) =>
+                      w is TradeButton &&
+                      RegExp(
+                        '^Confirmer l\'envoi de 1[\u00a0\u202f]234[\u00a0\u202f]567,1234 EUR\$',
+                      ).hasMatch(w.label),
+                ),
+                findsOneWidget,
+              );
+            }
+            await tester.pumpWidget(app(_appTheme));
+            await tester.pump();
+            _expectNoWordBroken(tester, 'long');
             expect(
               find.byWidgetPredicate(
                 (w) =>
@@ -1614,7 +1682,8 @@ void _expectNoWordBroken(WidgetTester tester, String reason) {
     final style = paragraph.text.style;
     final room = paragraph.constraints.maxWidth;
     // A word wider than the paragraph's room can only break letter by letter.
-    for (final word in text.split(RegExp(r'[\s\u00a0\u202f]+'))) {
+    // Split as the line breaks: at breaking spaces only, a group joined by a non-breaking space (U+00A0, U+202F) being one word.
+    for (final word in text.split(RegExp(r'[ \t\n]+'))) {
       if (word.isEmpty) continue;
       final painter = TextPainter(
         text: TextSpan(text: word, style: style),
