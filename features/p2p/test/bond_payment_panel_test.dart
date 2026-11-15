@@ -495,7 +495,7 @@ void main() {
       await tester.pump();
       expect(
         find.text(
-          'Swap Failed. Swap will be refunded shortly. The swap fees are not refunded.',
+          'Swap failed. Swap will be refunded shortly. The swap fees are not refunded.',
         ),
         findsOneWidget,
       );
@@ -586,12 +586,6 @@ void main() {
 
   for (final (name, state, progress, text) in [
     (
-      'held',
-      'six',
-      const P2pWalletPaymentPending(),
-      'Your taker bond is locked',
-    ),
-    (
       'refund pending',
       'expired',
       const P2pWalletPaymentRefundPending(),
@@ -619,7 +613,7 @@ void main() {
       'expired with its funding sent',
       'expired',
       const P2pWalletPaymentExpired(P2pWalletFunds.sent),
-      'Swap Failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+      'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
     ),
     (
       'under review',
@@ -653,8 +647,14 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text('Your taker bond is locked'), findsOneWidget);
-      expect(find.textContaining('swap'), findsNothing);
-      expect(find.textContaining('Swap'), findsNothing);
+      // The line of ours renders no text at all.
+      expect(
+        find.descendant(
+          of: find.byType(BondPaymentLine),
+          matching: find.byType(Text),
+        ),
+        findsNothing,
+      );
     },
   );
 
@@ -662,8 +662,67 @@ void main() {
     tester,
   ) async {
     await _show(tester, state: 'six');
-    expect(find.textContaining('swap service'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(BondPaymentLine),
+        matching: find.byType(Text),
+      ),
+      findsNothing,
+    );
   });
+
+  testWidgets(
+    'the wallet offered and idle, « Pay with another wallet » opened: the reference\'s sentence once, with the QR code',
+    (tester) async {
+      await _show(tester, state: 'bond');
+      await tester.ensureVisible(find.text('Pay with another wallet'));
+      await tester.pump();
+      if (find.byType(QrImageView).evaluate().isEmpty) {
+        await tester.tap(find.text('Pay with another wallet'));
+        await tester.pump();
+      }
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(
+        find.text(
+          'This is a hold invoice, it will freeze in your wallet. It will be charged only if you cancel or lose a dispute.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'at 3, the swap refunded already: said so, the other wallet open',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      _follow(payments, const P2pWalletPaymentRefunded());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Swap failed. Swap has been refunded. The swap fees are not refunded.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'after status 3, a swap expired with its funding sent: « Swap expired. », support',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'expired');
+      _follow(payments, const P2pWalletPaymentExpired(P2pWalletFunds.sent));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   group('on a phone of 320 points, the text larger', () {
     for (final locale in const [Locale('en'), Locale('fr')]) {
