@@ -391,6 +391,32 @@ final class OrderNotParticipant extends CoordinatorOrderFailure {
   const OrderNotParticipant();
 }
 
+/// The coordinator refused an action of the trade's chat step, « fiat sent », its undo or a dispute, or this package refused to send it (`Logics.confirm_fiat`, `undo_confirm_fiat_sent` and `open_dispute`, `api/logics.py:485-533`, `:1686-1756`, commit ff1998c).
+///
+/// Every one of them comes before the coordinator changes anything, so after a refusal the order is as it was.
+/// Some are decided by this package from the last read of the order, sending nothing: [fromLastRead] says which; a last read may be stale, so read the order again and decide from the fresh read before telling the user anything.
+sealed class TradeActionRefused extends CoordinatorOrderFailure {
+  /// Whether this package refused from the last read of the order, sending nothing, rather than the coordinator.
+  final bool fromLastRead;
+
+  const TradeActionRefused({required this.fromLastRead});
+}
+
+/// Only the buyer may do this (error 1030), or the last read does not show this robot as the buyer ([fromLastRead]).
+final class TradeActionNotBuyer extends TradeActionRefused {
+  const TradeActionNotBuyer({required super.fromLastRead});
+}
+
+/// The order is not at a step that takes this action: « fiat sent » outside 9 and 10 (1029), its undo outside 10 (1031), a dispute outside 9 and 10 (1013), the seller's confirmation before « fiat sent » (1027); or the last read already shows so ([fromLastRead]).
+final class TradeActionNotNow extends TradeActionRefused {
+  const TradeActionNotNow({required super.fromLastRead});
+}
+
+/// A dispute cannot be opened yet: the coordinator takes one only from 18 hours before the end of the chat's time, `expires_at` (error 1054, `api/logics.py:500-501`), or this package's clock is earlier than that for the last read ([fromLastRead]).
+final class DisputeTooEarly extends TradeActionRefused {
+  const DisputeTooEarly({required super.fromLastRead});
+}
+
 /// The coordinator refused the buyer's payout, an invoice or an address, or this package refused to send it (`Logics.update_invoice` and `Logics.update_address`, `api/logics.py:752-907`, commit ff1998c).
 ///
 /// Each is a kind, never the coordinator's text: the reference sends some of these refusals without any code, as a bare `bad_invoice` or `bad_address` text, which is compared with the reference's exact wording and never kept.

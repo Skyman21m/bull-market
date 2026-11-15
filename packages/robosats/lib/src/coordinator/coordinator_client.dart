@@ -17,13 +17,14 @@ import 'package:robosats/src/coordinator/payout.dart';
 import 'package:robosats/src/coordinator/read_bounds.dart';
 import 'package:robosats/src/coordinator/robosats_currency.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
+import 'package:robosats/src/coordinator/trade_action.dart';
 import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/bitcoin_address.dart';
 import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
-/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order and its payout as buyer.
+/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator.
 ///
 /// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
 /// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
@@ -332,6 +333,192 @@ final class CoordinatorClient {
       ).mapErr(_afterAction),
     };
   }
+
+  /// `POST /api/order/?order_id=` with the action `confirm`, as the buyer: tells the coordinator of [lastRead] that the robot [identity] sent the fiat (« Confirm {{amount}} {{currencyCode}} sent »), which moves the order from 9 to 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`, commit ff1998c).
+  ///
+  /// From then on the seller may release the escrow, the buyer can no longer cancel, and a false confirmation risks the bond in a dispute: the buyer alone takes it back only while the seller has not acted ([undoConfirmFiat]).
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:266-269`): `{"action":"confirm"}`.
+  ///
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 9 ([TradeActionNotNow]), each decided from [lastRead]: read the order again before telling the user.
+  /// The answer is [TradeActionAccepted] with the order as it then is, at a status « fiat sent » can lead to (`fiatSentFollows`; any other is an outcome unknown); the coordinator's refusals ([TradeActionNotNow] for 1029, [OrderNotParticipant]) and the authentication's are an [OrderActionRefused], every other failure an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiat({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+  }) => _tradeAction(
+    identity: identity,
+    lastRead: lastRead,
+    refusedFromLastRead: switch (lastRead) {
+      CoordinatorOrder(isBuyer: != true) => const TradeActionNotBuyer(
+        fromLastRead: true,
+      ),
+      CoordinatorOrder(status: != CoordinatorOrderStatus.sendingFiat) =>
+        const TradeActionNotNow(fromLastRead: true),
+      _ => null,
+    },
+    body: const {'action': 'confirm'},
+    follows: fiatSentFollows,
+  );
+
+  /// `POST /api/order/?order_id=` with the action `undo_confirm`, as the buyer: takes back the robot's « fiat sent » (« Payment failed? »), which moves the order from 10 back to 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`, commit ff1998c).
+  ///
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:271-274`): `{"action":"undo_confirm"}`.
+  /// Nothing is sent, as for [confirmFiat], when [lastRead] was read by another robot, does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 10 ([TradeActionNotNow]); the coordinator refuses with 1030 ([TradeActionNotBuyer]) and 1031 ([TradeActionNotNow]).
+  /// The answer and the other failures are as for [confirmFiat].
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> undoConfirmFiat({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+  }) => _tradeAction(
+    identity: identity,
+    lastRead: lastRead,
+    refusedFromLastRead: switch (lastRead) {
+      CoordinatorOrder(isBuyer: != true) => const TradeActionNotBuyer(
+        fromLastRead: true,
+      ),
+      CoordinatorOrder(status: != CoordinatorOrderStatus.fiatSent) =>
+        const TradeActionNotNow(fromLastRead: true),
+      _ => null,
+    },
+    body: const {'action': 'undo_confirm'},
+    follows: fiatSentUndoneFollows,
+  );
+
+  /// How long before the end of the chat's time a dispute may be opened: the reference coordinator refuses one earlier than `expires_at` minus 18 hours (`api/logics.py:500-501`, a constant of its code), which is 6 hours into the chat with the default 24 hours (`FIAT_EXCHANGE_DURATION`).
+  static const disputeWindow = Duration(hours: 18);
+
+  /// `POST /api/order/?order_id=` with the action `dispute`: opens a dispute of the order of [lastRead] for the robot [identity] (« Open Dispute », `Logics.open_dispute`, `api/logics.py:485-533`, commit ff1998c).
+  ///
+  /// The coordinator settles the escrow and both bonds to itself at once, and the order moves to 11: the side that loses the dispute loses its bond.
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:256-259`): `{"action":"dispute"}`.
+  ///
+  /// Nothing is sent when [lastRead] was read by another robot, does not show this robot as a participant ([OrderNotParticipant]), is not at 9 or 10 ([TradeActionNotNow]), or when this client's clock is earlier than [lastRead]'s `expires_at` minus [disputeWindow] ([DisputeTooEarly]), each decided from [lastRead]; the coordinator refuses with 1013 ([TradeActionNotNow]) and 1054 ([DisputeTooEarly]).
+  /// The answer and the other failures are as for [confirmFiat].
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> openDispute({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+  }) => _tradeAction(
+    identity: identity,
+    lastRead: lastRead,
+    refusedFromLastRead: switch (lastRead) {
+      CoordinatorOrder(isParticipant: false) => const OrderNotParticipant(),
+      CoordinatorOrder(
+        status: != CoordinatorOrderStatus.sendingFiat &&
+            != CoordinatorOrderStatus.fiatSent,
+      ) =>
+        const TradeActionNotNow(fromLastRead: true),
+      _ when _clock().isBefore(lastRead.expiresAt.subtract(disputeWindow)) =>
+        const DisputeTooEarly(fromLastRead: true),
+      _ => null,
+    },
+    body: const {'action': 'dispute'},
+    follows: disputeFollows,
+  );
+
+  /// `POST /api/order/?order_id=` with the action `rate_platform`: the robot [identity] gives its coordinator, the one of [lastRead], [rating] stars (« Rate your host », `Logics.rate_platform`, `api/logics.py:1785-1789`, commit ff1998c).
+  ///
+  /// The coordinator keeps the latest rating of the robot, whatever the order's status; the reference client offers it once the trade is finished (`TradeBox/Prompts/Successful.tsx`).
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:315-317`): `{"action":"rate_platform","rating":N}`, a number the coordinator's serializer reads as one of its choices « 1 » to « 5 ».
+  /// Nothing is sent when [lastRead] was read by another robot or does not show this robot as a participant ([OrderNotParticipant]); the answer and the other failures are as for [confirmFiat].
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> ratePlatform({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required PlatformRating rating,
+  }) => _tradeAction(
+    identity: identity,
+    lastRead: lastRead,
+    refusedFromLastRead: lastRead.isParticipant
+        ? null
+        : const OrderNotParticipant(),
+    body: {'action': 'rate_platform', 'rating': rating.stars},
+  );
+
+  /// The checks every action of the trade makes before it is sent, [refusedFromLastRead] included, then the request and the reading of its answer.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> _tradeAction({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+    required CoordinatorFailure? refusedFromLastRead,
+    required Map<String, Object> body,
+    Set<CoordinatorOrderStatus>? follows,
+  }) async {
+    if (!lastRead.wasReadBy(identity)) {
+      return const Err(OrderActionRefused(OrderReadElsewhere()));
+    }
+    if (refusedFromLastRead != null) {
+      return Err(OrderActionRefused(refusedFromLastRead));
+    }
+    final response = await _postOrderAction(
+      lastRead.coordinator,
+      lastRead.network,
+      identity: identity,
+      orderId: lastRead.id,
+      body: body,
+    );
+    return switch (response) {
+      Err(:final failure) => Err(_afterTradeAction(failure)),
+      Ok(value: CoordinatorResponse(statusCode: 200)) => switch (_decode(
+        response,
+      )) {
+        Err(:final failure) => Err(_afterTradeAction(failure)),
+        Ok(:final value) => parseTradeActionAnswer(
+          value,
+          identity: identity,
+          lastRead: lastRead,
+          follows: follows,
+        ).mapErr(_afterTradeAction),
+      },
+      Ok(value: final answer) => Err(
+        _afterTradeAction(_tradeActionRefusal(answer)),
+      ),
+    };
+  }
+
+  /// Why a coordinator answered an action of the trade with a status other than `200`: the codes of `Logics.confirm_fiat`, `undo_confirm_fiat_sent` and `open_dispute`, and 1047, then the rule of every action on an order ([_orderRefusal]).
+  ///
+  /// A code is read on a `4xx` answer only.
+  static CoordinatorFailure _tradeActionRefusal(CoordinatorResponse answer) {
+    final status = answer.statusCode;
+    if (status < 400 || status > 499) return _orderRefusal(answer);
+    final code = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(
+        object,
+      ).optionalInt('error_code', min: 0, max: 99999),
+      _ => null,
+    };
+    return switch (code) {
+      1047 => const OrderNotParticipant(),
+      1030 => const TradeActionNotBuyer(fromLastRead: false),
+      1013 ||
+      1027 ||
+      1029 ||
+      1031 => const TradeActionNotNow(fromLastRead: false),
+      1054 => const DisputeTooEarly(fromLastRead: false),
+      _ => _orderRefusal(answer),
+    };
+  }
+
+  /// Whether [failure] of an action of the trade comes before the coordinator changed anything.
+  ///
+  /// Refused: every [TradeActionRefused] and [OrderNotParticipant] (each answered before `Logics` changes the order, `api/views.py:617-619`, `api/logics.py:497-501`, `:1703-1704`, `:1732-1733`, `:1742-1746`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Everything else is an outcome unknown: a code of another action, a `5xx`, an error of the read that follows the action, a malformed answer, a lost connection.
+  static OrderActionFailure _afterTradeAction(CoordinatorFailure failure) =>
+      switch (failure) {
+        TradeActionRefused() ||
+        OrderNotParticipant() ||
+        OrderRequestRefused(errorCode: null) ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        OrderReadElsewhere() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
 
   /// `POST /api/order/?order_id=` with the action `update_invoice`: gives the coordinator of [lastRead] the Lightning invoice the robot [identity] is to be paid with as buyer.
   ///
