@@ -18,7 +18,7 @@ import '../../presentation/trade_cubit.dart';
 import '../widgets/trade_button.dart';
 import 'wallet_payment_section.dart';
 
-/// « Pay with this wallet », the slot of the bond panel at status 3 (#100, W4): the Instant payments balance, the button, the swap service's quote and its confirmation, the payment and where it stands, as the study of #100 (§ 4) words them.
+/// « Pay with this wallet », the slot of the bond panel at status 3 (#100, W4): the Instant payments balance, the button, the swap's quote and its confirmation, the payment and where it stands, in the reference's words and the wallet's for the swap (#135).
 ///
 /// The quote is asked only on the tap of « Pay with this wallet », never when the panel opens; the payment is made only on the tap of its confirmation, « Pay {total} sats ». Every wait says what it waits for (the fees, the sending, the coordinator's lock), and the line of the payment is brought into view when it changes.
 /// While this wallet pays, or once its payment may have moved funds, « Pay with another wallet » closes and offers neither the QR code nor the copy of the same invoice. A refusal that moved nothing opens it, and « Pay with this wallet » stays offered.
@@ -291,7 +291,7 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
   }
 }
 
-/// The confirmation: the invoice's amount, the swap service's fee, the network fee, the total and what stays, the swap service's custody, « Cancel » and « Pay {total} sats », the only tap that pays.
+/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
 class _Confirmation extends StatelessWidget {
   final P2pWalletQuote walletQuote;
   final GlobalKey payKey;
@@ -350,13 +350,15 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
+            // The reference's sentence on a hold invoice, word for word (the owner's decision, #135): here while the confirmation is open, the other wallet's section then not showing it.
             Text(
-              l10n.p2pPayCustody,
+              l10n.p2pTradeHoldInvoiceBond,
               style: text.bodySmall?.copyWith(color: colors.textMuted),
             ),
             const Gap(BullSpacing.md),
+            // The reference's word for stepping back in its dialogs (#134): never the trade's « Cancel », a few rows below.
             TradeButton(
-              label: l10n.p2pCommonCancel,
+              label: l10n.p2pCommonGoBack,
               outlined: true,
               onPressed: onCancel,
             ),
@@ -377,7 +379,7 @@ class _Confirmation extends StatelessWidget {
 
 /// A line of the wallet's payment of the bond, which wraps at any text size and is read out when it changes.
 ///
-/// [BondPaymentLine.new], after status 3: where the payment of a bond paid by this wallet stands, from the trade's [BondPaymentCubit]: « locked » only while the trade goes on after the lock ([bondHeld]), elsewhere a neutral line for sats still with the swap service; nothing when the bond was not paid by this wallet, or nothing left the wallet.
+/// [BondPaymentLine.new], after status 3: where the payment of a bond paid by this wallet stands, from the trade's [BondPaymentCubit]: nothing while the bond is locked ([bondHeld], the reference's bond line says it), « Your swap is in progress. » for a payment sent elsewhere, the refund, the bond kept or the review; nothing when the bond was not paid by this wallet, or nothing left the wallet.
 class BondPaymentLine extends StatelessWidget {
   final String? _text;
   final Color? color;
@@ -445,18 +447,18 @@ String bondPaymentProgressText(
     P2pWalletPaymentPending() => l10n.p2pPaySent(coordinator),
     P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
     P2pWalletPaymentPaid() => l10n.p2pPaySettled(coordinator),
-    // At 3 the bond was never locked: the swap service could not pay the invoice.
-    P2pWalletPaymentRefundPending() ||
-    P2pWalletPaymentRefunded() => l10n.p2pPayServiceCouldNotPay,
+    // At 3 the bond was never locked: the invoice was not paid, and the payin is being refunded, or was.
+    P2pWalletPaymentRefundPending() => l10n.p2pPayServiceCouldNotPay,
+    P2pWalletPaymentRefunded() => l10n.p2pPayServiceRefunded,
     P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
     P2pWalletPaymentFailed(
       funds: P2pWalletFunds.notSent,
     ) => l10n.p2pPayWalletUnavailable,
-    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) ||
-    P2pWalletPaymentFailed(
-      funds: P2pWalletFunds.sent,
-    ) => l10n.p2pPayAskSupportSent,
-    P2pWalletPaymentExpired() ||
+    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) =>
+      l10n.p2pPayAskSupportExpiredSent,
+    P2pWalletPaymentFailed(funds: P2pWalletFunds.sent) =>
+      l10n.p2pPayAskSupportSent,
+    P2pWalletPaymentExpired() => l10n.p2pPayAskSupportExpired,
     P2pWalletPaymentFailed() => l10n.p2pPayAskSupport,
   };
 }
@@ -473,18 +475,19 @@ String? bondPaymentAfterText(
     P2pWalletPaymentPreparing() || P2pWalletPaymentSigned() => null,
     P2pWalletPaymentBroadcastUnknown() => l10n.p2pPayMaybeSent,
     P2pWalletPaymentSent() || P2pWalletPaymentPending() =>
-      bondHeld ? l10n.p2pPayHeld : l10n.p2pPayWithSwapService,
+      // While the bond is locked the reference's own bond line says so: nothing of ours is added (#135).
+      bondHeld ? null : l10n.p2pPayWithSwapService,
     P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
     P2pWalletPaymentPaid() => l10n.p2pPaySettled(coordinator),
     P2pWalletPaymentRefundPending() => l10n.p2pPayRefundPending,
     P2pWalletPaymentRefunded() => l10n.p2pPayRefunded,
     P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
     P2pWalletPaymentFailed(funds: P2pWalletFunds.notSent) => null,
-    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) ||
-    P2pWalletPaymentFailed(
-      funds: P2pWalletFunds.sent,
-    ) => l10n.p2pPayAskSupportSent,
-    P2pWalletPaymentExpired() ||
+    P2pWalletPaymentExpired(funds: P2pWalletFunds.sent) =>
+      l10n.p2pPayAskSupportExpiredSent,
+    P2pWalletPaymentFailed(funds: P2pWalletFunds.sent) =>
+      l10n.p2pPayAskSupportSent,
+    P2pWalletPaymentExpired() => l10n.p2pPayAskSupportExpired,
     P2pWalletPaymentFailed() => l10n.p2pPayAskSupport,
   };
 }
