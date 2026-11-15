@@ -376,7 +376,7 @@
   "p2pTradeCancelNotDoneAfter": "{reason} Rien n’a été annulé.",
   "p2pTradeCancelUnknown": "Bull Market ne sait pas encore si l’annulation a abouti. Il continue de vérifier.",
   "p2pTradeCancelNeedsRead": "Attendez que l’ordre soit relu avant d’annuler.",
-  "p2pTradeCancelOnlyTogether": "Seule une annulation collaborative est possible maintenant ; elle arrive dans une prochaine version.",
+  "p2pTradeCancelOnlyTogether": "À cette étape, seule une annulation collaborative existe, que RoboSats propose depuis le chat.",
   "p2pTradeCancelNotPossible": "Vous ne pouvez pas annuler cet ordre",
   "p2pTradeTakePending": "Bull Market ne sait pas encore si la prise de l’ordre a abouti. Il continue de vérifier auprès de {coordinator}.",
   "p2pTradeTakeNeverSent": "Cette prise d’ordre n’a jamais été envoyée à {coordinator}.",

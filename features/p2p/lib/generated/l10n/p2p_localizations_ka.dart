@@ -1399,7 +1399,7 @@ class P2pLocalizationsKa extends P2pLocalizations {
 
   @override
   String get p2pTradeCancelOnlyTogether =>
-      'Only a collaborative cancel is possible now, which comes in a later version.';
+      'At this step only a collaborative cancel exists, which RoboSats offers from the chat.';
 
   @override
   String get p2pTradeCancelNotPossible => 'You cannot cancel this order';

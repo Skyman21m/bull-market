@@ -10,7 +10,7 @@ class WordFitText extends StatelessWidget {
     this.text, {
     super.key,
     this.style,
-    this.textAlign = TextAlign.center,
+    this.textAlign = TextAlign.start,
   });
 
   @override
@@ -36,7 +36,8 @@ class WordFitText extends StatelessWidget {
           }
           if (widest > constraints.maxWidth) {
             final size = merged.fontSize ?? 14;
-            final ratio = constraints.maxWidth / widest;
+            // A little under the room, for the rounding of glyphs at another scale.
+            final ratio = constraints.maxWidth * 0.97 / widest;
             fitted = TextScaler.linear(scaler.scale(size) * ratio / size);
           }
         }

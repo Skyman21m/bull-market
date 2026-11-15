@@ -80,7 +80,13 @@ class TradeButton extends StatelessWidget {
                   const Gap(BullSpacing.sm),
                 ],
                 // Wrapped at word boundaries only, never letter by letter at the larger text sizes.
-                Flexible(child: WordFitText(label, style: style)),
+                Flexible(
+                  child: WordFitText(
+                    label,
+                    style: style,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ],
             ),
           ),

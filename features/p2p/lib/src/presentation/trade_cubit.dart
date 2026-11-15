@@ -228,7 +228,13 @@ class TradeCubit extends Cubit<TradeScreenState> {
             // Superseded by a newer watch of the trade: not an error; the stream ends and this cubit stops, showing what it showed.
             if (isClosed || watch is TradeWatchSuperseded) return;
             final kept = _keepingWhatWasRead(watch);
-            emit(state._with(watch: kept, chatStep: _chatStepAfter(kept)));
+            emit(
+              state._with(
+                watch: kept,
+                chatStep: _chatStepAfter(kept),
+                cancel: _cancelAfter(kept),
+              ),
+            );
           },
           onDone: () {
             // Only this subscription's end clears it: a later start's subscription stays.
@@ -248,9 +254,28 @@ class TradeCubit extends Cubit<TradeScreenState> {
     final shown = state.seen;
     final moved =
         shown != null && shown.status.position != seen.status.position;
-    if (ChatStepAction.confirmFiatSent.doneAt(seen) || moved) {
+    // The action the notice is about: « Payment failed? »'s notice stays at 10, where « fiat sent »'s would be done (review of #95's third pull request).
+    if (chatStep.action.doneAt(seen) || moved) {
       return const ChatStepIdle();
     }
+    return null;
+  }
+
+  /// What a cancel's notice becomes once the watch gives [watch], by the same rule as an action of the chat step's: gone when the status shows the ask recorded (`asked_for_cancel`), the order cancelled, or another position than the one the notice was given at; kept otherwise, a running cancel included.
+  TradeCancelState? _cancelAfter(TradeWatchState watch) {
+    final cancel = state.cancel;
+    if (cancel is! CancelIdle || cancel.notice == null) return null;
+    if (watch is! TradeWatchStatus) return null;
+    final seen = watch.seen;
+    final shown = state.seen;
+    final moved =
+        shown != null && shown.status.position != seen.status.position;
+    final recorded = switch (seen.status) {
+      Chatting(:final askedToCancel) => askedToCancel,
+      Cancelled() => true,
+      _ => false,
+    };
+    if (recorded || moved) return const CancelIdle();
     return null;
   }
 

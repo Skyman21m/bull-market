@@ -111,16 +111,48 @@ void main() {
     },
   );
 
-  test('an answer lost: the read after tells, nothing sent again', () async {
+  test(
+    'an answer lost, the read after shows the ask: done, nothing sent again',
+    () async {
+      final (app, record, seen) = await at9();
+      app.coordinator.failNext(cancels, ScriptedFault.answerLost);
+      final outcome = outcomeOf(await app.cancel.execute(record, seen));
+      // The read after shows this robot's flag: the ask is recorded.
+      expect(outcome, isA<CancelDone>());
+      expect(
+        outcome.seen.status,
+        isA<Chatting>().having((c) => c.askedToCancel, 'asked', isTrue),
+      );
+      expect(sent(app, cancels), 1);
+    },
+  );
+
+  test(
+    'an answer lost, the ask not yet landed: unknown, nothing sent again',
+    () async {
+      final (app, record, seen) = await at9();
+      app.coordinator.failNext(cancels, ScriptedFault.landsLate);
+      final outcome = outcomeOf(await app.cancel.execute(record, seen));
+      expect(outcome, isA<CancelOutcomeUnknown>());
+      expect(sent(app, cancels), 1);
+    },
+  );
+
+  test('at 9 from a status not marked stored: nothing sent', () async {
     final (app, record, seen) = await at9();
-    app.coordinator.failNext(cancels, ScriptedFault.answerLost);
-    final outcome = outcomeOf(await app.cancel.execute(record, seen));
-    expect(outcome, isA<CancelOutcomeUnknown>());
+    app.coordinator.requests.clear();
     expect(
-      outcome.seen.status,
-      isA<Chatting>().having((c) => c.askedToCancel, 'asked', isTrue),
+      await app.cancel.execute(
+        record,
+        TradeSeen(seen.status, order: seen.order),
+      ),
+      isA<Err<CancelOutcome, CancelRefusal>>().having(
+        (err) => err.failure,
+        'refusal',
+        isA<CancelNeedsARead>(),
+      ),
     );
-    expect(sent(app, cancels), 1);
+    expect(app.coordinator.requests, isEmpty);
   });
 
   test('at 10, no cancel exists: nothing sent', () async {

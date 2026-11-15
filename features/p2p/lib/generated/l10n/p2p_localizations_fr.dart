@@ -1421,7 +1421,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pTradeCancelOnlyTogether =>
-      'Seule une annulation collaborative est possible maintenant ; elle arrive dans une prochaine version.';
+      'À cette étape, seule une annulation collaborative existe, que RoboSats propose depuis le chat.';
 
   @override
   String get p2pTradeCancelNotPossible =>

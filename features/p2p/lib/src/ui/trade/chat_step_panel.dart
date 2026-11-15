@@ -485,6 +485,7 @@ class _QuietButton extends StatelessWidget {
                 Flexible(
                   child: WordFitText(
                     label,
+                    textAlign: TextAlign.center,
                     style: Theme.of(
                       context,
                     ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),

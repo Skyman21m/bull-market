@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/word_fit_text.dart';
 
 /// What the user chose in « Order options ».
 enum OrderOption { collaborativeCancel }
@@ -50,7 +51,7 @@ class OrderOptionsDialog extends StatelessWidget {
           Semantics(
             container: true,
             header: true,
-            child: Text(
+            child: WordFitText(
               l10n.p2pEndOrderOptions,
               style: styles.headlineLarge?.copyWith(color: colors.text),
             ),
@@ -72,7 +73,7 @@ class OrderOptionsDialog extends StatelessWidget {
           // The reference's tooltip of « Collaborative Cancel », which it shows on a touch at 9 as at 10: a line here, under the button.
           ...[
             const Gap(BullSpacing.xs),
-            Text(
+            WordFitText(
               l10n.p2pEndCollabAfterFiat,
               textAlign: TextAlign.center,
               style: styles.bodySmall?.copyWith(color: colors.textMuted),

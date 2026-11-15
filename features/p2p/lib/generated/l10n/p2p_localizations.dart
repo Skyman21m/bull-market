@@ -2411,10 +2411,10 @@ abstract class P2pLocalizations {
   /// **'Wait until the order is read again before cancelling.'**
   String get p2pTradeCancelNeedsRead;
 
-  /// Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9).
+  /// Not in the RoboSats texts: the project's own: a cancel asked at 8, where the coordinator takes only a collaborative cancel and the reference offers it from the chat only (#95); no screen offers a cancel at 8.
   ///
   /// In en, this message translates to:
-  /// **'Only a collaborative cancel is possible now, which comes in a later version.'**
+  /// **'At this step only a collaborative cancel exists, which RoboSats offers from the chat.'**
   String get p2pTradeCancelOnlyTogether;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1021 (`api/errors.py`); the French is the project's.
