@@ -3048,6 +3048,10 @@
   "@p2pChatReadNewer": {
     "description": "The chat panel (#93): ours: the user's choice when the history is too long."
   },
+  "p2pChatSkipAwaited": "Waiting for the next read of the order…",
+  "@p2pChatSkipAwaited": {
+    "description": "The chat panel (#93): ours: « Read only the newer messages » chosen while the order shown was read before those messages; the skip is done at the next read of the order."
+  },
   "p2pChatEarlierHidden": "Earlier messages are not shown.",
   "@p2pChatEarlierHidden": {
     "description": "The chat panel (#93): ours: after « Read only the newer messages »."

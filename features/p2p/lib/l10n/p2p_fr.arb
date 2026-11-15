@@ -566,6 +566,7 @@
   "p2pChatUnavailable": "Le chat ne peut pas être lu sur cet appareil.",
   "p2pChatHistoryTooLarge": "Ce chat est trop long pour être lu depuis son premier message.",
   "p2pChatReadNewer": "Lire seulement les messages récents",
+  "p2pChatSkipAwaited": "En attente de la prochaine lecture de l’ordre…",
   "p2pChatEarlierHidden": "Les messages précédents ne sont pas affichés.",
   "p2pChatScreenPrivacyUnavailable": "La protection de l’écran n’a pas pu être activée : le chat reste masqué.",
   "p2pChatUnreadable": "Ce message ne peut pas être lu.",

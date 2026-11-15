@@ -3555,6 +3555,12 @@ abstract class P2pLocalizations {
   /// **'Read only the newer messages'**
   String get p2pChatReadNewer;
 
+  /// The chat panel (#93): ours: « Read only the newer messages » chosen while the order shown was read before those messages; the skip is done at the next read of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the next read of the order…'**
+  String get p2pChatSkipAwaited;
+
   /// The chat panel (#93): ours: after « Read only the newer messages ».
   ///
   /// In en, this message translates to:

@@ -31,6 +31,7 @@ void main() {
   const coordinatorName = 'Temple of Sats';
   final at = DateTime.utc(2026, 11, 15, 9, 30);
   late TradeSeen nine;
+  late TradeSeen nineAgain;
   late String ownNick;
   late String peerNick;
   late PgpPublicKey peerKey;
@@ -58,6 +59,7 @@ void main() {
   setUpAll(() async {
     final statuses = await TradeScreenStatuses.make();
     nine = await statuses.chatting();
+    nineAgain = await statuses.chatting();
     final order = nine.order!;
     ownNick = order.taker!.nickname;
     peerNick = order.maker.nickname;
@@ -136,10 +138,18 @@ void main() {
         expect(chat.reads, 4, reason: 'no read while hidden');
         cubit.activate();
         expect(chat.held, 2);
-        await cubit.close();
-        expect(chat.released, 2, reason: 'closing lets the key go');
+        cubit.deactivate();
       },
     );
+
+    test('closing it stops the reads and lets the key go', () async {
+      final chat = _Chat()..view = pinned();
+      final cubit = chat.cubit(record)..show(nine);
+      cubit.activate();
+      await cubit.close();
+      expect(chat.released, 1);
+      expect(cubit.polling, isFalse);
+    });
 
     testWidgets('a read that fails keeps the chat shown and says why', (
       tester,
@@ -160,6 +170,7 @@ void main() {
       await tester.pump(ChatCubit.pollEvery);
       await tester.pump();
       expect(cubit.state.readFailure, isNull);
+      cubit.deactivate();
     });
 
     testWidgets(
@@ -201,6 +212,7 @@ void main() {
         await cubit.sendAgain(1);
         expect(chat.reposts, [1]);
         expect(cubit.state.view.pending, isEmpty);
+        cubit.deactivate();
       },
     );
 
@@ -389,6 +401,36 @@ void main() {
 
     Finder sendButton() => find.byTooltip('Send');
 
+    /// Presses the copy of a message, whose row a box of 258 points may show only in part.
+    Future<void> pressCopy(WidgetTester tester, Finder copy) async {
+      tester
+          .widget<IconButton>(
+            find.ancestor(of: copy, matching: find.byType(IconButton)).first,
+          )
+          .onPressed!();
+      await tester.pump();
+      await tester.pump();
+    }
+
+    /// Scrolls the box of the messages until [finder] is built and shown.
+    Future<void> seeMessage(
+      WidgetTester tester,
+      Finder finder, {
+      double delta = 80,
+    }) async {
+      await tester.scrollUntilVisible(
+        finder,
+        delta,
+        scrollable: find
+            .descendant(
+              of: find.byType(ChatPanel),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pump();
+    }
+
     bool sendEnabled(WidgetTester tester) =>
         tester
             .widget<IconButton>(
@@ -476,34 +518,117 @@ void main() {
         expect(find.text('You: connected'), findsOneWidget);
         expect(find.text('Peer: disconnected'), findsOneWidget);
         expect(
-          find.bySemanticsLabel('Verified signature by $peerNick'),
+          find.bySemanticsLabel(RegExp('Verified signature by $peerNick')),
           findsWidgets,
         );
         expect(
-          find.bySemanticsLabel('Cannot verify signature of $peerNick'),
+          find.bySemanticsLabel(RegExp('Cannot verify signature of $peerNick')),
           findsOneWidget,
         );
         expect(
           find.text('A message may be missing before this one.'),
           findsOneWidget,
         );
-        expect(
-          find.text('This message was already shown above.'),
-          findsOneWidget,
+        for (final mark in [
+          'This message was already shown above.',
+          'You sent this message twice.',
+          'This message was signed before an earlier one.',
+        ]) {
+          await seeMessage(tester, find.text(mark));
+          expect(find.text(mark), findsOneWidget);
+        }
+        await seeMessage(
+          tester,
+          find.text('Hello, I am sending the fiat').first,
+          delta: -80,
         );
-        expect(find.text('You sent this message twice.'), findsOneWidget);
-        expect(
-          find.text('This message was signed before an earlier one.'),
-          findsOneWidget,
-        );
-        final copy = find.byTooltip('Copy').first;
-        await tester.ensureVisible(copy);
-        await tester.tap(copy);
-        await tester.pump();
+        await pressCopy(tester, find.byTooltip('Copy').first);
         expect(copied, ['Hello, I am sending the fiat']);
         expect(find.text('Copied!'), findsWidgets);
         await tester.pump(const Duration(seconds: 3));
         semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      'a message is plain text in a forced direction: no markup, nothing tappable, an image\'s metadata not read, and a copy without hidden characters (review of #93)',
+      (tester) async {
+        const markup = '**bold** [pay here](https://example.invalid) <b>x</b>';
+        const link =
+            'lightning:lnbc1qqqq bitcoin:bc1qqqq https://example.invalid';
+        const image =
+            '{"type":"image","url":"https://example.invalid/a.png","sha256":"00"}';
+        final cleaned = ChatEntry.displayable('IBAN FR76\u200B 3000\u202E6');
+        final chat = _Chat()
+          ..view = pinned(
+            entries: [
+              entry(1, markup),
+              entry(2, link),
+              entry(3, image),
+              entry(4, cleaned),
+            ],
+          );
+        final cubit = chat.cubit(record);
+        addTearDown(cubit.close);
+        await show(tester, cubit);
+        for (final text in [markup, link, image, cleaned]) {
+          final shown = find.text(text);
+          await seeMessage(tester, shown);
+          expect(shown, findsOneWidget, reason: text);
+          expect(
+            tester
+                .widget<SelectableText>(
+                  find.ancestor(
+                    of: shown,
+                    matching: find.byType(SelectableText),
+                  ),
+                )
+                .textDirection,
+            TextDirection.ltr,
+          );
+        }
+        expect(find.byType(Image), findsNothing);
+        // No span of the messages answers a tap.
+        for (final paragraph in tester.renderObjectList<RenderParagraph>(
+          find.byType(RichText),
+        )) {
+          paragraph.text.visitChildren((span) {
+            expect(span is TextSpan ? span.recognizer : null, isNull);
+            return true;
+          });
+        }
+        final copies = find.byTooltip('Copy');
+        await seeMessage(tester, find.text(cleaned));
+        await pressCopy(tester, copies.last);
+        expect(copied, ['IBAN FR76 30006']);
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+
+    testWidgets(
+      '« Read only the newer messages » chosen on an order read before them waits for the next read of the order, then skips',
+      (tester) async {
+        final chat = _Chat()
+          ..view = const ChatView(historyTooLarge: true)
+          ..skipRefused = true;
+        final cubit = chat.cubit(record);
+        addTearDown(cubit.close);
+        await show(tester, cubit);
+        await tester.tap(find.text('Read only the newer messages'));
+        await tester.pump();
+        expect(
+          find.text('Waiting for the next read of the order…'),
+          findsOneWidget,
+        );
+        expect(find.text('Read only the newer messages'), findsNothing);
+        chat
+          ..skipRefused = false
+          ..skipped = const ChatView(skippedEarlier: true);
+        // The trade screen shows a newer read of the order.
+        cubit.show(nineAgain);
+        await tester.pump();
+        expect(chat.skips, 2);
+        expect(find.text('Earlier messages are not shown.'), findsOneWidget);
       },
     );
 
@@ -858,13 +983,19 @@ void main() {
           findsOneWidget,
         );
         expect(find.text(otherKey.armored), findsNothing);
+        await tester.ensureVisible(find.text('Keys'));
+        await tester.pump();
         await tester.tap(find.text('Keys'));
         await tester.pump();
         expect(shared.last.$1, 'pgp_keys_${record.orderId}.json');
         expect(shared.last.$2, isNot(contains('PRIVATE')));
+        await tester.ensureVisible(find.text('Messages'));
+        await tester.pump();
         await tester.tap(find.text('Messages'));
         await tester.pump();
         expect(shared.last.$1, 'pgp_messages_${record.orderId}.json');
+        await tester.ensureVisible(find.text('Go back'));
+        await tester.pump();
         await tester.tap(find.text('Go back'));
         await settle(tester);
         expect(find.text("Don't trust, verify"), findsNothing);
@@ -905,6 +1036,7 @@ void main() {
 final class _Chat {
   ChatView view = const ChatView();
   ChatView skipped = const ChatView();
+  bool skipRefused = false;
   int reads = 0;
   int skips = 0;
   int held = 0;
@@ -936,8 +1068,9 @@ final class _Chat {
     },
     (record, seen) {
       skips++;
+      if (skipRefused) return const Err(ChatSkipNeedsOrderRead());
       view = skipped;
-      return skipped;
+      return Ok(skipped);
     },
     (record) => view,
     (record) => exported,

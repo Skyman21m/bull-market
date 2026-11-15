@@ -2204,6 +2204,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pChatReadNewer => 'Lire seulement les messages récents';
 
   @override
+  String get p2pChatSkipAwaited =>
+      'En attente de la prochaine lecture de l’ordre…';
+
+  @override
   String get p2pChatEarlierHidden =>
       'Les messages précédents ne sont pas affichés.';
 

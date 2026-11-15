@@ -36,7 +36,11 @@ typedef ChatReposter =
     );
 
 /// [WatchChatUsecase.readNewerOnly], which the locator gives the cubit.
-typedef ChatSkipper = ChatView Function(TradeRecord record, TradeSeen seen);
+typedef ChatSkipper =
+    Result<ChatView, ChatSkipRefusal> Function(
+      TradeRecord record,
+      TradeSeen seen,
+    );
 
 /// [WatchChatUsecase.current], which the locator gives the cubit.
 typedef ChatCurrent = ChatView Function(TradeRecord record);
@@ -64,12 +68,16 @@ final class ChatPanelState {
   /// Why the last read gave nothing new, while it is so; the chat as it was stays shown.
   final ChatReadFailure? readFailure;
 
+  /// The user chose « Read only the newer messages » and the order shown was read before those messages: the skip waits for the next read of the order.
+  final bool skipAwaited;
+
   const ChatPanelState({
     this.view = const ChatView(),
     this.text = '',
     this.sending,
     this.refusal,
     this.readFailure,
+    this.skipAwaited = false,
   });
 
   /// Whether « Send » may be pressed: a text that can be sent, the peer's key known, nothing being sent.
@@ -84,12 +92,14 @@ final class ChatPanelState {
     int? Function()? sending,
     ChatSendRefusal? Function()? refusal,
     ChatReadFailure? Function()? readFailure,
+    bool? skipAwaited,
   }) => ChatPanelState(
     view: view ?? this.view,
     text: text ?? this.text,
     sending: sending == null ? this.sending : sending(),
     refusal: refusal == null ? this.refusal : refusal(),
     readFailure: readFailure == null ? this.readFailure : readFailure(),
+    skipAwaited: skipAwaited ?? this.skipAwaited,
   );
 
   @override
@@ -141,8 +151,12 @@ class ChatCubit extends Cubit<ChatPanelState> {
   @visibleForTesting
   bool get polling => _timer != null;
 
-  /// The panel is shown with [seen], the status the trade screen shows.
-  void show(TradeSeen seen) => _seen = seen;
+  /// The panel is shown with [seen], the status the trade screen shows; a skip the user chose that waited for a newer read of the order is tried again.
+  void show(TradeSeen seen) {
+    final changed = !identical(seen, _seen);
+    _seen = seen;
+    if (changed && state.skipAwaited) readNewerOnly();
+  }
 
   /// The panel is shown, the app in the foreground: the key held, the chat read now and every [pollEvery]. A second call does nothing.
   void activate() {
@@ -231,12 +245,17 @@ class ChatCubit extends Cubit<ChatPanelState> {
     }
   }
 
-  /// The user chose to read only the newer messages, the history being too large to read from the start.
+  /// The user chose to read only the newer messages, the history being too large to read from the start; when the order shown was read before them, the choice waits for the next read of the order ([show]).
   void readNewerOnly() {
     final seen = _seen;
     if (isClosed || seen == null) return;
-    emit(state._with(view: _skip(record, seen)));
-    unawaited(_poll());
+    switch (_skip(record, seen)) {
+      case Ok(:final value):
+        emit(state._with(view: value, skipAwaited: false));
+        unawaited(_poll());
+      case Err():
+        emit(state._with(skipAwaited: true));
+    }
   }
 
   /// The chat as the export gives it, as indented JSON (`complete_log_chat_<order id>.json`): what « Export » hands the share sheet, on the user's tap only.

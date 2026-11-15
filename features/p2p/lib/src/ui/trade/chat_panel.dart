@@ -207,13 +207,21 @@ class _ChatPanelState extends State<ChatPanel>
         const Gap(BullSpacing.xs),
         if (view.historyTooLarge) ...[
           _Line(l10n.p2pChatHistoryTooLarge, color: colors.warning),
-          TextButton(
-            onPressed: _cubit.readNewerOnly,
-            child: Text(
-              l10n.p2pChatReadNewer,
-              style: TextStyle(color: colors.primary),
+          if (state.skipAwaited)
+            _Line(
+              l10n.p2pChatSkipAwaited,
+              color: colors.textMuted,
+              small: true,
+              live: true,
+            )
+          else
+            TextButton(
+              onPressed: _cubit.readNewerOnly,
+              child: Text(
+                l10n.p2pChatReadNewer,
+                style: TextStyle(color: colors.primary),
+              ),
             ),
-          ),
         ],
         if (view.skippedEarlier)
           _Line(
@@ -254,49 +262,7 @@ class _ChatPanelState extends State<ChatPanel>
         ),
         const Gap(BullSpacing.sm),
         ..._keyLines(context, view, coordinator),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Semantics(
-                label: l10n.p2pChatTypeMessage,
-                child: BullInputText(
-                  uiKey: ChatPanel.field,
-                  controller: _text,
-                  value: state.text,
-                  hint: l10n.p2pChatTypeMessage,
-                  onChanged: _cubit.edit,
-                  minLines: 1,
-                  maxLines: 3,
-                ),
-              ),
-            ),
-            const Gap(BullSpacing.xs),
-            Tooltip(
-              message: view.canSend
-                  ? l10n.p2pChatSend
-                  : l10n.p2pChatWaitingForPeer,
-              child: IconButton.filled(
-                onPressed: state.canSend
-                    ? () => unawaited(_cubit.send())
-                    : null,
-                style: IconButton.styleFrom(
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                ),
-                icon: state.sending == 0
-                    ? SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.onPrimary,
-                        ),
-                      )
-                    : const Icon(Icons.send),
-              ),
-            ),
-          ],
-        ),
+        _fieldAndSend(context, state),
         if (state.sending == 0)
           _Line(
             l10n.p2pChatSending(coordinator),
@@ -314,6 +280,79 @@ class _ChatPanelState extends State<ChatPanel>
         if (state.readFailure?.toText(context, coordinator: coordinator)
             case final failure?)
           _Line(failure, color: colors.textMuted, small: true),
+      ],
+    );
+  }
+
+  /// The field and « Send » side by side, as the reference lays them out; the button under the field when the text is large, so that the field keeps its width on a phone of 320 points.
+  Widget _fieldAndSend(BuildContext context, ChatPanelState state) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final view = state.view;
+    // The reference's label of the field (`label={t('Type a message')}`), above it so that it wraps at a large text size.
+    final field = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(
+          child: Text(
+            l10n.p2pChatTypeMessage,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: colors.textMuted),
+          ),
+        ),
+        const Gap(BullSpacing.xxs),
+        Semantics(
+          label: l10n.p2pChatTypeMessage,
+          child: BullInputText(
+            uiKey: ChatPanel.field,
+            controller: _text,
+            value: state.text,
+            onChanged: _cubit.edit,
+            minLines: 1,
+            maxLines: 3,
+          ),
+        ),
+      ],
+    );
+    final send = Tooltip(
+      // The reference's tooltip while the peer's key is not known.
+      message: view.peerKey is ChatPeerKeyAwaited
+          ? l10n.p2pChatWaitingForPeer
+          : l10n.p2pChatSend,
+      child: IconButton.filled(
+        onPressed: state.canSend ? () => unawaited(_cubit.send()) : null,
+        style: IconButton.styleFrom(
+          backgroundColor: colors.primary,
+          foregroundColor: colors.onPrimary,
+        ),
+        icon: state.sending == 0
+            ? SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colors.onPrimary,
+                ),
+              )
+            : const Icon(Icons.send),
+      ),
+    );
+    if (MediaQuery.textScalerOf(context).scale(1) >= 1.5) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          field,
+          const Gap(BullSpacing.xs),
+          Align(alignment: AlignmentDirectional.centerEnd, child: send),
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(child: field),
+        const Gap(BullSpacing.xs),
+        send,
       ],
     );
   }
@@ -559,8 +598,10 @@ class _MessageCardState extends State<_MessageCard> {
               ],
             ),
             if (text != null)
+              // Plain text in a forced direction: no markup, no link, nothing tappable, and no paragraph direction a peer's text could choose (review of #93).
               SelectableText(
                 text,
+                textDirection: TextDirection.ltr,
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: colors.onSurface),
@@ -647,6 +688,7 @@ class _PendingCard extends StatelessWidget {
             ),
             SelectableText(
               pending.text,
+              textDirection: TextDirection.ltr,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: colors.onSurface),
