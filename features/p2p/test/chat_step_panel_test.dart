@@ -96,6 +96,7 @@ Future<TradeCubit> _show(
   _Cancels? cancels,
   _FiatSent? fiatSent,
   bool offersFiatSent = true,
+  bool moneyActionRunning = false,
   TradeWatchState? state,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -144,6 +145,7 @@ Future<TradeCubit> _show(
           child: TradeScreen(
             now: () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
+            moneyActionRunning: (_) => moneyActionRunning,
           ),
         ),
       ),
@@ -324,6 +326,19 @@ void main() {
       expect(fiatSent.asked, hasLength(1));
       // The watch is asked to read at once.
       expect(watch.signals, contains(TradeWatchSignal.readNow));
+      // A new tap of the user, the first request having landed meanwhile: done, the notice gone, no failure said.
+      fiatSent.gate = null;
+      await _reveal(tester, find.text(_confirmLabel));
+      await tester.tap(find.text(_confirmLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await _settleDialog(tester);
+      expect(fiatSent.asked, hasLength(2));
+      fiatSent.gate?.complete(Ok(ChatStepDone(_record, _seen['ten']!)));
+      await tester.pumpAndSettle();
+      expect(find.text(_waitSeller), findsOneWidget);
+      expect(find.textContaining('does not know yet'), findsNothing);
+      expect(find.textContaining('nothing was sent'), findsNothing);
     },
   );
 
@@ -353,6 +368,28 @@ void main() {
     // The status now is shown: the seller's wait, no button.
     expect(find.text(_waitSeller), findsOneWidget);
     expect(find.text(_confirmLabel), findsNothing);
+  });
+
+  testWidgets('another action of the trade running: the button off, and why', (
+    tester,
+  ) async {
+    final fiatSent = _FiatSent();
+    await _show(
+      tester,
+      watch: _Watch(),
+      fiatSent: fiatSent,
+      moneyActionRunning: true,
+      state: _watched('nine'),
+    );
+    expect(_button(tester, _confirmLabel).onPressed, isNull);
+    expect(
+      find.text('Waiting for another action on this order to end…'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text(_confirmLabel), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('✅ Confirm you sent 100 EUR?'), findsNothing);
+    expect(fiatSent.asked, isEmpty);
   });
 
   testWidgets('without the action wired, the step shows no button', (
