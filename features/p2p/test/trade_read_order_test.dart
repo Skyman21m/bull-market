@@ -540,5 +540,56 @@ void main() {
         expect(await positionOnDisk(app, record), 'fiatSent');
       },
     );
+
+    test(
+      'a read of the trade that leaves between « fiat sent » and its read after, and answers after that read: the read after stays, and no breach is recorded',
+      () async {
+        final (app, record, seen, run) = await watchedAt(9);
+        await run.subscription.cancel();
+        // An answer at 10, as the other read will give it (the coordinator at 10 once « fiat sent » is in).
+        app.coordinator.moveTo(10);
+        final atTen = await readNow(app, record);
+        app.coordinator.moveTo(9);
+
+        RequestLeft? otherLeft;
+        var confirmIn = false;
+        app.coordinator.onRequest = (request) {
+          final body = request.body;
+          final decoded = body == null ? null : jsonDecode(utf8.decode(body));
+          if (decoded is Map<String, Object?> &&
+              decoded['action'] == 'confirm') {
+            // The other read leaves now, after the action and before its read after.
+            otherLeft = app.reader.requestLeaves();
+            confirmIn = true;
+          } else if (confirmIn &&
+              body == null &&
+              request.url.path.endsWith('/api/order/')) {
+            // The seller confirms before the read after is answered: it reads 13.
+            app.coordinator.moveTo(13);
+          }
+        };
+        final confirmed = await app.chat.confirmFiatSent(record, seen);
+        app.coordinator.onRequest = null;
+        final after = switch (confirmed) {
+          Ok(:final value) => value.seen,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(after.status.position, TradePosition.sendingSats);
+        expect(otherLeft, isNotNull);
+
+        // The other read's answer at 10 comes now, after the read after: along no edge (13 → 10), it would be a breach.
+        await app.elapse(const Duration(seconds: 1));
+        final stale = await app.reader.advance(
+          await opened(app, record),
+          atTen,
+          at: app.now,
+          sent: otherLeft ?? fail('no read left'),
+        );
+        expect(stale.stored, isFalse);
+        expect(stale.trade.seen.status.position, TradePosition.sendingSats);
+        expect(await positionOnDisk(app, record), 'sendingSats');
+        expect(await breachOnDisk(app, record), isFalse);
+      },
+    );
   });
 }
