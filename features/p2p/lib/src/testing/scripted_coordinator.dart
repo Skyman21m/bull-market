@@ -21,6 +21,9 @@ enum ScriptedFault {
 
   /// The coordinator acts on the request, and its answer is lost on the way back (`CoordinatorTimedOut`).
   answerLost,
+
+  /// The request is still on its way when its answer times out (`CoordinatorTimedOut`): the coordinator acts on it only when the test calls `ScriptedCoordinator.landLate`, after the reads that follow, as a request held up over Tor.
+  landsLate,
 }
 
 /// The kinds of request the scripted coordinator answers, to aim a [ScriptedFault] at.
@@ -50,7 +53,8 @@ enum ScriptedRequest {
 ///
 /// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`), `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`), and the buyer's payout, `update_invoice` and `update_address` (#90: the clear signature checked against the robot's kept public key and split as the coordinator splits it, then the rules of `Logics.update_invoice` and `update_address`, `api/views.py:617-649`, `api/logics.py:752-947`, with the node's and bitcoind's refusals as their bare texts).
 /// From the chat (#95) it also answers `cancel` as the collaborative cancel of 8 and 9 (the first ask raises the asker's flag, `asked_for_cancel` to the asker and `pending_cancel` to the other; the second side's ask returns everything, 12, with the short body of a cancel that ended the order, `api/logics.py:1130-1202`, `api/views.py:604-615`), `confirm` (the buyer's « fiat sent », 9 or 10 → 10, the step's deadline kept; the seller's confirmation only after it, `api/logics.py:1686-1735`), `undo_confirm` (the buyer only, 10 → 9, `:1737-1756`), `dispute` (9 or 10, not earlier than 18 hours before the step's deadline, `:485-533`) and `rate_platform` (the serializer's choices « 1 » to « 5 », kept in [platformRating]), each refused with the reference's code, and 1047 to a robot that is no participant (`api/views.py:617-619`).
-/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price, [peerAsksToCancel] for the maker's ask of a collaborative cancel), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
+/// Known gaps, the seller's side of #96, not played: at 8 the reference shows the collaborative cancel's flags to the seller only (`api/views.py:415`, `:431`), and the seller's `confirm` may be refused with 1028 or reach 15 (`api/logics.py:1706-1730`); here the seller's confirmation goes straight to 13.
+/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price, [peerAsksToCancel] and [peerAcceptsCancel] for the maker's side of a collaborative cancel, [landLate] for requests held by [ScriptedFault.landsLate]), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedCoordinator implements CoordinatorTransport {
   /// The order's figures: 100 EUR (currency 2), 106,900 sats at the book's price, a premium of 2 %, a bond of 3 %, an escrow of 3 h.
@@ -250,13 +254,37 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     _preTakes.clear();
   }
 
-  /// The maker, the peer, asks for a collaborative cancel (at 8 or 9): the taker's read then says `pending_cancel`, and the taker's own ask cancels the order for both, 12.
+  /// The maker, the peer, asks for a collaborative cancel (at 8 or 9), as `Logics.cancel_order` answers it (`api/logics.py:1130-1181`): when the taker asked first, everything is returned and the order is cancelled for both, 12 (`:1151-1158`); otherwise the taker's read then says `pending_cancel`, and the taker's own ask cancels the order for both.
   void peerAsksToCancel() {
     if (_status != 8 && _status != 9) {
       throw StateError('a collaborative cancel is asked at 8 or 9 only');
     }
-    _makerAskedCancel = true;
+    if (_takerAskedCancel) {
+      _status = 12;
+    } else {
+      _makerAskedCancel = true;
+    }
   }
+
+  /// The maker, the peer, accepts the taker's ask of a collaborative cancel: [peerAsksToCancel] once the taker asked, the order cancelled for both, 12.
+  void peerAcceptsCancel() {
+    if (!_takerAskedCancel) {
+      throw StateError('the taker has not asked for a collaborative cancel');
+    }
+    peerAsksToCancel();
+  }
+
+  /// The requests held by [ScriptedFault.landsLate] reach the coordinator now, in order, and it acts on them; their answers are gone.
+  void landLate() {
+    final held = List.of(_late);
+    _late.clear();
+    for (final (kind, request) in held) {
+      _answer(kind, request);
+    }
+  }
+
+  /// The requests held by [ScriptedFault.landsLate], not landed yet.
+  final List<(ScriptedRequest, CoordinatorRequest)> _late = [];
 
   /// Whether the taker asked for a collaborative cancel.
   bool get takerAskedCancel => _takerAskedCancel;
@@ -315,6 +343,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedFault.answerLost:
         _answer(kind, request);
         return const Err(CoordinatorTimedOut());
+      case ScriptedFault.landsLate:
+        _late.add((kind, request));
+        return const Err(CoordinatorTimedOut());
       case null:
         return Ok(_answer(kind, request));
     }
@@ -335,6 +366,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedRequest.robot:
         return _robot(request);
       case ScriptedRequest.order:
+        // A POST whose action the serializer does not know is refused with an empty 400 before anything (`api/views.py:538-540`, `api/serializers.py:663-677`).
+        if (request.method == CoordinatorHttpMethod.post) {
+          return CoordinatorResponse(
+            statusCode: 400,
+            headers: const {},
+            body: Uint8List(0),
+          );
+        }
         return _orderFor(_robotOf(request));
       case ScriptedRequest.take:
         final robot = _robotOf(request);
@@ -405,7 +444,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     // The serializer first (`api/views.py:538-540`): a rating other than « 1 » to « 5 » is an empty 400 (`api/serializers.py:678-683`).
     final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
     final rating = body is Map<String, Object?> ? body['rating'] : null;
+    // A blank rating passes (`allow_blank`), and is then refused by the view's `and rating`.
     if (rating != null &&
+        rating != '' &&
         !const ['1', '2', '3', '4', '5'].contains('$rating')) {
       return CoordinatorResponse(
         statusCode: 400,
@@ -454,7 +495,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         moveTo(11);
       case ScriptedRequest.rate:
         // The view's `and rating` (`api/views.py:680`, else 1049 with a 501, `:692-693`).
-        if (rating == null) {
+        if (rating == null || rating == '') {
           return _json(501, {'error_code': 1049, 'bad_request': 'what?'});
         }
         platformRating = int.parse('$rating');
