@@ -1736,7 +1736,12 @@ void main() {
         await settle();
         await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
         await settle();
+        // The take in two steps (#119): « Take Order » has the robot read the order, then « Continue » and « Done ».
         await tester.tap(find.text(l10n.p2pTakeOrder));
+        await waitFor(find.text(l10n.p2pTakerBond));
+        await tester.ensureVisible(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonContinue));
         await settle();
         await tester.tap(find.text(l10n.p2pCommonDone));
         await waitFor(find.text(l10n.p2pPayWithThisWallet));
