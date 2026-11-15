@@ -625,11 +625,17 @@ void main() {
           referring((r) => r == 'UnlockedRobotPgpKey.encryptChatMessageToPost'),
           {chatSend},
         );
-        // Decrypted away from the UI isolate, by the key work's own file, which only the chat's read asks for it.
+        // Decrypted away from the UI isolate, by the key work's own file, which only the chat's read asks for it, with the part of the key that decrypts and nothing else: never the identity, nor its token (review of #93).
         expect(
           referring((r) => r == 'UnlockedRobotPgpKey.decryptChatMessage'),
-          {'lib/src/data/isolate_robot_key_compute.dart'},
+          isEmpty,
         );
+        expect(referring((r) => r == 'UnlockedRobotPgpKey.chatDecryption'), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
+        expect(referring((r) => r.startsWith('ChatDecryptionKey.')), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
         expect(referring((r) => r == 'RobotKeyComputePort.decryptChat'), {
           chatRead,
         });
@@ -640,7 +646,7 @@ void main() {
                 r != 'UnlockedRobotPgpKey.signPayoutInvoice' &&
                 r != 'UnlockedRobotPgpKey.signPayoutAddress' &&
                 r != 'UnlockedRobotPgpKey.encryptChatMessageToPost' &&
-                r != 'UnlockedRobotPgpKey.decryptChatMessage',
+                r != 'UnlockedRobotPgpKey.chatDecryption',
           ),
           isEmpty,
         );
@@ -1847,8 +1853,10 @@ const _watched = {
       'encryptChatMessageWith',
       'encryptChatMessageToPost',
       'decryptChatMessage',
+      'chatDecryption',
     },
   ),
+  'ChatDecryptionKey': ('package:robosats/', {'decryptChatMessage'}),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),
   // The requests of one call, through the limiter's places (#87: a trade use case reads only through them).

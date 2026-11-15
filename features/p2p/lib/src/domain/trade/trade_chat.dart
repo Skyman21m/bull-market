@@ -95,10 +95,28 @@ final class ChatEntry {
   );
 
   /// [text] as the screen may show it and a copy gives it: plain text, the control characters but line feeds and tabs dropped, and every format character (Unicode category Cf: the marks that reorder text, U+061C, the zero-width characters, the zero-width joiner too, so that an emoji sequence shows as its parts, U+00AD, U+FEFF, the tag characters) and variation selector removed, so that nothing invisible reorders or hides in a peer's IBAN or address (design note § 3.6, review of #93).
-  static String displayable(String text) => text.replaceAll(_hidden, '');
+  ///
+  /// Also: the line and paragraph separators (U+2028, U+2029) become line feeds, as they render; the private-use characters, the noncharacters and the letters that show nothing (U+115F, U+1160, U+2800, U+3164, U+FFA0, and the combining grapheme joiner U+034F) are removed; a run of combining marks keeps its first [maxMarks]. What is left to the panel: a box of a bounded height that scrolls, and the text in a forced direction.
+  static String displayable(String text) => text
+      .replaceAll(_separators, '\n')
+      .replaceAll(_hidden, '')
+      .replaceAllMapped(_markRun, (run) => run[1] ?? '');
+
+  /// The combining marks a character keeps: enough for the scripts that stack them, not for a text drawn over its neighbours.
+  static const maxMarks = 4;
+
+  static final RegExp _separators = RegExp(
+    r'[\u{2028}\u{2029}]',
+    unicode: true,
+  );
 
   static final RegExp _hidden = RegExp(
-    r'(?![\t\n])[\p{Cc}\p{Cf}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}]',
+    r'(?![\t\n])[\p{Cc}\p{Cf}\p{Co}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}\u{FDD0}-\u{FDEF}\u{FFFE}\u{FFFF}\u{1FFFE}\u{1FFFF}\u{2FFFE}\u{2FFFF}\u{3FFFE}\u{3FFFF}\u{4FFFE}\u{4FFFF}\u{5FFFE}\u{5FFFF}\u{6FFFE}\u{6FFFF}\u{7FFFE}\u{7FFFF}\u{8FFFE}\u{8FFFF}\u{9FFFE}\u{9FFFF}\u{AFFFE}\u{AFFFF}\u{BFFFE}\u{BFFFF}\u{CFFFE}\u{CFFFF}\u{DFFFE}\u{DFFFF}\u{EFFFE}\u{EFFFF}\u{FFFFE}\u{FFFFF}\u{10FFFE}\u{10FFFF}\u{115F}\u{1160}\u{2800}\u{3164}\u{FFA0}\u{034F}]',
+    unicode: true,
+  );
+
+  static final RegExp _markRun = RegExp(
+    '(\\p{M}{$maxMarks})\\p{M}+',
     unicode: true,
   );
 
@@ -273,11 +291,6 @@ final class ChatTextHoldsToken extends ChatSendRefusal {
 /// The text holds a Garage Key (`robo1…`), which controls every robot derived from it.
 final class ChatTextHoldsGarageKey extends ChatSendRefusal {
   const ChatTextHoldsGarageKey();
-}
-
-/// The text is, on its own, a Lightning invoice or a Bitcoin address: its chat signature can be turned into this robot's signed payout, which whoever holds this robot's token hash, colluding with the peer, could give a coordinator (`SendChatMessageUsecase`, review of #93); a deviation from the reference, which refuses nothing.
-final class ChatTextIsPayout extends ChatSendRefusal {
-  const ChatTextIsPayout();
 }
 
 /// The peer's key is not known yet: the reference sends nothing either (« Waiting for peer... »).

@@ -96,6 +96,9 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// When set, each unlock waits for it before it is done: an unlock in flight, as long as the test wants.
   Future<void>? holdUnlock;
 
+  /// What the next decryptions of the chat give instead, when set: the work could not run.
+  RobotKeyComputeFailure? chatDecryptFailure;
+
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
@@ -129,6 +132,7 @@ final class HarnessKeys implements RobotKeyComputePort {
     required DateTime now,
   }) async {
     chatDecrypts++;
+    if (chatDecryptFailure case final failure?) return Err(failure);
     return Ok([
       for (final job in jobs)
         key.decryptChatMessage(job.armored, sender: job.sender, now: now),
@@ -341,6 +345,9 @@ final class TradeHarness {
   /// Every wait of the limiter after a busy answer.
   final List<Duration> busyWaits = [];
 
+  /// When set, each wait of the limiter after a busy answer lasts until it completes.
+  Future<void>? holdBusyWait;
+
   late final RobotBindingRepositoryImpl bindings;
   late final TradeRecordRepository records;
   late final TestTrails trails;
@@ -393,7 +400,10 @@ final class TradeHarness {
     robots = InterimTradeRobots(_vault, records);
     limiter = RobotRequestLimiter(
       elapsed: () => now.difference(DateTime.utc(2026)),
-      delay: (wait) async => busyWaits.add(wait),
+      delay: (wait) async {
+        busyWaits.add(wait);
+        if (holdBusyWait case final hold?) await hold;
+      },
       random: () => 0.5,
     );
     final client = CoordinatorClient(coordinator, clock: clock);
