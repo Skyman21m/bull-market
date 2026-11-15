@@ -2389,6 +2389,63 @@ void main() {
         await capture('fin-avis-non-envoye');
         await backToTab();
 
+        // Take 7: « Payment failed? » (#95): at 10, its button and the reference's dialog with its wait; back at 9, « Order options », the collaborative cancel asked by this robot, then accepted by the peer.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9);
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        coordinator.moveTo(10);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndPaymentFailed));
+        await capture('fin-10-paiement-echoue');
+        await tester.ensureVisible(find.text(l10n.p2pEndPaymentFailed));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndPaymentFailed));
+        await settle();
+        await capture('fin-annuler-confirmation');
+        await tester.pump(const Duration(seconds: 61));
+        await tester.ensureVisible(find.text(l10n.p2pEndConfirm));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndConfirm));
+        await waitFor(find.text(fiatSent));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options');
+        await tester.tap(find.text(l10n.p2pEndCollabCancel));
+        await settle();
+        await capture('fin-annulation-dialogue');
+        await tester.tap(find.text(l10n.p2pEndCollabAsk));
+        await waitFor(find.text(l10n.p2pEndCollabAskedAlert));
+        await settle();
+        await capture('fin-annulation-demandee');
+        coordinator.peerAcceptsCancel();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pOrderCancelled));
+        await backToTab();
+
+        // Take 8: the collaborative cancel asked by the peer first: its alert, then « Accept Cancelation » on the user's tap.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9)
+          ..peerAsksToCancel();
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pEndCollabPeerAlert('')));
+        await settle();
+        await capture('fin-annulation-pair');
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndCollabCancel));
+        await settle();
+        await capture('fin-annulation-accepter');
+        await tester.tap(find.text(l10n.p2pEndCollabAccept));
+        await waitFor(find.text(l10n.p2pOrderCancelled));
+        await backToTab();
+
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
         coordinator.backToPublic();
         await take();
