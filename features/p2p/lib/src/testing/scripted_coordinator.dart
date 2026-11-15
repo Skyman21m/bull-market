@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:primitives/primitives.dart';
@@ -20,15 +21,40 @@ enum ScriptedFault {
 
   /// The coordinator acts on the request, and its answer is lost on the way back (`CoordinatorTimedOut`).
   answerLost,
+
+  /// The request is still on its way when its answer times out (`CoordinatorTimedOut`): the coordinator acts on it only when the test calls `ScriptedCoordinator.landLate`, after the reads that follow, as a request held up over Tor.
+  landsLate,
 }
 
 /// The kinds of request the scripted coordinator answers, to aim a [ScriptedFault] at.
-enum ScriptedRequest { info, book, robot, order, take, cancel, payout }
+enum ScriptedRequest {
+  info,
+  book,
+  robot,
+  order,
+  take,
+  cancel,
+  payout,
+
+  /// `confirm`: the buyer's « fiat sent », or the seller's « received ».
+  confirm,
+
+  /// `undo_confirm`: the buyer takes back « fiat sent ».
+  undoConfirm,
+
+  /// `dispute`.
+  dispute,
+
+  /// `rate_platform`.
+  rate,
+}
 
 /// One coordinator of the federation list and one order of its book, played for the tests of the trade use cases, as the reference backend at commit ff1998c answers them (`api/views.py`, `api/logics.py`; design note § 1, § 5): never a real coordinator, never money.
 ///
 /// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`), `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`), and the buyer's payout, `update_invoice` and `update_address` (#90: the clear signature checked against the robot's kept public key and split as the coordinator splits it, then the rules of `Logics.update_invoice` and `update_address`, `api/views.py:617-649`, `api/logics.py:752-947`, with the node's and bitcoind's refusals as their bare texts).
-/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
+/// From the chat (#95) it also answers `cancel` as the collaborative cancel of 8 and 9 (the first ask raises the asker's flag, `asked_for_cancel` to the asker and `pending_cancel` to the other; the second side's ask returns everything, 12, with the short body of a cancel that ended the order, `api/logics.py:1130-1202`, `api/views.py:604-615`), `confirm` (the buyer's « fiat sent », 9 or 10 → 10, the step's deadline kept; the seller's confirmation only after it, `api/logics.py:1686-1735`), `undo_confirm` (the buyer only, 10 → 9, `:1737-1756`), `dispute` (9 or 10, not earlier than 18 hours before the step's deadline, `:485-533`) and `rate_platform` (the serializer's choices « 1 » to « 5 », kept in [platformRating]), each refused with the reference's code, and 1047 to a robot that is no participant (`api/views.py:617-619`).
+/// Known gaps, the seller's side of #96, not played: at 8 the reference shows the collaborative cancel's flags to the seller only (`api/views.py:415`, `:431`), and the seller's `confirm` may be refused with 1028 or reach 15 (`api/logics.py:1706-1730`); here the seller's confirmation goes straight to 13.
+/// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price, [peerAsksToCancel] and [peerAcceptsCancel] for the maker's side of a collaborative cancel, [landLate] for requests held by [ScriptedFault.landsLate]), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedCoordinator implements CoordinatorTransport {
   /// The order's figures: 100 EUR (currency 2), 106,900 sats at the book's price, a premium of 2 %, a bond of 3 %, an escrow of 3 h.
@@ -88,6 +114,16 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// Whether the buyer's payout at 15 has expired (`invoice_expired`), so that a new invoice is taken.
   bool payoutExpired = false;
+
+  /// The last rating the taker gave the coordinator (`robot.platform_rating`, `api/logics.py:1785-1789`), 1 to 5, or `null`.
+  int? platformRating;
+
+  /// Whether the taker reverted a « fiat sent » (`order.reverted_fiat_sent`, `api/logics.py:1748-1750`).
+  bool revertedFiatSent = false;
+
+  /// Whether the maker, the peer, asked for a collaborative cancel, and whether the taker did (`maker_asked_cancel`, `taker_asked_cancel`).
+  bool _makerAskedCancel = false;
+  bool _takerAskedCancel = false;
 
   /// The signed texts of the payouts the coordinator recorded, as it split them out, in order.
   final List<String> payoutsRecorded = [];
@@ -218,6 +254,41 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     _preTakes.clear();
   }
 
+  /// The maker, the peer, asks for a collaborative cancel (at 8 or 9), as `Logics.cancel_order` answers it (`api/logics.py:1130-1181`): when the taker asked first, everything is returned and the order is cancelled for both, 12 (`:1151-1158`); otherwise the taker's read then says `pending_cancel`, and the taker's own ask cancels the order for both.
+  void peerAsksToCancel() {
+    if (_status != 8 && _status != 9) {
+      throw StateError('a collaborative cancel is asked at 8 or 9 only');
+    }
+    if (_takerAskedCancel) {
+      _status = 12;
+    } else {
+      _makerAskedCancel = true;
+    }
+  }
+
+  /// The maker, the peer, accepts the taker's ask of a collaborative cancel: [peerAsksToCancel] once the taker asked, the order cancelled for both, 12.
+  void peerAcceptsCancel() {
+    if (!_takerAskedCancel) {
+      throw StateError('the taker has not asked for a collaborative cancel');
+    }
+    peerAsksToCancel();
+  }
+
+  /// The requests held by [ScriptedFault.landsLate] reach the coordinator now, in order, and it acts on them; their answers are gone.
+  void landLate() {
+    final held = List.of(_late);
+    _late.clear();
+    for (final (kind, request) in held) {
+      _answer(kind, request);
+    }
+  }
+
+  /// The requests held by [ScriptedFault.landsLate], not landed yet.
+  final List<(ScriptedRequest, CoordinatorRequest)> _late = [];
+
+  /// Whether the taker asked for a collaborative cancel.
+  bool get takerAskedCancel => _takerAskedCancel;
+
   /// The maker cancels: 1043 to everyone.
   void cancelByMaker() {
     _status = 4;
@@ -272,6 +343,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedFault.answerLost:
         _answer(kind, request);
         return const Err(CoordinatorTimedOut());
+      case ScriptedFault.landsLate:
+        _late.add((kind, request));
+        return const Err(CoordinatorTimedOut());
       case null:
         return Ok(_answer(kind, request));
     }
@@ -292,6 +366,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case ScriptedRequest.robot:
         return _robot(request);
       case ScriptedRequest.order:
+        // A POST whose action the serializer does not know is refused with an empty 400 before anything (`api/views.py:538-540`, `api/serializers.py:663-677`).
+        if (request.method == CoordinatorHttpMethod.post) {
+          return CoordinatorResponse(
+            statusCode: 400,
+            headers: const {},
+            body: Uint8List(0),
+          );
+        }
         return _orderFor(_robotOf(request));
       case ScriptedRequest.take:
         final robot = _robotOf(request);
@@ -345,7 +427,82 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _cancel(_robotOf(request), request);
       case ScriptedRequest.payout:
         return _payout(_robotOf(request), request);
+      case ScriptedRequest.confirm ||
+          ScriptedRequest.undoConfirm ||
+          ScriptedRequest.dispute ||
+          ScriptedRequest.rate:
+        return _tradeAction(kind, _robotOf(request), request);
     }
+  }
+
+  /// The actions only a participant may send (`api/views.py:617-619`), as `Logics` answers them (#95).
+  CoordinatorResponse _tradeAction(
+    ScriptedRequest kind,
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
+    // The serializer first (`api/views.py:538-540`): a rating other than « 1 » to « 5 » is an empty 400 (`api/serializers.py:678-683`).
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final rating = body is Map<String, Object?> ? body['rating'] : null;
+    // A blank rating passes (`allow_blank`), and is then refused by the view's `and rating`.
+    if (rating != null &&
+        rating != '' &&
+        !const ['1', '2', '3', '4', '5'].contains('$rating')) {
+      return CoordinatorResponse(
+        statusCode: 400,
+        headers: const {},
+        body: Uint8List(0),
+      );
+    }
+    if (_taker != robot.sessionKey || _status == 1) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    final buyer = orderType == 1;
+    switch (kind) {
+      case ScriptedRequest.confirm:
+        // `Logics.confirm_fiat` (`api/logics.py:1686-1735`): the step's deadline is not moved.
+        if (_status != 9 && _status != 10) {
+          return _json(400, {'error_code': 1029, 'bad_request': 'not now'});
+        }
+        if (buyer) {
+          _status = 10;
+        } else if (_status != 10) {
+          return _json(400, {'error_code': 1027, 'bad_request': 'not sent'});
+        } else {
+          moveTo(13);
+        }
+      case ScriptedRequest.undoConfirm:
+        // `Logics.undo_confirm_fiat_sent` (`api/logics.py:1737-1756`).
+        if (!buyer) {
+          return _json(400, {'error_code': 1030, 'bad_request': 'not buyer'});
+        }
+        if (_status != 10) {
+          return _json(400, {'error_code': 1031, 'bad_request': 'not now'});
+        }
+        _status = 9;
+        revertedFiatSent = true;
+      case ScriptedRequest.dispute:
+        // `Logics.open_dispute` (`api/logics.py:485-533`).
+        if (_status != 9 && _status != 10) {
+          return _json(400, {'error_code': 1013, 'bad_request': 'not now'});
+        }
+        final opens = (_deadline ?? clock().toUtc()).subtract(
+          const Duration(hours: 18),
+        );
+        if (clock().toUtc().isBefore(opens)) {
+          return _json(400, {'error_code': 1054, 'bad_request': 'wait'});
+        }
+        moveTo(11);
+      case ScriptedRequest.rate:
+        // The view's `and rating` (`api/views.py:680`, else 1049 with a 501, `:692-693`).
+        if (rating == null || rating == '') {
+          return _json(501, {'error_code': 1049, 'bad_request': 'what?'});
+        }
+        platformRating = int.parse('$rating');
+      default:
+        throw StateError('not an action of the trade: $kind');
+    }
+    return _orderFor(robot);
   }
 
   /// `update_invoice` and `update_address` as the reference answers them (`api/views.py:617-649`, `api/logics.py:752-947`).
@@ -524,6 +681,20 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         // The taker's bond is settled, the order back in the book (`api/logics.py:1108-1130`).
         backToPublic();
         return _orderFor(robot);
+      case 8 || 9:
+        // The collaborative cancel (`api/logics.py:1130-1202`): the second ask returns everything.
+        if (_makerAskedCancel) {
+          _status = 12;
+          return _json(200, {
+            'id': orderId,
+            'status': 12,
+            'type': orderType,
+            'expires_at': (_deadline ?? clock().toUtc()).toIso8601String(),
+            'bad_request': 'This order has been cancelled',
+          });
+        }
+        _takerAskedCancel = true;
+        return _orderFor(robot);
       default:
         return _json(400, {'error_code': 1021, 'bad_request': 'not now'});
     }
@@ -603,6 +774,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       _ when action == 'cancel' => ScriptedRequest.cancel,
       _ when action == 'update_invoice' || action == 'update_address' =>
         ScriptedRequest.payout,
+      _ when action == 'confirm' => ScriptedRequest.confirm,
+      _ when action == 'undo_confirm' => ScriptedRequest.undoConfirm,
+      _ when action == 'dispute' => ScriptedRequest.dispute,
+      _ when action == 'rate_platform' => ScriptedRequest.rate,
       _ => ScriptedRequest.order,
     };
   }
@@ -801,9 +976,13 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           ..['failure_reason'] = 'A non-recoverable error has occurred.';
         if (payoutExpired) data['invoice_expired'] = true;
       case 9 || 10:
-        data
-          ..['asked_for_cancel'] = false
-          ..['chat_last_index'] = 3;
+        // `api/views.py:430-449`: `pending_cancel` when the peer asked, else whether this robot did.
+        if (_makerAskedCancel) {
+          data['pending_cancel'] = true;
+        } else {
+          data['asked_for_cancel'] = _takerAskedCancel;
+        }
+        data['chat_last_index'] = 3;
       case 11:
         data['statement_submitted'] = false;
       case 5:
