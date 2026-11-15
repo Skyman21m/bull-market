@@ -680,4 +680,63 @@ void main() {
       expect(first, isNotNull);
     },
   );
+
+  test(
+    'an invalid key, the all-zero placeholder among them, is never pinned: the copies go once the order gives a valid one (verification of 230b49ad2, UC)',
+    () async {
+      final (app, record, seen) = await chatting(
+        configure: (app) => app.coordinator.makerNostrPublicKey = '0' * 64,
+      );
+      await app.chatSend.send(record, seen, 'First');
+      await pumpEventQueue();
+      expect(app.relays.published, isEmpty);
+      app.coordinator.makerNostrPublicKey =
+          'f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9';
+      final valid = await readAgain(app, record);
+      await app.chatSend.send(record, valid, 'Second');
+      await pumpEventQueue();
+      expect(app.relays.messages, hasLength(1));
+    },
+  );
+
+  group(
+    'the pin checked again before publishing (verification of 230b49ad2, UB)',
+    () {
+      test(
+        'a copy composed while a later post saw a key change is not published',
+        () async {
+          final (app, record, seen) = await chatting();
+          app.coordinator.makerNostrPublicKey =
+              'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5';
+          final changed = await readAgain(app, record);
+          final gate = Completer<void>();
+          app.keys.holdCompose = gate.future;
+          await app.chatSend.send(record, seen, 'One');
+          await app.chatSend.send(record, changed, 'Two');
+          gate.complete();
+          await pumpEventQueue();
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        '« Send again » publishes nothing once a key changed, even a copy no relay accepted',
+        () async {
+          final (app, record, seen) = await chatting();
+          app.relays.answerFor = (_) => const NostrRelayRefused();
+          final pending = await pendingAfter(app, record, seen, 'Hello?');
+          final count = app.relays.published.length;
+          expect(count, greaterThan(0));
+          app.relays.answerFor = null;
+          app.coordinator.makerNostrPublicKey =
+              'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5';
+          final changed = await readAgain(app, record);
+          await app.chatSend.send(record, changed, 'Seen with the new key');
+          await app.chatSend.sendAgain(record, seen, pending.id);
+          await pumpEventQueue();
+          expect(app.relays.published, hasLength(count));
+        },
+      );
+    },
+  );
 }

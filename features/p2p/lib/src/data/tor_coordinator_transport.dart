@@ -141,6 +141,10 @@ final class TorCoordinatorTransport
   final bool Function(String host) _acceptsHost;
   final int _placesPerCoordinator;
 
+  /// Starts the timer that answers a relay's publication when its deadline passes: [Timer.new], or a late one in a test, which shows that nothing inside the publication waits for it to know the deadline has passed (review of #158).
+  final Timer Function(Duration duration, void Function() callback)
+  _publicationTimer;
+
   /// The session new requests use for each origin and robot, opening or open, the least recently used first.
   final Map<_RouteKey, _Slot> _slots = {};
 
@@ -191,7 +195,10 @@ final class TorCoordinatorTransport
     Duration? closeTimeout,
     bool Function(String host)? acceptsHost,
     int? placesPerCoordinator,
-  }) : _deadline = deadline ?? coordinatorRequestDeadline,
+    Timer Function(Duration duration, void Function() callback)?
+    publicationTimer,
+  }) : _publicationTimer = publicationTimer ?? Timer.new,
+       _deadline = deadline ?? coordinatorRequestDeadline,
        _attemptTimeout = attemptTimeout ?? torConnectDeadline,
        _closeTimeout = closeTimeout ?? torSessionCloseTimeout,
        _acceptsHost = acceptsHost ?? _isOnion,
@@ -269,7 +276,7 @@ final class TorCoordinatorTransport
   }) {
     final completer = Completer<NostrRelayOutcome>();
     final deadline = _Deadline(_deadline);
-    final timer = Timer(_deadline, () {
+    final timer = _publicationTimer(_deadline, () {
       deadline.expire();
       if (!completer.isCompleted) {
         completer.complete(const NostrRelayTimedOut());
@@ -432,8 +439,11 @@ final class TorCoordinatorTransport
         case _RelayAnswered(:final outcome):
           return outcome;
         case _RelayConnectFailed(:final reason):
+          // Given up whatever the deadline: its client is closed with it, which cancels a connection still being made.
           _retire(key, slot, route);
-          if (attempt >= relayConnectRetries || deadline.passed) {
+          // Never a new session once the deadline has passed (review of #158).
+          if (deadline.passed) return const NostrRelayTimedOut();
+          if (attempt >= relayConnectRetries) {
             return const NostrRelayUnreachable();
           }
           // The reason only, as for a request: the relay and the robot never go to a log.
@@ -500,14 +510,12 @@ final class TorCoordinatorTransport
       upgradedOk = true;
       upgraded = socket;
     } on TimeoutException {
-      return deadline.passed
-          ? const _RelayAnswered(NostrRelayTimedOut())
-          : const _RelayConnectFailed(TorConnectFailure.timeout);
+      // The session is given up in every case, so that closing its client cancels a connection still being made, which would otherwise stay open with the session (review of #158); no other attempt is made once the deadline has passed.
+      return const _RelayConnectFailed(TorConnectFailure.timeout);
     } on HttpException {
       // The service answered, not in HTTP: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
       return const _RelayAnswered(NostrRelayUnreachable());
     } on Exception catch (exception) {
-      if (deadline.passed) return const _RelayAnswered(NostrRelayTimedOut());
       return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
     } finally {
       if (!upgradedOk) {
@@ -1346,25 +1354,28 @@ final class _RouteException implements Exception {
 
 /// The overall deadline of one request: once it passes, it cancels the attempt in progress and allows no other.
 final class _Deadline {
-  /// The whole time of a relay's publication, for [left]; `null` for a request, which needs only [passed].
+  /// The whole time of a relay's publication, measured from this deadline's creation: one instant, the single truth of [left] and [passed] (review of #158); `null` for a request, whose deadline only [expire] ends.
   final Duration? _total;
   final Stopwatch _clock = Stopwatch()..start();
-  bool passed = false;
+  bool _expired = false;
   CancelToken? _current;
   WebSocket? _socket;
 
   _Deadline([this._total]);
 
-  /// What is left of the publication's time.
+  /// What is left of the publication's time: zero once it has passed.
   Duration get left {
     final total = _total;
-    if (passed || total == null) return Duration.zero;
+    if (_expired || total == null) return Duration.zero;
     final left = total - _clock.elapsed;
     return left.isNegative ? Duration.zero : left;
   }
 
+  /// Whether the deadline has passed: [expire] ran, or, for a publication, nothing is [left].
+  bool get passed => _expired || (_total != null && left == Duration.zero);
+
   void expire() {
-    passed = true;
+    _expired = true;
     _current?.cancel();
     _socket?.close().ignore();
   }

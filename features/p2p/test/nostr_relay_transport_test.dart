@@ -51,6 +51,8 @@ void main() {
     HttpClient Function(TorProxyEndpoint endpoint)? createHttpClient,
     Duration deadline = const Duration(seconds: 5),
     Duration attemptTimeout = const Duration(seconds: 2),
+    Timer Function(Duration duration, void Function() callback)?
+    publicationTimer,
   }) {
     final transport = TorCoordinatorTransport.withSeams(
       openSession: openSession,
@@ -58,6 +60,7 @@ void main() {
       deadline: deadline,
       attemptTimeout: attemptTimeout,
       acceptsHost: (host) => host == '127.0.0.1',
+      publicationTimer: publicationTimer,
     );
     transports.add(transport);
     return transport;
@@ -518,41 +521,98 @@ void main() {
       );
     }
 
-    test(
-      'the handshake falls under the publication\'s deadline: a relay that never answers it is let go when the deadline passes (second review of #158)',
-      () async {
-        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-        final closed = Completer<void>();
-        server.listen((socket) {
-          socket.listen(
-            (_) {},
-            onDone: () {
-              if (!closed.isCompleted) closed.complete();
-              socket.destroy();
-            },
-            onError: (Object _) {
-              if (!closed.isCompleted) closed.complete();
-            },
-          );
-        });
-        try {
-          final watch = Stopwatch()..start();
+    /// A relay that accepts connections and never answers the handshake; it counts the connections and the ones closed.
+    Future<(ServerSocket, List<int>)> silentRelay() async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final counts = [0, 0];
+      server.listen((socket) {
+        counts[0]++;
+        socket.listen(
+          (_) {},
+          onDone: () {
+            counts[1]++;
+            socket.destroy();
+          },
+          onError: (Object _) => counts[1]++,
+        );
+      });
+      return (server, counts);
+    }
+
+    /// No connection a publication opened survives its deadline, and no new session opens after it: [connectDelay] slows the connection itself, as a cold Tor does, the client cancelling it as `TorHttpClientFactory` does.
+    Future<void> expectNothingOutlivesTheDeadline({
+      Duration? connectDelay,
+      Timer Function(Duration duration, void Function() callback)?
+      publicationTimer,
+    }) async {
+      final (server, counts) = await silentRelay();
+      final printed = <String>[];
+      final print = debugPrint;
+      debugPrint = (String? line, {int? wrapWidth}) {
+        if (line != null) printed.add(line);
+      };
+      final errors = <Object>[];
+      try {
+        await runZonedGuarded(() async {
           final outcome =
               await transport(
                 deadline: const Duration(milliseconds: 300),
                 attemptTimeout: const Duration(seconds: 10),
+                publicationTimer: publicationTimer,
+                createHttpClient: (_) {
+                  final client = HttpClient();
+                  if (connectDelay != null) {
+                    client.connectionFactory =
+                        (uri, proxyHost, proxyPort) async {
+                          final socket = Future<void>.delayed(
+                            connectDelay,
+                          ).then((_) => Socket.connect(uri.host, uri.port));
+                          return ConnectionTask.fromSocket(socket, () {
+                            socket.then((value) => value.destroy()).ignore();
+                          });
+                        };
+                  }
+                  return client;
+                },
               ).publish(
                 Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
                 message,
                 robot: us.sessionKey,
               );
           expect(outcome, isA<NostrRelayTimedOut>());
-          await closed.future.timeout(const Duration(seconds: 2));
-          expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
-        } finally {
-          await server.close();
-        }
-      },
+          // Past the deadline and past the slowed connection: every connection made is closed.
+          await Future<void>.delayed(
+            (connectDelay ?? Duration.zero) + const Duration(milliseconds: 700),
+          );
+        }, (error, _) => errors.add(error));
+      } finally {
+        debugPrint = print;
+        await server.close();
+      }
+      expect(errors, isEmpty);
+      expect(opened, hasLength(1), reason: 'no new session after the deadline');
+      expect(counts[1], counts[0], reason: 'connections closed of those made');
+      expect(printed.where((line) => line.contains('retrying')), isEmpty);
+    }
+
+    test(
+      'the handshake falls under the publication\'s deadline: a relay that never answers it is let go when the deadline passes, without a new session (second review of #158, K1)',
+      () => expectNothingOutlivesTheDeadline(),
+    );
+
+    test(
+      'the deadline is one instant: with the publication\'s timer late, nothing inside the publication retries or opens a session after the deadline (verification of 230b49ad2, V2)',
+      () => expectNothingOutlivesTheDeadline(
+        publicationTimer: (duration, callback) =>
+            Timer(duration + const Duration(milliseconds: 500), callback),
+      ),
+    );
+
+    test(
+      'a connection still being made when the deadline passes is cancelled, without a new session (verification of 230b49ad2, K2)',
+      () => expectNothingOutlivesTheDeadline(
+        connectDelay: const Duration(milliseconds: 800),
+      ),
     );
 
     test(
