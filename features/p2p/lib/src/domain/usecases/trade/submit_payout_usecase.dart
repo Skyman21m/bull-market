@@ -12,6 +12,7 @@ import '../../trade/trade_payout_outcome.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import 'trade_keyring.dart';
+import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -93,7 +94,8 @@ final class SubmitPayoutUsecase {
       record.network,
       trade.coordinator,
       record.orderId,
-      () async {
+      // An action of the trade: the watch sends no read while it runs (#141).
+      () => _reader.duringAction(record, () async {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
           return await _submit(
@@ -106,7 +108,7 @@ final class SubmitPayoutUsecase {
         } finally {
           requests.close();
         }
-      },
+      }),
     );
   }
 
@@ -133,12 +135,17 @@ final class SubmitPayoutUsecase {
     final robot = trade.robot;
     var current = trade;
     P2pFailure? problem;
-    Future<void> keep(TradeAnswer answer, {DateTime? requestedAt}) async {
+    Future<void> keep(
+      TradeAnswer answer, {
+      required RequestTimes request,
+      bool keepsTime = false,
+    }) async {
       final step = await _reader.advance(
         current,
         answer,
         at: _reader.now(),
-        requestedAt: requestedAt,
+        request: request,
+        keepsTime: keepsTime,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -156,39 +163,47 @@ final class SubmitPayoutUsecase {
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
-      final requestedAt = _reader.now();
-      final TradeAnswer answer;
-      switch (await _reader.readOrder(
-        requests,
-        record,
-        robot,
-        trade.coordinator,
-      )) {
-        case Err(:final failure):
-          return Err(PayoutReadFailed(cause: failure));
-        case Ok(value: final result):
-          switch (TradeAnswer.ofRead(result)) {
-            case final read?:
-              answer = read;
-            case null:
-              return Err(
-                PayoutReadFailed(
-                  cause: switch (result) {
-                    Err(:final failure) => failure,
-                    Ok() => null,
-                  },
-                ),
-              );
-          }
-      }
-      final step = await _reader.advance(
-        current,
-        answer,
-        at: _reader.now(),
-        requestedAt: requestedAt,
-      );
-      current = step.trade;
-      problem ??= step.recordProblem;
+      // Superseded (a read of the watch that left before the payout began answered after it left), it is read once more: no read of the watch leaves while the payout runs, so the second read cannot be superseded; if it is, nothing is sent (#141).
+      TradeStep step;
+      var reads = 0;
+      do {
+        reads++;
+        final times = _reader.request();
+        final TradeAnswer answer;
+        switch (await _reader.readOrder(
+          requests,
+          record,
+          robot,
+          trade.coordinator,
+          times: times,
+        )) {
+          case Err(:final failure):
+            return Err(PayoutReadFailed(cause: failure));
+          case Ok(value: final result):
+            switch (TradeAnswer.ofRead(result)) {
+              case final read?:
+                answer = read;
+              case null:
+                return Err(
+                  PayoutReadFailed(
+                    cause: switch (result) {
+                      Err(:final failure) => failure,
+                      Ok() => null,
+                    },
+                  ),
+                );
+            }
+        }
+        step = await _reader.advance(
+          current,
+          answer,
+          at: _reader.now(),
+          request: times,
+          keepsTime: true,
+        );
+        current = step.trade;
+        problem ??= step.recordProblem;
+      } while (step.superseded && reads < 2);
       final seen = current.seen;
       if (!step.stored) {
         return Err(PayoutReadFailed(cause: step.recordProblem, seen: seen));
@@ -247,10 +262,11 @@ final class SubmitPayoutUsecase {
     }
 
     onProgress?.call(PayoutProgress.sending);
+    final submitTimes = _reader.request();
     final sent = await requests.send(
       record.network,
       trade.coordinator,
-      submit,
+      () => _reader.timed(submitTimes, submit),
       isBusy: _answeredBusy,
     );
 
@@ -270,21 +286,22 @@ final class SubmitPayoutUsecase {
       return Err(PayoutRefusedFromRead(cause, current.seen));
     }
 
-    // The answer first, then a read after it.
+    // The answer first, then a read after it, which stores the status (an answer superseded is judged from itself only: what it says of the payout).
     onProgress?.call(PayoutProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
-      await keep(TradeOrderRead(value.order));
+      await keep(TradeOrderRead(value.order), request: submitTimes);
     }
-    final readFrom = _reader.now();
+    final readAfter = _reader.request();
     final read = await _reader.readOrder(
       requests,
       record,
       robot,
       trade.coordinator,
+      times: readAfter,
     );
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final answer?) {
-        await keep(answer, requestedAt: readFrom);
+        await keep(answer, request: readAfter, keepsTime: true);
       }
     }
     return Ok(switch (sent) {

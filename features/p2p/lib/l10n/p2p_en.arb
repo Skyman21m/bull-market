@@ -2867,6 +2867,15 @@
       }
     }
   },
+  "p2pPayReadSuperseded": "Could not read the order from {coordinator} just now. Nothing was paid.",
+  "@p2pPayReadSuperseded": {
+    "description": "The panel of « Pay with this wallet » (#100), the project's own text: the read just before the payment was overtaken twice by another read of the trade, so its answer was not kept (#141); the order did not necessarily move on. « Pay with this wallet » stays offered.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
   "p2pPayStillSending": "Still sending. This can take a few minutes.",
   "@p2pPayStillSending": {
     "description": "The panel of « Pay with this wallet » (#100, #135): ours: after 30 s of « Sending the payment… »."
