@@ -174,4 +174,56 @@ void main() {
     );
     expect(app.coordinator.requests, isEmpty);
   });
+
+  test(
+    'a read of 9 with « fiat sent » shown (a status the screen never pairs with it): refused, nothing sent (second pass of the security review of #145)',
+    () async {
+      final (app, record, nine) = await at9();
+      app.coordinator.moveTo(10);
+      final run = app.watchOf(record);
+      await app.elapse(const Duration(seconds: 15));
+      final ten = run.lastStatus.seen;
+      await run.subscription.cancel();
+      expect((ten.status as Chatting).fiatSent, isTrue);
+      app.coordinator.requests.clear();
+      expect(
+        await app.cancel.execute(
+          record,
+          TradeSeen(ten.status, order: nine.order, stored: true),
+        ),
+        isA<Err<CancelOutcome, CancelRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<CancelNotPossible>(),
+        ),
+      );
+      expect(app.coordinator.requests, isEmpty);
+    },
+  );
+
+  test(
+    'outside the chat, an outcome unknown stays unknown even when the read after shows the order cancelled: « done » from the read is the collaborative ask\'s only (second pass of the security review of #145)',
+    () async {
+      final app = await TradeHarness.start();
+      final record = TradeHarness.recordOf(await app.takeShown());
+      final run = app.watchOf(record);
+      await app.settle();
+      final seen = run.lastStatus.seen;
+      await run.subscription.cancel();
+      expect(seen.order?.status, CoordinatorOrderStatus.waitingForTakerBond);
+      // The cancel's answer lost, and the maker cancels the order meanwhile.
+      app.coordinator
+        ..failNext(cancels, ScriptedFault.timedOut)
+        ..onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            app.coordinator.cancelByMaker();
+          }
+        };
+      final outcome = outcomeOf(await app.cancel.execute(record, seen));
+      app.coordinator.onRequest = null;
+      expect(outcome.seen.status, isA<Cancelled>());
+      expect(outcome, isA<CancelOutcomeUnknown>());
+      expect(sent(app, cancels), 1);
+    },
+  );
 }
