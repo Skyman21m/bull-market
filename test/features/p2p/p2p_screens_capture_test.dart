@@ -2337,15 +2337,16 @@ void main() {
         };
         // This robot's key is made on the real clock, a day back: signed at the screen's clock while that key could receive then (a tick), otherwise when it could (a cross: a signature after the screen's clock).
         final signedAt = ownKey.createdAt.isAfter(now) ? ownKey.createdAt : now;
-        for (final text in locale.languageCode == 'fr'
-            ? [
-                'Bonjour ! Je vous envoie les euros par Revolut dans quelques minutes.',
-                'C’est envoyé, la référence est 4821.',
-              ]
-            : [
-                'Hi! I am sending the euros with Revolut in a few minutes.',
-                'Sent, the reference is 4821.',
-              ]) {
+        for (final text
+            in locale.languageCode == 'fr'
+                ? [
+                    'Bonjour ! Je vous envoie les euros par Revolut dans quelques minutes.',
+                    'C’est envoyé, la référence est 4821.',
+                  ]
+                : [
+                    'Hi! I am sending the euros with Revolut in a few minutes.',
+                    'Sent, the reference is 4821.',
+                  ]) {
           coordinator.peerSays(switch (makerKey.encryptChatMessageToPost(
             text,
             peer: ownKey,
