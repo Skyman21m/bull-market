@@ -71,7 +71,7 @@ class _ConfirmUndoFiatSentDialogState extends State<ConfirmUndoFiatSentDialog> {
       onBack: () => Navigator.of(context).pop(false),
       goLabel: waiting ? l10n.p2pEndWaitCountdown('$left') : l10n.p2pEndConfirm,
       // « Wait 42 seconds » rather than « Wait (42) », and « Confirm » announced as the counter ends.
-      goSemanticLabel: waiting ? l10n.p2pEndWaitSeconds('$left') : null,
+      goSemanticLabel: waiting ? l10n.p2pEndWaitSeconds(left) : null,
       goLive: true,
       backFirst: true,
       onGo: waiting

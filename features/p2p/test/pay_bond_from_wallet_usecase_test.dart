@@ -658,4 +658,84 @@ void main() {
       expect(setup.fake.paid, isEmpty);
     },
   );
+
+  group('the payment\'s read and the watch (#141)', () {
+    int orderReads(_Setup setup) => setup.harness.coordinator.received
+        .where((kind) => kind == ScriptedRequest.order)
+        .length;
+
+    test(
+      'the payment\'s read left first, its answer held; the screen asks the watch to read: nothing leaves then, and the bond is paid (review of #142, R1)',
+      () async {
+        final setup = await _Setup.start();
+        final quote = await setup.quoted();
+        setup.fake.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-1',
+              paymentHash: quote.invoice.paymentHash,
+            ),
+          ),
+        );
+        final signals = StreamController<TradeWatchSignal>.broadcast();
+        final run = setup.harness.watchOf(
+          setup.record,
+          signals: signals.stream,
+        );
+        await setup.harness.settle();
+        setup.harness.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.answerDelayed,
+        );
+        final reads = orderReads(setup);
+        final paid = setup.payBond.payBond(setup.record, accepted: quote);
+        await setup.harness.settle();
+        expect(orderReads(setup), reads + 1);
+        signals.add(TradeWatchSignal.readNow);
+        await setup.harness.settle();
+        expect(orderReads(setup), reads + 1);
+        setup.harness.coordinator.deliverDelayed();
+        expect(await paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
+        expect(setup.fake.paid, hasLength(1));
+        await setup.harness.settle();
+        // The watch's read, once the payment's read ended.
+        expect(orderReads(setup), reads + 2);
+        await run.subscription.cancel();
+        await signals.close();
+      },
+    );
+
+    test(
+      'the payment\'s read superseded by a read of the watch that left before it and answered first: read once more, and the bond is paid, never « the order moved on »',
+      () async {
+        final setup = await _Setup.start();
+        final quote = await setup.quoted();
+        setup.fake.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-1',
+              paymentHash: quote.invoice.paymentHash,
+            ),
+          ),
+        );
+        final run = setup.harness.watchOf(setup.record);
+        await setup.harness.settle();
+        setup.harness.coordinator
+          ..failNext(ScriptedRequest.order, ScriptedFault.answerDelayed)
+          ..failNext(ScriptedRequest.order, ScriptedFault.answerDelayed);
+        await setup.harness.elapse(const Duration(seconds: 10));
+        final reads = orderReads(setup);
+        final paid = setup.payBond.payBond(setup.record, accepted: quote);
+        await setup.harness.settle();
+        expect(orderReads(setup), reads + 1);
+        setup.harness.coordinator.deliverDelayed(1);
+        await setup.harness.settle();
+        setup.harness.coordinator.deliverDelayed();
+        expect(await paid, isA<Ok<P2pWalletPayment, BondPayRefusal>>());
+        expect(orderReads(setup), reads + 2);
+        expect(setup.fake.paid, hasLength(1));
+        await run.subscription.cancel();
+      },
+    );
+  });
 }

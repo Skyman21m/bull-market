@@ -574,7 +574,7 @@ void main() {
           TradeOpened(:final trade) => trade,
           final other => fail('not opened: $other'),
         };
-        // The early read, sent at the pre-take, ends after a later one that saw the bond locked.
+        // The early read, sent at the pre-take, ends after a later one that saw the bond locked. Its answer is handed to the reader as if its request had left after the later one's answer arrived, so that the order of the requests (#141) does not decide: the trail's own rule, by the time of the answers, does.
         final early = await CoordinatorClient(app.coordinator).fetchOrder(
           app.coordinator.coordinator,
           app.network,
@@ -583,23 +583,32 @@ void main() {
         );
         app.coordinator.lockBond(app.robot(0));
         await app.elapse(const Duration(seconds: 10));
-        final late = await CoordinatorClient(app.coordinator).fetchOrder(
-          app.coordinator.coordinator,
-          app.network,
-          identity: app.robot(0),
-          orderId: record.orderId,
+        final lateTimes = app.reader.request();
+        final late = await app.reader.timed(
+          lateTimes,
+          () => CoordinatorClient(app.coordinator).fetchOrder(
+            app.coordinator.coordinator,
+            app.network,
+            identity: app.robot(0),
+            orderId: record.orderId,
+          ),
         );
         final later = await app.reader.advance(
           opened,
           TradeAnswer.ofRead(late) ?? fail('no answer'),
           at: app.now,
+          request: lateTimes,
         );
         expect(later.trade.seen.status, isA<WaitingForBoth>());
+        final earlyTimes = app.reader.request();
+        await app.reader.timed(earlyTimes, () async => early);
         final stale = await app.reader.advance(
           opened,
           TradeAnswer.ofRead(early) ?? fail('no answer'),
           at: app.now.subtract(const Duration(seconds: 10)),
+          request: earlyTimes,
         );
+        expect(stale.superseded, isFalse);
         expect(stale.trade.seen.status.position, TradePosition.waitingForBoth);
         expect(stale.trade.seen.order, isNull);
         final history = switch (await app.trails.historyOf(record)) {
