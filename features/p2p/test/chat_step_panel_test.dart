@@ -18,6 +18,7 @@ import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
+import 'package:primitives/primitives.dart' show Failure;
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart' show FakeTransport, coordinator, testNow;
@@ -625,6 +626,84 @@ void main() {
       await expectLater(cubit.cancel(_seen['nine']!), throwsStateError);
       expect(cubit.state.cancel, isA<CancelIdle>());
       expect(cubit.state.actionRunning, isFalse);
+    },
+  );
+
+  test(
+    'a refusal that kept a read takes its record: an end closes it',
+    () async {
+      final closed = TradeRecord(
+        robot: _record.robot,
+        coordinatorAlias: _record.coordinatorAlias,
+        coordinatorOnion: _record.coordinatorOnion,
+        orderId: _record.orderId,
+        role: _record.role,
+        origin: _record.origin,
+        takenAt: _record.takenAt,
+        confirmedAt: _record.confirmedAt,
+        closedAt: tradeNow.add(const Duration(minutes: 5)),
+      );
+      final cubit = TradeCubit(
+        _record,
+        _Watch().call,
+        _Cancels().call,
+        confirmFiatSent: (record, seen, {onProgress}) async =>
+            Err(ChatStepStatusMoved(_seen['fourteen']!, record: closed)),
+      );
+      addTearDown(cubit.close);
+      await cubit.confirmFiatSent(_seen['nine']!);
+      expect(cubit.state.record, closed);
+    },
+  );
+
+  testWidgets(
+    'what a refusal says: never « not sent » once the request left, never « not recorded » before it left',
+    (tester) async {
+      for (final (cause, text) in <(Failure, String)>[
+        (
+          const OrderNotParticipant(),
+          'Temple of Sats did not record your confirmation.',
+        ),
+        (
+          const RobotCredentialsRejected(),
+          'Temple of Sats did not record your confirmation.',
+        ),
+        (
+          const TradeActionNotNow(fromLastRead: false),
+          'The order moved on: Temple of Sats did not record your confirmation.',
+        ),
+        (
+          const TradeActionNotNow(fromLastRead: true),
+          'The order moved on: your confirmation was not sent.',
+        ),
+        (
+          const CoordinatorTransportBusy(),
+          'Too many requests are waiting for this coordinator. Try again in a moment. Your confirmation was not sent.',
+        ),
+        (
+          const CoordinatorNotOnNetwork(),
+          'Coordinator offline Your confirmation was not sent.',
+        ),
+      ]) {
+        final fiatSent = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          fiatSent: fiatSent,
+          state: _watched('nine'),
+        );
+        await _reveal(tester, find.text(_confirmLabel));
+        await tester.tap(find.text(_confirmLabel));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        fiatSent.gate?.complete(
+          Ok(ChatStepNotDone(_record, _seen['nine']!, cause: cause)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(text), findsOneWidget, reason: '$cause');
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
     },
   );
 
