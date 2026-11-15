@@ -16,7 +16,8 @@ final class TradeChatPinRepositoryImpl implements TradeChatPinRepository {
   /// A trade's first pin: a second insert writes nothing (the trigger `trade_chat_pins_inserted_once`), and one of a closed trade is refused (`trade_chat_pins_of_their_trade`).
   static const String _keepSql =
       'INSERT INTO trade_chat_pins (key_fingerprint, robot_index, '
-      'primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?)';
+      'primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?) '
+      'RETURNING robot_index';
 
   static const String _pinSql =
       'SELECT primary_fingerprint, subkey_fingerprint FROM trade_chat_pins '
@@ -60,16 +61,22 @@ final class TradeChatPinRepositoryImpl implements TradeChatPinRepository {
     ChatPinFingerprints pin,
   ) async {
     try {
-      await _database.customStatement(_keepSql, [
-        trade.robot.keyFingerprint.hex,
-        trade.robot.accountIndex,
-        pin.primary,
-        pin.subkey,
-      ]);
+      final written = await _database.customWriteReturning(
+        _keepSql,
+        variables: [
+          ..._tradeVariables(trade),
+          Variable.withString(pin.primary),
+          Variable.withString(pin.subkey),
+        ],
+        updates: {_database.storedTradeChatPins},
+        updateKind: UpdateKind.insert,
+      );
+      if (written.isNotEmpty) return const Ok(true);
     } on Exception {
+      // A closed trade is refused by a trigger that aborts: nothing was written.
       return const Err(P2pStorageFailure());
     }
-    // The pin stored now, this call's or an earlier one's.
+    // Nothing written: a pin was kept already, this one or another.
     return switch (await pinOf(trade)) {
       Ok(value: final stored?) => Ok(stored == pin),
       Ok(value: null) => const Err(P2pStorageFailure()),
