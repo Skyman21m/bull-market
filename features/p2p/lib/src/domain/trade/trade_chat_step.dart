@@ -23,6 +23,17 @@ enum ChatStepAction {
             _ => false,
           },
   };
+
+  /// Whether [seen] shows this action as recorded already: « fiat sent » at 10, or past it once the seller confirmed (13, 14, 15). A request that landed late, after the read that followed it, is found this way by the next tap's fresh read: nothing is sent again, and the action is done.
+  bool doneAt(TradeSeen seen) => switch (this) {
+    ChatStepAction.confirmFiatSent => switch (seen.status) {
+      Chatting(role: TradeRole.buyer, fiatSent: true) ||
+      SendingSats(role: TradeRole.buyer) ||
+      Succeeded(role: TradeRole.buyer) ||
+      RoutingFailed(role: TradeRole.buyer) => true,
+      _ => false,
+    },
+  };
 }
 
 /// What `ChatStepActionUsecase` is doing, told as each step starts, for the screen to say what it waits for (the owner's rule: every wait says what it waits for).

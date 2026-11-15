@@ -17,7 +17,7 @@ import 'trade_take_locks.dart';
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
 /// 2. one action of the order runs at a time in the process ([TradeTakeLocks], which the take, the cancel, the payout and the bond's payment share);
-/// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]): the action is sent only if that read is marked stored and still offers it, so that the status shown is the status stored ([ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent);
+/// 3. the order is read again and kept ([TradeReader.readOrder], [TradeReader.advance]): the action is sent only if that read is marked stored and still offers it, so that the status shown is the status stored ([ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent); a read that shows the action recorded already ([ChatStepAction.doneAt], an earlier request that landed late) is [ChatStepDone], nothing sent;
 /// 4. the action is sent once through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again: an answer lost or unreadable is an outcome unknown, resolved by the read that follows, never by a second send;
 /// 5. its answer is kept, then the order read again and kept: [ChatStepDone], [ChatStepNotDone] or [ChatStepOutcomeUnknown], each with the status as stored.
 /// « Fiat sent » recorded is a read that shows 10 (`Chatting.fiatSent`); not recorded is a read that still shows 9: that is how the screen tells one from the other after an outcome unknown, and only a new tap of the user may send again.
@@ -166,6 +166,10 @@ final class ChatStepActionUsecase {
     final fresh = current.seen;
     if (!step.stored) {
       return Err(ChatStepReadFailed(cause: step.recordProblem, seen: fresh));
+    }
+    // Recorded already (a request of an earlier tap that landed late): done, nothing sent again.
+    if (action.doneAt(fresh)) {
+      return Ok(ChatStepDone(current.record, fresh, recordProblem: problem));
     }
     final lastRead = fresh.order;
     if (lastRead == null || !action.offeredAt(fresh)) {

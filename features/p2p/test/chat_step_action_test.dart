@@ -115,6 +115,64 @@ void main() {
   );
 
   test(
+    'a request that lands late, then a second tap: one confirmed state, nothing shown as a failure',
+    () async {
+      final (app, record, seen) = await at();
+      app.coordinator.failNext(confirms, ScriptedFault.landsLate);
+      final first = switch (await app.chat.confirmFiatSent(record, seen)) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      // The read after shows 9: it proves nothing, the request may still land.
+      expect(first, isA<ChatStepOutcomeUnknown>());
+      expect(fiatSentShown(first.seen), isFalse);
+      app.coordinator.landLate();
+      expect(app.coordinator.status, 10);
+      // The user taps again from the 9 shown: the fresh read finds it recorded, nothing is sent again.
+      final second = switch (await app.chat.confirmFiatSent(
+        first.record,
+        first.seen,
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      expect(second, isA<ChatStepDone>());
+      expect(fiatSentShown(second.seen), isTrue);
+      expect(sent(app, confirms), 1);
+    },
+  );
+
+  test(
+    'a request that lands after the second tap\'s read: both land, one confirmed state',
+    () async {
+      final (app, record, seen) = await at();
+      app.coordinator.failNext(confirms, ScriptedFault.landsLate);
+      final first = switch (await app.chat.confirmFiatSent(record, seen)) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      // The late request lands while the second one is on its way: a second « confirm » by the buyer at 10 changes nothing.
+      app.coordinator.onRequest = (request) {
+        if (app.coordinator.received.last == confirms) {
+          app.coordinator.landLate();
+        }
+      };
+      final second = switch (await app.chat.confirmFiatSent(
+        first.record,
+        first.seen,
+      )) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      app.coordinator.onRequest = null;
+      expect(second, isA<ChatStepDone>());
+      expect(fiatSentShown(second.seen), isTrue);
+      expect(sent(app, confirms), 2);
+      expect(app.coordinator.status, 10);
+    },
+  );
+
+  test(
     'the order moved before the tap: nothing sent, the status now',
     () async {
       final (app, record, seen) = await at();
