@@ -222,6 +222,37 @@ void main() {
     }
 
     test(
+      'a read that left before the end, answered after it: the end stays, with its record closed',
+      () async {
+        final (app, record, _, run) = await watchedAt(9);
+        await run.subscription.cancel();
+        final trade = await opened(app, record);
+        final firstLeft = app.reader.requestLeaves();
+        final early = await readNow(app, record);
+        app.coordinator.cancelByMaker();
+        await app.elapse(const Duration(seconds: 10));
+        final end = await app.reader.advance(
+          trade,
+          await readNow(app, record),
+          at: app.now,
+          sent: app.reader.requestLeaves(),
+        );
+        expect(end.trade.seen.status.isTerminal, isTrue);
+        expect(end.trade.record.closedAt, isNotNull);
+        await app.elapse(const Duration(seconds: 1));
+        final stale = await app.reader.advance(
+          trade,
+          early,
+          at: app.now,
+          sent: firstLeft,
+        );
+        expect(stale.stored, isFalse);
+        expect(stale.trade.seen, same(end.trade.seen));
+        expect(stale.trade.record.closedAt, isNotNull);
+      },
+    );
+
+    test(
       'a run started again remembers nothing: its first read is stored over what the previous run stored',
       () async {
         final (app, record, _, run) = await watchedAt(9);
