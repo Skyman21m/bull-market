@@ -173,15 +173,15 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       disputeOpensAt:
           widget.offersDispute &&
               status is Chatting &&
-              ChatStepAction.openDispute.offeredAt(seen)
+              ChatStepAction.dispute.offeredAt(seen)
           ? ChatStepAction.disputeOpensAt(status)
           : null,
       now: widget.now,
     );
     if (!mounted) return;
-    if (chosen == OrderOption.openDispute) {
+    if (chosen == OrderOption.dispute) {
       if (await ConfirmDisputeDialog.show(context)) {
-        await cubit.openDispute(seen);
+        await cubit.startDispute(seen);
       }
       return;
     }

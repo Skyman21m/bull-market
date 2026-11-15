@@ -18,7 +18,7 @@ enum ChatStepAction {
   undoFiatSent,
 
   /// « Open Dispute »: either side opens a dispute at 9 or 10, not earlier than 18 hours before the chat's end (`Logics.open_dispute`, `api/logics.py:485-533`: 1013 outside 9 and 10, 1054 too early); the escrow and both bonds go to the coordinator at once.
-  openDispute;
+  dispute;
 
   /// When « Open Dispute » becomes possible at [status]: the chat's end less `CoordinatorClient.disputeWindow` (18 hours, a constant of the reference's code), as the reference's prompt computes it (`Prompts/Chat.tsx:100-104`).
   static DateTime disputeOpensAt(Chatting status) =>
@@ -41,7 +41,7 @@ enum ChatStepAction {
             _ => false,
           },
     // At 9 or 10; its time is checked apart ([disputeOpensAt]), against the clock.
-    ChatStepAction.openDispute =>
+    ChatStepAction.dispute =>
       seen.stored &&
           (seen.order?.status == CoordinatorOrderStatus.sendingFiat ||
               seen.order?.status == CoordinatorOrderStatus.fiatSent) &&
@@ -63,7 +63,7 @@ enum ChatStepAction {
       _ => false,
     },
     // A dispute open, its statements, its decision.
-    ChatStepAction.openDispute => switch (seen.status) {
+    ChatStepAction.dispute => switch (seen.status) {
       InDispute() ||
       WaitingDisputeResolution() ||
       DisputeWon() ||

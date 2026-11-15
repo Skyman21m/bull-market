@@ -396,7 +396,7 @@ final class P2pLocator {
         locator<CancelTradeUsecase>().execute,
         confirmFiatSent: locator<ChatStepActionUsecase>().confirmFiatSent,
         undoFiatSent: locator<ChatStepActionUsecase>().undoFiatSent,
-        openDispute: locator<ChatStepActionUsecase>().openDispute,
+        startDispute: locator<ChatStepActionUsecase>().startDispute,
       ),
     );
     // The payout panel of one shown trade (#91), the only caller of the payout use case and of the key's hold.

@@ -678,7 +678,8 @@ class _Contract extends StatelessWidget {
       ) =>
         _DisputePrompt(
           prompt: contract.prompt,
-          coordinator: contract.order?.coordinator ??
+          coordinator:
+              contract.order?.coordinator ??
               Federation.robosats.byAlias(record.coordinatorAlias),
           coordinatorName: coordinator,
           orderId: record.orderId,

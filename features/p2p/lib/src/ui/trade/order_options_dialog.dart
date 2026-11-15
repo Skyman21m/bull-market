@@ -8,7 +8,7 @@ import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
 
 /// What the user chose in « Order options ».
-enum OrderOption { openDispute, collaborativeCancel }
+enum OrderOption { dispute, collaborativeCancel }
 
 /// « Order options », the dialog behind « … » of the chat step (`TradeBox/Prompts/Chat.tsx:254-353`, commit ff1998c), with its buttons in the reference's order: « Audit Chat », « Export », « Open Dispute », « Collaborative Cancel ».
 ///
@@ -108,7 +108,7 @@ class _OrderOptionsDialogState extends State<OrderOptionsDialog> {
               outlined: true,
               color: colors.warning,
               onPressed: disputeOpen
-                  ? () => Navigator.of(context).pop(OrderOption.openDispute)
+                  ? () => Navigator.of(context).pop(OrderOption.dispute)
                   : null,
             ),
             if (!disputeOpen) ...[
