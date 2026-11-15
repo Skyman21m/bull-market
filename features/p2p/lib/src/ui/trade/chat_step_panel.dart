@@ -9,6 +9,7 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
+import '../../domain/trade_record.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -112,6 +113,12 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         widget.offersFiatSent &&
         amount != null &&
         ChatStepAction.confirmFiatSent.offeredAt(widget.seen);
+    // The buyer at 9, where the prompt says to press the button: shown off with why when the status shown does not offer it (not marked stored, or from no order read).
+    final atNine =
+        widget.offersFiatSent &&
+        status is Chatting &&
+        status.role == TradeRole.buyer &&
+        !status.fiatSent;
     final body = text.bodyMedium?.copyWith(color: colors.text);
     // What the button waits for: its own action step by step, or another action of the order.
     final waiting = switch (chatStep) {
@@ -120,9 +127,11 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         coordinator: widget.coordinator,
       ),
       _ when offered && widget.otherActionRunning =>
-        l10n.p2pEndStepWaitingForOrder,
+        l10n.p2pPayoutStepWaitingForOrder,
       _ => null,
     };
+    final waitedLong = chatStep is ChatStepRunning && chatStep.waitedLong;
+    final needsRead = atNine && !offered && !running && notice == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -132,13 +141,19 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
           style: body,
         ),
         const Gap(BullSpacing.xs),
-        Text(
-          l10n.p2pEndBewareScams,
-          textAlign: TextAlign.center,
-          style: body?.copyWith(color: colors.warning),
+        // Read out without the emoji's name.
+        Semantics(
+          container: true,
+          label: withoutLeadingEmoji(l10n.p2pEndBewareScams),
+          excludeSemantics: true,
+          child: Text(
+            l10n.p2pEndBewareScams,
+            textAlign: TextAlign.center,
+            style: body?.copyWith(color: colors.warning),
+          ),
         ),
         if (widget.chat case final chat?) ...[const Gap(BullSpacing.md), chat],
-        if (amount != null && (offered || running)) ...[
+        if (amount != null && (atNine || running)) ...[
           const Gap(BullSpacing.md),
           TradeButton(
             label: l10n.p2pEndConfirmSent(amount.$1, amount.$2),
@@ -148,7 +163,26 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
                 : () => unawaited(_press(amount.$1, amount.$2)),
           ),
         ],
-        if (waiting != null) ...[const Gap(BullSpacing.sm), _Wait(waiting)],
+        if (waiting != null) ...[
+          const Gap(BullSpacing.sm),
+          _Wait(waiting),
+          // The bar named by the step, and the long wait's line, as the payout and the take show them.
+          if (running) ...[
+            const Gap(BullSpacing.xs),
+            LinearProgressIndicator(
+              color: colors.primary,
+              semanticsLabel: waiting,
+            ),
+          ],
+          if (waitedLong) ...[
+            const Gap(BullSpacing.xs),
+            _Wait(l10n.p2pRobotStillWaiting(widget.coordinator)),
+          ],
+        ],
+        if (needsRead) ...[
+          const Gap(BullSpacing.sm),
+          _Wait(l10n.p2pEndNeedsRead),
+        ],
         if (notice != null) ...[
           const Gap(BullSpacing.sm),
           Semantics(
@@ -157,7 +191,12 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
             child: Text(
               notice.toText(context, coordinator: widget.coordinator),
               textAlign: TextAlign.center,
-              style: body?.copyWith(color: colors.error),
+              // An outcome unknown is no failure: the confirmation may well have gone through (the payout's notice of the same kind is in the warning colour too); red only where it was not sent.
+              style: body?.copyWith(
+                color: notice is ChatStepWasUnknown
+                    ? colors.warning
+                    : colors.error,
+              ),
             ),
           ),
         ],
@@ -165,6 +204,10 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     );
   }
 }
+
+/// [text] without the emoji and the space it starts with (« ⚠️ Beware scams », « ✅ Confirm you sent … »), for a screen reader, which would read the emoji's name first.
+String withoutLeadingEmoji(String text) =>
+    text.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
 
 /// What an action waits for, read out as it changes.
 class _Wait extends StatelessWidget {

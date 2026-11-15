@@ -236,7 +236,7 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
-        ChatStepNotOffered() => l10n.p2pEndNeedsRead,
+        ChatStepNotOffered() => l10n.p2pEndNeedsReadNotSent,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => l10n.p2pEndMovedOn,
         ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
@@ -253,10 +253,17 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       // The coordinator's own refusal of a status that moved (1029, 1031, 1013): as the read before sending would have said.
       ChatStepWasNotDone(cause: TradeActionNotNow() || TradeActionNotBuyer()) =>
         l10n.p2pEndMovedOn,
-      ChatStepWasNotDone(cause: final CoordinatorFailure failure) =>
+      // The robot panel's texts that read right for a confirmation: a busy transport, a coordinator not on the network; any other refusal (1047, the empty 400 of the form check, the authentication's) is said as the coordinator's refusal of the confirmation, not of « this robot ».
+      ChatStepWasNotDone(
+        cause: final CoordinatorFailure failure &&
+            (CoordinatorTransportBusy() || CoordinatorNotOnNetwork()),
+      ) =>
         l10n.p2pEndNotDoneAfter(
           failure.toRobotText(context, coordinator: coordinator),
         ),
+      ChatStepWasNotDone(cause: CoordinatorFailure()) => l10n.p2pEndRefusedBy(
+        coordinator,
+      ),
       ChatStepWasNotDone(cause: final P2pFailure failure) =>
         l10n.p2pEndNotDoneAfter(failure.toTranslated(context)),
       ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
@@ -270,11 +277,14 @@ extension ChatStepProgressL10n on ChatStepProgress? {
   String toText(BuildContext context, {required String coordinator}) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      null => l10n.p2pEndStepOpening,
-      ChatStepProgress.waitingForOrder => l10n.p2pEndStepWaitingForOrder,
-      ChatStepProgress.readingOrder => l10n.p2pEndStepReading(coordinator),
+      // The payout's words for the same waits (#91).
+      null => l10n.p2pPayoutStepOpening,
+      ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
+      ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       ChatStepProgress.sending => l10n.p2pEndStepSending(coordinator),
-      ChatStepProgress.readingAfter => l10n.p2pEndStepReadingAfter(coordinator),
+      ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
+        coordinator,
+      ),
     };
   }
 }

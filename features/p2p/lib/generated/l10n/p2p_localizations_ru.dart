@@ -2104,43 +2104,25 @@ class P2pLocalizationsRu extends P2pLocalizations {
       'Wait for the seller to confirm they have received the payment.';
 
   @override
-  String get p2pEndStepOpening => 'Opening the trade…';
-
-  @override
-  String get p2pEndStepWaitingForOrder =>
-      'Waiting for another action on this order to end…';
-
-  @override
-  String p2pEndStepReading(String coordinator) {
-    return 'Reading the order from $coordinator…';
-  }
-
-  @override
   String p2pEndStepSending(String coordinator) {
     return 'Sending your confirmation to $coordinator…';
   }
 
   @override
-  String p2pEndStepReadingAfter(String coordinator) {
-    return 'Reading the order again from $coordinator…';
-  }
-
-  @override
-  String get p2pEndNeedsRead =>
-      'Wait until the order is read again. Nothing was sent.';
+  String get p2pEndNeedsRead => 'Wait until the order is read again.';
 
   @override
   String get p2pEndMovedOn =>
-      'The order moved on before your confirmation: nothing was sent.';
+      'The order moved on: your confirmation was not sent.';
 
   @override
   String p2pEndReadFailed(String coordinator) {
-    return 'The order could not be read again from $coordinator: nothing was sent.';
+    return 'The order could not be read again from $coordinator: your confirmation was not sent.';
   }
 
   @override
   String p2pEndNotDoneAfter(String reason) {
-    return '$reason Nothing was sent.';
+    return '$reason Your confirmation was not sent.';
   }
 
   @override
@@ -2157,4 +2139,13 @@ class P2pLocalizationsRu extends P2pLocalizations {
   @override
   String get p2pEndTakingTooLongText =>
       'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.';
+
+  @override
+  String get p2pEndNeedsReadNotSent =>
+      'Wait until the order is read again. Your confirmation was not sent.';
+
+  @override
+  String p2pEndRefusedBy(String coordinator) {
+    return '$coordinator refused your confirmation.';
+  }
 }

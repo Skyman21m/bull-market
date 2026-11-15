@@ -26,6 +26,9 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
+  /// What a screen reader reads of the title, when it differs from it (a title that starts with an emoji, whose name it would read first); `null` for the title itself.
+  final String? semanticTitle;
+
   const TradeDialogBody({
     super.key,
     required this.title,
@@ -35,6 +38,7 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.semanticTitle,
     this.warning,
     this.afterWarning,
     this.note,
@@ -52,6 +56,8 @@ class TradeDialogBody extends StatelessWidget {
           Semantics(
             container: true,
             header: true,
+            label: semanticTitle,
+            excludeSemantics: semanticTitle != null,
             child: Text(
               title,
               style: styles.headlineLarge?.copyWith(color: colors.text),

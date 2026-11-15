@@ -2947,23 +2947,6 @@
   "@p2pEndWaitSeller": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:141`): the buyer's prompt at 10 (#95)."
   },
-  "p2pEndStepOpening": "Opening the trade…",
-  "@p2pEndStepOpening": {
-    "description": "Not in the RoboSats texts: the project's own: the first wait after « Confirm » (#95; the owner's rule: each wait says what it waits for)."
-  },
-  "p2pEndStepWaitingForOrder": "Waiting for another action on this order to end…",
-  "@p2pEndStepWaitingForOrder": {
-    "description": "Not in the RoboSats texts: the project's own: another action of the order (a cancel, a payout) is under way, and the confirmation waits for it (#95)."
-  },
-  "p2pEndStepReading": "Reading the order from {coordinator}…",
-  "@p2pEndStepReading": {
-    "description": "Not in the RoboSats texts: the project's own: the read just before the confirmation is sent; it is sent only if the order is still at the status shown (#95).",
-    "placeholders": {
-      "coordinator": {
-        "type": "String"
-      }
-    }
-  },
   "p2pEndStepSending": "Sending your confirmation to {coordinator}…",
   "@p2pEndStepSending": {
     "description": "Not in the RoboSats texts: the project's own: the confirmation sent, its answer awaited (#95).",
@@ -2973,24 +2956,15 @@
       }
     }
   },
-  "p2pEndStepReadingAfter": "Reading the order again from {coordinator}…",
-  "@p2pEndStepReadingAfter": {
-    "description": "Not in the RoboSats texts: the project's own: the read after the answer, which shows what the coordinator recorded (#95).",
-    "placeholders": {
-      "coordinator": {
-        "type": "String"
-      }
-    }
-  },
-  "p2pEndNeedsRead": "Wait until the order is read again. Nothing was sent.",
+  "p2pEndNeedsRead": "Wait until the order is read again.",
   "@p2pEndNeedsRead": {
-    "description": "Not in the RoboSats texts: the project's own: the status shown no longer offers the action (not read yet, not stored) (#95)."
+    "description": "Not in the RoboSats texts: the project's own: under « Confirm … sent », off while the status shown does not offer it (not read from an order, not stored) (#95)."
   },
-  "p2pEndMovedOn": "The order moved on before your confirmation: nothing was sent.",
+  "p2pEndMovedOn": "The order moved on: your confirmation was not sent.",
   "@p2pEndMovedOn": {
     "description": "Not in the RoboSats texts: the project's own: the read just before sending, or the coordinator, shows another status than the one the user confirmed at (#95)."
   },
-  "p2pEndReadFailed": "The order could not be read again from {coordinator}: nothing was sent.",
+  "p2pEndReadFailed": "The order could not be read again from {coordinator}: your confirmation was not sent.",
   "@p2pEndReadFailed": {
     "description": "Not in the RoboSats texts: the project's own: the read just before sending failed or could not be stored (#95).",
     "placeholders": {
@@ -2999,7 +2973,7 @@
       }
     }
   },
-  "p2pEndNotDoneAfter": "{reason} Nothing was sent.",
+  "p2pEndNotDoneAfter": "{reason} Your confirmation was not sent.",
   "@p2pEndNotDoneAfter": {
     "description": "Not in the RoboSats texts: the project's own: the confirmation refused before the coordinator acted, or never sent; {reason} says why (#95).",
     "placeholders": {
@@ -3023,5 +2997,18 @@
   "p2pEndTakingTooLongText": "Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.",
   "@p2pEndTakingTooLongText": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/SendingSats.tsx`) (#95)."
+  },
+  "p2pEndNeedsReadNotSent": "Wait until the order is read again. Your confirmation was not sent.",
+  "@p2pEndNeedsReadNotSent": {
+    "description": "Not in the RoboSats texts: the project's own: the status shown no longer offered « Confirm … sent » when it was confirmed (not read yet, not stored) (#95)."
+  },
+  "p2pEndRefusedBy": "{coordinator} refused your confirmation.",
+  "@p2pEndRefusedBy": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator refused the confirmation before acting, for a reason that is neither a status that moved nor a busy or unreachable transport (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   }
 }

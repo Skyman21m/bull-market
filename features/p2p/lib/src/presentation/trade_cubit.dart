@@ -134,12 +134,13 @@ final class ChatStepIdle extends ChatStepState {
   const ChatStepIdle({this.notice});
 }
 
-/// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for.
+/// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for; [waitedLong] once it has waited [TradeCubit.stillWaitingAfter].
 final class ChatStepRunning extends ChatStepState {
   final ChatStepAction action;
   final ChatStepProgress? progress;
+  final bool waitedLong;
 
-  const ChatStepRunning(this.action, {this.progress});
+  const ChatStepRunning(this.action, {this.progress, this.waitedLong = false});
 }
 
 /// What an action of the chat step gave that the screen says, as a type: never a coordinator's text.
@@ -177,6 +178,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
   StreamSubscription<TradeWatchState>? _subscription;
+
+  /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
+  static const stillWaitingAfter = Duration(seconds: 30);
+  Timer? _stillWaiting;
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
@@ -210,7 +215,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
           (watch) {
             // Superseded by a newer watch of the trade: not an error; the stream ends and this cubit stops, showing what it showed.
             if (isClosed || watch is TradeWatchSuperseded) return;
-            emit(state._with(watch: _keepingWhatWasRead(watch)));
+            final kept = _keepingWhatWasRead(watch);
+            emit(state._with(watch: kept, chatStep: _chatStepAfter(kept)));
           },
           onDone: () {
             // Only this subscription's end clears it: a later start's subscription stays.
@@ -219,6 +225,21 @@ class TradeCubit extends Cubit<TradeScreenState> {
             if (identical(_signals, signals)) _signals = null;
           },
         );
+  }
+
+  /// What an action of the chat step's notice becomes once the watch gives [watch]: gone when the status shows the action recorded (an outcome unknown whose request landed) or another position than the one the notice was given at, so that a notice never stays under a status it does not speak of (review of #95's second pull request); kept otherwise, a running action included.
+  ChatStepState? _chatStepAfter(TradeWatchState watch) {
+    final chatStep = state.chatStep;
+    if (chatStep is! ChatStepIdle || chatStep.notice == null) return null;
+    if (watch is! TradeWatchStatus) return null;
+    final seen = watch.seen;
+    final shown = state.seen;
+    final moved =
+        shown != null && shown.status.position != seen.status.position;
+    if (ChatStepAction.confirmFiatSent.doneAt(seen) || moved) {
+      return const ChatStepIdle();
+    }
+    return null;
   }
 
   /// [watch], or, when it is a status not understood yet ([StatusUnknown], as the watch gives when it opens a trade again from its stored trail, or when the stored trail won over its read) at the very position of the status shown, that status with what [watch] says of its reads and records: the screen does not fall back to its wait for a status it has already shown at that position.
@@ -312,15 +333,46 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (send == null || isClosed || state.actionRunning) return;
     const action = ChatStepAction.confirmFiatSent;
     emit(state._with(chatStep: const ChatStepRunning(action)));
-    final result = await send(
-      state.record,
-      seen,
-      onProgress: (step) {
-        if (!isClosed && state.chatStep is ChatStepRunning) {
-          emit(state._with(chatStep: ChatStepRunning(action, progress: step)));
-        }
-      },
-    );
+    // After 30 s, « Still waiting for {coordinator}. Tor can take a minute. », as the payout and the take say it.
+    _stillWaiting?.cancel();
+    _stillWaiting = Timer(stillWaitingAfter, () {
+      if (state.chatStep case ChatStepRunning(:final progress) when !isClosed) {
+        emit(
+          state._with(
+            chatStep: ChatStepRunning(
+              action,
+              progress: progress,
+              waitedLong: true,
+            ),
+          ),
+        );
+      }
+    });
+    final Result<ChatStepOutcome, ChatStepRefusal> result;
+    try {
+      result = await send(
+        state.record,
+        seen,
+        onProgress: (step) {
+          if (state.chatStep case ChatStepRunning(
+            :final waitedLong,
+          ) when !isClosed) {
+            emit(
+              state._with(
+                chatStep: ChatStepRunning(
+                  action,
+                  progress: step,
+                  waitedLong: waitedLong,
+                ),
+              ),
+            );
+          }
+        },
+      );
+    } finally {
+      _stillWaiting?.cancel();
+      _stillWaiting = null;
+    }
     if (isClosed) return;
     switch (result) {
       case Err(:final failure):
@@ -362,6 +414,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   @override
   Future<void> close() async {
+    _stillWaiting?.cancel();
     await suspend();
     return super.close();
   }

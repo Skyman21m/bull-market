@@ -2321,7 +2321,9 @@ void main() {
         coordinator.hold = held.future;
         await tester.tap(find.text(l10n.p2pEndConfirm));
         await waitFor(
-          find.text(l10n.p2pEndStepReading(coordinator.coordinator.longAlias)),
+          find.text(
+            l10n.p2pPayoutStepReading(coordinator.coordinator.longAlias),
+          ),
         );
         await settle();
         await capture('fin-9-envoi');
