@@ -7,6 +7,7 @@ import 'package:primitives/primitives.dart';
 import '../../public/p2p_wallet_port.dart';
 import '../domain/trade/trade_payout.dart';
 import '../domain/usecases/trade/payout_from_wallet_usecase.dart';
+import 'payout_cubit.dart';
 
 /// What the wallet's slot of the payout panel shows (#90).
 @immutable
@@ -96,8 +97,9 @@ class PayoutWalletCubit extends Cubit<PayoutWalletState> {
     if (isClosed || state is PayoutWalletMaking) return false;
     emit(PayoutWalletMaking(kind));
     _stillWaiting = Timer(_stillWaitingAfter, () {
-      if (!isClosed && state case PayoutWalletMaking(:final kind)) {
-        emit(PayoutWalletMaking(kind, waitedLong: true));
+      final current = state;
+      if (!isClosed && current is PayoutWalletMaking) {
+        emit(PayoutWalletMaking(current.kind, waitedLong: true));
       }
     });
     return true;

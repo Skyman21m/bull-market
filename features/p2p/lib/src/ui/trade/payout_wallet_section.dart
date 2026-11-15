@@ -5,8 +5,8 @@ import 'package:primitives/primitives.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../../public/p2p_wallet_port.dart';
-import '../../domain/trade/trade_payout.dart';
 import '../../presentation/p2p_formats.dart';
+import '../../presentation/payout_cubit.dart';
 import '../../presentation/payout_wallet_cubit.dart';
 import '../widgets/trade_button.dart';
 import 'payout_panel.dart';
@@ -35,12 +35,15 @@ class PayoutWalletSection extends StatelessWidget {
     final making = state is PayoutWalletMaking;
     final makingHere = state is PayoutWalletMaking && state.kind == kind;
     final amount = request.invoiceSats;
-    final VoidCallback? onPressed = switch (kind) {
-      _ when !request.editable || making => null,
-      PayoutKind.lightning when amount == null => null,
-      PayoutKind.lightning => () => _invoice(context, amount),
-      PayoutKind.onchain => () => _address(context),
-    };
+    VoidCallback? onPressed;
+    if (request.editable && !making) {
+      switch (kind) {
+        case PayoutKind.lightning:
+          if (amount != null) onPressed = () => _invoice(context, amount);
+        case PayoutKind.onchain:
+          onPressed = () => _address(context);
+      }
+    }
     final waiting = switch (kind) {
       PayoutKind.lightning => l10n.p2pPayoutWalletMakingInvoice,
       PayoutKind.onchain => l10n.p2pPayoutWalletMakingAddress,
@@ -62,7 +65,10 @@ class PayoutWalletSection extends StatelessWidget {
           const Gap(BullSpacing.xs),
           _Line(waiting, live: true),
           const Gap(BullSpacing.xs),
-          LinearProgressIndicator(color: colors.primary, semanticsLabel: waiting),
+          LinearProgressIndicator(
+            color: colors.primary,
+            semanticsLabel: waiting,
+          ),
           if (state case PayoutWalletMaking(waitedLong: true)) ...[
             const Gap(BullSpacing.xs),
             _Line(l10n.p2pPayoutWalletStillWaiting, muted: true, live: true),

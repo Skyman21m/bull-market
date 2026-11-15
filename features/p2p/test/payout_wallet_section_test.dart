@@ -32,15 +32,17 @@ void main() {
   // An obviously fake address of BIP-173's test vectors, which no wallet of the project holds.
   const walletAddress = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 
-  Bolt11TestInvoice invoiceOf({int sats = asked, int seed = 90}) =>
-      Bolt11TestInvoice(
-        network: Bolt11Network.mainnet,
-        sats: sats,
-        seed: seed,
-        createdAt: tradeNow,
-        // A wallet invoice lives a short time: it may expire before the coordinator pays, which the panel says.
-        expiry: const Duration(minutes: 10),
-      );
+  Bolt11TestInvoice invoiceOf({
+    int sats = asked,
+    int seed = 90,
+  }) => Bolt11TestInvoice(
+    network: Bolt11Network.mainnet,
+    sats: sats,
+    seed: seed,
+    createdAt: tradeNow,
+    // A wallet invoice lives a short time: it may expire before the coordinator pays, which the panel says.
+    expiry: const Duration(minutes: 10),
+  );
 
   final walletInvoice = invoiceOf();
   final secondInvoice = invoiceOf(seed: 91);
@@ -88,21 +90,24 @@ void main() {
   };
 
   group('the use case', () {
-    test('asks the wallet for exactly the amount, on the trade\'s network, for this trade', () async {
-      final port = FakeP2pWalletPort(Ok(Sats.zero))
-        ..scriptInvoice(Ok(made(walletInvoice)));
-      final usecase = PayoutFromWalletUsecase(port);
-      final ask = askOf(six);
-      final result = await usecase.invoice(ask, Sats.fromInt(asked));
-      expect(result, isA<Ok<P2pWalletInvoice, P2pWalletRefusal>>());
-      expect(port.invoicesAsked, [
-        (
-          record.network,
-          Sats.fromInt(asked),
-          PayoutFromWalletUsecase.payoutKey(ask),
-        ),
-      ]);
-    });
+    test(
+      'asks the wallet for exactly the amount, on the trade\'s network, for this trade',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.zero))
+          ..scriptInvoice(Ok(made(walletInvoice)));
+        final usecase = PayoutFromWalletUsecase(port);
+        final ask = askOf(six);
+        final result = await usecase.invoice(ask, Sats.fromInt(asked));
+        expect(result, isA<Ok<P2pWalletInvoice, P2pWalletRefusal>>());
+        expect(port.invoicesAsked, [
+          (
+            record.network,
+            Sats.fromInt(asked),
+            PayoutFromWalletUsecase.payoutKey(ask),
+          ),
+        ]);
+      },
+    );
 
     test('refuses an invoice of another amount than asked', () async {
       final port = FakeP2pWalletPort(Ok(Sats.zero))
@@ -119,14 +124,20 @@ void main() {
       );
     });
 
-    test('the payout key: one per trade, and a new one for each failed payout', () {
-      final first = PayoutFromWalletUsecase.payoutKey(askOf(six));
-      expect(first, '${record.network.name}:${record.coordinatorAlias}:${record.orderId}');
-      expect(PayoutFromWalletUsecase.payoutKey(askOf(sixSwap)), first);
-      final again = PayoutFromWalletUsecase.payoutKey(askOf(fifteenExpired));
-      expect(again, startsWith('$first:again:'));
-      expect(again, isNot(first));
-    });
+    test(
+      'the payout key: one per trade, and a new one for each failed payout',
+      () {
+        final first = PayoutFromWalletUsecase.payoutKey(askOf(six));
+        expect(
+          first,
+          '${record.network.name}:${record.coordinatorAlias}:${record.orderId}',
+        );
+        expect(PayoutFromWalletUsecase.payoutKey(askOf(sixSwap)), first);
+        final again = PayoutFromWalletUsecase.payoutKey(askOf(fifteenExpired));
+        expect(again, startsWith('$first:again:'));
+        expect(again, isNot(first));
+      },
+    );
 
     test('asks an address of the trade\'s network', () async {
       final port = FakeP2pWalletPort(Ok(Sats.zero))
@@ -140,29 +151,36 @@ void main() {
   });
 
   group('the cubit', () {
-    test('asks one thing at a time, says a long wait, then what the wallet gave', () async {
-      final gate = Completer<void>();
-      final port = _GatedPort(gate.future)
-        ..scriptInvoice(Ok(made(walletInvoice)));
-      final cubit = PayoutWalletCubit(
-        PayoutFromWalletUsecase(port),
-        stillWaitingAfter: const Duration(milliseconds: 10),
-      );
-      addTearDown(cubit.close);
-      final first = cubit.makeInvoice(askOf(six), Sats.fromInt(asked));
-      expect(cubit.state, isA<PayoutWalletMaking>());
-      // A second request meanwhile does nothing.
-      expect(await cubit.makeAddress(askOf(sixSwap)), isNull);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(
-        cubit.state,
-        isA<PayoutWalletMaking>().having((s) => s.waitedLong, 'waitedLong', isTrue),
-      );
-      gate.complete();
-      expect(await first, walletInvoice.text);
-      expect(cubit.state, isA<PayoutWalletMadeInvoice>());
-      expect(port.addressesAsked, isEmpty);
-    });
+    test(
+      'asks one thing at a time, says a long wait, then what the wallet gave',
+      () async {
+        final gate = Completer<void>();
+        final port = _GatedPort(gate.future)
+          ..scriptInvoice(Ok(made(walletInvoice)));
+        final cubit = PayoutWalletCubit(
+          PayoutFromWalletUsecase(port),
+          stillWaitingAfter: const Duration(milliseconds: 10),
+        );
+        addTearDown(cubit.close);
+        final first = cubit.makeInvoice(askOf(six), Sats.fromInt(asked));
+        expect(cubit.state, isA<PayoutWalletMaking>());
+        // A second request meanwhile does nothing.
+        expect(await cubit.makeAddress(askOf(sixSwap)), isNull);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        expect(
+          cubit.state,
+          isA<PayoutWalletMaking>().having(
+            (s) => s.waitedLong,
+            'waitedLong',
+            isTrue,
+          ),
+        );
+        gate.complete();
+        expect(await first, walletInvoice.text);
+        expect(cubit.state, isA<PayoutWalletMadeInvoice>());
+        expect(port.addressesAsked, isEmpty);
+      },
+    );
 
     test('says a refusal and gives no text', () async {
       final port = FakeP2pWalletPort(Ok(Sats.zero))
@@ -174,7 +192,11 @@ void main() {
         cubit.state,
         isA<PayoutWalletRefused>()
             .having((s) => s.kind, 'kind', PayoutKind.onchain)
-            .having((s) => s.refusal, 'refusal', isA<P2pWalletNoBitcoinWallet>()),
+            .having(
+              (s) => s.refusal,
+              'refusal',
+              isA<P2pWalletNoBitcoinWallet>(),
+            ),
       );
     });
   });
@@ -275,7 +297,9 @@ void main() {
       },
     );
 
-    testWidgets('the lines go once the field holds something else', (tester) async {
+    testWidgets('the lines go once the field holds something else', (
+      tester,
+    ) async {
       final (payout, port) = await show(tester, six);
       port.scriptInvoice(Ok(made(walletInvoice)));
       await tester.ensureVisible(generateInvoice());
@@ -288,48 +312,57 @@ void main() {
       expect(find.text('Receive Amount: 106,400 sats'), findsNothing);
     });
 
-    testWidgets('a refusal is said in the wallet\'s words, and the field is left as it was', (tester) async {
-      final (payout, port) = await show(tester, six);
-      port.scriptInvoice(
-        Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(200000))),
-      );
-      await tester.ensureVisible(generateInvoice());
-      await tester.tap(generateInvoice());
-      await tester.pump();
-      await tester.pump();
-      expect(
-        find.text('Amount below minimum swap limit: 200,000 sats'),
-        findsOneWidget,
-      );
-      expect(payout.state.form.invoice, isEmpty);
-    });
+    testWidgets(
+      'a refusal is said in the wallet\'s words, and the field is left as it was',
+      (tester) async {
+        final (payout, port) = await show(tester, six);
+        port.scriptInvoice(
+          Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(200000))),
+        );
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('Amount below minimum swap limit: 200,000 sats'),
+          findsOneWidget,
+        );
+        expect(payout.state.form.invoice, isEmpty);
+      },
+    );
 
-    testWidgets('« Generate New Address » on the Onchain tab puts a new address in its field', (tester) async {
-      final (payout, port) = await show(tester, sixSwap);
-      payout.selectKind(PayoutKind.onchain);
-      await tester.pump();
-      port.scriptAddress(const Ok(P2pWalletAddress(walletAddress)));
-      final button = find.widgetWithText(TradeButton, 'Generate New Address');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pump();
-      await tester.pump();
-      expect(port.addressesAsked, [record.network]);
-      expect(payout.state.form.address, walletAddress);
-      expect(sender.sent, isEmpty);
-    });
+    testWidgets(
+      '« Generate New Address » on the Onchain tab puts a new address in its field',
+      (tester) async {
+        final (payout, port) = await show(tester, sixSwap);
+        payout.selectKind(PayoutKind.onchain);
+        await tester.pump();
+        port.scriptAddress(const Ok(P2pWalletAddress(walletAddress)));
+        final button = find.widgetWithText(TradeButton, 'Generate New Address');
+        await tester.ensureVisible(button);
+        await tester.tap(button);
+        await tester.pump();
+        await tester.pump();
+        expect(port.addressesAsked, [record.network]);
+        expect(payout.state.form.address, walletAddress);
+        expect(sender.sent, isEmpty);
+      },
+    );
 
-    testWidgets('at 15, once the invoice expired, the same button makes a new invoice, for a new key', (tester) async {
-      final (payout, port) = await show(tester, fifteenExpired);
-      expect(generateInvoice(), findsOneWidget);
-      port.scriptInvoice(Ok(made(walletInvoice)));
-      await tester.ensureVisible(generateInvoice());
-      await tester.tap(generateInvoice());
-      await tester.pump();
-      await tester.pump();
-      expect(port.invoicesAsked.single.$3, contains(':again:'));
-      expect(payout.state.form.invoice, walletInvoice.text);
-    });
+    testWidgets(
+      'at 15, once the invoice expired, the same button makes a new invoice, for a new key',
+      (tester) async {
+        final (payout, port) = await show(tester, fifteenExpired);
+        expect(generateInvoice(), findsOneWidget);
+        port.scriptInvoice(Ok(made(walletInvoice)));
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        expect(port.invoicesAsked.single.$3, contains(':again:'));
+        expect(payout.state.form.invoice, walletInvoice.text);
+      },
+    );
 
     testWidgets('in French, the wallet\'s words', (tester) async {
       final (_, port) = await show(tester, six, locale: const Locale('fr'));

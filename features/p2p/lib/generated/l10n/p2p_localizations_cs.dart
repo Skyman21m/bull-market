@@ -2178,4 +2178,36 @@ class P2pLocalizationsCs extends P2pLocalizations {
   String p2pEndOffline(String coordinator) {
     return '$coordinator is offline: your confirmation was not sent.';
   }
+
+  @override
+  String get p2pPayoutWalletGenerateInvoice => 'Generate Invoice';
+
+  @override
+  String get p2pPayoutWalletGenerateAddress => 'Generate New Address';
+
+  @override
+  String get p2pPayoutWalletMakingInvoice => 'Generating the invoice…';
+
+  @override
+  String get p2pPayoutWalletMakingAddress => 'Generating a new address…';
+
+  @override
+  String get p2pPayoutWalletStillWaiting => 'Still waiting for the wallet.';
+
+  @override
+  String p2pPayoutWalletReceived(String amount) {
+    return 'Receive Amount: $amount sats';
+  }
+
+  @override
+  String get p2pPayoutWalletFeeTaken =>
+      'This fee will be deducted from the amount sent';
+
+  @override
+  String get p2pPayoutWalletNoInvoice =>
+      'This wallet cannot create an invoice now.';
+
+  @override
+  String get p2pPayoutWalletNoAddress =>
+      'This wallet cannot give an address now.';
 }

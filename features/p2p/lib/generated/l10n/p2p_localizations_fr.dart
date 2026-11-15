@@ -2207,4 +2207,37 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pEndOffline(String coordinator) {
     return '$coordinator est hors ligne : votre confirmation n\'a pas été envoyée.';
   }
+
+  @override
+  String get p2pPayoutWalletGenerateInvoice => 'Générer une facture';
+
+  @override
+  String get p2pPayoutWalletGenerateAddress => 'Générer une nouvelle adresse';
+
+  @override
+  String get p2pPayoutWalletMakingInvoice => 'Création de la facture…';
+
+  @override
+  String get p2pPayoutWalletMakingAddress => 'Création d’une nouvelle adresse…';
+
+  @override
+  String get p2pPayoutWalletStillWaiting =>
+      'Toujours en attente du portefeuille.';
+
+  @override
+  String p2pPayoutWalletReceived(String amount) {
+    return 'Montant à recevoir : $amount sats';
+  }
+
+  @override
+  String get p2pPayoutWalletFeeTaken =>
+      'Ces frais seront déduits du montant envoyé';
+
+  @override
+  String get p2pPayoutWalletNoInvoice =>
+      'Ce portefeuille ne peut pas créer de facture pour le moment.';
+
+  @override
+  String get p2pPayoutWalletNoAddress =>
+      'Ce portefeuille ne peut pas donner d’adresse pour le moment.';
 }
