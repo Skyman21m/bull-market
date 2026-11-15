@@ -29,7 +29,7 @@ typedef TradeCanceller =
       BondLossAcknowledged? bondLoss,
     });
 
-/// [ChatStepActionUsecase.confirmFiatSent], which the locator gives the cubit.
+/// [ChatStepActionUsecase.confirmFiatSent] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
 typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
       TradeRecord record,
@@ -93,7 +93,10 @@ final class CancelIdle extends TradeCancelState {
 
 /// A cancel runs: its button cannot be pressed again.
 final class CancelRunning extends TradeCancelState {
-  const CancelRunning();
+  /// Whether it has run [TradeCubit.stillWaitingAfter]: the screen adds « Still waiting for {coordinator}. Tor can take a minute. ».
+  final bool waitedLong;
+
+  const CancelRunning({this.waitedLong = false});
 }
 
 /// What a cancel gave that the screen says, as a type: never a coordinator's text.
@@ -127,11 +130,15 @@ sealed class ChatStepState {
   const ChatStepState();
 }
 
-/// No action of the chat step runs; [notice] says what the last one gave, when one was tried and it says something.
+/// No action of the chat step runs; [notice] says what the last one, [action], gave, when one was tried and it says something.
 final class ChatStepIdle extends ChatStepState {
   final ChatStepNotice? notice;
+  final ChatStepAction action;
 
-  const ChatStepIdle({this.notice});
+  const ChatStepIdle({
+    this.notice,
+    this.action = ChatStepAction.confirmFiatSent,
+  });
 }
 
 /// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for; [waitedLong] once it has waited [TradeCubit.stillWaitingAfter].
@@ -177,6 +184,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
+  final TradeFiatSender? _undoFiatSent;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -185,16 +193,20 @@ class TradeCubit extends Cubit<TradeScreenState> {
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
-  /// [confirmFiatSent] is `null` where the screen offers no action of the chat step.
+  /// [confirmFiatSent] and [undoFiatSent] are `null` where the screen offers no action of the chat step.
   TradeCubit(
     TradeRecord record,
     this._watch,
     this._cancel, {
     this._confirmFiatSent,
+    this._undoFiatSent,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
   bool get offersFiatSent => _confirmFiatSent != null;
+
+  /// Whether the screen may offer « Payment failed? ».
+  bool get offersUndoFiatSent => _undoFiatSent != null;
 
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
@@ -216,7 +228,13 @@ class TradeCubit extends Cubit<TradeScreenState> {
             // Superseded by a newer watch of the trade: not an error; the stream ends and this cubit stops, showing what it showed.
             if (isClosed || watch is TradeWatchSuperseded) return;
             final kept = _keepingWhatWasRead(watch);
-            emit(state._with(watch: kept, chatStep: _chatStepAfter(kept)));
+            emit(
+              state._with(
+                watch: kept,
+                chatStep: _chatStepAfter(kept),
+                cancel: _cancelAfter(kept),
+              ),
+            );
           },
           onDone: () {
             // Only this subscription's end clears it: a later start's subscription stays.
@@ -236,9 +254,28 @@ class TradeCubit extends Cubit<TradeScreenState> {
     final shown = state.seen;
     final moved =
         shown != null && shown.status.position != seen.status.position;
-    if (ChatStepAction.confirmFiatSent.doneAt(seen) || moved) {
+    // The action the notice is about: « Payment failed? »'s notice stays at 10, where « fiat sent »'s would be done (review of #95's third pull request).
+    if (chatStep.action.doneAt(seen) || moved) {
       return const ChatStepIdle();
     }
+    return null;
+  }
+
+  /// What a cancel's notice becomes once the watch gives [watch], by the same rule as an action of the chat step's: gone when the status shows the ask recorded (`asked_for_cancel`), the order cancelled, or another position than the one the notice was given at; kept otherwise, a running cancel included.
+  TradeCancelState? _cancelAfter(TradeWatchState watch) {
+    final cancel = state.cancel;
+    if (cancel is! CancelIdle || cancel.notice == null) return null;
+    if (watch is! TradeWatchStatus) return null;
+    final seen = watch.seen;
+    final shown = state.seen;
+    final moved =
+        shown != null && shown.status.position != seen.status.position;
+    final recorded = switch (seen.status) {
+      Chatting(:final askedToCancel) => askedToCancel,
+      Cancelled() => true,
+      _ => false,
+    };
+    if (recorded || moved) return const CancelIdle();
     return null;
   }
 
@@ -297,6 +334,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
     if (isClosed || state.actionRunning) return;
     emit(state._with(cancel: const CancelRunning()));
+    // After 30 s, the long wait's line, as for an action of the chat step.
+    final longWait = Timer(stillWaitingAfter, () {
+      if (!isClosed && state.cancel is CancelRunning) {
+        emit(state._with(cancel: const CancelRunning(waitedLong: true)));
+      }
+    });
     final Result<CancelOutcome, CancelRefusal> result;
     try {
       result = await _cancel(state.record, seen, bondLoss: bondLoss);
@@ -306,6 +349,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
         emit(state._with(cancel: const CancelIdle(notice: CancelWasUnknown())));
       }
       rethrow;
+    } finally {
+      longWait.cancel();
     }
     if (isClosed) return;
     switch (result) {
@@ -337,11 +382,20 @@ class TradeCubit extends Cubit<TradeScreenState> {
   }
 
   /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
-  Future<void> confirmFiatSent(TradeSeen seen) async {
-    final send = _confirmFiatSent;
+  Future<void> confirmFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.confirmFiatSent, _confirmFiatSent, seen);
+
+  /// Sends the buyer's « Payment failed? » at [seen], the status the screen showed when the user confirmed the reference's dialog: as [confirmFiatSent].
+  Future<void> undoFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.undoFiatSent, _undoFiatSent, seen);
+
+  Future<void> _chatStep(
+    ChatStepAction action,
+    TradeFiatSender? send,
+    TradeSeen seen,
+  ) async {
     if (send == null || isClosed || state.actionRunning) return;
-    const action = ChatStepAction.confirmFiatSent;
-    emit(state._with(chatStep: const ChatStepRunning(action)));
+    emit(state._with(chatStep: ChatStepRunning(action)));
     // After 30 s, « Still waiting for {coordinator}. Tor can take a minute. », as the payout and the take say it.
     _stillWaiting?.cancel();
     _stillWaiting = Timer(stillWaitingAfter, () {
@@ -383,7 +437,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
       if (!isClosed) {
         emit(
           state._with(
-            chatStep: const ChatStepIdle(notice: ChatStepWasUnknown()),
+            chatStep: ChatStepIdle(
+              notice: const ChatStepWasUnknown(),
+              action: action,
+            ),
           ),
         );
       }
@@ -410,7 +467,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
               ),
               _ => null,
             },
-            chatStep: ChatStepIdle(notice: ChatStepWasRefused(failure)),
+            chatStep: ChatStepIdle(
+              notice: ChatStepWasRefused(failure),
+              action: action,
+            ),
           ),
         );
       case Ok(value: final outcome):
@@ -428,6 +488,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
                 ChatStepNotDone(:final cause) => ChatStepWasNotDone(cause),
                 ChatStepOutcomeUnknown() => const ChatStepWasUnknown(),
               },
+              action: action,
             ),
           ),
         );

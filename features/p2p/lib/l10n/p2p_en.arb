@@ -1939,9 +1939,9 @@
   "@p2pTradeCancelNeedsRead": {
     "description": "Not in the RoboSats texts: the project's own: the status shown comes from no order read, so a cancel cannot be sent yet."
   },
-  "p2pTradeCancelOnlyTogether": "Only a collaborative cancel is possible now, which comes in a later version.",
+  "p2pTradeCancelOnlyTogether": "At this step only a collaborative cancel exists, which RoboSats offers from the chat.",
   "@p2pTradeCancelOnlyTogether": {
-    "description": "Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9)."
+    "description": "Not in the RoboSats texts: the project's own: a cancel asked at 8, where the coordinator takes only a collaborative cancel and the reference offers it from the chat only (#95); no screen offers a cancel at 8."
   },
   "p2pTradeCancelNotPossible": "You cannot cancel this order",
   "@p2pTradeCancelNotPossible": {
@@ -3065,12 +3065,144 @@
       }
     }
   },
+  "p2pEndPaymentFailed": "Payment failed?",
+  "@p2pEndPaymentFailed": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:228-237`): the buyer's button at 10 (#95)."
+  },
+  "p2pEndUndoTitle": "Revert the confirmation of fiat sent?",
+  "@p2pEndUndoTitle": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`) (#95)."
+  },
+  "p2pEndUndoText": "READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.",
+  "@p2pEndUndoText": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (« » and non-breaking spaces) (`Dialogs/ConfirmUndoFiatSent.tsx`), in full (#95)."
+  },
+  "p2pEndWaitCountdown": "Wait ({time})",
+  "@p2pEndWaitCountdown": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`): the button that sends, off for 60 seconds from the dialog's opening, {time} the seconds left (#95).",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndCollabTitle": "Collaborative cancel the order?",
+  "@p2pEndCollabTitle": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95)."
+  },
+  "p2pEndCollabText": "The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.",
+  "@p2pEndCollabText": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95)."
+  },
+  "p2pEndCollabPeerAsked": "Your peer has asked for cancellation",
+  "@p2pEndCollabPeerAsked": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), after the text when the peer asked (#95)."
+  },
+  "p2pEndCollabAccept": "Accept Cancelation",
+  "@p2pEndCollabAccept": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), the reference's spelling (#95)."
+  },
+  "p2pEndCollabAsk": "Ask for Cancel",
+  "@p2pEndCollabAsk": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95)."
+  },
+  "p2pEndCollabPeerAlert": "{nickname} is asking for a collaborative cancel",
+  "@p2pEndCollabPeerAlert": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`): {nickname} is the peer's (#95).",
+    "placeholders": {
+      "nickname": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndCollabAskedAlert": "You asked for a collaborative cancellation",
+  "@p2pEndCollabAskedAlert": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`) (#95)."
+  },
+  "p2pEndOrderOptions": "Order options",
+  "@p2pEndOrderOptions": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:262`): the dialog behind « … » (#95)."
+  },
+  "p2pEndCollabCancel": "Collaborative Cancel",
+  "@p2pEndCollabCancel": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:345`) (#95)."
+  },
+  "p2pEndCollabAfterFiat": "Orders can't be cancelled if fiat has been sent.",
+  "@p2pEndCollabAfterFiat": {
+    "description": "The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95)."
+  },
+  "p2pEndStepSendingRequest": "Sending your request to {coordinator}…",
+  "@p2pEndStepSendingRequest": {
+    "description": "Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndTradeMovedOn": "The trade moved on: your request was not sent.",
+  "@p2pEndTradeMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95)."
+  },
+  "p2pEndUnknownRequest": "Bull Market does not know yet whether your request went through. It keeps checking.",
+  "@p2pEndUnknownRequest": {
+    "description": "Not in the RoboSats texts: the project's own: the answer of « Payment failed? » was lost; nothing is sent again by itself (#95)."
+  },
+  "p2pEndRequestNotRecordedMovedOn": "The trade moved on: {coordinator} did not record your request.",
+  "@p2pEndRequestNotRecordedMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it, the order no longer at 10 (1031) (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRequestRefusedBy": "{coordinator} did not record your request.",
+  "@p2pEndRequestRefusedBy": {
+    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it before acting (1030, 1047, the empty 400, the authentication's) (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRequestNotDoneAfter": "{reason} Your request was not sent.",
+  "@p2pEndRequestNotDoneAfter": {
+    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » never left; {reason} says why (#95).",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "p2pEndOffline": "{coordinator} is offline: your confirmation was not sent.",
   "@p2pEndOffline": {
     "description": "Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, the confirmation never left (#95).",
     "placeholders": {
       "coordinator": {
         "type": "String"
+      }
+    }
+  },
+  "p2pEndRequestOffline": "{coordinator} is offline: your request was not sent.",
+  "@p2pEndRequestOffline": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndOpenOptions": "open options",
+  "@p2pEndOpenOptions": {
+    "description": "The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95)."
+  },
+  "p2pEndWaitSeconds": "{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}",
+  "@p2pEndWaitSeconds": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95), plural-aware.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
       }
     }
   },

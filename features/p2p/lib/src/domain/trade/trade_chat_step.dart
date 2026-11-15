@@ -11,15 +11,25 @@ import 'trade_watch.dart';
 /// An action of the chat step (9 and 10) that `ChatStepActionUsecase` sends, one per button of the reference's `TradeBox/Prompts/Chat.tsx` this slice brings (#95).
 enum ChatStepAction {
   /// « Confirm {{amount}} {{currencyCode}} sent »: the buyer's « fiat sent », 9 → 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`).
-  confirmFiatSent;
+  confirmFiatSent,
 
-  /// Whether [seen] offers this action, as the reference's prompt offers its button (`Prompts/Chat.tsx:98-149`): « fiat sent » to the buyer at 9 only, and only from a status marked stored (`TradeSeen.stored`) that comes from an order read.
+  /// « Payment failed? »: the buyer takes back « fiat sent », 10 → 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`: the buyer only, 1030, at 10 only, 1031, with no time limit).
+  undoFiatSent;
+
+  /// Whether [seen] offers this action, as the reference's prompt offers its button (`Prompts/Chat.tsx:98-149`), and only from a status marked stored (`TradeSeen.stored`) that comes from an order read: « fiat sent » to the buyer at 9, « Payment failed? » to the buyer at 10, exactly where the coordinator takes each.
   bool offeredAt(TradeSeen seen) => switch (this) {
     ChatStepAction.confirmFiatSent =>
       seen.stored &&
           seen.order?.status == CoordinatorOrderStatus.sendingFiat &&
           switch (seen.status) {
             Chatting(role: TradeRole.buyer, fiatSent: false) => true,
+            _ => false,
+          },
+    ChatStepAction.undoFiatSent =>
+      seen.stored &&
+          seen.order?.status == CoordinatorOrderStatus.fiatSent &&
+          switch (seen.status) {
+            Chatting(role: TradeRole.buyer, fiatSent: true) => true,
             _ => false,
           },
   };
@@ -31,6 +41,11 @@ enum ChatStepAction {
       SendingSats(role: TradeRole.buyer) ||
       Succeeded(role: TradeRole.buyer) ||
       RoutingFailed(role: TradeRole.buyer) => true,
+      _ => false,
+    },
+    // Back at 9: only the buyer moves 10 to 9, so an earlier request of this robot landed.
+    ChatStepAction.undoFiatSent => switch (seen.status) {
+      Chatting(role: TradeRole.buyer, fiatSent: false) => true,
       _ => false,
     },
   };
