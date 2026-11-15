@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -15,6 +18,11 @@ import 'watch_chat_usecase.dart';
 ///
 /// The text the user typed, as typed, is checked ([refusalOf]: not empty, within `OutgoingChatMessage.maxTextBytes`, no Garage Key; an invoice or an address alone is sent, as the reference sends it, `AGENTS.md`), encrypted to the robot itself and to the peer key pinned for the trade, signed (the package refuses a text that holds the robot's token), and posted once through the robot's places in [RobotRequestLimiter], with the offset the chat has reached so that the answer brings the new messages.
 /// A post the coordinator refused stored nothing; a post whose outcome is unknown is looked for in a read from the offset it was posted with ([ChatPage.indexOf]): found, it is stored; not found, it is pending, « not confirmed », and only the user sends it again ([sendAgain]), the same encrypted message, never a new encryption of the text.
+///
+/// As the official client (`onSendMessage`, `frontend/src/components/TradeBox/EncryptedChat/index.tsx:201-239`, commit ff1998c), a message is also published over Nostr (#94), so that a peer on the official client, which shows only the Nostr messages by default, reads it: an [OutgoingNostrChatMessage] for the order's two Nostr keys, published to the relays [nostrRelaysFor] chooses, through the robot's Tor sessions.
+/// That publication never delays nor blocks the post to the coordinator: it is built and started once the post has started, its outcome changes nothing of the message's state and is shown nowhere, as in the reference (decision D3); only the transport logs a fixed word when a relay did not take it.
+/// Nothing is built when the order lacks a Nostr key or holds for this robot a key that is not the robot's ([OutgoingNostrChatMessage.compose]).
+/// « Send again » publishes the same Nostr events again only when no relay accepted them, so that a peer never sees a message twice.
 /// Nothing here is printed, logged or stored.
 final class SendChatMessageUsecase {
   final CoordinatorClient _client;
@@ -23,6 +31,11 @@ final class SendChatMessageUsecase {
   final TradeKeyring _keyring;
   final RobotKeyComputePort _compute;
   final TradeChats _chats;
+  final NostrRelayTransport _relays;
+  final Federation _federation;
+
+  /// [Random.secure] in the app: the NIP-44 nonces, the signatures' aux, the throwaway keys, the dates of the gift wraps and the choice of relays.
+  final Random _random;
 
   const SendChatMessageUsecase(
     this._client,
@@ -31,6 +44,9 @@ final class SendChatMessageUsecase {
     this._keyring,
     this._compute,
     this._chats,
+    this._relays,
+    this._federation,
+    this._random,
   );
 
   /// Why [text] cannot be sent, said as the user types, or `null`: what needs no key and no request (the robot's token is checked when it is encrypted).
@@ -102,7 +118,51 @@ final class SendChatMessageUsecase {
     } finally {
       lease.close();
     }
-    return _post(chat, trade, order, message, text, pending: null);
+    final posting = _post(chat, trade, order, message, text, pending: null);
+    // Once the post has started, never before it: its outcome is the message's state, whatever Nostr does.
+    unawaited(
+      Future(() {
+        final composed = OutgoingNostrChatMessage.compose(
+          identity: trade.robot.identity,
+          order: order,
+          coordinator: trade.coordinator,
+          network: trade.record.network,
+          text: text,
+          now: _reader.now(),
+          random: _random,
+        );
+        if (composed case Ok(value: final copy)) {
+          chat.keepNostrCopy(message, copy);
+          _publishOverNostr(chat, message, copy, trade);
+        }
+      }),
+    );
+    return posting;
+  }
+
+  /// Publishes [copy] on the relays of the trade's network, each through a Tor session of the robot, all at once; marks it delivered when one relay accepted it.
+  void _publishOverNostr(
+    TradeChat chat,
+    OutgoingChatMessage message,
+    OutgoingNostrChatMessage copy,
+    OpenTrade trade,
+  ) {
+    final relays = nostrRelaysFor(
+      trade.coordinator,
+      _federation,
+      trade.record.network,
+      _random,
+    );
+    final robot = trade.robot.identity.sessionKey;
+    unawaited(
+      Future.wait([
+        for (final relay in relays) _relays.publish(relay, copy, robot: robot),
+      ]).then((outcomes) {
+        if (outcomes.any((outcome) => outcome is NostrRelayAccepted)) {
+          chat.nostrCopyDelivered(message);
+        }
+      }),
+    );
   }
 
   /// Sends again the pending message [id] of the chat of [record], the user's choice: the same encrypted message, so that a reader can tell a duplicate by its text.
@@ -126,7 +186,12 @@ final class SendChatMessageUsecase {
       case Ok(:final value):
         trade = value;
     }
-    return _post(chat, trade, order, message, null, pending: id);
+    final posting = _post(chat, trade, order, message, null, pending: id);
+    // The same events, and only when no relay accepted them: a peer on the official client counts them once (same ids).
+    if (chat.nostrCopyToPublish(message) case final copy?) {
+      unawaited(Future(() => _publishOverNostr(chat, message, copy, trade)));
+    }
+    return posting;
   }
 
   Future<Result<OpenTrade, ChatSendRefusal>> _open(TradeRecord record) async =>
@@ -214,7 +279,10 @@ final class SendChatMessageUsecase {
         await ChatPages.take(_keyring, _compute, _reader, chat, trade, page);
       }
       // A page that shows it took it off the pending messages too.
-      if (index != null) return Ok(ChatSentStored(index));
+      if (index != null) {
+        chat.forgetNostrCopy(message);
+        return Ok(ChatSentStored(index));
+      }
       final kept = switch (pending) {
         final id? => _pendingView(chat, id),
         null => null,

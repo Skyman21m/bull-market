@@ -44,6 +44,9 @@ final class TradeChat {
   final List<_Pending> _pending = [];
   int _nextPendingId = 1;
 
+  /// The Nostr copy of each message this robot sent and the coordinator has not yet shown as stored, by its canonical armor, and whether a relay accepted it (#94): « Send again » publishes the same events again only when none did.
+  final Map<String, _NostrCopy> _nostrCopies = {};
+
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
   bool _peerConnected = false;
   bool _connected = false;
@@ -223,6 +226,9 @@ final class TradeChat {
 
     // The pending messages the coordinator now shows as stored.
     _pending.removeWhere((p) => page.indexOf(p.message) != null);
+    _nostrCopies.removeWhere(
+      (armored, copy) => page.indexOf(copy.message) != null,
+    );
     _remark();
     _moveOffset(page);
   }
@@ -391,6 +397,27 @@ final class TradeChat {
     return null;
   }
 
+  /// Keeps [copy], the Nostr copy of [message], for « Send again ».
+  void keepNostrCopy(
+    OutgoingChatMessage message,
+    OutgoingNostrChatMessage copy,
+  ) => _nostrCopies[message.armored] = _NostrCopy(message, copy);
+
+  /// The Nostr copy of [message] while no relay has accepted it, or `null`: none was made, or a relay has it.
+  OutgoingNostrChatMessage? nostrCopyToPublish(OutgoingChatMessage message) =>
+      switch (_nostrCopies[message.armored]) {
+        _NostrCopy(delivered: false, :final copy) => copy,
+        _ => null,
+      };
+
+  /// A relay accepted the Nostr copy of [message].
+  void nostrCopyDelivered(OutgoingChatMessage message) =>
+      _nostrCopies[message.armored]?.delivered = true;
+
+  /// [message] is stored by the coordinator: its Nostr copy will not be published again.
+  void forgetNostrCopy(OutgoingChatMessage message) =>
+      _nostrCopies.remove(message.armored);
+
   /// The pending message [id] is sent again: a copy of it shown later is labelled as sent twice.
   void sentAgain(OutgoingChatMessage message) =>
       _sentAgain.add(message.armored);
@@ -449,6 +476,14 @@ final class TradeChat {
   @override
   String toString() =>
       'TradeChat(${_entries.length} messages, ${_pending.length} pending, $_peerKey)';
+}
+
+final class _NostrCopy {
+  final OutgoingChatMessage message;
+  final OutgoingNostrChatMessage copy;
+  bool delivered = false;
+
+  _NostrCopy(this.message, this.copy);
 }
 
 final class _Pending {
