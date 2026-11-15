@@ -439,7 +439,10 @@ enum PayoutInvoiceRefusal {
 final class PayoutInvoiceRefused extends PayoutRefused {
   final PayoutInvoiceRefusal reason;
 
-  const PayoutInvoiceRefused(this.reason);
+  /// For [PayoutInvoiceRefusal.wrongAmount], the amount the coordinator says the invoice must be for, read from its message (digits and commas only, 0 to 21,000,000 BTC in sats), else `null`: the coordinator computes it itself, and it can differ from what the client asked when the two computations differ.
+  final int? expectedSats;
+
+  const PayoutInvoiceRefused(this.reason, {this.expectedSats});
 }
 
 /// Why a payout address was refused.

@@ -75,7 +75,7 @@ final class MiningFeeRate {
   /// The rate of [satPerVbyte] sat/vB, or `null` when it is not a finite number from [minSatPerVbyte] to [maxSatPerVbyte] with at most 3 decimals.
   ///
   /// [satPerVbyte] must be exactly the double of a decimal with at most 3 places, as a parsed number is: anything else, even within a rounding error of one, is refused rather than rounded, so that what is sent is what was shown.
-  /// The coordinator's `suggested_mining_fee_rate` has 3 decimals at most (`OnchainPayment.suggested_mining_fee_rate`, `api/models/onchain_payment.py:56-62`), so it gives a rate whenever it is within the bounds; it can exceed 500, up to 1,000 (`api/logics.py:630-634`), and this then returns `null`: the panel offers at most [maxSatPerVbyte] and says that the coordinator suggests more than the client allows.
+  /// The coordinator's `suggested_mining_fee_rate` has 3 decimals at most (`OnchainPayment.suggested_mining_fee_rate`, `api/models/onchain_payment.py:56-62`), so it gives a rate whenever it is within the bounds; it can exceed 500, up to 1,000 (`api/logics.py:630-634`), and this then returns `null`: the panel shows the suggestion as it is with « Invalid » and offers nothing to submit until the user types a rate, as the reference client does (`Forms/OnchainPayout.tsx:39-50`, `:128-133`, `:151-157`).
   static MiningFeeRate? of(double satPerVbyte) {
     if (!satPerVbyte.isFinite ||
         satPerVbyte < minSatPerVbyte ||

@@ -33,8 +33,15 @@ enum TradeTitle {
   unknown,
 }
 
-/// The prompt under a title: the bond's invoice, the payout's (its form a later version), the wait for the escrow, the expiry's reason, or a step a later version shows.
-enum TradePrompt { lockInvoice, payout, escrowWait, expired, later }
+/// The prompt under a title: the bond's invoice, the payout's (`Prompts/Payout.tsx`), the wait for the escrow, the expiry's reason, a failed payout's (`Prompts/RoutingFailed.tsx`, #91), or a step a later version shows.
+enum TradePrompt {
+  lockInvoice,
+  payout,
+  escrowWait,
+  expired,
+  routingFailed,
+  later,
+}
 
 /// What the trade screen shows for the state the watch gave (#88): one case per kind of screen, the conditions written once here, with no rule of their own on statuses (the state machine of #86 decides).
 @immutable
@@ -198,6 +205,7 @@ final class TradeContract extends TradeView {
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradePrompt.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradePrompt.escrowWait,
+    RoutingFailed(role: TradeRole.buyer) => TradePrompt.routingFailed,
     Expired() => TradePrompt.expired,
     _ => TradePrompt.later,
   };

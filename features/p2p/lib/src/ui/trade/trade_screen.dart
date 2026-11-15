@@ -31,6 +31,7 @@ import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
 import 'confirm_cancel_dialog.dart';
+import 'payout_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
 
@@ -55,6 +56,12 @@ class TradeScreen extends StatefulWidget {
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
+  /// The payout panel of 6, 8 and 15 (#91): `null`, and the prompt shows no form, where the feature holds no robot (see [PayoutPanel]).
+  final PayoutPanelBuilder? payout;
+
+  /// Whether an action that moves money runs for this trade (a payout being given, #91): « Cancel » is then off, so that a cancel never leaves while it runs; `null` for none.
+  final bool Function(BuildContext context)? moneyActionRunning;
+
   /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
   final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
@@ -72,6 +79,8 @@ class TradeScreen extends StatefulWidget {
     required this.now,
     required this.coordinatorDetails,
     this.walletPayment,
+    this.payout,
+    this.moneyActionRunning,
     this.walletBond,
     this.walletBondLine,
     this.takeCubitFor,
@@ -267,13 +276,18 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         ),
                         center: true,
                       ),
+                      // Keyed, so that a line added above it (reads that fail, a record not written) keeps it as it is.
                       final TradeContract contract => _Contract(
+                        key: const ValueKey('trade-contract'),
                         contract: contract,
                         now: _now,
                         record: record,
                         cancel: state.cancel,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
+                        payout: widget.payout,
+                        moneyActionRunning:
+                            widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
                       ),
                     },
@@ -389,15 +403,20 @@ class _Contract extends StatelessWidget {
   final TradeCancelState cancel;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
+  final PayoutPanelBuilder? payout;
+  final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
   const _Contract({
+    super.key,
     required this.contract,
     required this.now,
     required this.record,
     required this.cancel,
     required this.coordinator,
     required this.walletPayment,
+    required this.payout,
+    required this.moneyActionRunning,
     required this.walletBond,
   });
 
@@ -461,6 +480,7 @@ class _Contract extends StatelessWidget {
             seen: contract.seen,
             cancel: cancel,
             coordinator: coordinator,
+            moneyActionRunning: moneyActionRunning,
             bond: walletBond?.call(context) ?? WalletBondState.none,
           ),
         ],
@@ -500,9 +520,11 @@ class _Contract extends StatelessWidget {
             ),
             const Gap(BullSpacing.sm),
           ],
-          _Line(l10n.p2pTradePayoutLater, color: colors.textMuted),
+          ?_payoutPanel(context),
         ],
       ),
+      (TradePrompt.routingFailed, _) =>
+        _payoutPanel(context) ?? const SizedBox.shrink(),
       (TradePrompt.escrowWait, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -519,6 +541,24 @@ class _Contract extends StatelessWidget {
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
+
+  /// The payout panel of the status shown, when the screen was given one, keyed so that a change of the prompt around it keeps it.
+  Widget? _payoutPanel(BuildContext context) => switch (payout?.call(
+    context,
+    PayoutPanelRequest(
+      record: record,
+      seen: contract.seen,
+      coordinator: coordinator,
+      now: now,
+      cancelling: cancel is CancelRunning,
+    ),
+  )) {
+    final panel? => KeyedSubtree(
+      key: const ValueKey('trade-payout-panel'),
+      child: panel,
+    ),
+    null => null,
+  };
 }
 
 /// « Your taker bond is locked / unlocked / settled » with the reference's icons (`TradeBox/BondStatus.tsx`).
@@ -575,6 +615,9 @@ class _CancelRow extends StatefulWidget {
   final TradeCancelState cancel;
   final String coordinator;
 
+  /// Whether an action that moves money runs: « Cancel » is off meanwhile.
+  final bool moneyActionRunning;
+
   /// Where a payment of the bond from this wallet stands: « Cancel » waits while it is sent, and its dialog says when one is on its way.
   final WalletBondState bond;
 
@@ -584,6 +627,7 @@ class _CancelRow extends StatefulWidget {
     required this.seen,
     required this.cancel,
     required this.coordinator,
+    required this.moneyActionRunning,
     required this.bond,
   });
 
@@ -658,7 +702,10 @@ class _CancelRowState extends State<_CancelRow> {
         ),
         const Gap(BullSpacing.sm),
         Tooltip(
-          message: offer == TradeCancelOffer.free
+          // While a payout is given, why « Cancel » is off, for a screen reader and a long press.
+          message: widget.moneyActionRunning
+              ? l10n.p2pTradeCancelWhilePayout
+              : offer == TradeCancelOffer.free
               ? l10n.p2pTradeCancelOrder
               : l10n.p2pTradeCancelUnilateral,
           child: TradeButton(
@@ -666,8 +713,10 @@ class _CancelRowState extends State<_CancelRow> {
             outlined: true,
             color: colors.secondary,
             busy: running,
-            // A payment of the bond being sent ends first, as the payment's own button waits (the cancel takes the order's lock too).
-            onPressed: widget.bond.sending ? null : () => unawaited(_press()),
+            // A payment of the bond being sent ends first, as the payment's own button waits (the cancel takes the order's lock too); a payout being given too (#91).
+            onPressed: widget.moneyActionRunning || widget.bond.sending
+                ? null
+                : () => unawaited(_press()),
           ),
         ),
         if (notice != null) ...[

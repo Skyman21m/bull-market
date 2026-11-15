@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -65,10 +67,14 @@ final class SubmitPayoutUsecase {
   /// Signs and sends [shown], the payout the user confirmed, for the trade of [record].
   ///
   /// [Err]: nothing was sent ([PayoutNotSent]). [Ok]: the payout was sent, or may have left; [PayoutSubmission] says what it and the read after it gave.
+  ///
+  /// [onProgress] is told each step as it starts ([PayoutProgress]), for the panel to say what it waits for; it changes nothing of what is done: one that throws is reported to the zone, never stops a payout under way (review of #132).
   Future<Result<PayoutSubmission, PayoutNotSent>> execute(
     TradeRecord record,
-    CheckedPayout shown,
-  ) async {
+    CheckedPayout shown, {
+    void Function(PayoutProgress step)? onProgress,
+  }) async {
+    final tell = onProgress == null ? null : _told(onProgress);
     if (!shown.isFor(record)) return const Err(PayoutOfAnotherTrade());
     final OpenTrade trade;
     switch (await _reader.open(record)) {
@@ -81,6 +87,8 @@ final class SubmitPayoutUsecase {
       case TradeTakeNeverSent():
         return const Err(PayoutOfAnotherTrade());
     }
+    // Another action of the order (a take, a cancel, a payout) may hold it: the wait is said for what it is; a free order goes on at once, before anything is drawn.
+    tell?.call(PayoutProgress.waitingForOrder);
     return _locks.run(
       record.network,
       trade.coordinator,
@@ -88,7 +96,13 @@ final class SubmitPayoutUsecase {
       () async {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
-          return await _submit(requests, trade, shown, retried: false);
+          return await _submit(
+            requests,
+            trade,
+            shown,
+            retried: false,
+            onProgress: tell,
+          );
         } finally {
           requests.close();
         }
@@ -96,23 +110,41 @@ final class SubmitPayoutUsecase {
     );
   }
 
+  /// [onProgress], which reports to the zone what it throws instead of stopping the step it announces.
+  static void Function(PayoutProgress step) _told(
+    void Function(PayoutProgress step) onProgress,
+  ) => (step) {
+    try {
+      onProgress(step);
+    } on Object catch (error, stack) {
+      Zone.current.handleUncaughtError(error, stack);
+    }
+  };
+
   /// One try: the lease, the fresh read, the check again, the signature, the request, and what it gave; once more after a refusal decided from the read, when [retried] is false.
   Future<Result<PayoutSubmission, PayoutNotSent>> _submit(
     RobotRequests requests,
     OpenTrade trade,
     CheckedPayout shown, {
     required bool retried,
+    void Function(PayoutProgress step)? onProgress,
   }) async {
     final record = trade.record;
     final robot = trade.robot;
     var current = trade;
     P2pFailure? problem;
-    Future<void> keep(TradeAnswer answer) async {
-      final step = await _reader.advance(current, answer, at: _reader.now());
+    Future<void> keep(TradeAnswer answer, {DateTime? requestedAt}) async {
+      final step = await _reader.advance(
+        current,
+        answer,
+        at: _reader.now(),
+        requestedAt: requestedAt,
+      );
       current = step.trade;
       problem ??= step.recordProblem;
     }
 
+    onProgress?.call(PayoutProgress.unlockingKey);
     final TradeKeyLease lease;
     switch (await _keyring.lease(trade)) {
       case Err(:final failure):
@@ -123,6 +155,8 @@ final class SubmitPayoutUsecase {
     final Future<Result<PayoutOutcome, OrderActionFailure>> Function() submit;
     try {
       // The order as it is now, kept: the payout is signed from this read only.
+      onProgress?.call(PayoutProgress.readingOrder);
+      final requestedAt = _reader.now();
       final TradeAnswer answer;
       switch (await _reader.readOrder(
         requests,
@@ -147,7 +181,12 @@ final class SubmitPayoutUsecase {
               );
           }
       }
-      final step = await _reader.advance(current, answer, at: _reader.now());
+      final step = await _reader.advance(
+        current,
+        answer,
+        at: _reader.now(),
+        requestedAt: requestedAt,
+      );
       current = step.trade;
       problem ??= step.recordProblem;
       final seen = current.seen;
@@ -207,6 +246,7 @@ final class SubmitPayoutUsecase {
       lease.close();
     }
 
+    onProgress?.call(PayoutProgress.sending);
     final sent = await requests.send(
       record.network,
       trade.coordinator,
@@ -219,15 +259,23 @@ final class SubmitPayoutUsecase {
       value: Err(failure: OrderActionRefused(cause: final PayoutRefused cause)),
     ) when cause.fromLastRead) {
       if (!retried) {
-        return _submit(requests, current, shown, retried: true);
+        return _submit(
+          requests,
+          current,
+          shown,
+          retried: true,
+          onProgress: onProgress,
+        );
       }
       return Err(PayoutRefusedFromRead(cause, current.seen));
     }
 
     // The answer first, then a read after it.
+    onProgress?.call(PayoutProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
       await keep(TradeOrderRead(value.order));
     }
+    final readFrom = _reader.now();
     final read = await _reader.readOrder(
       requests,
       record,
@@ -235,7 +283,9 @@ final class SubmitPayoutUsecase {
       trade.coordinator,
     );
     if (read case Ok(value: final result)) {
-      if (TradeAnswer.ofRead(result) case final answer?) await keep(answer);
+      if (TradeAnswer.ofRead(result) case final answer?) {
+        await keep(answer, requestedAt: readFrom);
+      }
     }
     return Ok(switch (sent) {
       Ok(value: Ok()) => PayoutGiven(

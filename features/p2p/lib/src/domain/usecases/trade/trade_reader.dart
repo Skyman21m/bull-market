@@ -271,10 +271,13 @@ final class TradeReader {
   ///
   /// A pending take never confirmed, on which no pre-take was ever seen, that the answer brings to an end without showing this robot as the taker, is a take not made ([TradeStep.takeNotMade]): the coordinator never showed this robot an invoice, so nothing can have been paid from here, whatever the end says of a bond.
   /// Such an end comes at once when the order is public again with this robot no participant (the coordinator shows a live pre-take to its robot as 3, `api/views.py:381-396`, so this robot holds none), cancelled or expired; error 1044 stays `PreTakeUnavailable` until the pre-take is certainly gone (`TradeStatus.from`).
+  ///
+  /// [requestedAt] is when the read of [answer] was sent, when it was one, kept in the status it gives ([TradeSeen.requestedAt]).
   Future<TradeStep> advance(
     OpenTrade trade,
     TradeAnswer answer, {
     required DateTime at,
+    DateTime? requestedAt,
   }) async {
     // A terminal status is never left, and its trail and record are kept already: nothing to write.
     if (trade.seen.status.isTerminal) {
@@ -283,7 +286,13 @@ final class TradeReader {
     final taker = showsTaker(answer, trade.terms);
     final step = await keep(
       trade,
-      _seenAfter(trade.seen.status, answer, trade.terms, at),
+      _seenAfter(
+        trade.seen.status,
+        answer,
+        trade.terms,
+        at,
+        requestedAt: requestedAt,
+      ),
       showsTaker: taker,
       answer: answer,
       at: at,
@@ -309,8 +318,9 @@ final class TradeReader {
     TradeStatus previous,
     TradeAnswer answer,
     TradeTerms terms,
-    DateTime at,
-  ) {
+    DateTime at, {
+    DateTime? requestedAt,
+  }) {
     final status = TradeStatus.from(
       previous: previous,
       answer: answer,
@@ -324,6 +334,7 @@ final class TradeReader {
         TradeOrderRead(:final order) when status.seenAt == at => order,
         _ => null,
       },
+      requestedAt: status.seenAt == at ? requestedAt : null,
     );
   }
 
@@ -357,6 +368,7 @@ final class TradeReader {
             attempt.status,
             order: attempt.order,
             stored: true,
+            requestedAt: attempt.requestedAt,
           );
           onDisk = true;
         case Err(:final failure):
@@ -373,7 +385,11 @@ final class TradeReader {
             onDiskTrail = keptTrail;
             if (attempt.status.isTerminal &&
                 keptTrail.position == attempt.status.position) {
-              current = TradeSeen(attempt.status, order: attempt.order);
+              current = TradeSeen(
+                attempt.status,
+                order: attempt.order,
+                requestedAt: attempt.requestedAt,
+              );
             } else if (round == 0 &&
                 answer != null &&
                 at != null &&
@@ -384,6 +400,7 @@ final class TradeReader {
                 answer,
                 trade.terms,
                 at,
+                requestedAt: seen.requestedAt,
               );
               current = ownStatus(keptTrail);
               continue;
