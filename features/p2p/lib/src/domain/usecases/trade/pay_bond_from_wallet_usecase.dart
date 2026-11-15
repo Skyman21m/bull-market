@@ -117,6 +117,7 @@ final class PayBondFromWalletUsecase {
       final requests = _limiter.open(trade.robot.identity.sessionKey);
       final TradeStep step;
       try {
+        final readLeft = _reader.requestLeaves();
         final read = await _reader.readOrder(
           requests,
           record,
@@ -137,7 +138,12 @@ final class PayBondFromWalletUsecase {
             }),
           );
         }
-        step = await _reader.advance(trade, answer, at: _reader.now());
+        step = await _reader.advance(
+          trade,
+          answer,
+          at: _reader.now(),
+          sentAt: readLeft,
+        );
       } finally {
         requests.close();
       }

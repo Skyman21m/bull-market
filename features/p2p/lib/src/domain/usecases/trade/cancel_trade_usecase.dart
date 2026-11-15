@@ -79,6 +79,7 @@ final class CancelTradeUsecase {
       () async {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
+          final cancelLeft = _reader.requestLeaves();
           final sent = await requests.send(
             record.network,
             trade.coordinator,
@@ -90,11 +91,12 @@ final class CancelTradeUsecase {
           );
           var current = trade;
           P2pFailure? problem;
-          Future<void> keep(TradeAnswer answer) async {
+          Future<void> keep(TradeAnswer answer, DateTime sentAt) async {
             final step = await _reader.advance(
               current,
               answer,
               at: _reader.now(),
+              sentAt: sentAt,
             );
             current = step.trade;
             problem ??= step.recordProblem;
@@ -103,12 +105,13 @@ final class CancelTradeUsecase {
           // The cancel's own answer first, then a read after it.
           switch (sent) {
             case Ok(value: Ok(value: OrderCancelEnded())):
-              await keep(const TradeOrderCancelled());
+              await keep(const TradeOrderCancelled(), cancelLeft);
             case Ok(value: Ok(value: OrderCancelAccepted(:final order))):
-              await keep(TradeOrderRead(order));
+              await keep(TradeOrderRead(order), cancelLeft);
             case Ok(value: Err()) || Err():
               break;
           }
+          final readLeft = _reader.requestLeaves();
           final read = await _reader.readOrder(
             requests,
             record,
@@ -117,7 +120,7 @@ final class CancelTradeUsecase {
           );
           if (read case Ok(value: final result)) {
             if (TradeAnswer.ofRead(result) case final answer?) {
-              await keep(answer);
+              await keep(answer, readLeft);
             }
           }
           return Ok(switch (sent) {

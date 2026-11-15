@@ -133,12 +133,17 @@ final class SubmitPayoutUsecase {
     final robot = trade.robot;
     var current = trade;
     P2pFailure? problem;
-    Future<void> keep(TradeAnswer answer, {DateTime? requestedAt}) async {
+    Future<void> keep(
+      TradeAnswer answer, {
+      required DateTime sentAt,
+      bool keepsSentAt = false,
+    }) async {
       final step = await _reader.advance(
         current,
         answer,
         at: _reader.now(),
-        requestedAt: requestedAt,
+        sentAt: sentAt,
+        keepsSentAt: keepsSentAt,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -156,7 +161,7 @@ final class SubmitPayoutUsecase {
     try {
       // The order as it is now, kept: the payout is signed from this read only.
       onProgress?.call(PayoutProgress.readingOrder);
-      final requestedAt = _reader.now();
+      final requestedAt = _reader.requestLeaves();
       final TradeAnswer answer;
       switch (await _reader.readOrder(
         requests,
@@ -185,7 +190,8 @@ final class SubmitPayoutUsecase {
         current,
         answer,
         at: _reader.now(),
-        requestedAt: requestedAt,
+        sentAt: requestedAt,
+        keepsSentAt: true,
       );
       current = step.trade;
       problem ??= step.recordProblem;
@@ -247,6 +253,7 @@ final class SubmitPayoutUsecase {
     }
 
     onProgress?.call(PayoutProgress.sending);
+    final submitLeft = _reader.requestLeaves();
     final sent = await requests.send(
       record.network,
       trade.coordinator,
@@ -273,9 +280,9 @@ final class SubmitPayoutUsecase {
     // The answer first, then a read after it.
     onProgress?.call(PayoutProgress.readingAfter);
     if (sent case Ok(value: Ok(:final value))) {
-      await keep(TradeOrderRead(value.order));
+      await keep(TradeOrderRead(value.order), sentAt: submitLeft);
     }
-    final readFrom = _reader.now();
+    final readFrom = _reader.requestLeaves();
     final read = await _reader.readOrder(
       requests,
       record,
@@ -284,7 +291,7 @@ final class SubmitPayoutUsecase {
     );
     if (read case Ok(value: final result)) {
       if (TradeAnswer.ofRead(result) case final answer?) {
-        await keep(answer, requestedAt: readFrom);
+        await keep(answer, sentAt: readFrom, keepsSentAt: true);
       }
     }
     return Ok(switch (sent) {

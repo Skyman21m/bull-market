@@ -65,6 +65,7 @@ import 'domain/usecases/trade/prepared_takes.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
 import 'domain/usecases/trade/trade_keyring.dart';
+import 'domain/usecases/trade/trade_read_order.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
@@ -286,6 +287,8 @@ final class P2pLocator {
           ? locator<Bolt11Decoder>()
           : const _NoBolt11Decoder(),
     );
+    // One for the feature: every reader orders the answers of a trade by when their requests left, whichever use case sent them (#141).
+    locator.registerLazySingleton<TradeReadOrder>(TradeReadOrder.new);
     locator.registerFactory<TradeReader>(
       () => TradeReader(
         locator(),
@@ -296,6 +299,7 @@ final class P2pLocator {
         Federation.robosats,
         invoices(),
         clock: clock,
+        requestOrder: locator(),
       ),
     );
     // One for the feature: the takes and the payouts of an order run one at a time, whichever use case object runs them.

@@ -32,6 +32,7 @@ import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
@@ -367,6 +368,7 @@ final class TradeHarness {
       Federation.robosats,
       invoices,
       clock: clock,
+      requestOrder: TradeReadOrder(),
     );
     final fetch = FetchRobotUsecase(client, bindings, keys);
     final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);

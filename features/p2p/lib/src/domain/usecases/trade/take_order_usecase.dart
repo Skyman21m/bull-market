@@ -572,6 +572,8 @@ final class TakeOrderUsecase {
     final requests = _limiter.open(robot.identity.sessionKey);
     final Result<Result<TakeOrderOutcome, OrderActionFailure>, P2pFailure>
     taken;
+    // When the take leaves: its answer, and a read of the trade it resumes, give the trade's first status (#141).
+    final takeLeft = _reader.requestLeaves();
     try {
       taken = await requests.send(
         network,
@@ -624,6 +626,7 @@ final class TakeOrderUsecase {
           ),
           TradeSeen(status, order: started.order),
           showsTaker: true,
+          sentAt: takeLeft,
         );
         return Ok(
           TakeStarted(
@@ -641,6 +644,7 @@ final class TakeOrderUsecase {
               trade,
               TradeOrderRead(order),
               at: _reader.now(),
+              sentAt: takeLeft,
             );
             return Ok(
               TakeResumed(
