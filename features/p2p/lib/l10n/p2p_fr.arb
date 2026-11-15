@@ -578,7 +578,7 @@
   "p2pEndCollabAfterFiat": "Les ordres ne peuvent pas être annulés si le fiat a été envoyé.",
   "p2pEndStepSendingRequest": "Envoi de votre demande à {coordinator}…",
   "p2pEndTradeMovedOn": "L’échange a changé : votre demande n’a pas été envoyée.",
-  "p2pEndUnknownRequest": "Bull Market ne sait pas encore si votre demande est passée. Il continue de vérifier.",
+  "p2pEndUnknownRequest": "Bull Market ne sait pas encore si votre demande est passée et continue de vérifier.",
   "p2pEndRequestNotRecordedMovedOn": "L’échange a changé : {coordinator} n’a pas enregistré votre demande.",
   "p2pEndRequestRefusedBy": "{coordinator} n’a pas enregistré votre demande.",
   "p2pEndRequestNotDoneAfter": "{reason} Votre demande n’a pas été envoyée.",
