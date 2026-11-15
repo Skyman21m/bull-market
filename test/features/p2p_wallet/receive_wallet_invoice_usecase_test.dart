@@ -159,10 +159,12 @@ void main() {
       expect(swaps.quotes, isEmpty);
     });
 
-    test('the wallet\'s orders unreadable', () async {
+    test('the wallet\'s orders unreadable, when the invoice made earlier for the payout is to be read', () async {
+      expect(await make(), isA<Ok>());
       swaps.ordersFailure = const SwapStorageFailure();
       expect(refusalOf(await make()), isA<P2pWalletUnavailable>());
-      expect(swaps.quotes, isEmpty);
+      expect(swaps.quotes, hasLength(1));
+      expect(swaps.created, hasLength(1));
     });
   });
 
@@ -304,87 +306,102 @@ void main() {
     );
   });
 
-  test('prints and logs nothing, so nothing of an invoice, an address or an answer', () async {
-    final output = await _capture(() async {
-      final invoice = invoiceOf(await make());
-      expect('$invoice', 'P2pWalletInvoice');
-      await make();
-      swaps.quoteFailure = SwapAmountOutOfBoundsFailure(
-        limitAmountSat: BigInt.from(30000),
-        isMinimum: true,
-        logMessage: 'Amount below 0.0003',
-      );
-      await make(payout: 'trade-2');
-      swaps.quoteFailure = null;
-      decoder.readable = false;
-      await make(payout: 'trade-3');
-    });
-    final lines = output
-        .split('\n')
-        .where((line) => line.trim().isNotEmpty)
-        .toList();
-    expect(lines, hasLength(2));
-    expect(lines.first, 'print capture works');
-    expect(lines.last, contains('logger capture works'));
-    expect(output.contains('lnbcreceive'), isFalse);
-    expect(output.contains('lq1new'), isFalse);
-  });
+  test(
+    'prints and logs nothing, so nothing of an invoice, an address or an answer',
+    () async {
+      final output = await _capture(() async {
+        final invoice = invoiceOf(await make());
+        expect('$invoice', 'P2pWalletInvoice');
+        await make();
+        swaps.quoteFailure = SwapAmountOutOfBoundsFailure(
+          limitAmountSat: BigInt.from(30000),
+          isMinimum: true,
+          logMessage: 'Amount below 0.0003',
+        );
+        await make(payout: 'trade-2');
+        swaps.quoteFailure = null;
+        decoder.readable = false;
+        await make(payout: 'trade-3');
+      });
+      final lines = output
+          .split('\n')
+          .where((line) => line.trim().isNotEmpty)
+          .toList();
+      expect(lines, hasLength(2));
+      expect(lines.first, 'print capture works');
+      expect(lines.last, contains('logger capture works'));
+      expect(output.contains('lnbcreceive'), isFalse);
+      expect(output.contains('lq1new'), isFalse);
+    },
+  );
 
   group('an earlier invoice still waiting', () {
-    test('is given again for the same payout rather than a new order', () async {
-      final first = invoiceOf(await make());
-      final second = invoiceOf(await make());
-      expect(second.bolt11, first.bolt11);
-      expect(swaps.created, hasLength(1));
-      expect(swaps.quotes, hasLength(1));
-      expect(addresses.calls, hasLength(1));
-    });
+    test(
+      'is given again for the same payout rather than a new order',
+      () async {
+        final first = invoiceOf(await make());
+        final second = invoiceOf(await make());
+        expect(second.bolt11, first.bolt11);
+        expect(swaps.created, hasLength(1));
+        expect(swaps.quotes, hasLength(1));
+        expect(addresses.calls, hasLength(1));
+      },
+    );
 
-    test('is never given for another payout, even of the same amount', () async {
-      await make(payout: 'trade-1');
-      await make(payout: 'trade-2');
-      expect(swaps.created, hasLength(2));
-      // Each payout then gets its own again.
-      await make(payout: 'trade-1');
-      await make(payout: 'trade-2');
-      expect(swaps.created, hasLength(2));
-    });
+    test(
+      'is never given for another payout, even of the same amount',
+      () async {
+        await make(payout: 'trade-1');
+        await make(payout: 'trade-2');
+        expect(swaps.created, hasLength(2));
+        // Each payout then gets its own again.
+        await make(payout: 'trade-1');
+        await make(payout: 'trade-2');
+        expect(swaps.created, hasLength(2));
+      },
+    );
 
-    test('is never one the wallet\'s own screens made, whatever its note', () async {
-      // An order of the wallet's Receive screen, or one of this feature from an earlier run of the app: waiting, same amount, same wallet.
-      swaps.records['receive-screen'] = _record(
-        localId: 'receive-screen',
-        amount: BigInt.from(25000),
-        destination: 'lq1screen',
-        walletId: 'instant',
-        environment: OrderSwapEnvironment.mainnet,
-        note: WalletPaymentRepository.note,
-        purpose: OrderSwapPurpose.receiveLightning,
-        invoice: 'lnbcscreen1',
-        payin: BigInt.from(25000),
-        payout: BigInt.from(24950),
-      );
-      final invoice = invoiceOf(await make());
-      expect(invoice.bolt11, isNot('lnbcscreen1'));
-      expect(swaps.created, hasLength(1));
-    });
+    test(
+      'is never one the wallet\'s own screens made, whatever its note',
+      () async {
+        // An order of the wallet's Receive screen, or one of this feature from an earlier run of the app: waiting, same amount, same wallet.
+        swaps.records['receive-screen'] = _record(
+          localId: 'receive-screen',
+          amount: BigInt.from(25000),
+          destination: 'lq1screen',
+          walletId: 'instant',
+          environment: OrderSwapEnvironment.mainnet,
+          note: WalletPaymentRepository.note,
+          purpose: OrderSwapPurpose.receiveLightning,
+          invoice: 'lnbcscreen1',
+          payin: BigInt.from(25000),
+          payout: BigInt.from(24950),
+        );
+        final invoice = invoiceOf(await make());
+        expect(invoice.bolt11, isNot('lnbcscreen1'));
+        expect(swaps.created, hasLength(1));
+      },
+    );
 
-    test('is not kept across a restart: a new use case makes a new order', () async {
-      await make();
-      final restarted = ReceiveWalletInvoiceUsecase(
-        wallets,
-        decoder,
-        swaps,
-        addresses,
-        () => testNow,
-      );
-      await restarted.execute(
-        RobosatsNetwork.mainnet,
-        Sats.fromInt(25000),
-        payout: 'trade-1',
-      );
-      expect(swaps.created, hasLength(2));
-    });
+    test(
+      'is not kept across a restart: a new use case makes a new order',
+      () async {
+        await make();
+        final restarted = ReceiveWalletInvoiceUsecase(
+          wallets,
+          decoder,
+          swaps,
+          addresses,
+          () => testNow,
+        );
+        final _ = await restarted.execute(
+          RobosatsNetwork.mainnet,
+          Sats.fromInt(25000),
+          payout: 'trade-1',
+        );
+        expect(swaps.created, hasLength(2));
+      },
+    );
 
     test('is not given again for another amount', () async {
       await make();
@@ -392,50 +409,78 @@ void main() {
       expect(swaps.created, hasLength(2));
     });
 
-    test('is not given again once paid, expired or near its end, nor once it is no longer this feature\'s receive order', () async {
-      for (final (label, change) in <(String, OrderSwapRecord Function(OrderSwapRecord))>[
-        ('paid', (r) => _with(r, status: OrderSwapLocalStatus.payoutInProgress)),
-        ('completed', (r) => _with(r, status: OrderSwapLocalStatus.completed)),
-        ('expired', (r) => _with(r, status: OrderSwapLocalStatus.expired)),
-        ('another wallet', (r) => _with(r, destinationWalletId: 'other')),
-        ('another note', (r) => _with(r, note: 'Auto-Transfer')),
-        ('a send', (r) => _with(r, purpose: OrderSwapPurpose.sendLightning)),
-        ('another network', (r) => _with(r, environment: OrderSwapEnvironment.testnet)),
-        (
-          'near its end',
-          (r) => _with(r, deadline: testNow.add(const Duration(seconds: 59))),
-        ),
-      ]) {
-        swaps.reset();
-        await make();
-        final made = swaps.created.length;
-        swaps.records.updateAll((_, record) => change(record));
-        await make();
-        expect(swaps.created, hasLength(made + 1), reason: label);
-      }
-    });
+    test(
+      'is not given again once paid, expired or near its end, nor once it is no longer this feature\'s receive order',
+      () async {
+        for (final (label, change)
+            in <(String, OrderSwapRecord Function(OrderSwapRecord))>[
+              (
+                'paid',
+                (r) => _with(r, status: OrderSwapLocalStatus.payoutInProgress),
+              ),
+              (
+                'completed',
+                (r) => _with(r, status: OrderSwapLocalStatus.completed),
+              ),
+              (
+                'expired',
+                (r) => _with(r, status: OrderSwapLocalStatus.expired),
+              ),
+              ('another wallet', (r) => _with(r, destinationWalletId: 'other')),
+              ('another note', (r) => _with(r, note: 'Auto-Transfer')),
+              (
+                'a send',
+                (r) => _with(r, purpose: OrderSwapPurpose.sendLightning),
+              ),
+              (
+                'another network',
+                (r) => _with(r, environment: OrderSwapEnvironment.testnet),
+              ),
+              (
+                'near its end',
+                (r) => _with(
+                  r,
+                  deadline: testNow.add(const Duration(seconds: 59)),
+                ),
+              ),
+            ]) {
+          swaps.reset();
+          await make();
+          final made = swaps.created.length;
+          swaps.records.updateAll((_, record) => change(record));
+          await make();
+          expect(swaps.created, hasLength(made + 1), reason: label);
+        }
+      },
+    );
 
-    test('two calls at once for one payout make one order, the second given the first one\'s invoice', () async {
-      final both = await Future.wait([make(), make()]);
-      expect(invoiceOf(both[0]).bolt11, invoiceOf(both[1]).bolt11);
-      expect(swaps.created, hasLength(1));
-    });
+    test(
+      'two calls at once for one payout make one order, the second given the first one\'s invoice',
+      () async {
+        final both = await Future.wait([make(), make()]);
+        expect(invoiceOf(both[0]).bolt11, invoiceOf(both[1]).bolt11);
+        expect(swaps.created, hasLength(1));
+      },
+    );
 
     test('two calls at once for two payouts make two orders', () async {
       await Future.wait([make(payout: 'trade-1'), make(payout: 'trade-2')]);
       expect(swaps.created, hasLength(2));
     });
 
-    test('an order whose invoice was refused is never given, even once its invoice reads well', () async {
-      decoder.readable = false;
-      expect(refusalOf(await make()), isA<P2pWalletServiceRefused>());
-      // The refused order stays at the service, waiting until its deadline; the next call makes another one.
-      decoder.readable = true;
-      final invoice = invoiceOf(await make());
-      expect(swaps.created, hasLength(2));
-      expect(swaps.records.keys.last, 'receive-2');
-      expect(invoice.bolt11, 'lnbcreceive2');
-    });
+    test(
+      'an order whose invoice was refused is never given, even once its invoice reads well',
+      () async {
+        decoder.readable = false;
+        expect(refusalOf(await make()), isA<P2pWalletServiceRefused>());
+        // The refused order stays at the service, waiting until its deadline; the next call makes another one.
+        decoder.readable = true;
+        final invoice = invoiceOf(await make());
+        expect(swaps.created, hasLength(2));
+        expect(swaps.records.keys.last, 'receive-2');
+        expect(invoice.bolt11, 'lnbcreceive2');
+      },
+    );
   });
 }
 
@@ -540,6 +585,7 @@ final class _ReceiveSwaps implements SwapFacade {
   SwapFailure? ordersFailure;
   int? quoteIn;
   int? quoteOut;
+
   /// The stem of each order's invoice text, numbered by order (`lnbcreceive1`, `lnbcreceive2`…); `null` for an order without one.
   String? invoiceText = 'lnbcreceive';
   int? payin;
