@@ -4,7 +4,8 @@
 /// A [RobotPgpKey] is the OpenPGP key pair of a robot, locked by its token: once unlocked it clear-signs invoices and payout addresses and encrypts, signs, decrypts and verifies chat messages, in the formats of the official client and of the coordinators.
 /// A [CoordinatorClient] reads what a coordinator of the embedded [Federation] publishes (`/api/info/`, `/api/book/`, `/api/limits/`) through a [CoordinatorTransport] that the app implements over Tor, and a [FederationBookReader] merges the books of every coordinator.
 /// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`), checked against what this device computed: a [CoordinatorRobot] when the coordinator returns the key pair this device has just sent, and otherwise an [UnprovenCoordinatorRobot], which gives the robot only once the robot's token has proved the pair it returned.
-/// For the robot of this device, the client also reads an order as the coordinator describes it to that robot (`/api/order/`, a [CoordinatorOrder]), sends a taker's take and cancel of it, and the buyer's payout: a Lightning invoice or an on-chain address, clear-signed by the robot's key ([SignedPayout]), the address first checked by [BitcoinAddress.check]; nothing in the app calls them yet.
+/// For the robot of this device, the client also reads an order as the coordinator describes it to that robot (`/api/order/`, a [CoordinatorOrder]), sends a taker's take and cancel of it, and the buyer's payout: a Lightning invoice or an on-chain address, clear-signed by the robot's key ([SignedPayout]), the address first checked by [BitcoinAddress.check].
+/// It also sends the actions of the trade's chat step, each answered with a [TradeActionOutcome]: the buyer's « fiat sent » and its undo, a dispute, and the robot's rating of its coordinator ([PlatformRating]); nothing in the app calls them yet.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 ///
@@ -77,6 +78,8 @@ export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
 export 'src/coordinator/robosats_currency.dart' show RobosatsCurrency;
 export 'src/coordinator/robosats_network.dart' show RobosatsNetwork;
 export 'src/coordinator/robot_session_key.dart' show RobotSessionKey;
+export 'src/coordinator/trade_action.dart'
+    show PlatformRating, TradeActionAccepted, TradeActionOutcome;
 
 export 'src/garage_key.dart' show GarageKey, GarageRobot;
 export 'src/nostr_key_pair.dart' show NostrKeyPair;
