@@ -1505,7 +1505,10 @@ void main() {
         await show(tester, cubit, six);
         final toggle = tester.getSemantics(find.byType(Switch));
         expect(toggle.label, 'Advanced options');
-        expect(toggle.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+        expect(
+          toggle.getSemanticsData().hasAction(SemanticsAction.tap),
+          isTrue,
+        );
         expect(
           tester.getSemantics(find.byKey(PayoutPanel.invoiceField)).label,
           contains('Payout Lightning Invoice'),
