@@ -363,23 +363,31 @@ void main() {
         await shownAt(harness, cubit, 3);
         final record = cubit.state.record;
         expect(harness.watch.lastStored(record), same(cubit.state.seen));
-        TradeRecord changed({int? orderId, String? alias, TradeRole? role}) =>
-            TradeRecord(
-              robot: record.robot,
-              coordinatorAlias: alias ?? record.coordinatorAlias,
-              coordinatorOnion: record.coordinatorOnion,
-              orderId: orderId ?? record.orderId,
-              role: role ?? record.role,
-              origin: record.origin,
-              takenAt: record.takenAt,
-              confirmedAt: record.confirmedAt,
-              closedAt: record.closedAt,
-            );
+        TradeRecord changed({
+          int? orderId,
+          String? alias,
+          String? onion,
+          TradeRole? role,
+        }) => TradeRecord(
+          robot: record.robot,
+          coordinatorAlias: alias ?? record.coordinatorAlias,
+          coordinatorOnion: onion ?? record.coordinatorOnion,
+          orderId: orderId ?? record.orderId,
+          role: role ?? record.role,
+          origin: record.origin,
+          takenAt: record.takenAt,
+          confirmedAt: record.confirmedAt,
+          closedAt: record.closedAt,
+        );
         expect(
           harness.watch.lastStored(changed(orderId: record.orderId + 1)),
           isNull,
         );
         expect(harness.watch.lastStored(changed(alias: 'other')), isNull);
+        expect(
+          harness.watch.lastStored(changed(onion: 'http://other.onion')),
+          isNull,
+        );
         expect(
           harness.watch.lastStored(changed(role: TradeRole.seller)),
           isNull,

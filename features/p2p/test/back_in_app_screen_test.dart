@@ -23,6 +23,7 @@ import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_first_read_wait.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
+import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:p2p/testing.dart' show Bolt11TestDecoder, Bolt11TestInvoice;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:robosats/robosats.dart';
@@ -95,17 +96,20 @@ void main() {
     _Watch watch, {
     DateTime Function()? now,
     void Function(WalletPaymentRequest request)? onWallet,
+    List<TradeSeen>? cancels,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 844) * 3
       ..devicePixelRatio = 3;
     addTearDown(tester.view.reset);
-    final cubit = TradeCubit(
+    final cubit = TradeCubit(record, watch.call, (
       record,
-      watch.call,
-      (record, seen, {bondLoss}) async =>
-          Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
-    )..start();
+      seen, {
+      bondLoss,
+    }) async {
+      cancels?.add(seen);
+      return Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen));
+    })..start();
     addTearDown(cubit.close);
     final reads = FakeTransport();
     final page = TradeOrderPageCubit(
@@ -228,6 +232,36 @@ void main() {
         expect(find.text('You are BUYING BTC'), findsOneWidget);
         expect(find.byType(QrImageView), findsNothing);
         expect(expiredTold, isTrue);
+      },
+    );
+
+    testWidgets(
+      '« Cancel » on a kept status: no dialog, « Wait until the order is read again before cancelling. », nothing sent',
+      (tester) async {
+        final watch = _Watch();
+        final cancels = <TradeSeen>[];
+        await showTrade(tester, watch, cancels: cancels);
+        watch.emit(TradeScreenStatuses.watched(bond));
+        await tester.pump();
+        await tester.pump();
+        await leaveAndComeBack(tester);
+        watch.emit(reopenedAt(bond));
+        await tester.pump();
+        await tester.pump();
+
+        final cancel = find.widgetWithText(TradeButton, 'Cancel');
+        await tester.ensureVisible(cancel);
+        await tester.pump();
+        await tester.tap(cancel);
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byType(Dialog), findsNothing);
+        expect(
+          find.text('Wait until the order is read again before cancelling.'),
+          findsOneWidget,
+        );
+        expect(cancels, isEmpty);
       },
     );
 
