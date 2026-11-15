@@ -1678,6 +1678,42 @@ void main() {
       },
     );
 
+    testWidgets(
+      'refused by the coordinator as too early (1054): the reference coordinator\'s own words',
+      (tester) async {
+        final dispute = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: dispute,
+          state: _watched('nineDisputable'),
+        );
+        await openOptions(tester);
+        await tester.tap(find.text('Open Dispute'));
+        await _settleDialog(tester);
+        await tester.ensureVisible(find.text('Agree and open dispute'));
+        await tester.pump();
+        await tester.tap(find.text('Agree and open dispute'));
+        await _settleDialog(tester);
+        dispute.gate?.complete(
+          Ok(
+            ChatStepNotDone(
+              _record,
+              _seen['nineDisputable']!,
+              cause: const DisputeTooEarly(fromLastRead: false),
+            ),
+          ),
+        );
+        await _settleDialog(tester);
+        expect(
+          find.textContaining(
+            'Cannot open a dispute yet. You need to wait until 18 hours before expiry.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
     final temple = Federation.robosats.byAlias('temple')!;
     final email = temple.contact.email!;
     for (final (name, texts) in [

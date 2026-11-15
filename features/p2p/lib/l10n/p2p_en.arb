@@ -3311,5 +3311,9 @@
         "type": "int"
       }
     }
+  },
+  "p2pEndDisputeTooEarly": "Cannot open a dispute yet. You need to wait until 18 hours before expiry.",
+  "@p2pEndDisputeTooEarly": {
+    "description": "The reference coordinator's own text of its error 1054 (`api/errors.py:62` at commit ff1998c), which the official client shows as the answer's `bad_request`: « Open Dispute » refused as too early by the coordinator, its clock the judge (#95). Not in `en.json` nor `fr.json`: the French is ours."
   }
 }

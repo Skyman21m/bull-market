@@ -2505,13 +2505,21 @@ void main() {
         await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
         await settle();
         await capture('fin-litige-11');
+        // The watch reads every 100 s at 11 and every 300 s at 16 (the reference's cadence).
+        Future<void> slowRead(int seconds) async {
+          for (var i = 0; i < seconds ~/ 10 + 1; i++) {
+            await tester.pump(const Duration(seconds: 10));
+            await settle();
+          }
+        }
+
         coordinator.moveTo(16);
-        await nextRead();
+        await slowRead(100);
         await waitFor(find.text(l10n.p2pEndDisputeWaitResolution));
         await settle();
         await capture('fin-litige-16');
         coordinator.moveTo(17);
-        await nextRead();
+        await slowRead(300);
         await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeWon));
         await settle();
         await capture('fin-litige-17');
@@ -2526,7 +2534,7 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
         coordinator.moveTo(18);
-        await nextRead();
+        await slowRead(100);
         await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeLost));
         await settle();
         await capture('fin-litige-18');

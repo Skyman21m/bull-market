@@ -598,10 +598,11 @@
   "p2pEndDisputeSaveInfoResolution": "Veuillez enregistrer les informations nécessaires pour identifier votre commande et vos paiements : ID de l'ordre ; hachages de paiement des cautions ou des comptes (vérifiez sur votre portefeuille lightning) ; montant exact de satoshis ; et surnom du robot. Vous devrez vous identifier en tant qu'utilisateur impliqué dans cette transaction par e-mail (ou autres méthodes de contact).",
   "p2pEndDisputeWinner": "Vous pouvez réclamer le montant de résolution du litige (compte séquestre et caution de fidélité) à partir des récompenses de votre profil. Si le personnel peut vous aider en quoi que ce soit, n'hésitez pas à contacter {email} (ou via la méthode de contact temporaire que vous avez fournie).",
   "p2pEndDisputeLoser": "Malheureusement, vous avez perdu le litige. Si vous pensez que c'est une erreur, vous pouvez demander à rouvrir le cas en contactant votre coordinateur. Si vous pensez que votre coordinateur a été injuste, veuillez déposer une réclamation par e-mail à {email}",
-  "p2pEndStatementLater": "Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez {coordinator} par l'un de ses contacts ci-dessous, avec les informations qui identifient votre ordre.",
-  "p2pEndRewardsLater": "Bull Market ne peut pas encore réclamer de récompenses : contactez {coordinator} par l'un de ses contacts ci-dessous.",
-  "p2pEndOrderId": "ID de l'ordre : {id}",
+  "p2pEndStatementLater": "Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez {coordinator} par l’un de ses contacts ci-dessous, avec les informations qui identifient votre ordre.",
+  "p2pEndRewardsLater": "Bull Market ne peut pas encore réclamer de récompenses : contactez {coordinator} par l’un de ses contacts ci-dessous.",
+  "p2pEndOrderId": "ID de l’ordre : {id}",
   "p2pEndStepSendingRequest": "Envoi de votre demande à {coordinator}…",
   "p2pEndOpenOptions": "ouvrir les options",
-  "p2pEndWaitSeconds": "{seconds, plural, =1{Attendez 1 seconde} other{Attendez {seconds} secondes}}"
+  "p2pEndWaitSeconds": "{seconds, plural, =1{Attendez 1 seconde} other{Attendez {seconds} secondes}}",
+  "p2pEndDisputeTooEarly": "Impossible d’ouvrir un litige pour l’instant. Vous devez attendre jusqu’à 18 heures avant l’expiration."
 }
