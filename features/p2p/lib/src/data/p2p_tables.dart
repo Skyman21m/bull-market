@@ -282,3 +282,51 @@ class StoredTradeTrails extends Table {
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }
+
+/// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
+///
+/// `step IN ('bond')` and the trigger that refuses any delete mean that the escrow's panel (#97) rebuilds the table in its schema step (a new table, the rows copied, the old one dropped), the one step allowed to drop it.
+///
+/// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
+/// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step and payment hash never change, its start never goes back, and a row is written only for an open trade whose trail is recorded.
+/// Read and written only by `TradePaymentRepositoryImpl`.
+@DataClassName('TradePaymentRow')
+class StoredTradePayments extends Table {
+  @override
+  String get tableName => 'trade_payments';
+
+  /// The trade's robot, as `trades` keys it.
+  TextColumn get keyFingerprint => text()();
+  IntColumn get robotIndex => integer()();
+
+  /// `InvoiceStep.name` of the invoice paid: `bond` (the taker's bond) until the escrow's panel adds `escrow`.
+  TextColumn get step => text()();
+
+  /// The payment hash of the invoice, 64 lowercase hexadecimal characters.
+  TextColumn get paymentHash => text()();
+
+  /// When the last attempt was about to call the port, in microseconds since the epoch.
+  IntColumn get startedAt => integer()();
+
+  /// `P2pWalletPayment.id`, the wallet's local id of the swap that pays the invoice, once the port gave one.
+  ///
+  /// Recorded for the record's sake (a support question, a later reading): nothing decides on it, since the payment is found again by its hash (`P2pWalletPort.findPayment`), which the wallet's records key.
+  TextColumn get walletPaymentId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex, step};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    // `InvoiceStep` written out: the escrow's panel adds it with its own schema step.
+    "CHECK (step IN ('bond'))",
+    "CHECK (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (started_at BETWEEN 0 AND 253402300799999999)',
+    'CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)',
+    // The storage class of each column this code writes, as for the terms and the trails.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(step) = 'text' AND typeof(payment_hash) = 'text' AND typeof(started_at) = 'integer' AND (wallet_payment_id IS NULL OR typeof(wallet_payment_id) = 'text'))",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}
