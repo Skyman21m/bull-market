@@ -239,12 +239,14 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     required ChatStepAction action,
   }) {
     final l10n = P2pLocalizations.of(context);
-    final movedOn = action == ChatStepAction.confirmFiatSent
-        ? l10n.p2pEndMovedOn
-        : l10n.p2pEndTradeMovedOn;
+    final confirm = action == ChatStepAction.confirmFiatSent;
+    final movedOn = confirm ? l10n.p2pEndMovedOn : l10n.p2pEndTradeMovedOn;
+    String notSent(String reason) => confirm
+        ? l10n.p2pEndNotDoneAfter(reason)
+        : l10n.p2pEndRequestNotDoneAfter(reason);
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
-        ChatStepNotOffered() => l10n.p2pEndNeedsRead,
+        ChatStepNotOffered() => l10n.p2pEndNeedsReadNotSent,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
@@ -258,16 +260,33 @@ extension ChatStepNoticeL10n on ChatStepNotice {
           l10n.p2pTradeCoordinatorGone(coordinator),
         ChatStepTradeUnrestorable() => l10n.p2pTradeUnrestorable,
       },
-      // The coordinator's own refusal of a status that moved (1029, 1031, 1013): as the read before sending would have said.
-      ChatStepWasNotDone(cause: TradeActionNotNow() || TradeActionNotBuyer()) =>
+      // Decided here from the read, nothing sent: as the read before sending would have said.
+      ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
         movedOn,
-      ChatStepWasNotDone(cause: final CoordinatorFailure failure) =>
-        l10n.p2pEndNotDoneAfter(
-          failure.toRobotText(context, coordinator: coordinator),
-        ),
-      ChatStepWasNotDone(cause: final P2pFailure failure) =>
-        l10n.p2pEndNotDoneAfter(failure.toTranslated(context)),
-      ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
+      // The request left and the coordinator did nothing (1029, 1030, 1031): it says the order moved on.
+      ChatStepWasNotDone(cause: TradeActionRefused()) =>
+        confirm
+            ? l10n.p2pEndNotRecordedMovedOn(coordinator)
+            : l10n.p2pEndRequestNotRecordedMovedOn(coordinator),
+      // The request never left: a busy transport, a coordinator not on the network, in the robot panel's words; any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: said as the coordinator's, not « this robot ».
+      ChatStepWasNotDone(
+        cause: final CoordinatorFailure failure &&
+            (CoordinatorTransportBusy() || CoordinatorNotOnNetwork()),
+      ) =>
+        notSent(failure.toRobotText(context, coordinator: coordinator)),
+      // Refused here before sending: never left.
+      ChatStepWasNotDone(cause: OrderReadElsewhere()) => notSent(
+        l10n.p2pBookError,
+      ),
+      ChatStepWasNotDone(cause: CoordinatorFailure()) =>
+        confirm
+            ? l10n.p2pEndRefusedBy(coordinator)
+            : l10n.p2pEndRequestRefusedBy(coordinator),
+      // The robot's places in the limiter: never sent.
+      ChatStepWasNotDone(cause: final P2pFailure failure) => notSent(
+        failure.toTranslated(context),
+      ),
+      ChatStepWasNotDone() => notSent(l10n.p2pBookError),
       ChatStepWasUnknown() =>
         action == ChatStepAction.confirmFiatSent
             ? l10n.p2pEndUnknown
@@ -286,14 +305,17 @@ extension ChatStepProgressL10n on ChatStepProgress? {
   }) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      null => l10n.p2pEndStepOpening,
-      ChatStepProgress.waitingForOrder => l10n.p2pEndStepWaitingForOrder,
-      ChatStepProgress.readingOrder => l10n.p2pEndStepReading(coordinator),
+      // The payout's words for the same waits (#91).
+      null => l10n.p2pPayoutStepOpening,
+      ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
+      ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       ChatStepProgress.sending =>
         action == ChatStepAction.confirmFiatSent
             ? l10n.p2pEndStepSending(coordinator)
             : l10n.p2pEndStepSendingUndo(coordinator),
-      ChatStepProgress.readingAfter => l10n.p2pEndStepReadingAfter(coordinator),
+      ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
+        coordinator,
+      ),
     };
   }
 }

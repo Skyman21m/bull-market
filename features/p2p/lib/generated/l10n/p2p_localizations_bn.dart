@@ -2104,43 +2104,25 @@ class P2pLocalizationsBn extends P2pLocalizations {
       'Wait for the seller to confirm they have received the payment.';
 
   @override
-  String get p2pEndStepOpening => 'Opening the trade…';
-
-  @override
-  String get p2pEndStepWaitingForOrder =>
-      'Waiting for another action on this order to end…';
-
-  @override
-  String p2pEndStepReading(String coordinator) {
-    return 'Reading the order from $coordinator…';
-  }
-
-  @override
   String p2pEndStepSending(String coordinator) {
     return 'Sending your confirmation to $coordinator…';
   }
 
   @override
-  String p2pEndStepReadingAfter(String coordinator) {
-    return 'Reading the order again from $coordinator…';
-  }
-
-  @override
-  String get p2pEndNeedsRead =>
-      'Wait until the order is read again. Nothing was sent.';
+  String get p2pEndNeedsRead => 'Wait until the order is read again.';
 
   @override
   String get p2pEndMovedOn =>
-      'The order moved on before your confirmation: nothing was sent.';
+      'The order moved on: your confirmation was not sent.';
 
   @override
   String p2pEndReadFailed(String coordinator) {
-    return 'The order could not be read again from $coordinator: nothing was sent.';
+    return 'The order could not be read again from $coordinator: your confirmation was not sent.';
   }
 
   @override
   String p2pEndNotDoneAfter(String reason) {
-    return '$reason Nothing was sent.';
+    return '$reason Your confirmation was not sent.';
   }
 
   @override
@@ -2157,6 +2139,40 @@ class P2pLocalizationsBn extends P2pLocalizations {
   @override
   String get p2pEndTakingTooLongText =>
       'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.';
+
+  @override
+  String get p2pEndNeedsReadNotSent =>
+      'Wait until the order is read again. Your confirmation was not sent.';
+
+  @override
+  String p2pEndRefusedBy(String coordinator) {
+    return '$coordinator did not record your confirmation.';
+  }
+
+  @override
+  String p2pEndNotRecordedMovedOn(String coordinator) {
+    return 'The order moved on: $coordinator did not record your confirmation.';
+  }
+
+  @override
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator now gives $readAmount $readCurrency; the trade was taken for $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator gives no amount for this trade; it was taken for $amount $currencyCode.';
+  }
 
   @override
   String get p2pEndPaymentFailed => 'Payment failed?';
@@ -2214,9 +2230,25 @@ class P2pLocalizationsBn extends P2pLocalizations {
   }
 
   @override
-  String get p2pEndTradeMovedOn => 'The trade moved on: nothing was sent.';
+  String get p2pEndTradeMovedOn =>
+      'The trade moved on: your request was not sent.';
 
   @override
   String get p2pEndUnknownRequest =>
       'Bull Market does not know yet whether your request went through. It keeps checking.';
+
+  @override
+  String p2pEndRequestNotRecordedMovedOn(String coordinator) {
+    return 'The trade moved on: $coordinator did not record your request.';
+  }
+
+  @override
+  String p2pEndRequestRefusedBy(String coordinator) {
+    return '$coordinator did not record your request.';
+  }
+
+  @override
+  String p2pEndRequestNotDoneAfter(String reason) {
+    return '$reason Your request was not sent.';
+  }
 }

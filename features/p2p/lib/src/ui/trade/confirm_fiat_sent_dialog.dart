@@ -2,6 +2,7 @@ import 'package:bull_ui/bull_ui.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../widgets/trade_dialog_body.dart';
+import 'chat_step_panel.dart' show withoutLeadingEmoji;
 
 /// « ✅ Confirm you sent {{amount}} {{currencyCode}}? » (`TradeBox/Dialogs/ConfirmFiatSent.tsx`, commit ff1998c): « Confirming will allow your peer to finalize the trade. », « ⚠️ This action cannot be undone! » in the warning colour, « If you have not yet sent it and you still proceed to falsely confirm, you risk losing your bond. », then « Go back » (the reference's focus) and « Confirm ».
 ///
@@ -35,6 +36,9 @@ class ConfirmFiatSentDialog extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     return TradeDialogBody(
       title: l10n.p2pEndConfirmSentTitle(amount, currencyCode),
+      semanticTitle: withoutLeadingEmoji(
+        l10n.p2pEndConfirmSentTitle(amount, currencyCode),
+      ),
       text: l10n.p2pEndConfirmSentText,
       warning: l10n.p2pEndCannotBeUndone,
       afterWarning: l10n.p2pEndFalseConfirmRisk,

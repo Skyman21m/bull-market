@@ -9,6 +9,7 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
+import '../../domain/trade_record.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -26,7 +27,7 @@ import 'order_options_dialog.dart';
 class ChatStepPanel extends StatefulWidget {
   final TradeSeen seen;
 
-  /// The order the status comes from, for the trade's amount and currency.
+  /// The order the status comes from, whose amount and currency are compared with the trade's terms (the buttons are worded from the terms, `Chatting.amount`).
   final CoordinatorOrder? order;
 
   /// The long alias of the trade's coordinator, which the waits name.
@@ -71,18 +72,53 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
   /// Whether a dialog is open: a second press meanwhile opens nothing more.
   bool _asking = false;
 
-  /// The trade's amount and currency as the reference writes them on the button and in the dialog: an amount in bitcoin in sats, as the payout's prompt.
-  (String, String)? _amount(BuildContext context) {
-    final order = widget.order;
-    if (order == null) return null;
-    final l10n = P2pLocalizations.of(context);
-    final bitcoin = order.currency.isBitcoin;
+  /// The trade's amount and currency as the button and the dialog write them, from the trade's terms (`Chatting.amount`, `Chatting.currency`), never from a read: an amount in bitcoin in sats, as the payout's prompt.
+  (String, String)? _amount(BuildContext context) =>
+      switch (widget.seen.status) {
+        Chatting(:final amount, :final currency) => _worded(
+          context,
+          amount,
+          currency,
+        ),
+        _ => null,
+      };
+
+  /// [amount] in [currency] as the button writes it.
+  static (String, String) _worded(
+    BuildContext context,
+    FiatAmount amount,
+    RobosatsCurrency currency,
+  ) {
+    final bitcoin = currency.isBitcoin;
     return (
-      P2pFormats.of(context).payoutAmount(
-        (order.takenAmount ?? order.amount.max).value,
-        inBitcoin: bitcoin,
-      ),
-      bitcoin ? l10n.p2pSatsUnit : order.currency.code,
+      P2pFormats.of(context).payoutAmount(amount.value, inBitcoin: bitcoin),
+      bitcoin ? P2pLocalizations.of(context).p2pSatsUnit : currency.code,
+    );
+  }
+
+  /// When the order read gives another amount or currency than the trade's terms, which the button keeps (a warning informs, it does not block): the coordinator's figure and the terms', in few words; `null` when they agree, or with no order read.
+  String? _amountDiffers(BuildContext context, (String, String) stored) {
+    final order = widget.order;
+    final status = widget.seen.status;
+    if (order == null || status is! Chatting) return null;
+    final read =
+        order.takenAmount ??
+        switch (order.amount) {
+          FixedOrderAmount(:final amount) => amount,
+          RangeOrderAmount() => null,
+        };
+    final l10n = P2pLocalizations.of(context);
+    if (read == null) {
+      return l10n.p2pEndAmountMissing(widget.coordinator, stored.$1, stored.$2);
+    }
+    if (read == status.amount && order.currency == status.currency) return null;
+    final shown = _worded(context, read, order.currency);
+    return l10n.p2pEndAmountDiffers(
+      widget.coordinator,
+      shown.$1,
+      shown.$2,
+      stored.$1,
+      stored.$2,
     );
   }
 
@@ -174,9 +210,19 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       ),
       _ when cancelling => l10n.p2pEndStepSendingUndo(widget.coordinator),
       _ when widget.otherActionRunning && (confirmOffered || undoOffered) =>
-        l10n.p2pEndStepWaitingForOrder,
+        l10n.p2pPayoutStepWaitingForOrder,
       _ => null,
     };
+    final waitedLong = chatStep is ChatStepRunning && chatStep.waitedLong;
+    // The buyer at 9, where the prompt says to press « Confirm … sent »: shown off with why when the status shown does not offer it (not marked stored, or from no order read).
+    final atNine =
+        widget.offersFiatSent &&
+        status is Chatting &&
+        status.role == TradeRole.buyer &&
+        !status.fiatSent;
+    final differs = amount == null || !atNine
+        ? null
+        : _amountDiffers(context, amount);
     final chatNotice = switch (chatStep) {
       ChatStepIdle(:final notice?, :final action) => notice.toText(
         context,
@@ -192,6 +238,17 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       ),
       _ => null,
     };
+    final needsRead =
+        atNine && !confirmOffered && running == null && chatNotice == null;
+    // An outcome unknown is no failure: the action may well have gone through (the payout's notice of the same kind is in the warning colour too); red only where it was not recorded.
+    final chatNoticeColor = switch (chatStep) {
+      ChatStepIdle(notice: ChatStepWasUnknown()) => colors.warning,
+      _ => colors.error,
+    };
+    final cancelNoticeColor = switch (widget.cancel) {
+      CancelIdle(notice: CancelWasUnknown()) => colors.warning,
+      _ => colors.error,
+    };
     final body = text.bodyMedium?.copyWith(color: colors.text);
     final showOptions = widget.offersCollaborativeCancel;
     return Column(
@@ -203,10 +260,16 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
           style: body,
         ),
         const Gap(BullSpacing.xs),
-        Text(
-          l10n.p2pEndBewareScams,
-          textAlign: TextAlign.center,
-          style: body?.copyWith(color: colors.warning),
+        // Read out without the emoji's name.
+        Semantics(
+          container: true,
+          label: withoutLeadingEmoji(l10n.p2pEndBewareScams),
+          excludeSemantics: true,
+          child: Text(
+            l10n.p2pEndBewareScams,
+            textAlign: TextAlign.center,
+            style: body?.copyWith(color: colors.warning),
+          ),
         ),
         if (widget.chat case final chat?) ...[const Gap(BullSpacing.md), chat],
         const Gap(BullSpacing.md),
@@ -224,7 +287,7 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
             if (showOptions && (amount != null || undoOffered))
               const Gap(BullSpacing.sm),
             if (amount != null &&
-                (confirmOffered || running == ChatStepAction.confirmFiatSent))
+                (atNine || running == ChatStepAction.confirmFiatSent))
               Expanded(
                 child: TradeButton(
                   label: l10n.p2pEndConfirmSent(amount.$1, amount.$2),
@@ -248,19 +311,53 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
               ),
           ],
         ),
+        if (differs != null) ...[
+          const Gap(BullSpacing.sm),
+          Text(
+            differs,
+            textAlign: TextAlign.center,
+            style: body?.copyWith(color: colors.warning),
+          ),
+        ],
         if (waiting != null) ...[
           const Gap(BullSpacing.sm),
           _Live(waiting, color: colors.textMuted),
+          // The bar named by the step, and the long wait's line, as the payout and the take show them.
+          if (running != null) ...[
+            const Gap(BullSpacing.xs),
+            LinearProgressIndicator(
+              color: colors.primary,
+              semanticsLabel: waiting,
+            ),
+          ],
+          if (waitedLong) ...[
+            const Gap(BullSpacing.xs),
+            _Live(
+              l10n.p2pRobotStillWaiting(widget.coordinator),
+              color: colors.textMuted,
+            ),
+          ],
         ],
-        for (final notice in [chatNotice, cancelNotice])
+        if (needsRead) ...[
+          const Gap(BullSpacing.sm),
+          _Live(l10n.p2pEndNeedsRead, color: colors.textMuted),
+        ],
+        for (final (notice, color) in [
+          (chatNotice, chatNoticeColor),
+          (cancelNotice, cancelNoticeColor),
+        ])
           if (notice != null) ...[
             const Gap(BullSpacing.sm),
-            _Live(notice, color: colors.error),
+            _Live(notice, color: color),
           ],
       ],
     );
   }
 }
+
+/// [text] without the emoji and the space it starts with (« ⚠️ Beware scams », « ✅ Confirm you sent … »), for a screen reader, which would read the emoji's name first.
+String withoutLeadingEmoji(String text) =>
+    text.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
 
 /// « … », which opens « Order options » (`Prompts/Chat.tsx:205-215`: an outlined button with the reference's « open options » label).
 class _OptionsButton extends StatelessWidget {
