@@ -381,7 +381,10 @@ void main() {
           payout: BigInt.from(24950),
         );
         final invoice = invoiceOf(await make());
-        expect(invoice.bolt11, isNot('lnbcscreen1'));
+        expect(invoice.bolt11, 'lnbcreceive1');
+        expect(swaps.created, hasLength(1));
+        // Asked again for the same payout, the use case gives its own order's invoice, not the other waiting order listed before it.
+        expect(invoiceOf(await make()).bolt11, 'lnbcreceive1');
         expect(swaps.created, hasLength(1));
       },
     );
