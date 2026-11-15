@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
-import 'package:p2p/src/domain/trade/trade_cancel.dart';
-import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_payout_outcome.dart';
@@ -101,12 +99,10 @@ void main() {
         final held = Completer<void>();
         harness.coordinator.hold = held.future;
         late TradeView whileReading;
-        late bool keptWhileReading;
         final views = await viewsDuring(cubit, () async {
           cubit.resume();
           await harness.settle();
           whileReading = viewOf(cubit);
-          keptWhileReading = cubit.showsKept;
           expect(cubit.state.seen, same(shown));
           held.complete();
           harness.coordinator.hold = null;
@@ -120,11 +116,9 @@ void main() {
               'the screen fell back to « Your robot reads the order » after the return: ${views.map((v) => v.runtimeType).toList()}',
         );
         expect(whileReading, isA<TradeContract>());
-        expect(keptWhileReading, isTrue);
-        // The read is in: the status shown is that read's, and no longer kept.
+        // The read is in: the status shown is that read's.
         expect(cubit.state.seen?.status, isA<WaitingForTakerBond>());
         expect(cubit.state.seen, isNot(same(shown)));
-        expect(cubit.showsKept, isFalse);
         await cubit.close();
       },
     );
@@ -532,7 +526,7 @@ void main() {
     );
 
     test(
-      'kept, then the stored trail\'s own status no longer matching (a write that failed, another position): the wait, and no longer kept',
+      'kept, then the stored trail\'s own status no longer matching (a write that failed, another position): the wait',
       () async {
         final (harness, cubit) = await taken();
         await shownAt(harness, cubit, 3);
@@ -546,11 +540,10 @@ void main() {
         final (played1, out) = played(record, six);
         out.add(trailOf(record, six));
         await Future<void>.delayed(Duration.zero);
-        expect(played1.showsKept, isTrue);
+        expect(viewOf(played1), isA<TradeContract>());
         out.add(trailOf(record, six, recordProblem: const P2pStorageFailure()));
         await Future<void>.delayed(Duration.zero);
         expect(viewOf(played1), isA<TradeWaiting>());
-        expect(played1.showsKept, isFalse);
         out.add(
           TradeWatchStatus(
             record,
@@ -562,72 +555,18 @@ void main() {
           ),
         );
         await Future<void>.delayed(Duration.zero);
-        expect(played1.showsKept, isTrue);
+        expect(viewOf(played1), isA<TradeContract>());
         // Then a stored trail of another position: nothing kept over it.
         out.add(trailOf(record, bond));
         await Future<void>.delayed(Duration.zero);
         expect(viewOf(played1), isA<TradeWaiting>());
-        expect(played1.showsKept, isFalse);
         // A status that matches nothing (no memory, nothing shown at its trail).
         final (played2, out2) = played(record, null);
         out2.add(trailOf(record, six));
         await Future<void>.delayed(Duration.zero);
-        expect(played2.showsKept, isFalse);
         expect(viewOf(played2), isA<TradeWaiting>());
         await played1.close();
         await played2.close();
-      },
-    );
-
-    test(
-      'an action\'s fresh read ends the keeping: a cancel kept over during its run, a chat step done or refused with a read',
-      () async {
-        final (harness, cubit) = await taken();
-        await shownAt(harness, cubit, 9);
-        final nine = cubit.state.seen!;
-        final record = cubit.state.record;
-        await cubit.close();
-
-        // A cancel that runs while the screen reopens the trade: what it read is the status now.
-        final gate = Completer<void>();
-        final (cancelling, out) = played(
-          record,
-          nine,
-          cancel: (record, seen, {bondLoss}) async {
-            await gate.future;
-            return Ok(
-              CancelNotDone(record, seen, cause: const P2pStorageFailure()),
-            );
-          },
-        );
-        out.add(TradeWatchStatus(record, nine, takePending: false));
-        await Future<void>.delayed(Duration.zero);
-        final running = cancelling.cancel(nine);
-        await Future<void>.delayed(Duration.zero);
-        out.add(trailOf(record, nine));
-        await Future<void>.delayed(Duration.zero);
-        expect(cancelling.showsKept, isTrue);
-        gate.complete();
-        await running;
-        expect(cancelling.showsKept, isFalse);
-        await cancelling.close();
-
-        for (final answer in <Result<ChatStepOutcome, ChatStepRefusal>>[
-          Ok(ChatStepDone(record, nine)),
-          Err(ChatStepStatusMoved(nine, record: record)),
-        ]) {
-          final (sending, out) = played(
-            record,
-            nine,
-            confirmFiatSent: (record, seen, {onProgress}) async => answer,
-          );
-          out.add(trailOf(record, nine));
-          await Future<void>.delayed(Duration.zero);
-          expect(sending.showsKept, isTrue);
-          await sending.confirmFiatSent(nine);
-          expect(sending.showsKept, isFalse, reason: '$answer');
-          await sending.close();
-        }
       },
     );
 
@@ -648,39 +587,39 @@ void main() {
 
   group('#152: nothing is sent from a kept status alone', () {
     test(
-      '« Cancel » from a kept status: refused, « Wait until the order is read again », nothing sent; once the read is in, it is sent',
+      '« Cancel » from a kept bond step, the bond locked meanwhile: sent with the kept status\'s guard as the reference cancels, refused by the coordinator (1020) and said as today; nothing cancelled',
       () async {
         final (harness, cubit) = await taken();
         await shownAt(harness, cubit, 3);
         await cubit.suspend();
+        harness.coordinator.lockBond(harness.robot(0));
         final held = Completer<void>();
         harness.coordinator.hold = held.future;
         cubit.resume();
         await harness.settle();
-        expect(cubit.showsKept, isTrue);
+        final kept = cubit.state.seen!;
+        expect(kept.status, isA<WaitingForTakerBond>());
+        expect(viewOf(cubit), isA<TradeContract>());
 
-        await cubit.cancel(cubit.state.seen!);
-        expect(received(harness, ScriptedRequest.cancel), 0);
+        // A free cancel at 3, as the dialog of the kept status asks it.
+        final cancelling = cubit.cancel(kept);
+        await harness.settle();
+        held.complete();
+        harness.coordinator.hold = null;
+        await cancelling;
+        await harness.settle();
+
+        expect(received(harness, ScriptedRequest.cancel), 1);
+        // The guard of 3 against an order at 6: refused, the cancel not done, said as any refusal of the coordinator.
         expect(
           cubit.state.cancel,
           isA<CancelIdle>().having(
             (c) => c.notice,
             'notice',
-            isA<CancelWasRefused>().having(
-              (n) => n.refusal,
-              'refusal',
-              isA<CancelNeedsARead>(),
-            ),
+            isA<CancelWasNotDone>(),
           ),
         );
-
-        held.complete();
-        harness.coordinator.hold = null;
-        await harness.settle();
-        expect(cubit.showsKept, isFalse);
-        await cubit.cancel(cubit.state.seen!);
-        await harness.settle();
-        expect(received(harness, ScriptedRequest.cancel), 1);
+        expect(cubit.state.seen?.status, isA<WaitingForBoth>());
         await cubit.close();
       },
     );
@@ -696,7 +635,7 @@ void main() {
         harness.coordinator.hold = held.future;
         cubit.resume();
         await harness.settle();
-        expect(cubit.showsKept, isTrue);
+        expect(viewOf(cubit), isA<TradeContract>());
         final kept = cubit.state.seen!;
         expect(kept.status.position, TradePosition.waitingForPayout);
 
@@ -744,7 +683,7 @@ void main() {
         harness.coordinator.hold = held.future;
         cubit.resume();
         await harness.settle();
-        expect(cubit.showsKept, isTrue);
+        expect(viewOf(cubit), isA<TradeContract>());
         expect(cubit.state.seen?.status.position, TradePosition.chatting);
 
         final sending = cubit.confirmFiatSent(cubit.state.seen!);
@@ -756,7 +695,6 @@ void main() {
 
         expect(received(harness, ScriptedRequest.confirm), 0);
         expect(cubit.state.chatStep, isA<ChatStepIdle>());
-        expect(cubit.showsKept, isFalse);
         expect(cubit.state.seen?.status.position, TradePosition.fiatSent);
         await cubit.close();
       },

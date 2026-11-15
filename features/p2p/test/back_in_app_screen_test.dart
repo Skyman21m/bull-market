@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -9,6 +10,7 @@ import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/p2p_clock.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
+import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_payout.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
@@ -16,9 +18,11 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/presentation/chat_cubit.dart';
 import 'package:p2p/src/presentation/payout_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_first_read_wait.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -97,6 +101,7 @@ void main() {
     DateTime Function()? now,
     void Function(WalletPaymentRequest request)? onWallet,
     List<TradeSeen>? cancels,
+    ChatCubit? chat,
   }) async {
     tester.view
       ..physicalSize = const Size(390, 844) * 3
@@ -131,10 +136,14 @@ void main() {
             providers: [
               BlocProvider.value(value: cubit),
               BlocProvider.value(value: page),
+              if (chat != null) BlocProvider.value(value: chat),
             ],
             child: TradeScreen(
               now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
+              chat: chat == null
+                  ? null
+                  : (context, request) => ChatPanel(request: request),
               walletPayment: (context, request) {
                 onWallet?.call(request);
                 return const WalletPaymentSlot(Text('wallet slot'));
@@ -236,7 +245,7 @@ void main() {
     );
 
     testWidgets(
-      '« Cancel » on a kept status: no dialog, « Wait until the order is read again before cancelling. », nothing sent',
+      '« Cancel » on a kept status: the reference\'s dialog, and the cancel asked with the kept status (its guard), as the reference cancels from the order it holds',
       (tester) async {
         final watch = _Watch();
         final cancels = <TradeSeen>[];
@@ -255,13 +264,13 @@ void main() {
         await tester.tap(cancel);
         await tester.pump();
         await tester.pump();
+        expect(find.text('Cancel the order?'), findsOneWidget);
+        await tester.tap(find.text('Confirm cancellation'));
+        await tester.pump();
+        await tester.pump();
 
-        expect(find.byType(Dialog), findsNothing);
-        expect(
-          find.text('Wait until the order is read again before cancelling.'),
-          findsOneWidget,
-        );
-        expect(cancels, isEmpty);
+        expect(cancels, hasLength(1));
+        expect(cancels.single, same(bond));
       },
     );
 
@@ -289,6 +298,86 @@ void main() {
 
         expect(find.byType(TradeFirstReadWait), findsNothing);
         expect(find.text('Expires in'), findsOneWidget);
+      },
+    );
+  });
+
+  group('#152: back in the app, the chat step', () {
+    const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+    late List<String> privacyCalls;
+
+    setUp(() {
+      privacyCalls = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(privacy, (call) async {
+            privacyCalls.add(call.method);
+            return true;
+          });
+    });
+
+    tearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(privacy, null),
+    );
+
+    testWidgets(
+      'at 9 with a draft, the app left and back: the same chat panel, its draft kept, its protection never let go, the key let go while away and held once again on the return, nothing sent',
+      (tester) async {
+        final nine = await statuses.chatting();
+        var held = 0;
+        var released = 0;
+        var reads = 0;
+        final posts = <String>[];
+        final chat = ChatCubit(
+          record,
+          (record, seen) async {
+            reads++;
+            return const Ok(ChatView());
+          },
+          (record, seen, text) async {
+            posts.add(text);
+            return const Ok(ChatSentStored(1));
+          },
+          (record, seen, id) async => const Ok(ChatSentStored(1)),
+          (record, seen) => const Ok(ChatView()),
+          (record) => const ChatView(),
+          (record) async => const Ok(<String, Object?>{}),
+          (record) {
+            held++;
+            return () => released++;
+          },
+        );
+        addTearDown(chat.close);
+        final watch = _Watch();
+        await showTrade(tester, watch, chat: chat);
+        watch.emit(TradeScreenStatuses.watched(nine));
+        await tester.pump();
+        await tester.pump();
+        final field = find.descendant(
+          of: find.byType(ChatPanel),
+          matching: find.byType(TextField),
+        );
+        expect(field, findsOneWidget);
+        await tester.enterText(field, 'a draft');
+        await tester.pump();
+        final panel = tester.state(find.byType(ChatPanel));
+        expect((held, released), (1, 0));
+        privacyCalls.clear();
+
+        await leaveAndComeBack(tester);
+        expect((held, released), (2, 1), reason: 'let go away, held again');
+        watch.emit(reopenedAt(nine));
+        await tester.pump();
+        await tester.pump();
+
+        expect(identical(tester.state(find.byType(ChatPanel)), panel), isTrue);
+        expect(tester.widget<TextField>(field).controller?.text, 'a draft');
+        expect(chat.state.text, 'a draft');
+        expect((held, released), (2, 1));
+        expect(chat.holdsKey, isTrue);
+        expect(privacyCalls, isNot(contains('screenshotOn')));
+        expect(posts, isEmpty);
+        expect(reads, greaterThan(0));
       },
     );
   });

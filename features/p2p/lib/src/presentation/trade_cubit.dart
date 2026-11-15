@@ -183,9 +183,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeLastStored? _lastStored;
   StreamSubscription<TradeWatchState>? _subscription;
 
-  /// Whether the status shown is one kept while the trade was opened anew, its first read since not in ([_keepingWhatWasRead]): nothing is sent from it alone.
-  bool _kept = false;
-
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
   static const stillWaitingAfter = Duration(seconds: 30);
   Timer? _stillWaiting;
@@ -200,9 +197,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._confirmFiatSent,
     this._lastStored,
   }) : super(TradeScreenState(record));
-
-  /// Whether the status shown was kept while the trade was opened anew and no read came in since (#152): « Cancel » then asks for a read first, as for a status that comes from no order.
-  bool get showsKept => _kept;
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
   bool get offersFiatSent => _confirmFiatSent != null;
@@ -255,13 +249,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   /// [watch], or, when it is the stored trail's own status ([StatusUnknown]: the watch opened the trade anew, on the app's return or on a new screen, and its first read is not in, or has failed since) and that trail is the very one a status of this run was stored with, that status, with what [watch] says of its reads: the screen does not fall back to its wait for a status this run has already read, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, `models/Order.model.ts:264-281`) (#152).
   ///
-  /// The status kept is the newest this run stored for the trade ([TradeLastStored]), else the one this screen shows: only a status marked [TradeSeen.stored] (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Until a read comes in, [showsKept]: nothing is sent from it alone.
+  /// The status kept is the newest this run stored for the trade ([TradeLastStored]), else the one this screen shows: only a status marked [TradeSeen.stored] (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Nothing is sent from it alone: the actions read the order first, and « Cancel » sends that status's guard, as the reference cancels from the order it holds.
   /// The watch's own status is never marked stored (`TradeReader.open` and `keep` give the trail's own status unmarked by design): requiring `stored` of it, as this did before, kept nothing.
   TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
     if (watch is! TradeWatchStatus ||
         watch.seen.status is! StatusUnknown ||
         watch.recordProblem != null) {
-      _kept = false;
       return watch;
     }
     final onDisk = watch.seen.status.trail;
@@ -279,10 +272,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
         ? shown
         : null;
     if (kept == null) {
-      _kept = false;
       return watch;
     }
-    _kept = true;
     return TradeWatchStatus(
       watch.record,
       kept,
@@ -324,17 +315,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Cancels the trade at [seen], the status the screen showed when the user asked; [bondLoss] only from the confirmation of a cancel that loses the bond.
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
     if (isClosed || state.actionRunning) return;
-    // A status kept while the trade was opened anew, no read in since: refused as for a status that comes from no order (« Wait until the order is read again before cancelling. »), nothing sent (#152).
-    if (_kept) {
-      emit(
-        state._with(
-          cancel: const CancelIdle(
-            notice: CancelWasRefused(CancelNeedsARead()),
-          ),
-        ),
-      );
-      return;
-    }
     emit(state._with(cancel: const CancelRunning()));
     final Result<CancelOutcome, CancelRefusal> result;
     try {
@@ -353,7 +333,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
           state._with(cancel: CancelIdle(notice: CancelWasRefused(failure))),
         );
       case Ok(value: final outcome):
-        _kept = false;
         emit(
           state._with(
             watch: TradeWatchStatus(
@@ -442,7 +421,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
             TradeWatchStatus(record ?? state.record, seen, takePending: false),
           _ => null,
         };
-        if (read != null) _kept = false;
         emit(
           state._with(
             watch: read,
@@ -450,7 +428,6 @@ class TradeCubit extends Cubit<TradeScreenState> {
           ),
         );
       case Ok(value: final outcome):
-        _kept = false;
         emit(
           state._with(
             watch: TradeWatchStatus(
