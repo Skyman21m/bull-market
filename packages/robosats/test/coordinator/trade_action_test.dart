@@ -44,7 +44,8 @@ void main() {
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> undo([
     CoordinatorOrder? lastRead,
-  ]) => client.undoConfirmFiat(identity: _us, lastRead: lastRead ?? _readAt(10));
+  ]) =>
+      client.undoConfirmFiat(identity: _us, lastRead: lastRead ?? _readAt(10));
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> dispute([
     CoordinatorOrder? lastRead,
