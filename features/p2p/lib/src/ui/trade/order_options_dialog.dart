@@ -61,6 +61,8 @@ class OrderOptionsDialog extends StatelessWidget {
           TradeButton(
             label: l10n.p2pEndCollabCancel,
             icon: Icons.handshake_outlined,
+            // Outlined in the colour of « Cancel »: a filled button in that colour would hide its own label.
+            outlined: true,
             color: colors.secondary,
             onPressed: collaborativeCancel
                 ? () =>
