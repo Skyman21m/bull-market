@@ -3122,9 +3122,9 @@
   "@p2pEndCollabAfterFiat": {
     "description": "The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95)."
   },
-  "p2pEndStepSendingUndo": "Sending your request to {coordinator}…",
-  "@p2pEndStepSendingUndo": {
-    "description": "Not in the RoboSats texts: the project's own: « Payment failed? » sent, its answer awaited (#95).",
+  "p2pEndStepSendingRequest": "Sending your request to {coordinator}…",
+  "@p2pEndStepSendingRequest": {
+    "description": "Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).",
     "placeholders": {
       "coordinator": {
         "type": "String"
@@ -3180,6 +3180,19 @@
     "description": "Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).",
     "placeholders": {
       "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndOpenOptions": "open options",
+  "@p2pEndOpenOptions": {
+    "description": "The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95)."
+  },
+  "p2pEndWaitSeconds": "Wait {seconds} seconds",
+  "@p2pEndWaitSeconds": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95).",
+    "placeholders": {
+      "seconds": {
         "type": "String"
       }
     }

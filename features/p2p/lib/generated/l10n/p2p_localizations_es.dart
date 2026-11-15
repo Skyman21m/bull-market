@@ -2225,7 +2225,7 @@ class P2pLocalizationsEs extends P2pLocalizations {
       'Orders can\'t be cancelled if fiat has been sent.';
 
   @override
-  String p2pEndStepSendingUndo(String coordinator) {
+  String p2pEndStepSendingRequest(String coordinator) {
     return 'Sending your request to $coordinator…';
   }
 
@@ -2260,5 +2260,13 @@ class P2pLocalizationsEs extends P2pLocalizations {
   @override
   String p2pEndRequestOffline(String coordinator) {
     return '$coordinator is offline: your request was not sent.';
+  }
+
+  @override
+  String get p2pEndOpenOptions => 'open options';
+
+  @override
+  String p2pEndWaitSeconds(String seconds) {
+    return 'Wait $seconds seconds';
   }
 }

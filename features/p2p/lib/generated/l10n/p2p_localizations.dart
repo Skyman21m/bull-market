@@ -3625,11 +3625,11 @@ abstract class P2pLocalizations {
   /// **'Orders can\'t be cancelled if fiat has been sent.'**
   String get p2pEndCollabAfterFiat;
 
-  /// Not in the RoboSats texts: the project's own: « Payment failed? » sent, its answer awaited (#95).
+  /// Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).
   ///
   /// In en, this message translates to:
   /// **'Sending your request to {coordinator}…'**
-  String p2pEndStepSendingUndo(String coordinator);
+  String p2pEndStepSendingRequest(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
   ///
@@ -3672,6 +3672,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'{coordinator} is offline: your request was not sent.'**
   String p2pEndRequestOffline(String coordinator);
+
+  /// The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'open options'**
+  String get p2pEndOpenOptions;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait {seconds} seconds'**
+  String p2pEndWaitSeconds(String seconds);
 }
 
 class _P2pLocalizationsDelegate

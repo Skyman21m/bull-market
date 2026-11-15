@@ -1,6 +1,8 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
+import 'word_fit_text.dart';
+
 /// A button of the trade screens drawn as `BullButton.big`, filled or outlined, whose label wraps onto several lines instead of being cut.
 ///
 /// `BullButton` keeps its label on one line with an ellipsis and a fixed height, which cuts the longer French labels of the official client (« Confirmer l'annulation », « Payer avec un autre portefeuille ») at three times the text size on a phone of 320 points; this one grows with its label. It lives in the feature, as `FilterSheet` does, until `bull_ui` gains such a variant (a follow-up).
@@ -13,6 +15,9 @@ class TradeButton extends StatelessWidget {
   final IconData? icon;
   final Color? color;
 
+  /// What a screen reader reads of the button, when it differs from its label (« Wait 42 seconds » for « Wait (42) »); `null` for the label.
+  final String? semanticLabel;
+
   const TradeButton({
     super.key,
     required this.label,
@@ -21,6 +26,7 @@ class TradeButton extends StatelessWidget {
     this.busy = false,
     this.icon,
     this.color,
+    this.semanticLabel,
   });
 
   @override
@@ -38,6 +44,9 @@ class TradeButton extends StatelessWidget {
       container: true,
       button: true,
       enabled: enabled,
+      label: semanticLabel,
+      excludeSemantics: semanticLabel != null,
+      onTap: semanticLabel != null && enabled ? onPressed : null,
       child: Opacity(
         opacity: onPressed == null ? 0.5 : 1,
         child: InkWell(
@@ -70,9 +79,8 @@ class TradeButton extends StatelessWidget {
                   Icon(icon, size: 20, color: foreground),
                   const Gap(BullSpacing.sm),
                 ],
-                Flexible(
-                  child: Text(label, textAlign: TextAlign.center, style: style),
-                ),
+                // Wrapped at word boundaries only, never letter by letter at the larger text sizes.
+                Flexible(child: WordFitText(label, style: style)),
               ],
             ),
           ),

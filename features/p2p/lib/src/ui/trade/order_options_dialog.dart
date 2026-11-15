@@ -9,7 +9,7 @@ enum OrderOption { collaborativeCancel }
 
 /// « Order options », the dialog behind « … » of the chat step (`TradeBox/Prompts/Chat.tsx:254-353`, commit ff1998c), with its buttons in the reference's order: « Audit Chat », « Export », « Open Dispute », « Collaborative Cancel ».
 ///
-/// « Audit Chat » and « Export » belong to the chat (#93) and « Open Dispute » to a later pull request of #95: their places are kept, `null` until then, and nothing is drawn for them. « Collaborative Cancel » is off once the fiat is sent, with the reference's « Orders can't be cancelled if fiat has been sent. ».
+/// « Audit Chat » and « Export » belong to the chat (#93) and « Open Dispute » to a later pull request of #95: their places are kept, `null` until then, and nothing is drawn for them. « Collaborative Cancel » is off once the fiat is sent; under it, always, the reference's « Orders can't be cancelled if fiat has been sent. », which its tooltip says on a touch at 9 as at 10.
 class OrderOptionsDialog extends StatelessWidget {
   /// The places of « Audit Chat » and « Export » (#93) and of « Open Dispute » (#95), `null` for now.
   final Widget? auditChat;
@@ -69,7 +69,8 @@ class OrderOptionsDialog extends StatelessWidget {
                       Navigator.of(context).pop(OrderOption.collaborativeCancel)
                 : null,
           ),
-          if (!collaborativeCancel) ...[
+          // The reference's tooltip of « Collaborative Cancel », which it shows on a touch at 9 as at 10: a line here, under the button.
+          ...[
             const Gap(BullSpacing.xs),
             Text(
               l10n.p2pEndCollabAfterFiat,

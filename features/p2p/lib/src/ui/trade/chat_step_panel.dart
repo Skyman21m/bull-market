@@ -14,6 +14,7 @@ import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/word_fit_text.dart';
 import 'confirm_collab_cancel_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
 import 'confirm_undo_fiat_sent_dialog.dart';
@@ -71,6 +72,17 @@ class ChatStepPanel extends StatefulWidget {
 class _ChatStepPanelState extends State<ChatStepPanel> {
   /// Whether a dialog is open: a second press meanwhile opens nothing more.
   bool _asking = false;
+
+  /// The undo dialog's counter, kept for this page as the reference's dialog keeps it (it stays mounted with the page): 60 seconds at first, running only while the dialog is open, 300 after « Confirm ».
+  final ValueNotifier<int> _undoWait = ValueNotifier(
+    ConfirmUndoFiatSentDialog.firstWait,
+  );
+
+  @override
+  void dispose() {
+    _undoWait.dispose();
+    super.dispose();
+  }
 
   /// The trade's amount and currency as the button and the dialog write them, from the trade's terms (`Chatting.amount`, `Chatting.currency`), never from a read: an amount in bitcoin in sats, as the payout's prompt.
   (String, String)? _amount(BuildContext context) =>
@@ -147,7 +159,7 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       });
 
   Future<void> _undoFiatSent() => _once((cubit, seen) async {
-    if (await ConfirmUndoFiatSentDialog.show(context)) {
+    if (await ConfirmUndoFiatSentDialog.show(context, left: _undoWait)) {
       await cubit.undoFiatSent(seen);
     }
   });
@@ -161,11 +173,8 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       collaborativeCancel: collaborativeCancel,
     );
     if (chosen != OrderOption.collaborativeCancel || !mounted) return;
-    final peerAsked = switch (seen.status) {
-      Chatting(:final peerAskedToCancel) => peerAskedToCancel,
-      _ => false,
-    };
-    if (await ConfirmCollabCancelDialog.show(context, peerAsked: peerAsked)) {
+    // The dialog follows the cubit: a peer's ask that arrives while it is open turns its button into « Accept Cancelation ».
+    if (await ConfirmCollabCancelDialog.show(context, cubit: cubit)) {
       await cubit.cancel(seen);
     }
   });
@@ -208,12 +217,17 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         coordinator: widget.coordinator,
         action: action,
       ),
-      _ when cancelling => l10n.p2pEndStepSendingUndo(widget.coordinator),
+      _ when cancelling => l10n.p2pEndStepSendingRequest(widget.coordinator),
       _ when widget.otherActionRunning && (confirmOffered || undoOffered) =>
         l10n.p2pPayoutStepWaitingForOrder,
       _ => null,
     };
-    final waitedLong = chatStep is ChatStepRunning && chatStep.waitedLong;
+    final waitedLong =
+        (chatStep is ChatStepRunning && chatStep.waitedLong) ||
+        switch (widget.cancel) {
+          CancelRunning(:final waitedLong) => waitedLong,
+          _ => false,
+        };
     // The buyer at 9, where the prompt says to press « Confirm … sent »: shown off with why when the status shown does not offer it (not marked stored, or from no order read).
     final atNine =
         widget.offersFiatSent &&
@@ -232,6 +246,8 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       _ => null,
     };
     final cancelNotice = switch (widget.cancel) {
+      // A collaborative ask whose answer was lost: said as a request, never as a cancel that may have happened.
+      CancelIdle(notice: CancelWasUnknown()) => l10n.p2pEndUnknownRequest,
       CancelIdle(:final notice?) => notice.toText(
         context,
         coordinator: widget.coordinator,
@@ -298,11 +314,10 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
                 ),
               )
             else if (undoOffered || running == ChatStepAction.undoFiatSent)
+              // The reference's small grey text button, deliberately discreet (`size='small'`, `text.secondary`).
               Expanded(
-                child: TradeButton(
+                child: _QuietButton(
                   label: l10n.p2pEndPaymentFailed,
-                  outlined: true,
-                  color: colors.textMuted,
                   busy: running == ChatStepAction.undoFiatSent,
                   onPressed: !undoOffered || busy
                       ? null
@@ -322,8 +337,8 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         if (waiting != null) ...[
           const Gap(BullSpacing.sm),
           _Live(waiting, color: colors.textMuted),
-          // The bar named by the step, and the long wait's line, as the payout and the take show them.
-          if (running != null) ...[
+          // The bar named by the step, and the long wait's line, as the payout and the take show them; for the collaborative cancel's ask too.
+          if (running != null || cancelling) ...[
             const Gap(BullSpacing.xs),
             LinearProgressIndicator(
               color: colors.primary,
@@ -400,26 +415,82 @@ class _OptionsButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
-    final label = P2pLocalizations.of(context).p2pEndOrderOptions;
-    return Tooltip(
-      message: label,
-      child: Semantics(
-        button: true,
-        enabled: onPressed != null,
-        label: label,
-        excludeSemantics: true,
-        child: Opacity(
-          opacity: onPressed == null ? 0.5 : 1,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(BullRadius.xxs),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 52, minWidth: 52),
-              decoration: BoxDecoration(
-                border: Border.all(color: colors.primary),
-                borderRadius: BorderRadius.circular(BullRadius.xxs),
-              ),
-              child: Icon(Icons.more_horiz, color: colors.primary),
+    // One node of its own, with its tap, read as the reference's label (`aria-label='open options'`); no tooltip, as the reference has none.
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onPressed != null,
+      label: P2pLocalizations.of(context).p2pEndOpenOptions,
+      onTap: onPressed,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: onPressed == null ? 0.5 : 1,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(BullRadius.xxs),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 52, minWidth: 52),
+            decoration: BoxDecoration(
+              border: Border.all(color: colors.primary),
+              borderRadius: BorderRadius.circular(BullRadius.xxs),
+            ),
+            child: Icon(Icons.more_horiz, color: colors.primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small text button in the muted colour, as the reference's « Payment failed? » (`Prompts/Chat.tsx:226-237`: `size='small'`, `text.secondary`), in the wallet's look; its label wraps at word boundaries only.
+class _QuietButton extends StatelessWidget {
+  final String label;
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  const _QuietButton({
+    required this.label,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final enabled = onPressed != null && !busy;
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: enabled,
+      child: Opacity(
+        opacity: onPressed == null ? 0.5 : 1,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          borderRadius: BorderRadius.circular(BullRadius.xxs),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (busy) ...[
+                  SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                  const Gap(BullSpacing.xs),
+                ],
+                Flexible(
+                  child: WordFitText(
+                    label,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: colors.textMuted),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

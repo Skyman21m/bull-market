@@ -28,6 +28,10 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
+  /// What a screen reader reads of the button that goes on, when it differs from its label (« Wait 42 seconds »), and whether its changes are announced (« Confirm » once a wait ends).
+  final String? goSemanticLabel;
+  final bool goLive;
+
   /// What a screen reader reads of the title and of the warning, when they differ from them (a text that starts with an emoji, whose name it would read first); `null` for the text itself.
   final String? semanticTitle;
   final String? semanticWarning;
@@ -41,6 +45,8 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.goSemanticLabel,
+    this.goLive = false,
     this.semanticTitle,
     this.semanticWarning,
     this.warning,
@@ -105,7 +111,15 @@ class TradeDialogBody extends StatelessWidget {
             outlined: !backFirst,
           ),
           const Gap(BullSpacing.sm),
-          TradeButton(label: goLabel, onPressed: onGo, outlined: backFirst),
+          Semantics(
+            liveRegion: goLive,
+            child: TradeButton(
+              label: goLabel,
+              onPressed: onGo,
+              outlined: backFirst,
+              semanticLabel: goSemanticLabel,
+            ),
+          ),
         ],
       ),
     );

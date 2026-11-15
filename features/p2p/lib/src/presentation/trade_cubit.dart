@@ -93,7 +93,10 @@ final class CancelIdle extends TradeCancelState {
 
 /// A cancel runs: its button cannot be pressed again.
 final class CancelRunning extends TradeCancelState {
-  const CancelRunning();
+  /// Whether it has run [TradeCubit.stillWaitingAfter]: the screen adds « Still waiting for {coordinator}. Tor can take a minute. ».
+  final bool waitedLong;
+
+  const CancelRunning({this.waitedLong = false});
 }
 
 /// What a cancel gave that the screen says, as a type: never a coordinator's text.
@@ -306,6 +309,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
     if (isClosed || state.actionRunning) return;
     emit(state._with(cancel: const CancelRunning()));
+    // After 30 s, the long wait's line, as for an action of the chat step.
+    final longWait = Timer(stillWaitingAfter, () {
+      if (!isClosed && state.cancel is CancelRunning) {
+        emit(state._with(cancel: const CancelRunning(waitedLong: true)));
+      }
+    });
     final Result<CancelOutcome, CancelRefusal> result;
     try {
       result = await _cancel(state.record, seen, bondLoss: bondLoss);
@@ -315,6 +324,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
         emit(state._with(cancel: const CancelIdle(notice: CancelWasUnknown())));
       }
       rethrow;
+    } finally {
+      longWait.cancel();
     }
     if (isClosed) return;
     switch (result) {
