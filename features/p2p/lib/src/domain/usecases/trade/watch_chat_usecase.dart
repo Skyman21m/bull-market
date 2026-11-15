@@ -92,11 +92,18 @@ final class WatchChatUsecase {
   }
 
   /// The user chose to read only the messages after the order's last chat index ([CoordinatorOrder.chatLastIndex] of [seen]), the history being too large to read from the start: the earlier messages are not shown, and the chat says so.
-  ChatView readNewerOnly(TradeRecord record, TradeSeen seen) {
+  ///
+  /// [ChatSkipNeedsOrderRead] when [seen]'s order was read before those messages (its last chat index is not past what is read, 0 for a chat that was empty): nothing is skipped, and the order must be read again first.
+  Result<ChatView, ChatSkipRefusal> readNewerOnly(
+    TradeRecord record,
+    TradeSeen seen,
+  ) {
     final chat = _chats.of(record);
     final last = seen.order?.chatLastIndex;
-    if (last != null) chat.skipTo(last);
-    return chat.view;
+    if (last == null || !chat.skipTo(last)) {
+      return const Err(ChatSkipNeedsOrderRead());
+    }
+    return Ok(chat.view);
   }
 }
 

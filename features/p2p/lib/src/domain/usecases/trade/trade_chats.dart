@@ -150,6 +150,7 @@ final class TradeChat {
     _historyTooLarge = false;
     if (ownKey != null) _ownKey = ownKey;
     _peerConnected = page.peerConnected;
+    final keyBefore = _peerKey;
     _peerKey = _keyAfter(page.peerKey);
     _incomplete = !page.isContiguous || page.repeatsAnIndex;
     final peerKey = _keyForPeer(page);
@@ -206,6 +207,18 @@ final class TradeChat {
           unreadable: true,
         ),
       };
+    }
+
+    // The page that pins the key, after a restart the whole history again: a message of the peer that the key just pinned does not verify was signed by another key, so the key given is not the one the peer wrote with (review of #93: a restart must not pin a forged key silently).
+    if ((keyBefore, _peerKey)
+        case (ChatPeerKeyAwaited(), ChatPeerKeyPinned(:final key))
+        when _entries.values.any(
+          (e) =>
+              e.author == ChatAuthor.peer &&
+              e.text != null &&
+              !e.validSignature,
+        )) {
+      _peerKey = ChatPeerKeyBreach(pinned: key);
     }
 
     // The pending messages the coordinator now shows as stored.
@@ -349,13 +362,14 @@ final class TradeChat {
   /// The history from [offset] is too large to read at once ([ChatPageTooLarge]).
   void tooLarge() => _historyTooLarge = true;
 
-  /// The user chose to read only the messages after [lastIndex], the order's last chat index: the earlier ones are not shown, and the screen says so.
-  void skipTo(int lastIndex) {
-    if (lastIndex <= _offset) return;
+  /// The user chose to read only the messages after [lastIndex], the order's last chat index: the earlier ones are not shown, and the screen says so. Whether it skipped: not when [lastIndex] is not past the offset (an order read before those messages).
+  bool skipTo(int lastIndex) {
+    if (lastIndex <= _offset) return false;
     _offset = lastIndex;
     _base = lastIndex;
     _skippedEarlier = true;
     _historyTooLarge = false;
+    return true;
   }
 
   /// A message this robot posted, not shown as stored: kept with its encrypted message to send again, and returned.

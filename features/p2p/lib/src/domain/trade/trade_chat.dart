@@ -94,11 +94,12 @@ final class ChatEntry {
     signedOutOfOrder: signedOutOfOrder ?? this.signedOutOfOrder,
   );
 
-  /// [text] as the screen may show it: plain text, the control characters but line feeds and tabs dropped, and the marks that reorder text (bidirectional overrides and isolates) removed (design note § 3.6).
+  /// [text] as the screen may show it and a copy gives it: plain text, the control characters but line feeds and tabs dropped, and every format character (Unicode category Cf: the marks that reorder text, U+061C, the zero-width characters, the zero-width joiner too, so that an emoji sequence shows as its parts, U+00AD, U+FEFF, the tag characters) and variation selector removed, so that nothing invisible reorders or hides in a peer's IBAN or address (design note § 3.6, review of #93).
   static String displayable(String text) => text.replaceAll(_hidden, '');
 
   static final RegExp _hidden = RegExp(
-    '[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]',
+    r'(?![\t\n])[\p{Cc}\p{Cf}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}]',
+    unicode: true,
   );
 
   @override
@@ -134,7 +135,7 @@ final class ChatPeerKeyPinned extends ChatPeerKeyState {
   String toString() => 'ChatPeerKeyPinned(${key.fingerprint})';
 }
 
-/// The coordinator gave a key that is not the peer's by its name ([ChatPeerKeyMisnamed]), or, once one was pinned, another key, none, or one that cannot be read (`TradeKeyChanged`, design note § 3.4): nothing is sent any more in this chat, and the screen says so.
+/// The coordinator gave a key that is not the peer's by its name ([ChatPeerKeyMisnamed]), or, once one was pinned, another key, none, or one that cannot be read (`TradeKeyChanged`, design note § 3.4), or a key that does not verify a message of the peer read with it in the page that pinned it (the history read again after a restart): nothing is sent any more in this chat, and the screen says so.
 final class ChatPeerKeyBreach extends ChatPeerKeyState {
   /// The key pinned before, when there was one.
   final PgpPublicKey? pinned;
@@ -237,6 +238,17 @@ final class ChatReadFailed extends ChatReadFailure {
   const ChatReadFailed(this.cause);
 }
 
+/// Why « Read only the newer messages » could not skip the earlier messages yet (#93): nothing was skipped.
+@immutable
+sealed class ChatSkipRefusal extends Failure {
+  const ChatSkipRefusal();
+}
+
+/// The order shown was read before the messages there are to skip: its last chat index (0 for a chat that was empty) is not past what is read, so the order must be read again first.
+final class ChatSkipNeedsOrderRead extends ChatSkipRefusal {
+  const ChatSkipNeedsOrderRead();
+}
+
 /// Why a message was not sent, said before anything leaves (#93).
 @immutable
 sealed class ChatSendRefusal extends Failure {
@@ -263,7 +275,7 @@ final class ChatTextHoldsGarageKey extends ChatSendRefusal {
   const ChatTextHoldsGarageKey();
 }
 
-/// The text is, on its own, a Lightning invoice or a Bitcoin address: its chat signature would be a valid signed payout of this robot, which the peer could give the coordinator as this robot's (design note § 4.2).
+/// The text is, on its own, a Lightning invoice or a Bitcoin address: its chat signature can be turned into this robot's signed payout, which whoever holds this robot's token hash, colluding with the peer, could give a coordinator (`SendChatMessageUsecase`, review of #93); a deviation from the reference, which refuses nothing.
 final class ChatTextIsPayout extends ChatSendRefusal {
   const ChatTextIsPayout();
 }

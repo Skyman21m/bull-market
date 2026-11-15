@@ -359,6 +359,16 @@ final class TradeHarness {
   final TradeChats chats = TradeChats();
   late final WatchChatUsecase chatRead;
   late final SendChatMessageUsecase chatSend;
+  late final CoordinatorClient _client;
+
+  /// The chat's use cases of a new run of the app, the process killed and started again: a fresh [TradeChats], nothing of the chats kept, the same records, keys and coordinator.
+  (WatchChatUsecase, SendChatMessageUsecase) chatAfterRestart() {
+    final fresh = TradeChats();
+    return (
+      WatchChatUsecase(_client, reader, limiter, keyring, keys, fresh),
+      SendChatMessageUsecase(_client, reader, limiter, keyring, keys, fresh),
+    );
+  }
 
   /// The key work of this run: its unlocks are counted.
   final HarnessKeys keys = HarnessKeys();
@@ -387,6 +397,7 @@ final class TradeHarness {
       random: () => 0.5,
     );
     final client = CoordinatorClient(coordinator, clock: clock);
+    _client = client;
     final invoices = Bolt11Reader(coordinator.decoder);
     reader = TradeReader(
       robots,

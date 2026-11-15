@@ -233,9 +233,102 @@ void main() {
     );
 
     test(
+      'a key forged in the peer\'s name after the pin is a breach that stays, and nothing is posted',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        // The coordinator makes a key of its own for the maker's identity: named after the peer, so not misnamed.
+        app.coordinator.peerPublicKey = keyOf(maker, 931).key.publicKey.armored;
+        final forged = await read(app, record, seen);
+        expect(
+          forged.peerKey,
+          isA<ChatPeerKeyBreach>().having(
+            (b) => b.pinned,
+            'pinned',
+            makerKey.key.publicKey,
+          ),
+        );
+        app.coordinator.peerPublicKey = makerKey.key.publicKey.armored;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyBreach>(),
+        );
+        final posts = _posts(app);
+        expect(
+          await app.chatSend.send(record, seen, 'Hello'),
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+      },
+    );
+
+    test(
+      'the limit of trust on first use: a key forged in the peer\'s name at the first read, before any message of the peer, is pinned silently',
+      () async {
+        final (app, record, seen) = await atNine(peerKey: false);
+        final forgedKey = keyOf(maker, 932);
+        app.coordinator.peerPublicKey = forgedKey.key.publicKey.armored;
+        final view = await read(app, record, seen);
+        expect(
+          view.peerKey,
+          isA<ChatPeerKeyPinned>().having(
+            (p) => p.key,
+            'key',
+            forgedKey.key.publicKey,
+          ),
+        );
+        expect(view.canSend, isTrue);
+      },
+    );
+
+    test(
+      'after a restart, a key forged in the peer\'s name that does not verify the peer\'s earlier messages is a breach: nothing leaves',
+      () async {
+        final (app, record, seen) = await atNine();
+        app.coordinator.peerSays(written(app, 'My IBAN follows'));
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyPinned>(),
+        );
+        // The process killed in the background: a new run has no pin, and the coordinator serves a key of its own in the peer's name.
+        final (restartedRead, restartedSend) = app.chatAfterRestart();
+        app.coordinator.peerPublicKey = keyOf(maker, 933).key.publicKey.armored;
+        final again = switch (await restartedRead.read(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(again.peerKey, isA<ChatPeerKeyBreach>());
+        expect(again.canSend, isFalse);
+        expect(again.entries.single.validSignature, isFalse);
+        final posts = _posts(app);
+        expect(
+          await restartedSend.send(record, seen, 'Here it is'),
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+        // The real key served again: the breach stays.
+        app.coordinator.peerPublicKey = makerKey.key.publicKey.armored;
+        expect(switch (await restartedRead.read(record, seen)) {
+          Ok(:final value) => value.peerKey,
+          Err(:final failure) => throw StateError('$failure'),
+        }, isA<ChatPeerKeyBreach>());
+      },
+    );
+
+    test(
       'a message the peer\'s key did not sign is marked; one from neither party is never checked as the peer\'s; one that is not an encrypted message is unreadable',
       () async {
         final (app, record, seen) = await atNine();
+        // The key pinned first: in the page that pins it, a message it does not verify is a breach (below).
+        await read(app, record, seen);
         // Signed by a third robot, under the peer's nickname.
         app.coordinator.peerSays(
           written(app, 'Pay me here', from: strangerKey),
@@ -430,6 +523,8 @@ void main() {
         };
         expect(decrypted.text, text);
         expect(decrypted.validSignature, isTrue);
+        // The lease of the send closed at once.
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
         final view = app.chatRead.current(record);
         expect(view.entries.single.author, ChatAuthor.self);
         expect(view.entries.single.text, text);
@@ -504,6 +599,116 @@ void main() {
     );
 
     test(
+      'the text is sent as typed: spaces, line feeds, tabs and control characters around it kept, nothing trimmed or cleaned (review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        const text = '  \n Hi\tthere \u0007\n  ';
+        expect(
+          await app.chatSend.send(record, seen, text),
+          isA<Ok<ChatSent, ChatSendRefusal>>(),
+        );
+        final stored = app.coordinator.chat.single['message'] as String;
+        expect(switch (makerKey.decryptChatMessage(
+          stored.trim(),
+          sender: ourKey(app),
+          now: app.now,
+        )) {
+          Ok(:final value) => value.text,
+          Err(:final failure) => throw StateError('$failure'),
+        }, text);
+      },
+    );
+
+    test(
+      'a breach read while a send waits stops it before the post (review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        final unlock = Completer<void>();
+        app.keys.holdUnlock = unlock.future;
+        final posts = _posts(app);
+        final sending = app.chatSend.send(record, seen, 'Hello');
+        await app.settle();
+        app.coordinator.peerPublicKey = keyOf(maker, 934).key.publicKey.armored;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyBreach>(),
+        );
+        unlock.complete();
+        app.keys.holdUnlock = null;
+        expect(
+          await sending,
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+      },
+    );
+
+    test(
+      'a message not confirmed is not sent again after a breach (review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        app.coordinator.onRequest = (request) {
+          if (request.url.path == '/api/chat/' &&
+              request.body == null &&
+              app.coordinator.chat.isNotEmpty) {
+            app.coordinator.chat.removeLast();
+          }
+        };
+        app.coordinator.failNext(
+          ScriptedRequest.chatPost,
+          ScriptedFault.answerLost,
+        );
+        final pending = switch (await app.chatSend.send(
+          record,
+          seen,
+          'Hello?',
+        )) {
+          Ok(value: ChatSentNotConfirmed(:final pending)) => pending,
+          final other => throw StateError('$other'),
+        };
+        app.coordinator.onRequest = null;
+        app.coordinator.peerPublicKey = keyOf(maker, 935).key.publicKey.armored;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyBreach>(),
+        );
+        final posts = _posts(app);
+        expect(
+          await app.chatSend.sendAgain(record, seen, pending.id),
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+      },
+    );
+
+    test(
+      'a message of this robot shown again that it did not send again is a replay, not « sent twice » (review of #93)',
+      () async {
+        final (app, record, seen) = await atNine();
+        await read(app, record, seen);
+        expect(
+          await app.chatSend.send(record, seen, 'Paid'),
+          isA<Ok<ChatSent, ChatSendRefusal>>(),
+        );
+        app.coordinator.chat.add({...app.coordinator.chat.single, 'index': 2});
+        final view = await read(app, record, seen);
+        expect(view.entries[1].repeatOf, 1);
+        expect(view.entries[1].sentTwice, isFalse);
+      },
+    );
+
+    test(
       'refused by the coordinator: nothing stored, the kind said, never its text',
       () async {
         final (app, record, seen) = await atNine();
@@ -538,6 +743,60 @@ void main() {
         ChatEntry.displayable('Bonjour, ça va ? 👋'),
         'Bonjour, ça va ? 👋',
       );
+    },
+  );
+
+  test(
+    'no format character survives in a peer\'s text: zero-width, soft hyphen, Arabic letter mark, byte order mark, tag characters, variation selectors (review of #93)',
+    () {
+      expect(
+        ChatEntry.displayable(
+          'FR76\u200B 3000\u200C6\u200D0\u2060001\u2064 \uFEFF1\u00AD2\u061C3\u{E0041}4\uFE0F5\u{E0100}6\r',
+        ),
+        'FR76 300060001 123456',
+      );
+      // The zero-width joiner is dropped too: an emoji sequence shows as its parts.
+      expect(
+        ChatEntry.displayable('\u{1F468}\u200D\u{1F469}'),
+        '\u{1F468}\u{1F469}',
+      );
+    },
+  );
+
+  test(
+    'as the user types: too long said before any key, at the byte, and an invoice or address alone refused however the coordinator would strip it (review of #93)',
+    () {
+      expect(
+        SendChatMessageUsecase.refusalOf(
+          'x' * OutgoingChatMessage.maxTextBytes,
+        ),
+        isNull,
+      );
+      expect(
+        SendChatMessageUsecase.refusalOf(
+          'x' * (OutgoingChatMessage.maxTextBytes + 1),
+        ),
+        isA<ChatTextTooLong>(),
+      );
+      const address = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+      for (final text in [
+        '\x1c$address',
+        '$address\x1f',
+        '\x1d\x1e $address \u0085',
+        '\n\n$address\n',
+        address.toUpperCase(),
+        // BIP-350's vectors: version 1 with a 40-byte program, version 16, version 2, valid to bitcoind and anyone can spend them.
+        'bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y',
+        'BC1SW50QGDZ25J',
+        'bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs',
+      ]) {
+        expect(
+          SendChatMessageUsecase.refusalOf(text),
+          isA<ChatTextIsPayout>(),
+          reason: text,
+        );
+      }
+      expect(SendChatMessageUsecase.refusalOf('to $address'), isNull);
     },
   );
 
@@ -582,10 +841,32 @@ void main() {
       // Not skipped by itself: the next read asks from the start again.
       await read(app, record, seen);
       expect(app.chats.of(record).offset, 0);
-      final newer = app.chatRead.readNewerOnly(record, seen);
+      // The order shown was read while the chat was empty: its last chat index is 0, as the reference answers, so nothing can be skipped yet.
+      expect(seen.order?.chatLastIndex, 0);
+      expect(
+        app.chatRead.readNewerOnly(record, seen),
+        isA<Err<ChatView, ChatSkipRefusal>>().having(
+          (e) => e.failure,
+          'refusal',
+          isA<ChatSkipNeedsOrderRead>(),
+        ),
+      );
+      expect(app.chats.of(record).offset, 0);
+      expect(app.chats.of(record).view.skippedEarlier, isFalse);
+      // The order read again gives the highest index: the skip is done.
+      final run = app.watchOf(record);
+      await app.elapse(const Duration(seconds: 11));
+      final fresh = run.lastStatus.seen;
+      await run.subscription.cancel();
+      expect(fresh.order?.chatLastIndex, 1);
+      final newer = switch (app.chatRead.readNewerOnly(record, fresh)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
       expect(newer.skippedEarlier, isTrue);
       expect(newer.historyTooLarge, isFalse);
-      expect(app.chats.of(record).offset, seen.order?.chatLastIndex);
+      expect(app.chats.of(record).offset, 1);
+      expect((await read(app, record, fresh)).historyTooLarge, isFalse);
     },
   );
 
@@ -602,3 +883,8 @@ void main() {
     expect(output.contains('BEGIN PGP'), isFalse);
   });
 }
+
+/// How many messages were posted to the coordinator of [app].
+int _posts(TradeHarness app) => app.coordinator.requests
+    .where((r) => r.url.path == '/api/chat/' && r.body != null)
+    .length;
