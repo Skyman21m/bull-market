@@ -67,7 +67,7 @@ final class CancelAcknowledgementMismatch extends CancelRefusal {
   const CancelAcknowledgementMismatch();
 }
 
-/// The escrow is locked (8 or 9): only a collaborative cancel exists, a later slice.
+/// The escrow is locked and the buyer's payout awaited (8): only a collaborative cancel exists, which the reference offers from the chat only.
 final class CancelOnlyTogether extends CancelRefusal {
   const CancelOnlyTogether();
 }

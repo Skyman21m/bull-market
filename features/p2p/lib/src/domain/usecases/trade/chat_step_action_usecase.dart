@@ -13,7 +13,7 @@ import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): today « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]).
+/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]) and « Payment failed? » ([undoFiatSent]).
 ///
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
@@ -51,6 +51,20 @@ final class ChatStepActionUsecase {
     onProgress: onProgress,
     send: (identity, lastRead) =>
         _client.confirmFiat(identity: identity, lastRead: lastRead),
+  );
+
+  /// The buyer's « Payment failed? » for the trade of [record] at [seen] (10), the status the screen showed when the user confirmed the reference's dialog: « fiat sent » taken back, 10 → 9; the same steps and outcomes as [confirmFiatSent].
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> undoFiatSent(
+    TradeRecord record,
+    TradeSeen seen, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) => _run(
+    ChatStepAction.undoFiatSent,
+    record,
+    seen,
+    onProgress: onProgress,
+    send: (identity, lastRead) =>
+        _client.undoConfirmFiat(identity: identity, lastRead: lastRead),
   );
 
   Future<Result<ChatStepOutcome, ChatStepRefusal>> _run(

@@ -232,13 +232,23 @@ extension TradeCancelNoticeL10n on TradeCancelNotice {
 
 /// What an action of the chat step gave, when it says something (#95): a text of the app, never the coordinator's.
 extension ChatStepNoticeL10n on ChatStepNotice {
-  String toText(BuildContext context, {required String coordinator}) {
+  /// The text of what [action] gave.
+  String toText(
+    BuildContext context, {
+    required String coordinator,
+    required ChatStepAction action,
+  }) {
     final l10n = P2pLocalizations.of(context);
+    final confirm = action == ChatStepAction.confirmFiatSent;
+    final movedOn = confirm ? l10n.p2pEndMovedOn : l10n.p2pEndTradeMovedOn;
+    String notSent(String reason) => confirm
+        ? l10n.p2pEndNotDoneAfter(reason)
+        : l10n.p2pEndRequestNotDoneAfter(reason);
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
         ChatStepNotOffered() => l10n.p2pEndNeedsReadNotSent,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
-        ChatStepStatusMoved() => l10n.p2pEndMovedOn,
+        ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
         ChatStepOfAnotherTrade() => l10n.p2pTradeUnavailable,
         ChatStepTradeUnavailable(
@@ -252,42 +262,59 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       },
       // Decided here from the read, nothing sent: as the read before sending would have said.
       ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
-        l10n.p2pEndMovedOn,
+        movedOn,
       // The request left and the coordinator did nothing (1029, 1030, 1031): it says the order moved on.
       ChatStepWasNotDone(cause: TradeActionRefused()) =>
-        l10n.p2pEndNotRecordedMovedOn(coordinator),
+        confirm
+            ? l10n.p2pEndNotRecordedMovedOn(coordinator)
+            : l10n.p2pEndRequestNotRecordedMovedOn(coordinator),
       // The request never left: a busy transport (the robot panel's sentence, which ends with its full stop), a coordinator not on the network (its own sentence: the label « Coordinator offline » has no full stop to join).
-      ChatStepWasNotDone(cause: CoordinatorTransportBusy()) =>
-        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
-      ChatStepWasNotDone(cause: CoordinatorNotOnNetwork()) =>
-        l10n.p2pEndOffline(coordinator),
-      ChatStepWasNotDone(cause: OrderReadElsewhere()) =>
-        l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
-      // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
-      ChatStepWasNotDone(cause: CoordinatorFailure()) => l10n.p2pEndRefusedBy(
-        coordinator,
+      ChatStepWasNotDone(cause: CoordinatorTransportBusy()) => notSent(
+        l10n.p2pRobotBusy,
       ),
+      ChatStepWasNotDone(cause: CoordinatorNotOnNetwork()) =>
+        confirm
+            ? l10n.p2pEndOffline(coordinator)
+            : l10n.p2pEndRequestOffline(coordinator),
+      // Refused here before sending: never left.
+      ChatStepWasNotDone(cause: OrderReadElsewhere()) => notSent(
+        l10n.p2pBookError,
+      ),
+      // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
+      ChatStepWasNotDone(cause: CoordinatorFailure()) =>
+        confirm
+            ? l10n.p2pEndRefusedBy(coordinator)
+            : l10n.p2pEndRequestRefusedBy(coordinator),
       // The robot's places in the limiter, busy or released: never sent, said in the robot panel's full sentence.
       ChatStepWasNotDone(
         cause: RobotCoordinatorBusyFailure() || RobotReleasedFailure(),
       ) =>
-        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
-      ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
-      ChatStepWasUnknown() => l10n.p2pEndUnknown,
+        notSent(l10n.p2pRobotBusy),
+      ChatStepWasNotDone() => notSent(l10n.p2pBookError),
+      ChatStepWasUnknown() =>
+        confirm ? l10n.p2pEndUnknown : l10n.p2pEndUnknownRequest,
     };
   }
 }
 
 /// What an action of the chat step waits for, step by step (the owner's rule: every wait says what it waits for).
 extension ChatStepProgressL10n on ChatStepProgress? {
-  String toText(BuildContext context, {required String coordinator}) {
+  /// The text of [action]'s step.
+  String toText(
+    BuildContext context, {
+    required String coordinator,
+    required ChatStepAction action,
+  }) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
       // The payout's words for the same waits (#91).
       null => l10n.p2pPayoutStepOpening,
       ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
       ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
-      ChatStepProgress.sending => l10n.p2pEndStepSending(coordinator),
+      ChatStepProgress.sending =>
+        action == ChatStepAction.confirmFiatSent
+            ? l10n.p2pEndStepSending(coordinator)
+            : l10n.p2pEndStepSendingRequest(coordinator),
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
         coordinator,
       ),

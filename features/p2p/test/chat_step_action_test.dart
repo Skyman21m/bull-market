@@ -384,4 +384,83 @@ void main() {
     );
     expect(errors, hasLength(4));
   });
+
+  group('« Payment failed? »', () {
+    test(
+      'sent once from 10, after a fresh read; 9 shown once recorded',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        final result = await app.chat.undoFiatSent(record, ten);
+        final outcome = switch (result) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(outcome, isA<ChatStepDone>());
+        expect(outcome.seen.status, isA<Chatting>());
+        expect(fiatSentShown(outcome.seen), isFalse);
+        expect(app.coordinator.status, 9);
+        expect(app.coordinator.revertedFiatSent, isTrue);
+        expect(sent(app, ScriptedRequest.undoConfirm), 1);
+      },
+    );
+
+    test('not offered at 9: nothing read or sent', () async {
+      final (app, record, nine) = await at();
+      app.coordinator.requests.clear();
+      expect(
+        await app.chat.undoFiatSent(record, nine),
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepNotOffered>(),
+        ),
+      );
+      expect(app.coordinator.requests, isEmpty);
+    });
+
+    test(
+      'the seller confirmed meanwhile: nothing sent, the status now',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        app.coordinator.moveTo(13);
+        expect(
+          await app.chat.undoFiatSent(record, ten),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepStatusMoved>(),
+          ),
+        );
+        expect(sent(app, ScriptedRequest.undoConfirm), 0);
+      },
+    );
+
+    test(
+      'a request that lands late, then a second tap: done, nothing sent again',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        app.coordinator.failNext(
+          ScriptedRequest.undoConfirm,
+          ScriptedFault.landsLate,
+        );
+        final first = switch (await app.chat.undoFiatSent(record, ten)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(first, isA<ChatStepOutcomeUnknown>());
+        expect(fiatSentShown(first.seen), isTrue);
+        app.coordinator.landLate();
+        final second = switch (await app.chat.undoFiatSent(
+          first.record,
+          first.seen,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(second, isA<ChatStepDone>());
+        expect(fiatSentShown(second.seen), isFalse);
+        expect(sent(app, ScriptedRequest.undoConfirm), 1);
+      },
+    );
+  });
 }
