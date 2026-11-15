@@ -14,6 +14,7 @@ import 'p2p_locator.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
+import 'presentation/chat_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
@@ -28,6 +29,7 @@ import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
 import 'ui/trade/bond_payment_panel.dart';
+import 'ui/trade/chat_panel.dart';
 import 'ui/trade/payout_panel.dart';
 import 'ui/trade/trade_screen.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
@@ -107,6 +109,7 @@ final class P2pRouter {
   @visibleForTesting
   static Widget tradePage(GetIt locator, P2pTradeRouteArgs args) {
     final payouts = locator.isRegistered<PayoutCubit>();
+    final chats = locator.isRegistered<ChatCubit>();
     return MultiBlocProvider(
       providers: [
         // The wallet's payment of the bond (#100), only where the wallet's port was lent: without it the screen is as before, « Pay with another wallet » alone.
@@ -127,6 +130,9 @@ final class P2pRouter {
           BlocProvider(
             create: (_) => locator<PayoutCubit>(param1: args.record),
           ),
+        // One chat panel per shown trade, closed with its page, which stops its reads and lets the robot's key go.
+        if (chats)
+          BlocProvider(create: (_) => locator<ChatCubit>(param1: args.record)),
       ],
       child: Builder(
         builder: (context) => _toldReads(
@@ -147,6 +153,9 @@ final class P2pRouter {
                 locator<CoordinatorDetailsCubit>(param1: request),
             payout: payouts
                 ? (context, request) => PayoutPanel(request: request)
+                : null,
+            chat: chats
+                ? (context, request) => ChatPanel(request: request)
                 : null,
             moneyActionRunning: payouts
                 ? (context) =>

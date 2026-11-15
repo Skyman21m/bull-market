@@ -574,7 +574,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pCoordinatorSimplex => 'Simplex';
 
   @override
-  String get p2pCommonCopied => 'Copié !';
+  String get p2pCommonCopied => 'Copié !';
 
   @override
   String get p2pSearchOrderTitle => 'Rechercher un ordre';
@@ -2212,4 +2212,201 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pEndOffline(String coordinator) {
     return '$coordinator est hors ligne : votre confirmation n\'a pas été envoyée.';
   }
+
+  @override
+  String p2pChatYouState(String state) {
+    return 'Vous : $state';
+  }
+
+  @override
+  String p2pChatPeerState(String state) {
+    return 'Pair : $state';
+  }
+
+  @override
+  String get p2pChatConnected => 'connecté';
+
+  @override
+  String get p2pChatDisconnected => 'déconnecté';
+
+  @override
+  String get p2pChatWaitingShort => '...attente';
+
+  @override
+  String get p2pChatTypeMessage => 'Écrivez un message';
+
+  @override
+  String get p2pChatWaitingForPeer => 'En attente du pair...';
+
+  @override
+  String get p2pChatSend => 'Envoyer';
+
+  @override
+  String p2pChatSignatureVerified(String nickname) {
+    return 'Signature vérifiée de $nickname';
+  }
+
+  @override
+  String p2pChatSignatureUnverified(String nickname) {
+    return 'Impossible de vérifier la signature de $nickname';
+  }
+
+  @override
+  String get p2pChatTokenBlocked =>
+      'Aïe ! Vous venez d’envoyer le jeton de votre robot à votre pair dans le chat, c’est une idée catastrophique ! Tellement grave que votre message a été bloqué.';
+
+  @override
+  String get p2pChatGarageKeyBlocked =>
+      'Ce message contient votre clé de garage, qui contrôle tous vos robots. Il ne sera pas envoyé.';
+
+  @override
+  String get p2pChatTooLong =>
+      'Ce message est trop long. Raccourcissez-le pour l’envoyer.';
+
+  @override
+  String get p2pChatClosed => 'Les messages ne sont pas envoyés à cette étape.';
+
+  @override
+  String get p2pChatKeyChanged =>
+      'Ce chat n’est plus sûr : la clé de votre pair a changé. Plus rien n’est envoyé ici. Ne vous fiez pas aux coordonnées de paiement reçues à partir de maintenant.';
+
+  @override
+  String p2pChatSending(String coordinator) {
+    return 'Envoi du message à $coordinator…';
+  }
+
+  @override
+  String p2pChatNotConfirmed(String coordinator) {
+    return 'Non confirmé par $coordinator. Il peut encore parvenir à votre pair.';
+  }
+
+  @override
+  String get p2pChatSendAgain => 'Renvoyer';
+
+  @override
+  String get p2pChatSendFailed => 'Le message n’a pas été envoyé. Réessayez.';
+
+  @override
+  String p2pChatSendRefused(String coordinator) {
+    return '$coordinator n’a pas accepté le message. Réessayez.';
+  }
+
+  @override
+  String get p2pChatTradeMoved =>
+      'Le message n’a pas été envoyé : l’échange a avancé.';
+
+  @override
+  String p2pChatReadFailed(String coordinator) {
+    return 'Impossible de lire le chat chez $coordinator. Nouvel essai…';
+  }
+
+  @override
+  String get p2pChatUnavailable =>
+      'Le chat ne peut pas être lu sur cet appareil.';
+
+  @override
+  String get p2pChatHistoryTooLarge =>
+      'Ce chat est trop long pour être lu depuis son premier message.';
+
+  @override
+  String get p2pChatReadNewer => 'Lire seulement les messages récents';
+
+  @override
+  String p2pChatReading(String coordinator) {
+    return 'Lecture du chat chez $coordinator…';
+  }
+
+  @override
+  String get p2pChatSkipAwaited => 'Lecture des messages plus récents…';
+
+  @override
+  String get p2pChatEarlierHidden =>
+      'Les messages précédents ne sont pas affichés.';
+
+  @override
+  String get p2pChatScreenPrivacyUnavailable =>
+      'La protection de l’écran n’a pas pu être activée : le chat reste masqué.';
+
+  @override
+  String get p2pChatUnreadable => 'Ce message ne peut pas être lu.';
+
+  @override
+  String get p2pChatMarkAfterGap =>
+      'Un message manque peut-être avant celui-ci.';
+
+  @override
+  String get p2pChatMarkRepeat => 'Ce message a déjà été affiché plus haut.';
+
+  @override
+  String get p2pChatMarkSentTwice => 'Vous avez envoyé ce message deux fois.';
+
+  @override
+  String get p2pChatMarkOutOfOrder =>
+      'Ce message est peut-être plus ancien qu’il n’y paraît.';
+
+  @override
+  String get p2pChatAuditChat => 'Auditer le chat';
+
+  @override
+  String get p2pChatExport => 'Exporter';
+
+  @override
+  String get p2pChatAuditTitle => 'Ne faites pas confiance, vérifiez';
+
+  @override
+  String get p2pChatAuditText =>
+      'Votre communication est chiffrée de bout en bout avec OpenPGP. Vous pouvez vérifier la confidentialité de ce chat en utilisant n’importe quel outil basé sur la norme OpenPGP.';
+
+  @override
+  String get p2pChatYourPublicKey => 'Votre clé publique';
+
+  @override
+  String get p2pChatYourPublicKeyTooltip =>
+      'Votre clé publique PGP. Votre correspondant l’utilise pour crypter les messages que vous êtes le seul à pouvoir lire.';
+
+  @override
+  String get p2pChatPeerPublicKey => 'Clé publique du correspondant';
+
+  @override
+  String get p2pChatPeerPublicKeyTooltip =>
+      'La clé publique PGP de votre correspondant. Vous l’utilisez pour chiffrer les messages que lui seul peut lire et pour vérifier que votre correspondant a signé les messages entrants.';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKey => 'Votre clé privée chiffrée';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKeyTooltip =>
+      'Votre clé privée chiffrée. Vous l’utilisez pour déchiffrer les messages que votre correspondant a chiffrés pour vous. Vous l’utilisez également pour signer les messages que vous envoyez.';
+
+  @override
+  String get p2pChatPassphrase =>
+      'Phrase de passe de votre clé privée (à conserver précieusement !)';
+
+  @override
+  String get p2pChatPassphraseTooltip =>
+      'La phrase de passe pour décrypter votre clé privée. Vous êtes le seul à la connaître ! Ne la partagez pas. C’est aussi votre jeton du robot.';
+
+  @override
+  String p2pChatAuditKeyFailed(String coordinator) {
+    return 'La clé de votre robot n’a pas pu être lue chez $coordinator.';
+  }
+
+  @override
+  String p2pChatFingerprint(String fingerprint) {
+    return 'Empreinte : $fingerprint';
+  }
+
+  @override
+  String get p2pChatSaveKeys => 'Clés';
+
+  @override
+  String get p2pChatSaveKeysTooltip =>
+      'Enregistrer les accès dans un fichier JSON';
+
+  @override
+  String get p2pChatSaveMessages => 'Messages';
+
+  @override
+  String get p2pChatSaveMessagesTooltip =>
+      'Enregistrer les messages dans un fichier JSON';
 }
