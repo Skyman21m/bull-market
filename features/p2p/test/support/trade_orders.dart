@@ -49,12 +49,13 @@ Future<TradeTerms> tradeTerms({
   RobosatsNetwork network = RobosatsNetwork.mainnet,
   bool range = false,
   double rangeAmount = 120,
+  double? amount,
 }) async {
   final [order] = await parseOrders([
     bookOrder(
       id: tradeOrderId,
       type: role == TradeRole.buyer ? 1 : 0,
-      amount: range ? null : bookAmount,
+      amount: range ? null : (amount ?? bookAmount),
       minAmount: range ? 50 : null,
       maxAmount: range ? 200 : null,
       satoshisNow: range ? bookSats * 2 : bookSats,

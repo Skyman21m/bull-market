@@ -37,10 +37,11 @@ final class TradeScreenStatuses {
     Bolt11TestInvoice? invoice,
     bool decodable = true,
     int? bondSatoshis,
+    double? amount,
   }) async {
     final bond = invoice ?? bondInvoice();
     return TradeScreenStatuses._(
-      await tradeTerms(),
+      await tradeTerms(amount: amount),
       bond,
       Bolt11Reader(Bolt11TestDecoder([if (decodable) bond])),
       bondSatoshis,
@@ -147,6 +148,17 @@ final class TradeScreenStatuses {
   /// 9, the chat.
   Future<TradeSeen> chatting() async =>
       read(await waitingForPayout(), orderJson(9));
+
+  /// 10, « fiat sent » recorded (#95).
+  Future<TradeSeen> fiatSent() async => read(await chatting(), orderJson(10));
+
+  /// 13, the buyer being paid (#95).
+  Future<TradeSeen> sendingSats() async =>
+      read(await fiatSent(), orderJson(13));
+
+  /// 14, the trade finished (#95).
+  Future<TradeSeen> succeeded() async =>
+      read(await sendingSats(), orderJson(14));
 
   /// 5, expired for [reason] (the reference's `expiry_reason`).
   Future<TradeSeen> expired({int reason = 4}) async => read(

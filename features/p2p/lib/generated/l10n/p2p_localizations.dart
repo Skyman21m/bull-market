@@ -3392,6 +3392,160 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.'**
   String get p2pPayAskSupportExpiredSent;
+
+  /// The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:114-118`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: the buyer's prompt at 9 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Say hi! Ask for payment details and click \'Confirm Sent\' as soon as the payment is sent.'**
+  String get p2pEndChatBuyerHi;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:176-188`), shown as text: the reference's link to its documentation is not opened (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'⚠️ Beware scams'**
+  String get p2pEndBewareScams;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:215-225`): the buyer's button at 9 (#95). {amount} is the trade's amount, {currencyCode} its currency.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm {amount} {currencyCode} sent'**
+  String p2pEndConfirmSent(String amount, String currencyCode);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`): the dialog's title (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'✅ Confirm you sent {amount} {currencyCode}?'**
+  String p2pEndConfirmSentTitle(String amount, String currencyCode);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirming will allow your peer to finalize the trade.'**
+  String get p2pEndConfirmSentText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`), in the warning colour (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'⚠️ This action cannot be undone!'**
+  String get p2pEndCannotBeUndone;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'If you have not yet sent it and you still proceed to falsely confirm, you risk losing your bond.'**
+  String get p2pEndFalseConfirmRisk;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`): the dialog's button that sends (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get p2pEndConfirm;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:141`): the buyer's prompt at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait for the seller to confirm they have received the payment.'**
+  String get p2pEndWaitSeller;
+
+  /// Not in the RoboSats texts: the project's own: the confirmation sent, its answer awaited (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your confirmation to {coordinator}…'**
+  String p2pEndStepSending(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », off while the status shown does not offer it (not read from an order, not stored) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again.'**
+  String get p2pEndNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the read just before sending, or the coordinator, shows another status than the one the user confirmed at (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order moved on: your confirmation was not sent.'**
+  String get p2pEndMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: the read just before sending failed or could not be stored (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: your confirmation was not sent.'**
+  String p2pEndReadFailed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the confirmation refused before the coordinator acted, or never sent; {reason} says why (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} Your confirmation was not sent.'**
+  String p2pEndNotDoneAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: the answer was lost; the screen shows the order as read again, and nothing is sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your confirmation went through. It keeps checking.'**
+  String get p2pEndUnknown;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/SendingSats.tsx`): the buyer at 13 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats is trying to pay your lightning invoice. Remember that lightning nodes must be online in order to receive payments.'**
+  String get p2pEndSendingSats;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/SendingSats.tsx`), in bold (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Taking too long?'**
+  String get p2pEndTakingTooLong;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/SendingSats.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.'**
+  String get p2pEndTakingTooLongText;
+
+  /// Not in the RoboSats texts: the project's own: the status shown no longer offered « Confirm … sent » when it was confirmed (not read yet, not stored) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again. Your confirmation was not sent.'**
+  String get p2pEndNeedsReadNotSent;
+
+  /// Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it before acting (1047, the empty 400 of its form check, the authentication's), never said « not sent » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not record your confirmation.'**
+  String p2pEndRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it, the order no longer at 9 (1029) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order moved on: {coordinator} did not record your confirmation.'**
+  String p2pEndNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives another amount or currency than the trade's terms, which the button keeps (#95; a warning informs, it does not block).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} now gives {readAmount} {readCurrency}; the order was taken for {amount} {currencyCode}.'**
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  );
+
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives no amount for a range order, the button keeping the trade's terms (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} gives no amount for this order; it was taken for {amount} {currencyCode}.'**
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  );
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, the confirmation never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: your confirmation was not sent.'**
+  String p2pEndOffline(String coordinator);
 }
 
 class _P2pLocalizationsDelegate

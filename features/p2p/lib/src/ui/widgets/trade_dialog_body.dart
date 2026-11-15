@@ -15,12 +15,20 @@ class TradeDialogBody extends StatelessWidget {
   final VoidCallback onBack;
   final String goLabel;
 
+  /// The reference's warning under its text, in the warning colour and bold (« ⚠️ This action cannot be undone! », `TradeBox/Dialogs/ConfirmFiatSent.tsx`), and the reference's text after it; `null` for a dialog without them.
+  final String? warning;
+  final String? afterWarning;
+
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
   final VoidCallback onGo;
 
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
+
+  /// What a screen reader reads of the title and of the warning, when they differ from them (a text that starts with an emoji, whose name it would read first); `null` for the text itself.
+  final String? semanticTitle;
+  final String? semanticWarning;
 
   const TradeDialogBody({
     super.key,
@@ -31,6 +39,10 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.semanticTitle,
+    this.semanticWarning,
+    this.warning,
+    this.afterWarning,
     this.note,
   });
 
@@ -46,6 +58,8 @@ class TradeDialogBody extends StatelessWidget {
           Semantics(
             container: true,
             header: true,
+            label: semanticTitle,
+            excludeSemantics: semanticTitle != null,
             child: Text(
               title,
               style: styles.headlineLarge?.copyWith(color: colors.text),
@@ -56,6 +70,28 @@ class TradeDialogBody extends StatelessWidget {
             text,
             style: styles.bodyMedium?.copyWith(color: colors.textMuted),
           ),
+          if (warning case final warning?) ...[
+            const Gap(BullSpacing.md),
+            Semantics(
+              container: true,
+              label: semanticWarning,
+              excludeSemantics: semanticWarning != null,
+              child: Text(
+                warning,
+                style: styles.bodyMedium?.copyWith(
+                  color: colors.warning,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+          if (afterWarning case final after?) ...[
+            const Gap(BullSpacing.md),
+            Text(
+              after,
+              style: styles.bodyMedium?.copyWith(color: colors.textMuted),
+            ),
+          ],
           if (note case final note?) ...[
             const Gap(BullSpacing.sm),
             Text(note, style: styles.bodyMedium?.copyWith(color: colors.text)),
