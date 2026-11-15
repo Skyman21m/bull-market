@@ -336,10 +336,6 @@ final class TradeChat {
   void sentAgain(OutgoingChatMessage message) =>
       _sentAgain.add(message.armored);
 
-  /// The pending message holding [message] is shown as stored: no longer pending.
-  void stored(OutgoingChatMessage message) =>
-      _pending.removeWhere((p) => identical(p.message, message));
-
   /// The chat as the screen shows it.
   ChatView get view {
     final indexes = _entries.keys.toList()..sort();

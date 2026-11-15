@@ -8,7 +8,9 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/send_chat_message_usecase.dart';
-import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
+import 'package:p2p/src/domain/trade/bolt11.dart';
+import 'package:p2p/testing.dart'
+    show Bolt11TestInvoice, ScriptedFault, ScriptedRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -123,7 +125,8 @@ void main() {
       'pins the peer\'s key, decrypts each message once with the right key, and reads on from the last index',
       () async {
         final (app, record, seen) = await atNine();
-        app.coordinator.peerSays(written(app, 'Hello, buyer'));
+        // A mark that would reorder the text, cleaned before it is shown.
+        app.coordinator.peerSays(written(app, 'Hello,\u202E buyer'));
         final first = await read(app, record, seen);
         expect(first.connected, isTrue);
         expect(first.peerConnected, isTrue);
@@ -137,6 +140,8 @@ void main() {
         expect(hello.validSignature, isTrue);
         expect(hello.nick, maker.nickname);
         expect(first.ownKey, ourKey(app));
+        // The lease closed at once: no hold, so no key kept.
+        expect(app.keyring.keepsKeyOf(record.robot), isFalse);
         final unlocks = app.keys.unlocked.length;
 
         // Nothing new: no request beyond the page, no key unlocked.
@@ -286,13 +291,13 @@ void main() {
         expect(view.incomplete, isTrue);
         // The reads go on from before the gap.
         expect(app.chats.of(record).offset, 2);
-        // Another text at an index already shown is not taken.
-        app.coordinator.chat[0] = {
-          ...app.coordinator.chat[0],
+        // Another text at an index already shown, read again beyond the gap, is not taken.
+        app.coordinator.chat[2] = {
+          ...app.coordinator.chat[2],
           'message': written(app, 'IBAN two').wire,
         };
         final kept = await read(app, record, seen);
-        expect(kept.entries.first.text, 'IBAN one');
+        expect(kept.entries[2].text, 'after a gap');
       },
     );
 
@@ -521,6 +526,68 @@ void main() {
       },
     );
   });
+
+  test(
+    'what the screen may show of a text: no control character but line feeds and tabs, no mark that reorders text',
+    () {
+      expect(
+        ChatEntry.displayable('a\u202Eb\u2066c\u0007d\ne\tf\u200F'),
+        'abcd\ne\tf',
+      );
+      expect(
+        ChatEntry.displayable('Bonjour, ça va ? 👋'),
+        'Bonjour, ça va ? 👋',
+      );
+    },
+  );
+
+  test(
+    'an invoice made as a wallet makes one is refused alone, not inside a sentence',
+    () {
+      final invoice = Bolt11TestInvoice(
+        network: Bolt11Network.testnet,
+        sats: 106606,
+        seed: 3,
+        createdAt: realNow,
+        expiry: const Duration(days: 1),
+      );
+      expect(
+        SendChatMessageUsecase.refusalOf(invoice.text),
+        isA<ChatTextIsPayout>(),
+      );
+      expect(
+        SendChatMessageUsecase.refusalOf(
+          'lightning:${invoice.text.toUpperCase()}',
+        ),
+        isA<ChatTextIsPayout>(),
+      );
+      expect(SendChatMessageUsecase.refusalOf('here: ${invoice.text}'), isNull);
+    },
+  );
+
+  test(
+    'a history too large to read from the start is said, and the newer messages are read only on the user\'s choice',
+    () async {
+      final (app, record, seen) = await atNine();
+      // A peer that posted enough: over the 4 MiB a page may take.
+      app.coordinator.chat.add({
+        'index': 1,
+        'time': app.now.toIso8601String(),
+        'message': 'x' * (CoordinatorReadBounds.chatBytes + 1),
+        'nick': maker.nickname,
+      });
+      final big = await read(app, record, seen);
+      expect(big.historyTooLarge, isTrue);
+      expect(app.chats.of(record).offset, 0);
+      // Not skipped by itself: the next read asks from the start again.
+      await read(app, record, seen);
+      expect(app.chats.of(record).offset, 0);
+      final newer = app.chatRead.readNewerOnly(record, seen);
+      expect(newer.skippedEarlier, isTrue);
+      expect(newer.historyTooLarge, isFalse);
+      expect(app.chats.of(record).offset, seen.order?.chatLastIndex);
+    },
+  );
 
   test('nothing is printed or logged: no text, no message, no key', () async {
     final (app, record, seen) = await atNine();

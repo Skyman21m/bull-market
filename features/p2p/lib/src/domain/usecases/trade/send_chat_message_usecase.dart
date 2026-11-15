@@ -218,10 +218,8 @@ final class SendChatMessageUsecase {
       if (page != null) {
         await ChatPages.take(_keyring, _reader, chat, trade, page);
       }
-      if (index != null) {
-        chat.stored(message);
-        return Ok(ChatSentStored(index));
-      }
+      // A page that shows it took it off the pending messages too.
+      if (index != null) return Ok(ChatSentStored(index));
       final kept = switch (pending) {
         final id? => _pendingView(chat, id),
         null => null,
