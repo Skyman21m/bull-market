@@ -211,7 +211,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       line,
                       const Gap(BullSpacing.sm),
                     ],
-                    // After status 3, where a bond paid by this wallet stands (held by the swap service, refunded, kept); at status 3 the panel itself says it.
+                    // After status 3, where a bond paid by this wallet stands (in progress, refunded, kept, under review); at status 3 the panel itself says it.
                     if (widget.walletBondLine case final bondLine?
                         when view is! TradeWaiting &&
                             !(view is TradeContract &&

@@ -2088,7 +2088,7 @@
   },
   "p2pPayQuoting": "Getting the swap fees…",
   "@p2pPayQuoting": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): ours, with the wallet's label « Swap fees » (`transactionDetailLabelSwapFees`); the wallet has no text for asking them."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, with the wallet's label « Swap fees » (`transactionDetailLabelSwapFees`); the wallet has no text for asking them; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayConfirmTitle": "Pay {amount} sats to lock your bond?",
   "@p2pPayConfirmTitle": {
@@ -2101,7 +2101,7 @@
   },
   "p2pPayServiceFee": "Swap fees: {serviceFee} sats",
   "@p2pPayServiceFee": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's label for the same fee (`transactionDetailLabelSwapFees`, « Swap fees » / « Frais d'échange »).",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's label for the same fee (`transactionDetailLabelSwapFees`, « Swap fees » / « Frais d'échange »); in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.",
     "placeholders": {
       "serviceFee": {
         "type": "String"
@@ -2153,11 +2153,11 @@
   },
   "p2pPayRefundPending": "Swap will be refunded shortly. The swap fees are not refunded.",
   "@p2pPayRefundPending": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailedRefunding`, then ours for the fees (the wallet has no text for it)."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailedRefunding`, then ours for the fees (the wallet has no text for it); in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayRefunded": "Swap has been refunded. The swap fees are not refunded.",
   "@p2pPayRefunded": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendCompletedRefunded`, then ours for the fees."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendCompletedRefunded`, then ours for the fees; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPaySettled": "Your bond was kept by {coordinator}.",
   "@p2pPaySettled": {
@@ -2170,7 +2170,7 @@
   },
   "p2pPayUnderReview": "Swap is under review. Contact Bull Bitcoin support if it lasts.",
   "@p2pPayUnderReview": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): ours (the wallet shows no text for a manual review), worded as its swap statuses."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours (the wallet shows no text for a manual review), worded as its swap statuses; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayInterrupted": "The payment was interrupted before it was sent. Nothing left this wallet yet.",
   "@p2pPayInterrupted": {
@@ -2180,13 +2180,13 @@
   "@p2pPayMaybeSent": {
     "description": "The panel of « Pay with this wallet » (#100, #135): ours: a broadcast whose outcome is unknown, which the wallet's watcher settles."
   },
-  "p2pPayAskSupport": "Swap Failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.",
+  "p2pPayAskSupport": "Swap failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.",
   "@p2pPayAskSupport": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed`, then ours: support is the only way out."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` (in sentence case), then ours: support is the only way out; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayUnderMinimum": "Amount below minimum swap limit: {min} sats",
   "@p2pPayUnderMinimum": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowMinimum`.",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowMinimum`; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.",
     "placeholders": {
       "min": {
         "type": "String"
@@ -2195,11 +2195,11 @@
   },
   "p2pPayUnderMinimumUnknown": "Amount is below swap limits",
   "@p2pPayUnderMinimumUnknown": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowSwapLimits`, when the service gives no minimum."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountBelowSwapLimits`, when the service gives no minimum; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayOverMaximum": "Amount above maximum swap limit: {max} sats",
   "@p2pPayOverMaximum": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountAboveMaximum`.",
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's Send screen, `sendErrorAmountAboveMaximum`; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.",
     "placeholders": {
       "max": {
         "type": "String"
@@ -2208,7 +2208,7 @@
   },
   "p2pPayOutsideLimits": "Amount is outside swap limits",
   "@p2pPayOutsideLimits": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): ours, worded on the wallet's `sendErrorAmountBelowSwapLimits` / `sendErrorAmountAboveSwapLimits`: the service did not say which limit."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, worded on the wallet's `sendErrorAmountBelowSwapLimits` / `sendErrorAmountAboveSwapLimits`: the service did not say which limit; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayNotEnough": "Not enough in Instant payments ({balance} sats) for {total} sats.",
   "@p2pPayNotEnough": {
@@ -2222,13 +2222,13 @@
       }
     }
   },
-  "p2pPayUnreachable": "Server is unavailable. Please try again later.",
+  "p2pPayUnreachable": "Swap server is unavailable. Please try again later.",
   "@p2pPayUnreachable": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `mempoolErrorServerUnavailable`."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, worded on the wallet's `mempoolErrorServerUnavailable` with « Swap » so that the user does not take the coordinator for down."
   },
-  "p2pPayBusy": "Rate limited. Please try again later.",
+  "p2pPayBusy": "Too many requests. Please try again later.",
   "@p2pPayBusy": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `recoverbullErrorRateLimited`, without the delay the service does not always give."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours: the swap service answered « too many requests »; the wallet's « Rate limited » is jargon (« taux » reads as an interest rate in French)."
   },
   "p2pPayTooLate": "Too little time is left to pay from this wallet.",
   "@p2pPayTooLate": {
@@ -2254,13 +2254,13 @@
   "@p2pPayWalletUnavailable": {
     "description": "The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4, not in the study's table: the other refusals of the wallet (no Instant payments wallet, unreadable, other network, too many coins, a quote no longer valid)."
   },
-  "p2pPayServiceCouldNotPay": "Swap Failed. Swap will be refunded shortly. The swap fees are not refunded.",
+  "p2pPayServiceCouldNotPay": "Swap failed. Swap will be refunded shortly. The swap fees are not refunded.",
   "@p2pPayServiceCouldNotPay": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` and `coreSwapsLnSendFailedRefunding`, then ours for the fees; at status 3, where the bond was never locked."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` (in sentence case) and `coreSwapsLnSendFailedRefunding`, then ours for the fees; at status 3, where the bond was never locked; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayWithSwapService": "Your swap is in progress.",
   "@p2pPayWithSwapService": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the first sentence of the wallet's `transactionSwapDescLnSendDefault`: a payment sent, outside a trade going on."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the first sentence of the wallet's `transactionSwapDescLnSendDefault`: a payment sent, outside a trade going on; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayCoordinatorUnreachable": "Could not reach {coordinator}. Nothing was paid.",
   "@p2pPayCoordinatorUnreachable": {
@@ -2275,9 +2275,9 @@
   "@p2pPayStillSending": {
     "description": "The panel of « Pay with this wallet » (#100, #135): ours: after 30 s of « Sending the payment… »."
   },
-  "p2pPayAskSupportSent": "Swap Failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.",
+  "p2pPayAskSupportSent": "Swap failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.",
   "@p2pPayAskSupportSent": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed`, then ours: its funding was broadcast."
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` (in sentence case), then ours: its funding was broadcast; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   },
   "p2pPayUnreadable": "Bull Market cannot read where this payment stands.",
   "@p2pPayUnreadable": {
@@ -2285,6 +2285,18 @@
   },
   "p2pPayCancelNote": "A payment of this bond is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.",
   "@p2pPayCancelNote": {
-    "description": "The panel of « Pay with this wallet » (#100, #135): ours, not the reference's: under its text of the cancel dialog at status 3, for a payment on its way; with the wallet's label « Swap fees »."
+    "description": "The panel of « Pay with this wallet » (#100, #135): ours, not the reference's: under its text of the cancel dialog at status 3, for a payment on its way; with the wallet's label « Swap fees »; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
+  },
+  "p2pPayServiceRefunded": "Swap failed. Swap has been refunded. The swap fees are not refunded.",
+  "@p2pPayServiceRefunded": {
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` (in sentence case) and `coreSwapsLnSendCompletedRefunded`, then ours for the fees; at status 3, the refund done; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
+  },
+  "p2pPayAskSupportExpired": "Swap expired. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.",
+  "@p2pPayAskSupportExpired": {
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendExpired` (in sentence case), then ours: support is the only way out; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
+  },
+  "p2pPayAskSupportExpiredSent": "Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.",
+  "@p2pPayAskSupportExpiredSent": {
+    "description": "The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendExpired` (in sentence case), then ours: its funding was broadcast; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade."
   }
 }
