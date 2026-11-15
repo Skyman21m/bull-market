@@ -1785,6 +1785,14 @@ void main() {
         wallet.progress(const P2pWalletPaymentPending());
         await nextRead();
         await capture('paiement-caution-bloquee');
+        // The same status from its top: the line of the bond paid from this wallet above « Submit payout info (2/4) », then the payout panel (#91).
+        await tester.ensureVisible(
+          find.textContaining(l10n.p2pTradeTitlePayout),
+        );
+        await settle();
+        await tester.drag(find.byType(ListView).last, const Offset(0, 2000));
+        await settle();
+        await capture('paiement-reception-2-4');
 
         // The bond lost by a cancel at 6: the coordinator keeps it, and the wallet reports the invoice settled (demonstration progress).
         await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
