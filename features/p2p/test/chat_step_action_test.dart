@@ -20,11 +20,8 @@ void main() {
       app.coordinator.received.where((k) => k == kind).length;
 
   /// A trade taken on a fresh run, its bond locked, moved to [status] (9 by default), and that status as a read stored it.
-  Future<(TradeHarness, TradeRecord, TradeSeen)> at({
-    int status = 9,
-    int orderType = 1,
-  }) async {
-    final app = await TradeHarness.start(orderType: orderType);
+  Future<(TradeHarness, TradeRecord, TradeSeen)> at({int status = 9}) async {
+    final app = await TradeHarness.start();
     final taken = await app.takeShown();
     expect(
       taken,
@@ -117,25 +114,28 @@ void main() {
     },
   );
 
-  test('the order moved before the tap: nothing sent, the status now', () async {
-    final (app, record, seen) = await at();
-    // The seller confirmed, or a dispute opened, while the dialog was open.
-    app.coordinator.moveTo(11);
-    final result = await app.chat.confirmFiatSent(record, seen);
-    expect(
-      result,
-      isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
-        (err) => err.failure,
-        'refusal',
-        isA<ChatStepStatusMoved>().having(
-          (moved) => moved.seen.status,
-          'status',
-          isA<InDispute>(),
+  test(
+    'the order moved before the tap: nothing sent, the status now',
+    () async {
+      final (app, record, seen) = await at();
+      // The seller confirmed, or a dispute opened, while the dialog was open.
+      app.coordinator.moveTo(11);
+      final result = await app.chat.confirmFiatSent(record, seen);
+      expect(
+        result,
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepStatusMoved>().having(
+            (moved) => moved.seen.status,
+            'status',
+            isA<InDispute>(),
+          ),
         ),
-      ),
-    );
-    expect(sent(app, confirms), 0);
-  });
+      );
+      expect(sent(app, confirms), 0);
+    },
+  );
 
   test('the read before fails: nothing sent', () async {
     final (app, record, seen) = await at();
@@ -153,16 +153,14 @@ void main() {
   });
 
   test(
-    'not offered: at 10, at 8, as the seller, from a status not stored or from no order; nothing read or sent',
+    'not offered: at 10, at 8, from a status not stored or from no order; nothing read or sent',
     () async {
       final (app, record, nine) = await at();
       final (_, _, ten) = await at(status: 10);
       final (_, _, eight) = await at(status: 8);
-      final (_, sellerRecord, sellerNine) = await at(orderType: 0);
       for (final (label, rec, seen) in [
         ('10', record, ten),
         ('8', record, eight),
-        ('seller', sellerRecord, sellerNine),
         ('not stored', record, TradeSeen(nine.status, order: nine.order)),
         ('no order', record, TradeSeen(nine.status, order: null, stored: true)),
       ]) {
@@ -228,37 +226,40 @@ void main() {
     },
   );
 
-  test('another action of the order holds it: the wait is said, then the action', () async {
-    final (app, record, seen) = await at();
-    final release = Completer<void>();
-    final held = app.locks.run(
-      record.network,
-      app.coordinator.coordinator,
-      record.orderId,
-      () => release.future,
-    );
-    final steps = <ChatStepProgress>[];
-    final confirming = app.chat.confirmFiatSent(
-      record,
-      seen,
-      onProgress: steps.add,
-    );
-    await app.settle();
-    expect(steps, [ChatStepProgress.waitingForOrder]);
-    expect(sent(app, confirms), 0);
-    release.complete();
-    await held;
-    final result = await confirming;
-    expect(
-      result,
-      isA<Ok<ChatStepOutcome, ChatStepRefusal>>().having(
-        (ok) => ok.value,
-        'outcome',
-        isA<ChatStepDone>(),
-      ),
-    );
-    expect(sent(app, confirms), 1);
-  });
+  test(
+    'another action of the order holds it: the wait is said, then the action',
+    () async {
+      final (app, record, seen) = await at();
+      final release = Completer<void>();
+      final held = app.locks.run(
+        record.network,
+        app.coordinator.coordinator,
+        record.orderId,
+        () => release.future,
+      );
+      final steps = <ChatStepProgress>[];
+      final confirming = app.chat.confirmFiatSent(
+        record,
+        seen,
+        onProgress: steps.add,
+      );
+      await app.settle();
+      expect(steps, [ChatStepProgress.waitingForOrder]);
+      expect(sent(app, confirms), 0);
+      release.complete();
+      await held;
+      final result = await confirming;
+      expect(
+        result,
+        isA<Ok<ChatStepOutcome, ChatStepRefusal>>().having(
+          (ok) => ok.value,
+          'outcome',
+          isA<ChatStepDone>(),
+        ),
+      );
+      expect(sent(app, confirms), 1);
+    },
+  );
 
   test('a progress listener that throws stops nothing', () async {
     final (app, record, seen) = await at();
