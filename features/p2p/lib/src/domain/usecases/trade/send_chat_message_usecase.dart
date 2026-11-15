@@ -57,18 +57,29 @@ final class SendChatMessageUsecase {
     caseSensitive: false,
   );
 
-  /// Whether [text], trimmed, is on its own a Lightning invoice or a Bitcoin address of either network, with or without its URI prefix: a chat signature over it would be a valid signed payout (design note § 4.2).
+  /// Whether [text], stripped as the coordinator strips a clear-signed text, is on its own a Lightning invoice or a Bitcoin address of either network, with or without its URI prefix (review of #93).
+  ///
+  /// A chat message's signature is the same text signature as a clear-signed payout's (`UnlockedRobotPgpKey.signCleartext`): for a text of one line the signed bytes are identical, so the message can be turned into this robot's signed payout. The peer alone cannot use it, since a coordinator checks a payout against the key of the robot that sends it, authenticated by its token's hash; whoever holds that hash, any coordinator this robot was shown to, colluding with the peer, can: at status 15 of this trade, or at the payout step of any later trade where this robot buys, the signature being tied to no order. The dangerous text is the attacker's destination pasted back by the user, not the user's own. The reference refuses nothing (`AGENTS.md`, a deviation the owner is asked about); the design note's § 4.2 refused the trade's own payout text, the wrong text.
   static bool _isPayout(String text) {
-    final trimmed = text.trim();
-    if (_invoice.hasMatch(trimmed)) return true;
-    final lower = trimmed.toLowerCase();
+    final stripped = text.replaceAll(_pythonSpace, '');
+    if (_invoice.hasMatch(stripped)) return true;
+    final lower = stripped.toLowerCase();
     final address = lower.startsWith('bitcoin:')
-        ? trimmed.substring('bitcoin:'.length).split('?').first
-        : trimmed;
+        ? stripped.substring('bitcoin:'.length).split('?').first
+        : stripped;
+    // The segwit versions this wallet's check leaves out (version 1 of another length, 2 to 16) are valid to the coordinator's bitcoind, and anyone can spend them.
     return RobosatsNetwork.values.any(
-      (network) => BitcoinAddress.check(address, network) is Ok,
+      (network) => switch (BitcoinAddress.check(address, network)) {
+        Ok() || Err(failure: PayoutDestinationUnsupported()) => true,
+        Err() => false,
+      },
     );
   }
+
+  /// What Python's `str.strip()` removes from both ends, as the coordinator does before it checks a clear-signed text (`api/utils.py:642-644`): Dart's whitespace, which lacks U+001C to U+001F and U+0085, and those.
+  static final RegExp _pythonSpace = RegExp(
+    r'^[\s\x1c-\x1f\x85]+|[\s\x1c-\x1f\x85]+$',
+  );
 
   /// Sends [text] in the chat of [record], about the order of [seen], the status the screen shows.
   Future<Result<ChatSent, ChatSendRefusal>> send(
@@ -122,10 +133,6 @@ final class SendChatMessageUsecase {
     } finally {
       lease.close();
     }
-    // Encrypted to the key pinned for the trade, and to no other.
-    if (message.peerFingerprint != peer.fingerprint) {
-      return const Err(ChatPeerKeyChanged());
-    }
     return _post(chat, trade, order, message, text, pending: null);
   }
 
@@ -150,7 +157,6 @@ final class SendChatMessageUsecase {
       case Ok(:final value):
         trade = value;
     }
-    chat.sentAgain(message);
     return _post(chat, trade, order, message, null, pending: id);
   }
 
@@ -171,6 +177,11 @@ final class SendChatMessageUsecase {
     String? text, {
     required int? pending,
   }) async {
+    // Encrypted to the key pinned for the trade as it is now, right before the post: a breach read while this send waited stops it.
+    if (chat.pinnedKey?.fingerprint != message.peerFingerprint) {
+      return const Err(ChatPeerKeyChanged());
+    }
+    if (pending != null) chat.sentAgain(message);
     final offset = chat.offset;
     final identity = trade.robot.identity;
     final requests = _limiter.open(identity.sessionKey);

@@ -392,49 +392,70 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     }
   }
 
-  /// `GET /api/chat/` as the reference answers it (`chat/views.py:40-113`): for the taker at 9, 10, 11 and 16, the messages above the offset, the peer's connection and key.
+  /// `GET /api/chat/` as the reference answers it (`chat/views.py:40-113`): no `order_id` 6000, an unknown order a server error (`Order.objects.get`), for the taker at 9, 10, 11 and 16 the messages above the offset (0 when not given, a server error when not an integer), the peer's connection and key.
+  ///
+  /// Known gaps: the reference lets the maker read too (`views.py:53`), which these tests, a taker's, never need (the seller's slice will); and its query has no `ORDER BY` (`views.py:64`), where this one answers in index order.
   CoordinatorResponse _chatRead(
     RobotIdentity robot,
     CoordinatorRequest request,
   ) {
+    final query = request.url.queryParameters;
+    final order = query['order_id'];
+    if (order == null) {
+      return _json(400, {'error_code': 6000, 'bad_request': 'no order'});
+    }
+    if (int.tryParse(order) != orderId) {
+      return _json(500, {'detail': 'DoesNotExist'});
+    }
     if (_taker != robot.sessionKey) {
       return _json(400, {'error_code': 6001, 'bad_request': 'not yours'});
     }
     if (![9, 10, 11, 16].contains(_status)) {
       return _json(400, {'error_code': 6002, 'bad_request': 'not now'});
     }
-    final offset =
-        int.tryParse(request.url.queryParameters['offset'] ?? '') ?? 0;
+    final given = query['offset'];
+    final offset = given == null ? 0 : int.tryParse(given);
+    if (offset == null) return _json(500, {'detail': 'ValueError'});
     return _json(200, _chatPage(offset));
   }
 
-  /// `POST /api/chat/` as the reference answers it (`chat/views.py:116-218`): stored at 9 and 10 as the next index, then the page above the offset sent.
+  /// `POST /api/chat/` as the reference answers it (`chat/views.py:116-218`, `chat/serializers.py:57-84`): a message empty or missing, an order id or an offset that is not a non-negative integer 6003, an unknown order a server error; stored at 9 and 10 as the next index, then the page above the offset when one is given, and `{}` otherwise.
+  ///
+  /// Known gap: the reference lets the maker post too (`views.py:131`), which these tests, a taker's, never need.
   CoordinatorResponse _chatPost(
     RobotIdentity robot,
     CoordinatorRequest request,
   ) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final message = fields['PGP_message'];
+    final order = fields['order_id'];
+    final offset = fields['offset'];
+    // DRF's `CharField` trims and refuses a blank text; `IntegerField(min_value=0)`.
+    if (message is! String ||
+        message.trim().isEmpty ||
+        order is! int ||
+        order < 0 ||
+        (offset != null && (offset is! int || offset < 0))) {
+      return _json(400, {'error_code': 6003, 'bad_request': 'invalid'});
+    }
+    if (order != orderId) return _json(500, {'detail': 'DoesNotExist'});
     if (_taker != robot.sessionKey) {
       return _json(400, {'error_code': 6001, 'bad_request': 'not yours'});
     }
     if (_status != 9 && _status != 10) {
       return _json(400, {'error_code': 6002, 'bad_request': 'not now'});
     }
-    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
-    final fields = body is Map<String, Object?>
-        ? body
-        : const <String, Object?>{};
-    final message = fields['PGP_message'];
-    if (message is! String) {
-      return _json(400, {'error_code': 6003, 'bad_request': 'invalid'});
-    }
     chat.add({
       'index': _nextChatIndex,
       'time': clock().toUtc().toIso8601String(),
-      'message': message,
+      'message': message.trim(),
       'nick': robot.nickname,
     });
-    final offset = fields['offset'];
-    return _json(200, _chatPage(offset is int ? offset : 0));
+    if (offset is! int) return _json(200, const <String, Object?>{});
+    return _json(200, _chatPage(offset));
   }
 
   Map<String, Object?> _chatPage(int offset) => {
@@ -907,7 +928,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       case 9 || 10:
         data
           ..['asked_for_cancel'] = false
-          ..['chat_last_index'] = chat.isEmpty ? 3 : chat.length;
+          // `api/views.py:451-456`: 0 for an empty chat, otherwise the highest index.
+          ..['chat_last_index'] = chat.fold<int>(
+            0,
+            (highest, message) => switch (message['index']) {
+              final int index when index > highest => index,
+              _ => highest,
+            },
+          );
       case 11:
         data['statement_submitted'] = false;
       case 5:
