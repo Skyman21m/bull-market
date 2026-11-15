@@ -207,7 +207,8 @@ const testPaymentHash =
 /// Each [quote] takes the next answer of [scriptQuote], in order, and each [payInvoice] the next of [scriptPayment]; either fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
 /// Like the real port, [payInvoice] takes a quote once (a quote presented again is `P2pWalletQuoteStale`, without taking an answer) and gives an invoice one attempt: once a payment of a payment hash was answered with a handle (or `P2pWalletBroadcastUnknown`, `P2pWalletPaymentInterrupted`), a later payment of that hash is `P2pWalletPaymentExists` with the progress last set for it (preparing when none), without taking an answer either.
 /// [watchPayment] gives the last progress given to [setProgress] for that payment, then each new one; a refusal ends the stream. [findPayment] answers what [setFound] gave for the hash, `null` otherwise.
-/// It records what it was asked: [balanceRequests], [quoted], [paid] and [found].
+/// Each [newLightningInvoice] takes the next answer of [scriptInvoice], each [newReceiveAddress] the next of [scriptAddress], in order, and fails with a `StateError` when none is left.
+/// It records what it was asked: [balanceRequests], [quoted], [paid], [found], [invoicesAsked] and [addressesAsked].
 @visibleForTesting
 final class FakeP2pWalletPort implements P2pWalletPort {
   Result<Sats, P2pWalletRefusal> _balance;
@@ -266,6 +267,43 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   ) {
     _progress[payment] = progress;
     _progressChanges.add((payment, progress));
+  }
+
+  final _invoices = <Result<P2pWalletInvoice, P2pWalletRefusal>>[];
+  final _addresses = <Result<P2pWalletAddress, P2pWalletRefusal>>[];
+
+  /// The invoices asked, with their network, amount and payout key, in order.
+  final List<(RobosatsNetwork, Sats, String)> invoicesAsked = [];
+
+  /// The networks of the addresses asked, in order.
+  final List<RobosatsNetwork> addressesAsked = [];
+
+  /// Adds the answer of a coming [newLightningInvoice].
+  void scriptInvoice(Result<P2pWalletInvoice, P2pWalletRefusal> answer) =>
+      _invoices.add(answer);
+
+  /// Adds the answer of a coming [newReceiveAddress].
+  void scriptAddress(Result<P2pWalletAddress, P2pWalletRefusal> answer) =>
+      _addresses.add(answer);
+
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) async {
+    invoicesAsked.add((network, amount, payout));
+    if (_invoices.isEmpty) throw StateError('No invoice scripted');
+    return _invoices.removeAt(0);
+  }
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) async {
+    addressesAsked.add(network);
+    if (_addresses.isEmpty) throw StateError('No address scripted');
+    return _addresses.removeAt(0);
   }
 
   /// Sets what [findPayment] answers for [paymentHash].

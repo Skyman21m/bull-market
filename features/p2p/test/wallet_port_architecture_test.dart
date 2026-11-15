@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  test('the members of the port are these five, written out', () {
+  test('the members of the port are these seven, written out', () {
     // A member removed from the list would stop being watched without a sign: the list is pinned here, not looped over itself.
     expect(_portMembers, {
       'instantBalance',
@@ -39,7 +39,19 @@ void main() {
       'payInvoice',
       'watchPayment',
       'findPayment',
+      'newLightningInvoice',
+      'newReceiveAddress',
     });
+  });
+
+  test('no file names a member of the payout\'s receiving yet', () {
+    // The wallet's invoice and address for the payout (#90): the pull request of the payout's button adds its one trade use case here.
+    expect(_receiveMembers, {'newLightningInvoice', 'newReceiveAddress'});
+    expect([
+      for (final MapEntry(key: path, value: source) in sources.entries)
+        if ((_Names(_receiveMembers)..visit(_parse(source))).named.isNotEmpty)
+          path,
+    ], isEmpty);
   });
 
   test('only the bond\'s use case names a member of the payment', () {
@@ -374,7 +386,12 @@ const _portMembers = {
   'payInvoice',
   'watchPayment',
   'findPayment',
+  'newLightningInvoice',
+  'newReceiveAddress',
 };
+
+/// The members of the payout's receiving (#90): the wallet's invoice, which creates an order at the swap service, and its address.
+const _receiveMembers = {'newLightningInvoice', 'newReceiveAddress'};
 
 /// The members of the payment, which no file names until the bond's panel (#100, W4) adds its trade use case.
 const _paymentMembers = {'payInvoice', 'watchPayment', 'findPayment'};

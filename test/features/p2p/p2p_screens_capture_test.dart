@@ -2958,4 +2958,17 @@ final class _CaptureWallet implements P2pWalletPort {
       P2pWalletPaymentFound(payment: payment, progress: _progress),
     _ => null,
   });
+
+  // The payout's wallet button (#90) is captured with its own pull request.
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) async => const Err(P2pWalletUnavailable());
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) async => const Err(P2pWalletUnavailable());
 }
