@@ -335,8 +335,9 @@ void main() {
       '« Generate New Address » on the Onchain tab puts a new address in its field',
       (tester) async {
         final (payout, port) = await show(tester, sixSwap);
-        payout.selectKind(PayoutKind.onchain);
+        await tester.tap(find.text('Onchain'));
         await tester.pump();
+        expect(payout.state.form.kind, PayoutKind.onchain);
         port.scriptAddress(const Ok(P2pWalletAddress(walletAddress)));
         final button = find.widgetWithText(TradeButton, 'Generate New Address');
         await tester.ensureVisible(button);
