@@ -98,7 +98,7 @@ void main() {
         final usecase = PayoutFromWalletUsecase(port);
         final ask = askOf(six);
         final result = await usecase.invoice(ask, Sats.fromInt(asked));
-        expect(result, isA<Ok<P2pWalletInvoice, P2pWalletRefusal>>());
+        expect(result, isA<Ok<P2pWalletInvoice, PayoutWalletNoInvoice>>());
         expect(port.invoicesAsked, [
           (
             record.network,
@@ -116,26 +116,58 @@ void main() {
         await PayoutFromWalletUsecase(
           port,
         ).invoice(askOf(six), Sats.fromInt(asked + 1)),
-        isA<Err<P2pWalletInvoice, P2pWalletRefusal>>().having(
+        isA<Err<P2pWalletInvoice, PayoutWalletNoInvoice>>().having(
           (err) => err.failure,
           'failure',
-          isA<P2pWalletServiceRefused>(),
+          isA<PayoutWalletRefusedInvoice>().having(
+            (refused) => refused.refusal,
+            'refusal',
+            isA<P2pWalletServiceRefused>(),
+          ),
         ),
       );
     });
 
+    test('the payout key: one per trade, the same after a failed payout', () {
+      final first = PayoutFromWalletUsecase.payoutKey(askOf(six));
+      expect(
+        first,
+        '${record.network.name}:${record.coordinatorAlias}:${record.orderId}',
+      );
+      expect(PayoutFromWalletUsecase.payoutKey(askOf(sixSwap)), first);
+      expect(PayoutFromWalletUsecase.payoutKey(askOf(fifteenExpired)), first);
+    });
+
     test(
-      'the payout key: one per trade, and a new one for each failed payout',
-      () {
-        final first = PayoutFromWalletUsecase.payoutKey(askOf(six));
+      'at 15, the invoice given before the payout failed is not given again; a new one is, and again at the same step (review of the button, I1)',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.zero))
+          ..scriptInvoice(Ok(made(walletInvoice)))
+          ..scriptInvoice(Ok(made(walletInvoice)))
+          ..scriptInvoice(Ok(made(walletInvoice)))
+          ..scriptInvoice(Ok(made(secondInvoice)))
+          ..scriptInvoice(Ok(made(secondInvoice)));
+        final usecase = PayoutFromWalletUsecase(port);
+        final amount = Sats.fromInt(asked);
+        // At 6, then again at 6 and at 8 (another step), the same invoice while the wallet waits for it.
+        expect(await usecase.invoice(askOf(six), amount), isA<Ok>());
+        expect(await usecase.invoice(askOf(six), amount), isA<Ok>());
+        // The payout failed (15): the wallet, still waiting for it, gives it again, which the coordinator would refuse.
         expect(
-          first,
-          '${record.network.name}:${record.coordinatorAlias}:${record.orderId}',
+          await usecase.invoice(askOf(fifteenExpired), amount),
+          isA<Err<P2pWalletInvoice, PayoutWalletNoInvoice>>().having(
+            (err) => err.failure,
+            'failure',
+            isA<PayoutWalletEarlierInvoiceOpen>(),
+          ),
         );
-        expect(PayoutFromWalletUsecase.payoutKey(askOf(sixSwap)), first);
-        final again = PayoutFromWalletUsecase.payoutKey(askOf(fifteenExpired));
-        expect(again, startsWith('$first:again:'));
-        expect(again, isNot(first));
+        // Once its order ended the wallet makes a new one, given at 15, and again at the same 15.
+        expect(await usecase.invoice(askOf(fifteenExpired), amount), isA<Ok>());
+        expect(await usecase.invoice(askOf(fifteenExpired), amount), isA<Ok>());
+        // Every request for the trade's one key.
+        expect(port.invoicesAsked.map((asked) => asked.$3).toSet(), {
+          PayoutFromWalletUsecase.payoutKey(askOf(six)),
+        });
       },
     );
 
@@ -182,6 +214,40 @@ void main() {
       },
     );
 
+    test(
+      'closed during a request: nothing said after, no text (review of the button, M6)',
+      () async {
+        final gate = Completer<void>();
+        final port = _GatedPort(gate.future)
+          ..scriptInvoice(Ok(made(walletInvoice)));
+        final cubit = PayoutWalletCubit(PayoutFromWalletUsecase(port));
+        final pending = cubit.makeInvoice(askOf(six), Sats.fromInt(asked));
+        await cubit.close();
+        gate.complete();
+        expect(await pending, isNull);
+      },
+    );
+
+    test(
+      'at 15, says the earlier invoice is still open and gives no text',
+      () async {
+        final port = FakeP2pWalletPort(Ok(Sats.zero))
+          ..scriptInvoice(Ok(made(walletInvoice)))
+          ..scriptInvoice(Ok(made(walletInvoice)));
+        final cubit = PayoutWalletCubit(PayoutFromWalletUsecase(port));
+        addTearDown(cubit.close);
+        expect(
+          await cubit.makeInvoice(askOf(six), Sats.fromInt(asked)),
+          walletInvoice.text,
+        );
+        expect(
+          await cubit.makeInvoice(askOf(fifteenExpired), Sats.fromInt(asked)),
+          isNull,
+        );
+        expect(cubit.state, isA<PayoutWalletEarlierStillOpen>());
+      },
+    );
+
     test('says a refusal and gives no text', () async {
       final port = FakeP2pWalletPort(Ok(Sats.zero))
         ..scriptAddress(const Err(P2pWalletNoBitcoinWallet()));
@@ -208,6 +274,8 @@ void main() {
       WidgetTester tester,
       TradeSeen seen, {
       Locale locale = const Locale('en'),
+      PayoutFromWalletUsecase? usecase,
+      bool cancelling = false,
     }) async {
       sender = _Sender();
       final payout = PayoutCubit(
@@ -227,7 +295,9 @@ void main() {
       );
       addTearDown(payout.close);
       final port = FakeP2pWalletPort(Ok(Sats.zero));
-      final wallet = PayoutWalletCubit(PayoutFromWalletUsecase(port));
+      final wallet = PayoutWalletCubit(
+        usecase ?? PayoutFromWalletUsecase(port),
+      );
       addTearDown(wallet.close);
       tester.view
         ..physicalSize = const Size(390, 844) * 3
@@ -247,6 +317,7 @@ void main() {
                   seen: seen,
                   coordinator: coordinatorName,
                   now: readAt,
+                  cancelling: cancelling,
                 ),
                 wallet: PayoutWalletSection.slotFor,
               ),
@@ -360,7 +431,7 @@ void main() {
     });
 
     testWidgets(
-      'another invoice of this amount waiting in the wallet: try again later, or another wallet (review of #150)',
+      'another invoice of this amount waiting in the wallet: another wallet, or later (review of #150)',
       (tester) async {
         final (payout, port) = await show(tester, six);
         port.scriptInvoice(const Err(P2pWalletAnotherInvoiceWaiting()));
@@ -370,7 +441,7 @@ void main() {
         await tester.pump();
         expect(
           find.text(
-            'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.',
+            'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.',
           ),
           findsOneWidget,
         );
@@ -398,17 +469,96 @@ void main() {
     );
 
     testWidgets(
-      'at 15, once the invoice expired, the same button makes a new invoice, for a new key',
+      'one key for the trade: at 15, the wallet\'s earlier invoice still open is said and not put in the field; once it ended, a new one is (review of the button, I1)',
       (tester) async {
-        final (payout, port) = await show(tester, fifteenExpired);
-        expect(generateInvoice(), findsOneWidget);
+        final port = FakeP2pWalletPort(Ok(Sats.zero));
+        // One use case for the run, as the locator registers it.
+        final usecase = PayoutFromWalletUsecase(port);
+        var (payout, _) = await show(tester, six, usecase: usecase);
         port.scriptInvoice(Ok(made(walletInvoice)));
         await tester.ensureVisible(generateInvoice());
         await tester.tap(generateInvoice());
         await tester.pump();
         await tester.pump();
-        expect(port.invoicesAsked.single.$3, contains(':again:'));
         expect(payout.state.form.invoice, walletInvoice.text);
+        // The payout of that invoice failed (15); the wallet still waits for it and gives it again. The page shown afresh, as the trade screen shows the new status.
+        await tester.pumpWidget(const SizedBox.shrink());
+        (payout, _) = await show(tester, fifteenExpired, usecase: usecase);
+        port.scriptInvoice(Ok(made(walletInvoice)));
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.',
+          ),
+          findsOneWidget,
+        );
+        expect(payout.state.form.invoice, isEmpty);
+        // Once that order ended, the wallet makes a new invoice, put in the field.
+        port.scriptInvoice(Ok(made(secondInvoice)));
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        expect(payout.state.form.invoice, secondInvoice.text);
+        expect(port.invoicesAsked.map((asked) => asked.$3).toSet(), {
+          PayoutFromWalletUsecase.payoutKey(askOf(six)),
+        });
+        expect(sender.sent, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'an answer that comes once the user pasted another invoice is dropped (review of the button, P1)',
+      (tester) async {
+        final gate = Completer<void>();
+        final gated = _GatedPort(gate.future)
+          ..scriptInvoice(Ok(made(walletInvoice)));
+        final (payout, _) = await show(
+          tester,
+          six,
+          usecase: PayoutFromWalletUsecase(gated),
+        );
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        payout.editInvoice(secondInvoice.text);
+        await tester.pump();
+        gate.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(payout.state.form.invoice, secondInvoice.text);
+        expect(find.text('Receive Amount: 106,400 sats'), findsNothing);
+      },
+    );
+
+    testWidgets('the buttons are off while a cancel of the trade runs', (
+      tester,
+    ) async {
+      await show(tester, six, cancelling: true);
+      await tester.ensureVisible(generateInvoice());
+      expect(tester.widget<TradeButton>(generateInvoice()).onPressed, isNull);
+    });
+
+    testWidgets(
+      'the buttons are off once the payout given was received (review of the button, M8)',
+      (tester) async {
+        final (payout, port) = await show(tester, six);
+        port.scriptInvoice(Ok(made(walletInvoice)));
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        sender.answer = Ok(PayoutGiven(record, six));
+        await tester.ensureVisible(submit());
+        await tester.tap(submit());
+        await tester.pump();
+        await tester.pump();
+        expect(payout.state.outcomeTold, isTrue);
+        await tester.ensureVisible(generateInvoice());
+        expect(tester.widget<TradeButton>(generateInvoice()).onPressed, isNull);
       },
     );
 
@@ -461,10 +611,13 @@ final class _GatedPort implements P2pWalletPort {
       throw StateError('P2pWalletPort.${invocation.memberName} used');
 }
 
-/// A payout « sent »: recorded, never sent; when [gate] is set it waits for it, then answers « of another trade ».
+/// A payout « sent »: recorded, never sent; [answer] at once when set, or when [gate] is set it waits for it, then answers « of another trade ».
 final class _Sender {
   final List<CheckedPayout> sent = [];
   Future<void>? gate;
+
+  /// The answer when set, at once.
+  Result<PayoutSubmission, PayoutNotSent>? answer;
 
   Future<Result<PayoutSubmission, PayoutNotSent>> call(
     TradeRecord record,
@@ -472,6 +625,7 @@ final class _Sender {
     void Function(PayoutProgress step)? onProgress,
   }) async {
     sent.add(shown);
+    if (answer case final answer?) return answer;
     onProgress?.call(PayoutProgress.unlockingKey);
     if (gate case final gate?) {
       await gate;

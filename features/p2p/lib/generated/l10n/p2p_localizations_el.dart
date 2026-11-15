@@ -2409,5 +2409,9 @@ class P2pLocalizationsEl extends P2pLocalizations {
 
   @override
   String get p2pPayoutWalletAnotherWaiting =>
-      'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.';
+      'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.';
+
+  @override
+  String get p2pPayoutWalletEarlierStillOpen =>
+      'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.';
 }

@@ -14,7 +14,8 @@ import 'payout_panel.dart';
 /// The wallet's slot of the payout panel (#90): on the Lightning tab « Generate Invoice », an invoice of this wallet's Instant payments for exactly the amount the panel shows; on the Onchain tab « Generate New Address », a new address of its Bitcoin wallet.
 ///
 /// The wallet's own words for the same acts (its Receive screen); the reference has no wallet, and with a WebLN one it makes the invoice and submits it by itself on the status change (`TradeBox/index.tsx:336-345`). Here each request is the user's tap, and what the wallet gives goes into the panel's field through [PayoutWalletRequest.use], where the panel checks it as a pasted text and shows what « Submit » gives (for an invoice its amount, its expiry and its network, with the warning when it may expire before the coordinator pays); the user then taps « Submit ». Nothing is submitted by this section.
-/// While the field holds the invoice it put there, it says what the Instant payments wallet receives once the swap fees are taken, in the wallet's words. At status 15 the panel shows the Lightning tab alone, and the same button makes the new invoice.
+/// While the field holds the invoice it put there, it says what the Instant payments wallet receives once the swap fees are taken, in the wallet's words. At status 15 the panel shows the Lightning tab alone: the same button gives a new invoice once the wallet's earlier one for the trade has ended, and while that one is still open it says so, since the coordinator takes only a new invoice, and an invoice from another wallet can be pasted.
+/// An answer that comes once the user changed the field meanwhile is dropped: what the user pasted stays.
 /// Each wait says what it waits for, with the bar, and after 30 s that it still waits; a refusal is said in the wallet's words.
 class PayoutWalletSection extends StatelessWidget {
   final PayoutWalletRequest request;
@@ -92,6 +93,14 @@ class PayoutWalletSection extends StatelessWidget {
               ),
               _Line(l10n.p2pPayoutWalletFeeTaken, muted: true, small: true),
             ],
+          PayoutWalletEarlierStillOpen() when kind == PayoutKind.lightning => [
+            const Gap(BullSpacing.xs),
+            _Line(
+              l10n.p2pPayoutWalletEarlierStillOpen,
+              color: colors.error,
+              live: true,
+            ),
+          ],
           PayoutWalletRefused(kind: final refused, :final refusal)
               when refused == kind =>
             [
@@ -110,18 +119,29 @@ class PayoutWalletSection extends StatelessWidget {
   }
 
   Future<void> _invoice(BuildContext context, Sats amount) async {
+    final before = context.read<PayoutCubit>().state.form.invoice;
     final text = await context.read<PayoutWalletCubit>().makeInvoice(
       request.ask,
       amount,
     );
-    if (text != null && context.mounted) request.use(text);
+    // Dropped once the user changed the field during the wait.
+    if (text != null &&
+        context.mounted &&
+        context.read<PayoutCubit>().state.form.invoice == before) {
+      request.use(text);
+    }
   }
 
   Future<void> _address(BuildContext context) async {
+    final before = context.read<PayoutCubit>().state.form.address;
     final text = await context.read<PayoutWalletCubit>().makeAddress(
       request.ask,
     );
-    if (text != null && context.mounted) request.use(text);
+    if (text != null &&
+        context.mounted &&
+        context.read<PayoutCubit>().state.form.address == before) {
+      request.use(text);
+    }
   }
 
   /// [refusal] in the wallet's words, as the bond's panel says the same swap refusals (#135).

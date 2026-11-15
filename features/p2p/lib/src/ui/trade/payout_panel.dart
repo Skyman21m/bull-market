@@ -66,7 +66,7 @@ final class PayoutWalletRequest {
   /// The text of the tab's field now, so that the slot says what it put there only while the field holds it.
   final String field;
 
-  /// Whether the form may be edited: not while a payout is given, nor once it told something.
+  /// Whether the form may be edited: not while a payout is given, nor once it told something, nor while a cancel of the trade runs.
   final bool editable;
 
   const PayoutWalletRequest({
@@ -366,7 +366,10 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
               PayoutKind.lightning => state.form.invoice,
               PayoutKind.onchain => state.form.address,
             },
-            editable: state.phase is PayoutEditing && !state.outcomeTold,
+            editable:
+                state.phase is PayoutEditing &&
+                !state.outcomeTold &&
+                !widget.request.cancelling,
           ),
         ),
         switch ((kind, onchain)) {

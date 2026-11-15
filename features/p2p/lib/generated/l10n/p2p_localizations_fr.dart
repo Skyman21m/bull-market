@@ -2445,5 +2445,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayoutWalletAnotherWaiting =>
-      'Ce portefeuille attend déjà un paiement de ce montant. Réessayez dans quelques minutes, ou collez une facture d’un autre portefeuille.';
+      'Ce portefeuille attend déjà un paiement de ce montant. Collez une facture d’un autre portefeuille, ou réessayez plus tard.';
+
+  @override
+  String get p2pPayoutWalletEarlierStillOpen =>
+      'La facture précédente de ce portefeuille pour cet échange est encore ouverte, et le coordinateur n’en accepte qu’une nouvelle. Collez une facture d’un autre portefeuille, ou réessayez une fois qu’elle aura expiré.';
 }

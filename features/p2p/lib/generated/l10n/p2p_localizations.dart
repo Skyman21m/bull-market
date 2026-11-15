@@ -3919,11 +3919,17 @@ abstract class P2pLocalizations {
   /// **'This wallet cannot give an address now.'**
   String get p2pPayoutWalletNoAddress;
 
-  /// The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline.
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline, which may be hours away, so no time is said.
   ///
   /// In en, this message translates to:
-  /// **'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.'**
+  /// **'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.'**
   String get p2pPayoutWalletAnotherWaiting;
+
+  /// The wallet's slot of the payout panel (#90): ours, at status 15, when the wallet gives again the invoice it gave for this trade before the payout failed (it still waits for its payment): the coordinator refuses the same invoice (« You must submit a NEW invoice », `api/logics.py:878-880`), so it is not put in the field.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.'**
+  String get p2pPayoutWalletEarlierStillOpen;
 }
 
 class _P2pLocalizationsDelegate

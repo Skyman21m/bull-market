@@ -491,8 +491,8 @@ final class P2pLocator {
         payments.bondPaymentRunning,
       );
     });
-    // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment.
-    locator.registerFactory<PayoutFromWalletUsecase>(
+    // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment; one use case for the run, which remembers at which step it gave each invoice.
+    locator.registerLazySingleton<PayoutFromWalletUsecase>(
       () => PayoutFromWalletUsecase(locator<P2pWalletPort>()),
     );
     locator.registerFactory<PayoutWalletCubit>(

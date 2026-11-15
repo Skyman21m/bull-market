@@ -625,5 +625,6 @@
   "p2pPayoutWalletFeeTaken": "Ces frais seront déduits du montant envoyé",
   "p2pPayoutWalletNoInvoice": "Ce portefeuille ne peut pas créer de facture pour le moment.",
   "p2pPayoutWalletNoAddress": "Ce portefeuille ne peut pas donner d’adresse pour le moment.",
-  "p2pPayoutWalletAnotherWaiting": "Ce portefeuille attend déjà un paiement de ce montant. Réessayez dans quelques minutes, ou collez une facture d’un autre portefeuille."
+  "p2pPayoutWalletAnotherWaiting": "Ce portefeuille attend déjà un paiement de ce montant. Collez une facture d’un autre portefeuille, ou réessayez plus tard.",
+  "p2pPayoutWalletEarlierStillOpen": "La facture précédente de ce portefeuille pour cet échange est encore ouverte, et le coordinateur n’en accepte qu’une nouvelle. Collez une facture d’un autre portefeuille, ou réessayez une fois qu’elle aura expiré."
 }

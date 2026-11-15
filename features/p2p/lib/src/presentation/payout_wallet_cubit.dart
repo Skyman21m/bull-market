@@ -50,6 +50,11 @@ final class PayoutWalletRefused extends PayoutWalletState {
   const PayoutWalletRefused(this.kind, this.refusal);
 }
 
+/// At 15, the wallet gave again the invoice it gave for this trade before the payout failed, which the coordinator refuses: nothing was put in the field.
+final class PayoutWalletEarlierStillOpen extends PayoutWalletState {
+  const PayoutWalletEarlierStillOpen();
+}
+
 /// The wallet's slot of the payout panel (#90): « Generate Invoice » and « Generate New Address », one request at a time, each wait said, and what the wallet gave.
 ///
 /// It submits nothing: what it gives goes into the panel's field, where the panel checks it as a pasted text, and the user taps « Submit ».
@@ -73,8 +78,12 @@ class PayoutWalletCubit extends Cubit<PayoutWalletState> {
     final made = await _wallet.invoice(ask, amount);
     return _end(switch (made) {
       Ok(:final value) => (PayoutWalletMadeInvoice(value), value.bolt11),
-      Err(:final failure) => (
-        PayoutWalletRefused(PayoutKind.lightning, failure),
+      Err(failure: PayoutWalletRefusedInvoice(:final refusal)) => (
+        PayoutWalletRefused(PayoutKind.lightning, refusal),
+        null,
+      ),
+      Err(failure: PayoutWalletEarlierInvoiceOpen()) => (
+        const PayoutWalletEarlierStillOpen(),
         null,
       ),
     });
