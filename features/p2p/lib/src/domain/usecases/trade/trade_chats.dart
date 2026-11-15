@@ -44,6 +44,14 @@ final class TradeChat {
   final List<_Pending> _pending = [];
   int _nextPendingId = 1;
 
+  /// The Nostr copy of each message this robot sent and the coordinator has not yet shown as stored, by its canonical armor, and whether a relay accepted it (#94): « Send again » publishes the same events again only when none did.
+  final Map<String, _NostrCopy> _nostrCopies = {};
+
+  /// The Nostr keys of the trade, the peer's and this robot's, pinned at its first copy, and whether the order changed one since (review of #158).
+  String? _nostrPeerKey;
+  String? _nostrOwnKey;
+  bool _nostrKeysChanged = false;
+
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
   bool _peerConnected = false;
   bool _connected = false;
@@ -223,6 +231,9 @@ final class TradeChat {
 
     // The pending messages the coordinator now shows as stored.
     _pending.removeWhere((p) => page.indexOf(p.message) != null);
+    for (final entry in List.of(_nostrCopies.values)) {
+      if (page.indexOf(entry.message) != null) releaseNostrCopy(entry.message);
+    }
     _remark();
     _moveOffset(page);
   }
@@ -391,6 +402,83 @@ final class TradeChat {
     return null;
   }
 
+  /// Whether the Nostr copies of this trade may go on, given the order's Nostr keys as last read, the peer's [peer] and this robot's [own] (reviews of #158): pins them the first time both are keys a copy can be written to ([isKey]); then yes while they are the pinned ones, and never again for the trade once one differs. A missing key is no change: no copy can be made without it anyway.
+  ///
+  /// Called synchronously when the post leaves, before any composition, so that two messages composed at once cannot go to two different keys.
+  /// What it covers: a coordinator that substitutes a key during the trade. What it does not: one that substitutes it from the first read, and the pins are lost when the app restarts, as the PGP pin is (#139). The official client pins nothing.
+  bool admitNostrKeys({
+    required String? peer,
+    required String? own,
+    required bool Function(String key) isKey,
+  }) {
+    if (_nostrKeysChanged) return false;
+    final pinnedPeer = _nostrPeerKey;
+    final pinnedOwn = _nostrOwnKey;
+    if (pinnedPeer == null || pinnedOwn == null) {
+      if (peer != null && own != null && isKey(peer) && isKey(own)) {
+        _nostrPeerKey = peer;
+        _nostrOwnKey = own;
+      }
+      return true;
+    }
+    if ((peer != null && peer != pinnedPeer) ||
+        (own != null && own != pinnedOwn)) {
+      _nostrKeysChanged = true;
+      return false;
+    }
+    return true;
+  }
+
+  /// The Nostr copy of [message] is being composed, its post having left.
+  void nostrCopyComposing(OutgoingChatMessage message) =>
+      _nostrCopies[message.armored] = _NostrCopy(message);
+
+  /// Keeps [copy], the Nostr copy of [message], once composed, and says whether to publish it: not when its message was refused or never sent meanwhile ([cancelNostrCopy]), nor once a key of the trade changed. Kept for « Send again » unless its message is stored already ([releaseNostrCopy]).
+  bool keepNostrCopy(
+    OutgoingChatMessage message,
+    OutgoingNostrChatMessage copy,
+  ) {
+    final entry = _nostrCopies[message.armored];
+    if (entry == null || _nostrKeysChanged) return false;
+    if (entry.released) {
+      _nostrCopies.remove(message.armored);
+    } else {
+      entry.copy = copy;
+    }
+    return true;
+  }
+
+  /// Whether a Nostr copy of [message] exists or is being composed.
+  bool hasNostrCopy(OutgoingChatMessage message) =>
+      _nostrCopies.containsKey(message.armored);
+
+  /// The Nostr copy of [message] while no relay has accepted it, or `null`: none was made, it is being composed, a relay has it, or a key of the trade changed.
+  OutgoingNostrChatMessage? nostrCopyToPublish(OutgoingChatMessage message) =>
+      switch (_nostrCopies[message.armored]) {
+        _NostrCopy(delivered: false, :final copy?) when !_nostrKeysChanged =>
+          copy,
+        _ => null,
+      };
+
+  /// A relay accepted the Nostr copy of [message].
+  void nostrCopyDelivered(OutgoingChatMessage message) =>
+      _nostrCopies[message.armored]?.delivered = true;
+
+  /// [message] is refused or was never sent: its Nostr copy is let go, and not published if it is still being composed.
+  void cancelNostrCopy(OutgoingChatMessage message) =>
+      _nostrCopies.remove(message.armored);
+
+  /// [message] is stored by the coordinator: its Nostr copy is let go, once published if it is still being composed.
+  void releaseNostrCopy(OutgoingChatMessage message) {
+    final entry = _nostrCopies[message.armored];
+    if (entry == null) return;
+    if (entry.copy == null) {
+      entry.released = true;
+    } else {
+      _nostrCopies.remove(message.armored);
+    }
+  }
+
   /// The pending message [id] is sent again: a copy of it shown later is labelled as sent twice.
   void sentAgain(OutgoingChatMessage message) =>
       _sentAgain.add(message.armored);
@@ -449,6 +537,19 @@ final class TradeChat {
   @override
   String toString() =>
       'TradeChat(${_entries.length} messages, ${_pending.length} pending, $_peerKey)';
+}
+
+final class _NostrCopy {
+  final OutgoingChatMessage message;
+
+  /// `null` while it is composed.
+  OutgoingNostrChatMessage? copy;
+  bool delivered = false;
+
+  /// Its message is stored: published once composed, then let go.
+  bool released = false;
+
+  _NostrCopy(this.message);
 }
 
 final class _Pending {

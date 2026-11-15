@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:p2p/src/domain/coordinator_sessions_port.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
@@ -176,6 +177,32 @@ final class FakeRobotCoordinators implements CoordinatorTransport {
 
 /// The key work of the robots on the test's own isolate: each robot gets the pair the test made for it, and the proofs are the package's.
 final class PairsByRobot implements RobotKeyComputePort {
+  @override
+  Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingNostrChatMessage.composeFor(
+      sender,
+      order: order,
+      coordinator: coordinator,
+      network: network,
+      text: text,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
   @override
   Future<
     Result<

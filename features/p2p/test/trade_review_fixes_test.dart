@@ -186,6 +186,7 @@ void main() {
         P2pLocator.registerTrades(
           locator,
           transport: () => throw StateError('no transport'),
+          relays: () => throw StateError('no relay'),
           clock: DateTime.now,
         );
         expect(

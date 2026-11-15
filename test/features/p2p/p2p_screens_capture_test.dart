@@ -2797,6 +2797,23 @@ final class _DatedRobotKeys implements RobotKeyComputePort {
   @override
   decryptChat(key, jobs, {required now}) =>
       _keys.decryptChat(key, jobs, now: now);
+
+  @override
+  composeNostrChat(
+    sender, {
+    required order,
+    required coordinator,
+    required network,
+    required text,
+    required now,
+  }) => _keys.composeNostrChat(
+    sender,
+    order: order,
+    coordinator: coordinator,
+    network: network,
+    text: text,
+    now: now,
+  );
 }
 
 /// The coordinators of the trade captures: Temple of Sats is [temple], the scripted coordinator of the test seam once the test knows the robots of the key it drew, Lake answers a book of one range order of the test, the others an empty book; every invoice is read by [temple]'s decoder.
