@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:bull_tor/tor.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:p2p/src/data/isolate_robot_key_compute.dart';
 import 'package:p2p/src/data/tor_coordinator_transport.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -69,8 +70,9 @@ void main() {
   }
 
   late OutgoingNostrChatMessage message;
+  late CoordinatorOrder order;
   setUpAll(() async {
-    final order = await readOrder(
+    order = await readOrder(
       orderJson(
         9,
         changes: {
@@ -398,6 +400,176 @@ void main() {
       },
     );
 
+    /// A relay that answers the handshake with [head], written by hand, and keeps the time its connection closed.
+    Future<(ServerSocket, Completer<void>, List<int>)> handRelay(
+      String Function(String key) head,
+    ) async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final closed = Completer<void>();
+      final afterHead = <int>[];
+      server.listen((socket) {
+        final buffer = <int>[];
+        var answered = false;
+        socket.listen(
+          (bytes) {
+            if (answered) {
+              afterHead.addAll(bytes);
+              return;
+            }
+            buffer.addAll(bytes);
+            final text = latin1.decode(buffer);
+            final end = text.indexOf('\r\n\r\n');
+            if (end < 0) return;
+            answered = true;
+            final key =
+                RegExp(
+                  r'sec-websocket-key: *([^\r]+)',
+                  caseSensitive: false,
+                ).firstMatch(text)?.group(1)?.trim() ??
+                '';
+            socket.add(latin1.encode(head(key)));
+            afterHead.addAll(buffer.skip(end + 4));
+          },
+          onDone: () {
+            if (!closed.isCompleted) closed.complete();
+            socket.destroy();
+          },
+          onError: (Object _) {
+            if (!closed.isCompleted) closed.complete();
+          },
+        );
+      });
+      return (server, closed, afterHead);
+    }
+
+    String acceptFor(String key) => base64.encode(
+      sha1
+          .convert(ascii.encode('${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11'))
+          .bytes,
+    );
+
+    String upgradeHead(
+      String key, {
+      String upgrade = 'Upgrade: websocket\r\n',
+      String connection = 'Connection: Upgrade\r\n',
+      String? accept,
+      String extra = '',
+    }) =>
+        'HTTP/1.1 101 Switching Protocols\r\n$upgrade$connection'
+        'Sec-WebSocket-Accept: ${accept ?? acceptFor(key)}\r\n$extra\r\n';
+
+    for (final (name, head, expected) in [
+      (
+        'Upgrade given twice',
+        (String key) => upgradeHead(
+          key,
+          upgrade: 'Upgrade: websocket\r\nUpgrade: websocket\r\n',
+        ),
+        isA<NostrRelayUnreachable>(),
+      ),
+      (
+        'Sec-WebSocket-Accept given twice',
+        (String key) => upgradeHead(
+          key,
+          extra: 'Sec-WebSocket-Accept: ${acceptFor(key)}\r\n',
+        ),
+        isA<NostrRelayUnreachable>(),
+      ),
+      (
+        'a wrong accept key',
+        (String key) => upgradeHead(key, accept: acceptFor('$key-not')),
+        isA<NostrRelayUnreachable>(),
+      ),
+      (
+        'an Upgrade that only contains websocket',
+        (String key) => upgradeHead(key, upgrade: 'Upgrade: websocketx\r\n'),
+        isA<NostrRelayUnreachable>(),
+      ),
+      (
+        'a Connection whose token is not upgrade',
+        (String key) =>
+            upgradeHead(key, connection: 'Connection: keep-upgraded\r\n'),
+        isA<NostrRelayUnreachable>(),
+      ),
+      (
+        'a subprotocol never asked for',
+        (String key) =>
+            upgradeHead(key, extra: 'Sec-WebSocket-Protocol: nostr\r\n'),
+        isA<NostrRelayFailed>(),
+      ),
+    ]) {
+      test(
+        'a handshake answered with $name: refused, nothing written, the connection closed at once (second review of #158)',
+        () async {
+          final (server, closed, afterHead) = await handRelay(head);
+          try {
+            final outcome = await transport().publish(
+              Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+              message,
+              robot: us.sessionKey,
+            );
+            expect(outcome, expected);
+            await closed.future.timeout(const Duration(seconds: 2));
+            expect(afterHead, isEmpty);
+          } finally {
+            await server.close();
+          }
+        },
+      );
+    }
+
+    test(
+      'the handshake falls under the publication\'s deadline: a relay that never answers it is let go when the deadline passes (second review of #158)',
+      () async {
+        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        final closed = Completer<void>();
+        server.listen((socket) {
+          socket.listen(
+            (_) {},
+            onDone: () {
+              if (!closed.isCompleted) closed.complete();
+              socket.destroy();
+            },
+            onError: (Object _) {
+              if (!closed.isCompleted) closed.complete();
+            },
+          );
+        });
+        try {
+          final watch = Stopwatch()..start();
+          final outcome =
+              await transport(
+                deadline: const Duration(milliseconds: 300),
+                attemptTimeout: const Duration(seconds: 10),
+              ).publish(
+                Uri.parse('ws://127.0.0.1:${server.port}/relay/'),
+                message,
+                robot: us.sessionKey,
+              );
+          expect(outcome, isA<NostrRelayTimedOut>());
+          await closed.future.timeout(const Duration(seconds: 2));
+          expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
+        } finally {
+          await server.close();
+        }
+      },
+    );
+
+    test(
+      'the websocket is closed when the deadline passes while it waits for the OKs, not at the end of the attempt (second review of #158)',
+      () async {
+        final fake = await relay(_RelayBehaviour.silent);
+        final watch = Stopwatch()..start();
+        final outcome = await transport(
+          deadline: const Duration(milliseconds: 500),
+          attemptTimeout: const Duration(seconds: 10),
+        ).publish(fake.url, message, robot: us.sessionKey);
+        expect(outcome, isA<NostrRelayTimedOut>());
+        await fake.closed.future.timeout(const Duration(seconds: 3));
+        expect(watch.elapsed, lessThan(const Duration(seconds: 4)));
+      },
+    );
+
     for (final (name, target) in [
       ('another host', (int port) => 'http://localhost:$port/relay/'),
       (
@@ -558,7 +730,7 @@ void main() {
         expect(bodies, ['{"a":1}']);
         expect(
           printed.map(_messageOf),
-          contains('P2P coordinator request hook failed'),
+          contains('P2P coordinator request hook failed (StateError)'),
         );
       },
     );
@@ -590,6 +762,26 @@ void main() {
       expect(calls, 0);
     });
   });
+
+  test(
+    'the copy is composed in the real isolate, which gets the Nostr key pair and gives back the two wraps (second review of #158)',
+    () async {
+      final composed = await const IsolateRobotKeyCompute().composeNostrChat(
+        us.nostrKeyPair(),
+        order: order,
+        coordinator: coordinator('temple'),
+        network: RobosatsNetwork.mainnet,
+        text: 'composed apart',
+        now: DateTime.now(),
+      );
+      final copy = switch (composed) {
+        Ok(value: Ok(:final value)) => value,
+        final other => throw StateError('$other'),
+      };
+      expect(copy.relayMessages, hasLength(2));
+      expect(copy.eventIds.toSet(), hasLength(2));
+    },
+  );
 
   test(
     'the websocket goes through a real SOCKS5 proxy with the client factory of the Tor sessions',

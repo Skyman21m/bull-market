@@ -43,6 +43,10 @@ final class OutgoingNostrChatMessage {
       ]),
       eventIds = List.unmodifiable([for (final wrap in wraps) wrap.id]);
 
+  /// Whether [publicKeyHex] is a Nostr public key a copy can be written to: 64 hexadecimal characters, the X coordinate of a curve point (the all-zero placeholder is not).
+  static bool isNostrPublicKey(String publicKeyHex) =>
+      Nip44.isPublicKey(publicKeyHex);
+
   /// The relay of [coordinator] on [network], `ws://<onion>/relay/` as `getRelayUrl` writes it, or `null` when it has no onion address there.
   static Uri? relayUrl(Coordinator coordinator, RobosatsNetwork network) {
     final onion = coordinator.origins(network).onion;

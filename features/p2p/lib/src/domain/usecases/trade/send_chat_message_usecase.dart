@@ -129,14 +129,16 @@ final class SendChatMessageUsecase {
       pending: null,
       nostrText: text,
     );
-    // A message refused, or never sent, is not pending: its Nostr copy, if one left, will never be published again.
-    if (sent is Err) chat.forgetNostrCopy(message);
+    // A message refused, or never sent, is not pending: its Nostr copy will never be published again, nor at all if it is still being composed.
+    if (sent is Err) chat.cancelNostrCopy(message);
     return sent;
   }
 
   /// Called when the transport writes the post of [message] to the coordinator: publishes its Nostr copy, composed now from [text] when there is none yet, unless a relay already accepted it, it is being composed, or the order changed a Nostr key pinned for the trade.
   ///
-  /// Nothing of it, synchronous or not, reaches the post, the screen or the zone: a failure lets the copy go and logs a fixed word (owner's decision on the review of #158).
+  /// The order's keys are admitted, and pinned at the first copy, here, synchronously, before anything is composed, so that two messages composed at once cannot go to two different keys; they are checked again before the copy is published (review of #158).
+  /// A copy whose message was refused, or never sent, while it was composed is not published.
+  /// Nothing of it, synchronous or not, reaches the post, the screen or the zone: a failure lets the copy go and logs a fixed word with the error's type (owner's decision on the review of #158).
   void _sendOverNostr(
     TradeChat chat,
     OpenTrade trade,
@@ -151,7 +153,11 @@ final class SendChatMessageUsecase {
       final own = order.isMaker
           ? order.makerNostrPublicKeyHex
           : order.takerNostrPublicKeyHex;
-      if (!chat.admitNostrKeys(peer: peer, own: own)) {
+      if (!chat.admitNostrKeys(
+        peer: peer,
+        own: own,
+        isKey: OutgoingNostrChatMessage.isNostrPublicKey,
+      )) {
         log.info('P2P Nostr copy not sent: a Nostr key of the trade changed');
         return;
       }
@@ -174,23 +180,21 @@ final class SendChatMessageUsecase {
           now: _reader.now(),
         );
         if (composed case Ok(value: Ok(value: final copy))) {
-          // The keys it was composed for, valid ones: pinned for the trade at the first copy.
-          if (peer != null && own != null) {
-            chat.pinNostrKeys(peer: peer, own: own);
+          // Not published when its message was refused meanwhile, or when a key of the trade changed meanwhile.
+          if (chat.keepNostrCopy(message, copy)) {
+            await _publishOverNostr(chat, message, copy, trade);
           }
-          chat.keepNostrCopy(message, copy);
-          await _publishOverNostr(chat, message, copy, trade);
         } else {
-          chat.forgetNostrCopy(message);
+          chat.cancelNostrCopy(message);
         }
       });
-    } on Object {
-      chat.forgetNostrCopy(message);
-      log.info('P2P Nostr copy failed');
+    } on Object catch (error) {
+      chat.cancelNostrCopy(message);
+      log.info('P2P Nostr copy failed (${error.runtimeType})');
     }
   }
 
-  /// Runs [work] later, its failure, whatever it is, kept from the zone: the copy is let go and a fixed word logged.
+  /// Runs [work] later, its failure, whatever it is, kept from the zone: the copy is let go and a fixed word logged with the error's type, never its message.
   static void _guarded(
     TradeChat chat,
     OutgoingChatMessage message,
@@ -199,9 +203,9 @@ final class SendChatMessageUsecase {
     unawaited(
       Future(work).then(
         (_) {},
-        onError: (Object _) {
-          chat.forgetNostrCopy(message);
-          log.info('P2P Nostr copy failed');
+        onError: (Object error) {
+          chat.cancelNostrCopy(message);
+          log.info('P2P Nostr copy failed (${error.runtimeType})');
         },
       ),
     );
@@ -350,7 +354,7 @@ final class SendChatMessageUsecase {
       }
       // A page that shows it took it off the pending messages too.
       if (index != null) {
-        chat.forgetNostrCopy(message);
+        chat.releaseNostrCopy(message);
         return Ok(ChatSentStored(index));
       }
       final kept = switch (pending) {

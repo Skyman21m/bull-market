@@ -393,13 +393,69 @@ void main() {
       );
 
       test(
-        'declared, as the reference: when the coordinator refuses the post it received, the copy has left',
+        'declared, as the reference: when the coordinator refuses the post after its copy left, the copy is out',
         () async {
           final (app, record, seen) = await chatting();
           app.coordinator.moveTo(11);
-          final sent = await app.chatSend.send(record, seen, 'Hello');
+          // The post is written, the copy composed and published, and only then is the post served, and refused.
+          app.coordinator.failNext(
+            ScriptedRequest.chatPost,
+            ScriptedFault.servedLate,
+          );
+          final sending = app.chatSend.send(record, seen, 'Hello');
           await pumpEventQueue();
+          expect(app.relays.messages, hasLength(1));
+          app.coordinator.serveLate();
+          expect(await sending, isA<Err<ChatSent, ChatSendRefusal>>());
+        },
+      );
+
+      test(
+        'a refusal known while the copy is composed: the copy is not published (second review of #158)',
+        () async {
+          final (app, record, seen) = await chatting();
+          app.coordinator.moveTo(11);
+          final gate = Completer<void>();
+          app.keys.holdCompose = gate.future;
+          final sent = await app.chatSend.send(record, seen, 'Hello');
           expect(sent, isA<Err<ChatSent, ChatSendRefusal>>());
+          gate.complete();
+          await pumpEventQueue();
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        'nothing leaves when the coordinator cannot be reached: the post was never written (second review of #158)',
+        () async {
+          final (app, record, seen) = await chatting();
+          app.coordinator.failNext(
+            ScriptedRequest.chatPost,
+            ScriptedFault.unreachable,
+          );
+          await app.chatSend.send(record, seen, 'Hello');
+          await pumpEventQueue();
+          expect(app.relays.published, isEmpty);
+        },
+      );
+
+      test(
+        'a message stored while its copy is composed: the copy is published all the same',
+        () async {
+          final (app, record, seen) = await chatting();
+          final gate = Completer<void>();
+          app.keys.holdCompose = gate.future;
+          final sent = await app.chatSend.send(record, seen, 'Hello');
+          expect(
+            sent,
+            isA<Ok<ChatSent, ChatSendRefusal>>().having(
+              (ok) => ok.value,
+              'sent',
+              isA<ChatSentStored>(),
+            ),
+          );
+          gate.complete();
+          await pumpEventQueue();
           expect(app.relays.messages, hasLength(1));
         },
       );
@@ -545,12 +601,32 @@ void main() {
         final (app, record, seen) = await chatting();
         app.keys.composeThrows = StateError('a bug in the composition');
         final errors = <Object>[];
+        final printed = <String>[];
+        final print = debugPrint;
+        debugPrint = (String? line, {int? wrapWidth}) {
+          if (line != null) printed.add(line);
+        };
         Result<ChatSent, ChatSendRefusal>? sent;
-        await runZonedGuarded(() async {
-          sent = await app.chatSend.send(record, seen, 'Hello');
-          await pumpEventQueue();
-        }, (error, _) => errors.add(error));
+        try {
+          await runZonedGuarded(() async {
+            sent = await app.chatSend.send(record, seen, 'Hello');
+            await pumpEventQueue();
+          }, (error, _) => errors.add(error));
+        } finally {
+          debugPrint = print;
+        }
         expect(errors, isEmpty);
+        // The error's type, never its message.
+        expect(
+          printed.where(
+            (line) => line.contains('P2P Nostr copy failed (StateError)'),
+          ),
+          isNotEmpty,
+        );
+        expect(
+          printed.where((line) => line.contains('a bug in the composition')),
+          isEmpty,
+        );
         expect(
           sent,
           isA<Ok<ChatSent, ChatSendRefusal>>().having(
@@ -575,6 +651,33 @@ void main() {
         expect(sent, isA<Ok<ChatSent, ChatSendRefusal>>());
         expect(app.relays.published, isNotEmpty);
       });
+    },
+  );
+
+  test(
+    'two messages composed at once with two different peer keys never go to both: the keys are pinned before composing (second review of #158)',
+    () async {
+      final (app, record, seen) = await chatting();
+      final first = app.coordinator.makerNostrPublicKey;
+      const second =
+          'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5';
+      app.coordinator.makerNostrPublicKey = second;
+      final changed = await readAgain(app, record);
+      final gate = Completer<void>();
+      app.keys.holdCompose = gate.future;
+      await app.chatSend.send(record, seen, 'One');
+      await app.chatSend.send(record, changed, 'Two');
+      gate.complete();
+      await pumpEventQueue();
+      final peers = {
+        for (final p in app.relays.published)
+          ((jsonDecode(p.message.relayMessages.first) as List<dynamic>)[1]
+                  as Map<String, dynamic>)['tags']
+              .toString(),
+      };
+      expect(peers.where((tags) => tags.contains(second)), isEmpty);
+      expect(app.relays.messages.length, lessThanOrEqualTo(1));
+      expect(first, isNotNull);
     },
   );
 }

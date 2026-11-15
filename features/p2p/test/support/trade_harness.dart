@@ -106,6 +106,9 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// When set, each composition of a Nostr copy throws it: a bug in the work, or an error out of its isolate.
   Object? composeThrows;
 
+  /// When set, each composition of a Nostr copy waits for it: a composition in flight, as long as the test wants.
+  Future<void>? holdCompose;
+
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
@@ -140,19 +143,22 @@ final class HarnessKeys implements RobotKeyComputePort {
     required RobosatsNetwork network,
     required String text,
     required DateTime now,
-  }) async => Ok(
-    composeThrows != null
-        ? throw composeThrows ?? StateError('unreachable')
-        : OutgoingNostrChatMessage.composeFor(
-            sender,
-            order: order,
-            coordinator: coordinator,
-            network: network,
-            text: text,
-            now: now,
-            random: Random.secure(),
-          ),
-  );
+  }) async {
+    if (holdCompose case final gate?) await gate;
+    return Ok(
+      composeThrows != null
+          ? throw composeThrows ?? StateError('unreachable')
+          : OutgoingNostrChatMessage.composeFor(
+              sender,
+              order: order,
+              coordinator: coordinator,
+              network: network,
+              text: text,
+              now: now,
+              random: Random.secure(),
+            ),
+    );
+  }
 
   @override
   Future<

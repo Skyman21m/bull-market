@@ -38,9 +38,9 @@ const relayConnectRetries = 1;
 /// The longest message of a relay that is read: an `OK` takes less than 200 characters; anything longer is ignored.
 const maxRelayFrameLength = 4096;
 
-/// The most bytes read from a relay's socket in one publication, frame headers included: about 300 times what two `OK`s take. Beyond, the socket is destroyed and the publication fails (review of #158).
+/// The most bytes read from a relay's socket in one publication after the handshake, frame headers included: about 300 times what two `OK`s take. Beyond, the socket is destroyed and the publication fails (review of #158).
 ///
-/// It bounds memory too: `dart:io` assembles a message whole before it delivers it, so the bytes are counted as they come off the socket, before any assembly; what is held at most is this bound plus one read of the socket.
+/// It bounds memory too: `dart:io` assembles a message whole before it delivers it, so the bytes are counted as they come off the socket, before any assembly; what is held at most is this bound plus one read of the socket, after the handshake's head, which `dart:io` bounds at 1 MiB (`_headerTotalSizeLimit` of its HTTP parser).
 const maxRelayBytes = 64 * 1024;
 
 /// The most messages read from a relay in one publication: two `OK`s are expected, and a relay may add a few notices. Beyond, the publication fails.
@@ -260,7 +260,6 @@ final class TorCoordinatorTransport
     ]);
   }
 
-  /// The counts behind the bounds, for tests.
   /// Publishes the events of [message] on [relay] through a Tor session of [robot], then closes the websocket: see the class doc.
   @override
   Future<NostrRelayOutcome> publish(
@@ -269,7 +268,7 @@ final class TorCoordinatorTransport
     required RobotSessionKey robot,
   }) {
     final completer = Completer<NostrRelayOutcome>();
-    final deadline = _Deadline();
+    final deadline = _Deadline(_deadline);
     final timer = Timer(_deadline, () {
       deadline.expire();
       if (!completer.isCompleted) {
@@ -301,6 +300,7 @@ final class TorCoordinatorTransport
     });
   }
 
+  /// The counts behind the bounds, for tests.
   @visibleForTesting
   TorTransportCounts get countsForTesting => TorTransportCounts(
     places: _robotPlaces,
@@ -451,13 +451,23 @@ final class TorCoordinatorTransport
     OutgoingNostrChatMessage message,
     _Deadline deadline,
   ) async {
-    // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension is offered, compression included (a small compressed message could inflate in memory), and the bytes that come back are counted before `dart:io` assembles a message (review of #158).
+    // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension or subprotocol is accepted, compression included (a small compressed message could inflate in memory), and the bytes that come after it are counted before `dart:io` assembles a message (reviews of #158).
+    // Its head is bounded by `dart:io`, at 1 MiB; each of its steps falls under the shorter of an attempt and what is left of the publication's deadline, so that none outlasts the deadline.
+    // Whatever fails between the request and the end of the checks, the connection is destroyed in the `finally`: no socket is left open with the session.
+    final key = base64.encode(
+      List<int>.generate(16, (_) => _handshakeRandom.nextInt(256)),
+    );
+    Duration budget() {
+      final left = deadline.left;
+      return left < _attemptTimeout ? left : _attemptTimeout;
+    }
+
+    HttpClientRequest? request;
+    Socket? detached;
+    var upgradedOk = false;
     final Socket upgraded;
     try {
-      final key = base64.encode(
-        List<int>.generate(16, (_) => _handshakeRandom.nextInt(256)),
-      );
-      final request = await route.client
+      final opened = await route.client
           .openUrl(
             'GET',
             Uri(
@@ -467,37 +477,46 @@ final class TorCoordinatorTransport
               path: relay.path,
             ),
           )
-          .timeout(_attemptTimeout);
-      request
+          .timeout(budget());
+      request = opened;
+      opened
         ..followRedirects = false
         ..maxRedirects = 0
         ..persistentConnection = false;
-      request.headers
+      opened.headers
         ..set(HttpHeaders.connectionHeader, 'Upgrade')
         ..set(HttpHeaders.upgradeHeader, 'websocket')
         ..set('Sec-WebSocket-Key', key)
         ..set('Sec-WebSocket-Version', '13');
-      final response = await request.close().timeout(_attemptTimeout);
-      final accepted = _isWebSocketUpgrade(response, key);
+      final response = await opened.close().timeout(budget());
       // Taken off the client in every case, so that an answer that is not an upgrade, a redirect among them, is dropped with its connection and never followed.
-      final socket = await response.detachSocket().timeout(_attemptTimeout);
-      if (accepted != null) {
-        socket.destroy();
-        return _RelayAnswered(accepted);
+      final socket = await response.detachSocket().timeout(budget());
+      detached = socket;
+      if (_isWebSocketUpgrade(response, key) case final refused?) {
+        return _RelayAnswered(refused);
       }
+      // The deadline passed while the websocket connected: nothing is written, and the socket is destroyed in the `finally`, inside this future, so that no late write or close can fail outside it.
+      if (deadline.passed) return const _RelayAnswered(NostrRelayTimedOut());
+      upgradedOk = true;
       upgraded = socket;
     } on TimeoutException {
-      return const _RelayConnectFailed(TorConnectFailure.timeout);
+      return deadline.passed
+          ? const _RelayAnswered(NostrRelayTimedOut())
+          : const _RelayConnectFailed(TorConnectFailure.timeout);
     } on HttpException {
       // The service answered, not in HTTP: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
       return const _RelayAnswered(NostrRelayUnreachable());
     } on Exception catch (exception) {
+      if (deadline.passed) return const _RelayAnswered(NostrRelayTimedOut());
       return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
-    }
-    // The deadline passed while the websocket connected: nothing is written, and the socket is closed here, inside this future, so that no late write or close can fail outside it.
-    if (deadline.passed) {
-      upgraded.destroy();
-      return const _RelayAnswered(NostrRelayTimedOut());
+    } finally {
+      if (!upgradedOk) {
+        if (detached != null) {
+          detached.destroy();
+        } else {
+          request?.abort();
+        }
+      }
     }
     final socket = WebSocket.fromUpgradedSocket(
       _CappedSocket(upgraded, maxRelayBytes),
@@ -562,30 +581,38 @@ final class TorCoordinatorTransport
   /// The GUID of RFC 6455 that an accepted handshake hashes with the key.
   static const _webSocketGuid = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
-  /// `null` when [response] accepts the websocket of [key] as RFC 6455 wants it, with no extension; otherwise what the publication gives: a redirect, never followed, is a failure, and anything else that is not an upgrade means no relay there.
+  /// `null` when [response] accepts the websocket of [key] as RFC 6455 wants it, with no extension and no subprotocol, which this client asks for neither; otherwise what the publication gives: a redirect, never followed, is a failure, as is an extension or a subprotocol, and anything else that is not an upgrade means no relay there.
+  ///
+  /// Each header is read whole, a header given twice included, so that nothing here can throw (review of #158): `Upgrade` must be exactly the token `websocket`, `Connection` must hold the token `upgrade`, compared without case, and `Sec-WebSocket-Accept` must be given once, the value of [key].
   static NostrRelayOutcome? _isWebSocketUpgrade(
     HttpClientResponse response,
     String key,
   ) {
-    if (response.isRedirect ||
-        (response.statusCode >= 300 && response.statusCode < 400)) {
-      return const NostrRelayFailed();
+    final status = response.statusCode;
+    if (status >= 300 && status < 400) return const NostrRelayFailed();
+    if (status != HttpStatus.switchingProtocols) {
+      return const NostrRelayUnreachable();
     }
     final headers = response.headers;
-    final upgrade = headers.value(HttpHeaders.upgradeHeader)?.toLowerCase();
-    final connection = headers[HttpHeaders.connectionHeader] ?? const [];
+    List<String> tokensOf(String name) => [
+      for (final value in headers[name] ?? const <String>[])
+        for (final token in value.split(','))
+          if (token.trim().isNotEmpty) token.trim().toLowerCase(),
+    ];
+    final upgrade = tokensOf(HttpHeaders.upgradeHeader);
+    final accept = headers['Sec-WebSocket-Accept'] ?? const <String>[];
     final expected = base64.encode(
       sha1.convert(ascii.encode('$key$_webSocketGuid')).bytes,
     );
-    if (response.statusCode != HttpStatus.switchingProtocols ||
-        upgrade != 'websocket' ||
-        !connection.any((value) => value.toLowerCase().contains('upgrade')) ||
-        headers.value('Sec-WebSocket-Accept') != expected) {
+    if (upgrade.length != 1 ||
+        upgrade.single != 'websocket' ||
+        !tokensOf(HttpHeaders.connectionHeader).contains('upgrade') ||
+        accept.length != 1 ||
+        accept.single.trim() != expected) {
       return const NostrRelayUnreachable();
     }
-    // An extension this client did not offer, compression above all, is refused.
-    if (headers['Sec-WebSocket-Extensions'] case final extensions?
-        when extensions.any((value) => value.trim().isNotEmpty)) {
+    if (tokensOf('Sec-WebSocket-Extensions').isNotEmpty ||
+        tokensOf('Sec-WebSocket-Protocol').isNotEmpty) {
       return const NostrRelayFailed();
     }
     return null;
@@ -642,8 +669,9 @@ final class TorCoordinatorTransport
       try {
         request.onSending?.call();
         // The hook is the caller's: a bug in it must neither stop this request nor reach the zone (owner's decision on the review of #158).
-      } on Object {
-        log.info('P2P coordinator request hook failed');
+      } on Object catch (error) {
+        // The type only, never the message, which could quote a value.
+        log.info('P2P coordinator request hook failed (${error.runtimeType})');
       }
     }
 
@@ -1318,9 +1346,22 @@ final class _RouteException implements Exception {
 
 /// The overall deadline of one request: once it passes, it cancels the attempt in progress and allows no other.
 final class _Deadline {
+  /// The whole time of a relay's publication, for [left]; `null` for a request, which needs only [passed].
+  final Duration? _total;
+  final Stopwatch _clock = Stopwatch()..start();
   bool passed = false;
   CancelToken? _current;
   WebSocket? _socket;
+
+  _Deadline([this._total]);
+
+  /// What is left of the publication's time.
+  Duration get left {
+    final total = _total;
+    if (passed || total == null) return Duration.zero;
+    final left = total - _clock.elapsed;
+    return left.isNegative ? Duration.zero : left;
+  }
 
   void expire() {
     passed = true;
