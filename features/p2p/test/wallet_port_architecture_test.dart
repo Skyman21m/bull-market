@@ -44,15 +44,23 @@ void main() {
     });
   });
 
-  test('no file names a member of the payout\'s receiving yet', () {
-    // The wallet's invoice and address for the payout (#90): the pull request of the payout's button adds its one trade use case here.
-    expect(_receiveMembers, {'newLightningInvoice', 'newReceiveAddress'});
-    expect([
-      for (final MapEntry(key: path, value: source) in sources.entries)
-        if ((_Names(_receiveMembers)..visit(_parse(source))).named.isNotEmpty)
-          path,
-    ], isEmpty);
-  });
+  test(
+    'only the payout\'s use case names a member of the payout\'s receiving',
+    () {
+      // The wallet's invoice and address for the payout (#90): `PayoutFromWalletUsecase` is the one trade use case that asks them.
+      expect(_receiveMembers, {'newLightningInvoice', 'newReceiveAddress'});
+      expect(
+        [
+          for (final MapEntry(key: path, value: source) in sources.entries)
+            if ((_Names(
+              _receiveMembers,
+            )..visit(_parse(source))).named.isNotEmpty)
+              path,
+        ],
+        ['lib/src/domain/usecases/trade/payout_from_wallet_usecase.dart'],
+      );
+    },
+  );
 
   test('only the bond\'s use case names a member of the payment', () {
     // The bond's panel (#100, W4): `PayBondFromWalletUsecase` is the one trade use case that pays, follows and finds a payment; the escrow's (#97) adds its own here.

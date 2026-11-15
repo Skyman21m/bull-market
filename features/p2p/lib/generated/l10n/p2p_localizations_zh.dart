@@ -2471,4 +2471,44 @@ class P2pLocalizationsZh extends P2pLocalizations {
 
   @override
   String get p2pChatSaveMessagesTooltip => 'Save messages as a JSON file';
+
+  @override
+  String get p2pPayoutWalletGenerateInvoice => 'Generate Invoice';
+
+  @override
+  String get p2pPayoutWalletGenerateAddress => 'Generate New Address';
+
+  @override
+  String get p2pPayoutWalletMakingInvoice => 'Generating the invoice…';
+
+  @override
+  String get p2pPayoutWalletMakingAddress => 'Generating a new address…';
+
+  @override
+  String get p2pPayoutWalletStillWaiting => 'Still waiting for the wallet.';
+
+  @override
+  String p2pPayoutWalletReceived(String amount) {
+    return 'Receive Amount: $amount sats';
+  }
+
+  @override
+  String get p2pPayoutWalletFeeTaken =>
+      'This fee will be deducted from the amount sent';
+
+  @override
+  String get p2pPayoutWalletNoInvoice =>
+      'This wallet cannot create an invoice now.';
+
+  @override
+  String get p2pPayoutWalletNoAddress =>
+      'This wallet cannot give an address now.';
+
+  @override
+  String get p2pPayoutWalletAnotherWaiting =>
+      'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.';
+
+  @override
+  String get p2pPayoutWalletEarlierStillOpen =>
+      'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.';
 }

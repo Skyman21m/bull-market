@@ -62,6 +62,7 @@ import 'domain/usecases/trade/chat_step_action_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
+import 'domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
 import 'domain/usecases/trade/export_chat_usecase.dart';
 import 'domain/usecases/trade/send_chat_message_usecase.dart';
@@ -84,6 +85,7 @@ import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
+import 'presentation/payout_wallet_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -491,6 +493,13 @@ final class P2pLocator {
         payments.bondPaymentRunning,
       );
     });
+    // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment; one use case for the run, which remembers at which step it gave each invoice.
+    locator.registerLazySingleton<PayoutFromWalletUsecase>(
+      () => PayoutFromWalletUsecase(locator<P2pWalletPort>()),
+    );
+    locator.registerFactory<PayoutWalletCubit>(
+      () => PayoutWalletCubit(locator()),
+    );
     locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(
       (network, _) => ActiveTradesCubit(
         network,

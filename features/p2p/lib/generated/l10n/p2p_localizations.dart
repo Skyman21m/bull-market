@@ -4002,6 +4002,72 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Save messages as a JSON file'**
   String get p2pChatSaveMessagesTooltip;
+
+  /// The wallet's slot of the payout panel (#90): the button of the Lightning tab, the wallet's own words for the same act (`receiveGenerateInvoice`, « Generate Invoice » / « Générer une facture »); the reference has no wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Invoice'**
+  String get p2pPayoutWalletGenerateInvoice;
+
+  /// The wallet's slot of the payout panel (#90): the button of the Onchain tab, the wallet's own words (`receiveGenerateAddress`, « Generate New Address » / « Générer une nouvelle adresse »).
+  ///
+  /// In en, this message translates to:
+  /// **'Generate New Address'**
+  String get p2pPayoutWalletGenerateAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, what the wait for the wallet's invoice waits for, with the bar (the owner's rule: every wait says what it waits for).
+  ///
+  /// In en, this message translates to:
+  /// **'Generating the invoice…'**
+  String get p2pPayoutWalletMakingInvoice;
+
+  /// The wallet's slot of the payout panel (#90): ours, the wait for a new address of the wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating a new address…'**
+  String get p2pPayoutWalletMakingAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, after 30 s of a wait for the wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Still waiting for the wallet.'**
+  String get p2pPayoutWalletStillWaiting;
+
+  /// The wallet's slot of the payout panel (#90): what arrives in Instant payments once the invoice is paid, the swap fees taken; the wallet's label (`receiveReceiveAmount`, « Receive Amount » / « Montant à recevoir »).
+  ///
+  /// In en, this message translates to:
+  /// **'Receive Amount: {amount} sats'**
+  String p2pPayoutWalletReceived(String amount);
+
+  /// The wallet's slot of the payout panel (#90): the wallet's own sentence under its receive fees (`receiveFeeExplanation`, « This fee will be deducted from the amount sent » / « Ces frais seront déduits du montant envoyé »).
+  ///
+  /// In en, this message translates to:
+  /// **'This fee will be deducted from the amount sent'**
+  String get p2pPayoutWalletFeeTaken;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet cannot give an invoice for another reason than the swap's limits or its server (no Instant payments wallet, a wallet that cannot be read, an answer that does not fit).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet cannot create an invoice now.'**
+  String get p2pPayoutWalletNoInvoice;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet cannot give a new address of its Bitcoin wallet (none, or it cannot be read).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet cannot give an address now.'**
+  String get p2pPayoutWalletNoAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline, which may be hours away, so no time is said.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.'**
+  String get p2pPayoutWalletAnotherWaiting;
+
+  /// The wallet's slot of the payout panel (#90): ours, at status 15, when the wallet gives again the invoice it gave for this trade before the payout failed (it still waits for its payment): the coordinator refuses the same invoice (« You must submit a NEW invoice », `api/logics.py:878-880`), so it is not put in the field.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.'**
+  String get p2pPayoutWalletEarlierStillOpen;
 }
 
 class _P2pLocalizationsDelegate

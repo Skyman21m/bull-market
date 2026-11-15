@@ -376,6 +376,26 @@ void main() {
     );
 
     test(
+      'one key for a trade through a failed payout: the same invoice while its order waits, a new one once it ended (review of the button, I1)',
+      () async {
+        // The key the payout panel sends, `PayoutFromWalletUsecase.payoutKey`: the trade's, the same at 6, 8 and 15.
+        const trade = 'mainnet:temple:42';
+        // « Generate Invoice » at 6 or 8.
+        final first = invoiceOf(await make(payout: trade));
+        // The payout failed (15) while the order still waits: the wallet gives its invoice again, which the coordinator refuses (`api/logics.py:878-880`), so the panel does not put it in the field and says it is still open.
+        expect(invoiceOf(await make(payout: trade)).bolt11, first.bolt11);
+        expect(swaps.created, hasLength(1));
+        // Once that order ended, a new order and a new invoice for the same key.
+        swaps.records.updateAll(
+          (_, record) => _with(record, status: OrderSwapLocalStatus.expired),
+        );
+        final second = invoiceOf(await make(payout: trade));
+        expect(second.bolt11, isNot(first.bolt11));
+        expect(swaps.created, hasLength(2));
+      },
+    );
+
+    test(
       'is never given to another payout after a restart either (review of #150, P2)',
       () async {
         final a = invoiceOf(await make(payout: 'trade-A'));

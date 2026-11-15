@@ -2506,4 +2506,45 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pChatSaveMessagesTooltip =>
       'Enregistrer les messages dans un fichier JSON';
+
+  @override
+  String get p2pPayoutWalletGenerateInvoice => 'Générer une facture';
+
+  @override
+  String get p2pPayoutWalletGenerateAddress => 'Générer une nouvelle adresse';
+
+  @override
+  String get p2pPayoutWalletMakingInvoice => 'Création de la facture…';
+
+  @override
+  String get p2pPayoutWalletMakingAddress => 'Création d’une nouvelle adresse…';
+
+  @override
+  String get p2pPayoutWalletStillWaiting =>
+      'Toujours en attente du portefeuille.';
+
+  @override
+  String p2pPayoutWalletReceived(String amount) {
+    return 'Montant à recevoir : $amount sats';
+  }
+
+  @override
+  String get p2pPayoutWalletFeeTaken =>
+      'Ces frais seront déduits du montant envoyé';
+
+  @override
+  String get p2pPayoutWalletNoInvoice =>
+      'Ce portefeuille ne peut pas créer de facture pour le moment.';
+
+  @override
+  String get p2pPayoutWalletNoAddress =>
+      'Ce portefeuille ne peut pas donner d’adresse pour le moment.';
+
+  @override
+  String get p2pPayoutWalletAnotherWaiting =>
+      'Ce portefeuille attend déjà un paiement de ce montant. Collez une facture d’un autre portefeuille, ou réessayez plus tard.';
+
+  @override
+  String get p2pPayoutWalletEarlierStillOpen =>
+      'La facture précédente de ce portefeuille pour cet échange est encore ouverte, et le coordinateur n’en accepte qu’une nouvelle. Collez une facture d’un autre portefeuille, ou réessayez une fois qu’elle aura expiré.';
 }
