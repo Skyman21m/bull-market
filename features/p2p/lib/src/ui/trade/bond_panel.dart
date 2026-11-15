@@ -10,6 +10,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_status.dart';
+import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
@@ -28,6 +29,9 @@ import 'wallet_payment_section.dart';
 class BondPanel extends StatelessWidget {
   final TradeRecord record;
   final WaitingForTakerBond status;
+
+  /// [status] as the screen shows it, which the wallet's slot is given.
+  final TradeSeen seen;
   final WalletPaymentBuilder? walletPayment;
 
   /// Whether the order is in bitcoin, a swap into Lightning, as the order read says.
@@ -43,6 +47,7 @@ class BondPanel extends StatelessWidget {
     super.key,
     required this.record,
     required this.status,
+    required this.seen,
     required this.walletPayment,
     required this.now,
     this.swap = false,
@@ -60,12 +65,16 @@ class BondPanel extends StatelessWidget {
     final request = WalletPaymentRequest(
       record: record,
       status: status,
+      seen: seen,
       amount: status.bond.orderAmount,
+      invoiceExpired: invoiceExpiredAt(status.bond, now),
     );
     final invoice = status.bond;
-    final wallet = payable && !invoiceExpiredAt(invoice, now)
+    // Past the invoice's end the wallet offers nothing more, but a payment it made or is making is still said (the slot decides).
+    final slot = payable
         ? WalletPaymentSection.offer(context, walletPayment, request)
         : null;
+    final wallet = slot?.child;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -84,15 +93,12 @@ class BondPanel extends StatelessWidget {
             UnusableInvoice() => '',
           }),
           invoice: invoice,
-          initiallyOpen: wallet == null,
+          initiallyOpen: wallet == null || slot?.othersOpen == true,
+          opensNow: slot?.othersOpen ?? false,
+          // This wallet holds a payment of the invoice: the other way offers it no more.
+          heldByWallet: slot?.othersHidden ?? false,
           payable: payable,
           now: now,
-        ),
-        const Gap(BullSpacing.md),
-        Text(
-          l10n.p2pTradeHoldInvoiceBond,
-          textAlign: TextAlign.center,
-          style: text.labelMedium?.copyWith(color: colors.textMuted),
         ),
       ],
     );
@@ -103,6 +109,12 @@ class BondPanel extends StatelessWidget {
 class _OtherWallet extends StatefulWidget {
   final StepInvoice invoice;
   final bool initiallyOpen;
+
+  /// Whether the wallet's slot asks it open now: it opens when this turns true, and stays as the user leaves it.
+  final bool opensNow;
+
+  /// Whether this wallet is paying the invoice, or paid it: the section closes when this turns true, and offers neither the QR code nor the copy (the facts and « See Compatible Wallets » stay), so that nothing invites a second payment.
+  final bool heldByWallet;
   final bool payable;
   final DateTime now;
 
@@ -110,6 +122,8 @@ class _OtherWallet extends StatefulWidget {
     super.key,
     required this.invoice,
     required this.initiallyOpen,
+    this.opensNow = false,
+    this.heldByWallet = false,
     required this.payable,
     required this.now,
   });
@@ -120,6 +134,14 @@ class _OtherWallet extends StatefulWidget {
 
 class _OtherWalletState extends State<_OtherWallet> {
   late bool _open = widget.initiallyOpen;
+
+  @override
+  void didUpdateWidget(_OtherWallet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.opensNow && !oldWidget.opensNow) _open = true;
+    if (widget.heldByWallet && !oldWidget.heldByWallet) _open = false;
+  }
+
   bool _shownAnyway = false;
   bool _copied = false;
   Timer? _copiedTimer;
@@ -146,7 +168,7 @@ class _OtherWalletState extends State<_OtherWallet> {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final invoice = widget.invoice;
-    final display = widget.payable
+    final display = widget.payable && !widget.heldByWallet
         ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway, now: widget.now)
         : InvoiceDisplay.hidden;
     return DecoratedBox(
@@ -236,6 +258,13 @@ class _OtherWalletState extends State<_OtherWallet> {
                       ),
                     ],
                   ],
+                  // The reference's line on a hold invoice, which holds for another Lightning wallet only (this wallet pays through a swap service: its confirmation says what happens then).
+                  const Gap(BullSpacing.md),
+                  Text(
+                    l10n.p2pTradeHoldInvoiceBond,
+                    textAlign: TextAlign.center,
+                    style: text.labelMedium?.copyWith(color: colors.textMuted),
+                  ),
                 ],
               ),
             ),

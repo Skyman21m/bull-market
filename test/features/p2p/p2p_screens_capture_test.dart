@@ -1598,6 +1598,213 @@ void main() {
     );
   }
 
+  // The bond paid from this wallet (#100), on mainnet, the same path as the trade screen's below with a wallet's port the test writes (`_CaptureWallet`): its balance, its quotes and its payments are the test's, made of demonstration figures; nothing reaches a swap service and no money moves.
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the bond paid from this wallet in ${locale.languageCode}',
+      skip: directory == null,
+      timeout: const Timeout(Duration(minutes: 15)),
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(
+          _privacyChannel,
+          (call) async => true,
+        );
+        addTearDown(
+          () => messenger.setMockMethodCallHandler(_privacyChannel, null),
+        );
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        Future<void> waitFor(Finder finder) async {
+          for (var i = 0; i < 1200 && finder.evaluate().isEmpty; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await tester.pump(const Duration(milliseconds: 200));
+          }
+          if (finder.evaluate().isEmpty) throw StateError('not shown: $finder');
+          await settle();
+        }
+
+        final l10n = lookupP2pLocalizations(locale);
+        final now = DateTime.utc(2026, 11, 14, 9);
+        final transport = _TradeTransport(now);
+        final wallet = _CaptureWallet(now);
+
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        addTearDown(wallet.close);
+        setUpP2pForTesting(
+          locator,
+          transport: transport,
+          torStates: () => tor.stream,
+          clock: () => now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          bolt11Decoder: transport,
+          wallet: wallet,
+        );
+        await tester.pumpWidget(
+          _App(
+            locale: locale,
+            locator: locator,
+            network: RobosatsNetwork.mainnet,
+          ),
+        );
+        await settle();
+
+        await tester.tap(find.text(l10n.p2pNavGarage));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageWelcomeStart));
+        await settle();
+        await tester.tap(find.text(l10n.p2pGarageOnboardingGenerateKey));
+        await settle();
+        await tester.pump(const Duration(seconds: 6));
+        await settle();
+        final shownKey = find.byWidgetPredicate(
+          (widget) => widget is Text && (widget.data ?? '').startsWith('robo1'),
+        );
+        await waitFor(shownKey);
+        final key = switch (GarageKey.parse(
+          tester.widget<Text>(shownKey).data ?? '',
+        )) {
+          Ok(:final value) => value,
+          Err() => throw StateError('not a key'),
+        };
+        final identities = [
+          for (var i = 0; i < 12; i++)
+            if (key.deriveIdentity(i) case Ok(:final value)) value,
+        ];
+        final coordinator = ScriptedCoordinator(
+          network: RobosatsNetwork.mainnet,
+          robots: identities,
+          clock: () => now,
+        );
+        transport.temple = coordinator;
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        tor.add(P2pTorState.ready);
+        await settle();
+
+        Future<void> nextRead() async {
+          for (var i = 0; i < 12; i++) {
+            await tester.pump(const Duration(seconds: 1));
+            await settle();
+          }
+        }
+
+        // The take, then the panel at 3.
+        await tester.tap(find.text(l10n.p2pNavOffers));
+        await settle();
+        final row = find.text('100 EUR', findRichText: true);
+        await waitFor(row);
+        await tester.tap(row);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await tester.tap(find.text(l10n.p2pTakeOrder));
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonDone));
+        await waitFor(find.text(l10n.p2pPayWithThisWallet));
+        await capture('paiement-pret');
+
+        // A refusal first (the service's minimum), then the confirmation.
+        wallet.refuseNext = true;
+        await tester.tap(find.text(l10n.p2pPayWithThisWallet));
+        await settle();
+        await capture('paiement-refus');
+        await tester.ensureVisible(find.text(l10n.p2pPayWithThisWallet));
+        await settle();
+        await tester.tap(find.text(l10n.p2pPayWithThisWallet));
+        await settle();
+        final parts = l10n.p2pPayConfirm('§').split('§');
+        final pay = find.textContaining(
+          RegExp(
+            '^${RegExp.escape(parts.first)}.+${RegExp.escape(parts.last)}\$',
+          ),
+        );
+        await waitFor(pay);
+        await capture('paiement-confirmation');
+        await tester.ensureVisible(pay.last);
+        await settle();
+        await capture('paiement-confirmation-bas');
+
+        // The payment, held until it is captured as sending.
+        await tester.tap(pay.last);
+        await settle();
+        await capture('paiement-envoi');
+        wallet.finishPayment();
+        await settle();
+        await nextRead();
+        await capture('paiement-envoye');
+
+        // At 3, a swap service that could not pay the invoice (demonstration progress), then back to the payment held.
+        wallet.progress(const P2pWalletPaymentRefundPending());
+        await settle();
+        await capture('paiement-service-n-a-pas-paye');
+        wallet.progress(const P2pWalletPaymentPending());
+        await settle();
+
+        // The coordinator sees the bond locked: 6, the bond held by the swap service.
+        final taker = identities.firstWhere(coordinator.holdsPreTake);
+        coordinator.lockBond(taker);
+        wallet.progress(const P2pWalletPaymentPending());
+        await nextRead();
+        await capture('paiement-caution-bloquee');
+
+        // The bond lost by a cancel at 6: the coordinator keeps it, and the wallet reports the invoice settled (demonstration progress).
+        await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await tester.tap(find.text(l10n.p2pCommonCancel).last);
+        await settle();
+        await tester.tap(find.text(l10n.p2pTradeConfirmCancel));
+        await settle();
+        await nextRead();
+        wallet.progress(const P2pWalletPaymentPaid());
+        await settle();
+        await capture('paiement-caution-conservee');
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(seconds: 3)),
+        );
+        await tester.pump(const Duration(seconds: 11));
+      },
+    );
+  }
+
   // The take and the trade screen (#88), on mainnet, the whole path of the app: a Garage Key drawn in the Garage (so recorded as drawn here, which a take needs), the book, the order details with « Take Order », « Store your garage key », the take for a fresh robot of the key, then each panel as the coordinator moves the order on.
   // Temple of Sats is the `ScriptedCoordinator` of the test seam, which plays the reference backend with invoices made by the tests; the other coordinators answer an empty book, but Lake, whose book holds one range order of the test for the amount field. Nothing leaves the test, no money moves, and the key, drawn in memory, is never captured.
   for (final locale in const [Locale('fr'), Locale('en')]) {
@@ -2042,4 +2249,79 @@ class _App extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The wallet's port of the captures of the bond paid from this wallet: demonstration figures, no wallet, no swap service, no money.
+///
+/// The balance is 50,000 sats; a quote asks the invoice's amount and 123 sats of the service, and a network fee of 27; the first quote after [refuseNext] is the service's minimum of 25,000 sats; a payment waits for [finishPayment], then is sent, and [progress] moves it on.
+final class _CaptureWallet implements P2pWalletPort {
+  final DateTime now;
+  bool refuseNext = false;
+  Completer<void>? _paying;
+  P2pWalletPayment? _payment;
+  P2pWalletPaymentProgress _progress = const P2pWalletPaymentSent();
+  final _changes = StreamController<P2pWalletPaymentProgress>.broadcast();
+
+  _CaptureWallet(this.now);
+
+  void finishPayment() => _paying?.complete();
+
+  void progress(P2pWalletPaymentProgress progress) {
+    _progress = progress;
+    _changes.add(progress);
+  }
+
+  Future<void> close() => _changes.close();
+
+  @override
+  Stream<Result<Sats, P2pWalletRefusal>> instantBalance(network) =>
+      Stream.value(Ok(Sats.fromInt(50000)));
+
+  @override
+  Future<Result<P2pWalletQuote, P2pWalletRefusal>> quote(invoice) async {
+    if (refuseNext) {
+      refuseNext = false;
+      return Err(P2pWalletUnderMinimum(minimum: Sats.fromInt(25000)));
+    }
+    return Ok(
+      P2pWalletQuote(
+        invoice: invoice,
+        payin: Sats(invoice.amount.value + BigInt.from(123)),
+        networkFee: Sats.fromInt(27),
+        balance: Sats.fromInt(50000),
+        quotedAt: now,
+      ),
+    );
+  }
+
+  @override
+  Future<Result<P2pWalletPayment, P2pWalletRefusal>> payInvoice(
+    invoice, {
+    required P2pWalletQuote accepted,
+  }) async {
+    final paying = _paying = Completer<void>();
+    await paying.future;
+    final payment = _payment = P2pWalletPayment(
+      id: 'demonstration',
+      paymentHash: invoice.paymentHash,
+    );
+    return Ok(payment);
+  }
+
+  @override
+  Stream<Result<P2pWalletPaymentProgress, P2pWalletRefusal>> watchPayment(
+    payment,
+  ) async* {
+    yield Ok(_progress);
+    yield* _changes.stream.map(Ok.new);
+  }
+
+  @override
+  Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
+    paymentHash,
+  ) async => Ok(switch (_payment) {
+    final payment? when payment.paymentHash == paymentHash =>
+      P2pWalletPaymentFound(payment: payment, progress: _progress),
+    _ => null,
+  });
 }
