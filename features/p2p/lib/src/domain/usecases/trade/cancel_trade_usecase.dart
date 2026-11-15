@@ -7,6 +7,7 @@ import '../../trade/trade_answer.dart';
 import '../../trade/trade_cancel.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
+import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
@@ -76,25 +77,31 @@ final class CancelTradeUsecase {
       record.network,
       trade.coordinator,
       record.orderId,
-      () async {
+      // An action of the trade: the watch sends no read while it runs (#141).
+      () => _reader.duringAction(record, () async {
         final requests = _limiter.open(trade.robot.identity.sessionKey);
         try {
+          final cancelTimes = _reader.request();
           final sent = await requests.send(
             record.network,
             trade.coordinator,
-            () => _client.cancelOrder(
-              identity: trade.robot.identity,
-              lastRead: lastRead,
+            () => _reader.timed(
+              cancelTimes,
+              () => _client.cancelOrder(
+                identity: trade.robot.identity,
+                lastRead: lastRead,
+              ),
             ),
             isBusy: _answeredBusy,
           );
           var current = trade;
           P2pFailure? problem;
-          Future<void> keep(TradeAnswer answer) async {
+          Future<void> keep(TradeAnswer answer, RequestTimes request) async {
             final step = await _reader.advance(
               current,
               answer,
               at: _reader.now(),
+              request: request,
             );
             current = step.trade;
             problem ??= step.recordProblem;
@@ -103,21 +110,23 @@ final class CancelTradeUsecase {
           // The cancel's own answer first, then a read after it.
           switch (sent) {
             case Ok(value: Ok(value: OrderCancelEnded())):
-              await keep(const TradeOrderCancelled());
+              await keep(const TradeOrderCancelled(), cancelTimes);
             case Ok(value: Ok(value: OrderCancelAccepted(:final order))):
-              await keep(TradeOrderRead(order));
+              await keep(TradeOrderRead(order), cancelTimes);
             case Ok(value: Err()) || Err():
               break;
           }
+          final readAfter = _reader.request();
           final read = await _reader.readOrder(
             requests,
             record,
             trade.robot,
             trade.coordinator,
+            times: readAfter,
           );
           if (read case Ok(value: final result)) {
             if (TradeAnswer.ofRead(result) case final answer?) {
-              await keep(answer);
+              await keep(answer, readAfter);
             }
           }
           return Ok(switch (sent) {
@@ -150,7 +159,7 @@ final class CancelTradeUsecase {
         } finally {
           requests.close();
         }
-      },
+      }),
     );
   }
 

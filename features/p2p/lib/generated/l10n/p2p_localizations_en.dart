@@ -2041,6 +2041,11 @@ class P2pLocalizationsEn extends P2pLocalizations {
   }
 
   @override
+  String p2pPayReadSuperseded(String coordinator) {
+    return 'Could not read the order from $coordinator just now. Nothing was paid.';
+  }
+
+  @override
   String get p2pPayStillSending =>
       'Still sending. This can take a few minutes.';
 
