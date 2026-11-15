@@ -26,8 +26,9 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
-  /// What a screen reader reads of the title, when it differs from it (a title that starts with an emoji, whose name it would read first); `null` for the title itself.
+  /// What a screen reader reads of the title and of the warning, when they differ from them (a text that starts with an emoji, whose name it would read first); `null` for the text itself.
   final String? semanticTitle;
+  final String? semanticWarning;
 
   const TradeDialogBody({
     super.key,
@@ -39,6 +40,7 @@ class TradeDialogBody extends StatelessWidget {
     required this.onGo,
     this.backFirst = false,
     this.semanticTitle,
+    this.semanticWarning,
     this.warning,
     this.afterWarning,
     this.note,
@@ -70,11 +72,16 @@ class TradeDialogBody extends StatelessWidget {
           ),
           if (warning case final warning?) ...[
             const Gap(BullSpacing.md),
-            Text(
-              warning,
-              style: styles.bodyMedium?.copyWith(
-                color: colors.warning,
-                fontWeight: FontWeight.bold,
+            Semantics(
+              container: true,
+              label: semanticWarning,
+              excludeSemantics: semanticWarning != null,
+              child: Text(
+                warning,
+                style: styles.bodyMedium?.copyWith(
+                  color: colors.warning,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],

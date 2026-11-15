@@ -88,6 +88,9 @@ final class _FiatSent {
 
 late TradeScreenStatuses _statuses;
 late Map<String, TradeSeen> _seen;
+
+/// 9 for terms of a long amount, 1,234,567.1234 EUR.
+late TradeSeen _longNine;
 final _record = TradeScreenStatuses.record;
 
 TradeWatchStatus _watched(String name) =>
@@ -181,12 +184,20 @@ const _waitSeller =
 void main() {
   setUpAll(() async {
     _statuses = await TradeScreenStatuses.make();
+    _longNine = await (await TradeScreenStatuses.make(
+      amount: 1234567.1234,
+    )).chatting();
     _seen = {
       'nine': await _statuses.chatting(),
       'ten': await _statuses.fiatSent(),
       'thirteen': await _statuses.sendingSats(),
       'fourteen': await _statuses.succeeded(),
       // The coordinator reads 200 EUR for a trade taken for 100 (review of #95's second pull request).
+      'eleven': await _statuses.read(await _statuses.chatting(), orderJson(11)),
+      'fiveFromNine': await _statuses.read(
+        await _statuses.chatting(),
+        orderJson(5, changes: {'expiry_reason': 4}),
+      ),
       'nine200': await _statuses.read(
         await _statuses.waitingForPayout(),
         orderJson(9, changes: {'amount': '200.00000000'}),
@@ -470,6 +481,10 @@ void main() {
       expect(unknown, findsOneWidget);
       // In the warning colour: no failure is said.
       expect(tester.widget<Text>(unknown).style?.color, testBullTheme.warning);
+      // The order still at 9, read again: the request may still land, the notice stays.
+      watch.emit(_watched('nine'));
+      await tester.pumpAndSettle();
+      expect(unknown, findsOneWidget);
       watch.emit(_watched('ten'));
       await tester.pumpAndSettle();
       expect(find.text(_waitSeller), findsOneWidget);
@@ -540,7 +555,7 @@ void main() {
       expect(find.text('Confirm 200 EUR sent'), findsNothing);
       expect(
         find.text(
-          'Temple of Sats now gives 200 EUR; the trade was taken for 100 EUR.',
+          'Temple of Sats now gives 200 EUR; the order was taken for 100 EUR.',
         ),
         findsOneWidget,
       );
@@ -555,18 +570,26 @@ void main() {
     'a range order read without its amount, or with another: the terms\' figure on the button, the read said',
     (tester) async {
       final nine = _seen['nine']!;
-      for (final (changes, line) in [
+      for (final (range, changes, line) in [
         (
-          {'amount': null},
-          'Temple of Sats gives no amount for this trade; it was taken for 100 EUR.',
+          false,
+          // The same amount in another currency.
+          {'currency': 1},
+          'Temple of Sats now gives 100 USD; the order was taken for 100 EUR.',
         ),
         (
+          true,
+          {'amount': null},
+          'Temple of Sats gives no amount for this order; it was taken for 100 EUR.',
+        ),
+        (
+          true,
           {'amount': '120.00000000'},
-          'Temple of Sats now gives 120 EUR; the trade was taken for 100 EUR.',
+          'Temple of Sats now gives 120 EUR; the order was taken for 100 EUR.',
         ),
       ]) {
         final order = await readOrder(
-          orderJson(9, range: true, changes: changes),
+          orderJson(9, range: range, changes: changes),
         );
         final cubit = TradeCubit(
           _record,
@@ -682,7 +705,7 @@ void main() {
         ),
         (
           const CoordinatorNotOnNetwork(),
-          'Coordinator offline Your confirmation was not sent.',
+          'Temple of Sats is offline: your confirmation was not sent.',
         ),
       ]) {
         final fiatSent = _FiatSent();
@@ -707,6 +730,76 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the order moved to a dispute or an end before sending: the notice said under the new status, read there until the next one',
+    (tester) async {
+      const movedOn = 'The order moved on: your confirmation was not sent.';
+      for (final (name, next) in [('eleven', 'nine'), ('fiveFromNine', null)]) {
+        final fiatSent = _FiatSent();
+        final watch = _Watch();
+        await _show(
+          tester,
+          watch: watch,
+          fiatSent: fiatSent,
+          state: _watched('nine'),
+        );
+        await _reveal(tester, find.text(_confirmLabel));
+        await tester.tap(find.text(_confirmLabel));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Confirm'));
+        await _settleDialog(tester);
+        fiatSent.gate?.complete(Err(ChatStepStatusMoved(_seen[name]!)));
+        await tester.pumpAndSettle();
+        expect(find.text(movedOn), findsOneWidget, reason: name);
+        // The same status read again: still said.
+        watch.emit(_watched(name));
+        await tester.pumpAndSettle();
+        expect(find.text(movedOn), findsOneWidget, reason: name);
+        if (next != null) {
+          // Another position: gone.
+          watch.emit(_watched(next));
+          await tester.pumpAndSettle();
+          expect(find.text(movedOn), findsNothing, reason: name);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    },
+  );
+
+  testWidgets(
+    'the coordinator refused because the order moved to a dispute: said under the dispute',
+    (tester) async {
+      final fiatSent = _FiatSent();
+      await _show(
+        tester,
+        watch: _Watch(),
+        fiatSent: fiatSent,
+        state: _watched('nine'),
+      );
+      await _reveal(tester, find.text(_confirmLabel));
+      await tester.tap(find.text(_confirmLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await _settleDialog(tester);
+      fiatSent.gate?.complete(
+        Ok(
+          ChatStepNotDone(
+            _record,
+            _seen['eleven']!,
+            cause: const TradeActionNotNow(fromLastRead: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'The order moved on: Temple of Sats did not record your confirmation.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('14: the title between the reference\'s two bolts', (
     tester,
   ) async {
@@ -722,6 +815,10 @@ void main() {
     await tester.tap(find.text(_confirmLabel));
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Confirm you sent 100 EUR?'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('This action cannot be undone!'),
+      findsOneWidget,
+    );
     handle.dispose();
   });
 
@@ -795,9 +892,10 @@ void main() {
         testWidgets(
           '${locale.languageCode} at ×$scale: a long coordinator name and a long amount are not cut',
           (tester) async {
-            final nine = _seen['nine']!;
+            // Terms of a long amount, which the button takes, and a read of another long one, which the warning line gives.
+            final nine = _longNine;
             final order = await readOrder(
-              orderJson(9, changes: {'amount': '1234567.12340000'}),
+              orderJson(9, changes: {'amount': '7654321.43210000'}),
             );
             final cubit = TradeCubit(
               _record,
@@ -847,7 +945,16 @@ void main() {
             );
             await tester.pump();
             _expectNothingCut(tester, 'long');
-            expect(find.textContaining('567'), findsAny);
+            expect(
+              find.byWidgetPredicate(
+                (w) =>
+                    w is TradeButton &&
+                    w.label.contains('234') &&
+                    w.label.contains('567'),
+              ),
+              findsOneWidget,
+            );
+            expect(find.textContaining('654'), findsOneWidget);
           },
         );
       }

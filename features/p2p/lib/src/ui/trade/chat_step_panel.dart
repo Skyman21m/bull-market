@@ -231,20 +231,7 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         ],
         if (notice != null) ...[
           const Gap(BullSpacing.sm),
-          Semantics(
-            container: true,
-            liveRegion: true,
-            child: Text(
-              notice.toText(context, coordinator: widget.coordinator),
-              textAlign: TextAlign.center,
-              // An outcome unknown is no failure: the confirmation may well have gone through (the payout's notice of the same kind is in the warning colour too); red only where it was not sent.
-              style: body?.copyWith(
-                color: notice is ChatStepWasUnknown
-                    ? colors.warning
-                    : colors.error,
-              ),
-            ),
-          ),
+          ChatStepNoticeLine(notice: notice, coordinator: widget.coordinator),
         ],
       ],
     );
@@ -254,6 +241,34 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
 /// [text] without the emoji and the space it starts with (« ⚠️ Beware scams », « ✅ Confirm you sent … »), for a screen reader, which would read the emoji's name first.
 String withoutLeadingEmoji(String text) =>
     text.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
+
+/// What an action of the chat step gave, read out as it appears: in the warning colour for an outcome unknown, which is no failure (the confirmation may well have gone through, as the payout's notice of the same kind), red only where it was not recorded; shown by the chat step's panel at 9 and 10, and by the trade screen under any other status the order moved to.
+class ChatStepNoticeLine extends StatelessWidget {
+  final ChatStepNotice notice;
+  final String coordinator;
+
+  const ChatStepNoticeLine({
+    super.key,
+    required this.notice,
+    required this.coordinator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Text(
+        notice.toText(context, coordinator: coordinator),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: notice is ChatStepWasUnknown ? colors.warning : colors.error,
+        ),
+      ),
+    );
+  }
+}
 
 /// What an action waits for, read out as it changes.
 class _Wait extends StatelessWidget {

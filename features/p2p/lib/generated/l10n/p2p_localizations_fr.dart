@@ -2156,7 +2156,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pEndUnknown =>
-      'Bull Market ne sait pas encore si votre confirmation est passée. Bull Market continue de vérifier.';
+      'Bull Market ne sait pas encore si votre confirmation est passée et continue de vérifier.';
 
   @override
   String get p2pEndSendingSats =>
@@ -2191,7 +2191,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator indique maintenant $readAmount $readCurrency ; l\'échange a été pris pour $amount $currencyCode.';
+    return '$coordinator indique maintenant $readAmount $readCurrency ; l\'ordre a été pris pour $amount $currencyCode.';
   }
 
   @override
@@ -2200,6 +2200,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String amount,
     String currencyCode,
   ) {
-    return '$coordinator n\'indique aucun montant pour cet échange ; il a été pris pour $amount $currencyCode.';
+    return '$coordinator n\'indique aucun montant pour cet ordre ; il a été pris pour $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndOffline(String coordinator) {
+    return '$coordinator est hors ligne : votre confirmation n\'a pas été envoyée.';
   }
 }
