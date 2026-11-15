@@ -647,22 +647,25 @@ void main() {
       },
     );
 
-    test('not offered from a status not marked stored: nothing read or sent', () async {
-      final (app, record, _) = await at();
-      final seen = await readWithEnd(app, record, const Duration(hours: 1));
-      app.coordinator.requests.clear();
-      expect(
-        await app.chat.startDispute(
-          record,
-          TradeSeen(seen.status, order: seen.order),
-        ),
-        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
-          (err) => err.failure,
-          'refusal',
-          isA<ChatStepNotOffered>(),
-        ),
-      );
-      expect(app.coordinator.requests, isEmpty);
-    });
+    test(
+      'not offered from a status not marked stored: nothing read or sent',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.requests.clear();
+        expect(
+          await app.chat.startDispute(
+            record,
+            TradeSeen(seen.status, order: seen.order),
+          ),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        expect(app.coordinator.requests, isEmpty);
+      },
+    );
   });
 }

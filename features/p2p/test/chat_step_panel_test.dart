@@ -1622,31 +1622,28 @@ void main() {
             find.text('Opening the dispute at Temple of Sats…'),
             findsOneWidget,
           );
-          dispute.gate?.complete(
-            Ok(ChatStepDone(_record, _seen['eleven']!)),
-          );
+          dispute.gate?.complete(Ok(ChatStepDone(_record, _seen['eleven']!)));
           await _settleDialog(tester);
           expect(dispute.asked, hasLength(1));
         },
       );
     }
 
-    testWidgets(
-      'from a status not marked stored: no « Open Dispute »',
-      (tester) async {
-        final seen = _seen['nineDisputable']!;
-        await _show(
-          tester,
-          watch: _Watch(),
-          dispute: _FiatSent(),
-          state: TradeScreenStatuses.watched(
-            TradeSeen(seen.status, order: seen.order),
-          ),
-        );
-        await openOptions(tester);
-        expect(find.text('Open Dispute'), findsNothing);
-      },
-    );
+    testWidgets('from a status not marked stored: no « Open Dispute »', (
+      tester,
+    ) async {
+      final seen = _seen['nineDisputable']!;
+      await _show(
+        tester,
+        watch: _Watch(),
+        dispute: _FiatSent(),
+        state: TradeScreenStatuses.watched(
+          TradeSeen(seen.status, order: seen.order),
+        ),
+      );
+      await openOptions(tester);
+      expect(find.text('Open Dispute'), findsNothing);
+    });
 
     testWidgets(
       'refused as too early after its fresh read: the reference\'s wait said',
@@ -1729,8 +1726,15 @@ void main() {
             await _reveal(tester, find.text(text));
             expect(find.text(text), findsOneWidget, reason: text);
           }
+          // The contacts as the coordinator's dialog shows them: a button for each, its email among them.
           expect(find.byType(CoordinatorContacts), findsOneWidget);
-          expect(find.text(email), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(CoordinatorContacts),
+              matching: find.byTooltip('Send Email'),
+            ),
+            findsOneWidget,
+          );
           // Nothing to press: no action of the chat step, no « … ».
           expect(find.byIcon(Icons.more_horiz), findsNothing);
           expect(find.byType(TradeButton), findsNothing);
