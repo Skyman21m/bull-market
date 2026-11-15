@@ -7,6 +7,22 @@ import 'package:robosats/robosats.dart';
 ///
 /// `generate` gives [pair], a pair the test made once, since making one hashes 32 MiB, or [generateFailure]; `prove` proves as the package proves, or gives [proveFailure].
 final class RecordingRobotKeys implements RobotKeyComputePort {
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) async => Ok([
+    for (final job in jobs)
+      key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+  ]);
+
   final RobotPgpKey pair;
   final List<RobotIdentity> generated = [];
   final List<UnprovenCoordinatorRobot> proved = [];
