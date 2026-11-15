@@ -331,6 +331,34 @@ void main() {
       },
     );
 
+    testWidgets('the buttons are off while a payout is being given', (
+      tester,
+    ) async {
+      final (payout, port) = await show(tester, six);
+      port.scriptInvoice(Ok(made(walletInvoice)));
+      await tester.ensureVisible(generateInvoice());
+      await tester.tap(generateInvoice());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<TradeButton>(generateInvoice()).onPressed,
+        isNotNull,
+      );
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      sender.gate = gate.future;
+      await tester.ensureVisible(submit());
+      await tester.tap(submit());
+      await tester.pump();
+      expect(payout.state.phase, isA<PayoutSending>());
+      expect(tester.widget<TradeButton>(generateInvoice()).onPressed, isNull);
+      gate.complete();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 31));
+    });
+
     testWidgets(
       'another invoice of this amount waiting in the wallet: try again later, or another wallet (review of #150)',
       (tester) async {
@@ -433,9 +461,10 @@ final class _GatedPort implements P2pWalletPort {
       throw StateError('P2pWalletPort.${invocation.memberName} used');
 }
 
-/// A payout « sent »: recorded, never sent.
+/// A payout « sent »: recorded, never sent; when [gate] is set it waits for it, then answers « of another trade ».
 final class _Sender {
   final List<CheckedPayout> sent = [];
+  Future<void>? gate;
 
   Future<Result<PayoutSubmission, PayoutNotSent>> call(
     TradeRecord record,
@@ -443,6 +472,11 @@ final class _Sender {
     void Function(PayoutProgress step)? onProgress,
   }) async {
     sent.add(shown);
+    onProgress?.call(PayoutProgress.unlockingKey);
+    if (gate case final gate?) {
+      await gate;
+      return const Err(PayoutOfAnotherTrade());
+    }
     throw StateError('nothing is submitted in these tests');
   }
 }
