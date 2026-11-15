@@ -94,7 +94,10 @@ final class ChatStepReadFailed extends ChatStepRefusal {
   final Failure? cause;
   final TradeSeen? seen;
 
-  const ChatStepReadFailed({this.cause, this.seen});
+  /// The trade's record as the read left it, when a read was kept: an end closes it.
+  final TradeRecord? record;
+
+  const ChatStepReadFailed({this.cause, this.seen, this.record});
 
   @override
   String toString() => 'ChatStepReadFailed(${cause.runtimeType})';
@@ -104,7 +107,10 @@ final class ChatStepReadFailed extends ChatStepRefusal {
 final class ChatStepStatusMoved extends ChatStepRefusal {
   final TradeSeen seen;
 
-  const ChatStepStatusMoved(this.seen);
+  /// The trade's record as the read left it: an end closes it.
+  final TradeRecord? record;
+
+  const ChatStepStatusMoved(this.seen, {this.record});
 
   @override
   String toString() => 'ChatStepStatusMoved(${seen.status})';

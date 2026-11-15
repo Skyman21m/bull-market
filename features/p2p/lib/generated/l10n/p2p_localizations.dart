@@ -3507,11 +3507,39 @@ abstract class P2pLocalizations {
   /// **'Wait until the order is read again. Your confirmation was not sent.'**
   String get p2pEndNeedsReadNotSent;
 
-  /// Not in the RoboSats texts: the project's own: the coordinator refused the confirmation before acting, for a reason that is neither a status that moved nor a busy or unreachable transport (#95).
+  /// Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it before acting (1047, the empty 400 of its form check, the authentication's), never said « not sent » (#95).
   ///
   /// In en, this message translates to:
-  /// **'{coordinator} refused your confirmation.'**
+  /// **'{coordinator} did not record your confirmation.'**
   String p2pEndRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it, the order no longer at 9 (1029) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order moved on: {coordinator} did not record your confirmation.'**
+  String p2pEndNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives another amount or currency than the trade's terms, which the button keeps (#95; a warning informs, it does not block).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} now gives {readAmount} {readCurrency}; the trade was taken for {amount} {currencyCode}.'**
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  );
+
+  /// Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives no amount for a range order, the button keeping the trade's terms (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} gives no amount for this trade; it was taken for {amount} {currencyCode}.'**
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  );
 }
 
 class _P2pLocalizationsDelegate

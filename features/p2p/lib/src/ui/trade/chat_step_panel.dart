@@ -24,7 +24,7 @@ import 'confirm_fiat_sent_dialog.dart';
 class ChatStepPanel extends StatefulWidget {
   final TradeSeen seen;
 
-  /// The order the status comes from, for the trade's amount and currency.
+  /// The order the status comes from, whose amount and currency are compared with the trade's terms (the button is worded from the terms, `Chatting.amount`).
   final CoordinatorOrder? order;
 
   /// The long alias of the trade's coordinator, which the waits name.
@@ -61,18 +61,53 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
   /// Whether the dialog is open: a second press meanwhile opens nothing more.
   bool _asking = false;
 
-  /// The trade's amount and currency as the reference writes them on the button and in the dialog: an amount in bitcoin in sats, as the payout's prompt.
-  (String, String)? _amount(BuildContext context) {
-    final order = widget.order;
-    if (order == null) return null;
-    final l10n = P2pLocalizations.of(context);
-    final bitcoin = order.currency.isBitcoin;
+  /// The trade's amount and currency as the button and the dialog write them, from the trade's terms (`Chatting.amount`, `Chatting.currency`), never from a read: an amount in bitcoin in sats, as the payout's prompt.
+  (String, String)? _amount(BuildContext context) =>
+      switch (widget.seen.status) {
+        Chatting(:final amount, :final currency) => _worded(
+          context,
+          amount,
+          currency,
+        ),
+        _ => null,
+      };
+
+  /// [amount] in [currency] as the button writes it.
+  static (String, String) _worded(
+    BuildContext context,
+    FiatAmount amount,
+    RobosatsCurrency currency,
+  ) {
+    final bitcoin = currency.isBitcoin;
     return (
-      P2pFormats.of(context).payoutAmount(
-        (order.takenAmount ?? order.amount.max).value,
-        inBitcoin: bitcoin,
-      ),
-      bitcoin ? l10n.p2pSatsUnit : order.currency.code,
+      P2pFormats.of(context).payoutAmount(amount.value, inBitcoin: bitcoin),
+      bitcoin ? P2pLocalizations.of(context).p2pSatsUnit : currency.code,
+    );
+  }
+
+  /// When the order read gives another amount or currency than the trade's terms, which the button keeps (a warning informs, it does not block): the coordinator's figure and the terms', in few words; `null` when they agree, or with no order read.
+  String? _amountDiffers(BuildContext context, (String, String) stored) {
+    final order = widget.order;
+    final status = widget.seen.status;
+    if (order == null || status is! Chatting) return null;
+    final read =
+        order.takenAmount ??
+        switch (order.amount) {
+          FixedOrderAmount(:final amount) => amount,
+          RangeOrderAmount() => null,
+        };
+    final l10n = P2pLocalizations.of(context);
+    if (read == null) {
+      return l10n.p2pEndAmountMissing(widget.coordinator, stored.$1, stored.$2);
+    }
+    if (read == status.amount && order.currency == status.currency) return null;
+    final shown = _worded(context, read, order.currency);
+    return l10n.p2pEndAmountDiffers(
+      widget.coordinator,
+      shown.$1,
+      shown.$2,
+      stored.$1,
+      stored.$2,
     );
   }
 
@@ -131,6 +166,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       _ => null,
     };
     final waitedLong = chatStep is ChatStepRunning && chatStep.waitedLong;
+    final differs = amount == null || !atNine
+        ? null
+        : _amountDiffers(context, amount);
     final needsRead = atNine && !offered && !running && notice == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,6 +199,14 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
             onPressed: !offered || running || widget.otherActionRunning
                 ? null
                 : () => unawaited(_press(amount.$1, amount.$2)),
+          ),
+        ],
+        if (differs != null) ...[
+          const Gap(BullSpacing.sm),
+          Text(
+            differs,
+            textAlign: TextAlign.center,
+            style: body?.copyWith(color: colors.warning),
           ),
         ],
         if (waiting != null) ...[

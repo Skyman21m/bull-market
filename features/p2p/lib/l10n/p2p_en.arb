@@ -3002,11 +3002,56 @@
   "@p2pEndNeedsReadNotSent": {
     "description": "Not in the RoboSats texts: the project's own: the status shown no longer offered « Confirm … sent » when it was confirmed (not read yet, not stored) (#95)."
   },
-  "p2pEndRefusedBy": "{coordinator} refused your confirmation.",
+  "p2pEndRefusedBy": "{coordinator} did not record your confirmation.",
   "@p2pEndRefusedBy": {
-    "description": "Not in the RoboSats texts: the project's own: the coordinator refused the confirmation before acting, for a reason that is neither a status that moved nor a busy or unreachable transport (#95).",
+    "description": "Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it before acting (1047, the empty 400 of its form check, the authentication's), never said « not sent » (#95).",
     "placeholders": {
       "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndNotRecordedMovedOn": "The order moved on: {coordinator} did not record your confirmation.",
+  "@p2pEndNotRecordedMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: the confirmation left and the coordinator refused it, the order no longer at 9 (1029) (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndAmountDiffers": "{coordinator} now gives {readAmount} {readCurrency}; the trade was taken for {amount} {currencyCode}.",
+  "@p2pEndAmountDiffers": {
+    "description": "Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives another amount or currency than the trade's terms, which the button keeps (#95; a warning informs, it does not block).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "readAmount": {
+        "type": "String"
+      },
+      "readCurrency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndAmountMissing": "{coordinator} gives no amount for this trade; it was taken for {amount} {currencyCode}.",
+  "@p2pEndAmountMissing": {
+    "description": "Not in the RoboSats texts: the project's own: under « Confirm … sent », when the order read gives no amount for a range order, the button keeping the trade's terms (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
         "type": "String"
       }
     }

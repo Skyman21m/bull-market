@@ -165,7 +165,13 @@ final class ChatStepActionUsecase {
     problem ??= step.recordProblem;
     final fresh = current.seen;
     if (!step.stored) {
-      return Err(ChatStepReadFailed(cause: step.recordProblem, seen: fresh));
+      return Err(
+        ChatStepReadFailed(
+          cause: step.recordProblem,
+          seen: fresh,
+          record: current.record,
+        ),
+      );
     }
     // Recorded already (a request of an earlier tap that landed late): done, nothing sent again.
     if (action.doneAt(fresh)) {
@@ -173,7 +179,7 @@ final class ChatStepActionUsecase {
     }
     final lastRead = fresh.order;
     if (lastRead == null || !action.offeredAt(fresh)) {
-      return Err(ChatStepStatusMoved(fresh));
+      return Err(ChatStepStatusMoved(fresh, record: current.record));
     }
 
     // Sent once: never again by this use case, whatever the outcome.
@@ -201,6 +207,12 @@ final class ChatStepActionUsecase {
       if (TradeAnswer.ofRead(result) case final after?) {
         await keep(after, requestedAt: readFrom);
       }
+    }
+    // The read after shows the action recorded (an earlier request that landed, or this one whose answer was lost or refused as busy after a late landing): done, whatever the answer said, so that no notice contradicts the status shown.
+    if (action.doneAt(current.seen)) {
+      return Ok(
+        ChatStepDone(current.record, current.seen, recordProblem: problem),
+      );
     }
     return Ok(switch (sent) {
       Ok(value: Ok()) => ChatStepDone(

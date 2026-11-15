@@ -2175,6 +2175,31 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pEndRefusedBy(String coordinator) {
-    return '$coordinator a refusé votre confirmation.';
+    return '$coordinator n\'a pas enregistré votre confirmation.';
+  }
+
+  @override
+  String p2pEndNotRecordedMovedOn(String coordinator) {
+    return 'L\'ordre a changé : $coordinator n\'a pas enregistré votre confirmation.';
+  }
+
+  @override
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator indique maintenant $readAmount $readCurrency ; l\'échange a été pris pour $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator n\'indique aucun montant pour cet échange ; il a été pris pour $amount $currencyCode.';
   }
 }

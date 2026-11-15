@@ -297,7 +297,16 @@ class TradeCubit extends Cubit<TradeScreenState> {
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
     if (isClosed || state.actionRunning) return;
     emit(state._with(cancel: const CancelRunning()));
-    final result = await _cancel(state.record, seen, bondLoss: bondLoss);
+    final Result<CancelOutcome, CancelRefusal> result;
+    try {
+      result = await _cancel(state.record, seen, bondLoss: bondLoss);
+    } on Object {
+      // A bug of the use case: « Cancel » free again, the outcome said unknown, and the error passed on.
+      if (!isClosed) {
+        emit(state._with(cancel: const CancelIdle(notice: CancelWasUnknown())));
+      }
+      rethrow;
+    }
     if (isClosed) return;
     switch (result) {
       case Err(:final failure):
@@ -369,6 +378,16 @@ class TradeCubit extends Cubit<TradeScreenState> {
           }
         },
       );
+    } on Object {
+      // A bug of the use case: the button and « Cancel » free again, the outcome said unknown, and the error passed on.
+      if (!isClosed) {
+        emit(
+          state._with(
+            chatStep: const ChatStepIdle(notice: ChatStepWasUnknown()),
+          ),
+        );
+      }
+      rethrow;
     } finally {
       _stillWaiting?.cancel();
       _stillWaiting = null;
@@ -380,10 +399,15 @@ class TradeCubit extends Cubit<TradeScreenState> {
           state._with(
             // A read kept before the refusal is shown: the status now.
             watch: switch (failure) {
-              ChatStepStatusMoved(:final seen) ||
+              ChatStepStatusMoved(:final seen, :final record) ||
               ChatStepReadFailed(
                 seen: final seen?,
-              ) => TradeWatchStatus(state.record, seen, takePending: false),
+                :final record,
+              ) => TradeWatchStatus(
+                record ?? state.record,
+                seen,
+                takePending: false,
+              ),
               _ => null,
             },
             chatStep: ChatStepIdle(notice: ChatStepWasRefused(failure)),
