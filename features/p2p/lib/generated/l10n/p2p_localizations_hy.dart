@@ -1563,11 +1563,6 @@ class P2pLocalizationsHy extends P2pLocalizations {
   String get p2pPayoutInvalid => 'Invalid';
 
   @override
-  String p2pPayoutSuggestedRate(String coordinator, String rate) {
-    return 'Your rate. $coordinator suggests $rate Sats/vByte.';
-  }
-
-  @override
   String get p2pPayoutFailureReason => 'Failure reason:';
 
   @override
@@ -1808,6 +1803,9 @@ class P2pLocalizationsHy extends P2pLocalizations {
   @override
   String get p2pPayoutStepWaitingForOrder =>
       'Waiting for another action on this order to end…';
+
+  @override
+  String get p2pPayoutStepOpening => 'Opening the trade…';
 
   @override
   String p2pPayoutGiven(String coordinator) {

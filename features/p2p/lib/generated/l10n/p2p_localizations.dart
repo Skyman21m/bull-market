@@ -2561,7 +2561,7 @@ abstract class P2pLocalizations {
   /// **'Routing Budget'**
   String get p2pPayoutRoutingBudget;
 
-  /// The official client's text (`Forms/LightningPayout.tsx:313` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: the routing budget above 10,000 ppm, said, not refused.
+  /// The official client's text (`Forms/LightningPayout.tsx:305` at commit ff1998c), which `en.json` and `fr.json` miss (shown untranslated there); the French is the project's: the routing budget above 10,000 ppm, said, not refused.
   ///
   /// In en, this message translates to:
   /// **'Too high! (That is more than 1%)'**
@@ -2662,12 +2662,6 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Invalid'**
   String get p2pPayoutInvalid;
-
-  /// Not in the RoboSats texts: the project's own: under the mining fee the user typed, when the coordinator suggests another rate (review of #132).
-  ///
-  /// In en, this message translates to:
-  /// **'Your rate. {coordinator} suggests {rate} Sats/vByte.'**
-  String p2pPayoutSuggestedRate(String coordinator, String rate);
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/RoutingFailed.tsx:36`).
   ///
@@ -2861,7 +2855,7 @@ abstract class P2pLocalizations {
   /// **'Unable to validate address, check bitcoind backend'**
   String get p2pPayoutRefusedUnverifiable;
 
-  /// Not in the RoboSats texts: the project's own: a refusal the reference has no text for (a refusal of the coordinator this app does not know, or a request that never reached it).
+  /// Not in the RoboSats texts: the project's own: a refusal of the coordinator the reference has no text for, or that this app does not know (a request that never reached the coordinator has `p2pPayoutNotReached`).
   ///
   /// In en, this message translates to:
   /// **'{coordinator} refused your payout info.'**
@@ -3014,6 +3008,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Waiting for another action on this order to end…'**
   String get p2pPayoutStepWaitingForOrder;
+
+  /// Not in the RoboSats texts: the project's own: the trade opened from its records, the first thing « Submit » does.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the trade…'**
+  String get p2pPayoutStepOpening;
 
   /// Not in the RoboSats texts: the project's own: the coordinator recorded the payout.
   ///

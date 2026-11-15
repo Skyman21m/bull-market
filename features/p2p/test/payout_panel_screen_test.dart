@@ -60,10 +60,13 @@ void main() {
   late TradeSeen sixSwap;
   late TradeSeen sixSwapLater;
   late TradeSeen fifteenExpired;
+  late TradeSeen seven;
 
   setUpAll(() async {
     statuses = await TradeScreenStatuses.make();
     six = await statuses.waitingForBoth();
+    // What the coordinator shows once it received the invoice at 6.
+    seven = await statuses.waitingForEscrow();
     Map<String, Object?> swap(double suggested) => {
       'swap_allowed': true,
       'swap_failure_reason': null,
@@ -110,7 +113,7 @@ void main() {
     addTearDown(tester.view.reset);
     final watch = _Watch();
     final payouts =
-        sender ?? (_Sender()..answer = (s) => Ok(PayoutGiven(record, seen)));
+        sender ?? (_Sender()..answer = (s) => Ok(PayoutGiven(record, seven)));
     final locator = GetIt.asNewInstance();
     addTearDown(locator.reset);
     final cubits = <PayoutCubit>[];
@@ -278,7 +281,7 @@ void main() {
         expiry: const Duration(days: 2),
       );
       final local = Bolt11Reader(Bolt11TestDecoder([whole]));
-      final sender = _Sender()..answer = (s) => Ok(PayoutGiven(record, six));
+      final sender = _Sender()..answer = (s) => Ok(PayoutGiven(record, seven));
       final cubit = PayoutCubit(
         record,
         PayoutAsk.of,
@@ -332,7 +335,7 @@ void main() {
   );
 
   testWidgets(
-    'P4: the coordinator\'s suggestion changes at a later read, the rate not typed: the screen shows the new rate, and « Submit » gives it',
+    'P4: the coordinator\'s suggestion changes at a later read: taken once, as the reference does, the screen keeps showing the rate it gives, and « Submit » gives it',
     (tester) async {
       final page = await showPage(tester, sixSwap);
       await tester.tap(find.text('Onchain'));
@@ -345,11 +348,12 @@ void main() {
       page.watch.emit(TradeScreenStatuses.watched(sixSwapLater));
       await tester.pump();
       await tester.pump();
-      expect(fieldText(tester, PayoutPanel.feeField), '40');
-      expect(find.text('11,200 Sats (40 Sats/vByte)'), findsOneWidget);
+      expect(fieldText(tester, PayoutPanel.feeField), '3.5');
+      expect(find.text('980 Sats (3.5 Sats/vByte)'), findsOneWidget);
+      expect(find.textContaining('40 Sats/vByte'), findsNothing);
       await submit(tester);
       final sent = page.sender.sent.single as CheckedPayoutAddress;
-      expect(sent.rate, MiningFeeRate.of(40));
+      expect(sent.rate, MiningFeeRate.of(3.5));
     },
   );
 
@@ -462,7 +466,7 @@ void main() {
       final gate = Completer<void>();
       final sender = _Sender()
         ..gate = gate.future
-        ..answer = (s) => Ok(PayoutGiven(record, six));
+        ..answer = (s) => Ok(PayoutGiven(record, seven));
       final page = await showPage(tester, six, sender: sender);
       await tester.enterText(
         find.byKey(PayoutPanel.invoiceField),

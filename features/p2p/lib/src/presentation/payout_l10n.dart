@@ -113,6 +113,7 @@ extension PayoutProgressL10n on PayoutProgress {
   String toText(BuildContext context, {required String coordinator}) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
+      PayoutProgress.opening => l10n.p2pPayoutStepOpening,
       PayoutProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
       PayoutProgress.unlockingKey => l10n.p2pPayoutStepUnlocking(coordinator),
       PayoutProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),

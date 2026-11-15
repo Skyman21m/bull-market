@@ -173,6 +173,9 @@ final class PayoutOutcomeUnknown extends PayoutSubmission {
 
 /// Where a payout being given stands, for the panel to say what it waits for (`SubmitPayoutUsecase.execute`'s `onProgress`): each step is told when it starts.
 enum PayoutProgress {
+  /// The trade opened from its records, before anything else: the panel's first step, which the use case does not tell.
+  opening,
+
   /// Another action of the trade's order (a take, a cancel, another payout) is under way: the payout waits for it to end (`TradeTakeLocks`).
   waitingForOrder,
 

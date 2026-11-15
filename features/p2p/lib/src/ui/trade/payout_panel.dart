@@ -189,17 +189,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// The mining fee's text: the rate typed, or the coordinator's suggestion as it gives it, without grouping so that it reads back as a number.
-  String _feeText(PayoutPanelState state) {
-    if (state.form.fee case final typed?) return typed;
-    final suggested = state.onchain?.suggestedSatPerVbyte;
-    return suggested == null
-        ? ''
-        : NumberFormat(
-            '0.###',
-            P2pLocalizations.of(context).localeName,
-          ).format(suggested);
-  }
+  /// The mining fee's text: the coordinator's suggestion taken once, as it sent it, or what the user typed ([PayoutForm.fee]).
+  String _feeText(PayoutPanelState state) => state.form.fee ?? '';
 
   /// Each field's text made the form's: a text the user did not type there (pasted, the `lightning:` prefix taken off, a budget refused, a panel built again) replaces it, the cursor at the start of an invoice or an address, as the reference puts it after a paste (`Forms/LightningPayout.tsx:321-330`), at the end of a number.
   void _sync(PayoutPanelState state) {
@@ -275,7 +266,8 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
             coordinator: request.coordinator,
           );
         }
-        final newInvoice = status is RoutingFailed;
+        final newInvoice =
+            status is RoutingFailed || (state.shownAsk?.isNewInvoice ?? false);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -289,13 +281,14 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
               ],
               const Gap(BullSpacing.md),
             ],
-            switch (state.ask) {
-              null => const SizedBox.shrink(),
-              Err(:final failure) => _Text(
+            // Under a payout received or that may have been, its form and what it told stay, whatever a later read says is asked (review of #132).
+            switch ((state.shownAsk, state.ask)) {
+              (final ask?, _) => _form(context, state, ask, newInvoice),
+              (null, Err(:final failure)) => _Text(
                 failure.toText(context, coordinator: request.coordinator),
                 muted: true,
               ),
-              Ok(value: final ask) => _form(context, state, ask, newInvoice),
+              (null, _) => const SizedBox.shrink(),
             },
           ],
         );
@@ -379,7 +372,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final colors = context.bull;
     final formats = P2pFormats.of(context);
     final form = state.form;
-    final editable = state.phase is PayoutEditing;
+    final editable = state.phase is PayoutEditing && !state.outcomeTold;
     final asked = ask.invoiceSatsFor(form.budget);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -509,7 +502,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
     final formats = P2pFormats.of(context);
     final number = NumberFormat.decimalPattern(l10n.localeName);
     final form = state.form;
-    final editable = state.phase is PayoutEditing;
+    final editable = state.phase is PayoutEditing && !state.outcomeTold;
     // What « Submit » gives, once the address is checked: its own figures; before, the reference's preview from the rate of the form (`Forms/OnchainPayout.tsx:66-101`), the same rate the check uses.
     final checked = switch (state.address) {
       Ok(value: final CheckedPayoutAddress payout) => payout,
@@ -523,7 +516,6 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
         (rate == null ? null : onchain.miningFeeSatsFor(rate));
     final sent =
         checked?.sentSats ?? (rate == null ? null : onchain.sentSatsFor(rate));
-    final suggested = onchain.suggestedSatPerVbyte;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -584,19 +576,7 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
           ),
         ),
         if (state.rate == null)
-          _Text(l10n.p2pPayoutInvalid, color: colors.error, small: true)
-        // The rate is the user's: said, with the coordinator's suggestion when it differs.
-        else if (state.feeTyped &&
-            suggested != null &&
-            state.rate?.satPerVbyte != suggested)
-          _Text(
-            l10n.p2pPayoutSuggestedRate(
-              widget.request.coordinator,
-              number.format(suggested),
-            ),
-            muted: true,
-            small: true,
-          ),
+          _Text(l10n.p2pPayoutInvalid, color: colors.error, small: true),
         ..._check(context, state, PayoutKind.onchain),
         const Gap(BullSpacing.md),
         _submit(context, state, PayoutKind.onchain),
@@ -776,6 +756,9 @@ class _Field extends StatelessWidget {
 
   const _Field({required this.label, required this.field, this.onPaste});
 
+  /// The side of « Paste ».
+  static const double _pasteSize = 40;
+
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
@@ -785,7 +768,12 @@ class _Field extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Label(label, end: onPaste == null ? 0 : 40),
+          // With « Paste », the label's line is as tall as the button beside it, so that the button stays above the field.
+          _Label(
+            label,
+            end: onPaste == null ? 0 : _pasteSize,
+            minHeight: onPaste == null ? 0 : _pasteSize,
+          ),
           field,
         ],
       ),
@@ -799,8 +787,11 @@ class _Field extends StatelessWidget {
           end: 0,
           child: IconButton(
             tooltip: l10n.p2pCommonPaste,
-            visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: _pasteSize,
+              height: _pasteSize,
+            ),
             onPressed: onPaste,
             icon: Icon(Icons.content_paste, size: 20, color: colors.primary),
           ),
@@ -885,21 +876,28 @@ class _FailureReason extends StatelessWidget {
   }
 }
 
-/// The label above a field; [end] leaves room for a button beside it.
+/// The label above a field; [end] leaves room for a button beside it, [minHeight] makes its line as tall as that button.
 class _Label extends StatelessWidget {
   final String text;
   final double end;
+  final double minHeight;
 
-  const _Label(this.text, {this.end = 0});
+  const _Label(this.text, {this.end = 0, this.minHeight = 0});
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsetsDirectional.only(bottom: BullSpacing.xs, end: end),
-    child: Text(
-      text,
-      style: Theme.of(
-        context,
-      ).textTheme.labelLarge?.copyWith(color: context.bull.textMuted),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: minHeight),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          text,
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(color: context.bull.textMuted),
+        ),
+      ),
     ),
   );
 }

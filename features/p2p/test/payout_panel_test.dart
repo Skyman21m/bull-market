@@ -124,7 +124,7 @@ void main() {
       'gives the very payout shown, once, and says each wait as it starts',
       () async {
         final sender = _Sender()
-          ..answer = (shown) => Ok(PayoutGiven(record, six));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender)..show(six);
         final ask = switch (cubit.state.ask) {
           Ok(:final value) => value,
@@ -167,6 +167,7 @@ void main() {
               if (phase case PayoutSending(:final step)) step,
           ],
           [
+            PayoutProgress.opening,
             PayoutProgress.unlockingKey,
             PayoutProgress.readingOrder,
             PayoutProgress.sending,
@@ -207,7 +208,7 @@ void main() {
         final sender = _Sender();
         sender.answer = (shown) => sender.sent.length == 1
             ? Err(PayoutChangedSinceShown(fresh, freshRead))
-            : Ok(PayoutGiven(record, six));
+            : Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender)
           ..show(six)
           ..editInvoice(invoice.text);
@@ -286,7 +287,7 @@ void main() {
         final gate = Completer<void>();
         final sender = _Sender()
           ..gate = gate.future
-          ..answer = (shown) => Ok(PayoutGiven(record, six));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender)
           ..show(six)
           ..editInvoice(invoice.text);
@@ -404,7 +405,7 @@ void main() {
     'nothing printed or logged by the cubit: no invoice, no address',
     () async {
       final sender = _Sender()
-        ..answer = (shown) => Ok(PayoutGiven(record, sixSwap));
+        ..answer = (shown) => Ok(PayoutGiven(record, seven));
       final cubit = cubitOf(sender);
       final output = await captureKeyOutput(() async {
         cubit
@@ -524,7 +525,7 @@ void main() {
         final gate = Completer<void>();
         final sender = _Sender()
           ..gate = gate.future
-          ..answer = (shown) => Ok(PayoutGiven(record, six));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender);
         var told = 0;
         tester.view
@@ -737,7 +738,7 @@ void main() {
       'Onchain: the swap\'s fees and the final amount, the mining fee checked, the address given',
       (tester) async {
         final sender = _Sender()
-          ..answer = (shown) => Ok(PayoutGiven(record, sixSwap));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender);
         await show(tester, cubit, sixSwap);
         await tester.tap(find.text('Onchain'));
@@ -1146,7 +1147,7 @@ void main() {
       'a panel built again shows exactly the form the cubit holds, and « Submit » gives what it shows (review of #132, B1)',
       (tester) async {
         final sender = _Sender()
-          ..answer = (shown) => Ok(PayoutGiven(record, sixSwap));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender);
         await show(tester, cubit, sixSwap);
         await tester.tap(find.byType(BullSwitch));
@@ -1196,7 +1197,7 @@ void main() {
     );
 
     testWidgets(
-      'Onchain: the rate not typed follows the coordinator\'s suggestion, and the figures shown are the check\'s (review of #132, B2)',
+      'Onchain: the suggestion taken once, as the reference does, not changed by a later read; the figures shown are the check\'s (review of #132, B2)',
       (tester) async {
         final later = await statuses.read(
           await statuses.bondStep(),
@@ -1212,7 +1213,7 @@ void main() {
           after: const Duration(seconds: 31),
         );
         final sender = _Sender()
-          ..answer = (shown) => Ok(PayoutGiven(record, later));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender);
         await show(tester, cubit, sixSwap);
         await tester.tap(find.text('Onchain'));
@@ -1226,16 +1227,9 @@ void main() {
         expect(find.text(mainnetAddress), findsWidgets);
         expect(find.text('Bitcoin'), findsOneWidget);
         await show(tester, cubit, later);
-        expect(_fieldText(tester, PayoutPanel.feeField), '40');
-        expect(find.text('11,200 Sats (40 Sats/vByte)'), findsOneWidget);
-        expect(
-          cubit.state.submittable(PayoutKind.onchain),
-          isA<CheckedPayoutAddress>().having(
-            (a) => a.rate,
-            'rate',
-            MiningFeeRate.of(40),
-          ),
-        );
+        expect(_fieldText(tester, PayoutPanel.feeField), '3.5');
+        expect(find.text('980 Sats (3.5 Sats/vByte)'), findsOneWidget);
+        expect(find.textContaining('40 Sats/vByte'), findsNothing);
         await reveal(tester, submitButton());
         await tester.tap(submitButton());
         for (var i = 0; i < 4; i++) {
@@ -1243,13 +1237,13 @@ void main() {
         }
         expect(
           (sender.sent.single as CheckedPayoutAddress).rate,
-          MiningFeeRate.of(40),
+          MiningFeeRate.of(3.5),
         );
       },
     );
 
     test(
-      'a rate typed stays the user\'s whatever the coordinator suggests next, and is said so',
+      'the suggestion is taken when the on-chain payout is first offered, and a rate typed stays',
       () async {
         final later = await statuses.read(
           await statuses.bondStep(),
@@ -1264,35 +1258,38 @@ void main() {
           ),
           after: const Duration(seconds: 31),
         );
-        final cubit = cubitOf(_Sender())
-          ..show(sixSwap)
+        // No swap offered at first: nothing taken yet.
+        final cubit = cubitOf(_Sender())..show(six);
+        expect(cubit.state.form.fee, isNull);
+        cubit.show(sixSwap);
+        expect(cubit.state.form.fee, '3.5');
+        cubit.show(later);
+        expect(cubit.state.form.fee, '3.5');
+        expect(cubit.state.rate, MiningFeeRate.of(3.5));
+        cubit
           ..selectKind(PayoutKind.onchain)
           ..editAddress(mainnetAddress)
           ..editFee('4');
-        cubit.show(later);
-        expect(cubit.state.feeTyped, isTrue);
+        cubit.show(
+          await statuses.read(
+            await statuses.bondStep(),
+            orderJson(
+              6,
+              changes: {
+                'swap_allowed': true,
+                'swap_failure_reason': null,
+                'suggested_mining_fee_rate': 12,
+                'swap_fee_rate': 0.75,
+              },
+            ),
+            after: const Duration(seconds: 32),
+          ),
+        );
         expect(cubit.state.rate, MiningFeeRate.of(4));
         expect(
           (cubit.state.submittable(PayoutKind.onchain) as CheckedPayoutAddress?)
               ?.rate,
           MiningFeeRate.of(4),
-        );
-      },
-    );
-
-    testWidgets(
-      'a rate typed: the line says it is the user\'s and what the coordinator suggests',
-      (tester) async {
-        final cubit = cubitOf(_Sender());
-        await show(tester, cubit, sixSwap);
-        await tester.tap(find.text('Onchain'));
-        await tester.pump();
-        expect(find.textContaining('Your rate.'), findsNothing);
-        await tester.enterText(find.byKey(PayoutPanel.feeField), '4');
-        await tester.pump();
-        expect(
-          find.text('Your rate. Temple of Sats suggests 3.5 Sats/vByte.'),
-          findsOneWidget,
         );
       },
     );
@@ -1347,7 +1344,9 @@ void main() {
         );
         gate.complete();
         await running;
-        expect(cubit.state.rate, MiningFeeRate.of(40));
+        // Applied once the payout told something; the rate, taken once, stays.
+        expect(cubit.state.seen, same(later));
+        expect(cubit.state.rate, MiningFeeRate.of(3.5));
         expect(cubit.state.submittable(PayoutKind.onchain), isNotNull);
       },
     );
@@ -1500,7 +1499,7 @@ void main() {
         final gate = Completer<void>();
         final sender = _Sender()
           ..gate = gate.future
-          ..answer = (shown) => Ok(PayoutGiven(record, six));
+          ..answer = (shown) => Ok(PayoutGiven(record, seven));
         final cubit = cubitOf(sender);
         await show(tester, cubit, six);
         final toggle = tester.getSemantics(find.byType(Switch));
@@ -1616,9 +1615,141 @@ void main() {
           mainnetAddress,
         );
         await tester.pump();
+        // As the coordinator sent it, not rounded into another rate.
+        expect(_fieldText(tester, PayoutPanel.feeField), '3.14159');
         expect(find.text('Invalid'), findsOneWidget);
         expect(find.text('Mining fee'), findsNothing);
         expect(find.text('Final amount you will receive'), findsNothing);
+        expect(enabled(tester, submitButton()), isFalse);
+      },
+    );
+
+    for (final (name, outcome, said) in <(String, bool, String)>[
+      ('received', true, 'Temple of Sats received your payout info.'),
+      (
+        'may have been received',
+        false,
+        'Bull Market does not know yet whether Temple of Sats received your payout info. It keeps checking while this screen is open.',
+      ),
+    ]) {
+      testWidgets(
+        'a payout $name, the read after it at 7: what it told and its form stay, read-only, not « does not ask » (second review of #132)',
+        (tester) async {
+          final sender = _Sender()
+            ..answer = (shown) => Ok(
+              outcome
+                  ? PayoutGiven(record, seven)
+                  : PayoutOutcomeUnknown(record, seven),
+            );
+          final cubit = cubitOf(sender);
+          await show(tester, cubit, six);
+          await tester.enterText(
+            find.byKey(PayoutPanel.invoiceField),
+            invoice.text,
+          );
+          await tester.pump();
+          await reveal(tester, submitButton());
+          await tester.tap(submitButton());
+          for (var i = 0; i < 4; i++) {
+            await tester.pump();
+          }
+          expect(
+            cubit.state.ask,
+            isA<Err<PayoutAsk, PayoutCheckRefusal>>().having(
+              (e) => e.failure,
+              'refusal',
+              isA<PayoutNotAsked>(),
+            ),
+          );
+          expect(find.text(said), findsOneWidget);
+          expect(
+            find.text('Temple of Sats does not ask for your payout info now.'),
+            findsNothing,
+          );
+          expect(_fieldText(tester, PayoutPanel.invoiceField), invoice.text);
+          expect(
+            tester
+                .widget<TextField>(find.byKey(PayoutPanel.invoiceField))
+                .enabled,
+            isFalse,
+          );
+          expect(enabled(tester, submitButton()), isFalse);
+          // Built again with that status, as long as the screen still shows the panel: the same.
+          await show(tester, cubit, seven);
+          expect(find.text(said), findsOneWidget);
+          expect(_fieldText(tester, PayoutPanel.invoiceField), invoice.text);
+          cubit.editInvoice('');
+          expect(cubit.state.form.invoice, invoice.text);
+          expect(sender.sent, hasLength(1));
+        },
+      );
+    }
+
+    testWidgets(
+      'a payout received at 8, the read after it at 9: said, not « does not ask »',
+      (tester) async {
+        final eight = await statuses.waitingForPayout();
+        final nine = await statuses.chatting();
+        final sender = _Sender()
+          ..answer = (shown) => Ok(PayoutGiven(record, nine));
+        final cubit = cubitOf(sender);
+        await show(tester, cubit, eight);
+        await tester.enterText(
+          find.byKey(PayoutPanel.invoiceField),
+          invoice.text,
+        );
+        await tester.pump();
+        await reveal(tester, submitButton());
+        await tester.tap(submitButton());
+        for (var i = 0; i < 4; i++) {
+          await tester.pump();
+        }
+        expect(
+          find.text('Temple of Sats received your payout info.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Temple of Sats does not ask for your payout info now.'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'the on-chain figures shown are the check\'s own, whatever the field says',
+      (tester) async {
+        // A checker that checks at 4 sat/vB whatever the field: the figures follow it, and « Submit » stays off since it is not what the field shows.
+        final cubit = PayoutCubit(
+          record,
+          PayoutAsk.of,
+          (record, seen, destination) => switch (destination) {
+            PayoutAddressText(:final text) => check(
+              record,
+              seen,
+              PayoutAddressText(
+                text,
+                rate: MiningFeeRate.of(4) ?? (throw StateError('4')),
+              ),
+            ),
+            _ => check(record, seen, destination),
+          },
+          _Sender().call,
+          _Holds().call,
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        await show(tester, cubit, sixSwap);
+        await tester.tap(find.text('Onchain'));
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(PayoutPanel.addressField),
+          mainnetAddress,
+        );
+        await tester.pump();
+        expect(_fieldText(tester, PayoutPanel.feeField), '3.5');
+        // `int(4 × 280)`.
+        expect(find.text('1,120 Sats (4 Sats/vByte)'), findsOneWidget);
+        expect(find.text('980 Sats (3.5 Sats/vByte)'), findsNothing);
         expect(enabled(tester, submitButton()), isFalse);
       },
     );
@@ -1630,7 +1761,7 @@ void main() {
       final debugPrintBefore = debugPrint;
       debugPrint = (message, {wrapWidth}) => printed.add('$message');
       final sender = _Sender()
-        ..answer = (shown) => Ok(PayoutGiven(record, sixSwap));
+        ..answer = (shown) => Ok(PayoutGiven(record, seven));
       final cubit = cubitOf(sender);
       await show(tester, cubit, sixSwap);
       await tester.enterText(

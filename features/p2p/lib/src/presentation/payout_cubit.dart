@@ -60,7 +60,7 @@ final class PayoutForm {
 
   final String address;
 
-  /// The mining fee rate the user typed, or `null` while none was: the coordinator's suggestion is then the rate (`Forms/OnchainPayout.tsx:48-50`).
+  /// The mining fee rate's field: the coordinator's suggestion as it sent it, taken once, when the on-chain payout is first offered, as the reference takes it when its form is first shown and never again (`Forms/OnchainPayout.tsx:47-49`), then what the user types; `null` before.
   final String? fee;
 
   const PayoutForm._({
@@ -106,6 +106,13 @@ final class PayoutForm {
     fee: fee == null ? this.fee : fee(),
   );
 
+  /// The coordinator's [suggested] rate as the field's text, as it sent it: no rounding, so that a rate of more than 3 decimals reads « Invalid » rather than another rate.
+  static String suggestionText(double? suggested) => switch (suggested) {
+    null => '',
+    final rate when rate == rate.truncateToDouble() => '${rate.toInt()}',
+    final rate => '$rate',
+  };
+
   /// [fee] as a rate that may be sent: a number, with a comma or a point, from 2 to 500 with at most 3 decimals ([MiningFeeRate.of]).
   static MiningFeeRate? rateOf(String text) {
     final value = double.tryParse(text.trim().replaceAll(',', '.'));
@@ -130,6 +137,9 @@ final class PayoutPanelState {
 
   final PayoutPhase phase;
 
+  /// What the coordinator asked when the last payout was given, while that payout was received or may have been: the panel shows its form under that outcome when a later read says nothing is asked any more (the read just after a payout received shows the next status before the trade screen does: review of #132).
+  final PayoutAsk? given;
+
   const PayoutPanelState._({
     required this.seen,
     required this.ask,
@@ -137,6 +147,7 @@ final class PayoutPanelState {
     required this.invoice,
     required this.address,
     required this.phase,
+    required this.given,
   });
 
   PayoutPanelState.initial()
@@ -147,6 +158,7 @@ final class PayoutPanelState {
         invoice: null,
         address: null,
         phase: const PayoutEditing(),
+        given: null,
       );
 
   /// The check of [kind]'s tab.
@@ -162,13 +174,23 @@ final class PayoutPanelState {
     _ => null,
   };
 
-  /// Whether the rate is the one the user typed, rather than the coordinator's suggestion.
-  bool get feeTyped => form.fee != null;
-
-  /// The mining fee rate of the form: the one typed, else the coordinator's suggestion when it may be sent ([OnchainAsk.suggestedRate]); `null` when it is neither.
+  /// The mining fee rate of the form's field, when it is one that may be sent; `null` otherwise.
   MiningFeeRate? get rate => switch (form.fee) {
-    final typed? => PayoutForm.rateOf(typed),
-    null => onchain?.suggestedRate,
+    final text? => PayoutForm.rateOf(text),
+    null => null,
+  };
+
+  /// Whether the last payout given was received or may have been: what the panel says of it outranks a read that says nothing is asked any more, and the form stays as it was given.
+  bool get outcomeTold => switch (phase) {
+    PayoutEditing(notice: PayoutNoticeGiven() || PayoutNoticeUnknown()) => true,
+    _ => false,
+  };
+
+  /// What the panel shows the form for: what the coordinator asks, or, under a payout received or that may have been, what it asked when it was given.
+  PayoutAsk? get shownAsk => switch (ask) {
+    Ok(:final value) => value,
+    _ when outcomeTold => given,
+    _ => null,
   };
 
   /// The payout « Submit » of [kind]'s tab gives: its check, when it is exactly what the fields show (the text, the budget, the rate), nothing is being sent, no payout given was received or may have been, and the coordinator did not refuse this very invoice (as the reference disables « Submit » on its `badInvoice` until the invoice or the amount changes, `Forms/LightningPayout.tsx:143-155`, `:643`).
@@ -219,6 +241,7 @@ final class PayoutPanelState {
     Result<CheckedPayout, PayoutCheckRefusal>? Function()? invoice,
     Result<CheckedPayout, PayoutCheckRefusal>? Function()? address,
     PayoutPhase? phase,
+    PayoutAsk? Function()? given,
   }) => PayoutPanelState._(
     seen: seen ?? this.seen,
     ask: ask ?? this.ask,
@@ -226,6 +249,7 @@ final class PayoutPanelState {
     invoice: invoice == null ? this.invoice : invoice(),
     address: address == null ? this.address : address(),
     phase: phase ?? this.phase,
+    given: given == null ? this.given : given(),
   );
 }
 
@@ -408,7 +432,22 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
         );
       }
     }
-    emit(_checked(state._with(seen: seen, ask: ask, phase: phase)));
+    // The coordinator's suggested rate, taken once, when the on-chain payout is first offered (`Forms/OnchainPayout.tsx:47-49`).
+    var form = state.form;
+    if (form.fee == null) {
+      if (ask case Ok(value: PayoutAsk(onchain: final onchain?))) {
+        form = form._with(
+          fee: () => PayoutForm.suggestionText(onchain.suggestedSatPerVbyte),
+        );
+      }
+    }
+    final next = state._with(seen: seen, ask: ask, phase: phase, form: form);
+    if (next.outcomeTold) {
+      // Under a payout received or that may have been, a read that asks nothing any more leaves the form as it was given.
+      emit(ask is Ok ? _checked(next) : next);
+    } else {
+      emit(_checked(next._with(given: () => null)));
+    }
   }
 
   /// [next] with its form checked against its status.
@@ -431,8 +470,9 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
     );
   }
 
-  /// Whether the form may change: not while a payout is being given.
-  bool get _editable => !isClosed && state.phase is PayoutEditing;
+  /// Whether the form may change: not while a payout is being given, nor once one was received or may have been (until a later read asks for one again).
+  bool get _editable =>
+      !isClosed && state.phase is PayoutEditing && !state.outcomeTold;
 
   /// [form], a change of [kind]'s tab, checked; what the last payout of that tab told, when it was refused or nothing was sent, goes with the text it was about.
   void _edit(PayoutForm form, PayoutKind kind) {
@@ -542,7 +582,14 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
   Future<void> submit(PayoutKind kind) async {
     final shown = state.submittable(kind);
     if (isClosed || shown == null) return;
-    emit(state._with(phase: PayoutSending(kind, PayoutProgress.unlockingKey)));
+    // What the coordinator asks now, the form shown under the outcome should a read ask nothing any more.
+    final asked = state.shownAsk;
+    emit(
+      state._with(
+        phase: PayoutSending(kind, PayoutProgress.opening),
+        given: () => asked,
+      ),
+    );
     _stillWaiting = Timer(_stillWaitingAfter, () {
       if (isClosed) return;
       if (state.phase case PayoutSending(:final kind, :final step)) {
