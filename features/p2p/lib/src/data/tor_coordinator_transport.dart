@@ -676,7 +676,7 @@ final class TorCoordinatorTransport
       handedOver = true;
       try {
         request.onSending?.call();
-        // The hook is the caller's: a bug in it must neither stop this request nor reach the zone (owner's decision on the review of #158).
+        // The hook is the caller's: a bug in it must neither stop this request nor reach the zone (decided in the review of #158).
       } on Object catch (error) {
         // The type only, never the message, which could quote a value.
         log.info('P2P coordinator request hook failed (${error.runtimeType})');

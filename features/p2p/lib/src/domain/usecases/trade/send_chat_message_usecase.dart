@@ -138,7 +138,7 @@ final class SendChatMessageUsecase {
   ///
   /// The order's keys are admitted, and pinned at the first copy, here, synchronously, before anything is composed, so that two messages composed at once cannot go to two different keys; they are checked again before the copy is published (review of #158).
   /// A copy whose message was refused, or never sent, while it was composed is not published.
-  /// Nothing of it, synchronous or not, reaches the post, the screen or the zone: a failure lets the copy go and logs a fixed word with the error's type (owner's decision on the review of #158).
+  /// Nothing of it, synchronous or not, reaches the post, the screen or the zone: a failure lets the copy go and logs a fixed word with the error's type (decided in the review of #158).
   void _sendOverNostr(
     TradeChat chat,
     OpenTrade trade,
