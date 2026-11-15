@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 import '../../generated/l10n/p2p_localizations.dart';
 import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_cancel.dart';
+import '../domain/trade/trade_chat_step.dart';
 import '../domain/trade/trade_storable.dart';
 import '../domain/trade/trade_take.dart';
 import '../domain/trade/trade_terms.dart';
@@ -225,6 +226,71 @@ extension TradeCancelNoticeL10n on TradeCancelNotice {
         l10n.p2pTradeCancelNotDoneAfter(failure.toTranslated(context)),
       CancelWasNotDone() => l10n.p2pTradeCancelNotDoneAfter(l10n.p2pBookError),
       CancelWasUnknown() => l10n.p2pTradeCancelUnknown,
+    };
+  }
+}
+
+/// What an action of the chat step gave, when it says something (#95): a text of the app, never the coordinator's.
+extension ChatStepNoticeL10n on ChatStepNotice {
+  String toText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      ChatStepWasRefused(:final refusal) => switch (refusal) {
+        ChatStepNotOffered() => l10n.p2pEndNeedsReadNotSent,
+        // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
+        ChatStepStatusMoved() => l10n.p2pEndMovedOn,
+        ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
+        ChatStepOfAnotherTrade() => l10n.p2pTradeUnavailable,
+        ChatStepTradeUnavailable(
+          failure: GarageKeyMissingFailure() || TradeKeyMissingFailure(),
+        ) =>
+          l10n.p2pTradeKeyMissing,
+        ChatStepTradeUnavailable() => l10n.p2pTradeUnavailable,
+        ChatStepTradeUnrestorable(reason: TradeCoordinatorGone()) =>
+          l10n.p2pTradeCoordinatorGone(coordinator),
+        ChatStepTradeUnrestorable() => l10n.p2pTradeUnrestorable,
+      },
+      // Decided here from the read, nothing sent: as the read before sending would have said.
+      ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
+        l10n.p2pEndMovedOn,
+      // The request left and the coordinator did nothing (1029, 1030, 1031): it says the order moved on.
+      ChatStepWasNotDone(cause: TradeActionRefused()) =>
+        l10n.p2pEndNotRecordedMovedOn(coordinator),
+      // The request never left: a busy transport (the robot panel's sentence, which ends with its full stop), a coordinator not on the network (its own sentence: the label « Coordinator offline » has no full stop to join).
+      ChatStepWasNotDone(cause: CoordinatorTransportBusy()) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
+      ChatStepWasNotDone(cause: CoordinatorNotOnNetwork()) =>
+        l10n.p2pEndOffline(coordinator),
+      ChatStepWasNotDone(cause: OrderReadElsewhere()) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
+      // Any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: the coordinator's, not « this robot ».
+      ChatStepWasNotDone(cause: CoordinatorFailure()) => l10n.p2pEndRefusedBy(
+        coordinator,
+      ),
+      // The robot's places in the limiter, busy or released: never sent, said in the robot panel's full sentence.
+      ChatStepWasNotDone(
+        cause: RobotCoordinatorBusyFailure() || RobotReleasedFailure(),
+      ) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pRobotBusy),
+      ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
+      ChatStepWasUnknown() => l10n.p2pEndUnknown,
+    };
+  }
+}
+
+/// What an action of the chat step waits for, step by step (the owner's rule: every wait says what it waits for).
+extension ChatStepProgressL10n on ChatStepProgress? {
+  String toText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      // The payout's words for the same waits (#91).
+      null => l10n.p2pPayoutStepOpening,
+      ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
+      ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
+      ChatStepProgress.sending => l10n.p2pEndStepSending(coordinator),
+      ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
+        coordinator,
+      ),
     };
   }
 }

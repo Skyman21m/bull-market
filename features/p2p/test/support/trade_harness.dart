@@ -27,6 +27,7 @@ import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
 import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/chat_step_action_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
@@ -325,6 +326,7 @@ final class TradeHarness {
   late final TakeOrderUsecase take;
   late final WatchTradeUsecase watch;
   late final CancelTradeUsecase cancel;
+  late final ChatStepActionUsecase chat;
   late final ListActiveTradesUsecase list;
   late final TradeKeyring keyring;
   late final HoldTradeKeyUsecase holdKey;
@@ -413,6 +415,7 @@ final class TradeHarness {
       watchRegistry,
     );
     cancel = CancelTradeUsecase(client, reader, limiter, locks);
+    chat = ChatStepActionUsecase(client, reader, limiter, locks);
     list = ListActiveTradesUsecase(robots, trails, clock: clock);
   }
 
