@@ -145,6 +145,7 @@ class PayoutWalletSection extends StatelessWidget {
       P2pWalletOutsideServiceLimits() => l10n.p2pPayOutsideLimits,
       P2pWalletServiceUnreachable() => l10n.p2pPayUnreachable,
       P2pWalletServiceBusy() => l10n.p2pPayBusy,
+      P2pWalletAnotherInvoiceWaiting() => l10n.p2pPayoutWalletAnotherWaiting,
       P2pWalletNotEnoughBalance() ||
       P2pWalletNeedsConsolidation() ||
       P2pWalletNoInstantWallet() ||

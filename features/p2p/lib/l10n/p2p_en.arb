@@ -3114,5 +3114,9 @@
   "p2pPayoutWalletNoAddress": "This wallet cannot give an address now.",
   "@p2pPayoutWalletNoAddress": {
     "description": "The wallet's slot of the payout panel (#90): ours, when the wallet cannot give a new address of its Bitcoin wallet (none, or it cannot be read)."
+  },
+  "p2pPayoutWalletAnotherWaiting": "This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.",
+  "@p2pPayoutWalletAnotherWaiting": {
+    "description": "The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline."
   }
 }

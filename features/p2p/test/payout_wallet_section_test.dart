@@ -332,6 +332,25 @@ void main() {
     );
 
     testWidgets(
+      'another invoice of this amount waiting in the wallet: try again later, or another wallet (review of #150)',
+      (tester) async {
+        final (payout, port) = await show(tester, six);
+        port.scriptInvoice(const Err(P2pWalletAnotherInvoiceWaiting()));
+        await tester.ensureVisible(generateInvoice());
+        await tester.tap(generateInvoice());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'This wallet is already waiting for a payment of this amount. Try again in a few minutes, or paste an invoice from another wallet.',
+          ),
+          findsOneWidget,
+        );
+        expect(payout.state.form.invoice, isEmpty);
+      },
+    );
+
+    testWidgets(
       '« Generate New Address » on the Onchain tab puts a new address in its field',
       (tester) async {
         final (payout, port) = await show(tester, sixSwap);
