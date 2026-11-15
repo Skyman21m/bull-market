@@ -530,6 +530,36 @@ void main() {
   );
 
   testWidgets(
+    'the order changed at « Done » with a new expiry: the expiry row is marked as changed, the amount is not',
+    (tester) async {
+      final later = await preparedTake(
+        description: _description,
+        changes: {
+          'expires_at': _read.order.expiresAt
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+      );
+      final take = _Take(prepared: [Ok(_read), Ok(later)])
+        ..answer = () => const Err(TakeOrderChanged());
+      await _show(tester, await _order(), take: take);
+      await _prepare(tester);
+      await _confirm(tester);
+      await _reveal(tester, find.text('The order changed.'));
+      OrderDetailRow row(String label) => tester.widget<OrderDetailRow>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(OrderDetailRow),
+        ),
+      );
+      await _revealAbove(tester, find.text('Expires in'));
+      expect(row('Expires in').changed, isTrue);
+      await _revealAbove(tester, find.text('Amount'));
+      expect(row('Amount').changed, isFalse);
+    },
+  );
+
+  testWidgets(
     'a changed expiry is told apart from a near one: its label marked and « New value » said, a near one marks its value only',
     (tester) async {
       final semantics = tester.ensureSemantics();
