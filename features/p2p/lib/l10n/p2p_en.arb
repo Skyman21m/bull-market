@@ -2963,10 +2963,6 @@
   "@p2pChatGarageKeyBlocked": {
     "description": "The chat panel (#93): ours: the text holds a Garage Key."
   },
-  "p2pChatPayoutBlocked": "An invoice or an address is not sent alone. Add a word beside it to send it.",
-  "@p2pChatPayoutBlocked": {
-    "description": "The chat panel (#93): ours: the text is only a Lightning invoice or a Bitcoin address."
-  },
   "p2pChatTooLong": "This message is too long. Shorten it to send it.",
   "@p2pChatTooLong": {
     "description": "The chat panel (#93): ours: the text is over the coordinator's limit."
@@ -3111,6 +3107,22 @@
   "p2pChatPeerPublicKeyTooltip": "Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.",
   "@p2pChatPeerPublicKeyTooltip": {
     "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip (its English source, the English file's text having a typo)."
+  },
+  "p2pChatYourEncryptedPrivateKey": "Your encrypted private key",
+  "@p2pChatYourEncryptedPrivateKey": {
+    "description": "« Don't trust, verify » (#93): the reference's (`Dialogs/AuditPGP.tsx`)."
+  },
+  "p2pChatYourEncryptedPrivateKeyTooltip": "Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.",
+  "@p2pChatYourEncryptedPrivateKeyTooltip": {
+    "description": "« Don't trust, verify » (#93): the reference's tooltip."
+  },
+  "p2pChatPassphrase": "Your private key passphrase (keep secure!)",
+  "@p2pChatPassphrase": {
+    "description": "« Don't trust, verify » (#93): the reference's; the value shown is the robot's token."
+  },
+  "p2pChatPassphraseTooltip": "The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.",
+  "@p2pChatPassphraseTooltip": {
+    "description": "« Don't trust, verify » (#93): the reference's tooltip (its English source)."
   },
   "p2pChatFingerprint": "Fingerprint: {fingerprint}",
   "@p2pChatFingerprint": {

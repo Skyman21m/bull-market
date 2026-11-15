@@ -3465,12 +3465,6 @@ abstract class P2pLocalizations {
   /// **'This message holds your Garage Key, which controls all your robots. It was not sent.'**
   String get p2pChatGarageKeyBlocked;
 
-  /// The chat panel (#93): ours: the text is only a Lightning invoice or a Bitcoin address.
-  ///
-  /// In en, this message translates to:
-  /// **'An invoice or an address is not sent alone. Add a word beside it to send it.'**
-  String get p2pChatPayoutBlocked;
-
   /// The chat panel (#93): ours: the text is over the coordinator's limit.
   ///
   /// In en, this message translates to:
@@ -3650,6 +3644,30 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.'**
   String get p2pChatPeerPublicKeyTooltip;
+
+  /// « Don't trust, verify » (#93): the reference's (`Dialogs/AuditPGP.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Your encrypted private key'**
+  String get p2pChatYourEncryptedPrivateKey;
+
+  /// « Don't trust, verify » (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.'**
+  String get p2pChatYourEncryptedPrivateKeyTooltip;
+
+  /// « Don't trust, verify » (#93): the reference's; the value shown is the robot's token.
+  ///
+  /// In en, this message translates to:
+  /// **'Your private key passphrase (keep secure!)'**
+  String get p2pChatPassphrase;
+
+  /// « Don't trust, verify » (#93): the reference's tooltip (its English source).
+  ///
+  /// In en, this message translates to:
+  /// **'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.'**
+  String get p2pChatPassphraseTooltip;
 
   /// « Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).
   ///

@@ -32,6 +32,7 @@ import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/send_chat_message_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/export_chat_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_chats.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
@@ -366,6 +367,7 @@ final class TradeHarness {
   final TradeChats chats = TradeChats();
   late final WatchChatUsecase chatRead;
   late final SendChatMessageUsecase chatSend;
+  late final ExportChatUsecase chatExport;
   late final CoordinatorClient _client;
 
   /// The chat's use cases of a new run of the app, the process killed and started again: a fresh [TradeChats], nothing of the chats kept, the same records, keys and coordinator.
@@ -451,6 +453,7 @@ final class TradeHarness {
       invoices,
     );
     chatRead = WatchChatUsecase(client, reader, limiter, keyring, keys, chats);
+    chatExport = ExportChatUsecase(reader, keyring, chats);
     chatSend = SendChatMessageUsecase(
       client,
       reader,

@@ -2322,7 +2322,7 @@ void main() {
         await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await backToTab();
 
-        // Take 5: the chat at 9 (#93), the maker's messages encrypted to this robot's key as the official client does, then an address typed alone, refused before anything leaves.
+        // Take 5: the chat at 9 (#93), the maker's messages encrypted to this robot's key as the official client does, then a message typed.
         coordinator.backToPublic();
         await take();
         final chatter = taker();
@@ -2363,11 +2363,12 @@ void main() {
         await capture('chat');
         await tester.enterText(
           find.byType(TextField).last,
-          'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+          locale.languageCode == 'fr'
+              ? 'Bien reçu, merci !'
+              : 'Received, thank you!',
         );
         await settle();
-        await reveal(find.text(l10n.p2pChatPayoutBlocked));
-        await capture('chat-adresse-seule');
+        await capture('chat-saisie');
         await tester.enterText(find.byType(TextField).last, '');
         coordinator.moveTo(14);
         await nextRead();

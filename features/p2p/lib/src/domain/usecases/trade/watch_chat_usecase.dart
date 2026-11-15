@@ -34,10 +34,6 @@ final class WatchChatUsecase {
   /// The chat of [record] as read so far, without a request.
   ChatView current(TradeRecord record) => _chats.of(record).view;
 
-  /// The chat of [record] as the export gives it ([TradeChat.export]): public keys and messages only.
-  Map<String, Object?> exportOf(TradeRecord record) =>
-      _chats.of(record).export();
-
   /// Reads the chat of [record] once, about the order of [seen], the status the screen shows: the chat with what was new, or why nothing was (the chat as it was stays shown).
   Future<Result<ChatView, ChatReadFailure>> read(
     TradeRecord record,

@@ -2115,10 +2115,6 @@ class P2pLocalizationsKa extends P2pLocalizations {
       'This message holds your Garage Key, which controls all your robots. It was not sent.';
 
   @override
-  String get p2pChatPayoutBlocked =>
-      'An invoice or an address is not sent alone. Add a word beside it to send it.';
-
-  @override
   String get p2pChatTooLong =>
       'This message is too long. Shorten it to send it.';
 
@@ -2226,6 +2222,20 @@ class P2pLocalizationsKa extends P2pLocalizations {
   @override
   String get p2pChatPeerPublicKeyTooltip =>
       'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKey => 'Your encrypted private key';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKeyTooltip =>
+      'Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.';
+
+  @override
+  String get p2pChatPassphrase => 'Your private key passphrase (keep secure!)';
+
+  @override
+  String get p2pChatPassphraseTooltip =>
+      'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.';
 
   @override
   String p2pChatFingerprint(String fingerprint) {

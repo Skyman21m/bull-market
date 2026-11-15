@@ -322,12 +322,11 @@ void main() {
     });
 
     test(
-      'the feature never names a robot\'s token: the proof is the package\'s',
+      'the feature names a robot\'s token only for the chat\'s export, as the reference\'s: the proof is the package\'s',
       () {
-        expect(
-          referring((r) => r == 'credential RobotIdentity.token'),
-          isEmpty,
-        );
+        expect(referring((r) => r == 'credential RobotIdentity.token'), {
+          'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+        });
       },
     );
 
@@ -580,6 +579,8 @@ void main() {
         // The chat (#93): decrypted in the file the read and the send share, encrypted in the send's own.
         const chatRead = '${_tradeUseCases}watch_chat_usecase.dart';
         const chatSend = '${_tradeUseCases}send_chat_message_usecase.dart';
+        // The chat as the reference exports it, on the user's tap (#93): the encrypted private key from a lease.
+        const chatExport = '${_tradeUseCases}export_chat_usecase.dart';
         expect(referring((r) => r == 'RobotKeyComputePort.unlock'), {keyring});
         expect(
           referring((r) => r == 'ReadRobotOnCoordinatorUsecase.provenPairOf'),
@@ -587,11 +588,13 @@ void main() {
         );
         // A lease only for the payout's signature and the chat's messages, a hold only through the use case the screens call.
         expect(referring((r) => r == 'TradeKeyring.lease'), {
+          chatExport,
           payout,
           chatRead,
           chatSend,
         });
         expect(referring((r) => r == 'TradeKeyLease.key'), {
+          chatExport,
           payout,
           chatRead,
           chatSend,
@@ -607,6 +610,7 @@ void main() {
               payout,
               chatRead,
               chatSend,
+              chatExport,
               '${_tradeUseCases}hold_trade_key_usecase.dart',
               'lib/src/p2p_locator.dart',
             }),
@@ -685,16 +689,26 @@ void main() {
       // The fingerprint keys an HMAC with the token of the key's first robot, which never leaves the device.
       expect(referring((r) => r == 'credential RobotToken.reveal'), {
         'lib/src/domain/garage_key_fingerprint.dart',
+        // The chat's export, as the reference's, holds the token as the private key's passphrase (#93, the owner's choice): on the user's tap only, through the chat panel's cubit.
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
       });
       // The token hash, the token and the headers made of them: the coordinator client of `package:robosats` builds them for the use case, and no file of the feature reads them.
       expect(
         referring(
           (r) =>
               r.startsWith('credential ') &&
-              r != 'credential RobotToken.reveal',
+              r != 'credential RobotToken.reveal' &&
+              r != 'credential RobotIdentity.token',
         ),
         isEmpty,
       );
+      expect(referring((r) => r == 'credential RobotIdentity.token'), {
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+      });
+      // Its encrypted private key too, which the token unlocks.
+      expect(referring((r) => r == 'RobotPgpKey.encryptedPrivateKeyArmored'), {
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+      });
     });
 
     test('only the transport holds a raw network client', () {
@@ -1867,7 +1881,13 @@ const _watched = {
   'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
   'RobotPgpKey': (
     'package:robosats/',
-    {'generate', 'generateWith', 'unlock', 'proveMadeBy'},
+    {
+      'generate',
+      'generateWith',
+      'unlock',
+      'proveMadeBy',
+      'encryptedPrivateKeyArmored',
+    },
   ),
 };
 

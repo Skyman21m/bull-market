@@ -15,7 +15,6 @@ extension ChatSendRefusalL10n on ChatSendRefusal {
       ChatTextTooLong() => l10n.p2pChatTooLong,
       ChatTextHoldsToken() => l10n.p2pChatTokenBlocked,
       ChatTextHoldsGarageKey() => l10n.p2pChatGarageKeyBlocked,
-      ChatTextIsPayout() => l10n.p2pChatPayoutBlocked,
       ChatPeerKeyNotKnown() => l10n.p2pChatWaitingForPeer,
       ChatPeerKeyChanged() => l10n.p2pChatKeyChanged,
       ChatClosed() => l10n.p2pChatClosed,

@@ -2143,10 +2143,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Ce message contient votre clé de garage, qui contrôle tous vos robots. Il n’a pas été envoyé.';
 
   @override
-  String get p2pChatPayoutBlocked =>
-      'Une facture ou une adresse n’est pas envoyée seule. Ajoutez un mot à côté pour l’envoyer.';
-
-  @override
   String get p2pChatTooLong =>
       'Ce message est trop long. Raccourcissez-le pour l’envoyer.';
 
@@ -2258,6 +2254,21 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pChatPeerPublicKeyTooltip =>
       'La clé publique PGP de votre correspondant. Vous l’utilisez pour chiffrer les messages que lui seul peut lire et pour vérifier que votre correspondant a signé les messages entrants.';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKey => 'Votre clé privée chiffrée';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKeyTooltip =>
+      'Votre clé privée chiffrée. Vous l’utilisez pour déchiffrer les messages que votre correspondant a chiffrés pour vous. Vous l’utilisez également pour signer les messages que vous envoyez.';
+
+  @override
+  String get p2pChatPassphrase =>
+      'Phrase de passe de votre clé privée (à conserver précieusement !)';
+
+  @override
+  String get p2pChatPassphraseTooltip =>
+      'La phrase de passe pour décrypter votre clé privée. Vous êtes le seul à la connaître ! Ne la partagez pas. C’est aussi votre jeton du robot.';
 
   @override
   String p2pChatFingerprint(String fingerprint) {

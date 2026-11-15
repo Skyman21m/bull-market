@@ -261,9 +261,8 @@ void main() {
         cubit.edit('x' * (OutgoingChatMessage.maxTextBytes + 1));
         expect(cubit.state.refusal, isA<ChatTextTooLong>());
         expect(cubit.state.canSend, isFalse);
+        // An address alone is sent, as the reference sends it.
         cubit.edit('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
-        expect(cubit.state.refusal, isA<ChatTextIsPayout>());
-        cubit.edit('Send to bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
         expect(cubit.state.refusal, isNull);
         expect(cubit.state.canSend, isTrue);
         chat.view = const ChatView();
@@ -294,28 +293,30 @@ void main() {
     });
 
     test(
-      'the export as the reference names it, the keys and messages apart',
-      () {
+      'the export as the reference copies it on a phone: the whole, indented; the keys and the messages apart, compact; nothing when it could not be made',
+      () async {
         final chat = _Chat()
           ..exported = {
-            'credentials': {'own_public_key': 'own'},
+            'credentials': {'own_public_key': 'own', 'passphrase': 'p'},
             'messages': [
               {'index': 1},
             ],
           };
         final cubit = chat.cubit(record);
         addTearDown(cubit.close);
+        final exported = await cubit.exported();
+        expect(exported, chat.exported);
         expect(
-          cubit.exportFileName,
-          'complete_log_chat_${record.orderId}.json',
+          ChatCubit.exportText(exported!),
+          const JsonEncoder.withIndent('  ').convert(chat.exported),
         );
-        expect(cubit.keysFileName, 'pgp_keys_${record.orderId}.json');
-        expect(cubit.messagesFileName, 'pgp_messages_${record.orderId}.json');
-        expect(jsonDecode(cubit.exportJson()), chat.exported);
-        expect(jsonDecode(cubit.keysJson()), {'own_public_key': 'own'});
-        expect(jsonDecode(cubit.messagesJson()), [
-          {'index': 1},
-        ]);
+        expect(
+          ChatCubit.keysText(exported),
+          '{"own_public_key":"own","passphrase":"p"}',
+        );
+        expect(ChatCubit.messagesText(exported), '[{"index":1}]');
+        chat.exportFails = true;
+        expect(await cubit.exported(), isNull);
       },
     );
   });
@@ -706,19 +707,6 @@ void main() {
       await show(tester, cubit);
       await tester.enterText(
         find.byKey(ChatPanel.field),
-        // The shape of an invoice, not one.
-        'lightning:lnbc1${'q' * 60}',
-      );
-      await tester.pump();
-      expect(
-        find.text(
-          'An invoice or an address is not sent alone. Add a word beside it to send it.',
-        ),
-        findsOneWidget,
-      );
-      expect(sendEnabled(tester), isFalse);
-      await tester.enterText(
-        find.byKey(ChatPanel.field),
         'x' * (OutgoingChatMessage.maxTextBytes + 1),
       );
       await tester.pump();
@@ -902,16 +890,54 @@ void main() {
   });
 
   group('« Don\'t trust, verify » and « Export »', () {
-    late List<(String, String)> shared;
+    // Test values, not a robot's: the export's four credentials as the use case gives them.
+    const encryptedKey = '-----BEGIN PGP PRIVATE KEY BLOCK-----test';
+    const passphrase = 'test-passphrase-not-a-token';
+    late List<String> copied;
+    late List<String> privacyCalls;
+    late Future<bool> Function() protection;
 
-    setUp(() => shared = []);
+    setUp(() {
+      copied = [];
+      privacyCalls = [];
+      protection = () async => true;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(_privacyChannel, (call) async {
+        privacyCalls.add(call.method);
+        return call.method == 'screenshotOff' ? protection() : true;
+      });
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add('${(call.arguments as Map)['text']}');
+        }
+        return null;
+      });
+    });
 
-    Future<void> share(String name, String text) async =>
-        shared.add((name, text));
+    tearDown(() {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(_privacyChannel, null);
+      messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    Map<String, Object?> exportOf({bool peer = true}) => {
+      'credentials': {
+        'own_public_key': ownKey.armored,
+        'peer_public_key': peer ? peerKey.armored : null,
+        'encrypted_private_key': encryptedKey,
+        'passphrase': passphrase,
+      },
+      'messages': [
+        {'index': 1, 'plainTextMessage': 'Hello'},
+      ],
+    };
 
     Future<ChatCubit> showActions(
       WidgetTester tester, {
       ChatView? view,
+      Map<String, Object?>? exported,
       Locale locale = const Locale('en'),
       Size size = const Size(390, 844),
       double textScale = 1,
@@ -922,13 +948,7 @@ void main() {
       addTearDown(tester.view.reset);
       final chat = _Chat()
         ..view = view ?? pinned()
-        ..exported = {
-          'credentials': {
-            'own_public_key': ownKey.armored,
-            'peer_public_key': peerKey.armored,
-          },
-          'messages': <Object?>[],
-        };
+        ..exported = exported ?? exportOf();
       final cubit = chat.cubit(record);
       addTearDown(cubit.close);
       await tester.pumpWidget(
@@ -947,8 +967,8 @@ void main() {
           home: Scaffold(
             body: ListView(
               children: [
-                ChatAuditButton(cubit: cubit, share: share),
-                ChatExportButton(cubit: cubit, share: share),
+                ChatAuditButton(cubit: cubit),
+                ChatExportButton(cubit: cubit),
               ],
             ),
           ),
@@ -957,19 +977,38 @@ void main() {
       return cubit;
     }
 
+    Future<void> tapInDialog(WidgetTester tester, String text) async {
+      await tester.ensureVisible(find.text(text));
+      await tester.pump();
+      await tester.tap(find.text(text));
+      await tester.pump();
+    }
+
     testWidgets(
-      'the public keys with their fingerprints, and the files handed to the share sheet on a tap only',
+      'as the reference on a phone: « Export » copies the whole; the dialog shows the four fields, the public keys with their fingerprints, and « Keys » and « Messages » copy their JSON, on a tap only',
       (tester) async {
         await showActions(tester);
-        expect(shared, isEmpty);
+        expect(copied, isEmpty);
         await tester.tap(find.text('Export'));
         await tester.pump();
-        expect(shared.single.$1, 'complete_log_chat_${record.orderId}.json');
+        await tester.pump();
+        expect(copied, [
+          const JsonEncoder.withIndent('  ').convert(exportOf()),
+        ]);
         await tester.tap(find.text('Audit Chat'));
         await settle(tester);
+        expect(privacyCalls, contains('screenshotOff'));
         expect(find.text("Don't trust, verify"), findsOneWidget);
-        expect(find.text('Your public key'), findsOneWidget);
-        expect(find.text('Peer public key'), findsOneWidget);
+        for (final label in [
+          'Your public key',
+          'Peer public key',
+          'Your encrypted private key',
+          'Your private key passphrase (keep secure!)',
+        ]) {
+          expect(find.text(label), findsOneWidget, reason: label);
+        }
+        expect(find.text(passphrase), findsOneWidget);
+        expect(find.text(encryptedKey), findsOneWidget);
         String grouped(String fingerprint) => [
           for (var i = 0; i < fingerprint.length; i += 4)
             fingerprint.substring(i, i + 4),
@@ -983,33 +1022,45 @@ void main() {
           findsOneWidget,
         );
         expect(find.text(otherKey.armored), findsNothing);
-        await tester.ensureVisible(find.text('Keys'));
-        await tester.pump();
-        await tester.tap(find.text('Keys'));
-        await tester.pump();
-        expect(shared.last.$1, 'pgp_keys_${record.orderId}.json');
-        expect(shared.last.$2, isNot(contains('PRIVATE')));
-        await tester.ensureVisible(find.text('Messages'));
-        await tester.pump();
-        await tester.tap(find.text('Messages'));
-        await tester.pump();
-        expect(shared.last.$1, 'pgp_messages_${record.orderId}.json');
-        await tester.ensureVisible(find.text('Go back'));
-        await tester.pump();
-        await tester.tap(find.text('Go back'));
+        await tapInDialog(tester, 'Keys');
+        expect(copied.last, jsonEncode(exportOf()['credentials']));
+        await tapInDialog(tester, 'Messages');
+        expect(copied.last, jsonEncode(exportOf()['messages']));
+        privacyCalls.clear();
+        await tapInDialog(tester, 'Go back');
         await settle(tester);
         expect(find.text("Don't trust, verify"), findsNothing);
-        expect(shared, hasLength(3));
+        expect(privacyCalls, contains('screenshotOn'));
+        expect(copied, hasLength(3));
       },
     );
 
-    testWidgets('before the peer\'s key: only this robot\'s', (tester) async {
-      await showActions(tester, view: ChatView(ownKey: ownKey));
-      await tester.tap(find.text('Audit Chat'));
-      await settle(tester);
-      expect(find.text('Your public key'), findsOneWidget);
-      expect(find.text('Peer public key'), findsNothing);
-    });
+    testWidgets(
+      'the dialog shows nothing without the capture protection, and no peer key before the peer\'s is known',
+      (tester) async {
+        protection = () async => false;
+        await showActions(
+          tester,
+          view: ChatView(ownKey: ownKey),
+          exported: exportOf(peer: false),
+        );
+        await tester.tap(find.text('Audit Chat'));
+        await settle(tester);
+        expect(find.text(passphrase), findsNothing);
+        expect(
+          find.text(
+            'Screen protection could not be turned on, so the chat stays hidden.',
+          ),
+          findsOneWidget,
+        );
+        protection = () async => true;
+        await tester.tap(find.text('Retry'));
+        await settle(tester);
+        expect(find.text('Your public key'), findsOneWidget);
+        expect(find.text('Peer public key'), findsNothing);
+        expect(find.text(passphrase), findsOneWidget);
+      },
+    );
 
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
@@ -1049,6 +1100,7 @@ final class _Chat {
   final List<int> reposts = [];
   Result<ChatSent, ChatSendRefusal> Function(int id)? repostAnswer;
   Map<String, Object?> exported = const {};
+  bool exportFails = false;
 
   ChatCubit cubit(TradeRecord record) => ChatCubit(
     record,
@@ -1073,7 +1125,9 @@ final class _Chat {
       return Ok(skipped);
     },
     (record) => view,
-    (record) => exported,
+    (record) async => exportFails
+        ? const Err<Map<String, Object?>, ChatReadFailure>(ChatNotOpen())
+        : Ok(exported),
     (record) {
       held++;
       return () => released++;

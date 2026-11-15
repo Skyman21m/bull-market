@@ -8,6 +8,7 @@ import 'package:primitives/primitives.dart';
 import '../domain/trade/trade_chat.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade_record.dart';
+import '../domain/usecases/trade/export_chat_usecase.dart';
 import '../domain/usecases/trade/send_chat_message_usecase.dart';
 import '../domain/usecases/trade/watch_chat_usecase.dart';
 import 'payout_cubit.dart' show TradeKeyHolder;
@@ -45,11 +46,11 @@ typedef ChatSkipper =
 /// [WatchChatUsecase.current], which the locator gives the cubit.
 typedef ChatCurrent = ChatView Function(TradeRecord record);
 
-/// [WatchChatUsecase.exportOf], which the locator gives the cubit.
-typedef ChatExporter = Map<String, Object?> Function(TradeRecord record);
-
-/// Hands [text], a file named [fileName], to the system's share sheet, on the user's tap only: whoever places the chat's actions lends it (the feature declares no share package).
-typedef ChatShare = Future<void> Function(String fileName, String text);
+/// [ExportChatUsecase.execute], which the locator gives the cubit.
+typedef ChatExporter =
+    Future<Result<Map<String, Object?>, ChatReadFailure>> Function(
+      TradeRecord record,
+    );
 
 /// What the chat panel of one trade shows (#93): the chat as read, the text in the field, and what the last send and the last read gave.
 @immutable
@@ -258,26 +259,31 @@ class ChatCubit extends Cubit<ChatPanelState> {
     }
   }
 
-  /// The chat as the export gives it, as indented JSON (`complete_log_chat_<order id>.json`): what « Export » hands the share sheet, on the user's tap only.
-  String exportJson() => _json(_export(record));
+  /// The chat as « Export » and « Don't trust, verify » give it, the reference's ([ExportChatUsecase]), made on the user's tap: the credentials, the robot's token among them, and the messages; `null` when it could not be made.
+  Future<Map<String, Object?>?> exported() async =>
+      switch (await _export(record)) {
+        Ok(:final value) => value,
+        Err() => null,
+      };
 
-  /// The export's file name, the reference's (`Prompts/Chat.tsx:288`).
-  String get exportFileName => 'complete_log_chat_${record.orderId}.json';
+  /// The fingerprint of the peer's key pinned for the trade, kept after a breach; `null` before one is known.
+  String? get pinnedPeerFingerprint => switch (state.view.peerKey) {
+    ChatPeerKeyPinned(:final key) => key.fingerprint,
+    ChatPeerKeyBreach(:final pinned) => pinned?.fingerprint,
+    ChatPeerKeyAwaited() => null,
+  };
 
-  /// The keys' part of the export, as indented JSON: what « Keys » of « Don't trust, verify » hands the share sheet.
-  String keysJson() => _json(_export(record)['credentials']);
+  /// What « Export » copies on a phone, as the reference does (`utils/saveFile.ts`: `JSON.stringify(data, null, 2)` to the clipboard).
+  static String exportText(Map<String, Object?> exported) =>
+      const JsonEncoder.withIndent('  ').convert(exported);
 
-  /// Its file name, the reference's (`Dialogs/AuditPGP.tsx`).
-  String get keysFileName => 'pgp_keys_${record.orderId}.json';
+  /// What « Keys » copies on a phone, as the reference does (`Dialogs/AuditPGP.tsx`: `JSON.stringify(object)`).
+  static String keysText(Map<String, Object?> exported) =>
+      jsonEncode(exported['credentials']);
 
-  /// The messages' part of the export, as indented JSON: what « Messages » of « Don't trust, verify » hands the share sheet.
-  String messagesJson() => _json(_export(record)['messages']);
-
-  /// Its file name, the reference's (`Dialogs/AuditPGP.tsx`).
-  String get messagesFileName => 'pgp_messages_${record.orderId}.json';
-
-  static String _json(Object? value) =>
-      const JsonEncoder.withIndent('  ').convert(value);
+  /// What « Messages » copies on a phone, as the reference does (`JSON.stringify(messages)`).
+  static String messagesText(Map<String, Object?> exported) =>
+      jsonEncode(exported['messages']);
 
   @override
   Future<void> close() {

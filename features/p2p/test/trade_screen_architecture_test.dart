@@ -60,6 +60,7 @@ void main() {
         // The chat panel's cubit (#93), the only caller of the chat's use cases.
         ('WatchChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
         ('SendChatMessageUsecase', 'lib/src/presentation/chat_cubit.dart'),
+        ('ExportChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
       ]) {
         final outside = {
           for (final path in _whereNamed(sources, useCase))
@@ -217,6 +218,7 @@ const _notForScreens = {
   'HoldTradeKeyUsecase',
   'WatchChatUsecase',
   'SendChatMessageUsecase',
+  'ExportChatUsecase',
   'TradeChats',
   'TradeKeyring',
   'TradeKeyHold',

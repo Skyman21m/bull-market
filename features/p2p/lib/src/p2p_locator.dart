@@ -62,6 +62,7 @@ import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
+import 'domain/usecases/trade/export_chat_usecase.dart';
 import 'domain/usecases/trade/send_chat_message_usecase.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
@@ -365,6 +366,10 @@ final class P2pLocator {
         locator(),
       ),
     );
+    // The chat as the reference exports it (#93), the robot's token included: on the user's tap only, through the chat panel's cubit.
+    locator.registerFactory<ExportChatUsecase>(
+      () => ExportChatUsecase(locator(), locator(), locator()),
+    );
     locator.registerFactory<SendChatMessageUsecase>(
       () => SendChatMessageUsecase(
         CoordinatorClient(transport(), clock: clock),
@@ -435,7 +440,7 @@ final class P2pLocator {
         send.sendAgain,
         watch.readNewerOnly,
         watch.current,
-        watch.exportOf,
+        locator<ExportChatUsecase>().execute,
         (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
       );
     });
