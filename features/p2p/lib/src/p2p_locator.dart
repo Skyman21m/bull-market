@@ -127,6 +127,7 @@ final class P2pLocator {
         garageKeys,
         database: () => P2pDatabase.open(databaseDirectory),
         transport: () => locator<TorCoordinatorTransport>(),
+        relays: () => locator<TorCoordinatorTransport>(),
         clock: DateTime.now,
       );
     }
@@ -147,6 +148,7 @@ final class P2pLocator {
     GarageKeys garageKeys, {
     required P2pDatabase Function() database,
     required CoordinatorTransport Function() transport,
+    required NostrRelayTransport Function() relays,
     required DateTime Function() clock,
   }) {
     locator.registerLazySingleton<GarageKeyRepository>(
@@ -262,7 +264,7 @@ final class P2pLocator {
       GarageKeyClipboard.new,
       dispose: (clipboard) => clipboard.dispose(),
     );
-    registerTrades(locator, transport: transport, clock: clock);
+    registerTrades(locator, transport: transport, relays: relays, clock: clock);
   }
 
   /// Registers the trades (#87): their records, terms and trails in the database, the robot layer that reserves a fresh robot for each take, and the trade use cases, the only callers of the coordinator's money members; the trade screens (#88) are their only callers.
@@ -276,6 +278,7 @@ final class P2pLocator {
   static void registerTrades(
     GetIt locator, {
     required CoordinatorTransport Function() transport,
+    required NostrRelayTransport Function() relays,
     required DateTime Function() clock,
   }) {
     locator.registerLazySingleton<TradeRecordRepository>(
@@ -394,6 +397,9 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        relays(),
+        Federation.robosats,
+        Random.secure(),
       ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.

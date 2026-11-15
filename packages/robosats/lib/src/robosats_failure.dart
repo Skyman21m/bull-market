@@ -696,3 +696,28 @@ final class ChatPageTooLarge extends CoordinatorOrderFailure {
 final class PgpChatTextTooLong extends PgpFailure {
   const PgpChatTextTooLong();
 }
+
+/// Why a chat message is not also sent over Nostr (#94): nothing was built, and the message still goes to the coordinator.
+sealed class NostrChatFailure extends RobosatsFailure {
+  const NostrChatFailure();
+}
+
+/// The order lacks the Nostr key of the maker or of the taker: the official client sends nothing over Nostr then either (`EncryptedChat/index.tsx:217`).
+final class NostrChatKeyMissing extends NostrChatFailure {
+  const NostrChatKeyMissing();
+}
+
+/// The coordinator holds for this robot a Nostr key that is not the robot's: a peer on the official client filters the messages on that key, so a message signed by the robot's own key would not show.
+final class NostrChatKeyNotOurs extends NostrChatFailure {
+  const NostrChatKeyNotOurs();
+}
+
+/// The coordinator has no onion address on the network, hence no relay.
+final class NostrChatNoRelay extends NostrChatFailure {
+  const NostrChatNoRelay();
+}
+
+/// The gift wraps would exceed what a coordinator's relay takes (`maxEventSize` of strfry): unreachable with a text the chat accepts.
+final class NostrChatMessageTooLarge extends NostrChatFailure {
+  const NostrChatMessageTooLarge();
+}

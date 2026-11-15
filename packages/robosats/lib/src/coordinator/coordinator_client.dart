@@ -1146,11 +1146,14 @@ final class CoordinatorClient {
   /// If the user sends it again, send this same value, so that a reader can tell the duplicate by its text ([ChatPage.repeatsACiphertext]).
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included; the transport never retries a request that is not a `GET`.
+  ///
+  /// [onSending] is called when the transport starts writing the post on a connection to the coordinator ([CoordinatorRequest.onSending]), never when nothing is written: a refusal above, a transport without a place or a session for it, a connection that fails first.
   Future<Result<ChatPage, OrderActionFailure>> postChat({
     required RobotIdentity identity,
     required CoordinatorOrder lastRead,
     required OutgoingChatMessage message,
     required int offset,
+    void Function()? onSending,
   }) async {
     final before =
         _chatRefusalBefore(
@@ -1185,6 +1188,7 @@ final class CoordinatorClient {
         ),
         maxResponseBytes: CoordinatorReadBounds.chatBytes,
         robot: identity.sessionKey,
+        onSending: onSending,
       ),
       catchErrors: true,
       keepOversized: true,

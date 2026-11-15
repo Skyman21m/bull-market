@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -102,6 +103,12 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// What the next decryptions of the chat give instead, when set: the work could not run.
   RobotKeyComputeFailure? chatDecryptFailure;
 
+  /// When set, each composition of a Nostr copy throws it: a bug in the work, or an error out of its isolate.
+  Object? composeThrows;
+
+  /// When set, each composition of a Nostr copy waits for it: a composition in flight, as long as the test wants.
+  Future<void>? holdCompose;
+
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
@@ -121,6 +128,37 @@ final class HarnessKeys implements RobotKeyComputePort {
 
   /// How many chat messages were decrypted, in how many works.
   int chatDecrypts = 0;
+
+  @override
+  Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
+    required DateTime now,
+  }) async {
+    if (holdCompose case final gate?) await gate;
+    return Ok(
+      composeThrows != null
+          ? throw composeThrows ?? StateError('unreachable')
+          : OutgoingNostrChatMessage.composeFor(
+              sender,
+              order: order,
+              coordinator: coordinator,
+              network: network,
+              text: text,
+              now: now,
+              random: Random.secure(),
+            ),
+    );
+  }
 
   @override
   Future<
@@ -378,9 +416,22 @@ final class TradeHarness {
     final fresh = TradeChats();
     return (
       WatchChatUsecase(_client, reader, limiter, keyring, keys, fresh),
-      SendChatMessageUsecase(_client, reader, limiter, keyring, keys, fresh),
+      SendChatMessageUsecase(
+        _client,
+        reader,
+        limiter,
+        keyring,
+        keys,
+        fresh,
+        relays,
+        Federation.robosats,
+        Random(7),
+      ),
     );
   }
+
+  /// The Nostr relays of this run (#94): every publication of the chat, recorded.
+  final RecordingRelays relays = RecordingRelays();
 
   /// The key work of this run: its unlocks are counted.
   final HarnessKeys keys = HarnessKeys();
@@ -465,6 +516,9 @@ final class TradeHarness {
       keyring,
       keys,
       chats,
+      relays,
+      Federation.robosats,
+      Random(7),
     );
     watch = WatchTradeUsecase(
       reader,
@@ -656,4 +710,47 @@ final class WatchRun {
     final TradeWatchStatus status => status,
     final other => throw StateError('not a status: $other'),
   };
+}
+
+/// The Nostr relays of a run (#94): records each publication and answers [answer], or holds it until [hold] completes.
+final class RecordingRelays implements NostrRelayTransport {
+  /// Every publication, in order: the relay, the events and the robot.
+  final List<
+    ({Uri relay, OutgoingNostrChatMessage message, RobotSessionKey robot})
+  >
+  published = [];
+
+  NostrRelayOutcome answer = const NostrRelayAccepted();
+
+  /// When set, what each relay answers, in place of [answer]: relays that answer differently.
+  NostrRelayOutcome Function(Uri relay)? answerFor;
+
+  /// When set, each publication waits for it before answering: one that never completes is a relay that never answers.
+  Future<void>? hold;
+
+  /// When set, each publication throws it once it has waited: an adapter that breaks its contract.
+  Object? thrown;
+
+  @override
+  Future<NostrRelayOutcome> publish(
+    Uri relay,
+    OutgoingNostrChatMessage message, {
+    required RobotSessionKey robot,
+  }) async {
+    published.add((relay: relay, message: message, robot: robot));
+    if (hold case final gate?) await gate;
+    if (thrown case final error?) throw error;
+    return answerFor?.call(relay) ?? answer;
+  }
+
+  /// The distinct messages published, in order.
+  List<OutgoingNostrChatMessage> get messages {
+    final distinct = <OutgoingNostrChatMessage>[];
+    for (final p in published) {
+      if (!distinct.any((m) => identical(m, p.message))) {
+        distinct.add(p.message);
+      }
+    }
+    return distinct;
+  }
 }

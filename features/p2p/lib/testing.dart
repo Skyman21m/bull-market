@@ -86,6 +86,7 @@ export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
+/// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
@@ -100,6 +101,7 @@ void setUpP2pForTesting(
   Bolt11Decoder? bolt11Decoder,
   P2pWalletPort? wallet,
   RobotKeyComputePort? robotKeys,
+  NostrRelayTransport? relays,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -142,6 +144,7 @@ void setUpP2pForTesting(
         ),
       ),
       transport: () => transport,
+      relays: () => relays ?? const _NoRelays(),
       clock: clock,
     );
   }
@@ -420,6 +423,18 @@ final class FakeP2pWalletPort implements P2pWalletPort {
 @visibleForTesting
 CoordinatorTransport liveCoordinatorTransportForTesting(GetIt locator) =>
     locator<TorCoordinatorTransport>();
+
+/// No relay: every publication fails at once, and nothing leaves the test.
+final class _NoRelays implements NostrRelayTransport {
+  const _NoRelays();
+
+  @override
+  Future<NostrRelayOutcome> publish(
+    Uri relay,
+    OutgoingNostrChatMessage message, {
+    required RobotSessionKey robot,
+  }) async => const NostrRelayFailed();
+}
 
 final class _NoSessions implements CoordinatorSessionsPort {
   const _NoSessions();

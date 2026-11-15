@@ -153,6 +153,13 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The messages of the chat as the coordinator stores them (`{index, time, message, nick}`, `chat/views.py:95-105`), in its order: the test may add, change, repeat or drop some, as a coordinator could.
   final List<Map<String, Object?>> chat = [];
 
+  /// The maker's Nostr public key the order gives every robot that reads it (`maker_nostr_pubkey`, `api/views.py:278`): by default the x-only key of the secret key 3, the first official BIP-340 test vector, public; `null` gives `"None"`, a maker without one.
+  String? makerNostrPublicKey =
+      'f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9';
+
+  /// The taker's Nostr public key the order gives once taken (`taker_nostr_pubkey`, `api/views.py:315-317`): when `null`, the key the robot sent at its first contact, as the coordinator keeps it.
+  String? takerNostrPublicKey;
+
   /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
   String? description;
 
@@ -397,6 +404,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     final kind = _kindOf(request);
     final queue = _faults[kind];
     final fault = queue == null || queue.isEmpty ? null : queue.removeAt(0);
+    // As the Tor transport (`CoordinatorRequest.onSending`): the request is written unless no place could be had for it or the coordinator could not be reached.
+    if (fault != ScriptedFault.busy && fault != ScriptedFault.unreachable) {
+      request.onSending?.call();
+    }
     switch (fault) {
       case ScriptedFault.busy:
         return const Err(CoordinatorTransportBusy());
@@ -1077,6 +1088,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           .clamp(0, 1 << 31),
       'maker_nick': _maker.nickname,
       'maker_hash_id': _maker.hex,
+      'maker_nostr_pubkey': makerNostrPublicKey ?? 'None',
       'description': description,
       'maker_status': 'Active',
     };
@@ -1103,7 +1115,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       ..['maker_locked'] = true
       ..['taker_locked'] = taken
       ..['escrow_locked'] = status == 8 || status >= 9;
-    if (taken) data['taker_hash_id'] = robot.hashId.hex;
+    if (taken) {
+      data
+        ..['taker_hash_id'] = robot.hashId.hex
+        ..['taker_nostr_pubkey'] =
+            takerNostrPublicKey ??
+            _kept[robot.sessionKey]?['nostr_pubkey'] ??
+            'None';
+    }
     if ([6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
       data['trade_satoshis'] = buyer ? payout : escrow;
     }

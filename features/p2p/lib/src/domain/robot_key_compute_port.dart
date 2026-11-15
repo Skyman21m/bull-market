@@ -1,6 +1,12 @@
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
     show
+        Coordinator,
+        CoordinatorOrder,
+        NostrChatFailure,
+        NostrKeyPair,
+        OutgoingNostrChatMessage,
+        RobosatsNetwork,
         CoordinatorRobot,
         DecryptedChatMessage,
         PgpFailure,
@@ -59,6 +65,25 @@ abstract interface class RobotKeyComputePort {
   decryptChat(
     UnlockedRobotPgpKey key,
     List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  });
+
+  /// The Nostr copy of a chat message (#94), as `OutgoingNostrChatMessage.composeFor` builds it with a secure source of randomness: two ECDH, four BIP-340 signatures checked and a throwaway key, in pure Dart, about 160 ms on a desktop, which on the UI isolate would freeze the screen.
+  ///
+  /// What is copied there: the robot's Nostr key pair [sender], never its identity or token, the order, the coordinator, the text and [now]; what comes back: the two gift wraps, which hold the text encrypted only.
+  /// The outer [RobotKeyComputeFailure] when the work could not be started: nothing was built.
+  Future<
+    Result<
+      Result<OutgoingNostrChatMessage, NostrChatFailure>,
+      RobotKeyComputeFailure
+    >
+  >
+  composeNostrChat(
+    NostrKeyPair sender, {
+    required CoordinatorOrder order,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String text,
     required DateTime now,
   });
 }
