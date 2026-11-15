@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
+import '../widgets/word_fit_text.dart';
 
 /// What the user chose in « Order options ».
 enum OrderOption { dispute, collaborativeCancel }
@@ -14,7 +15,7 @@ enum OrderOption { dispute, collaborativeCancel }
 ///
 /// « Audit Chat » and « Export » belong to the chat (#93): their places are kept, `null` until then, and nothing is drawn for them.
 /// « Open Dispute » is off until 18 hours before the chat's end ([disputeOpensAt]), with the reference's « To open a dispute you need to wait {{hours}}h {{minutes}}m » counting down under it, so that it is never offered when the coordinator would refuse it (1054); it is not drawn when the status shown does not offer it.
-/// « Collaborative Cancel » is off once the fiat is sent, with the reference's « Orders can't be cancelled if fiat has been sent. ».
+/// « Collaborative Cancel » is off once the fiat is sent; under it, always, the reference's « Orders can't be cancelled if fiat has been sent. », which its tooltip says on a touch at 9 as at 10.
 class OrderOptionsDialog extends StatefulWidget {
   /// The places of « Audit Chat » and « Export » (#93), `null` for now.
   final Widget? auditChat;
@@ -93,7 +94,7 @@ class _OrderOptionsDialogState extends State<OrderOptionsDialog> {
           Semantics(
             container: true,
             header: true,
-            child: Text(
+            child: WordFitText(
               l10n.p2pEndOrderOptions,
               style: styles.headlineLarge?.copyWith(color: colors.text),
             ),
@@ -113,7 +114,7 @@ class _OrderOptionsDialogState extends State<OrderOptionsDialog> {
             ),
             if (!disputeOpen) ...[
               const Gap(BullSpacing.xs),
-              Text(
+              WordFitText(
                 disputeWait(l10n, opensAt.difference(_now)),
                 textAlign: TextAlign.center,
                 style: styles.bodySmall?.copyWith(color: colors.textMuted),
@@ -132,9 +133,10 @@ class _OrderOptionsDialogState extends State<OrderOptionsDialog> {
                       Navigator.of(context).pop(OrderOption.collaborativeCancel)
                 : null,
           ),
-          if (!widget.collaborativeCancel) ...[
+          // The reference's tooltip of « Collaborative Cancel », which it shows on a touch at 9 as at 10: a line here, under the button.
+          ...[
             const Gap(BullSpacing.xs),
-            Text(
+            WordFitText(
               l10n.p2pEndCollabAfterFiat,
               textAlign: TextAlign.center,
               style: styles.bodySmall?.copyWith(color: colors.textMuted),

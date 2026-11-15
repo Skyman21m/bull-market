@@ -2401,6 +2401,12 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pEndPaymentFailed));
         await capture('fin-10-paiement-echoue');
+        // « Order options » at 10: « Collaborative Cancel » off, and the reference's reason.
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options-10');
+        Navigator.of(tester.element(find.text(l10n.p2pEndOrderOptions))).pop();
+        await settle();
         await tester.ensureVisible(find.text(l10n.p2pEndPaymentFailed));
         await settle();
         await tester.tap(find.text(l10n.p2pEndPaymentFailed));
@@ -2417,7 +2423,26 @@ void main() {
         await tester.tap(find.text(l10n.p2pEndCollabCancel));
         await settle();
         await capture('fin-annulation-dialogue');
+        // The ask held by the coordinator, so that its wait is captured; then it lands after the read that follows it.
+        final askHeld = Completer<void>();
+        coordinator
+          ..hold = askHeld.future
+          ..failNext(ScriptedRequest.cancel, ScriptedFault.landsLate);
         await tester.tap(find.text(l10n.p2pEndCollabAsk));
+        await waitFor(
+          find.text(
+            l10n.p2pEndStepSendingRequest(coordinator.coordinator.longAlias),
+          ),
+        );
+        await settle();
+        await capture('fin-annulation-attente');
+        coordinator.hold = null;
+        askHeld.complete();
+        await waitFor(find.text(l10n.p2pEndUnknownRequest));
+        await settle();
+        await capture('fin-avis-demande-inconnue');
+        coordinator.landLate();
+        await nextRead();
         await waitFor(find.text(l10n.p2pEndCollabAskedAlert));
         await settle();
         await capture('fin-annulation-demandee');

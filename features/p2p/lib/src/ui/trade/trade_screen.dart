@@ -485,6 +485,9 @@ class _Contract extends StatelessWidget {
     final collabAlert = switch ((status, contract.order)) {
       (Chatting(fiatSent: false, peerAskedToCancel: true), final order?) =>
         l10n.p2pEndCollabPeerAlert(order.maker.nickname),
+      // A status kept from no order (a read refused as a whole): no nickname to name, so the reference's own words for the peer's ask (`Dialogs/ConfirmCollabCancel.tsx`).
+      (Chatting(fiatSent: false, peerAskedToCancel: true), null) =>
+        l10n.p2pEndCollabPeerAsked,
       (Chatting(fiatSent: false, askedToCancel: true), _) =>
         l10n.p2pEndCollabAskedAlert,
       _ => null,

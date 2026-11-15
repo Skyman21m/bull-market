@@ -2,6 +2,7 @@ import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 
 import 'trade_button.dart';
+import 'word_fit_text.dart';
 
 /// The body of a dialog of the official client in the wallet's look: its title, its text, then its two buttons, the one that goes back first and the one that goes on second, as the reference lays them out from left to right (`DialogActions`).
 ///
@@ -28,6 +29,10 @@ class TradeDialogBody extends StatelessWidget {
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;
 
+  /// What a screen reader reads of the button that goes on, when it differs from its label (« Wait 42 seconds »), and whether its changes are announced (« Confirm » once a wait ends).
+  final String? goSemanticLabel;
+  final bool goLive;
+
   /// What a screen reader reads of the title and of the warning, when they differ from them (a text that starts with an emoji, whose name it would read first); `null` for the text itself.
   final String? semanticTitle;
   final String? semanticWarning;
@@ -41,6 +46,8 @@ class TradeDialogBody extends StatelessWidget {
     required this.goLabel,
     required this.onGo,
     this.backFirst = false,
+    this.goSemanticLabel,
+    this.goLive = false,
     this.semanticTitle,
     this.semanticWarning,
     this.warning,
@@ -62,13 +69,13 @@ class TradeDialogBody extends StatelessWidget {
             header: true,
             label: semanticTitle,
             excludeSemantics: semanticTitle != null,
-            child: Text(
+            child: WordFitText(
               title,
               style: styles.headlineLarge?.copyWith(color: colors.text),
             ),
           ),
           const Gap(BullSpacing.md),
-          Text(
+          WordFitText(
             text,
             style: styles.bodyMedium?.copyWith(color: colors.textMuted),
           ),
@@ -78,7 +85,7 @@ class TradeDialogBody extends StatelessWidget {
               container: true,
               label: semanticWarning,
               excludeSemantics: semanticWarning != null,
-              child: Text(
+              child: WordFitText(
                 warning,
                 style: styles.bodyMedium?.copyWith(
                   color: colors.warning,
@@ -89,14 +96,17 @@ class TradeDialogBody extends StatelessWidget {
           ],
           if (afterWarning case final after?) ...[
             const Gap(BullSpacing.md),
-            Text(
+            WordFitText(
               after,
               style: styles.bodyMedium?.copyWith(color: colors.textMuted),
             ),
           ],
           if (note case final note?) ...[
             const Gap(BullSpacing.sm),
-            Text(note, style: styles.bodyMedium?.copyWith(color: colors.text)),
+            WordFitText(
+              note,
+              style: styles.bodyMedium?.copyWith(color: colors.text),
+            ),
           ],
           const Gap(BullSpacing.lg),
           TradeButton(
@@ -105,7 +115,15 @@ class TradeDialogBody extends StatelessWidget {
             outlined: !backFirst,
           ),
           const Gap(BullSpacing.sm),
-          TradeButton(label: goLabel, onPressed: onGo, outlined: backFirst),
+          Semantics(
+            liveRegion: goLive,
+            child: TradeButton(
+              label: goLabel,
+              onPressed: onGo,
+              outlined: backFirst,
+              semanticLabel: goSemanticLabel,
+            ),
+          ),
         ],
       ),
     );
