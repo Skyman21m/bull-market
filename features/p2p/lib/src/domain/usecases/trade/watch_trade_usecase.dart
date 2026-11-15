@@ -15,6 +15,7 @@ import 'trade_watch_session.dart';
 /// - A take whose answer was lost resolves here: its first read is on the trail written before the take; a read showing the robot as the taker confirms it; a read that brings it to an end without, no pre-take ever seen, closes it as [TradeWatchTakeNotMade] (never « bond may have been lost »: no invoice was shown); a take whose terms or first trail were never written never left, and is closed at once ([TradeWatchTakeNeverSent]); a [TradeClosedFailure] from a later confirmation is emitted on every status, never dropped.
 /// - A status shows an invoice, or offers a payment, only when it is marked [TradeWatchStatus.stored]: when the trail of a read cannot be stored, the status emitted is the trail on disk's own (no invoice, no order), unmarked, with [TradeWatchStatus.recordProblem] (review of #117).
 /// - One subscription reads a trade at a time: the newest takes it over, at once; the earlier one emits [TradeWatchSuperseded] and ends (its read in flight dropped as for a cancel), and the newest reads only once that read has ended.
+/// - [lastStored] gives the newest status this run stored for a trade while it goes on, for its screen to show again while it opens the trade anew (#152).
 /// - Nothing runs in the background: the screen cancels the subscription when the app is hidden, and listens again on its return; when the subscription is cancelled no timer is left, no read starts, a read whose answer comes after is dropped, and the writes of an answer already being kept finish (the stored trail stays correct).
 ///
 /// Nothing here pays or acts on the order: reads only.
@@ -30,6 +31,9 @@ final class WatchTradeUsecase {
     this._waits,
     this._registry,
   );
+
+  /// The newest status this run stored for the trade of [record] while it goes on, or `null` ([TradeReader.lastStored]): what its screen shows again while its first read after a return is in flight, only when the stored trail the watch opens is that status's own (#152). In memory only; nothing is read or sent.
+  TradeSeen? lastStored(TradeRecord record) => _reader.lastStored(record);
 
   /// The states of the trade of [record], from its stored records then after each read, while listened to; [signals] carries what the screen says (shown or not, read now), [onScreen] whether it is shown at the start.
   Stream<TradeWatchState> execute(

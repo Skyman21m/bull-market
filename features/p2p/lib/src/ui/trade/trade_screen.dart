@@ -734,8 +734,8 @@ class _CancelRowState extends State<_CancelRow> {
         ? P2pLocalizations.of(context).p2pPayCancelNote
         : null;
     try {
-      // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
-      if (seen.order == null) {
+      // A status that comes from no order read (an answer refused as a whole keeps the last status without its order), or one kept while the trade was opened anew with no read in since (#152), cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
+      if (seen.order == null || cubit.showsKept) {
         await cubit.cancel(seen);
         return;
       }

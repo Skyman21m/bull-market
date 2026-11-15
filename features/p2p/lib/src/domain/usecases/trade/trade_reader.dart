@@ -155,6 +155,20 @@ final class TradeReader {
   Future<void> actionEnded(TradeRecord record) =>
       _requestOrder.actionEnded(record.robot);
 
+  /// The newest status stored for [record]'s trade in this process while it goes on ([TradeReadOrder.lastStored]), only when it was stored for this very trade (its robot, which names its network and Garage Key, its coordinator, order and role); `null` otherwise (#152).
+  TradeSeen? lastStored(TradeRecord record) {
+    final last = _requestOrder.lastStored(record.robot);
+    if (last == null) return null;
+    final known = last.record;
+    final same =
+        known.robot == record.robot &&
+        known.coordinatorAlias == record.coordinatorAlias &&
+        known.coordinatorOnion == record.coordinatorOnion &&
+        known.orderId == record.orderId &&
+        known.role == record.role;
+    return same ? last.seen : null;
+  }
+
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
   Future<TradeOpening> open(TradeRecord record) async {
     final StoredTradeHistory history;

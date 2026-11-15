@@ -32,10 +32,10 @@ import 'support/harness.dart';
 import 'support/trade_orders.dart';
 import 'support/trade_screens.dart';
 
-/// Ticket #148, « the app reloads the order each time »: the trade screen when the app is hidden then shown again in the same process, as when the buyer leaves to pay the bond, or to make an invoice, in another wallet app.
+/// #152 (from #148, « the app reloads the order each time »): the trade screen when the app is hidden then shown again in the same process, as when the buyer leaves to pay the bond, or to make an invoice, in another wallet app.
 ///
 /// The watch is played by the test, and emits on the return what the real one emits there (`back_in_app_test.dart` shows it over the real watch): the trade opened again from its stored trail, the trail's own status, not marked stored (`TradeReader.open`, `TradeStatus.beforeFirstRead`), then, once the first read over a Tor just woken comes back, the status read.
-/// Each test expects what the official client does, its order page keeping what it shows while it reads again (`frontend/src/basic/OrderPage/index.tsx:76-96`): they fail until #148 is fixed, and are its tests.
+/// Each test expects what the official client does, its order page keeping what it shows while it reads again (`frontend/src/basic/OrderPage/index.tsx:76-96`).
 void main() {
   final record = TradeScreenStatuses.record;
   late TradeScreenStatuses statuses;
@@ -90,7 +90,12 @@ void main() {
       .position;
 
   /// Shows the trade screen over [watch], with « Pay with this wallet » offering something (so « Pay with another wallet » starts closed, as in the APK).
-  Future<void> showTrade(WidgetTester tester, _Watch watch) async {
+  Future<void> showTrade(
+    WidgetTester tester,
+    _Watch watch, {
+    DateTime Function()? now,
+    void Function(WalletPaymentRequest request)? onWallet,
+  }) async {
     tester.view
       ..physicalSize = const Size(390, 844) * 3
       ..devicePixelRatio = 3;
@@ -124,10 +129,12 @@ void main() {
               BlocProvider.value(value: page),
             ],
             child: TradeScreen(
-              now: () => tradeNow,
+              now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
-              walletPayment: (context, request) =>
-                  const WalletPaymentSlot(Text('wallet slot')),
+              walletPayment: (context, request) {
+                onWallet?.call(request);
+                return const WalletPaymentSlot(Text('wallet slot'));
+              },
             ),
           ),
         ),
@@ -136,7 +143,7 @@ void main() {
     await tester.pump();
   }
 
-  group('#148: back in the app, the trade screen', () {
+  group('#152: back in the app, the trade screen', () {
     testWidgets(
       'the bond with its QR code opened and scrolled to: while the first read after the return runs the bond step stays, and after it the QR code is still open and the list where it was',
       (tester) async {
@@ -192,6 +199,39 @@ void main() {
     );
 
     testWidgets(
+      'an invoice the clock says expired while away is not drawn payable from the kept status: no QR code, the bond step stays (the wallet\'s slot is told the invoice expired)',
+      (tester) async {
+        var clock = tradeNow;
+        var expiredTold = false;
+        final watch = _Watch();
+        await showTrade(
+          tester,
+          watch,
+          now: () => clock,
+          onWallet: (request) => expiredTold = request.invoiceExpired,
+        );
+        watch.emit(TradeScreenStatuses.watched(bond));
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Pay with another wallet'));
+        await tester.pump();
+        expect(find.byType(QrImageView), findsOneWidget);
+
+        // Away past the invoice's end.
+        clock = tradeNow.add(const Duration(days: 2));
+        await leaveAndComeBack(tester);
+        watch.emit(reopenedAt(bond));
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.byType(TradeFirstReadWait), findsNothing);
+        expect(find.text('You are BUYING BTC'), findsOneWidget);
+        expect(find.byType(QrImageView), findsNothing);
+        expect(expiredTold, isTrue);
+      },
+    );
+
+    testWidgets(
       'the « Order » tab chosen: while the first read after the return runs, the order stays shown',
       (tester) async {
         final watch = _Watch();
@@ -219,7 +259,7 @@ void main() {
     );
   });
 
-  group('#148: back in the app, the payout form', () {
+  group('#152: back in the app, the payout form', () {
     const asked = 106606;
     final readAt = tradeNow.add(const Duration(seconds: 30));
     final invoice = Bolt11TestInvoice(
