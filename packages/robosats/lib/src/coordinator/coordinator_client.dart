@@ -336,14 +336,14 @@ final class CoordinatorClient {
 
   /// `POST /api/order/?order_id=` with the action `confirm`, as the buyer: tells the coordinator of [lastRead] that the robot [identity] sent the fiat (« Confirm {{amount}} {{currencyCode}} sent »), which moves the order from 9 to 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`, commit ff1998c).
   ///
-  /// From then on the seller may release the escrow, the buyer can no longer cancel, and a false confirmation risks the bond in a dispute: the buyer alone takes it back only while the seller has not acted ([undoFiatSent]).
+  /// From then on the seller may release the escrow, the buyer can no longer cancel, and a false confirmation risks the bond in a dispute: the buyer alone takes it back only while the seller has not acted ([undoConfirmFiat]).
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:266-269`): `{"action":"confirm"}`.
   ///
   /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 9 ([TradeActionNotNow]), each decided from [lastRead]: read the order again before telling the user.
   /// The answer is [TradeActionAccepted] with the order as it then is; the coordinator's refusals ([TradeActionNotNow] for 1029, [OrderNotParticipant]) and the authentication's are an [OrderActionRefused], every other failure an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
-  Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiatSent({
+  Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiat({
     required RobotIdentity identity,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
@@ -363,11 +363,11 @@ final class CoordinatorClient {
   /// `POST /api/order/?order_id=` with the action `undo_confirm`, as the buyer: takes back the robot's « fiat sent » (« Payment failed? »), which moves the order from 10 back to 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`, commit ff1998c).
   ///
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:271-274`): `{"action":"undo_confirm"}`.
-  /// Nothing is sent, as for [confirmFiatSent], when [lastRead] was read by another robot, does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 10 ([TradeActionNotNow]); the coordinator refuses with 1030 ([TradeActionNotBuyer]) and 1031 ([TradeActionNotNow]).
-  /// The answer and the other failures are as for [confirmFiatSent].
+  /// Nothing is sent, as for [confirmFiat], when [lastRead] was read by another robot, does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 10 ([TradeActionNotNow]); the coordinator refuses with 1030 ([TradeActionNotBuyer]) and 1031 ([TradeActionNotNow]).
+  /// The answer and the other failures are as for [confirmFiat].
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
-  Future<Result<TradeActionOutcome, OrderActionFailure>> undoFiatSent({
+  Future<Result<TradeActionOutcome, OrderActionFailure>> undoConfirmFiat({
     required RobotIdentity identity,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
@@ -393,7 +393,7 @@ final class CoordinatorClient {
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:256-259`): `{"action":"dispute"}`.
   ///
   /// Nothing is sent when [lastRead] was read by another robot, does not show this robot as a participant ([OrderNotParticipant]), is not at 9 or 10 ([TradeActionNotNow]), or when this client's clock is earlier than [lastRead]'s `expires_at` minus [disputeWindow] ([DisputeTooEarly]), each decided from [lastRead]; the coordinator refuses with 1013 ([TradeActionNotNow]) and 1054 ([DisputeTooEarly]).
-  /// The answer and the other failures are as for [confirmFiatSent].
+  /// The answer and the other failures are as for [confirmFiat].
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> openDispute({
@@ -420,7 +420,7 @@ final class CoordinatorClient {
   ///
   /// The coordinator keeps the latest rating of the robot, whatever the order's status; the reference client offers it once the trade is finished (`TradeBox/Prompts/Successful.tsx`).
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:315-317`): `{"action":"rate_platform","rating":N}`, a number the coordinator's serializer reads as one of its choices « 1 » to « 5 ».
-  /// Nothing is sent when [lastRead] was read by another robot or does not show this robot as a participant ([OrderNotParticipant]); the answer and the other failures are as for [confirmFiatSent].
+  /// Nothing is sent when [lastRead] was read by another robot or does not show this robot as a participant ([OrderNotParticipant]); the answer and the other failures are as for [confirmFiat].
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> ratePlatform({
