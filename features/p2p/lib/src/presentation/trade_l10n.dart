@@ -44,7 +44,7 @@ extension TakeProblemL10n on TakeProblem {
         TakeNotRecorded() => l10n.p2pTakeNotRecorded,
         // The cubit opens that trade; shown only when it is the trade on screen, whose close could not be written.
         TakeOrderAlreadyTraded() => l10n.p2pTakeNotMade,
-        // Only the take in two steps gives it (#119), which no screen calls yet: its screen prepares again.
+        // The cubit never shows it: a preparation that gives it ends in silence, a confirmation that gives it prepares again (#119).
         TakePreparationGone() => l10n.p2pTakeNotMade,
       },
       TakeWasNotMade(:final refusal) => switch (refusal) {
@@ -86,6 +86,20 @@ extension TakeProblemL10n on TakeProblem {
       _ => l10n.p2pTakeNotTakenAfter(
         failure.toRobotText(context, coordinator: coordinator),
       ),
+    };
+  }
+}
+
+/// What the wait of a take says it is doing (#119): one short line per step, naming the coordinator where it is the one asked.
+extension TakeStepL10n on TakeStep {
+  String toText(BuildContext context, {required String coordinator}) {
+    final l10n = P2pLocalizations.of(context);
+    return switch (this) {
+      TakeStep.checkingOrder => l10n.p2pTakeStepCheckingOrder(coordinator),
+      TakeStep.creatingRobot => l10n.p2pTakeStepCreatingRobot,
+      TakeStep.readingOrder => l10n.p2pTakeStepReadingOrder,
+      TakeStep.readingOrderAgain => l10n.p2pTakeStepReadingOrderAgain,
+      TakeStep.sendingTake => l10n.p2pTakeStepSendingTake(coordinator),
     };
   }
 }

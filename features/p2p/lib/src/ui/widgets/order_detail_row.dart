@@ -69,12 +69,15 @@ class OrderHostRow extends StatelessWidget {
 /// One row of the order details: label and value share the width equally, so that a long label wraps on two lines at most.
 ///
 /// With [warning], the row shows the orange warning of the official client and opens it when tapped.
+///
+/// With [changed], its value differs from the read the user saw before (#119): the label and the value take the warning colour, the value bold, and a screen reader hears « New value: … ». The label marks a changed row apart from an expiry near its end, whose value only is coloured, as in the official client.
 class OrderDetailRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
   final bool bold;
   final VoidCallback? warning;
+  final bool changed;
 
   const OrderDetailRow(
     this.label,
@@ -83,12 +86,14 @@ class OrderDetailRow extends StatelessWidget {
     this.color,
     this.bold = false,
     this.warning,
+    this.changed = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
     final warning = this.warning;
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
@@ -98,17 +103,20 @@ class OrderDetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: text.bodyMedium?.copyWith(color: colors.textMuted),
+              style: text.bodyMedium?.copyWith(
+                color: changed ? colors.warning : colors.textMuted,
+              ),
             ),
           ),
           const Gap(BullSpacing.sm),
           Expanded(
             child: Text(
               value,
+              semanticsLabel: changed ? l10n.p2pOrderNewValue(value) : null,
               textAlign: TextAlign.end,
               style: text.bodyLarge?.copyWith(
-                color: color ?? colors.text,
-                fontWeight: bold ? FontWeight.w700 : null,
+                color: color ?? (changed ? colors.warning : colors.text),
+                fontWeight: bold || changed ? FontWeight.w700 : null,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
@@ -116,7 +124,7 @@ class OrderDetailRow extends StatelessWidget {
           if (warning != null) ...[
             const Gap(BullSpacing.xs),
             Tooltip(
-              message: P2pLocalizations.of(context).p2pReversibleTitle,
+              message: l10n.p2pReversibleTitle,
               child: Icon(
                 Icons.warning_amber_rounded,
                 size: 20,
@@ -129,6 +137,71 @@ class OrderDetailRow extends StatelessWidget {
     );
     if (warning == null) return row;
     return InkWell(onTap: warning, child: row);
+  }
+}
+
+/// The maker's description of an order, once the robot that takes it read the order (#119): « Order description », the title of the reference's dialog, then the maker's words, as a quote under it.
+///
+/// The text is the coordinator's word for the maker's: shown as plain text through [CoordinatorText], never as markup, never opened as a link and never offered for copy; nothing in it is acted on.
+class OrderDescriptionRow extends StatelessWidget {
+  final String description;
+
+  /// Whether it differs from the read the user saw before: marked as the other rows, its label and words in the warning colour, its words bold, and « New value: … » for a screen reader.
+  final bool changed;
+
+  const OrderDescriptionRow(
+    this.description, {
+    super.key,
+    this.changed = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final label = l10n.p2pOrderDescription;
+    final words = CoordinatorText.of(
+      description,
+      maxCodePoints: CoordinatorText.paragraph,
+    );
+    return Semantics(
+      container: true,
+      label: label,
+      value: changed ? l10n.p2pOrderNewValue(words) : words,
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                label,
+                style: text.bodyMedium?.copyWith(
+                  color: changed ? colors.warning : colors.textMuted,
+                ),
+              ),
+              const Gap(BullSpacing.xxs),
+              Container(
+                padding: const EdgeInsets.only(left: BullSpacing.sm),
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: colors.outline, width: 2),
+                  ),
+                ),
+                child: Text(
+                  words,
+                  style: text.bodyLarge?.copyWith(
+                    color: changed ? colors.warning : colors.text,
+                    fontWeight: changed ? FontWeight.w700 : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -154,10 +227,21 @@ final class OrderSentence {
 }
 
 /// « M 0.025% · T 0.175% » and the on-chain payout fee, as the coordinator announces them; nothing until it answers.
+///
+/// [takerFee], once a take is prepared, is the taker fee of its terms, shown in place of the announced one (#119).
 class OrderFeeRow extends StatelessWidget {
   final CoordinatorInfo? info;
+  final double? takerFee;
 
-  const OrderFeeRow({super.key, required this.info});
+  /// Whether [takerFee] differs from the read the user saw before (#119): marked as a changed row of the order details, and « New value: … » for a screen reader.
+  final bool takerFeeChanged;
+
+  const OrderFeeRow({
+    super.key,
+    required this.info,
+    this.takerFee,
+    this.takerFeeChanged = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -183,9 +267,23 @@ class OrderFeeRow extends StatelessWidget {
         Text('·', style: style),
         Tooltip(
           message: l10n.p2pOrderFeeTakerTooltip,
-          child: Text(
-            '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(info.takerFee)}',
-            style: style,
+          child: Builder(
+            builder: (context) {
+              final taker =
+                  '${_initial(l10n.p2pOrderFeeTaker)} ${formats.fee(takerFee ?? info.takerFee)}';
+              return Text(
+                taker,
+                semanticsLabel: takerFeeChanged
+                    ? l10n.p2pOrderNewValue(taker)
+                    : null,
+                style: takerFeeChanged
+                    ? style?.copyWith(
+                        color: colors.warning,
+                        fontWeight: FontWeight.w700,
+                      )
+                    : style,
+              );
+            },
           ),
         ),
         Text('·', style: style),

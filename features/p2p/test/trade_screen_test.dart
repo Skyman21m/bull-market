@@ -32,6 +32,7 @@ import 'package:robosats/robosats.dart';
 import 'support/fakes.dart' show FakeTransport, bookOrder, coordinator, testNow;
 import 'support/harness.dart';
 import 'support/trade_orders.dart';
+import 'support/prepared_takes.dart';
 import 'support/trade_screens.dart';
 
 /// The watch of the trade, played by the test: what it emits, and what the screen tells it.
@@ -97,12 +98,20 @@ late Map<String, TradeSeen> _seen;
 
 final _record = TradeScreenStatuses.record;
 
+/// The book's order 42 of the tests, of 150 EUR, as the robot that takes it reads it (#119).
+late PreparedTake _prepared;
+
 /// A take cubit whose take the test never expects.
 TakeOrderCubit _neverTaken(PublicOrder order) => TakeOrderCubit(
   order,
   RobosatsNetwork.mainnet,
-  (shown, {required network, amount, password}) =>
-      throw StateError('not taken'),
+  TakeCalls(
+    prepare: (shown, {required network, amount, onStep}) =>
+        throw StateError('not prepared'),
+    confirm: (prepared, {onStep}) => throw StateError('not taken'),
+    abandon: (prepared) {},
+    abandonOrder: (shown, {required network}) {},
+  ),
   (network) async => const Ok(true),
 );
 
@@ -223,6 +232,7 @@ void _expectNothingCut(WidgetTester tester, String reason) {
 
 void main() {
   setUpAll(() async {
+    _prepared = await preparedTake(changes: {'amount': '150.00000000'});
     _statuses = await TradeScreenStatuses.make();
     _wrongNetwork = await TradeScreenStatuses.make(
       invoice: bondInvoice(network: Bolt11Network.testnet),
@@ -980,10 +990,16 @@ void main() {
           takeCubitFor: (order) => TakeOrderCubit(
             order,
             RobosatsNetwork.mainnet,
-            (shown, {required network, amount, password}) async {
-              takes.add(shown);
-              return Ok(TakeOutcomeUnknown(_record));
-            },
+            TakeCalls(
+              prepare: (shown, {required network, amount, onStep}) async {
+                takes.add(shown);
+                return Ok(_prepared);
+              },
+              confirm: (prepared, {onStep}) async =>
+                  Ok(TakeOutcomeUnknown(_record)),
+              abandon: (prepared) {},
+              abandonOrder: (shown, {required network}) {},
+            ),
             (network) async => const Ok(true),
           ),
         );
@@ -995,9 +1011,15 @@ void main() {
         await _reveal(tester, find.text('Take Order'));
         await tester.tap(find.text('Take Order'));
         await settle(tester);
+        expect(takes.single.id, tradeOrderId);
+        // The order details show the robot's read, then « Continue » and « Done » of « Store your garage key » take it (#119).
+        expect(find.text('Read by your robot at 08:00:30'), findsOneWidget);
+        expect(taken, isEmpty);
+        await _reveal(tester, find.text('Continue'));
+        await tester.tap(find.text('Continue'));
+        await settle(tester);
         await tester.tap(find.text('Done'));
         await settle(tester);
-        expect(takes.single.id, tradeOrderId);
         expect(taken, [_record]);
       },
     );
@@ -1054,8 +1076,13 @@ void main() {
           takeCubitFor: (order) => TakeOrderCubit(
             order,
             RobosatsNetwork.mainnet,
-            (shown, {required network, amount, password}) async =>
-                Err(TakeOrderAlreadyTraded(_record)),
+            TakeCalls(
+              prepare: (shown, {required network, amount, onStep}) async =>
+                  Err(TakeOrderAlreadyTraded(_record)),
+              confirm: (prepared, {onStep}) => throw StateError('not taken'),
+              abandon: (prepared) {},
+              abandonOrder: (shown, {required network}) {},
+            ),
             (network) async => const Ok(true),
             shownTrade: _record,
           ),
@@ -1063,8 +1090,6 @@ void main() {
         await settle(tester);
         await _reveal(tester, find.text('Take Order'));
         await tester.tap(find.text('Take Order'));
-        await settle(tester);
-        await tester.tap(find.text('Done'));
         await settle(tester);
         expect(taken, isEmpty);
         await _reveal(tester, find.text('The order was not taken.'));
@@ -1147,11 +1172,29 @@ void main() {
       expect(find.byType(TradeButton), findsNothing);
     });
 
-    testWidgets('before any read: a spinner, nothing else', (tester) async {
-      await _show(tester, watch: _Watch());
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(find.text('Cancel'), findsNothing);
-    });
+    testWidgets(
+      'before any read: a spinner, what it waits for, then that it still waits; nothing else',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _show(tester, watch: _Watch());
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.text('Cancel'), findsNothing);
+        final line = find.text(
+          'Your robot is reading the order from Temple of Sats',
+        );
+        expect(line, findsOneWidget);
+        expect(tester.getSemantics(line), isSemantics(isLiveRegion: true));
+        final still = find.text(
+          'Still waiting for Temple of Sats. Tor can take a minute.',
+        );
+        expect(still, findsNothing);
+        await tester.pump(const Duration(seconds: 29));
+        expect(still, findsNothing);
+        await tester.pump(const Duration(seconds: 2));
+        expect(still, findsOneWidget);
+        semantics.dispose();
+      },
+    );
 
     for (final (state, text) in <(TradeWatchState, String)>[
       (
@@ -1461,6 +1504,39 @@ void main() {
     ];
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
+        testWidgets(
+          '${locale.languageCode} at ×$scale: before any read, the line of what it waits for and « Still waiting » are not cut',
+          (tester) async {
+            await _show(
+              tester,
+              watch: _Watch(),
+              locale: locale,
+              size: const Size(320, 568),
+              textScale: scale,
+            );
+            final fr = locale.languageCode == 'fr';
+            expect(
+              find.text(
+                fr
+                    ? 'Votre robot lit l’ordre chez Temple of Sats'
+                    : 'Your robot is reading the order from Temple of Sats',
+              ),
+              findsOneWidget,
+            );
+            _expectNothingCut(tester, 'first read');
+            await tester.pump(const Duration(seconds: 31));
+            expect(
+              find.text(
+                fr
+                    ? 'Toujours en attente de Temple of Sats. Tor peut prendre une minute.'
+                    : 'Still waiting for Temple of Sats. Tor can take a minute.',
+              ),
+              findsOneWidget,
+            );
+            _expectNothingCut(tester, 'first read, still waiting');
+          },
+        );
+
         testWidgets(
           '${locale.languageCode} at ×$scale: nothing overflows or is cut',
           (tester) async {

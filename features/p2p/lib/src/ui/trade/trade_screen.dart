@@ -23,8 +23,8 @@ import '../../presentation/trade_l10n.dart';
 import '../../presentation/trade_order_page_cubit.dart';
 import '../../presentation/trade_panel.dart';
 import '../coordinator_details_dialog.dart';
-import '../order_details_screen.dart';
 import '../take_order_section.dart';
+import 'trade_first_read_wait.dart';
 import '../widgets/order_detail_row.dart';
 import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
@@ -234,13 +234,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       const Gap(BullSpacing.sm),
                     ],
                     switch (view) {
-                      TradeWaiting() => Padding(
-                        padding: const EdgeInsets.all(BullSpacing.xl),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: colors.primary,
-                          ),
-                        ),
+                      TradeWaiting() => TradeFirstReadWait(
+                        coordinator: coordinator,
                       ),
                       TradeMessage(:final kind) => _Message(
                         text: kind.toText(context, coordinator: coordinator),
@@ -859,37 +854,42 @@ class _PublicAgain extends StatelessWidget {
       if (lookup case PublicOrderFound(
         order: final public,
       ) when public.id == order.id) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            OrderHostRow(
-              coordinator: public.coordinator,
-              orderId: public.id,
-              onTap: onOpenCoordinator,
-            ),
-            const Gap(BullSpacing.sm),
-            OrderFeeRow(info: info),
-            const Gap(BullSpacing.sm),
-            PublicOrderDetailsCard(
-              order: public,
-              estimate: TakerEstimate.of(public, takerFee: info?.takerFee ?? 0),
-              now: now,
-            ),
-            const Gap(BullSpacing.md),
-            OrderMakerRow(maker: public.maker, activity: public.makerActivity),
-            const Gap(BullSpacing.lg),
-            BlocProvider(
-              key: ValueKey(public.id),
-              create: (_) => takeCubitFor(public),
-              child: TakeOrderSection(
+        // The take's cubit is above the order details too, which show the robot's read once the take is prepared (#119).
+        return BlocProvider(
+          key: ValueKey(public.id),
+          create: (_) => takeCubitFor(public),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OrderHostRow(
+                coordinator: public.coordinator,
+                orderId: public.id,
+                onTap: onOpenCoordinator,
+              ),
+              const Gap(BullSpacing.sm),
+              TakeOrderFeeRow(info: info, canTake: true),
+              const Gap(BullSpacing.sm),
+              TakeOrderDetailsCard(
+                order: public,
+                estimate: TakerEstimate.of(
+                  public,
+                  takerFee: info?.takerFee ?? 0,
+                ),
+                now: now,
+                canTake: true,
+              ),
+              const Gap(BullSpacing.md),
+              TakeOrderMakerRow(order: public, canTake: true),
+              const Gap(BullSpacing.lg),
+              TakeOrderSection(
                 order: public,
                 takerFee: info?.takerFee ?? 0,
                 canTake: true,
                 onOpenGarage: onOpenGarage,
                 onTaken: onTaken,
               ),
-            ),
-          ],
+            ],
+          ),
         );
       }
     }

@@ -6,6 +6,7 @@ import '../p2p_failure.dart';
 import '../trade_record.dart';
 import 'trade_status.dart';
 import 'trade_terms.dart';
+import 'trade_warning.dart';
 
 /// The amount chosen in the range of an order, in the order's currency (bitcoin, not sats, for an order in bitcoin), as the take sends it.
 ///
@@ -103,6 +104,29 @@ final class TakeOrderAlreadyTraded extends TakeRefusal {
 final class TakePreparationGone extends TakeRefusal {
   const TakePreparationGone();
 }
+
+/// What a take in two steps is doing while it runs (#119), for the screen to say: a step, never anything of the robot or of its token.
+///
+/// Only the parts that take real time are steps: requests over Tor, and the making of a robot's key pair; the checks and the writes on the device are not.
+enum TakeStep {
+  /// The order read again from the coordinator's book, with its taker fee: two anonymous requests, at once.
+  checkingOrder,
+
+  /// A fresh robot for the take: reserved on the device, then put on the coordinator over a Tor session of its own (read back, its key pair made away from the UI isolate, its first contact).
+  creatingRobot,
+
+  /// The order read by the robot that will take it.
+  readingOrder,
+
+  /// At the confirmation, the order read again by the same robot.
+  readingOrderAgain,
+
+  /// The take sent, once its records are written, and its answer awaited.
+  sendingTake,
+}
+
+/// Told each [TakeStep] as it starts.
+typedef TakeProgress = void Function(TakeStep step);
 
 /// The order is no longer in the coordinator's book read just before the take: taken, paused, cancelled or expired.
 final class TakeOrderGone extends TakeRefusal {
@@ -277,6 +301,28 @@ final class PreparedTake {
 
   /// The bond the terms expect, in sats at the read's price: an estimate; the bond invoice states the amount to lock.
   double get expectedBond => terms.expectedBond;
+
+  /// The largest bond, in sats, that the state machine takes for these terms without a [BondAmountOutsideOrder] warning: [TradeTerms.bondCeiling], the very value the wallet's payment of the bond accepts (#100), never a second computation.
+  int get bondCeiling => terms.bondCeiling.value.toInt();
+
+  /// Whether [other] shows the user what this read shows: the same payment methods, maker, description, price and premium, sats, expiry, escrow duration, amount, bond and taker fee (security reviews of #133: a read made again must say when it changed).
+  bool showsTheSameAs(PreparedTake other) {
+    final a = order;
+    final b = other.order;
+    return a.paymentMethods == b.paymentMethods &&
+        a.maker == b.maker &&
+        a.description == b.description &&
+        a.priceNow == b.priceNow &&
+        a.satoshisNow == b.satoshisNow &&
+        a.expiresAt == b.expiresAt &&
+        a.escrowDuration == b.escrowDuration &&
+        terms.premium == other.terms.premium &&
+        terms.explicitSatoshis == other.terms.explicitSatoshis &&
+        amount?.amount == other.amount?.amount &&
+        bondCeiling == other.bondCeiling &&
+        expectedBond.round() == other.expectedBond.round() &&
+        terms.takerFee == other.terms.takerFee;
+  }
 
   @override
   String toString() => 'PreparedTake($terms)';

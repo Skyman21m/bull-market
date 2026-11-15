@@ -1109,6 +1109,55 @@ class P2pLocalizationsVi extends P2pLocalizations {
       'This order changed since it was shown. It was not taken: open it again from the book.';
 
   @override
+  String get p2pOrderDescription => 'Order description';
+
+  @override
+  String get p2pTakerBond => 'Taker bond';
+
+  @override
+  String p2pTakeBondEstimate(String estimate, String ceiling) {
+    return '$estimate Sats, at most $ceiling Sats';
+  }
+
+  @override
+  String p2pTakeReadAt(String time) {
+    return 'Read by your robot at $time';
+  }
+
+  @override
+  String p2pOrderNewValue(String value) {
+    return 'New value: $value';
+  }
+
+  @override
+  String get p2pTakeOrderChangedRead => 'The order changed.';
+
+  @override
+  String p2pTakeStepCheckingOrder(String coordinator) {
+    return 'Checking the order with $coordinator';
+  }
+
+  @override
+  String get p2pTakeStepCreatingRobot => 'Building your robot!';
+
+  @override
+  String get p2pTakeStepReadingOrder => 'Your robot is reading the order';
+
+  @override
+  String get p2pTakeStepReadingOrderAgain =>
+      'Your robot is reading the order again';
+
+  @override
+  String p2pTakeStepSendingTake(String coordinator) {
+    return 'Taking the order with $coordinator';
+  }
+
+  @override
+  String p2pTradeFirstRead(String coordinator) {
+    return 'Your robot is reading the order from $coordinator';
+  }
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'The amount specified is outside the range specified by the maker';
 

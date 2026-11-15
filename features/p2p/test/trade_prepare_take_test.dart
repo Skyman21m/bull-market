@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart'
 import 'package:test/test.dart';
 
 import 'support/key_output.dart';
+import 'support/prepared_takes.dart';
 import 'support/trade_harness.dart';
 
 /// The take in two steps (#119): prepared up to a read of the order by the robot that will take it, the maker's description and the read's figures shown, then confirmed, or abandoned with nothing more sent.
@@ -59,6 +60,8 @@ void main() {
         expect(prepared.terms.orderId, 42);
         expect(prepared.readAt, app.now);
         expect(prepared.expectedBond, closeTo(3207, 1));
+        // The most the state machine takes of the bond invoice: 3,207 and 2 % of it, plus one sat (3,272.14).
+        expect(prepared.bondCeiling, 3272);
         // The page's book, the fresh book and info, the robot read back then its first contact, the robot's read of the order: no take.
         expect(app.coordinator.received, [
           ScriptedRequest.book,
@@ -322,6 +325,105 @@ void main() {
     );
   });
 
+  group('the page against the book read again (security review of #133, I1)', () {
+    final maker = switch (RobotHashId.parse(
+      '0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0',
+    )) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    for (final (label, book, robot)
+        in <(String, Map<String, Object?>, Map<String, Object?>)>[
+          (
+            'payment methods',
+            {'payment_method': 'Wise'},
+            {'payment_method': 'Wise'},
+          ),
+          (
+            'maker',
+            {'maker_hash_id': maker.hex},
+            {'maker_hash_id': maker.hex, 'maker_nick': maker.nickname},
+          ),
+        ]) {
+      test(
+        'the $label of the book read again other than the page\'s: the order changed, before any robot, in both ways of taking',
+        () async {
+          final app = await TradeHarness.start();
+          final shown = await app.shownOrder();
+          app.coordinator.bookView.addAll(book);
+          app.coordinator.robotView.addAll(robot);
+          expect(
+            await app.take.prepare(shown, network: app.network),
+            refused<TakeOrderChanged>(),
+          );
+          expect(
+            await app.take.execute(shown, network: app.network),
+            refused<TakeOrderChanged>(),
+          );
+          expect(count(app, ScriptedRequest.robot), 0);
+          expect(count(app, take), 0);
+        },
+      );
+    }
+  });
+
+  group('the steps a take says (#119)', () {
+    test(
+      'a first preparation: the order checked, the robot built, the order read; a confirmation: read again, the take sent',
+      () async {
+        final app = await TradeHarness.start();
+        final steps = <TakeStep>[];
+        final prepared = switch (await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+          onStep: steps.add,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(steps, [
+          TakeStep.checkingOrder,
+          TakeStep.creatingRobot,
+          TakeStep.readingOrder,
+        ]);
+        steps.clear();
+        await app.take.confirm(prepared, onStep: steps.add);
+        expect(steps, [TakeStep.readingOrderAgain, TakeStep.sendingTake]);
+      },
+    );
+
+    test('a preparation that reuses its robot builds none', () async {
+      final (app, _) = await prepareOne();
+      final steps = <TakeStep>[];
+      await app.take.prepare(
+        await app.shownOrder(),
+        network: app.network,
+        onStep: steps.add,
+      );
+      expect(steps, [TakeStep.checkingOrder, TakeStep.readingOrder]);
+    });
+
+    test(
+      'a take refused before its robot says no later step; a confirmation refused at its read sends no take step',
+      () async {
+        final app = await TradeHarness.start(takerFee: 0.05);
+        final steps = <TakeStep>[];
+        await app.take.prepare(
+          await app.shownOrder(),
+          network: app.network,
+          onStep: steps.add,
+        );
+        expect(steps, [TakeStep.checkingOrder]);
+
+        final (other, prepared) = await prepareOne();
+        other.coordinator.takenByAnother();
+        steps.clear();
+        await other.take.confirm(prepared, onStep: steps.add);
+        expect(steps, [TakeStep.readingOrderAgain]);
+      },
+    );
+  });
+
   group('abandon', () {
     test(
       'sends nothing; the robot is never used again; a later take uses another',
@@ -564,6 +666,45 @@ void main() {
         expect(await app.allTrades(), isEmpty);
       },
     );
+
+    for (final (label, change, refusal) in [
+      (
+        'deleted',
+        (TradeHarness app) => app.deleteKey(),
+        isA<GarageKeyMissingFailure>(),
+      ),
+      (
+        'replaced by another, not drawn here',
+        (TradeHarness app) => app.replaceKey(),
+        isA<GarageKeyNotForTradesFailure>(),
+      ),
+    ]) {
+      test(
+        '$label: a new preparation of the order does not use the robot kept for it (second review of #126, n1)',
+        () async {
+          final (app, _) = await prepareOne();
+          final reads = count(app, ScriptedRequest.order);
+          change(app);
+          expect(
+            await app.take.prepare(
+              await app.shownOrder(),
+              network: app.network,
+            ),
+            isA<Err<PreparedTake, TakeRefusal>>().having(
+              (err) => err.failure,
+              'refusal',
+              isA<TakeRobotRefused>().having(
+                (r) => r.failure,
+                'failure',
+                refusal,
+              ),
+            ),
+          );
+          // The robot of the earlier key read nothing more.
+          expect(count(app, ScriptedRequest.order), reads);
+        },
+      );
+    }
   });
 
   group('the robot\'s read again at the confirmation (review of #126, I4)', () {
@@ -962,4 +1103,42 @@ void main() {
       );
     },
   );
+
+  group('PreparedTake.showsTheSameAs (second security review of #133)', () {
+    test('the same read shows the same', () async {
+      expect(
+        (await preparedTake()).showsTheSameAs(await preparedTake()),
+        isTrue,
+      );
+    });
+
+    test(
+      'another taker fee alone does not: the sats shown depend on it',
+      () async {
+        expect(
+          (await preparedTake()).showsTheSameAs(await preparedTake(fee: 0.002)),
+          isFalse,
+        );
+      },
+    );
+
+    test('another price and sats alone do not', () async {
+      final figures = await preparedTake(
+        changes: {'price_now': 95000.0, 'satoshis_now': 105263},
+      );
+      expect((await preparedTake()).showsTheSameAs(figures), isFalse);
+    });
+
+    test('another expiry alone does not', () async {
+      final read = await preparedTake();
+      final later = await preparedTake(
+        changes: {
+          'expires_at': read.order.expiresAt
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+      );
+      expect(read.showsTheSameAs(later), isFalse);
+    });
+  });
 }

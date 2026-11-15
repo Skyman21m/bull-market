@@ -1127,6 +1127,54 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Cet ordre a changé depuis son affichage. Il n’a pas été pris : rouvrez-le depuis le carnet.';
 
   @override
+  String get p2pOrderDescription => 'Description de l\'ordre';
+
+  @override
+  String get p2pTakerBond => 'Caution du preneur';
+
+  @override
+  String p2pTakeBondEstimate(String estimate, String ceiling) {
+    return '$estimate Sats, au plus $ceiling Sats';
+  }
+
+  @override
+  String p2pTakeReadAt(String time) {
+    return 'Lu par votre robot à $time';
+  }
+
+  @override
+  String p2pOrderNewValue(String value) {
+    return 'Nouvelle valeur : $value';
+  }
+
+  @override
+  String get p2pTakeOrderChangedRead => 'L’ordre a changé.';
+
+  @override
+  String p2pTakeStepCheckingOrder(String coordinator) {
+    return 'Vérification de l’ordre auprès de $coordinator';
+  }
+
+  @override
+  String get p2pTakeStepCreatingRobot => 'Construction de votre robot !';
+
+  @override
+  String get p2pTakeStepReadingOrder => 'Votre robot lit l’ordre';
+
+  @override
+  String get p2pTakeStepReadingOrderAgain => 'Votre robot relit l’ordre';
+
+  @override
+  String p2pTakeStepSendingTake(String coordinator) {
+    return 'Prise de l’ordre auprès de $coordinator';
+  }
+
+  @override
+  String p2pTradeFirstRead(String coordinator) {
+    return 'Votre robot lit l’ordre chez $coordinator';
+  }
+
+  @override
   String get p2pTakeAmountOutOfRange =>
       'Le montant indiqué est en dehors de la plage fixée par le créateur';
 

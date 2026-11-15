@@ -509,6 +509,20 @@ void main() {
     );
 
     test(
+      'the screens take in two steps through the composition, and nothing in lib/ takes in one step',
+      () {
+        // The take's cubit is given the use case's steps by the composition (`TakeCalls`), its only caller (#119).
+        for (final step in ['prepare', 'confirm', 'abandon', 'abandonOrder']) {
+          expect(referring((r) => r == 'TakeOrderUsecase.$step'), {
+            'lib/src/p2p_locator.dart',
+          }, reason: step);
+        }
+        // `execute` stays for the tests of the domain: no file of lib/ calls it.
+        expect(referring((r) => r == 'TakeOrderUsecase.execute'), isEmpty);
+      },
+    );
+
+    test(
       'only the take reaches the takes prepared, which hold reserved robots and their tokens',
       () {
         // A screen holds a prepared take, never its robot: only the take use case keeps, reads or forgets one (#119, review of #126).
@@ -1747,6 +1761,11 @@ const _watched = {
     },
   ),
   'BondLossAcknowledged': ('package:p2p/', {'fromConfirmationDialog'}),
+  // The steps of a take, which only the take's cubit calls, through the composition (#119): the take in one step is for the tests alone.
+  'TakeOrderUsecase': (
+    'package:p2p/',
+    {'execute', 'prepare', 'confirm', 'abandon', 'abandonOrder'},
+  ),
   // The takes prepared and not sent, which hold a reserved robot and its token (review of #126).
   'PreparedTakes': (
     'package:p2p/',

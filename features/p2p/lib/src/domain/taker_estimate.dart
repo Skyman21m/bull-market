@@ -80,6 +80,18 @@ final class TakerEstimate {
     return (amount / rate * 100000000 * (1 - takerFee)).round();
   }
 
+  /// [takeSats] at the rate of [read], the order as the robot that takes it read it (#119), with the [takerFee] of its terms.
+  static int? takeSatsOfRead(
+    CoordinatorOrder read,
+    double amount, {
+    required double takerFee,
+  }) {
+    final satoshisNow = read.satoshisNow?.value.toInt();
+    if (satoshisNow == null || satoshisNow <= 0) return null;
+    final rate = read.amount.max.value / (satoshisNow / 100000000);
+    return (amount / rate * 100000000 * (1 - takerFee)).round();
+  }
+
   /// Whether the order has a range, so the estimate too.
   bool get isRange => minSats != maxSats;
 
