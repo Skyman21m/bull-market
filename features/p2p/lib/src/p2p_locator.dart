@@ -76,6 +76,7 @@ import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
+import 'presentation/chat_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
@@ -421,6 +422,21 @@ final class P2pLocator {
         payout.execute,
         (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
         now: locator<P2pClock>().now,
+      );
+    });
+    // The chat panel of one shown trade (#93), the only caller of the chat use cases and, for the chat, of the key's hold.
+    locator.registerFactoryParam<ChatCubit, TradeRecord, void>((record, _) {
+      final watch = locator<WatchChatUsecase>();
+      final send = locator<SendChatMessageUsecase>();
+      return ChatCubit(
+        record,
+        watch.read,
+        send.send,
+        send.sendAgain,
+        watch.readNewerOnly,
+        watch.current,
+        watch.exportOf,
+        (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
       );
     });
     // The bond paid from the wallet (#100): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.

@@ -30,6 +30,7 @@ import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
+import 'chat_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'payout_panel.dart';
 import 'trade_order_details.dart';
@@ -62,6 +63,9 @@ class TradeScreen extends StatefulWidget {
   /// Whether an action that moves money runs for this trade (a payout being given, #91): « Cancel » is then off, so that a cancel never leaves while it runs; `null` for none.
   final bool Function(BuildContext context)? moneyActionRunning;
 
+  /// The chat panel of 9 and 10 (#93): `null`, and the chat step shows no chat, where the feature holds no robot (see [ChatPanel]).
+  final ChatPanelBuilder? chat;
+
   /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
   final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
@@ -81,6 +85,7 @@ class TradeScreen extends StatefulWidget {
     this.walletPayment,
     this.payout,
     this.moneyActionRunning,
+    this.chat,
     this.walletBond,
     this.walletBondLine,
     this.takeCubitFor,
@@ -281,6 +286,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
+                        chat: widget.chat,
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
@@ -399,6 +405,7 @@ class _Contract extends StatelessWidget {
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
+  final ChatPanelBuilder? chat;
   final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
@@ -411,6 +418,7 @@ class _Contract extends StatelessWidget {
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
+    required this.chat,
     required this.moneyActionRunning,
     required this.walletBond,
   });
@@ -488,6 +496,7 @@ class _Contract extends StatelessWidget {
     final colors = context.bull;
     final formats = P2pFormats.of(context);
     final order = contract.order;
+    final chat = this.chat;
     return switch ((contract.prompt, status)) {
       (TradePrompt.lockInvoice, final WaitingForTakerBond bond) => BondPanel(
         record: record,
@@ -533,6 +542,25 @@ class _Contract extends StatelessWidget {
         center: true,
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
+      // The chat step (#93): the chat between the prompt's text and its buttons, which #95 brings.
+      (TradePrompt.later, Chatting()) when chat != null => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
+          const Gap(BullSpacing.md),
+          KeyedSubtree(
+            key: const ValueKey('trade-chat-panel'),
+            child: chat(
+              context,
+              ChatPanelRequest(
+                record: record,
+                seen: contract.seen,
+                coordinator: coordinator,
+              ),
+            ),
+          ),
+        ],
+      ),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
