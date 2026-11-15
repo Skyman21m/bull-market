@@ -3596,6 +3596,84 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This message was signed before an earlier one.'**
   String get p2pChatMarkOutOfOrder;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`); the reference leaves it untranslated in French: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Audit Chat'**
+  String get p2pChatAuditChat;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get p2pChatExport;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t trust, verify'**
+  String get p2pChatAuditTitle;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's (`Dialogs/AuditPGP.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.'**
+  String get p2pChatAuditText;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your public key'**
+  String get p2pChatYourPublicKey;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PGP public key. Your peer uses it to encrypt messages only you can read.'**
+  String get p2pChatYourPublicKeyTooltip;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Peer public key'**
+  String get p2pChatPeerPublicKey;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip (its English source, the English file's text having a typo).
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.'**
+  String get p2pChatPeerPublicKeyTooltip;
+
+  /// « Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprint: {fingerprint}'**
+  String p2pChatFingerprint(String fingerprint);
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button; hands the public keys to the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Keys'**
+  String get p2pChatSaveKeys;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save credentials as a JSON file'**
+  String get p2pChatSaveKeysTooltip;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button; hands the messages to the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get p2pChatSaveMessages;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save messages as a JSON file'**
+  String get p2pChatSaveMessagesTooltip;
 }
 
 class _P2pLocalizationsDelegate

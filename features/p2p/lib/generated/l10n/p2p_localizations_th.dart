@@ -2196,4 +2196,48 @@ class P2pLocalizationsTh extends P2pLocalizations {
   @override
   String get p2pChatMarkOutOfOrder =>
       'This message was signed before an earlier one.';
+
+  @override
+  String get p2pChatAuditChat => 'Audit Chat';
+
+  @override
+  String get p2pChatExport => 'Export';
+
+  @override
+  String get p2pChatAuditTitle => 'Don\'t trust, verify';
+
+  @override
+  String get p2pChatAuditText =>
+      'Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.';
+
+  @override
+  String get p2pChatYourPublicKey => 'Your public key';
+
+  @override
+  String get p2pChatYourPublicKeyTooltip =>
+      'Your PGP public key. Your peer uses it to encrypt messages only you can read.';
+
+  @override
+  String get p2pChatPeerPublicKey => 'Peer public key';
+
+  @override
+  String get p2pChatPeerPublicKeyTooltip =>
+      'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.';
+
+  @override
+  String p2pChatFingerprint(String fingerprint) {
+    return 'Fingerprint: $fingerprint';
+  }
+
+  @override
+  String get p2pChatSaveKeys => 'Keys';
+
+  @override
+  String get p2pChatSaveKeysTooltip => 'Save credentials as a JSON file';
+
+  @override
+  String get p2pChatSaveMessages => 'Messages';
+
+  @override
+  String get p2pChatSaveMessagesTooltip => 'Save messages as a JSON file';
 }

@@ -44,6 +44,9 @@ typedef ChatCurrent = ChatView Function(TradeRecord record);
 /// [WatchChatUsecase.exportOf], which the locator gives the cubit.
 typedef ChatExporter = Map<String, Object?> Function(TradeRecord record);
 
+/// Hands [text], a file named [fileName], to the system's share sheet, on the user's tap only: whoever places the chat's actions lends it (the feature declares no share package).
+typedef ChatShare = Future<void> Function(String fileName, String text);
+
 /// What the chat panel of one trade shows (#93): the chat as read, the text in the field, and what the last send and the last read gave.
 @immutable
 final class ChatPanelState {
@@ -236,12 +239,26 @@ class ChatCubit extends Cubit<ChatPanelState> {
     unawaited(_poll());
   }
 
-  /// The chat as the export gives it, as indented JSON (`complete_log_chat_<order id>.json`): what the « Export » action hands the share sheet, on the user's tap only.
-  String exportJson() =>
-      const JsonEncoder.withIndent('  ').convert(_export(record));
+  /// The chat as the export gives it, as indented JSON (`complete_log_chat_<order id>.json`): what « Export » hands the share sheet, on the user's tap only.
+  String exportJson() => _json(_export(record));
 
-  /// The export's file name, the reference's (`Prompts/Chat.tsx:316`).
+  /// The export's file name, the reference's (`Prompts/Chat.tsx:288`).
   String get exportFileName => 'complete_log_chat_${record.orderId}.json';
+
+  /// The keys' part of the export, as indented JSON: what « Keys » of « Don't trust, verify » hands the share sheet.
+  String keysJson() => _json(_export(record)['credentials']);
+
+  /// Its file name, the reference's (`Dialogs/AuditPGP.tsx`).
+  String get keysFileName => 'pgp_keys_${record.orderId}.json';
+
+  /// The messages' part of the export, as indented JSON: what « Messages » of « Don't trust, verify » hands the share sheet.
+  String messagesJson() => _json(_export(record)['messages']);
+
+  /// Its file name, the reference's (`Dialogs/AuditPGP.tsx`).
+  String get messagesFileName => 'pgp_messages_${record.orderId}.json';
+
+  static String _json(Object? value) =>
+      const JsonEncoder.withIndent('  ').convert(value);
 
   @override
   Future<void> close() {

@@ -37,9 +37,6 @@ final class ChatPanelRequest {
 typedef ChatPanelBuilder =
     Widget Function(BuildContext context, ChatPanelRequest request);
 
-/// Hands the export to the system's share sheet, on the user's tap only: the shell lends it.
-typedef ChatShare = Future<void> Function(String fileName, String text);
-
 /// The official client's encrypted chat (`TradeBox/EncryptedChat/EncryptedApiChat/index.tsx`, `ChatHeader/index.tsx`, `MessageCard/index.tsx`, commit ff1998c) in the wallet's look (#93): « You: connected », « Peer: … », the messages with the author's tick or cross and its tooltip and a copy of each, the field « Type a message » and « Send », disabled while the peer's key is not known (« Waiting for peer... »).
 ///
 /// Every message holds the parties' payment details: the panel is protected from screen capture as the Garage is (`PrivacyScreen`, design note § 4.3), and draws nothing until the protection says it is on.

@@ -3075,5 +3075,62 @@
   "p2pChatMarkOutOfOrder": "This message was signed before an earlier one.",
   "@p2pChatMarkOutOfOrder": {
     "description": "The chat panel (#93): ours: its signature is older than an earlier message of the same author."
+  },
+  "p2pChatAuditChat": "Audit Chat",
+  "@p2pChatAuditChat": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`); the reference leaves it untranslated in French: ours."
+  },
+  "p2pChatExport": "Export",
+  "@p2pChatExport": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`)."
+  },
+  "p2pChatAuditTitle": "Don't trust, verify",
+  "@p2pChatAuditTitle": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French."
+  },
+  "p2pChatAuditText": "Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.",
+  "@p2pChatAuditText": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's (`Dialogs/AuditPGP.tsx`)."
+  },
+  "p2pChatYourPublicKey": "Your public key",
+  "@p2pChatYourPublicKey": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's."
+  },
+  "p2pChatYourPublicKeyTooltip": "Your PGP public key. Your peer uses it to encrypt messages only you can read.",
+  "@p2pChatYourPublicKeyTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
+  },
+  "p2pChatPeerPublicKey": "Peer public key",
+  "@p2pChatPeerPublicKey": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's."
+  },
+  "p2pChatPeerPublicKeyTooltip": "Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.",
+  "@p2pChatPeerPublicKeyTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip (its English source, the English file's text having a typo)."
+  },
+  "p2pChatFingerprint": "Fingerprint: {fingerprint}",
+  "@p2pChatFingerprint": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pChatSaveKeys": "Keys",
+  "@p2pChatSaveKeys": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button; hands the public keys to the share sheet."
+  },
+  "p2pChatSaveKeysTooltip": "Save credentials as a JSON file",
+  "@p2pChatSaveKeysTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
+  },
+  "p2pChatSaveMessages": "Messages",
+  "@p2pChatSaveMessages": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button; hands the messages to the share sheet."
+  },
+  "p2pChatSaveMessagesTooltip": "Save messages as a JSON file",
+  "@p2pChatSaveMessagesTooltip": {
+    "description": "« Don't trust, verify » and the chat's actions (#93): the reference's tooltip."
   }
 }

@@ -2227,4 +2227,50 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pChatMarkOutOfOrder =>
       'Ce message a été signé avant un message précédent.';
+
+  @override
+  String get p2pChatAuditChat => 'Auditer le chat';
+
+  @override
+  String get p2pChatExport => 'Exporter';
+
+  @override
+  String get p2pChatAuditTitle => 'Ne faites pas confiance, vérifiez';
+
+  @override
+  String get p2pChatAuditText =>
+      'Votre communication est chiffrée de bout en bout avec OpenPGP. Vous pouvez vérifier la confidentialité de ce chat en utilisant n’importe quel outil basé sur la norme OpenPGP.';
+
+  @override
+  String get p2pChatYourPublicKey => 'Votre clé publique';
+
+  @override
+  String get p2pChatYourPublicKeyTooltip =>
+      'Votre clé publique PGP. Votre correspondant l’utilise pour crypter les messages que vous êtes le seul à pouvoir lire.';
+
+  @override
+  String get p2pChatPeerPublicKey => 'Clé publique du correspondant';
+
+  @override
+  String get p2pChatPeerPublicKeyTooltip =>
+      'La clé publique PGP de votre correspondant. Vous l’utilisez pour chiffrer les messages que lui seul peut lire et pour vérifier que votre correspondant a signé les messages entrants.';
+
+  @override
+  String p2pChatFingerprint(String fingerprint) {
+    return 'Empreinte : $fingerprint';
+  }
+
+  @override
+  String get p2pChatSaveKeys => 'Clés';
+
+  @override
+  String get p2pChatSaveKeysTooltip =>
+      'Enregistrer les accès dans un fichier JSON';
+
+  @override
+  String get p2pChatSaveMessages => 'Messages';
+
+  @override
+  String get p2pChatSaveMessagesTooltip =>
+      'Enregistrer les messages dans un fichier JSON';
 }
