@@ -184,6 +184,22 @@ void main() {
       },
     );
 
+    test(
+      'inactive, « Read only the newer messages » skips but reads nothing (review of #93)',
+      () async {
+        final chat = _Chat()
+          ..view = const ChatView(historyTooLarge: true)
+          ..skipped = const ChatView(skippedEarlier: true);
+        final cubit = chat.cubit(record)..show(nine);
+        addTearDown(cubit.close);
+        cubit.readNewerOnly();
+        await Future<void>.delayed(Duration.zero);
+        expect(chat.skips, 1);
+        expect(chat.reads, 0);
+        expect(cubit.holdsKey, isFalse);
+      },
+    );
+
     testWidgets('a read that fails keeps the chat shown and says why', (
       tester,
     ) async {

@@ -2356,9 +2356,16 @@ void main() {
                   ]) {
           coordinator.peerSays(written(text, makerKey));
         }
-        // The first read held until the test lets it land: its wait is captured.
+        // The first read of the chat held, with what follows it, until the test lets them go: its wait is captured.
+        final chatRead = Completer<void>();
         coordinator
-          ..failNext(ScriptedRequest.chat, ScriptedFault.landsLate)
+          ..onRequest = (request) {
+            if (request.url.path == '/api/chat/' &&
+                request.body == null &&
+                !chatRead.isCompleted) {
+              coordinator.hold = chatRead.future;
+            }
+          }
           ..lockBond(chatter)
           ..moveTo(9)
           ..peerPublicKey = makerKey.key.publicKey.armored;
@@ -2367,7 +2374,10 @@ void main() {
         await waitFor(find.text(reading));
         await reveal(find.text(reading));
         await capture('chat-lecture');
-        coordinator.landLate();
+        coordinator
+          ..onRequest = null
+          ..hold = null;
+        chatRead.complete();
         await nextRead();
         final own = fr
             ? 'Merci, je vérifie mon compte.'
@@ -2396,14 +2406,22 @@ void main() {
         await capture('chat-320');
         tester.view.physicalSize = const Size(780, 1688);
         await settle();
-        // A send held until it lands: its wait.
-        coordinator.failNext(ScriptedRequest.chatPost, ScriptedFault.landsLate);
+        // A send held, with what follows it, until the test lets it go: its wait.
+        final post = Completer<void>();
+        coordinator.onRequest = (request) {
+          if (request.url.path == '/api/chat/' && request.body != null) {
+            coordinator.hold = post.future;
+          }
+        };
         await type(fr ? 'Reçu, merci !' : 'Received, thank you!');
         await pressSend();
         final sending = l10n.p2pChatSending(coordinator.coordinator.longAlias);
         await waitFor(find.text(sending));
         await capture('chat-envoi');
-        coordinator.landLate();
+        coordinator
+          ..onRequest = null
+          ..hold = null;
+        post.complete();
         await nextRead();
         // A message whose answer is lost and that the next read does not show: not confirmed, sent again only on the user's tap.
         Map<String, Object?>? hidden;
@@ -2474,7 +2492,13 @@ void main() {
         );
         await settle();
         await capture('chat-audit');
-        await tester.tap(find.text(l10n.p2pCommonGoBack).last);
+        final back = find.descendant(
+          of: find.byType(ChatAuditDialog),
+          matching: find.text(l10n.p2pCommonGoBack),
+        );
+        await tester.ensureVisible(back);
+        await settle();
+        await tester.tap(back);
         await settle();
         // The next takes are new trades: their chats start empty, the maker's key given again.
         coordinator

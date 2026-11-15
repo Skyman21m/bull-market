@@ -678,6 +678,8 @@ void main() {
               payout,
               chatRead,
               chatSend,
+              // The tests' library, which names the type for the app's captures to encrypt the maker's messages (#93); no library of the app imports it.
+              'lib/testing.dart',
             }),
           ),
         );
