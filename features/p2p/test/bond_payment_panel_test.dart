@@ -289,6 +289,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(QrImageView), findsOneWidget);
+      expect(
+        find.text(
+          'This is a hold invoice, it will freeze in your wallet. It will be charged only if you cancel or lose a dispute.',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Pay with this wallet'), findsOneWidget);
     },
   );
@@ -503,6 +509,37 @@ void main() {
     },
   );
 
+  for (final (name, progress, text) in [
+    (
+      'expired with its funding sent',
+      const P2pWalletPaymentExpired(P2pWalletFunds.sent),
+      'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'expired with its funding possibly sent',
+      const P2pWalletPaymentExpired(P2pWalletFunds.maybeSent),
+      'Swap expired. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'failed with its funding sent',
+      const P2pWalletPaymentFailed(P2pWalletFunds.sent),
+      'Swap failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'failed with its funding possibly sent',
+      const P2pWalletPaymentFailed(P2pWalletFunds.maybeSent),
+      'Swap failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.',
+    ),
+  ]) {
+    testWidgets('at 3, a bond paid by this wallet: $name', (tester) async {
+      final (_, payments) = await _show(tester, state: 'bond');
+      _follow(payments, progress);
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(text), findsOneWidget);
+    });
+  }
+
   testWidgets(
     'a payment of the invoice made by the wallet\'s own screens: already paid, nothing more offered',
     (tester) async {
@@ -614,6 +651,24 @@ void main() {
       'expired',
       const P2pWalletPaymentExpired(P2pWalletFunds.sent),
       'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'expired with its funding possibly sent',
+      'expired',
+      const P2pWalletPaymentExpired(P2pWalletFunds.maybeSent),
+      'Swap expired. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'failed with its funding sent',
+      'expired',
+      const P2pWalletPaymentFailed(P2pWalletFunds.sent),
+      'Swap failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.',
+    ),
+    (
+      'failed with its funding possibly sent',
+      'expired',
+      const P2pWalletPaymentFailed(P2pWalletFunds.maybeSent),
+      'Swap failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.',
     ),
     (
       'under review',
