@@ -861,10 +861,369 @@ i1.GeneratedColumn<int> _column_35(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NOT NULL CHECK (history_unknown IN (0, 1))',
     );
+
+final class Schema5 extends i0.VersionedSchema {
+  Schema5({required super.database}) : super(version: 5);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    robotBindings,
+    trades,
+    tradePayments,
+    tradePaymentsNeverDeleted,
+    tradePaymentsInsertedOnce,
+    tradeTrails,
+    tradePaymentsOfTheirTrade,
+    tradePaymentsForward,
+    garageKeyHistories,
+    tradeTerms,
+    tradesOneOpenPerOrder,
+    tradeTermsNeverDeleted,
+    tradeTermsSetOnce,
+    tradeTermsInsertedOnce,
+    tradeTermsOfTheirTrade,
+    tradeTrailsNeverDeleted,
+    tradeTrailsInsertedOnce,
+    tradeTrailsOfTheirTrade,
+    tradeTrailsClosed,
+    tradeTrailsForward,
+    robotBindingsNetwork,
+    tradesNeverDeleted,
+    tradesSetOnce,
+    tradesInsertedOnce,
+  ];
+  late final Shape1 robotBindings = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'robot_bindings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(length(coordinator_onion) > 0)',
+        'CHECK(length(coordinator_nostr_key) > 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+        _column_10,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 trades = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'trades',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(length(coordinator_onion) > 0)',
+        'CHECK(order_id > 0)',
+        'CHECK(role IN (\'buyer\', \'seller\'))',
+        'CHECK(origin IN (\'takenHere\', \'recovered\'))',
+        'CHECK(origin = \'takenHere\' OR confirmed_at IS NOT NULL)',
+        'CHECK(taken_at BETWEEN 0 AND 8640000000000000)',
+        'CHECK(confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000)',
+        'CHECK(closed_at IS NULL OR closed_at BETWEEN 0 AND 8640000000000000)',
+        'FOREIGN KEY(key_fingerprint, robot_index, network)REFERENCES robot_bindings(key_fingerprint, robot_index, network)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_11,
+        _column_12,
+        _column_2,
+        _column_13,
+        _column_14,
+        _column_15,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape5 tradePayments = Shape5(
+    source: i0.VersionedTable(
+      entityName: 'trade_payments',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index, step)',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(step IN (\'bond\'))',
+        'CHECK(length(payment_hash) = 64 AND payment_hash NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(started_at BETWEEN 0 AND 253402300799999999)',
+        'CHECK(wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(step) = \'text\' AND typeof(payment_hash) = \'text\' AND typeof(started_at) = \'integer\' AND(wallet_payment_id IS NULL OR typeof(wallet_payment_id) = \'text\'))',
+        'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
+      ],
+      columns: [
+        _column_1,
+        _column_4,
+        _column_36,
+        _column_37,
+        _column_38,
+        _column_39,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradePaymentsNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments BEGIN SELECT RAISE (ABORT, \'the payment of a trade is kept\');END',
+    'trade_payments_never_deleted',
+  );
+  final i1.Trigger tradePaymentsInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_payments_inserted_once',
+  );
+  late final Shape4 tradeTrails = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'trade_trails',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(version >= 1)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(order_id BETWEEN 1 AND 9007199254740992)',
+        'CHECK(role IN (\'buyer\', \'seller\'))',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(version) = \'integer\' AND typeof(network) = \'text\' AND typeof(coordinator_alias) = \'text\' AND typeof(order_id) = \'integer\' AND typeof(role) = \'text\' AND typeof(position) = \'text\' AND typeof(read_at) = \'integer\' AND(bond_hash IS NULL OR typeof(bond_hash) = \'text\')AND(escrow_hash IS NULL OR typeof(escrow_hash) = \'text\')AND(deadline IS NULL OR typeof(deadline) = \'integer\')AND(bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = \'integer\')AND(bond_step_deadline IS NULL OR typeof(bond_step_deadline) = \'integer\')AND typeof(breached) = \'integer\' AND typeof(history_unknown) = \'integer\')',
+        'CHECK(position IN (\'start\', \'bondStep\', \'preTakeUnavailable\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\', \'chatting\', \'fiatSent\', \'inDispute\', \'sendingSats\', \'succeeded\', \'routingFailed\', \'waitingDisputeResolution\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\'))',
+        'CHECK(read_at BETWEEN 0 AND 253402300799999999)',
+        'CHECK(deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999)',
+        'CHECK(bond_step_seen_at IS NULL OR bond_step_seen_at BETWEEN 0 AND read_at)',
+        'CHECK(bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999)',
+        'CHECK(bond_hash IS NULL OR(length(bond_hash) = 64 AND bond_hash NOT GLOB \'*[^0-9a-f]*\'))',
+        'CHECK(escrow_hash IS NULL OR(length(escrow_hash) = 64 AND escrow_hash NOT GLOB \'*[^0-9a-f]*\'))',
+        'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
+      ],
+      columns: [
+        _column_1,
+        _column_4,
+        _column_16,
+        _column_0,
+        _column_5,
+        _column_11,
+        _column_12,
+        _column_27,
+        _column_28,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_33,
+        _column_34,
+        _column_35,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradePaymentsOfTheirTrade = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a payment of no open trade\');END',
+    'trade_payments_of_their_trade',
+  );
+  final i1.Trigger tradePaymentsForward = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at BEGIN SELECT RAISE (ABORT, \'a payment only moves forward\');END',
+    'trade_payments_forward',
+  );
+  late final Shape0 garageKeyHistories = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'garage_key_histories',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(network, key_fingerprint)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(key_fingerprint) = 64)',
+        'CHECK(origin IN (\'generated\', \'imported\', \'acknowledged\'))',
+      ],
+      columns: [_column_0, _column_1, _column_2, _column_3],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 tradeTerms = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'trade_terms',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(version) = \'integer\' AND typeof(network) = \'text\' AND typeof(coordinator_alias) = \'text\' AND typeof(order_id) = \'integer\' AND typeof(role) = \'text\' AND typeof(order_type) = \'integer\' AND typeof(currency_id) = \'integer\' AND typeof(is_range) = \'integer\' AND(explicit_satoshis IS NULL OR typeof(explicit_satoshis) = \'integer\')AND typeof(escrow_seconds) = \'integer\')',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(version >= 1)',
+        'CHECK(network IN (\'mainnet\', \'testnet\'))',
+        'CHECK(length(coordinator_alias) > 0)',
+        'CHECK(order_id BETWEEN 1 AND 9007199254740992)',
+        'CHECK(role IN (\'buyer\', \'seller\'))',
+        'CHECK((order_type = 1 AND role = \'buyer\')OR(order_type = 0 AND role = \'seller\'))',
+        'CHECK(currency_id > 0)',
+        'CHECK(typeof(amount) = \'real\' AND amount > 0 AND amount < 1000000000000000)',
+        'CHECK(typeof(premium_percent) = \'real\' AND premium_percent >= -100 AND premium_percent < 1000000000000000)',
+        'CHECK(explicit_satoshis IS NULL OR explicit_satoshis BETWEEN 1 AND 2100000000000000)',
+        'CHECK(typeof(bond_size_percent) = \'real\' AND bond_size_percent BETWEEN 2 AND 15)',
+        'CHECK(escrow_seconds BETWEEN 1800 AND 36000)',
+        'CHECK(typeof(book_price) = \'real\' AND book_price > 0 AND book_price < 1000000000000000)',
+        'CHECK(typeof(taker_fee) = \'real\' AND taker_fee BETWEEN 0 AND 0.01)',
+        'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
+      ],
+      columns: [
+        _column_1,
+        _column_4,
+        _column_16,
+        _column_0,
+        _column_5,
+        _column_11,
+        _column_12,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_26,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradesOneOpenPerOrder = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'an order has one open trade\');END',
+    'trades_one_open_per_order',
+  );
+  final i1.Trigger tradeTermsNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms BEGIN SELECT RAISE (ABORT, \'the terms of a trade are kept\');END',
+    'trade_terms_never_deleted',
+  );
+  final i1.Trigger tradeTermsSetOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms BEGIN SELECT RAISE (ABORT, \'the terms of a trade are set once\');END',
+    'trade_terms_set_once',
+  );
+  final i1.Trigger tradeTermsInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms WHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_terms_inserted_once',
+  );
+  final i1.Trigger tradeTermsOfTheirTrade = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'terms of no open trade\');END',
+    'trade_terms_of_their_trade',
+  );
+  final i1.Trigger tradeTrailsNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails BEGIN SELECT RAISE (ABORT, \'the trail of a trade is kept\');END',
+    'trade_trails_never_deleted',
+  );
+  final i1.Trigger tradeTrailsInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails WHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_trails_inserted_once',
+  );
+  final i1.Trigger tradeTrailsOfTheirTrade = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a trail of no open trade\');END',
+    'trade_trails_of_their_trade',
+  );
+  final i1.Trigger tradeTrailsClosed = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_trails_closed',
+  );
+  final i1.Trigger tradeTrailsForward = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN (\'succeeded\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\') AND NEW.position IS NOT OLD.position)BEGIN SELECT RAISE (ABORT, \'a trail only moves forward\');END',
+    'trade_trails_forward',
+  );
+  final i1.Index robotBindingsNetwork = i1.Index(
+    'robot_bindings_network',
+    'CREATE UNIQUE INDEX IF NOT EXISTS robot_bindings_network ON robot_bindings (key_fingerprint, robot_index, network)',
+  );
+  final i1.Trigger tradesNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE (ABORT, \'a trade record is kept\');END',
+    'trades_never_deleted',
+  );
+  final i1.Trigger tradesSetOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR(OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE (ABORT, \'a trade record only gains its times\');END',
+    'trades_set_once',
+  );
+  final i1.Trigger tradesInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trades_inserted_once',
+  );
+}
+
+class Shape5 extends i0.VersionedTable {
+  Shape5({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get keyFingerprint =>
+      columnsByName['key_fingerprint']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get robotIndex =>
+      columnsByName['robot_index']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get step =>
+      columnsByName['step']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get paymentHash =>
+      columnsByName['payment_hash']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get startedAt =>
+      columnsByName['started_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get walletPaymentId =>
+      columnsByName['wallet_payment_id']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_36(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'step',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_37(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'payment_hash',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_38(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'started_at',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_39(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'wallet_payment_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
+  required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -883,6 +1242,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from3To4(migrator, schema);
         return 4;
+      case 4:
+        final schema = Schema5(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from4To5(migrator, schema);
+        return 5;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -893,10 +1257,12 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
+  required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
     from2To3: from2To3,
     from3To4: from3To4,
+    from4To5: from4To5,
   ),
 );

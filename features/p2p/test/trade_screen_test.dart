@@ -483,7 +483,7 @@ void main() {
           state: _watched('bond'),
           walletPayment: (context, request) {
             requests.add(request);
-            return const Text('wallet slot');
+            return const WalletPaymentSlot(Text('wallet slot'));
           },
         );
         expect(find.text('wallet slot'), findsOneWidget);
@@ -1266,7 +1266,8 @@ void main() {
             TradeSeen(bond.status, order: bond.order),
             recordProblem: const P2pStorageFailure(),
           ),
-          walletPayment: (context, request) => const Text('wallet slot'),
+          walletPayment: (context, request) =>
+              const WalletPaymentSlot(Text('wallet slot')),
         );
         expect(
           find.text(

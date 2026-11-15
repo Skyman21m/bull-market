@@ -14,6 +14,7 @@ import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
+import 'data/trade_payment_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
@@ -24,6 +25,7 @@ import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/repositories/trade_payment_repository.dart';
 import 'domain/repositories/trade_record_repository.dart';
 import 'domain/repositories/trade_trail_repository.dart';
 import 'domain/network_garage_key.dart';
@@ -54,9 +56,11 @@ import 'domain/usecases/release_robot_usecase.dart';
 import 'domain/usecases/request_federation_books_usecase.dart';
 import 'domain/usecases/retry_p2p_tor_usecase.dart';
 import 'domain/usecases/start_p2p_tor_usecase.dart';
+import 'domain/usecases/trade/bond_payments_in_flight.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
+import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
@@ -67,6 +71,7 @@ import 'domain/usecases/trade/trade_watch_session.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/active_trades_cubit.dart';
+import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
@@ -254,6 +259,11 @@ final class P2pLocator {
   /// Registers the trades (#87): their records, terms and trails in the database, the robot layer that reserves a fresh robot for each take, and the trade use cases, the only callers of the coordinator's money members; the trade screens (#88) are their only callers.
   ///
   /// The invoices of a trade are decoded by the [Bolt11Decoder] the shell registered ([setup]); without one, every invoice is refused, so that none is shown or paid.
+  /// Whether the bond of a trade can be paid from the wallet: the wallet's port was lent and the trades are registered.
+  static bool paysBondFromWallet(GetIt locator) =>
+      locator.isRegistered<P2pWalletPort>() &&
+      locator.isRegistered<TradeReader>();
+
   static void registerTrades(
     GetIt locator, {
     required CoordinatorTransport Function() transport,
@@ -264,6 +274,9 @@ final class P2pLocator {
     );
     locator.registerLazySingleton<TradeTrailRepository>(
       () => TradeTrailRepositoryImpl(locator()),
+    );
+    locator.registerLazySingleton<TradePaymentRepository>(
+      () => TradePaymentRepositoryImpl(locator()),
     );
     locator.registerLazySingleton<TradeRobots>(
       () => InterimTradeRobots(locator(), locator()),
@@ -311,6 +324,7 @@ final class P2pLocator {
     locator.registerFactory<CancelTradeUsecase>(
       () => CancelTradeUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
         locator(),
       ),
@@ -372,6 +386,36 @@ final class P2pLocator {
         payout.execute,
         (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
         now: locator<P2pClock>().now,
+      );
+    });
+    // The bond paid from the wallet (#100): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.
+    locator.registerFactory<PayBondFromWalletUsecase>(
+      () => PayBondFromWalletUsecase(
+        locator(),
+        locator(),
+        locator(),
+        locator<P2pWalletPort>(),
+        locator(),
+        locator(),
+      ),
+    );
+    // One for the feature: a screen opened again while a payment runs knows of it.
+    locator.registerLazySingleton<BondPaymentsInFlight>(
+      BondPaymentsInFlight.new,
+    );
+    locator.registerFactoryParam<BondPaymentCubit, TradeRecord, void>((
+      record,
+      _,
+    ) {
+      final payments = locator<PayBondFromWalletUsecase>();
+      return BondPaymentCubit(
+        record,
+        payments.watchBalance,
+        payments.checkBond,
+        payments.quoteBond,
+        payments.payBond,
+        payments.followBond,
+        payments.bondPaymentRunning,
       );
     });
     locator.registerFactoryParam<ActiveTradesCubit, RobosatsNetwork, void>(

@@ -22,6 +22,7 @@ import 'generated/schema.dart';
 import 'generated/schema_v1.dart' as v1;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
+import 'generated/schema_v4.dart' as v4;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -957,7 +958,7 @@ void main() {
 
         final first = P2pDatabase.open(() async => directory);
         final rows = await rowsOf(first);
-        expect(await versionOf(first), 4);
+        expect(await versionOf(first), P2pDatabase.schema);
         expect({for (final table in before.keys) table: rows[table]}, before);
         expect(rows['trade_terms'], isEmpty);
         expect(rows['trade_trails'], isEmpty);
@@ -972,7 +973,7 @@ void main() {
         await first.close();
 
         final second = P2pDatabase.open(() async => directory);
-        expect(await versionOf(second), 4);
+        expect(await versionOf(second), P2pDatabase.schema);
         expect(await rowsOf(second), rows);
         await second.close();
       },
@@ -1075,7 +1076,7 @@ void main() {
         await old.close();
 
         final database = P2pDatabase.open(() async => directory);
-        expect(await versionOf(database), 4);
+        expect(await versionOf(database), P2pDatabase.schema);
         expect(
           await database
               .customSelect(
@@ -1157,7 +1158,11 @@ void main() {
           await half.close();
 
           final database = P2pDatabase.open(() async => directory);
-          expect(await versionOf(database), 4, reason: '$parts');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$parts',
+          );
           await database.validateDatabaseSchema();
           expect(
             (await objectsOf(database)).keys,
@@ -1173,6 +1178,126 @@ void main() {
         }
       },
     );
+
+    // Schema 5 (#100): the payments of a trade's invoices asked of the wallet.
+
+    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them.
+    Future<Map<String, String>> paymentObjectsOf(
+      GeneratedDatabase database,
+    ) async => {
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments'",
+              )
+              .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
+
+    /// A file of schema 4 with rows: the file of schema 3 migrated, then brought back to schema 4 by dropping what schema 5 adds (the table of the payments takes its triggers with it).
+    Future<void> writeSchema4() async {
+      await writeSchema3();
+      final database = P2pDatabase.open(() async => directory);
+      expect(await versionOf(database), P2pDatabase.schema);
+      await database.customStatement('DROP TABLE IF EXISTS trade_payments');
+      await database.customStatement('PRAGMA user_version = 4');
+      await database.close();
+    }
+
+    test(
+      'a file of schema 4 keeps every row and gains the empty table of the payments, as a new file has it',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await paymentObjectsOf(fresh);
+        await fresh.close();
+        expect(expected.keys, unorderedEquals(_schema5Objects));
+
+        await writeSchema4();
+        final old = v4.DatabaseAtV4(NativeDatabase(file));
+        expect(await paymentObjectsOf(old), isEmpty);
+        await old.close();
+
+        final migrated = P2pDatabase.open(() async => directory);
+        expect(await versionOf(migrated), 5);
+        await migrated.validateDatabaseSchema();
+        expect(await paymentObjectsOf(migrated), expected);
+        expect(
+          await migrated.customSelect('SELECT * FROM trades').get(),
+          hasLength(3),
+        );
+        expect(
+          await migrated.customSelect('SELECT * FROM trade_payments').get(),
+          isEmpty,
+        );
+        await migrated.close();
+      },
+    );
+
+    test(
+      'the step from 4 that stopped after any of its parts runs again over the file it left',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final statements = {
+          for (final row
+              in await fresh
+                  .customSelect(
+                    'SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL',
+                  )
+                  .get())
+            row.read<String>('name'): row.read<String>('sql'),
+        };
+        await fresh.close();
+
+        for (var parts = 1; parts <= _schema5Objects.length; parts++) {
+          await writeSchema4();
+          final half = v4.DatabaseAtV4(NativeDatabase(file));
+          for (final name in _schema5Objects.take(parts)) {
+            await half.customStatement(
+              statements[name] ?? fail('no $name in a new file'),
+            );
+          }
+          expect(await versionOf(half), 4, reason: '$parts');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => directory);
+          expect(await versionOf(database), 5, reason: '$parts');
+          await database.validateDatabaseSchema();
+          expect(
+            (await paymentObjectsOf(database)).keys,
+            unorderedEquals(_schema5Objects),
+            reason: '$parts',
+          );
+          await database.close();
+        }
+      },
+    );
+
+    test('a payment of a trade never read is refused by the file', () async {
+      await writeSchema4();
+      final database = P2pDatabase.open(() async => directory);
+      // The trades of this file have no trail: none can be paid.
+      await expectLater(
+        database.customStatement(
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 1, 'bond', ?, 0)",
+          [drawn.hex, 'ab${'0' * 62}'],
+        ),
+        throwsA(
+          predicate((error) => '$error'.contains('a payment of no open trade')),
+        ),
+      );
+      await database.close();
+    });
   });
 }
 
@@ -1189,6 +1314,15 @@ const _schema3Objects = [
   'trades_never_deleted',
   'trades_set_once',
   'trades_inserted_once',
+];
+
+/// The objects schema 5 adds, in the order of its step from 4: the payments of the trades' invoices and their four triggers.
+const _schema5Objects = [
+  'trade_payments',
+  'trade_payments_never_deleted',
+  'trade_payments_inserted_once',
+  'trade_payments_of_their_trade',
+  'trade_payments_forward',
 ];
 
 /// The objects schema 4 adds, in the order of its step from 3: the terms and the trails of the trades, the trigger of one open trade per order, and the nine triggers of the terms and trails.

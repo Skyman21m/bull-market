@@ -10,7 +10,9 @@ import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
 import 'domain/trade/trade_watch.dart';
 import 'domain/trade_record.dart';
+import 'p2p_locator.dart';
 import 'presentation/active_trades_cubit.dart';
+import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
@@ -25,6 +27,7 @@ import 'ui/garage/garage_view.dart';
 import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
+import 'ui/trade/bond_payment_panel.dart';
 import 'ui/trade/payout_panel.dart';
 import 'ui/trade/trade_screen.dart';
 import 'ui/widgets/garage_key_clipboard.dart';
@@ -106,6 +109,12 @@ final class P2pRouter {
     final payouts = locator.isRegistered<PayoutCubit>();
     return MultiBlocProvider(
       providers: [
+        // The wallet's payment of the bond (#100), only where the wallet's port was lent: without it the screen is as before, « Pay with another wallet » alone.
+        if (P2pLocator.paysBondFromWallet(locator))
+          BlocProvider(
+            create: (_) =>
+                locator<BondPaymentCubit>(param1: args.record)..start(),
+          ),
         BlocProvider(
           create: (_) => locator<TradeCubit>(param1: args.record)..start(),
         ),
@@ -125,6 +134,15 @@ final class P2pRouter {
           context,
           TradeScreen(
             now: locator<P2pClock>().now,
+            walletPayment: P2pLocator.paysBondFromWallet(locator)
+                ? BondPaymentPanel.slotFor
+                : null,
+            walletBond: P2pLocator.paysBondFromWallet(locator)
+                ? BondPaymentPanel.bondOf
+                : null,
+            walletBondLine: P2pLocator.paysBondFromWallet(locator)
+                ? (_, bondHeld) => BondPaymentLine(bondHeld: bondHeld)
+                : null,
             coordinatorDetails: (request) =>
                 locator<CoordinatorDetailsCubit>(param1: request),
             payout: payouts

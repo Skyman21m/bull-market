@@ -50,6 +50,9 @@ class TradeScreen extends StatefulWidget {
   final CoordinatorDetailsCubit Function(CoordinatorDetailsRequest request)
   coordinatorDetails;
 
+  /// Where a payment of the bond from this wallet stands, for « Cancel »: `null` without the wallet's port (#100).
+  final WalletBondState Function(BuildContext context)? walletBond;
+
   /// What fills the slot of « Pay with this wallet » of the bond panel: `null` today (see [WalletPaymentSection]).
   final WalletPaymentBuilder? walletPayment;
 
@@ -58,6 +61,9 @@ class TradeScreen extends StatefulWidget {
 
   /// Whether an action that moves money runs for this trade (a payout being given, #91): « Cancel » is then off, so that a cancel never leaves while it runs; `null` for none.
   final bool Function(BuildContext context)? moneyActionRunning;
+
+  /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
+  final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
@@ -75,6 +81,8 @@ class TradeScreen extends StatefulWidget {
     this.walletPayment,
     this.payout,
     this.moneyActionRunning,
+    this.walletBond,
+    this.walletBondLine,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -212,6 +220,19 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       line,
                       const Gap(BullSpacing.sm),
                     ],
+                    // After status 3, where a bond paid by this wallet stands (held by the swap service, refunded, kept); at status 3 the panel itself says it.
+                    if (widget.walletBondLine case final bondLine?
+                        when view is! TradeWaiting &&
+                            !(view is TradeContract &&
+                                view.status is WaitingForTakerBond)) ...[
+                      bondLine(
+                        context,
+                        // Locked only while the bond is (the reference's bond line « locked »).
+                        view is TradeContract &&
+                            view.bondLine == TradeBondLine.locked,
+                      ),
+                      const Gap(BullSpacing.sm),
+                    ],
                     switch (view) {
                       TradeWaiting() => Padding(
                         padding: const EdgeInsets.all(BullSpacing.xl),
@@ -267,6 +288,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         payout: widget.payout,
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
+                        walletBond: widget.walletBond,
                       ),
                     },
                   ],
@@ -383,6 +405,7 @@ class _Contract extends StatelessWidget {
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
   final bool moneyActionRunning;
+  final WalletBondState Function(BuildContext context)? walletBond;
 
   const _Contract({
     super.key,
@@ -394,6 +417,7 @@ class _Contract extends StatelessWidget {
     required this.walletPayment,
     required this.payout,
     required this.moneyActionRunning,
+    required this.walletBond,
   });
 
   @override
@@ -457,6 +481,7 @@ class _Contract extends StatelessWidget {
             cancel: cancel,
             coordinator: coordinator,
             moneyActionRunning: moneyActionRunning,
+            bond: walletBond?.call(context) ?? WalletBondState.none,
           ),
         ],
       ],
@@ -472,6 +497,7 @@ class _Contract extends StatelessWidget {
       (TradePrompt.lockInvoice, final WaitingForTakerBond bond) => BondPanel(
         record: record,
         status: bond,
+        seen: contract.seen,
         walletPayment: walletPayment,
         now: now,
         swap: order?.currency.isBitcoin ?? false,
@@ -592,6 +618,9 @@ class _CancelRow extends StatefulWidget {
   /// Whether an action that moves money runs: « Cancel » is off meanwhile.
   final bool moneyActionRunning;
 
+  /// Where a payment of the bond from this wallet stands: « Cancel » waits while it is sent, and its dialog says when one is on its way.
+  final WalletBondState bond;
+
   const _CancelRow({
     required this.offer,
     required this.record,
@@ -599,6 +628,7 @@ class _CancelRow extends StatefulWidget {
     required this.cancel,
     required this.coordinator,
     required this.moneyActionRunning,
+    required this.bond,
   });
 
   @override
@@ -615,6 +645,11 @@ class _CancelRowState extends State<_CancelRow> {
     _asking = true;
     final cubit = context.read<TradeCubit>();
     final seen = widget.seen;
+    // The project's line under the reference's text, when a payment of the bond is on its way from this wallet: informed, not stopped.
+    // Only at 3, where the cancel is free: from 6 on the bond is locked and the reference's text says it is lost.
+    final note = widget.bond.sent && widget.offer == TradeCancelOffer.free
+        ? P2pLocalizations.of(context).p2pPayCancelNote
+        : null;
     try {
       // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
       if (seen.order == null) {
@@ -623,7 +658,7 @@ class _CancelRowState extends State<_CancelRow> {
       }
       switch (widget.offer) {
         case TradeCancelOffer.free:
-          if (await CancelOrderDialog.show(context)) {
+          if (await CancelOrderDialog.show(context, note: note)) {
             await cubit.cancel(seen);
           }
         case TradeCancelOffer.losesBond:
@@ -631,6 +666,7 @@ class _CancelRowState extends State<_CancelRow> {
             context,
             record: widget.record,
             seen: seen,
+            note: note,
           );
           if (acknowledged != null) {
             await cubit.cancel(seen, bondLoss: acknowledged);
@@ -677,7 +713,8 @@ class _CancelRowState extends State<_CancelRow> {
             outlined: true,
             color: colors.secondary,
             busy: running,
-            onPressed: widget.moneyActionRunning
+            // A payment of the bond being sent ends first, as the payment's own button waits (the cancel takes the order's lock too); a payout being given too (#91).
+            onPressed: widget.moneyActionRunning || widget.bond.sending
                 ? null
                 : () => unawaited(_press()),
           ),

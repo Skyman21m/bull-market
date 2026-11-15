@@ -13,10 +13,14 @@ class ConfirmCancelDialog extends StatelessWidget {
   final TradeRecord record;
   final TradeSeen seen;
 
+  /// A line of the app under the reference's text: a payment of the bond on its way from this wallet (#100).
+  final String? note;
+
   const ConfirmCancelDialog({
     super.key,
     required this.record,
     required this.seen,
+    this.note,
   });
 
   /// The acknowledgement of the bond's loss, when the user pressed « Confirm Cancel » on the dialog opened for [record] at [seen].
@@ -24,9 +28,10 @@ class ConfirmCancelDialog extends StatelessWidget {
     BuildContext context, {
     required TradeRecord record,
     required TradeSeen seen,
+    String? note,
   }) => BullDialog.show<BondLossAcknowledged>(
     context: context,
-    builder: (_) => ConfirmCancelDialog(record: record, seen: seen),
+    builder: (_) => ConfirmCancelDialog(record: record, seen: seen, note: note),
   );
 
   @override
@@ -39,6 +44,7 @@ class ConfirmCancelDialog extends StatelessWidget {
       onBack: () => Navigator.of(context).pop(),
       goLabel: l10n.p2pTradeConfirmCancel,
       backFirst: true,
+      note: note,
       onGo: () => Navigator.of(
         context,
       ).pop(BondLossAcknowledged.fromConfirmationDialog(record, seen)),
