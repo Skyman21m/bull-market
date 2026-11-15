@@ -23,6 +23,7 @@ import 'generated/schema_v1.dart' as v1;
 import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
+import 'generated/schema_v5.dart' as v5;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -1202,6 +1203,7 @@ void main() {
       await writeSchema3();
       final database = P2pDatabase.open(() async => directory);
       expect(await versionOf(database), P2pDatabase.schema);
+      await database.customStatement('DROP TABLE IF EXISTS trade_chat_pins');
       await database.customStatement('DROP TABLE IF EXISTS trade_payments');
       await database.customStatement('PRAGMA user_version = 4');
       await database.close();
@@ -1225,7 +1227,7 @@ void main() {
         await old.close();
 
         final migrated = P2pDatabase.open(() async => directory);
-        expect(await versionOf(migrated), 5);
+        expect(await versionOf(migrated), P2pDatabase.schema);
         await migrated.validateDatabaseSchema();
         expect(await paymentObjectsOf(migrated), expected);
         expect(
@@ -1271,7 +1273,11 @@ void main() {
           await half.close();
 
           final database = P2pDatabase.open(() async => directory);
-          expect(await versionOf(database), 5, reason: '$parts');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$parts',
+          );
           await database.validateDatabaseSchema();
           expect(
             (await paymentObjectsOf(database)).keys,
@@ -1298,6 +1304,177 @@ void main() {
       );
       await database.close();
     });
+
+    // Schema 6 (#139): the fingerprints of the peer's key each trade's chat pinned.
+
+    /// The schema 6 objects of [database], by name, compared as [objectsOf] compares them.
+    Future<Map<String, String>> pinObjectsOf(
+      GeneratedDatabase database,
+    ) async => {
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_chat_pins'",
+              )
+              .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
+
+    /// A file of schema 5 with rows, in a directory of its own that the test deletes: the file of schema 3 migrated, then brought back to schema 5 by dropping what schema 6 adds (the table of the pins takes its triggers with it).
+    ///
+    /// Each call writes a new directory, so that no turn of a loop rewrites a file that a connection of the turn before may still hold (#144).
+    Future<Directory> writeSchema5() async {
+      final previous = directory;
+      addTearDown(() async {
+        if (previous.existsSync()) await previous.delete(recursive: true);
+      });
+      directory = await Directory.systemTemp.createTemp('p2p-schema5-');
+      file = File('${directory.path}/${P2pDatabase.fileName}');
+      final own = directory;
+      // The last one is the group's to delete (its `tearDown`), the earlier ones this test's.
+      await writeSchema3();
+      final database = P2pDatabase.open(() async => own);
+      expect(await versionOf(database), P2pDatabase.schema);
+      await database.customStatement('DROP TABLE IF EXISTS trade_chat_pins');
+      await database.customStatement('PRAGMA user_version = 5');
+      await database.close();
+      return own;
+    }
+
+    test(
+      'a file of schema 5 keeps every row and gains the empty table of the pins, as a new file has it',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await pinObjectsOf(fresh);
+        await fresh.close();
+        expect(expected.keys, unorderedEquals(_schema6Objects));
+
+        final own = await writeSchema5();
+        final old = v5.DatabaseAtV5(NativeDatabase(file));
+        expect(await pinObjectsOf(old), isEmpty);
+        await old.close();
+
+        final migrated = P2pDatabase.open(() async => own);
+        expect(await versionOf(migrated), 6);
+        await migrated.validateDatabaseSchema();
+        expect(await pinObjectsOf(migrated), expected);
+        expect(
+          await migrated.customSelect('SELECT * FROM trades').get(),
+          hasLength(3),
+        );
+        expect(
+          await migrated.customSelect('SELECT * FROM trade_chat_pins').get(),
+          isEmpty,
+        );
+        await migrated.close();
+      },
+    );
+
+    test(
+      'the step from 5 that stopped after any of its parts runs again over the file it left, each turn on a file of its own',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final statements = {
+          for (final row
+              in await fresh
+                  .customSelect(
+                    'SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL',
+                  )
+                  .get())
+            row.read<String>('name'): row.read<String>('sql'),
+        };
+        await fresh.close();
+
+        for (var parts = 1; parts <= _schema6Objects.length; parts++) {
+          final own = await writeSchema5();
+          final half = v5.DatabaseAtV5(NativeDatabase(file));
+          for (final name in _schema6Objects.take(parts)) {
+            await half.customStatement(
+              statements[name] ?? fail('no $name in a new file'),
+            );
+          }
+          expect(await versionOf(half), 5, reason: '$parts');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => own);
+          expect(await versionOf(database), 6, reason: '$parts');
+          await database.validateDatabaseSchema();
+          expect(
+            (await pinObjectsOf(database)).keys,
+            unorderedEquals(_schema6Objects),
+            reason: '$parts',
+          );
+          expect(
+            await database.customSelect('SELECT * FROM trades').get(),
+            hasLength(3),
+            reason: '$parts',
+          );
+          await database.close();
+        }
+      },
+    );
+
+    test(
+      'a pin is written once, never changed nor deleted, and only for an open trade',
+      () async {
+        final own = await writeSchema5();
+        final database = P2pDatabase.open(() async => own);
+        const pin =
+            "INSERT INTO trade_chat_pins (key_fingerprint, robot_index, primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?)";
+        final first = 'A' * 40;
+        final other = 'B' * 40;
+        // Robot 1's trade is open, robot 2's closed (schema 3's rows).
+        await database.customStatement(pin, [drawn.hex, 1, first, other]);
+        await database.customStatement(pin, [drawn.hex, 1, other, other]);
+        final rows = await database
+            .customSelect('SELECT primary_fingerprint FROM trade_chat_pins')
+            .get();
+        expect(rows.single.read<String>('primary_fingerprint'), first);
+        await expectLater(
+          database.customStatement(
+            'UPDATE trade_chat_pins SET primary_fingerprint = ?',
+            [other],
+          ),
+          throwsA(
+            predicate(
+              (error) =>
+                  '$error'.contains('the pinned key of a trade never changes'),
+            ),
+          ),
+        );
+        await expectLater(
+          database.customStatement('DELETE FROM trade_chat_pins'),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('the pinned key of a trade is kept'),
+            ),
+          ),
+        );
+        await expectLater(
+          database.customStatement(pin, [drawn.hex, 2, first, other]),
+          throwsA(
+            predicate((error) => '$error'.contains('a pin of no open trade')),
+          ),
+        );
+        // Only fingerprints: 40 uppercase hexadecimal characters.
+        await expectLater(
+          database.customStatement(pin, [drawn.hex, 0, 'a' * 40, other]),
+          throwsA(anything),
+        );
+        await database.close();
+      },
+    );
   });
 }
 
@@ -1314,6 +1491,15 @@ const _schema3Objects = [
   'trades_never_deleted',
   'trades_set_once',
   'trades_inserted_once',
+];
+
+/// The objects schema 6 adds, in the order of its step from 5: the pins of the trades' chats and their four triggers.
+const _schema6Objects = [
+  'trade_chat_pins',
+  'trade_chat_pins_never_deleted',
+  'trade_chat_pins_never_changed',
+  'trade_chat_pins_inserted_once',
+  'trade_chat_pins_of_their_trade',
 ];
 
 /// The objects schema 5 adds, in the order of its step from 4: the payments of the trades' invoices and their four triggers.

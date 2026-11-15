@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 import '../../robot_binding.dart';
 import '../../robot_key_compute_port.dart';
 import '../../trade/trade_chat.dart';
+import '../../trade/trade_chat_pin.dart';
 import '../../trade_record.dart';
 
 /// The chats of the trades, in memory only (#93, design note § 3.6, `AGENTS.md` « The encrypted chat of a trade »): one [TradeChat] per trade, kept for the life of the process so that the peer's key stays pinned when the trade screen is opened again, and nothing of it is ever written.
@@ -45,6 +46,13 @@ final class TradeChat {
   int _nextPendingId = 1;
 
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
+
+  /// The pin kept with the trade's record (#139): read once a run, before the first page is taken; `null` when the trade has none.
+  ChatPinFingerprints? _kept;
+  bool _pinRead = false;
+
+  /// The key this run pinned, while it is not kept with the trade's record yet.
+  PgpPublicKey? _toKeep;
   bool _peerConnected = false;
   bool _connected = false;
   PgpPublicKey? _ownKey;
@@ -72,6 +80,32 @@ final class TradeChat {
   int get offset => _offset;
 
   /// The pinned peer key, when there is one and no breach.
+  /// Whether the pin kept with the trade's record was read in this run: no page is taken before (#139).
+  bool get pinRead => _pinRead;
+
+  /// The pin kept with the trade's record, [kept], or none: after a restart, the first key served is compared with it rather than trusted.
+  void restorePin(ChatPinFingerprints? kept) {
+    _pinRead = true;
+    _kept = kept;
+  }
+
+  /// The key this run pinned and that is not kept with the trade's record yet, `null` otherwise.
+  PgpPublicKey? get pinToKeep => _toKeep;
+
+  /// The key of [pinToKeep] is now kept with the trade's record.
+  void pinKept() {
+    if (_toKeep case final key?) _kept = ChatPinFingerprints.of(key);
+    _toKeep = null;
+  }
+
+  /// Another pin than [pinToKeep] was found kept with the trade's record: the key pinned in this run is not that one, the same breach as a key that changed.
+  void pinKeptOther() {
+    _toKeep = null;
+    if (_peerKey case ChatPeerKeyPinned(:final key)) {
+      _peerKey = ChatPeerKeyBreach(pinned: key);
+    }
+  }
+
   PgpPublicKey? get pinnedKey => switch (_peerKey) {
     ChatPeerKeyPinned(:final key) => key,
     _ => null,
@@ -220,6 +254,13 @@ final class TradeChat {
         )) {
       _peerKey = ChatPeerKeyBreach(pinned: key);
     }
+    // A key pinned in this run, not known from the trade's record: to keep with it (#139).
+    if ((keyBefore, _peerKey) case (
+      ChatPeerKeyAwaited(),
+      ChatPeerKeyPinned(:final key),
+    ) when _kept == null) {
+      _toKeep = key;
+    }
 
     // The pending messages the coordinator now shows as stored.
     _pending.removeWhere((p) => page.indexOf(p.message) != null);
@@ -299,8 +340,16 @@ final class TradeChat {
   };
 
   /// The peer's key after a page that gives [given]: pinned at the first key named after the peer, any other later key, a misnamed one, none or an unreadable one after it a breach, which stays.
+  ///
+  /// After a restart, the pin kept with the trade's record stands for the key pinned before (#139): the same key is pinned again silently, and another one, none or an unreadable one is the same breach.
   ChatPeerKeyState _keyAfter(ChatPeerKey given) => switch ((_peerKey, given)) {
     (ChatPeerKeyBreach(), _) => _peerKey,
+    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key))
+        when _kept?.matches(key) == false =>
+      const ChatPeerKeyBreach(),
+    (ChatPeerKeyAwaited(), ChatPeerKeyMissing() || ChatPeerKeyUnreadable())
+        when _kept != null =>
+      const ChatPeerKeyBreach(),
     (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key)) => ChatPeerKeyPinned(
       key,
     ),

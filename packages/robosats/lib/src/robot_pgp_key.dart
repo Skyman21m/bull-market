@@ -55,6 +55,9 @@ final class PgpPublicKey {
   /// A coordinator accepts a clear-signed invoice only when GnuPG reports this fingerprint as the signer (`api/utils.py:641`).
   final String fingerprint;
 
+  /// The fingerprint of the encryption subkey, written as [fingerprint]: with it, the two fingerprints that [operator ==] compares, which a client can keep to know the same key again without keeping the key (#139).
+  final String subkeyFingerprint;
+
   /// The user ID the primary key certifies: `RoboSats ID <hash id>` on a key made by the official client.
   ///
   /// No coordinator reads it: it is a convention between clients.
@@ -67,6 +70,7 @@ final class PgpPublicKey {
 
   PgpPublicKey._(this.armored, this._key)
     : fingerprint = hex.encode(_key.primary.fingerprint).toUpperCase(),
+      subkeyFingerprint = hex.encode(_key.subkey.fingerprint).toUpperCase(),
       userId = _key.userId,
       createdAt = DateTime.fromMillisecondsSinceEpoch(
         _key.primary.createdAt * 1000,

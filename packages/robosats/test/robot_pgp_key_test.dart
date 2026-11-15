@@ -48,6 +48,12 @@ void main() {
     2: 'EAA47013A346EC9F1C8305275E8DD403D3FB182D',
     3: '177E43B670BF6192F9FF597B07C01BE5DB91A93F',
   };
+  // The encryption subkeys' fingerprints, read by `gpg --with-subkey-fingerprints --show-keys` on `tests/robots/*/pub_key` (#139).
+  const repositorySubkeyFingerprints = {
+    1: '841597EE83961614A07EB1EE6260F62CE509D476',
+    2: 'CD9C4E1F2CD56A733E57AFE66A3CA0E1E80D385A',
+    3: '2860DFD32487EDE56C3AB4FDF51212478BD4DD67',
+  };
   // Creation times read by `gpg --list-packets` on `tests/robots/*/enc_priv_key`.
   const repositoryCreationTimes = {1: 1699986799, 2: 1699195195, 3: 1740323676};
 
@@ -58,6 +64,13 @@ void main() {
 
       test('has the fingerprint GnuPG reports', () {
         expect(key.publicKey.fingerprint, repositoryFingerprints[number]);
+      });
+
+      test('has the subkey fingerprint GnuPG reports (#139)', () {
+        expect(
+          key.publicKey.subkeyFingerprint,
+          repositorySubkeyFingerprints[number],
+        );
       });
 
       test('is named after the hash id of its token', () {

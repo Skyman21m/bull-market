@@ -330,3 +330,38 @@ class StoredTradePayments extends Table {
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }
+
+/// The peer's key pinned for a trade's chat, by its two fingerprints (schema 6, #139): one row per trade, written when the chat pins the peer's key, so that after a restart of the app the key the coordinator serves is compared with it instead of being trusted again.
+///
+/// It holds the two fingerprints that `PgpPublicKey` equality compares, its primary key's and its encryption subkey's: public data, which the peer's key itself publishes; never the key, a message, or anything decrypted. The chat's messages stay in memory only: this is the one thing of the chat that is stored.
+/// The triggers of `trade_chat_pins.drift` keep it: a row is never deleted nor changed, a second one for a trade writes nothing, and a row is written only for an open trade.
+/// Read and written only by `TradeChatPinRepositoryImpl`.
+@DataClassName('TradeChatPinRow')
+class StoredTradeChatPins extends Table {
+  @override
+  String get tableName => 'trade_chat_pins';
+
+  /// The trade's robot, as `trades` keys it.
+  TextColumn get keyFingerprint => text()();
+  IntColumn get robotIndex => integer()();
+
+  /// `PgpPublicKey.fingerprint` of the pinned key: 40 uppercase hexadecimal characters.
+  TextColumn get primaryFingerprint => text()();
+
+  /// `PgpPublicKey.subkeyFingerprint` of the pinned key: 40 uppercase hexadecimal characters.
+  TextColumn get subkeyFingerprint => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    "CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*')",
+    "CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*')",
+    // The storage class of each column this code writes, as for the payments.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text')",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}

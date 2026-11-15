@@ -14,6 +14,7 @@ import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
+import 'data/trade_chat_pin_repository_impl.dart';
 import 'data/trade_payment_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
@@ -25,6 +26,7 @@ import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/repositories/trade_chat_pin_repository.dart';
 import 'domain/repositories/trade_payment_repository.dart';
 import 'domain/repositories/trade_record_repository.dart';
 import 'domain/repositories/trade_trail_repository.dart';
@@ -282,6 +284,10 @@ final class P2pLocator {
     locator.registerLazySingleton<TradePaymentRepository>(
       () => TradePaymentRepositoryImpl(locator()),
     );
+    // The peer's key each trade's chat pinned, by its fingerprints (#139).
+    locator.registerLazySingleton<TradeChatPinRepository>(
+      () => TradeChatPinRepositoryImpl(locator()),
+    );
     locator.registerLazySingleton<TradeRobots>(
       () => InterimTradeRobots(locator(), locator()),
     );
@@ -367,6 +373,7 @@ final class P2pLocator {
     locator.registerFactory<WatchChatUsecase>(
       () => WatchChatUsecase(
         CoordinatorClient(transport(), clock: clock),
+        locator(),
         locator(),
         locator(),
         locator(),

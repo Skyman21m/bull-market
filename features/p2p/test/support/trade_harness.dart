@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/trade_chat_pin_repository_impl.dart';
+import 'package:p2p/src/domain/repositories/trade_chat_pin_repository.dart';
+import 'package:p2p/src/domain/trade/trade_chat_pin.dart';
 import 'package:p2p/src/data/robot_binding_repository_impl.dart';
 import 'package:p2p/src/data/trade_record_repository_impl.dart';
 import 'package:p2p/src/data/trade_trail_repository_impl.dart';
@@ -370,11 +373,14 @@ final class TradeHarness {
   late final SendChatMessageUsecase chatSend;
   late final CoordinatorClient _client;
 
+  /// The pins of the trades' chats, in this run's database (#139), whose reads and writes a test can refuse.
+  late final TestPins pins;
+
   /// The chat's use cases of a new run of the app, the process killed and started again: a fresh [TradeChats], nothing of the chats kept, the same records, keys and coordinator.
   (WatchChatUsecase, SendChatMessageUsecase) chatAfterRestart() {
     final fresh = TradeChats();
     return (
-      WatchChatUsecase(_client, reader, limiter, keyring, keys, fresh),
+      WatchChatUsecase(_client, reader, limiter, keyring, keys, fresh, pins),
       SendChatMessageUsecase(_client, reader, limiter, keyring, keys, fresh),
     );
   }
@@ -452,7 +458,16 @@ final class TradeHarness {
       locks,
       invoices,
     );
-    chatRead = WatchChatUsecase(client, reader, limiter, keyring, keys, chats);
+    pins = TestPins(TradeChatPinRepositoryImpl(database));
+    chatRead = WatchChatUsecase(
+      client,
+      reader,
+      limiter,
+      keyring,
+      keys,
+      chats,
+      pins,
+    );
     chatSend = SendChatMessageUsecase(
       client,
       reader,
@@ -651,4 +666,36 @@ final class WatchRun {
     final TradeWatchStatus status => status,
     final other => throw StateError('not a status: $other'),
   };
+}
+
+/// The pins of the trades' chats over the real repository, whose reads or writes a test refuses while [refuseReads] or [refuseWrites] is set (#139).
+final class TestPins implements TradeChatPinRepository {
+  final TradeChatPinRepository _pins;
+  bool refuseReads = false;
+  bool refuseWrites = false;
+
+  /// How many pins were asked to be kept.
+  int keeps = 0;
+
+  /// Runs before each pin is kept, when set: another write meanwhile.
+  Future<void> Function()? beforeKeep;
+
+  TestPins(this._pins);
+
+  @override
+  Future<Result<ChatPinFingerprints?, P2pFailure>> pinOf(TradeRecord trade) =>
+      refuseReads
+      ? Future.value(const Err(P2pStorageFailure()))
+      : _pins.pinOf(trade);
+
+  @override
+  Future<Result<bool, P2pFailure>> keep(
+    TradeRecord trade,
+    ChatPinFingerprints pin,
+  ) async {
+    keeps++;
+    await beforeKeep?.call();
+    if (refuseWrites) return const Err(P2pStorageFailure());
+    return _pins.keep(trade, pin);
+  }
 }
