@@ -56,13 +56,16 @@ abstract interface class P2pWalletPort {
 
   /// A new Lightning invoice of exactly [amount] on [network], which pays the Instant Payments wallet through the wallet's swap service, as the wallet's own Receive screen makes one; or a refusal.
   ///
+  /// [payout] is an opaque key of the payout the invoice is for (one per trade): while this run of the app made an invoice for that key which is still waiting for its payment, for the same amount, with at least a minute left, that invoice is given again rather than a new order created, so that taps do not pile up orders at the service. An invoice is never given for another key, and never one the wallet's own Receive screen made. The key is kept in memory only and sent nowhere; after a restart, a new invoice is made, and the old one's order expires at its deadline.
+  ///
   /// It runs only when called, and moves none of the user's funds: nothing is signed, nothing is broadcast. It creates an order at the swap service (the service is the invoice's payee, and pays [P2pWalletInvoice.received] to a new address of the Instant Payments wallet once the invoice is paid), and the wallet records it, so that its history shows the order, as « expired » if no one pays the invoice in time.
   /// The invoice given is of exactly [amount] and [network], unexpired, and expires with the order: no earlier than the order's deadline and no later than a few seconds after it, so that the invoice is never paid after the service stopped waiting for it ([P2pWalletServiceRefused] otherwise). Its life is the service's to choose, often short: an invoice that expired before the coordinator pays it is replaced by a new one.
   /// What the swap service learns, through the wallet's own client over clearnet: a JSON-RPC `getBestSwapOption` with [amount] fixed on the Lightning side and the two networks, then a `createOrderSwap` with the same amount and a new address of the Instant Payments wallet as the destination; the user's IP address, no API key, the default Dart user agent; the quote's id `mobile-<microsecond timestamp>-<counter>` shared with the wallet's own polling of its swap orders, the order's `mobile-<random hex>`. Nothing of the trade; but the amount, with the public book, can point to the order.
   Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
     RobosatsNetwork network,
-    Sats amount,
-  );
+    Sats amount, {
+    required String payout,
+  });
 
   /// A new receive address of the wallet's default Bitcoin wallet on [network], as the wallet's Receive screen gives one with « New address »: the next address is revealed, nothing is created anywhere and nothing is sent; or a refusal ([P2pWalletNoBitcoinWallet], [P2pWalletUnavailable], [P2pWalletWrongNetwork]).
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(

@@ -74,6 +74,7 @@ void main() {
           await port.newLightningInvoice(
             RobosatsNetwork.mainnet,
             Sats.fromInt(25000),
+            payout: 'trade-1',
           ),
           isA<Err<P2pWalletInvoice, P2pWalletRefusal>>(),
         );
@@ -81,6 +82,7 @@ void main() {
           await port.newLightningInvoice(
             RobosatsNetwork.testnet,
             Sats.fromInt(26000),
+            payout: 'trade-2',
           ),
           isA<Ok<P2pWalletInvoice, P2pWalletRefusal>>().having(
             (ok) => ok.value,
@@ -97,12 +99,16 @@ void main() {
           ),
         );
         expect(port.invoicesAsked, [
-          (RobosatsNetwork.mainnet, Sats.fromInt(25000)),
-          (RobosatsNetwork.testnet, Sats.fromInt(26000)),
+          (RobosatsNetwork.mainnet, Sats.fromInt(25000), 'trade-1'),
+          (RobosatsNetwork.testnet, Sats.fromInt(26000), 'trade-2'),
         ]);
         expect(port.addressesAsked, [RobosatsNetwork.mainnet]);
         expect(
-          () => port.newLightningInvoice(RobosatsNetwork.mainnet, Sats.zero),
+          () => port.newLightningInvoice(
+            RobosatsNetwork.mainnet,
+            Sats.zero,
+            payout: 'trade-1',
+          ),
           throwsStateError,
         );
         expect(

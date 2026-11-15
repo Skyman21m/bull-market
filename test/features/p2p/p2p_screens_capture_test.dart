@@ -2644,8 +2644,9 @@ final class _CaptureWallet implements P2pWalletPort {
   @override
   Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
     RobosatsNetwork network,
-    Sats amount,
-  ) async => const Err(P2pWalletUnavailable());
+    Sats amount, {
+    required String payout,
+  }) async => const Err(P2pWalletUnavailable());
 
   @override
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(

@@ -257,8 +257,8 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   final _invoices = <Result<P2pWalletInvoice, P2pWalletRefusal>>[];
   final _addresses = <Result<P2pWalletAddress, P2pWalletRefusal>>[];
 
-  /// The invoices asked, with their network and amount, in order.
-  final List<(RobosatsNetwork, Sats)> invoicesAsked = [];
+  /// The invoices asked, with their network, amount and payout key, in order.
+  final List<(RobosatsNetwork, Sats, String)> invoicesAsked = [];
 
   /// The networks of the addresses asked, in order.
   final List<RobosatsNetwork> addressesAsked = [];
@@ -274,9 +274,10 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   @override
   Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
     RobosatsNetwork network,
-    Sats amount,
-  ) async {
-    invoicesAsked.add((network, amount));
+    Sats amount, {
+    required String payout,
+  }) async {
+    invoicesAsked.add((network, amount, payout));
     if (_invoices.isEmpty) throw StateError('No invoice scripted');
     return _invoices.removeAt(0);
   }

@@ -61,8 +61,9 @@ final class P2pWalletFacade implements P2pWalletPort {
   @override
   Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
     RobosatsNetwork network,
-    Sats amount,
-  ) => _receiveInvoice.execute(network, amount);
+    Sats amount, {
+    required String payout,
+  }) => _receiveInvoice.execute(network, amount, payout: payout);
 
   @override
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
