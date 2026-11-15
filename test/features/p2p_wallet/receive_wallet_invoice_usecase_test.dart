@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:bb_mobile/core/wallet/domain/entities/wallet_address.dart';
 import 'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/entities/instant_wallet.dart';
@@ -92,13 +90,19 @@ void main() {
       },
     );
 
-    test('on testnet asks the testnet service, from a testnet wallet', () async {
-      wallets.wallet = _wallet(isTestnet: true);
-      decoder.testnet = true;
-      expect(await make(network: RobosatsNetwork.testnet), isA<Ok>());
-      expect(swaps.quotes.single.environment, OrderSwapEnvironment.testnet);
-      expect(swaps.created.single['environment'], OrderSwapEnvironment.testnet);
-    });
+    test(
+      'on testnet asks the testnet service, from a testnet wallet',
+      () async {
+        wallets.wallet = _wallet(isTestnet: true);
+        decoder.testnet = true;
+        expect(await make(network: RobosatsNetwork.testnet), isA<Ok>());
+        expect(swaps.quotes.single.environment, OrderSwapEnvironment.testnet);
+        expect(
+          swaps.created.single['environment'],
+          OrderSwapEnvironment.testnet,
+        );
+      },
+    );
 
     test('takes a short wait of the service once, then the order', () async {
       swaps.createFailures.add(
@@ -244,9 +248,8 @@ void main() {
         ('order of another amount', () => swaps.payin = 24999),
         (
           'expires before the deadline',
-          () => decoder.expiresAt = deadline.subtract(
-            const Duration(seconds: 1),
-          ),
+          () =>
+              decoder.expiresAt = deadline.subtract(const Duration(seconds: 1)),
         ),
         // The money rule: an invoice that outlives the order could be paid after the service stopped waiting for it.
         (
@@ -273,21 +276,24 @@ void main() {
       }
     });
 
-    test('an invoice expiring with the order, to the tolerance, is given', () async {
-      final deadline = testNow.add(const Duration(minutes: 10));
-      for (final (orderDeadline, expiresAt) in [
-        (deadline, deadline),
-        (deadline, deadline.add(const Duration(seconds: 10))),
-        // The deadline may carry a fraction of a second, the invoice's expiry does not.
-        (deadline.add(const Duration(milliseconds: 500)), deadline),
-      ]) {
-        swaps.deadline = orderDeadline;
-        decoder.expiresAt = expiresAt;
-        expect(await make(), isA<Ok>(), reason: '$orderDeadline $expiresAt');
-        swaps.reset();
-        decoder.reset();
-      }
-    });
+    test(
+      'an invoice expiring with the order, to the tolerance, is given',
+      () async {
+        final deadline = testNow.add(const Duration(minutes: 10));
+        for (final (orderDeadline, expiresAt) in [
+          (deadline, deadline),
+          (deadline, deadline.add(const Duration(seconds: 10))),
+          // The deadline may carry a fraction of a second, the invoice's expiry does not.
+          (deadline.add(const Duration(milliseconds: 500)), deadline),
+        ]) {
+          swaps.deadline = orderDeadline;
+          decoder.expiresAt = expiresAt;
+          expect(await make(), isA<Ok>(), reason: '$orderDeadline $expiresAt');
+          swaps.reset();
+          decoder.reset();
+        }
+      },
+    );
   });
 
   group('an earlier invoice still waiting', () {
@@ -306,33 +312,55 @@ void main() {
       expect(swaps.created, hasLength(2));
     });
 
-    test('is not given again once paid, expired or near its end, nor if it is not this feature\'s for this wallet', () async {
-      for (final (label, change) in <(String, OrderSwapRecord Function(OrderSwapRecord))>[
-        ('paid', (r) => _with(r, status: OrderSwapLocalStatus.payoutInProgress)),
-        ('completed', (r) => _with(r, status: OrderSwapLocalStatus.completed)),
-        ('expired', (r) => _with(r, status: OrderSwapLocalStatus.expired)),
-        ('another wallet', (r) => _with(r, destinationWalletId: 'other')),
-        ('another note', (r) => _with(r, note: 'Auto-Transfer')),
-        ('a send', (r) => _with(r, purpose: OrderSwapPurpose.sendLightning)),
-        (
-          'near its end',
-          (r) => _with(r, deadline: testNow.add(const Duration(seconds: 59))),
-        ),
-      ]) {
-        swaps.reset();
-        await make();
-        final made = swaps.created.length;
-        swaps.records.updateAll((_, record) => change(record));
-        await make();
-        expect(swaps.created, hasLength(made + 1), reason: label);
-      }
-    });
+    test(
+      'is not given again once paid, expired or near its end, nor if it is not this feature\'s for this wallet',
+      () async {
+        for (final (label, change)
+            in <(String, OrderSwapRecord Function(OrderSwapRecord))>[
+              (
+                'paid',
+                (r) => _with(r, status: OrderSwapLocalStatus.payoutInProgress),
+              ),
+              (
+                'completed',
+                (r) => _with(r, status: OrderSwapLocalStatus.completed),
+              ),
+              (
+                'expired',
+                (r) => _with(r, status: OrderSwapLocalStatus.expired),
+              ),
+              ('another wallet', (r) => _with(r, destinationWalletId: 'other')),
+              ('another note', (r) => _with(r, note: 'Auto-Transfer')),
+              (
+                'a send',
+                (r) => _with(r, purpose: OrderSwapPurpose.sendLightning),
+              ),
+              (
+                'near its end',
+                (r) => _with(
+                  r,
+                  deadline: testNow.add(const Duration(seconds: 59)),
+                ),
+              ),
+            ]) {
+          swaps.reset();
+          await make();
+          final made = swaps.created.length;
+          swaps.records.updateAll((_, record) => change(record));
+          await make();
+          expect(swaps.created, hasLength(made + 1), reason: label);
+        }
+      },
+    );
 
-    test('two calls at once make one order, the second given the first one\'s invoice', () async {
-      final both = await Future.wait([make(), make()]);
-      expect(invoiceOf(both[0]).bolt11, invoiceOf(both[1]).bolt11);
-      expect(swaps.created, hasLength(1));
-    });
+    test(
+      'two calls at once make one order, the second given the first one\'s invoice',
+      () async {
+        final both = await Future.wait([make(), make()]);
+        expect(invoiceOf(both[0]).bolt11, invoiceOf(both[1]).bolt11);
+        expect(swaps.created, hasLength(1));
+      },
+    );
   });
 }
 
@@ -581,7 +609,8 @@ OrderSwapRecord _record({
   requestedAmountSat: amount,
   quotedCounterpartAmountSat: payout,
   destination: destination,
-  fallback: '',
+  // As the wallet's store records a receive order: its destination as the fallback (`OrderSwapRepositoryImpl.createOrder`).
+  fallback: destination,
   createdAt: testNow,
   localStatus: status,
   destinationWalletId: walletId,

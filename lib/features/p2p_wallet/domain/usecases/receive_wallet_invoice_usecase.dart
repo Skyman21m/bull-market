@@ -69,7 +69,9 @@ class ReceiveWalletInvoiceUsecase {
     RobosatsNetwork network,
     Sats amount,
   ) async {
-    if (amount.value <= BigInt.zero) return const Err(P2pWalletServiceRefused());
+    if (amount.value <= BigInt.zero) {
+      return const Err(P2pWalletServiceRefused());
+    }
     final InstantWallet wallet;
     switch (await _wallets.read()) {
       case Ok(:final value):
@@ -140,10 +142,10 @@ class ReceiveWalletInvoiceUsecase {
       quotedCounterpartAmountSat: quote.outAmountSat,
     );
     var created = await create();
-    if (created case Err(
-      failure: SwapRateLimitedFailure(:final retryAfter),
-    ) when retryAfter != null && !retryAfter.isNegative &&
-        retryAfter <= maximumRetryWait) {
+    if (created case Err(failure: SwapRateLimitedFailure(:final retryAfter))
+        when retryAfter != null &&
+            !retryAfter.isNegative &&
+            retryAfter <= maximumRetryWait) {
       await _delay(retryAfter);
       created = await create();
     }

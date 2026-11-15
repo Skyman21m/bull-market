@@ -20,7 +20,10 @@ class ReceiveWalletAddressUsecase {
   ) async {
     final Result<List<Wallet>, WalletFailure> wallets;
     try {
-      wallets = await _getWallets.execute(onlyDefaults: true, onlyBitcoin: true);
+      wallets = await _getWallets.execute(
+        onlyDefaults: true,
+        onlyBitcoin: true,
+      );
     } catch (_) {
       return const Err(P2pWalletUnavailable());
     }

@@ -8,6 +8,8 @@ import 'package:bb_mobile/features/p2p_wallet/domain/entities/issued_quotes.dart
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_address_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
@@ -67,6 +69,18 @@ void main() {
       ),
       WatchWalletPaymentUsecase(payments),
       FindWalletPaymentUsecase(payments),
+      // The payout's receiving (#90), tested in its own files.
+      ReceiveWalletInvoiceUsecase(
+        wallets,
+        invoices,
+        orders,
+        FakeRefundAddress(journal),
+        () => testNow,
+      ),
+      ReceiveWalletAddressUsecase(
+        FakeGetWallets(const Ok([])),
+        FakeRefundAddress(journal),
+      ),
     );
   });
 

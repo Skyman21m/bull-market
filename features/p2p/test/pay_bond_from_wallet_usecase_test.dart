@@ -61,6 +61,17 @@ final class _Wallet implements P2pWalletPort {
   Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
     paymentHash,
   ) => fake.findPayment(paymentHash);
+
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount,
+  ) => fake.newLightningInvoice(network, amount);
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) => fake.newReceiveAddress(network);
 }
 
 /// Payments that cannot be written.

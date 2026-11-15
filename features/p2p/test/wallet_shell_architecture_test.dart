@@ -893,7 +893,7 @@ const _perFile = <String, Set<String>>{
   },
   // The record of the quotes given.
   'domain/entities/issued_quotes.dart': {'_QuoteUse', 'Expando', 'used'},
-  // The composition of the feature: the only file that resolves from the locator, and with the facade the only one that names the two use cases that quote and pay, so that no other file can reach them.
+  // The composition of the feature: the only file that resolves from the locator, and with the facade the only one that names the use cases that quote, pay and receive, so that no other file can reach them.
   'p2p_wallet_locator.dart': {
     'GetIt',
     'IssuedQuotes',
@@ -901,12 +901,68 @@ const _perFile = <String, Set<String>>{
     'P2pWalletFacade',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
+    'ReceiveWalletAddressUsecase',
+    'ReceiveWalletInvoiceUsecase',
     'registerFactory',
     'registerLazySingleton',
   },
   'public/p2p_wallet_facade.dart': {
+    'P2pWalletAddress',
+    'P2pWalletInvoice',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
+    'ReceiveWalletAddressUsecase',
+    'ReceiveWalletInvoiceUsecase',
+  },
+  // The payout's receiving (#90): the wallet's invoice, a receive order at the swap service paid to a new address of the Instant Payments wallet, and the wallet's earlier invoices read to give one again. Of the names that commit funds, `createOrder` and `GetReceiveAddressUsecase` alone ([_receiveFundNames]).
+  'domain/usecases/receive_wallet_invoice_usecase.dart': {
+    '_bounded',
+    '_delay',
+    '_invoiceOf',
+    '_make',
+    '_mayReuse',
+    '_refusalOf',
+    '_toTheSecond',
+    'awaitingUserConfirmation',
+    'confirmationDeadline',
+    'create',
+    'createOrder',
+    'delayed',
+    'destination',
+    'destinationAddress',
+    'destinationWalletId',
+    'fallbackAddress',
+    'generateNew',
+    'getOrders',
+    'GetReceiveAddressUsecase',
+    'isAppUpdateRequired',
+    'isBefore',
+    'lightningInvoice',
+    'localStatus',
+    'millisecondsSinceEpoch',
+    'order',
+    'OrderSwapEnvironment',
+    'OrderSwapQuote',
+    'OrderSwapRecord',
+    'P2pWalletInvoice',
+    'payinAmountSat',
+    'payoutAmountSat',
+    'purpose',
+    'quotedCounterpartAmountSat',
+    'receiveLightning',
+    'received',
+    'requestedAmountSat',
+    'seconds',
+    'toUtc',
+  },
+  // The payout's receiving (#90): a new address of the default Bitcoin wallet. Of the names that commit funds, `GetReceiveAddressUsecase` alone.
+  'domain/usecases/receive_wallet_address_usecase.dart': {
+    'generateNew',
+    'GetReceiveAddressUsecase',
+    'isBitcoin',
+    'onlyBitcoin',
+    'P2pWalletAddress',
+    'P2pWalletNoBitcoinWallet',
   },
   'domain/usecases/quote_invoice_payment_usecase.dart': {
     'IssuedQuotes',
@@ -922,6 +978,12 @@ const _perFileImports = <String, Set<String>>{
   },
   'data/wallet_invoice_repository_impl.dart': {'package:bull_sdk/boltz.dart'},
   'p2p_wallet_locator.dart': {'package:get_it/get_it.dart'},
+  'domain/usecases/receive_wallet_invoice_usecase.dart': {
+    'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
+  },
+  'domain/usecases/receive_wallet_address_usecase.dart': {
+    'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
+  },
 };
 
 /// Each file of [sources] that names what neither [_shellVocabulary] nor its own entry of [_perFile] allows, with those names.

@@ -417,6 +417,7 @@ void main() {
       ),
       const P2pWalletNeedsConsolidation(),
       const P2pWalletNoInstantWallet(),
+      const P2pWalletNoBitcoinWallet(),
       const P2pWalletUnavailable(),
       const P2pWalletWrongNetwork(),
       const P2pWalletInvoiceUnreadable(),
@@ -454,6 +455,7 @@ void main() {
       P2pWalletNotEnoughBalance() => 'not enough',
       P2pWalletNeedsConsolidation() => 'consolidation',
       P2pWalletNoInstantWallet() => 'no wallet',
+      P2pWalletNoBitcoinWallet() => 'no bitcoin wallet',
       P2pWalletUnavailable() => 'unavailable',
       P2pWalletWrongNetwork() => 'wrong network',
       P2pWalletInvoiceUnreadable() => 'unreadable',
@@ -469,7 +471,7 @@ void main() {
       P2pWalletOrderExpiresTooSoon() => 'order too late',
       P2pWalletPaymentInterrupted() => 'interrupted',
     };
-    expect(refusals.map(name).toSet(), hasLength(20));
+    expect(refusals.map(name).toSet(), hasLength(21));
   });
 
   test('a payment and its progress print no id, hash or text', () {
