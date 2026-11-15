@@ -17,6 +17,8 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/ui/coordinator_details_dialog.dart'
+    show CoordinatorContacts;
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -129,6 +131,8 @@ Future<TradeCubit> _show(
   _Cancels? cancels,
   _FiatSent? fiatSent,
   _FiatSent? undoFiatSent,
+  _FiatSent? dispute,
+  DateTime Function()? now,
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
   TradeWatchState? state,
@@ -147,6 +151,7 @@ Future<TradeCubit> _show(
     (cancels ?? _Cancels()).call,
     confirmFiatSent: offersFiatSent ? (fiatSent ?? _FiatSent()).call : null,
     undoFiatSent: offersFiatSent ? (undoFiatSent ?? _FiatSent()).call : null,
+    startDispute: dispute?.call,
   )..start();
   addTearDown(cubit.close);
   final reads = FakeTransport();
@@ -179,7 +184,7 @@ Future<TradeCubit> _show(
             BlocProvider.value(value: page),
           ],
           child: TradeScreen(
-            now: () => tradeNow,
+            now: now ?? () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             moneyActionRunning: (_) => moneyActionRunning,
           ),
@@ -244,7 +249,42 @@ void main() {
         await _statuses.waitingForPayout(),
         orderJson(9, changes: {'amount': '200.00000000'}),
       ),
+      // « Open Dispute »'s time come: the chat ends in an hour.
+      'nineDisputable': await _statuses.read(
+        await _statuses.waitingForPayout(),
+        orderJson(9, expiresAt: tradeNow.add(const Duration(hours: 1))),
+      ),
+      'tenDisputable': await _statuses.read(
+        await _statuses.chatting(),
+        orderJson(10, expiresAt: tradeNow.add(const Duration(hours: 1))),
+      ),
     };
+    final eleven = _seen['eleven']!;
+    final sixteen = await _statuses.read(eleven, orderJson(16));
+    _seen.addAll({
+      'elevenSubmitted': await _statuses.read(
+        eleven,
+        orderJson(11, changes: {'statement_submitted': true}),
+      ),
+      'sixteen': sixteen,
+      // The taker is the buyer here: 17, « Maker lost dispute », is won; 18 is lost.
+      'seventeen': await _statuses.read(sixteen, orderJson(17)),
+      'eighteen': await _statuses.read(sixteen, orderJson(18)),
+    });
+  });
+
+  test('the dispute\'s statuses are those the state machine gives', () {
+    expect(
+      _seen['eleven']?.status,
+      isA<InDispute>().having((d) => d.statementSubmitted, 'statement', false),
+    );
+    expect(
+      _seen['elevenSubmitted']?.status,
+      isA<InDispute>().having((d) => d.statementSubmitted, 'statement', true),
+    );
+    expect(_seen['sixteen']?.status, isA<WaitingDisputeResolution>());
+    expect(_seen['seventeen']?.status, isA<DisputeWon>());
+    expect(_seen['eighteen']?.status, isA<DisputeLost>());
   });
 
   test('the statuses are those the state machine gives', () {
@@ -1013,7 +1053,7 @@ void main() {
         await tester.tap(find.byIcon(Icons.more_horiz));
         await _settleDialog(tester);
         expect(find.text('Order options'), findsOneWidget);
-        // The places of « Audit Chat », « Export » and « Open Dispute »: empty for now.
+        // The places of « Audit Chat » and « Export »: empty for now; « Open Dispute » not wired in this test.
         expect(find.text('Audit Chat'), findsNothing);
         expect(find.text('Export'), findsNothing);
         expect(find.text('Open Dispute'), findsNothing);
@@ -1482,6 +1522,220 @@ void main() {
           },
         );
       }
+    }
+  });
+
+  group('« Open Dispute » (#95)', () {
+    Future<void> openOptions(WidgetTester tester) async {
+      await _reveal(tester, find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await _settleDialog(tester);
+    }
+
+    TradeButton disputeButton(WidgetTester tester) => tester.widget(
+      find.ancestor(
+        of: find.text('Open Dispute'),
+        matching: find.byType(TradeButton),
+      ),
+    );
+
+    testWidgets(
+      'before its time: off in « Order options », the reference\'s wait under it, counting down; a tap sends nothing',
+      (tester) async {
+        var clock = tradeNow;
+        final dispute = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: dispute,
+          now: () => clock,
+          state: _watched('nine'),
+        );
+        await openOptions(tester);
+        // The chat's 24 hours from the read: open 18 hours before its end.
+        expect(disputeButton(tester).onPressed, isNull);
+        expect(
+          find.text('To open a dispute you need to wait 6h 00m'),
+          findsOneWidget,
+        );
+        clock = clock.add(const Duration(minutes: 61));
+        await tester.pump(const Duration(seconds: 1));
+        expect(
+          find.text('To open a dispute you need to wait 4h 59m'),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Open Dispute'), warnIfMissed: false);
+        await _settleDialog(tester);
+        expect(find.text('Do you want to open a dispute?'), findsNothing);
+        // Its time comes while the dialog is open: on.
+        clock = tradeNow.add(const Duration(hours: 6, seconds: 30));
+        await tester.pump(const Duration(seconds: 1));
+        expect(disputeButton(tester).onPressed, isNotNull);
+        expect(find.textContaining('To open a dispute'), findsNothing);
+        expect(dispute.asked, isEmpty);
+      },
+    );
+
+    for (final name in ['nineDisputable', 'tenDisputable']) {
+      testWidgets(
+        '$name: « Open Dispute » leads to the reference\'s dialog; « Disagree » sends nothing, « Agree and open dispute » sends once, its step said',
+        (tester) async {
+          final dispute = _FiatSent();
+          await _show(
+            tester,
+            watch: _Watch(),
+            dispute: dispute,
+            state: _watched(name),
+          );
+          await openOptions(tester);
+          expect(disputeButton(tester).onPressed, isNotNull);
+          expect(find.textContaining('To open a dispute'), findsNothing);
+          await tester.tap(find.text('Open Dispute'));
+          await _settleDialog(tester);
+          expect(find.text('Do you want to open a dispute?'), findsOneWidget);
+          expect(
+            find.textContaining(
+              'The RoboSats staff will examine the statements and evidence provided.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('Make sure to EXPORT the chat log.'),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(find.text('Disagree'));
+          await tester.pump();
+          await tester.tap(find.text('Disagree'));
+          await _settleDialog(tester);
+          expect(dispute.asked, isEmpty);
+          await openOptions(tester);
+          await tester.tap(find.text('Open Dispute'));
+          await _settleDialog(tester);
+          await tester.ensureVisible(find.text('Agree and open dispute'));
+          await tester.pump();
+          await tester.tap(find.text('Agree and open dispute'));
+          await _settleDialog(tester);
+          expect(dispute.asked, [_seen[name]]);
+          dispute.progress?.call(ChatStepProgress.sending);
+          await tester.pump();
+          expect(
+            find.text('Opening the dispute at Temple of Sats…'),
+            findsOneWidget,
+          );
+          dispute.gate?.complete(
+            Ok(ChatStepDone(_record, _seen['eleven']!)),
+          );
+          await _settleDialog(tester);
+          expect(dispute.asked, hasLength(1));
+        },
+      );
+    }
+
+    testWidgets(
+      'from a status not marked stored: no « Open Dispute »',
+      (tester) async {
+        final seen = _seen['nineDisputable']!;
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: _FiatSent(),
+          state: TradeScreenStatuses.watched(
+            TradeSeen(seen.status, order: seen.order),
+          ),
+        );
+        await openOptions(tester);
+        expect(find.text('Open Dispute'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'refused as too early after its fresh read: the reference\'s wait said',
+      (tester) async {
+        final dispute = _FiatSent();
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: dispute,
+          state: _watched('nineDisputable'),
+        );
+        await openOptions(tester);
+        await tester.tap(find.text('Open Dispute'));
+        await _settleDialog(tester);
+        await tester.ensureVisible(find.text('Agree and open dispute'));
+        await tester.pump();
+        await tester.tap(find.text('Agree and open dispute'));
+        await _settleDialog(tester);
+        dispute.gate?.complete(
+          Err(
+            ChatStepTooEarly(
+              tradeNow.add(const Duration(hours: 1, minutes: 5)),
+              const Duration(hours: 1, minutes: 5),
+            ),
+          ),
+        );
+        await _settleDialog(tester);
+        expect(
+          find.textContaining('To open a dispute you need to wait 1h 05m'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    final temple = Federation.robosats.byAlias('temple')!;
+    final email = temple.contact.email!;
+    for (final (name, texts) in [
+      (
+        'eleven',
+        [
+          'Bull Market cannot send a dispute statement yet. Contact Temple of Sats through one of its contacts below, with the information to identify your order.',
+          'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.',
+          'Order ID: 42',
+        ],
+      ),
+      (
+        'elevenSubmitted',
+        [
+          'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.',
+          'Order ID: 42',
+        ],
+      ),
+      (
+        'sixteen',
+        [
+          'Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.',
+          'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).',
+          'Order ID: 42',
+        ],
+      ),
+      (
+        'seventeen',
+        [
+          'You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to $email (or via your provided burner contact method).',
+          'Bull Market cannot claim rewards yet: contact Temple of Sats through one of its contacts below.',
+        ],
+      ),
+      (
+        'eighteen',
+        [
+          'Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to $email',
+        ],
+      ),
+    ]) {
+      testWidgets(
+        '$name: read-only, the reference\'s texts, and the coordinator\'s contacts as its dialog shows them',
+        (tester) async {
+          await _show(tester, watch: _Watch(), state: _watched(name));
+          for (final text in texts) {
+            await _reveal(tester, find.text(text));
+            expect(find.text(text), findsOneWidget, reason: text);
+          }
+          expect(find.byType(CoordinatorContacts), findsOneWidget);
+          expect(find.text(email), findsOneWidget);
+          // Nothing to press: no action of the chat step, no « … ».
+          expect(find.byIcon(Icons.more_horiz), findsNothing);
+          expect(find.byType(TradeButton), findsNothing);
+        },
+      );
     }
   });
 
