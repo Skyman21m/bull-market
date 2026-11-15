@@ -29,12 +29,15 @@ import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/send_chat_message_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_chats.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
+import 'package:p2p/src/domain/usecases/trade/watch_chat_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
 import 'package:p2p/testing.dart' show ScriptedCoordinator;
 import 'package:primitives/primitives.dart';
@@ -330,6 +333,11 @@ final class TradeHarness {
   late final HoldTradeKeyUsecase holdKey;
   late final SubmitPayoutUsecase payout;
 
+  /// The chats of this run, in memory, and their use cases (#93).
+  final TradeChats chats = TradeChats();
+  late final WatchChatUsecase chatRead;
+  late final SendChatMessageUsecase chatSend;
+
   /// The key work of this run: its unlocks are counted.
   final HarnessKeys keys = HarnessKeys();
 
@@ -399,6 +407,8 @@ final class TradeHarness {
       locks,
       invoices,
     );
+    chatRead = WatchChatUsecase(client, reader, limiter, keyring, chats);
+    chatSend = SendChatMessageUsecase(client, reader, limiter, keyring, chats);
     watch = WatchTradeUsecase(
       reader,
       limiter,
@@ -425,6 +435,7 @@ final class TradeHarness {
     bool range = false,
     String? password,
     String alias = 'temple',
+    RobotIdentity? maker,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -439,6 +450,7 @@ final class TradeHarness {
       range: range,
       password: password,
       alias: alias,
+      maker: maker,
     );
     final harness = TradeHarness._(network, database, coordinator, now);
     _clockOf[database] = now;

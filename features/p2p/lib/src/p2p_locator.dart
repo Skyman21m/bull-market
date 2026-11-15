@@ -62,12 +62,15 @@ import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
+import 'domain/usecases/trade/send_chat_message_usecase.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
 import 'domain/usecases/trade/take_order_usecase.dart';
+import 'domain/usecases/trade/trade_chats.dart';
 import 'domain/usecases/trade/trade_keyring.dart';
 import 'domain/usecases/trade/trade_reader.dart';
 import 'domain/usecases/trade/trade_take_locks.dart';
 import 'domain/usecases/trade/trade_watch_session.dart';
+import 'domain/usecases/trade/watch_chat_usecase.dart';
 import 'domain/usecases/trade/watch_trade_usecase.dart';
 import 'domain/usecases/watch_p2p_tor_state_usecase.dart';
 import 'presentation/active_trades_cubit.dart';
@@ -347,6 +350,26 @@ final class P2pLocator {
         locator(),
         locator(),
         invoices(),
+      ),
+    );
+    // One for the feature: the chats of the trades, in memory only, so that a peer's key stays pinned when a trade screen is opened again (#93).
+    locator.registerLazySingleton<TradeChats>(TradeChats.new);
+    locator.registerFactory<WatchChatUsecase>(
+      () => WatchChatUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+      ),
+    );
+    locator.registerFactory<SendChatMessageUsecase>(
+      () => SendChatMessageUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        locator(),
       ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.
