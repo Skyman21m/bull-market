@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
@@ -81,7 +82,7 @@ void main() {
   });
 
   test(
-    'an answer lost after the coordinator acted: the read after shows it recorded, nothing sent again',
+    'an answer lost after the coordinator acted: the read after shows it recorded, so done; nothing sent again',
     () async {
       final (app, record, seen) = await at();
       app.coordinator.failNext(confirms, ScriptedFault.answerLost);
@@ -90,11 +91,54 @@ void main() {
         Ok(:final value) => value,
         Err(:final failure) => fail('$failure'),
       };
-      expect(outcome, isA<ChatStepOutcomeUnknown>());
+      // The status that shows it recorded settles it: no notice contradicts it.
+      expect(outcome, isA<ChatStepDone>());
       expect(fiatSentShown(outcome.seen), isTrue);
       expect(sent(app, confirms), 1);
     },
   );
+
+  test('the read before sending cannot be stored: nothing sent', () async {
+    final (app, record, seen) = await at();
+    app.trails.storeFailure = const P2pStorageFailure();
+    final result = await app.chat.confirmFiatSent(record, seen);
+    app.trails.storeFailure = null;
+    expect(
+      result,
+      isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+        (err) => err.failure,
+        'refusal',
+        isA<ChatStepReadFailed>(),
+      ),
+    );
+    expect(sent(app, confirms), 0);
+  });
+
+  test('the order seen is another trade\'s: nothing read or sent', () async {
+    final (app, record, _) = await at();
+    final other = await TradeHarness.start(orderId: 43);
+    final taken = await other.takeShown();
+    final otherRecord = TradeHarness.recordOf(taken);
+    final run = other.watchOf(otherRecord);
+    await other.settle();
+    other.coordinator
+      ..lockBond(other.robot(0))
+      ..moveTo(9);
+    await other.elapse(const Duration(seconds: 5));
+    final otherSeen = run.lastStatus.seen;
+    await run.subscription.cancel();
+    expect(otherSeen.order?.id, 43);
+    app.coordinator.requests.clear();
+    expect(
+      await app.chat.confirmFiatSent(record, otherSeen),
+      isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+        (err) => err.failure,
+        'refusal',
+        isA<ChatStepOfAnotherTrade>(),
+      ),
+    );
+    expect(app.coordinator.requests, isEmpty);
+  });
 
   test(
     'no answer and nothing done: the read after still shows 9, nothing sent again',

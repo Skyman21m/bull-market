@@ -185,6 +185,11 @@ void main() {
       'ten': await _statuses.fiatSent(),
       'thirteen': await _statuses.sendingSats(),
       'fourteen': await _statuses.succeeded(),
+      // The coordinator reads 200 EUR for a trade taken for 100 (review of #95's second pull request).
+      'nine200': await _statuses.read(
+        await _statuses.waitingForPayout(),
+        orderJson(9, changes: {'amount': '200.00000000'}),
+      ),
     };
   });
 
@@ -262,7 +267,9 @@ void main() {
       await tester.tap(find.text(_confirmLabel), warnIfMissed: false);
       await _settleDialog(tester);
       expect(find.text('✅ Confirm you sent 100 EUR?'), findsNothing);
-      await cubit.confirmFiatSent(_seen['nine']!);
+      // Not awaited: a second call that sent would wait on the gate, and the test would hang instead of failing.
+      unawaited(cubit.confirmFiatSent(_seen['nine']!));
+      await tester.pump();
       expect(fiatSent.asked, hasLength(1));
       for (final (step, text) in [
         (
@@ -288,7 +295,8 @@ void main() {
       }
       // A cancel meanwhile is not sent either.
       expect(cubit.state.actionRunning, isTrue);
-      await cubit.cancel(_seen['nine']!);
+      unawaited(cubit.cancel(_seen['nine']!));
+      await tester.pump();
       expect(cancels.asked, isEmpty);
       fiatSent.gate?.complete(Ok(ChatStepDone(_record, _seen['ten']!)));
       await tester.pumpAndSettle();
@@ -519,6 +527,106 @@ void main() {
     expect(_button(tester, _confirmLabel).onPressed, isNull);
     expect(find.text('Wait until the order is read again.'), findsOneWidget);
   });
+
+  testWidgets(
+    'a read of another amount: the button and the dialog keep the trade\'s terms, and a line gives both figures',
+    (tester) async {
+      final nine200 = _seen['nine200']!;
+      expect(nine200.stored, isTrue);
+      expect(nine200.order?.amount, isA<FixedOrderAmount>());
+      await _show(tester, watch: _Watch(), state: _watched('nine200'));
+      expect(find.text(_confirmLabel), findsOneWidget);
+      expect(find.text('Confirm 200 EUR sent'), findsNothing);
+      expect(
+        find.text(
+          'Temple of Sats now gives 200 EUR; the trade was taken for 100 EUR.',
+        ),
+        findsOneWidget,
+      );
+      await _reveal(tester, find.text(_confirmLabel));
+      await tester.tap(find.text(_confirmLabel));
+      await tester.pumpAndSettle();
+      expect(find.text('✅ Confirm you sent 100 EUR?'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a range order read without its amount, or with another: the terms\' figure on the button, the read said',
+    (tester) async {
+      final nine = _seen['nine']!;
+      for (final (changes, line) in [
+        (
+          {'amount': null},
+          'Temple of Sats gives no amount for this trade; it was taken for 100 EUR.',
+        ),
+        (
+          {'amount': '120.00000000'},
+          'Temple of Sats now gives 120 EUR; the trade was taken for 100 EUR.',
+        ),
+      ]) {
+        final order = await readOrder(
+          orderJson(9, range: true, changes: changes),
+        );
+        final cubit = TradeCubit(
+          _record,
+          _Watch().call,
+          _Cancels().call,
+          confirmFiatSent: _FiatSent().call,
+        );
+        addTearDown(cubit.close);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: BlocProvider.value(
+                value: cubit,
+                child: ChatStepPanel(
+                  seen: nine,
+                  order: order,
+                  coordinator: 'Temple of Sats',
+                  chatStep: const ChatStepIdle(),
+                  otherActionRunning: false,
+                  offersFiatSent: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(find.text(_confirmLabel), findsOneWidget, reason: '$changes');
+        expect(find.text(line), findsOneWidget, reason: '$changes');
+      }
+    },
+  );
+
+  testWidgets(
+    'a bug of the use case or of the cancel: the buttons free again, the outcome said unknown',
+    (tester) async {
+      final cubit = TradeCubit(
+        _record,
+        _Watch().call,
+        (record, seen, {bondLoss}) async => throw StateError('cancel bug'),
+        confirmFiatSent: (record, seen, {onProgress}) async =>
+            throw StateError('use case bug'),
+      );
+      addTearDown(cubit.close);
+      await expectLater(
+        cubit.confirmFiatSent(_seen['nine']!),
+        throwsStateError,
+      );
+      expect(cubit.state.chatStep, isA<ChatStepIdle>());
+      expect(
+        (cubit.state.chatStep as ChatStepIdle).notice,
+        isA<ChatStepWasUnknown>(),
+      );
+      expect(cubit.state.actionRunning, isFalse);
+      await expectLater(cubit.cancel(_seen['nine']!), throwsStateError);
+      expect(cubit.state.cancel, isA<CancelIdle>());
+      expect(cubit.state.actionRunning, isFalse);
+    },
+  );
 
   testWidgets('14: the title between the reference\'s two bolts', (
     tester,

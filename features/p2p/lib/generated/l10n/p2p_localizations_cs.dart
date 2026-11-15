@@ -2146,6 +2146,31 @@ class P2pLocalizationsCs extends P2pLocalizations {
 
   @override
   String p2pEndRefusedBy(String coordinator) {
-    return '$coordinator refused your confirmation.';
+    return '$coordinator did not record your confirmation.';
+  }
+
+  @override
+  String p2pEndNotRecordedMovedOn(String coordinator) {
+    return 'The order moved on: $coordinator did not record your confirmation.';
+  }
+
+  @override
+  String p2pEndAmountDiffers(
+    String coordinator,
+    String readAmount,
+    String readCurrency,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator now gives $readAmount $readCurrency; the trade was taken for $amount $currencyCode.';
+  }
+
+  @override
+  String p2pEndAmountMissing(
+    String coordinator,
+    String amount,
+    String currencyCode,
+  ) {
+    return '$coordinator gives no amount for this trade; it was taken for $amount $currencyCode.';
   }
 }

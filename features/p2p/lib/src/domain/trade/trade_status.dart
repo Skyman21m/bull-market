@@ -766,6 +766,8 @@ sealed class TradeStatus {
           peerAskedToCancel: order.peerAskedToCancel ?? false,
           chatLastIndex: order.chatLastIndex,
           deadline: deadline,
+          amount: terms.amount,
+          currency: terms.currency,
         );
       case TradePosition.inDispute:
         return InDispute._(
@@ -1012,6 +1014,10 @@ final class Chatting extends TradeStatus {
   /// When the chat's time ends: a dispute opens then (`api/logics.py:460-468`).
   final DateTime deadline;
 
+  /// The fiat amount and currency of the trade as its terms fixed them at the take (`TradeTerms.amount`, `TradeTerms.currency`), what the user accepted: « Confirm {{amount}} {{currencyCode}} sent » is worded from these, never from a read, which a coordinator could change (review of #95's second pull request).
+  final FiatAmount amount;
+  final RobosatsCurrency currency;
+
   const Chatting._(
     super.seenAt,
     super.warnings,
@@ -1022,6 +1028,8 @@ final class Chatting extends TradeStatus {
     required this.peerAskedToCancel,
     required this.chatLastIndex,
     required this.deadline,
+    required this.amount,
+    required this.currency,
   }) : super._();
 
   @override
@@ -1040,6 +1048,8 @@ final class Chatting extends TradeStatus {
         peerAskedToCancel: peerAskedToCancel,
         chatLastIndex: chatLastIndex,
         deadline: deadline,
+        amount: amount,
+        currency: currency,
       );
 }
 

@@ -250,10 +250,13 @@ extension ChatStepNoticeL10n on ChatStepNotice {
           l10n.p2pTradeCoordinatorGone(coordinator),
         ChatStepTradeUnrestorable() => l10n.p2pTradeUnrestorable,
       },
-      // The coordinator's own refusal of a status that moved (1029, 1031, 1013): as the read before sending would have said.
-      ChatStepWasNotDone(cause: TradeActionNotNow() || TradeActionNotBuyer()) =>
+      // Decided here from the read, nothing sent: as the read before sending would have said.
+      ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
         l10n.p2pEndMovedOn,
-      // The robot panel's texts that read right for a confirmation: a busy transport, a coordinator not on the network; any other refusal (1047, the empty 400 of the form check, the authentication's) is said as the coordinator's refusal of the confirmation, not of « this robot ».
+      // The request left and the coordinator did nothing (1029, 1030, 1031): it says the order moved on.
+      ChatStepWasNotDone(cause: TradeActionRefused()) =>
+        l10n.p2pEndNotRecordedMovedOn(coordinator),
+      // The request never left: a busy transport, a coordinator not on the network, in the robot panel's words; any other refusal (1047, the empty 400 of the form check, the authentication's) left and was not recorded: said as the coordinator's, not « this robot ».
       ChatStepWasNotDone(
         cause: final CoordinatorFailure failure &&
             (CoordinatorTransportBusy() || CoordinatorNotOnNetwork()),
@@ -261,6 +264,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         l10n.p2pEndNotDoneAfter(
           failure.toRobotText(context, coordinator: coordinator),
         ),
+      // Refused here before sending: never left.
+      ChatStepWasNotDone(cause: OrderReadElsewhere()) =>
+        l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
       ChatStepWasNotDone(cause: CoordinatorFailure()) => l10n.p2pEndRefusedBy(
         coordinator,
       ),
