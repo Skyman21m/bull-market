@@ -340,7 +340,7 @@ final class CoordinatorClient {
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:266-269`): `{"action":"confirm"}`.
   ///
   /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), does not show this robot as the buyer ([TradeActionNotBuyer]) or is not at 9 ([TradeActionNotNow]), each decided from [lastRead]: read the order again before telling the user.
-  /// The answer is [TradeActionAccepted] with the order as it then is; the coordinator's refusals ([TradeActionNotNow] for 1029, [OrderNotParticipant]) and the authentication's are an [OrderActionRefused], every other failure an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
+  /// The answer is [TradeActionAccepted] with the order as it then is, at a status « fiat sent » can lead to (`fiatSentFollows`; any other is an outcome unknown); the coordinator's refusals ([TradeActionNotNow] for 1029, [OrderNotParticipant]) and the authentication's are an [OrderActionRefused], every other failure an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
   Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiat({
@@ -358,6 +358,7 @@ final class CoordinatorClient {
       _ => null,
     },
     body: const {'action': 'confirm'},
+    follows: fiatSentFollows,
   );
 
   /// `POST /api/order/?order_id=` with the action `undo_confirm`, as the buyer: takes back the robot's « fiat sent » (« Payment failed? »), which moves the order from 10 back to 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`, commit ff1998c).
@@ -382,6 +383,7 @@ final class CoordinatorClient {
       _ => null,
     },
     body: const {'action': 'undo_confirm'},
+    follows: fiatSentUndoneFollows,
   );
 
   /// How long before the end of the chat's time a dispute may be opened: the reference coordinator refuses one earlier than `expires_at` minus 18 hours (`api/logics.py:500-501`, a constant of its code), which is 6 hours into the chat with the default 24 hours (`FIAT_EXCHANGE_DURATION`).
@@ -414,6 +416,7 @@ final class CoordinatorClient {
       _ => null,
     },
     body: const {'action': 'dispute'},
+    follows: disputeFollows,
   );
 
   /// `POST /api/order/?order_id=` with the action `rate_platform`: the robot [identity] gives its coordinator, the one of [lastRead], [rating] stars (« Rate your host », `Logics.rate_platform`, `api/logics.py:1785-1789`, commit ff1998c).
@@ -442,6 +445,7 @@ final class CoordinatorClient {
     required CoordinatorOrder lastRead,
     required CoordinatorFailure? refusedFromLastRead,
     required Map<String, Object> body,
+    Set<CoordinatorOrderStatus>? follows,
   }) async {
     if (!lastRead.wasReadBy(identity)) {
       return const Err(OrderActionRefused(OrderReadElsewhere()));
@@ -466,6 +470,7 @@ final class CoordinatorClient {
           value,
           identity: identity,
           lastRead: lastRead,
+          follows: follows,
         ).mapErr(_afterTradeAction),
       },
       Ok(value: final answer) => Err(

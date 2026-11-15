@@ -53,12 +53,49 @@ final class TradeActionAccepted extends TradeActionOutcome {
   String toString() => 'TradeActionAccepted($order)';
 }
 
-/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller).
+/// The statuses an order can be in once the reference coordinator did each action and read the order back (`api/views.py:695`), from `api/logics.py` at commit ff1998c: the status the action gives, then the moves of the backend from it that another side or a timer can make before the read.
+///
+/// After the buyer's « fiat sent » (10): a dispute, opened by either side or by the chat's timer (11, `:460-468`, `:485-533`), its statements and decision (16, 17, 18), the seller's confirmation (13, 14 for an on-chain payout, 15, `:1700-1730`); never 9 (only the buyer undoes), nor 12 (a cancel is refused at 10, `:1019-1032`).
+@internal
+const fiatSentFollows = {
+  CoordinatorOrderStatus.fiatSent,
+  CoordinatorOrderStatus.inDispute,
+  CoordinatorOrderStatus.sendingSats,
+  CoordinatorOrderStatus.successful,
+  CoordinatorOrderStatus.routingFailed,
+  CoordinatorOrderStatus.waitingForDisputeResolution,
+  CoordinatorOrderStatus.makerLostDispute,
+  CoordinatorOrderStatus.takerLostDispute,
+};
+
+/// After the undo of « fiat sent » (9, `:1737-1756`): a dispute and what follows it (11, 16, 17, 18); never 10 (only the buyer confirms), nor 13 to 15 (the seller confirms only after « fiat sent », 1027); a collaborative cancel (12) is error 1043 on the read, never a `200`.
+@internal
+const fiatSentUndoneFollows = {
+  CoordinatorOrderStatus.sendingFiat,
+  CoordinatorOrderStatus.inDispute,
+  CoordinatorOrderStatus.waitingForDisputeResolution,
+  CoordinatorOrderStatus.makerLostDispute,
+  CoordinatorOrderStatus.takerLostDispute,
+};
+
+/// After a dispute (11, `:485-533`): its statements and decision (16, `:536-569`; 17, 18).
+@internal
+const disputeFollows = {
+  CoordinatorOrderStatus.inDispute,
+  CoordinatorOrderStatus.waitingForDisputeResolution,
+  CoordinatorOrderStatus.makerLostDispute,
+  CoordinatorOrderStatus.takerLostDispute,
+};
+
+/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller), at a status the action can lead to when [follows] says which ([fiatSentFollows], [fiatSentUndoneFollows], [disputeFollows]; a rating changes no status).
+///
+/// A status the action cannot lead to is malformed (`status`): only a coordinator that answers `200` without acting gives one, and the outcome is then unknown, never done.
 @internal
 Result<TradeActionOutcome, CoordinatorFailure> parseTradeActionAnswer(
   Object? body, {
   required RobotIdentity identity,
   required CoordinatorOrder lastRead,
+  Set<CoordinatorOrderStatus>? follows,
 }) {
   final CoordinatorOrder order;
   switch (CoordinatorOrder.parse(
@@ -79,6 +116,9 @@ Result<TradeActionOutcome, CoordinatorFailure> parseTradeActionAnswer(
   if (order.isBuyer != lastRead.isBuyer ||
       order.isSeller != lastRead.isSeller) {
     return const Err(CoordinatorResponseMalformed('is_buyer'));
+  }
+  if (follows != null && !follows.contains(order.status)) {
+    return const Err(CoordinatorResponseMalformed('status'));
   }
   return Ok(TradeActionAccepted._(order));
 }
