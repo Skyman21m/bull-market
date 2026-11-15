@@ -2264,7 +2264,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pEndUnknownRequest =>
-      'Bull Market ne sait pas encore si votre demande est passée. Il continue de vérifier.';
+      'Bull Market ne sait pas encore si votre demande est passée et continue de vérifier.';
 
   @override
   String p2pEndRequestNotRecordedMovedOn(String coordinator) {
