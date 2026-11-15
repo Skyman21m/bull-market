@@ -775,6 +775,47 @@ void main() {
       },
     );
 
+    test(
+      'decrypts a page of chat messages in another isolate, each checked with its sender\'s key, in order (#93)',
+      () async {
+        final key = switch (pgpKey.unlock(identity)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final jobs = [
+          for (var i = 0; i < 30; i++)
+            (
+              armored: switch (key.encryptChatMessage(
+                'message $i',
+                peer: pgpKey.publicKey,
+              )) {
+                Ok(:final value) => value,
+                Err(:final failure) => fail('$failure'),
+              },
+              // The last one checked with another robot's key: its signature does not verify.
+              sender: i == 29 ? otherRobotPgpKey.publicKey : pgpKey.publicKey,
+            ),
+        ];
+        final (decrypted, ticks) = await ticking(
+          () => compute.decryptChat(key, jobs, now: DateTime.now()),
+        );
+        expect(ticks, greaterThan(5));
+        final results = switch (decrypted) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(results, hasLength(30));
+        for (var i = 0; i < 30; i++) {
+          final message = switch (results[i]) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(message.text, 'message $i');
+          expect(message.validSignature, i != 29);
+        }
+      },
+    );
+
     test('an unlock there refuses a pair of another robot (#90)', () async {
       expect(
         await compute.unlock(otherRobotPgpKey, identity),

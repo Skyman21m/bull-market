@@ -367,6 +367,14 @@ void main() {
           reason: member,
         );
       }
+      // The chat of a trade (#93): read by its own use case, and read again by the one that sends, after a post whose outcome is unknown; posted by the one that sends.
+      expect(referring((r) => r == 'request CoordinatorClient.fetchChat'), {
+        '${_tradeUseCases}watch_chat_usecase.dart',
+        '${_tradeUseCases}send_chat_message_usecase.dart',
+      });
+      expect(referring((r) => r == 'request CoordinatorClient.postChat'), {
+        '${_tradeUseCases}send_chat_message_usecase.dart',
+      });
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
         expect(
@@ -383,6 +391,8 @@ void main() {
               'request CoordinatorClient.confirmFiat',
               'request CoordinatorClient.undoConfirmFiat',
               'request CoordinatorClient.openDispute',
+              'request CoordinatorClient.fetchChat',
+              'request CoordinatorClient.postChat',
             }),
           ),
           reason: path,
@@ -583,14 +593,25 @@ void main() {
         // The keyring reads the robot's proven pair back and has it unlocked away from the UI isolate, and keeps it no longer than its rules say (#90, design note § 3.4).
         const keyring = '${_tradeUseCases}trade_keyring.dart';
         const payout = '${_tradeUseCases}submit_payout_usecase.dart';
+        // The chat (#93): decrypted in the file the read and the send share, encrypted in the send's own.
+        const chatRead = '${_tradeUseCases}watch_chat_usecase.dart';
+        const chatSend = '${_tradeUseCases}send_chat_message_usecase.dart';
         expect(referring((r) => r == 'RobotKeyComputePort.unlock'), {keyring});
         expect(
           referring((r) => r == 'ReadRobotOnCoordinatorUsecase.provenPairOf'),
           {keyring},
         );
-        // A lease only for the payout's signature, a hold only through the use case the trade screen calls.
-        expect(referring((r) => r == 'TradeKeyring.lease'), {payout});
-        expect(referring((r) => r == 'TradeKeyLease.key'), {payout});
+        // A lease only for the payout's signature and the chat's messages, a hold only through the use case the screens call.
+        expect(referring((r) => r == 'TradeKeyring.lease'), {
+          payout,
+          chatRead,
+          chatSend,
+        });
+        expect(referring((r) => r == 'TradeKeyLease.key'), {
+          payout,
+          chatRead,
+          chatSend,
+        });
         expect(referring((r) => r == 'TradeKeyring.hold'), {
           '${_tradeUseCases}hold_trade_key_usecase.dart',
         });
@@ -600,12 +621,14 @@ void main() {
             isIn({
               keyring,
               payout,
+              chatRead,
+              chatSend,
               '${_tradeUseCases}hold_trade_key_usecase.dart',
               'lib/src/p2p_locator.dart',
             }),
           ),
         );
-        // What is signed is a payout, decoded and checked, in the payout's own file: never free text, nothing of the chat yet (#93 adds its own file).
+        // What is signed is a payout, decoded and checked, in the payout's own file: never free text there; a chat message only as the one value `postChat` sends, in the send's file, and decrypted in the read's (#93); `signCleartext` and `encryptChatMessage` nowhere.
         expect(
           referring(
             (r) =>
@@ -615,11 +638,31 @@ void main() {
           {payout},
         );
         expect(
+          referring((r) => r == 'UnlockedRobotPgpKey.encryptChatMessageToPost'),
+          {chatSend},
+        );
+        // Decrypted away from the UI isolate, by the key work's own file, which only the chat's read asks for it, with the part of the key that decrypts and nothing else: never the identity, nor its token (review of #93).
+        expect(
+          referring((r) => r == 'UnlockedRobotPgpKey.decryptChatMessage'),
+          isEmpty,
+        );
+        expect(referring((r) => r == 'UnlockedRobotPgpKey.chatDecryption'), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
+        expect(referring((r) => r.startsWith('ChatDecryptionKey.')), {
+          'lib/src/data/isolate_robot_key_compute.dart',
+        });
+        expect(referring((r) => r == 'RobotKeyComputePort.decryptChat'), {
+          chatRead,
+        });
+        expect(
           referring(
             (r) =>
                 r.startsWith('UnlockedRobotPgpKey.') &&
                 r != 'UnlockedRobotPgpKey.signPayoutInvoice' &&
-                r != 'UnlockedRobotPgpKey.signPayoutAddress',
+                r != 'UnlockedRobotPgpKey.signPayoutAddress' &&
+                r != 'UnlockedRobotPgpKey.encryptChatMessageToPost' &&
+                r != 'UnlockedRobotPgpKey.chatDecryption',
           ),
           isEmpty,
         );
@@ -631,6 +674,8 @@ void main() {
               'lib/src/data/isolate_robot_key_compute.dart',
               keyring,
               payout,
+              chatRead,
+              chatSend,
             }),
           ),
         );
@@ -1813,7 +1858,7 @@ const _watched = {
   // The keyring of the trades (#90): who unlocks a robot's key, who keeps it, who signs with it.
   'TradeKeyring': ('package:p2p/', {'hold', 'lease'}),
   'TradeKeyLease': ('package:p2p/', {'key'}),
-  'RobotKeyComputePort': ('package:p2p/', {'unlock'}),
+  'RobotKeyComputePort': ('package:p2p/', {'unlock', 'decryptChat'}),
   'UnlockedRobotPgpKey': (
     'package:robosats/',
     {
@@ -1822,9 +1867,12 @@ const _watched = {
       'signPayoutAddress',
       'encryptChatMessage',
       'encryptChatMessageWith',
+      'encryptChatMessageToPost',
       'decryptChatMessage',
+      'chatDecryption',
     },
   ),
+  'ChatDecryptionKey': ('package:robosats/', {'decryptChatMessage'}),
   'ReleaseRobotUsecase': ('package:p2p/', {'execute'}),
   'RobotRequestLimiter': ('package:p2p/', <String>{}),
   // The requests of one call, through the limiter's places (#87: a trade use case reads only through them).
