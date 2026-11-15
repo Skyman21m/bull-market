@@ -29,6 +29,9 @@ typedef TradeCanceller =
       BondLossAcknowledged? bondLoss,
     });
 
+/// [WatchTradeUsecase.lastStored], which the locator gives the cubit (#152).
+typedef TradeLastStored = TradeSeen? Function(TradeRecord record);
+
 /// [ChatStepActionUsecase.confirmFiatSent] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
 typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
@@ -184,6 +187,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
+  final TradeLastStored? _lastStored;
   final TradeFiatSender? _undoFiatSent;
   final TradeFiatSender? _startDispute;
   StreamSubscription<TradeWatchState>? _subscription;
@@ -194,7 +198,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
-  /// [confirmFiatSent] and [undoFiatSent] are `null` where the screen offers no action of the chat step.
+  /// [confirmFiatSent] and [undoFiatSent] are `null` where the screen offers no action of the chat step; [lastStored], where the screen shows nothing again when it opens the trade anew.
   TradeCubit(
     TradeRecord record,
     this._watch,
@@ -202,6 +206,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._confirmFiatSent,
     this._undoFiatSent,
     this._startDispute,
+    this._lastStored,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
@@ -216,6 +221,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
   bool get watching => _subscription != null;
+
+  /// What [TradeLastStored] gives for this trade now, `null` without one: for the tests of the composition.
+  @visibleForTesting
+  TradeSeen? get lastStoredNow => _lastStored?.call(state.record);
 
   /// Starts following the trade: does nothing when it is already followed.
   void start() {
@@ -284,24 +293,30 @@ class TradeCubit extends Cubit<TradeScreenState> {
     return null;
   }
 
-  /// [watch], or, when it is a status not understood yet ([StatusUnknown], as the watch gives when it opens a trade again from its stored trail, or when the stored trail won over its read) at the very position of the status shown, that status with what [watch] says of its reads and records: the screen does not fall back to its wait for a status it has already shown at that position.
+  /// [watch], or, when it is the stored trail's own status ([StatusUnknown]: the watch opened the trade anew, on the app's return or on a new screen, and its first read is not in, or has failed since) and that trail is the very one the newest status this run stored was stored with, that status, with what [watch] says of its reads: the screen does not fall back to its wait for a status this run has already read, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, `models/Order.model.ts:264-281`) (#152).
+  ///
+  /// The status kept is the newest this run stored for the trade ([TradeLastStored]): every status marked [TradeSeen.stored] is stored there by `TradeReader.keep`, the status this screen shows included, so it is the only source, and it gives nothing once a newer answer was accepted and its trail not stored (review of #152). Only a status marked stored (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). Without [TradeLastStored], nothing is kept. The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Nothing is sent from it alone: the actions read the order first, and « Cancel » sends that status's guard, as the reference cancels from the order it holds.
+  /// The watch's own status is never marked stored (`TradeReader.open` and `keep` give the trail's own status unmarked by design): requiring `stored` of it, as this did before, kept nothing.
   TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
-    final shown = state.seen;
-    // A status not marked stored is shown as it is: nothing payable is kept from before.
     if (watch is! TradeWatchStatus ||
-        !watch.stored ||
-        shown == null ||
         watch.seen.status is! StatusUnknown ||
-        shown.status is StatusUnknown ||
-        shown.status.position != watch.seen.status.position) {
+        watch.recordProblem != null) {
+      return watch;
+    }
+    final onDisk = watch.seen.status.trail;
+    final kept = _lastStored?.call(state.record);
+    if (kept == null ||
+        !kept.stored ||
+        kept.status.position != onDisk.position ||
+        kept.status.trail.readAt.microsecondsSinceEpoch !=
+            onDisk.readAt.microsecondsSinceEpoch) {
       return watch;
     }
     return TradeWatchStatus(
       watch.record,
-      shown,
+      kept,
       failedReads: watch.failedReads,
       lastReadFailure: watch.lastReadFailure,
-      recordProblem: watch.recordProblem,
       takePending: watch.takePending,
     );
   }
@@ -461,21 +476,16 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (isClosed) return;
     switch (result) {
       case Err(:final failure):
+        // A read kept before the refusal is shown: the status now.
+        final read = switch (failure) {
+          ChatStepStatusMoved(:final seen, :final record) ||
+          ChatStepReadFailed(seen: final seen?, :final record) =>
+            TradeWatchStatus(record ?? state.record, seen, takePending: false),
+          _ => null,
+        };
         emit(
           state._with(
-            // A read kept before the refusal is shown: the status now.
-            watch: switch (failure) {
-              ChatStepStatusMoved(:final seen, :final record) ||
-              ChatStepReadFailed(
-                seen: final seen?,
-                :final record,
-              ) => TradeWatchStatus(
-                record ?? state.record,
-                seen,
-                takePending: false,
-              ),
-              _ => null,
-            },
+            watch: read,
             chatStep: ChatStepIdle(
               notice: ChatStepWasRefused(failure),
               action: action,

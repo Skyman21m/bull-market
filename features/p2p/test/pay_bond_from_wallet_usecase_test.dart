@@ -61,6 +61,18 @@ final class _Wallet implements P2pWalletPort {
   Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
     paymentHash,
   ) => fake.findPayment(paymentHash);
+
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) => fake.newLightningInvoice(network, amount, payout: payout);
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) => fake.newReceiveAddress(network);
 }
 
 /// Payments that cannot be written.
@@ -253,6 +265,29 @@ void main() {
       );
       expect(setup.fake.paid, isEmpty);
       expect(await setup.recorded(), isNull);
+    },
+  );
+
+  test(
+    'a quote made from the bond step a screen kept on its return (#152), the bond locked by another wallet meanwhile: the payment reads first, and nothing is paid',
+    () async {
+      final setup = await _Setup.start();
+      // The quote of the status kept on screen, as `BondPaymentCubit.ask` makes it from the status shown.
+      final quote = await setup.quoted();
+      setup.harness.coordinator.lockBond(setup.harness.robot(0));
+      final reads = setup.harness.coordinator.received
+          .where((r) => r == ScriptedRequest.order)
+          .length;
+      final paid = await setup.payBond.payBond(setup.record, accepted: quote);
+      expect(paid, isA<Err<P2pWalletPayment, BondPayRefusal>>());
+      expect(setup.fake.paid, isEmpty);
+      expect(await setup.recorded(), isNull);
+      expect(
+        setup.harness.coordinator.received
+            .where((r) => r == ScriptedRequest.order)
+            .length,
+        reads + 1,
+      );
     },
   );
 

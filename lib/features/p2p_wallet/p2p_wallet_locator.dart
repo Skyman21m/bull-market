@@ -10,6 +10,8 @@ import 'package:bb_mobile/features/p2p_wallet/domain/repositories/wallet_payment
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_address_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
@@ -49,6 +51,8 @@ class P2pWalletLocator {
         locator(),
         locator(),
         locator(),
+        locator(),
+        locator(),
       ),
     );
     // The payment (#100, W3). One record of the quotes given, and one pay use case: it runs the payments one after the other.
@@ -77,6 +81,19 @@ class P2pWalletLocator {
     );
     locator.registerFactory<FindWalletPaymentUsecase>(
       () => FindWalletPaymentUsecase(locator()),
+    );
+    // The buyer's payout (#90). One invoice use case: it makes the invoices one after the other, so that a second tap finds the first one's.
+    locator.registerLazySingleton<ReceiveWalletInvoiceUsecase>(
+      () => ReceiveWalletInvoiceUsecase(
+        locator(),
+        locator(),
+        locator(),
+        locator(),
+        DateTime.now,
+      ),
+    );
+    locator.registerFactory<ReceiveWalletAddressUsecase>(
+      () => ReceiveWalletAddressUsecase(locator(), locator()),
     );
   }
 }

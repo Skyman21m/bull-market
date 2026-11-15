@@ -1,6 +1,8 @@
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_address_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payment_usecase.dart';
 import 'package:p2p/p2p.dart';
@@ -9,6 +11,7 @@ import 'package:p2p/p2p.dart';
 ///
 /// It lives in this Troc feature because it depends on both sides, the P2P feature's contract and the wallet's swap and wallet code (`AGENTS.md`, rule 7): nothing of it is in `lib/core`, and the wallet's send feature is unchanged.
 /// [payInvoice] moves money: it creates a swap order, signs and broadcasts the funding transaction, all in `PayCheckedInvoiceUsecase`, the one file of this feature allowed to (`wallet_shell_architecture_test.dart`). [watchPayment] and [findPayment] read the wallet's records only.
+/// For the buyer's payout (#90): [newLightningInvoice] creates a receive order at the swap service (`ReceiveWalletInvoiceUsecase`, which moves none of the user's funds), [newReceiveAddress] reveals a new address of the Bitcoin wallet (`ReceiveWalletAddressUsecase`).
 /// The shell constructs it in `lib/locator.dart` only, and hands it to `P2pFeature.setup` in the foreground composition only.
 final class P2pWalletFacade implements P2pWalletPort {
   final WatchInstantBalanceUsecase _watchBalance;
@@ -16,6 +19,8 @@ final class P2pWalletFacade implements P2pWalletPort {
   final PayCheckedInvoiceUsecase _pay;
   final WatchWalletPaymentUsecase _watchPayment;
   final FindWalletPaymentUsecase _findPayment;
+  final ReceiveWalletInvoiceUsecase _receiveInvoice;
+  final ReceiveWalletAddressUsecase _receiveAddress;
 
   const P2pWalletFacade(
     this._watchBalance,
@@ -23,6 +28,8 @@ final class P2pWalletFacade implements P2pWalletPort {
     this._pay,
     this._watchPayment,
     this._findPayment,
+    this._receiveInvoice,
+    this._receiveAddress,
   );
 
   @override
@@ -50,4 +57,16 @@ final class P2pWalletFacade implements P2pWalletPort {
   Future<Result<P2pWalletPaymentFound?, P2pWalletRefusal>> findPayment(
     String paymentHash,
   ) => _findPayment.execute(paymentHash);
+
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) => _receiveInvoice.execute(network, amount, payout: payout);
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) => _receiveAddress.execute(network);
 }

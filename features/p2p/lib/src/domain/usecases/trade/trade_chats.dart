@@ -411,8 +411,40 @@ final class TradeChat {
     );
   }
 
-  /// The encrypted messages by index, in canonical armor, for the export: never logged.
-  Map<int, String> get armored => Map.unmodifiable(_armored);
+  /// The chat as the official client's « Export » gives it (`Prompts/Chat.tsx:150-160`, `complete_log_chat_<id>.json`), the owner's choice (2026-11-15: as the reference): the credentials, this robot's public key [own], the peer's pinned key, the encrypted private key and its passphrase, the robot's token, then every message as the reference keeps it (`EncryptedApiChat/index.tsx:185-195`). Whoever holds it can act as the robot at its coordinator; never printed, logged or stored.
+  Map<String, Object?> export({
+    required PgpPublicKey own,
+    required String encryptedPrivateKey,
+    required String passphrase,
+  }) {
+    final pinned = switch (_peerKey) {
+      ChatPeerKeyPinned(:final key) => key,
+      ChatPeerKeyBreach(:final pinned) => pinned,
+      ChatPeerKeyAwaited() => null,
+    };
+    final indexes = _entries.keys.toList()..sort();
+    return {
+      'credentials': {
+        'own_public_key': own.armored,
+        // Left out before the peer's key is known, as the reference leaves `peerPubKey` undefined.
+        'peer_public_key': ?pinned?.armored,
+        'encrypted_private_key': encryptedPrivateKey,
+        'passphrase': passphrase,
+      },
+      'messages': [
+        for (final index in indexes)
+          if (_entries[index] case final entry?)
+            {
+              'index': entry.index,
+              'encryptedMessage': _armored[index],
+              'plainTextMessage': entry.text,
+              'validSignature': entry.validSignature,
+              'userNick': entry.nick,
+              'time': entry.time.toIso8601String(),
+            },
+      ],
+    };
+  }
 
   @override
   String toString() =>
