@@ -2300,7 +2300,13 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pEndOpenOptions => 'ouvrir les options';
 
   @override
-  String p2pEndWaitSeconds(String seconds) {
-    return 'Attendez $seconds secondes';
+  String p2pEndWaitSeconds(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Attendez $seconds secondes',
+      one: 'Attendez 1 seconde',
+    );
+    return '$_temp0';
   }
 }

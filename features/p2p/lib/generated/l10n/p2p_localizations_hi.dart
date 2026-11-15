@@ -2271,8 +2271,14 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String get p2pEndOpenOptions => 'open options';
 
   @override
-  String p2pEndWaitSeconds(String seconds) {
-    return 'Wait $seconds seconds';
+  String p2pEndWaitSeconds(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Wait $seconds seconds',
+      one: 'Wait 1 second',
+    );
+    return '$_temp0';
   }
 }
 

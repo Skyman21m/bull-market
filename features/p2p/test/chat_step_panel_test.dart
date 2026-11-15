@@ -1276,6 +1276,35 @@ void main() {
       },
     );
 
+    for (final (locale, two, one) in const [
+      (Locale('en'), 'Wait 2 seconds', 'Wait 1 second'),
+      (Locale('fr'), 'Attendez 2 secondes', 'Attendez 1 seconde'),
+    ]) {
+      testWidgets(
+        '${locale.languageCode}: the undo\'s counter read « $two », then « $one » (second pass of the review of #145)',
+        (tester) async {
+          final handle = tester.ensureSemantics();
+          await _show(
+            tester,
+            watch: _Watch(),
+            locale: locale,
+            undoFiatSent: _FiatSent(),
+            state: _watched('ten'),
+          );
+          final quiet = find.byType(Expanded).last;
+          await _reveal(tester, quiet);
+          await tester.tap(quiet);
+          await _settleDialog(tester);
+          // Built at 60, one tick a second once open, as in the test below.
+          await tester.pump(const Duration(seconds: 58));
+          expect(find.bySemanticsLabel(two), findsOneWidget);
+          await tester.pump(const Duration(seconds: 1));
+          expect(find.bySemanticsLabel(one), findsOneWidget);
+          handle.dispose();
+        },
+      );
+    }
+
     testWidgets(
       'the undo\'s counter: kept across openings, running only while open, 300 after « Confirm », read in seconds',
       (tester) async {

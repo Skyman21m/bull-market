@@ -586,5 +586,5 @@
   "p2pEndOffline": "{coordinator} est hors ligne : votre confirmation n’a pas été envoyée.",
   "p2pEndRequestOffline": "{coordinator} est hors ligne : votre demande n’a pas été envoyée.",
   "p2pEndOpenOptions": "ouvrir les options",
-  "p2pEndWaitSeconds": "Attendez {seconds} secondes"
+  "p2pEndWaitSeconds": "{seconds, plural, =1{Attendez 1 seconde} other{Attendez {seconds} secondes}}"
 }

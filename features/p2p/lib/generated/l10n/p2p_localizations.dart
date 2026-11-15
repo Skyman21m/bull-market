@@ -3685,11 +3685,11 @@ abstract class P2pLocalizations {
   /// **'open options'**
   String get p2pEndOpenOptions;
 
-  /// Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95).
+  /// Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95), plural-aware.
   ///
   /// In en, this message translates to:
-  /// **'Wait {seconds} seconds'**
-  String p2pEndWaitSeconds(String seconds);
+  /// **'{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}'**
+  String p2pEndWaitSeconds(int seconds);
 }
 
 class _P2pLocalizationsDelegate
