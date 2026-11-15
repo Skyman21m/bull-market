@@ -2186,4 +2186,67 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pEndTakingTooLongText =>
       'Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille.';
+
+  @override
+  String get p2pEndPaymentFailed => 'Paiement échoué ?';
+
+  @override
+  String get p2pEndUndoTitle => 'Annuler la confirmation de l\'envoi fiat ?';
+
+  @override
+  String get p2pEndUndoText =>
+      'LISEZ. Si votre paiement au vendeur a été bloqué et qu\'il est absolument impossible de terminer la transaction, vous pouvez annuler votre confirmation de « Fiat envoyé ». Ne le faites que si vous et le vendeur avez DÉJÀ CONVENU dans le chat de procéder à une annulation collaborative. Après avoir confirmé, le bouton « Annulation collaborative » sera à nouveau visible. Ne cliquez sur ce bouton que si vous savez ce que vous faites. Les utilisateurs débutants de RoboSats sont fortement découragés de réaliser cette action ! Assurez-vous à 100 % que votre paiement a échoué et que le montant est dans votre compte.';
+
+  @override
+  String p2pEndWaitCountdown(String time) {
+    return 'Attendez ($time)';
+  }
+
+  @override
+  String get p2pEndCollabTitle => 'Annulation collaborative de l\'ordre ?';
+
+  @override
+  String get p2pEndCollabText =>
+      'Le séquestre commercial a été publié. L\'ordre ne peut être annulé que si le créateur et le preneur sont d\'accord pour annuler.';
+
+  @override
+  String get p2pEndCollabPeerAsked => 'Votre pair a demandé l\'annulation';
+
+  @override
+  String get p2pEndCollabAccept => 'Accepter l\'annulation';
+
+  @override
+  String get p2pEndCollabAsk => 'Demande d\'annulation';
+
+  @override
+  String p2pEndCollabPeerAlert(String nickname) {
+    return '$nickname demande une annulation collaborative';
+  }
+
+  @override
+  String get p2pEndCollabAskedAlert =>
+      'Vous avez demandé une annulation collaborative';
+
+  @override
+  String get p2pEndOrderOptions => 'Options de l\'ordre';
+
+  @override
+  String get p2pEndCollabCancel => 'Annulation collaborative';
+
+  @override
+  String get p2pEndCollabAfterFiat =>
+      'Les ordres ne peuvent pas être annulés si le fiat a été envoyé.';
+
+  @override
+  String p2pEndStepSendingUndo(String coordinator) {
+    return 'Envoi de votre demande à $coordinator…';
+  }
+
+  @override
+  String get p2pEndTradeMovedOn =>
+      'L\'échange a changé : rien n\'a été envoyé.';
+
+  @override
+  String get p2pEndUnknownRequest =>
+      'Bull Market ne sait pas encore si votre demande est passée. Il continue de vérifier.';
 }

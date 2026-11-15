@@ -29,7 +29,7 @@ typedef TradeCanceller =
       BondLossAcknowledged? bondLoss,
     });
 
-/// [ChatStepActionUsecase.confirmFiatSent], which the locator gives the cubit.
+/// [ChatStepActionUsecase.confirmFiatSent] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
 typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
       TradeRecord record,
@@ -127,11 +127,15 @@ sealed class ChatStepState {
   const ChatStepState();
 }
 
-/// No action of the chat step runs; [notice] says what the last one gave, when one was tried and it says something.
+/// No action of the chat step runs; [notice] says what the last one, [action], gave, when one was tried and it says something.
 final class ChatStepIdle extends ChatStepState {
   final ChatStepNotice? notice;
+  final ChatStepAction action;
 
-  const ChatStepIdle({this.notice});
+  const ChatStepIdle({
+    this.notice,
+    this.action = ChatStepAction.confirmFiatSent,
+  });
 }
 
 /// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for.
@@ -176,20 +180,25 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
+  final TradeFiatSender? _undoFiatSent;
   StreamSubscription<TradeWatchState>? _subscription;
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
-  /// [confirmFiatSent] is `null` where the screen offers no action of the chat step.
+  /// [confirmFiatSent] and [undoFiatSent] are `null` where the screen offers no action of the chat step.
   TradeCubit(
     TradeRecord record,
     this._watch,
     this._cancel, {
     this._confirmFiatSent,
+    this._undoFiatSent,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
   bool get offersFiatSent => _confirmFiatSent != null;
+
+  /// Whether the screen may offer « Payment failed? ».
+  bool get offersUndoFiatSent => _undoFiatSent != null;
 
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
@@ -307,11 +316,20 @@ class TradeCubit extends Cubit<TradeScreenState> {
   }
 
   /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
-  Future<void> confirmFiatSent(TradeSeen seen) async {
-    final send = _confirmFiatSent;
+  Future<void> confirmFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.confirmFiatSent, _confirmFiatSent, seen);
+
+  /// Sends the buyer's « Payment failed? » at [seen], the status the screen showed when the user confirmed the reference's dialog: as [confirmFiatSent].
+  Future<void> undoFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.undoFiatSent, _undoFiatSent, seen);
+
+  Future<void> _chatStep(
+    ChatStepAction action,
+    TradeFiatSender? send,
+    TradeSeen seen,
+  ) async {
     if (send == null || isClosed || state.actionRunning) return;
-    const action = ChatStepAction.confirmFiatSent;
-    emit(state._with(chatStep: const ChatStepRunning(action)));
+    emit(state._with(chatStep: ChatStepRunning(action)));
     final result = await send(
       state.record,
       seen,
@@ -334,7 +352,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
               ) => TradeWatchStatus(state.record, seen, takePending: false),
               _ => null,
             },
-            chatStep: ChatStepIdle(notice: ChatStepWasRefused(failure)),
+            chatStep: ChatStepIdle(
+              notice: ChatStepWasRefused(failure),
+              action: action,
+            ),
           ),
         );
       case Ok(value: final outcome):
@@ -352,6 +373,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
                 ChatStepNotDone(:final cause) => ChatStepWasNotDone(cause),
                 ChatStepOutcomeUnknown() => const ChatStepWasUnknown(),
               },
+              action: action,
             ),
           ),
         );

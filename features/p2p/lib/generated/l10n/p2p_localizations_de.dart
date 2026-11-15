@@ -2157,4 +2157,66 @@ class P2pLocalizationsDe extends P2pLocalizations {
   @override
   String get p2pEndTakingTooLongText =>
       'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.';
+
+  @override
+  String get p2pEndPaymentFailed => 'Payment failed?';
+
+  @override
+  String get p2pEndUndoTitle => 'Revert the confirmation of fiat sent?';
+
+  @override
+  String get p2pEndUndoText =>
+      'READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.';
+
+  @override
+  String p2pEndWaitCountdown(String time) {
+    return 'Wait ($time)';
+  }
+
+  @override
+  String get p2pEndCollabTitle => 'Collaborative cancel the order?';
+
+  @override
+  String get p2pEndCollabText =>
+      'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.';
+
+  @override
+  String get p2pEndCollabPeerAsked => 'Your peer has asked for cancellation';
+
+  @override
+  String get p2pEndCollabAccept => 'Accept Cancelation';
+
+  @override
+  String get p2pEndCollabAsk => 'Ask for Cancel';
+
+  @override
+  String p2pEndCollabPeerAlert(String nickname) {
+    return '$nickname is asking for a collaborative cancel';
+  }
+
+  @override
+  String get p2pEndCollabAskedAlert =>
+      'You asked for a collaborative cancellation';
+
+  @override
+  String get p2pEndOrderOptions => 'Order options';
+
+  @override
+  String get p2pEndCollabCancel => 'Collaborative Cancel';
+
+  @override
+  String get p2pEndCollabAfterFiat =>
+      'Orders can\'t be cancelled if fiat has been sent.';
+
+  @override
+  String p2pEndStepSendingUndo(String coordinator) {
+    return 'Sending your request to $coordinator…';
+  }
+
+  @override
+  String get p2pEndTradeMovedOn => 'The trade moved on: nothing was sent.';
+
+  @override
+  String get p2pEndUnknownRequest =>
+      'Bull Market does not know yet whether your request went through. It keeps checking.';
 }

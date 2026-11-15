@@ -560,5 +560,22 @@
   "p2pEndUnknown": "Bull Market ne sait pas encore si votre confirmation est passée. Il continue de vérifier.",
   "p2pEndSendingSats": "RoboSats tente de payer votre facture lightning. Rappelez-vous que les nœuds lightning doivent être en ligne pour recevoir les paiements.",
   "p2pEndTakingTooLong": "Trop long ?",
-  "p2pEndTakingTooLongText": "Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille."
+  "p2pEndTakingTooLongText": "Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille.",
+  "p2pEndPaymentFailed": "Paiement échoué ?",
+  "p2pEndUndoTitle": "Annuler la confirmation de l'envoi fiat ?",
+  "p2pEndUndoText": "LISEZ. Si votre paiement au vendeur a été bloqué et qu'il est absolument impossible de terminer la transaction, vous pouvez annuler votre confirmation de « Fiat envoyé ». Ne le faites que si vous et le vendeur avez DÉJÀ CONVENU dans le chat de procéder à une annulation collaborative. Après avoir confirmé, le bouton « Annulation collaborative » sera à nouveau visible. Ne cliquez sur ce bouton que si vous savez ce que vous faites. Les utilisateurs débutants de RoboSats sont fortement découragés de réaliser cette action ! Assurez-vous à 100 % que votre paiement a échoué et que le montant est dans votre compte.",
+  "p2pEndWaitCountdown": "Attendez ({time})",
+  "p2pEndCollabTitle": "Annulation collaborative de l'ordre ?",
+  "p2pEndCollabText": "Le séquestre commercial a été publié. L'ordre ne peut être annulé que si le créateur et le preneur sont d'accord pour annuler.",
+  "p2pEndCollabPeerAsked": "Votre pair a demandé l'annulation",
+  "p2pEndCollabAccept": "Accepter l'annulation",
+  "p2pEndCollabAsk": "Demande d'annulation",
+  "p2pEndCollabPeerAlert": "{nickname} demande une annulation collaborative",
+  "p2pEndCollabAskedAlert": "Vous avez demandé une annulation collaborative",
+  "p2pEndOrderOptions": "Options de l'ordre",
+  "p2pEndCollabCancel": "Annulation collaborative",
+  "p2pEndCollabAfterFiat": "Les ordres ne peuvent pas être annulés si le fiat a été envoyé.",
+  "p2pEndStepSendingUndo": "Envoi de votre demande à {coordinator}…",
+  "p2pEndTradeMovedOn": "L'échange a changé : rien n'a été envoyé.",
+  "p2pEndUnknownRequest": "Bull Market ne sait pas encore si votre demande est passée. Il continue de vérifier."
 }

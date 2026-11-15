@@ -283,6 +283,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         offersFiatSent: context
                             .read<TradeCubit>()
                             .offersFiatSent,
+                        offersUndoFiatSent: context
+                            .read<TradeCubit>()
+                            .offersUndoFiatSent,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
@@ -403,6 +406,7 @@ class _Contract extends StatelessWidget {
   final TradeCancelState cancel;
   final ChatStepState chatStep;
   final bool offersFiatSent;
+  final bool offersUndoFiatSent;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
@@ -417,6 +421,7 @@ class _Contract extends StatelessWidget {
     required this.cancel,
     required this.chatStep,
     required this.offersFiatSent,
+    required this.offersUndoFiatSent,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
@@ -442,9 +447,26 @@ class _Contract extends StatelessWidget {
     );
     final step = contract.step;
     final warnings = warningsOf(status, now: now);
+    // The reference's alert of a collaborative cancel, above the title, at 9 only (`TradeBox/CollabCancelAlert.tsx`): the peer's ask, or this robot's.
+    final collabAlert = switch ((status, contract.order)) {
+      (Chatting(fiatSent: false, peerAskedToCancel: true), final order?) =>
+        l10n.p2pEndCollabPeerAlert(order.maker.nickname),
+      (Chatting(fiatSent: false, askedToCancel: true), _) =>
+        l10n.p2pEndCollabAskedAlert,
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (collabAlert != null) ...[
+          _Line(
+            collabAlert,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+            live: true,
+          ),
+          const Gap(BullSpacing.md),
+        ],
         // The title is what a screen reader reads out when the status changes, rather than each line of the panel.
         Semantics(
           container: true,
@@ -548,8 +570,11 @@ class _Contract extends StatelessWidget {
         order: order,
         coordinator: coordinator,
         chatStep: chatStep,
-        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        cancel: cancel,
+        otherActionRunning: moneyActionRunning,
         offersFiatSent: offersFiatSent,
+        offersUndoFiatSent: offersUndoFiatSent,
+        offersCollaborativeCancel: true,
       ),
       (TradePrompt.sendingSats, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

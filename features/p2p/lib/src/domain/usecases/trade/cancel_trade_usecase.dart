@@ -13,7 +13,7 @@ import 'trade_take_locks.dart';
 /// Cancels a trade as its taker, with the last read the user saw, then reads the order again and keeps what it shows (#87, design note § 1.4, § 2.1).
 ///
 /// The guard `cancel_status` is the status the coordinator stores for that read, which the coordinator client sends with every cancel (`CoordinatorClient.cancelOrder`, #99): 1 for a pre-take shown as 3, so that a cancel arriving after the bond locked is refused (1020) instead of costing the bond.
-/// At the pre-take (3) the cancel is free; once the bond is locked and the escrow is not (6, 7) it loses the bond, and is sent only with a [BondLossAcknowledged] given for this trade at the status seen; with the escrow locked (8, 9) only a collaborative cancel exists, a later slice; at any other status no cancel exists.
+/// At the pre-take (3) the cancel is free; once the bond is locked and the escrow is not (6, 7) it loses the bond, and is sent only with a [BondLossAcknowledged] given for this trade at the status seen; in the chat (9) it is the collaborative cancel, free, which the reference offers there only (#95): an ask, or the acceptance of the peer's; at 8 the reference offers none; at any other status no cancel exists.
 /// The cancel is sent once, through the robot's places in `RobotRequestLimiter`, and never again: an outcome unknown is said as such, and the watch of the trade resolves it.
 final class CancelTradeUsecase {
   final CoordinatorClient _client;
@@ -47,8 +47,11 @@ final class CancelTradeUsecase {
         if (!bondLoss.covers(record, seen)) {
           return const Err(CancelAcknowledgementMismatch());
         }
-      case CoordinatorOrderStatus.waitingForInvoice ||
-          CoordinatorOrderStatus.sendingFiat:
+      // The collaborative cancel (#95), as the reference offers it, from the chat only (`Prompts/Chat.tsx`, « Collaborative Cancel »): the first ask raises this robot's flag, the second side's ask cancels the order for both (12), everything returned (`api/logics.py:1130-1202`). The guard, 9, makes an ask that lands after « fiat sent » a refusal (1020), never a cancel.
+      case CoordinatorOrderStatus.sendingFiat:
+        break;
+      // At 8 the coordinator would take it too, but the reference offers no cancel there (`CancelButton.tsx:27-29`, `Prompts/PayoutWait.tsx`).
+      case CoordinatorOrderStatus.waitingForInvoice:
         return const Err(CancelOnlyTogether());
       default:
         return const Err(CancelNotPossible());

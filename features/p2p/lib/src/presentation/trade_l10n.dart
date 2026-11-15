@@ -232,13 +232,21 @@ extension TradeCancelNoticeL10n on TradeCancelNotice {
 
 /// What an action of the chat step gave, when it says something (#95): a text of the app, never the coordinator's.
 extension ChatStepNoticeL10n on ChatStepNotice {
-  String toText(BuildContext context, {required String coordinator}) {
+  /// The text of what [action] gave.
+  String toText(
+    BuildContext context, {
+    required String coordinator,
+    required ChatStepAction action,
+  }) {
     final l10n = P2pLocalizations.of(context);
+    final movedOn = action == ChatStepAction.confirmFiatSent
+        ? l10n.p2pEndMovedOn
+        : l10n.p2pEndTradeMovedOn;
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
         ChatStepNotOffered() => l10n.p2pEndNeedsRead,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
-        ChatStepStatusMoved() => l10n.p2pEndMovedOn,
+        ChatStepStatusMoved() => movedOn,
         ChatStepReadFailed() => l10n.p2pEndReadFailed(coordinator),
         ChatStepOfAnotherTrade() => l10n.p2pTradeUnavailable,
         ChatStepTradeUnavailable(
@@ -252,7 +260,7 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       },
       // The coordinator's own refusal of a status that moved (1029, 1031, 1013): as the read before sending would have said.
       ChatStepWasNotDone(cause: TradeActionNotNow() || TradeActionNotBuyer()) =>
-        l10n.p2pEndMovedOn,
+        movedOn,
       ChatStepWasNotDone(cause: final CoordinatorFailure failure) =>
         l10n.p2pEndNotDoneAfter(
           failure.toRobotText(context, coordinator: coordinator),
@@ -260,20 +268,31 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       ChatStepWasNotDone(cause: final P2pFailure failure) =>
         l10n.p2pEndNotDoneAfter(failure.toTranslated(context)),
       ChatStepWasNotDone() => l10n.p2pEndNotDoneAfter(l10n.p2pBookError),
-      ChatStepWasUnknown() => l10n.p2pEndUnknown,
+      ChatStepWasUnknown() =>
+        action == ChatStepAction.confirmFiatSent
+            ? l10n.p2pEndUnknown
+            : l10n.p2pEndUnknownRequest,
     };
   }
 }
 
 /// What an action of the chat step waits for, step by step (the owner's rule: every wait says what it waits for).
 extension ChatStepProgressL10n on ChatStepProgress? {
-  String toText(BuildContext context, {required String coordinator}) {
+  /// The text of [action]'s step.
+  String toText(
+    BuildContext context, {
+    required String coordinator,
+    required ChatStepAction action,
+  }) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
       null => l10n.p2pEndStepOpening,
       ChatStepProgress.waitingForOrder => l10n.p2pEndStepWaitingForOrder,
       ChatStepProgress.readingOrder => l10n.p2pEndStepReading(coordinator),
-      ChatStepProgress.sending => l10n.p2pEndStepSending(coordinator),
+      ChatStepProgress.sending =>
+        action == ChatStepAction.confirmFiatSent
+            ? l10n.p2pEndStepSending(coordinator)
+            : l10n.p2pEndStepSendingUndo(coordinator),
       ChatStepProgress.readingAfter => l10n.p2pEndStepReadingAfter(coordinator),
     };
   }

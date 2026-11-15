@@ -21,7 +21,9 @@ class TradeDialogBody extends StatelessWidget {
 
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
-  final VoidCallback onGo;
+
+  /// What the button that goes on does; `null` while it waits (« Wait ({{time}}) », `TradeBox/Dialogs/ConfirmUndoFiatSent.tsx`).
+  final VoidCallback? onGo;
 
   /// Whether the button that goes back is the emphasized, filled one.
   final bool backFirst;

@@ -3524,6 +3524,108 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Lightning payments are usually instantaneous, but sometimes a node in the route may be down, which can cause your payout to take up to 24 hours to arrive in your wallet.'**
   String get p2pEndTakingTooLongText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:228-237`): the buyer's button at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Payment failed?'**
+  String get p2pEndPaymentFailed;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Revert the confirmation of fiat sent?'**
+  String get p2pEndUndoTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (« » and non-breaking spaces) (`Dialogs/ConfirmUndoFiatSent.tsx`), in full (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.'**
+  String get p2pEndUndoText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`): the button that sends, off for 60 seconds from the dialog's opening, {time} the seconds left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait ({time})'**
+  String p2pEndWaitCountdown(String time);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative cancel the order?'**
+  String get p2pEndCollabTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.'**
+  String get p2pEndCollabText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), after the text when the peer asked (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer has asked for cancellation'**
+  String get p2pEndCollabPeerAsked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), the reference's spelling (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Accept Cancelation'**
+  String get p2pEndCollabAccept;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for Cancel'**
+  String get p2pEndCollabAsk;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`): {nickname} is the peer's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{nickname} is asking for a collaborative cancel'**
+  String p2pEndCollabPeerAlert(String nickname);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'You asked for a collaborative cancellation'**
+  String get p2pEndCollabAskedAlert;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:262`): the dialog behind « … » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Order options'**
+  String get p2pEndOrderOptions;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:345`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative Cancel'**
+  String get p2pEndCollabCancel;
+
+  /// The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Orders can\'t be cancelled if fiat has been sent.'**
+  String get p2pEndCollabAfterFiat;
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » sent, its answer awaited (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your request to {coordinator}…'**
+  String p2pEndStepSendingUndo(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the read just before sending, or the coordinator, shows another status than the one the user acted at (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: nothing was sent.'**
+  String get p2pEndTradeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: the answer of « Payment failed? » was lost; nothing is sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your request went through. It keeps checking.'**
+  String get p2pEndUnknownRequest;
 }
 
 class _P2pLocalizationsDelegate
