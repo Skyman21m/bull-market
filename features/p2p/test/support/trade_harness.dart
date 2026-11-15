@@ -30,13 +30,16 @@ import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/chat_step_action_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/send_chat_message_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/submit_payout_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/take_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_chats.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_keyring.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
+import 'package:p2p/src/domain/usecases/trade/watch_chat_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
 import 'package:p2p/testing.dart' show ScriptedCoordinator;
 import 'package:primitives/primitives.dart';
@@ -95,6 +98,9 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// When set, each unlock waits for it before it is done: an unlock in flight, as long as the test wants.
   Future<void>? holdUnlock;
 
+  /// What the next decryptions of the chat give instead, when set: the work could not run.
+  RobotKeyComputeFailure? chatDecryptFailure;
+
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
@@ -111,6 +117,29 @@ final class HarnessKeys implements RobotKeyComputePort {
     >
   >
   prove(UnprovenCoordinatorRobot robot) async => Ok(robot.prove());
+
+  /// How many chat messages were decrypted, in how many works.
+  int chatDecrypts = 0;
+
+  @override
+  Future<
+    Result<
+      List<Result<DecryptedChatMessage, PgpFailure>>,
+      RobotKeyComputeFailure
+    >
+  >
+  decryptChat(
+    UnlockedRobotPgpKey key,
+    List<ChatDecryptJob> jobs, {
+    required DateTime now,
+  }) async {
+    chatDecrypts++;
+    if (chatDecryptFailure case final failure?) return Err(failure);
+    return Ok([
+      for (final job in jobs)
+        key.decryptChatMessage(job.armored, sender: job.sender, now: now),
+    ]);
+  }
 
   @override
   Future<
@@ -318,6 +347,9 @@ final class TradeHarness {
   /// Every wait of the limiter after a busy answer.
   final List<Duration> busyWaits = [];
 
+  /// When set, each wait of the limiter after a busy answer lasts until it completes.
+  Future<void>? holdBusyWait;
+
   late final RobotBindingRepositoryImpl bindings;
   late final TradeRecordRepository records;
   late final TestTrails trails;
@@ -332,6 +364,21 @@ final class TradeHarness {
   late final TradeKeyring keyring;
   late final HoldTradeKeyUsecase holdKey;
   late final SubmitPayoutUsecase payout;
+
+  /// The chats of this run, in memory, and their use cases (#93).
+  final TradeChats chats = TradeChats();
+  late final WatchChatUsecase chatRead;
+  late final SendChatMessageUsecase chatSend;
+  late final CoordinatorClient _client;
+
+  /// The chat's use cases of a new run of the app, the process killed and started again: a fresh [TradeChats], nothing of the chats kept, the same records, keys and coordinator.
+  (WatchChatUsecase, SendChatMessageUsecase) chatAfterRestart() {
+    final fresh = TradeChats();
+    return (
+      WatchChatUsecase(_client, reader, limiter, keyring, keys, fresh),
+      SendChatMessageUsecase(_client, reader, limiter, keyring, keys, fresh),
+    );
+  }
 
   /// The key work of this run: its unlocks are counted.
   final HarnessKeys keys = HarnessKeys();
@@ -356,10 +403,14 @@ final class TradeHarness {
     robots = InterimTradeRobots(_vault, records);
     limiter = RobotRequestLimiter(
       elapsed: () => now.difference(DateTime.utc(2026)),
-      delay: (wait) async => busyWaits.add(wait),
+      delay: (wait) async {
+        busyWaits.add(wait);
+        if (holdBusyWait case final hold?) await hold;
+      },
       random: () => 0.5,
     );
     final client = CoordinatorClient(coordinator, clock: clock);
+    _client = client;
     final invoices = Bolt11Reader(coordinator.decoder);
     reader = TradeReader(
       robots,
@@ -403,6 +454,15 @@ final class TradeHarness {
       locks,
       invoices,
     );
+    chatRead = WatchChatUsecase(client, reader, limiter, keyring, keys, chats);
+    chatSend = SendChatMessageUsecase(
+      client,
+      reader,
+      limiter,
+      keyring,
+      keys,
+      chats,
+    );
     watch = WatchTradeUsecase(
       reader,
       limiter,
@@ -430,6 +490,7 @@ final class TradeHarness {
     bool range = false,
     String? password,
     String alias = 'temple',
+    RobotIdentity? maker,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     final now = DateTime.utc(2026, 11, 14, 9);
@@ -444,6 +505,7 @@ final class TradeHarness {
       range: range,
       password: password,
       alias: alias,
+      maker: maker,
     );
     final harness = TradeHarness._(network, database, coordinator, now);
     _clockOf[database] = now;

@@ -532,62 +532,11 @@ final class UnlockedRobotPgpKey {
     String armored, {
     required PgpPublicKey sender,
     DateTime? now,
-  }) {
-    if (armored.length > PgpLimits.messageArmorChars) {
-      return const Err(PgpInputTooLarge());
-    }
-    final time = _epochSeconds(now);
-    if (time == null) return const Err(PgpClockOutOfRange());
-    final bytes = armorDecode(ArmorBlock.message, pgpArmorFromWire(armored));
-    if (bytes == null) return const Err(PgpArmorMalformed());
-    final opened = decryptPackets(
-      bytes,
-      recipient: key._secretKey.subkey,
-      scalar: _secretKeys.x25519Scalar,
-    );
-    if (opened == null) return const Err(PgpMessageUndecryptable());
-    final text = _nativeText(opened.literalData);
-    for (final body in opened.signatures) {
-      // A signature this package cannot read counts as no signature, as in the official client.
-      final signature = _tryParseSignature(body);
-      if (signature == null) continue;
-      final signedData = switch (signature.type) {
-        SignatureType.binary => opened.literalData,
-        SignatureType.text => _canonicalLineEndings(opened.literalData),
-        _ => null,
-      };
-      final signedAt = signature.createdAt;
-      if (signedData != null &&
-          signedAt != null &&
-          sender._key.acceptsSignatureDates(signature, time) &&
-          signature.verify(signedData, sender._key.primary.point)) {
-        final signedTime = DateTime.fromMillisecondsSinceEpoch(
-          signedAt * 1000,
-          isUtc: true,
-        );
-        return Ok(
-          DecryptedChatMessage._(
-            text,
-            validSignature: true,
-            signedAt: signedTime,
-            signatureKey: ChatSignatureKey._(
-              sender.fingerprint,
-              signedTime,
-              hex.encode(sha256.convert(signedData).bytes),
-            ),
-          ),
-        );
-      }
-    }
-    return Ok(
-      DecryptedChatMessage._(
-        text,
-        validSignature: false,
-        signedAt: null,
-        signatureKey: null,
-      ),
-    );
-  }
+  }) => chatDecryption.decryptChatMessage(armored, sender: sender, now: now);
+
+  /// What decrypting a chat message needs of this key, and nothing else: the key and the scalar of its encryption subkey, without the robot's identity, so without its token, nor the seed that signs; for the work done in an isolate of its own, where only this is copied (review of #93).
+  ChatDecryptionKey get chatDecryption =>
+      ChatDecryptionKey._(key, _secretKeys.x25519Scalar);
 
   @override
   String toString() => 'UnlockedRobotPgpKey(${key.publicKey.fingerprint})';
@@ -724,3 +673,84 @@ Uint8List _canonicalLineEndings(List<int> data) {
 /// Decodes literal data as the official client does: UTF-8, with CR LF turned back into line feeds.
 String _nativeText(Uint8List data) =>
     utf8.decode(data, allowMalformed: true).replaceAll('\r\n', '\n');
+
+/// The part of an [UnlockedRobotPgpKey] that decrypts chat messages ([UnlockedRobotPgpKey.chatDecryption]): the key and the scalar of its encryption subkey, without the robot's identity and token, and without the seed that signs.
+///
+/// Keep it for the duration of one task and drop it: nothing here is written anywhere, and nothing it prints reveals a secret.
+final class ChatDecryptionKey {
+  final RobotPgpKey _key;
+  final Uint8List _scalar;
+
+  ChatDecryptionKey._(this._key, this._scalar);
+
+  /// Decrypts a chat message, with its line breaks or with backslashes in their place, and checks that [sender] signed it, as of [now].
+  ///
+  /// It reproduces `decryptMessage` of `frontend/src/pgp/index.ts:70-99`: a missing or invalid signature does not hide the text, it is reported as [DecryptedChatMessage.validSignature].
+  /// A signature dated after [now], expired, older than the key of [sender] or made when that key was expired is invalid, as in the official client.
+  /// [sender] is this robot's own public key when the coordinator attributes the message to this robot's nickname, and the peer's otherwise (`EncryptedApiChat/index.tsx:156`).
+  /// Only the envelope the official client and GnuPG write is read, with the partial lengths GnuPG uses for long messages, within the bounds of `PgpLimits`, and nothing is inflated before the message has been authenticated.
+  /// Fails with [PgpInputTooLarge], [PgpClockOutOfRange], [PgpArmorMalformed] or [PgpMessageUndecryptable].
+  Result<DecryptedChatMessage, PgpFailure> decryptChatMessage(
+    String armored, {
+    required PgpPublicKey sender,
+    DateTime? now,
+  }) {
+    if (armored.length > PgpLimits.messageArmorChars) {
+      return const Err(PgpInputTooLarge());
+    }
+    final time = _epochSeconds(now);
+    if (time == null) return const Err(PgpClockOutOfRange());
+    final bytes = armorDecode(ArmorBlock.message, pgpArmorFromWire(armored));
+    if (bytes == null) return const Err(PgpArmorMalformed());
+    final opened = decryptPackets(
+      bytes,
+      recipient: _key._secretKey.subkey,
+      scalar: _scalar,
+    );
+    if (opened == null) return const Err(PgpMessageUndecryptable());
+    final text = _nativeText(opened.literalData);
+    for (final body in opened.signatures) {
+      // A signature this package cannot read counts as no signature, as in the official client.
+      final signature = _tryParseSignature(body);
+      if (signature == null) continue;
+      final signedData = switch (signature.type) {
+        SignatureType.binary => opened.literalData,
+        SignatureType.text => _canonicalLineEndings(opened.literalData),
+        _ => null,
+      };
+      final signedAt = signature.createdAt;
+      if (signedData != null &&
+          signedAt != null &&
+          sender._key.acceptsSignatureDates(signature, time) &&
+          signature.verify(signedData, sender._key.primary.point)) {
+        final signedTime = DateTime.fromMillisecondsSinceEpoch(
+          signedAt * 1000,
+          isUtc: true,
+        );
+        return Ok(
+          DecryptedChatMessage._(
+            text,
+            validSignature: true,
+            signedAt: signedTime,
+            signatureKey: ChatSignatureKey._(
+              sender.fingerprint,
+              signedTime,
+              hex.encode(sha256.convert(signedData).bytes),
+            ),
+          ),
+        );
+      }
+    }
+    return Ok(
+      DecryptedChatMessage._(
+        text,
+        validSignature: false,
+        signedAt: null,
+        signatureKey: null,
+      ),
+    );
+  }
+
+  @override
+  String toString() => 'ChatDecryptionKey(${_key.publicKey.fingerprint})';
+}

@@ -40,6 +40,12 @@ enum ScriptedRequest {
   cancel,
   payout,
 
+  /// `GET /api/chat/`.
+  chat,
+
+  /// `POST /api/chat/`.
+  chatPost,
+
   /// `confirm`: the buyer's « fiat sent », or the seller's « received ».
   confirm,
 
@@ -135,6 +141,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   /// The payment hash of the last invoice recorded as the payout (`order.payout`).
   String? _payoutHash;
 
+  /// The peer's public key the chat gives (`peer_pubkey`, the maker robot's stored key, `chat/views.py:84,91,110`), armored; `null` for a robot without a key.
+  String? peerPublicKey;
+
+  /// Whether the chat says the peer made a request in the last minute (`peer_connected`).
+  bool peerConnected = true;
+
+  /// The messages of the chat as the coordinator stores them (`{index, time, message, nick}`, `chat/views.py:95-105`), in its order: the test may add, change, repeat or drop some, as a coordinator could.
+  final List<Map<String, Object?>> chat = [];
+
   /// The maker's description, which the coordinator shows a robot that reads the order (`api/views.py:280`), never in the book.
   String? description;
 
@@ -178,18 +193,35 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     this.takerFee = 0.00175,
     this.range = false,
     this.password,
+    RobotIdentity? maker,
   }) : coordinator = switch (Federation.robosats.byAlias(alias)) {
          final found? => found,
          null => throw ArgumentError('no coordinator $alias'),
        },
        _robots = {for (final robot in robots) robot.sessionKey: robot},
-       _maker = switch (RobotHashId.parse(
-         '5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5',
-       )) {
-         Ok(:final value) => value,
-         Err(:final failure) => throw StateError('$failure'),
-       },
+       _maker =
+           maker?.hashId ??
+           switch (RobotHashId.parse(
+             '5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5ca1ab1e0ddba11c0ffee5',
+           )) {
+             Ok(:final value) => value,
+             Err(:final failure) => throw StateError('$failure'),
+           },
        _createdAt = clock().toUtc().subtract(const Duration(hours: 1));
+
+  /// The public key [robot] gave at its first contact, armored, as the coordinator keeps it: what the peer encrypts its messages to.
+  String? publicKeyOf(RobotIdentity robot) =>
+      _kept[robot.sessionKey]?['public_key'] as String?;
+
+  /// The maker posts [message] in the chat, the next index after the highest stored, at the time now (`chat/views.py:158-166`).
+  void peerSays(OutgoingChatMessage message) => chat.add({
+    'index': _nextChatIndex,
+    'time': clock().toUtc().toIso8601String(),
+    'message': message.wire,
+    'nick': _maker.nickname,
+  });
+
+  int get _nextChatIndex => chat.length + 1;
 
   /// The next request of [kind] meets [fault] instead of its answer; several queue up in order.
   void failNext(ScriptedRequest kind, ScriptedFault fault) =>
@@ -448,6 +480,10 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _cancel(_robotOf(request), request);
       case ScriptedRequest.payout:
         return _payout(_robotOf(request), request);
+      case ScriptedRequest.chat:
+        return _chatRead(_robotOf(request), request);
+      case ScriptedRequest.chatPost:
+        return _chatPost(_robotOf(request), request);
       case ScriptedRequest.confirm ||
           ScriptedRequest.undoConfirm ||
           ScriptedRequest.dispute ||
@@ -455,6 +491,84 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         return _tradeAction(kind, _robotOf(request), request);
     }
   }
+
+  /// `GET /api/chat/` as the reference answers it (`chat/views.py:40-113`): no `order_id` 6000, an unknown order a server error (`Order.objects.get`), for the taker at 9, 10, 11 and 16 the messages above the offset (0 when not given, a server error when not an integer), the peer's connection and key.
+  ///
+  /// Known gaps: the reference lets the maker read too (`views.py:53`), which these tests, a taker's, never need (the seller's slice will); and its query has no `ORDER BY` (`views.py:64`), where this one answers in index order.
+  CoordinatorResponse _chatRead(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
+    final query = request.url.queryParameters;
+    final order = query['order_id'];
+    if (order == null) {
+      return _json(400, {'error_code': 6000, 'bad_request': 'no order'});
+    }
+    if (int.tryParse(order) != orderId) {
+      return _json(500, {'detail': 'DoesNotExist'});
+    }
+    if (_taker != robot.sessionKey) {
+      return _json(400, {'error_code': 6001, 'bad_request': 'not yours'});
+    }
+    if (![9, 10, 11, 16].contains(_status)) {
+      return _json(400, {'error_code': 6002, 'bad_request': 'not now'});
+    }
+    final given = query['offset'];
+    final offset = given == null ? 0 : int.tryParse(given);
+    if (offset == null) return _json(500, {'detail': 'ValueError'});
+    return _json(200, _chatPage(offset));
+  }
+
+  /// `POST /api/chat/` as the reference answers it (`chat/views.py:116-218`, `chat/serializers.py:57-84`): a message empty or missing, an order id or an offset that is not a non-negative integer 6003, an unknown order a server error; stored at 9 and 10 as the next index, then the page above the offset when one is given, and `{}` otherwise.
+  ///
+  /// Known gaps: the reference lets the maker post too (`views.py:131`), which these tests, a taker's, never need; and its `IntegerField` takes an `order_id` sent as a string such as "42", refused here, which the package never sends.
+  CoordinatorResponse _chatPost(
+    RobotIdentity robot,
+    CoordinatorRequest request,
+  ) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final fields = body is Map<String, Object?>
+        ? body
+        : const <String, Object?>{};
+    final message = fields['PGP_message'];
+    final order = fields['order_id'];
+    final offset = fields['offset'];
+    // DRF's `CharField` trims and refuses a blank text; `IntegerField(min_value=0)`.
+    if (message is! String ||
+        message.trim().isEmpty ||
+        order is! int ||
+        order < 0 ||
+        (offset != null && (offset is! int || offset < 0))) {
+      return _json(400, {'error_code': 6003, 'bad_request': 'invalid'});
+    }
+    if (order != orderId) return _json(500, {'detail': 'DoesNotExist'});
+    if (_taker != robot.sessionKey) {
+      return _json(400, {'error_code': 6001, 'bad_request': 'not yours'});
+    }
+    if (_status != 9 && _status != 10) {
+      return _json(400, {'error_code': 6002, 'bad_request': 'not now'});
+    }
+    chat.add({
+      'index': _nextChatIndex,
+      'time': clock().toUtc().toIso8601String(),
+      'message': message.trim(),
+      'nick': robot.nickname,
+    });
+    if (offset is! int) return _json(200, const <String, Object?>{});
+    return _json(200, _chatPage(offset));
+  }
+
+  Map<String, Object?> _chatPage(int offset) => {
+    'peer_connected': peerConnected,
+    'messages': [
+      for (final message in chat)
+        if ((message['index'] as int? ?? 0) > offset) message,
+    ],
+    'peer_pubkey': switch (peerPublicKey) {
+      final key? => pgpArmorToWire(key),
+      null => null,
+    },
+  };
 
   /// The actions only a participant may send (`api/views.py:617-619`), as `Logics` answers them (#95).
   CoordinatorResponse _tradeAction(
@@ -788,6 +902,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         ? _actionOf(request)
         : null;
     return switch (request.url.path) {
+      '/api/chat/' when request.method == CoordinatorHttpMethod.post =>
+        ScriptedRequest.chatPost,
+      '/api/chat/' => ScriptedRequest.chat,
       '/api/info/' => ScriptedRequest.info,
       '/api/book/' => ScriptedRequest.book,
       '/api/robot/' => ScriptedRequest.robot,
@@ -1003,7 +1120,14 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         } else {
           data['asked_for_cancel'] = _takerAskedCancel;
         }
-        data['chat_last_index'] = 3;
+        // `api/views.py:451-456`: 0 for an empty chat, otherwise the highest index.
+        data['chat_last_index'] = chat.fold<int>(
+          0,
+          (highest, message) => switch (message['index']) {
+            final int index when index > highest => index,
+            _ => highest,
+          },
+        );
       case 11:
         data['statement_submitted'] = false;
       case 5:
