@@ -393,7 +393,7 @@ Future<void> leak(String pset) async {
     });
 
     test('each member that would move funds is outside the lists', () {
-      // The names that commit funds are allowed in the pay use case's file only, never in the shared list; none of the others is allowed anywhere.
+      // The names that commit funds are allowed in the pay use case's file only (and two of them in the payout's receiving), never in the shared list; none of the others is allowed anywhere, but `generateNew` in the payout's receiving files.
       for (final name in _fundNames) {
         expect(_shellVocabulary, isNot(contains(name)), reason: name);
         expect(
@@ -404,8 +404,36 @@ Future<void> leak(String pset) async {
       }
       final everywhere = {
         _shellVocabulary,
-        for (final names in _perFile.values) names,
+        for (final MapEntry(key: path, value: names) in _perFile.entries)
+          if (!_receiveFundNames.containsKey(path)) names,
       }.expand((names) => names).toSet();
+      // The payout's receiving reveals a new address (`generateNew: true`, owner's decision of 2026-11-15) and nothing else of these.
+      for (final path in _receiveFundNames.keys) {
+        expect(
+          (_perFile[path] ?? const <String>{}).intersection({
+            'signPsbt',
+            'replacePreparedPayin',
+            'refreshOrder',
+            'refreshOrders',
+            'getPendingOrders',
+            'broadcast',
+            'broadcastTransaction',
+            'broadcastPsbt',
+            'consolidate',
+            'generateNewReceiveAddress',
+            'getNewAddress',
+            'sendPayment',
+            'SyncWalletUsecase',
+            'SpFacade',
+            'dynamic',
+            'noSuchMethod',
+            'apply',
+          }),
+          isEmpty,
+          reason: path,
+        );
+        expect(_perFile[path], contains('generateNew'), reason: path);
+      }
       for (final name in [
         'signPsbt',
         'replacePreparedPayin',

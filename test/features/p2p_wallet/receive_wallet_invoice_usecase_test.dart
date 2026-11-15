@@ -233,7 +233,10 @@ void main() {
         (r) => _with(r, environment: OrderSwapEnvironment.testnet),
         (r) => _with(r, note: 'Auto-Transfer'),
       ]) {
-        swaps.changeCreated = change;
+        // A fresh store each time: an earlier order of the loop could be given again.
+        swaps
+          ..reset()
+          ..changeCreated = change;
         expect(refusalOf(await make()), isA<P2pWalletServiceRefused>());
       }
     });
@@ -245,7 +248,7 @@ void main() {
         ('unreadable', () => decoder.readable = false),
         ('another amount', () => decoder.amount = 24999),
         ('another network', () => decoder.testnet = true),
-        ('order of another amount', () => swaps.payin = 24999),
+        // An order of another amount than asked cannot be recorded: the wallet's record refuses it (`OrderSwapRecord`, « Server order does not preserve the fixed amount »).
         (
           'expires before the deadline',
           () =>
