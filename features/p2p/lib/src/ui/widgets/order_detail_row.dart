@@ -69,12 +69,15 @@ class OrderHostRow extends StatelessWidget {
 /// One row of the order details: label and value share the width equally, so that a long label wraps on two lines at most.
 ///
 /// With [warning], the row shows the orange warning of the official client and opens it when tapped.
+///
+/// With [changed], its value differs from the read the user saw before (#119): the label and the value take the warning colour, the value bold, and a screen reader hears « New value: … ». The label marks a changed row apart from an expiry near its end, whose value only is coloured, as in the official client.
 class OrderDetailRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
   final bool bold;
   final VoidCallback? warning;
+  final bool changed;
 
   const OrderDetailRow(
     this.label,
@@ -83,12 +86,14 @@ class OrderDetailRow extends StatelessWidget {
     this.color,
     this.bold = false,
     this.warning,
+    this.changed = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
     final warning = this.warning;
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
@@ -98,17 +103,20 @@ class OrderDetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: text.bodyMedium?.copyWith(color: colors.textMuted),
+              style: text.bodyMedium?.copyWith(
+                color: changed ? colors.warning : colors.textMuted,
+              ),
             ),
           ),
           const Gap(BullSpacing.sm),
           Expanded(
             child: Text(
               value,
+              semanticsLabel: changed ? l10n.p2pOrderNewValue(value) : null,
               textAlign: TextAlign.end,
               style: text.bodyLarge?.copyWith(
-                color: color ?? colors.text,
-                fontWeight: bold ? FontWeight.w700 : null,
+                color: color ?? (changed ? colors.warning : colors.text),
+                fontWeight: bold || changed ? FontWeight.w700 : null,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
@@ -116,7 +124,7 @@ class OrderDetailRow extends StatelessWidget {
           if (warning != null) ...[
             const Gap(BullSpacing.xs),
             Tooltip(
-              message: P2pLocalizations.of(context).p2pReversibleTitle,
+              message: l10n.p2pReversibleTitle,
               child: Icon(
                 Icons.warning_amber_rounded,
                 size: 20,
@@ -138,7 +146,7 @@ class OrderDetailRow extends StatelessWidget {
 class OrderDescriptionRow extends StatelessWidget {
   final String description;
 
-  /// Whether it differs from the read the user saw before: marked in colour and bold, as the other rows.
+  /// Whether it differs from the read the user saw before: marked as the other rows, its label and words in the warning colour, its words bold, and « New value: … » for a screen reader.
   final bool changed;
 
   const OrderDescriptionRow(
@@ -151,7 +159,8 @@ class OrderDescriptionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
-    final label = P2pLocalizations.of(context).p2pOrderDescription;
+    final l10n = P2pLocalizations.of(context);
+    final label = l10n.p2pOrderDescription;
     final words = CoordinatorText.of(
       description,
       maxCodePoints: CoordinatorText.paragraph,
@@ -159,7 +168,7 @@ class OrderDescriptionRow extends StatelessWidget {
     return Semantics(
       container: true,
       label: label,
-      value: words,
+      value: changed ? l10n.p2pOrderNewValue(words) : words,
       child: ExcludeSemantics(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: BullSpacing.xxs),
@@ -168,7 +177,9 @@ class OrderDescriptionRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: text.bodyMedium?.copyWith(color: colors.textMuted),
+                style: text.bodyMedium?.copyWith(
+                  color: changed ? colors.warning : colors.textMuted,
+                ),
               ),
               const Gap(BullSpacing.xxs),
               Container(

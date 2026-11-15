@@ -1143,6 +1143,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pOrderNewValue(String value) {
+    return 'Nouvelle valeur : $value';
+  }
+
+  @override
   String get p2pTakeOrderChangedRead => 'L’ordre a changé.';
 
   @override
@@ -1166,7 +1171,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pTradeFirstRead(String coordinator) {
-    return 'Votre robot lit l’ordre auprès de $coordinator';
+    return 'Votre robot lit l’ordre chez $coordinator';
   }
 
   @override

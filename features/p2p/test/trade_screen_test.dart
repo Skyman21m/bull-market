@@ -1410,6 +1410,39 @@ void main() {
     for (final locale in const [Locale('en'), Locale('fr')]) {
       for (final scale in const [2.0, 3.0]) {
         testWidgets(
+          '${locale.languageCode} at ×$scale: before any read, the line of what it waits for and « Still waiting » are not cut',
+          (tester) async {
+            await _show(
+              tester,
+              watch: _Watch(),
+              locale: locale,
+              size: const Size(320, 568),
+              textScale: scale,
+            );
+            final fr = locale.languageCode == 'fr';
+            expect(
+              find.text(
+                fr
+                    ? 'Votre robot lit l’ordre chez Temple of Sats'
+                    : 'Your robot is reading the order from Temple of Sats',
+              ),
+              findsOneWidget,
+            );
+            _expectNothingCut(tester, 'first read');
+            await tester.pump(const Duration(seconds: 31));
+            expect(
+              find.text(
+                fr
+                    ? 'Toujours en attente de Temple of Sats. Tor peut prendre une minute.'
+                    : 'Still waiting for Temple of Sats. Tor can take a minute.',
+              ),
+              findsOneWidget,
+            );
+            _expectNothingCut(tester, 'first read, still waiting');
+          },
+        );
+
+        testWidgets(
           '${locale.languageCode} at ×$scale: nothing overflows or is cut',
           (tester) async {
             final watch = _Watch();

@@ -2084,7 +2084,28 @@ void main() {
         await capture('prise-chiffres-changes');
         await reveal(find.text(l10n.p2pTakeOrderChangedRead));
         await capture('prise-chiffres-changes-bas');
-        await confirm();
+        // « Continue », « Store your garage key » in the reference's order, then « Done »: the wait after « Done » says its steps, then the trade screen says what it waits for before its first read; each request waits for its gate.
+        await reveal(find.text(l10n.p2pCommonContinue));
+        await tester.tap(find.text(l10n.p2pCommonContinue));
+        await settle();
+        await capture('prise-sauvegarder-cle');
+        gate = Completer<void>();
+        coordinator.hold = gate.future;
+        await tester.tap(find.text(l10n.p2pCommonDone));
+        final again = find.text(l10n.p2pTakeStepReadingOrderAgain);
+        await waitFor(again);
+        await reveal(again);
+        await capture('prise-attente-apres-fait');
+        final firstRead = find.text(l10n.p2pTradeFirstRead('Temple of Sats'));
+        for (var i = 0; i < 12 && firstRead.evaluate().isEmpty; i++) {
+          await letGo();
+          await settle();
+        }
+        await waitFor(firstRead);
+        await capture('prise-echange-premiere-lecture');
+        coordinator.hold = null;
+        gate.complete();
+        await waitFor(find.text(l10n.p2pTradeTabContract));
         await capture('echange-3');
         await tester.ensureVisible(find.text(l10n.p2pTradeCopyToClipboard));
         await settle();

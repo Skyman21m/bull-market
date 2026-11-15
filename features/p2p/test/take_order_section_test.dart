@@ -258,7 +258,7 @@ void main() {
       expect(take.confirmed, isEmpty);
       expect(_takeButton, findsNothing);
 
-      // « Go back » of the dialog abandons, as « Go back » of the order details does.
+      // « Go back » of the dialog only closes it, as the reference's does: the order as read stays, its take prepared, nothing sent nor abandoned.
       await _tap(tester, _continueButton);
       expect(find.text('Store your garage key'), findsOneWidget);
       await tester.tap(
@@ -268,31 +268,45 @@ void main() {
         ),
       );
       await settle(tester);
-      expect(take.abandoned, [_read]);
+      expect(find.byType(StoreTokenDialog), findsNothing);
+      expect(take.abandoned, isEmpty);
+      expect(take.abandonedOrders, 0);
       expect(take.confirmed, isEmpty);
-      await _reveal(tester, _takeButton);
+      expect(_takeButton, findsNothing);
+      await _reveal(tester, _readLine);
 
-      await _prepare(tester);
+      // « Done » after the dialog opened again sends the take of the read still shown, with no new preparation.
       await _confirm(tester);
+      expect(take.amounts, [null]);
       expect(take.confirmed, [_read]);
+      expect(take.abandoned, isEmpty);
       expect(taken, [TradeScreenStatuses.record]);
     },
   );
 
-  testWidgets('a tap outside « Store your garage key » abandons too', (
-    tester,
-  ) async {
-    final take = _Take();
-    final (taken, _) = await _show(tester, await _order(), take: take);
-    await _prepare(tester);
-    await _tap(tester, _continueButton);
-    await tester.tapAt(const Offset(4, 4));
-    await settle(tester);
-    expect(find.byType(StoreTokenDialog), findsNothing);
-    expect(take.abandoned, [_read]);
-    expect(take.confirmed, isEmpty);
-    expect(taken, isEmpty);
-  });
+  testWidgets(
+    'a tap outside « Store your garage key » only closes it: the order as read stays, and « Done » then takes it',
+    (tester) async {
+      final take = _Take();
+      final (taken, cubit) = await _show(tester, await _order(), take: take);
+      await _prepare(tester);
+      await _tap(tester, _continueButton);
+      await tester.tapAt(const Offset(4, 4));
+      await settle(tester);
+      expect(find.byType(StoreTokenDialog), findsNothing);
+      expect(take.abandoned, isEmpty);
+      expect(take.abandonedOrders, 0);
+      expect(take.confirmed, isEmpty);
+      expect(taken, isEmpty);
+      expect(cubit.state, isA<TakeReady>());
+      await _reveal(tester, _readLine);
+
+      await _confirm(tester);
+      expect(take.amounts, [null]);
+      expect(take.confirmed, [_read]);
+      expect(taken, [TradeScreenStatuses.record]);
+    },
+  );
 
   testWidgets(
     'the order read: its description in the order details, as plain text, then the read\'s figures, the bond and the time of the read',
@@ -471,6 +485,40 @@ void main() {
         find.text('Revolut only. Pay within 30 minutes.'),
       );
       expect(words.style?.fontWeight, FontWeight.w700);
+      // Said to a screen reader, not by the colour alone, and the label marked too (second interface review of #133, M1).
+      final price = tester.widget<Text>(find.textContaining('95,000'));
+      expect(price.semanticsLabel, 'New value: ${price.data}');
+      final amount = tester.widget<OrderDetailRow>(
+        find.ancestor(
+          of: find.text('Amount'),
+          matching: find.byType(OrderDetailRow),
+        ),
+      );
+      expect(amount.changed, isFalse);
+      expect(
+        tester.widget<Text>(find.text('Price and Premium')).style?.color,
+        price.style?.color,
+      );
+      expect(
+        tester.widget<Text>(find.text('Amount')).style?.color,
+        isNot(price.style?.color),
+      );
+      expect(
+        tester
+            .widget<Semantics>(
+              find
+                  .ancestor(
+                    of: find.text('Revolut only. Pay within 30 minutes.'),
+                    matching: find.byWidgetPredicate(
+                      (w) => w is Semantics && w.properties.value != null,
+                    ),
+                  )
+                  .first,
+            )
+            .properties
+            .value,
+        'New value: Revolut only. Pay within 30 minutes.',
+      );
       await _reveal(tester, find.text('The order changed.'));
       expect(taken, isEmpty);
 
@@ -478,6 +526,45 @@ void main() {
       await _confirm(tester);
       expect(take.confirmed, [_read, _readFresh]);
       expect(taken, [TradeScreenStatuses.record]);
+    },
+  );
+
+  testWidgets(
+    'a changed expiry is told apart from a near one: its label marked and « New value » said, a near one marks its value only',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Column(
+                children: [
+                  OrderDetailRow(
+                    'Near',
+                    '1h 00m 00s',
+                    color: Theme.of(context).colorScheme.tertiary,
+                    bold: true,
+                  ),
+                  const OrderDetailRow('Changed', '20h 00m 00s', changed: true),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final near = tester.widget<Text>(find.text('Near'));
+      final changed = tester.widget<Text>(find.text('Changed'));
+      final changedValue = tester.widget<Text>(find.text('20h 00m 00s'));
+      expect(changed.style?.color, changedValue.style?.color);
+      expect(near.style?.color, isNot(changed.style?.color));
+      expect(changedValue.style?.fontWeight, FontWeight.w700);
+      expect(find.bySemanticsLabel('New value: 20h 00m 00s'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('New value: 1h')), findsNothing);
+      semantics.dispose();
     },
   );
 
@@ -1137,6 +1224,58 @@ void main() {
             await _reveal(tester, still);
             nothingCut(tester, 'still waiting');
             take.preparing?.complete(Ok(_read));
+            await settle(tester);
+          },
+        );
+
+        testWidgets(
+          '${locale.languageCode} at ×$scale: after « Done », the lines of a step and « Still waiting » are not cut',
+          (tester) async {
+            final fr = locale.languageCode == 'fr';
+            final take = _Take()
+              ..confirmingSteps = [
+                TakeStep.readingOrderAgain,
+                TakeStep.sendingTake,
+              ]
+              ..confirming = Completer<Result<TakeOutcome, TakeRefusal>>();
+            await _show(
+              tester,
+              await _order(),
+              take: take,
+              locale: locale,
+              size: const Size(320, 568),
+              textScale: scale,
+            );
+            final button = find.text(fr ? 'Prendre l\'ordre' : 'Take Order');
+            await _reveal(tester, button);
+            await tester.tap(button);
+            await settle(tester);
+            final go = find.text(fr ? 'Continuer' : 'Continue');
+            await _reveal(tester, go);
+            await tester.tap(go);
+            await settle(tester);
+            final done = find.text(fr ? 'Fait' : 'Done');
+            await tester.ensureVisible(done);
+            await tester.pump();
+            await tester.tap(done);
+            await tester.pump(const Duration(seconds: 31));
+            final step = find.text(
+              fr
+                  ? 'Prise de l’ordre auprès de Temple of Sats'
+                  : 'Taking the order with Temple of Sats',
+            );
+            await _reveal(tester, step);
+            nothingCut(tester, 'step after « Done »');
+            final still = find.text(
+              fr
+                  ? 'Toujours en attente de Temple of Sats. Tor peut prendre une minute.'
+                  : 'Still waiting for Temple of Sats. Tor can take a minute.',
+            );
+            await _reveal(tester, still);
+            nothingCut(tester, 'still waiting after « Done »');
+            take.confirming?.complete(
+              Ok(TakeOutcomeUnknown(TradeScreenStatuses.record)),
+            );
             await settle(tester);
           },
         );

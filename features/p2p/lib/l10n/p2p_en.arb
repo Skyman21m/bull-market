@@ -1538,7 +1538,7 @@
   },
   "p2pOrderDescription": "Order description",
   "@p2pOrderDescription": {
-    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, the French is the project's text list's (`docs/textes-p2p-phase1.json`). Label of the maker's description among the order details once the robot that takes the order read it (#119)."
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, so the French is the project's own. Label of the maker's description among the order details once the robot that takes the order read it (#119)."
   },
   "p2pTakerBond": "Taker bond",
   "@p2pTakerBond": {
@@ -1561,6 +1561,15 @@
     "description": "Not in the RoboSats texts: the project's own: under the order details once the robot that takes the order read it (#119): when it read it; read out when it arrives. {time} is hours, minutes and seconds.",
     "placeholders": {
       "time": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pOrderNewValue": "New value: {value}",
+  "@p2pOrderNewValue": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader hears of a row of the order details whose value changed since the read the user saw before, when a confirmation found the order changed (#119, second interface review of #133).",
+    "placeholders": {
+      "value": {
         "type": "String"
       }
     }

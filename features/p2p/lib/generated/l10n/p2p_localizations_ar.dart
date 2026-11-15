@@ -1125,6 +1125,11 @@ class P2pLocalizationsAr extends P2pLocalizations {
   }
 
   @override
+  String p2pOrderNewValue(String value) {
+    return 'New value: $value';
+  }
+
+  @override
   String get p2pTakeOrderChangedRead => 'The order changed.';
 
   @override

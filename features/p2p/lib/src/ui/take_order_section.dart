@@ -109,7 +109,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
     }
   }
 
-  /// « Continue »: « Store your garage key », whose « Done » sends the take and whose « Go back », or a tap outside, abandons it, as « Go back » does.
+  /// « Continue »: « Store your garage key », whose « Done » sends the take. Its « Go back », or a tap outside, only closes it, as the reference's does (`TakeButton.tsx:380-382`): the order as read stays on the page with its take prepared, and « Go back » of the page is what abandons it.
   Future<void> _continue() async {
     if (_asking) return;
     _asking = true;
@@ -117,11 +117,7 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
       final cubit = context.read<TakeOrderCubit>();
       final done = await StoreTokenDialog.show(context);
       if (!mounted) return;
-      if (done) {
-        unawaited(cubit.confirm());
-      } else {
-        cubit.back();
-      }
+      if (done) unawaited(cubit.confirm());
     } finally {
       _asking = false;
     }

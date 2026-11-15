@@ -1925,7 +1925,7 @@ abstract class P2pLocalizations {
   /// **'This order changed since it was shown. It was not taken: open it again from the book.'**
   String get p2pTakeOrderChanged;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, the French is the project's text list's (`docs/textes-p2p-phase1.json`). Label of the maker's description among the order details once the robot that takes the order read it (#119).
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), the title of its dialog « Order description » (`Dialogs/OrderDescription.tsx:38`); its `fr.json` leaves it in English, so the French is the project's own. Label of the maker's description among the order details once the robot that takes the order read it (#119).
   ///
   /// In en, this message translates to:
   /// **'Order description'**
@@ -1948,6 +1948,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Read by your robot at {time}'**
   String p2pTakeReadAt(String time);
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader hears of a row of the order details whose value changed since the read the user saw before, when a confirmation found the order changed (#119, second interface review of #133).
+  ///
+  /// In en, this message translates to:
+  /// **'New value: {value}'**
+  String p2pOrderNewValue(String value);
 
   /// Not in the RoboSats texts: the project's own: over « Continue », from the start of the read made again when a confirmation found the order changed, then with the new read, whose changed rows are marked: nothing was taken (#119, review of #133).
   ///

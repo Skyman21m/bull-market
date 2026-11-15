@@ -195,10 +195,9 @@ class PublicOrderDetailsCard extends StatelessWidget {
       ),
       _ => null,
     };
-    // A row whose value differs from the read the user saw before is marked as the reference marks the time left: in colour and bold.
+    // A row whose value differs from the read the user saw before is marked as the reference marks the time left, in colour and bold, its label too, and said to a screen reader (`OrderDetailRow.changed`).
     bool differs(Object? Function(_Figures figures) of) =>
         before != null && of(before) != of(shown);
-    final changedColor = colors.warning;
     // The payment methods the take goes out on: the read's, once there is one (security review of #133).
     final paymentMethods = readOrder?.paymentMethods ?? order.paymentMethods;
     final methods = paymentMethods.text;
@@ -255,24 +254,14 @@ class PublicOrderDetailsCard extends StatelessWidget {
             OrderDetailRow(
               send.label,
               send.value,
-              color:
-                  (order.type == OrderType.buy && satsChanged) ||
-                      (order.type == OrderType.sell && methodsChanged)
-                  ? changedColor
-                  : null,
-              bold:
+              changed:
                   (order.type == OrderType.buy && satsChanged) ||
                   (order.type == OrderType.sell && methodsChanged),
             ),
             OrderDetailRow(
               receive.label,
               receive.value,
-              color:
-                  (order.type == OrderType.sell && satsChanged) ||
-                      (order.type == OrderType.buy && methodsChanged)
-                  ? changedColor
-                  : null,
-              bold:
+              changed:
                   (order.type == OrderType.sell && satsChanged) ||
                   (order.type == OrderType.buy && methodsChanged),
             ),
@@ -281,8 +270,7 @@ class PublicOrderDetailsCard extends StatelessWidget {
                   ? l10n.p2pOrderSwapDestination
                   : l10n.p2pOrderAcceptedMethods,
               OfferRow.paymentMethodsLine(paymentMethods, l10n),
-              color: methodsChanged ? changedColor : null,
-              bold: methodsChanged,
+              changed: methodsChanged,
               warning: paymentMethods.hasReversible
                   ? () => ReversiblePaymentsDialog.show(context, paymentMethods)
                   : null,
@@ -295,25 +283,24 @@ class PublicOrderDetailsCard extends StatelessWidget {
             OrderDetailRow(
               shown.priceLabel,
               shown.priceValue,
-              color: differs((f) => f.priceValue) ? changedColor : null,
-              bold: differs((f) => f.priceValue),
+              changed: differs((f) => f.priceValue),
             ),
             if (read != null)
               OrderDetailRow(
                 l10n.p2pTakerBond,
                 shown.bond ?? '',
-                color: differs((f) => f.bond) ? changedColor : null,
-                bold: differs((f) => f.bond),
+                changed: differs((f) => f.bond),
               ),
             OrderDetailRow(
               l10n.p2pOrderExpiresIn,
               left.isNegative ? l10n.p2pOrderExpired : formats.countdown(left),
               color: share < 0.10
                   ? colors.error
-                  : share < 0.25 || expiryChanged
+                  : share < 0.25
                   ? colors.warning
                   : null,
-              bold: share < 0.25 || expiryChanged,
+              bold: share < 0.25,
+              changed: expiryChanged,
             ),
             // The time left closes the card, under its last row, as in the official client.
             Column(
@@ -321,8 +308,7 @@ class PublicOrderDetailsCard extends StatelessWidget {
                 OrderDetailRow(
                   l10n.p2pOrderDeposit,
                   shown.deposit,
-                  color: differs((f) => f.deposit) ? changedColor : null,
-                  bold: differs((f) => f.deposit),
+                  changed: differs((f) => f.deposit),
                 ),
                 const Gap(BullSpacing.sm),
                 ClipRRect(
