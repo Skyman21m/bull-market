@@ -317,7 +317,8 @@ void main() {
         );
         expect(await positionOnDisk(app, record), 'chatting');
 
-        // The watch's read at 8 arrives now.
+        // The watch's read at 8 arrives now, a second later than the payout's read after it: by the time of the answers alone, it would be read again over the trail at 9, along no edge, and recorded as a breach of trust.
+        await app.elapse(const Duration(seconds: 1));
         app.coordinator.deliverDelayed();
         await app.settle();
         final last = run.lastStatus;
