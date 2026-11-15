@@ -1143,6 +1143,49 @@ void main() {
     });
 
     test(
+      'a wrong amount keeps the amount the coordinator expects, as a bounded number only (review of #132)',
+      () async {
+        final texts = <String, int?>{
+          'The invoice provided is not for 163,961 Sats': 163961,
+          'The invoice provided is not for 999 Sats': 999,
+          'The invoice provided is not for 0 Sats': 0,
+          'The invoice provided is not for 2,100,000,000,000,000 Sats':
+              2100000000000000,
+          // Above all the bitcoin there will ever be: no amount.
+          'The invoice provided is not for 2,100,000,000,000,001 Sats': null,
+          'The invoice provided is not for 999,999,999,999,999,999 Sats': null,
+        };
+        for (final MapEntry(key: text, value: sats) in texts.entries) {
+          serveJson({'bad_invoice': text}, statusCode: 400);
+          final failure = expectErr(await submitInvoice());
+          expect(
+            failure.cause,
+            isA<PayoutInvoiceRefused>()
+                .having(
+                  (f) => f.reason,
+                  'reason',
+                  PayoutInvoiceRefusal.wrongAmount,
+                )
+                .having((f) => f.expectedSats, 'expectedSats', sats),
+            reason: text,
+          );
+        }
+        // Any other refusal carries no amount.
+        serveJson({
+          'bad_invoice': 'The invoice provided has already expired',
+        }, statusCode: 400);
+        expect(
+          expectErr(await submitInvoice()).cause,
+          isA<PayoutInvoiceRefused>().having(
+            (f) => f.expectedSats,
+            'expectedSats',
+            isNull,
+          ),
+        );
+      },
+    );
+
+    test(
       'the address texts of the coordinator\'s bitcoind, with no code',
       () async {
         final texts = <String, PayoutAddressRefusal>{

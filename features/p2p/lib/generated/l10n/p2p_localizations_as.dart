@@ -1280,10 +1280,6 @@ class P2pLocalizationsAs extends P2pLocalizations {
   }
 
   @override
-  String get p2pTradePayoutLater =>
-      'Sending your payout info comes in a later version of Bull Market.';
-
-  @override
   String get p2pTradeTitleInfoGood => 'Your info looks good!';
 
   @override
@@ -1359,6 +1355,10 @@ class P2pLocalizationsAs extends P2pLocalizations {
   @override
   String get p2pTradeCancelUnilateral =>
       'Unilateral cancelation (bond at risk!)';
+
+  @override
+  String get p2pTradeCancelWhilePayout =>
+      'Cancel is off while your payout info is being sent.';
 
   @override
   String get p2pTradeCancelTitle => 'Cancel the order?';
@@ -1539,6 +1539,371 @@ class P2pLocalizationsAs extends P2pLocalizations {
 
   @override
   String get p2pTradeYouAreSwappingIn => 'SWAPPING INTO Lightning';
+
+  @override
+  String get p2pPayoutTabLightning => 'Lightning';
+
+  @override
+  String get p2pPayoutTabOnchain => 'Onchain';
+
+  @override
+  String get p2pPayoutAdvancedOptions => 'Advanced options';
+
+  @override
+  String get p2pPayoutRoutingBudget => 'Routing Budget';
+
+  @override
+  String get p2pPayoutBudgetTooHigh => 'Too high! (That is more than 1%)';
+
+  @override
+  String get p2pPayoutUnitPpm => 'PPM';
+
+  @override
+  String p2pPayoutSubmitInvoiceFor(String amountSats) {
+    return 'Submit invoice for $amountSats Sats';
+  }
+
+  @override
+  String get p2pPayoutCopyAmount => 'Copy the amount';
+
+  @override
+  String get p2pPayoutInvoiceField => 'Payout Lightning Invoice';
+
+  @override
+  String get p2pPayoutSubmit => 'Submit';
+
+  @override
+  String get p2pPayoutSubmitWhileCancelling =>
+      'Submit is off while the trade is being cancelled.';
+
+  @override
+  String get p2pPayoutInvalidInvoiceAmount => 'Invalid invoice amount';
+
+  @override
+  String get p2pPayoutOnchainIntro =>
+      'RoboSats coordinator will do a swap and send the Sats to your onchain address.';
+
+  @override
+  String get p2pPayoutSwapFee => 'Swap fee';
+
+  @override
+  String p2pPayoutSwapFeeValue(String sats, String percent) {
+    return '$sats Sats ($percent%)';
+  }
+
+  @override
+  String get p2pPayoutMiningFee => 'Mining fee';
+
+  @override
+  String p2pPayoutMiningFeeValue(String sats, String rate) {
+    return '$sats Sats ($rate Sats/vByte)';
+  }
+
+  @override
+  String get p2pPayoutFinalAmount => 'Final amount you will receive';
+
+  @override
+  String get p2pPayoutAddressField => 'Bitcoin Address';
+
+  @override
+  String get p2pPayoutMiningFeeField => 'Mining Fee';
+
+  @override
+  String get p2pPayoutInvalid => 'Invalid';
+
+  @override
+  String get p2pPayoutFailureReason => 'Failure reason:';
+
+  @override
+  String get p2pPayoutRetrying => 'Retrying!';
+
+  @override
+  String get p2pPayoutNextAttempt => 'Next attempt in';
+
+  @override
+  String p2pPayoutCountdown(String minutes, String seconds) {
+    return '${minutes}m ${seconds}s';
+  }
+
+  @override
+  String get p2pPayoutInvoiceExpiredSubmitNew =>
+      'Your invoice has expired or more than 3 payment attempts have been made. Submit a new invoice.';
+
+  @override
+  String get p2pPayoutWillRetry =>
+      'RoboSats will try to pay your invoice 3 times with a one minute pause in between. If it keeps failing, you will be able to submit a new invoice. Check whether you have enough inbound liquidity. Remember that lightning nodes must be online in order to receive payments.';
+
+  @override
+  String get p2pPayoutFailureNotYet => 'Payment isn\'t failed (yet)';
+
+  @override
+  String get p2pPayoutFailureTimeout =>
+      'There are more routes to try, but the payment timeout was exceeded.';
+
+  @override
+  String get p2pPayoutFailureNoRoute =>
+      'All possible routes were tried and failed permanently. Or there were no routes to the destination at all.';
+
+  @override
+  String get p2pPayoutFailureNonRecoverable =>
+      'A non-recoverable error has occurred.';
+
+  @override
+  String get p2pPayoutFailureIncorrect =>
+      'Payment details are incorrect (unknown hash, invalid amount or invalid final CLTV delta).';
+
+  @override
+  String get p2pPayoutFailureBalance =>
+      'Insufficient unlocked balance in RoboSats\' node.';
+
+  @override
+  String p2pPayoutFailureUnknown(String coordinator) {
+    return '$coordinator gave a reason this app does not know.';
+  }
+
+  @override
+  String get p2pPayoutRefusedEmptyInvoice => 'You submitted an empty invoice';
+
+  @override
+  String get p2pPayoutRefusedNotInvoice =>
+      'Does not look like a valid lightning invoice';
+
+  @override
+  String get p2pPayoutRefusedRouteHints =>
+      'The invoice hinted private routes are not payable within the submitted routing budget. This can be adjusted with Advanced Options enabled.';
+
+  @override
+  String get p2pPayoutRefusedNoAmount =>
+      'The invoice provided has no explicit amount';
+
+  @override
+  String p2pPayoutRefusedWrongAmount(String amount) {
+    return 'The invoice provided is not for $amount Sats';
+  }
+
+  @override
+  String get p2pPayoutRefusedExpired =>
+      'The invoice provided has already expired';
+
+  @override
+  String get p2pPayoutRefusedNewInvoice => 'You must submit a NEW invoice';
+
+  @override
+  String get p2pPayoutRefusedNotNow =>
+      'You can only submit an invoice after expiration or 3 failed attempts';
+
+  @override
+  String get p2pPayoutRefusedAddressNotNow =>
+      'You cannot submit an address now.';
+
+  @override
+  String get p2pPayoutRefusedNotBuyer =>
+      'Only the buyer of this order can provide a buyer invoice.';
+
+  @override
+  String get p2pPayoutRefusedSignature =>
+      'The PGP signed cleartext message is not valid.';
+
+  @override
+  String get p2pPayoutRefusedNotParticipant =>
+      'You are not a participant in this order';
+
+  @override
+  String get p2pPayoutRefusedEmptyAddress => 'You submitted an empty address';
+
+  @override
+  String p2pPayoutRefusedFeeTooLow(String rate) {
+    return 'The mining fee is too low. Must be higher than $rate Sat/vbyte';
+  }
+
+  @override
+  String get p2pPayoutRefusedFeeTooLowNoRate => 'The mining fee is too low.';
+
+  @override
+  String get p2pPayoutRefusedFeeTooHigh =>
+      'The mining fee is too high, must be less than 500 Sats/vbyte';
+
+  @override
+  String get p2pPayoutRefusedDust =>
+      'The amount remaining after subtracting mining fee is close to dust limit.';
+
+  @override
+  String get p2pPayoutRefusedInvalidAddress => 'Invalid address';
+
+  @override
+  String get p2pPayoutRefusedUnverifiable =>
+      'Unable to validate address, check bitcoind backend';
+
+  @override
+  String p2pPayoutRefusedOther(String coordinator) {
+    return '$coordinator refused your payout info.';
+  }
+
+  @override
+  String p2pPayoutNotReached(String coordinator) {
+    return 'Your payout info did not reach $coordinator: nothing was recorded. You can submit again.';
+  }
+
+  @override
+  String get p2pPayoutNeedsARead =>
+      'Wait until the order is read again to give your payout info.';
+
+  @override
+  String p2pPayoutNotAsked(String coordinator) {
+    return '$coordinator does not ask for your payout info now.';
+  }
+
+  @override
+  String p2pPayoutAmountUnknown(String coordinator) {
+    return '$coordinator does not give the amount to receive yet.';
+  }
+
+  @override
+  String get p2pPayoutInvoiceUnreadable =>
+      'This is not a Lightning invoice this app can read.';
+
+  @override
+  String get p2pPayoutInvoiceOtherNetwork =>
+      'This invoice is for another network than the trade\'s.';
+
+  @override
+  String get p2pPayoutInvoiceWholeSats =>
+      'The invoice must ask for exactly the Sats shown, with no fraction of a sat.';
+
+  @override
+  String get p2pPayoutAddressMalformed => 'This is not a Bitcoin address.';
+
+  @override
+  String get p2pPayoutAddressBadChecksum =>
+      'This address has a typo: its checksum is wrong.';
+
+  @override
+  String get p2pPayoutAddressOtherNetwork =>
+      'This address is for another network than the trade\'s.';
+
+  @override
+  String p2pPayoutAddressUnsupported(String coordinator) {
+    return '$coordinator may not be able to pay this kind of address.';
+  }
+
+  @override
+  String p2pPayoutWarnExpiresFirst(
+    String date,
+    String time,
+    String coordinator,
+  ) {
+    return 'This invoice expires on $date at $time. If the seller confirms after that, $coordinator cannot pay it and will ask you for a new one.';
+  }
+
+  @override
+  String p2pPayoutWarnBelowMinimum(String coordinator) {
+    return 'Less than 20,000 Sats would reach this address: $coordinator will refuse it.';
+  }
+
+  @override
+  String get p2pPayoutOnchainSwapOrder =>
+      'An order in bitcoin is paid on Lightning only.';
+
+  @override
+  String p2pPayoutSwapBelowMinimum(String coordinator) {
+    return 'The amount is below the smallest swap $coordinator offers.';
+  }
+
+  @override
+  String p2pPayoutSwapAboveMaximum(String coordinator) {
+    return 'The amount is above the largest swap $coordinator offers.';
+  }
+
+  @override
+  String p2pPayoutSwapDisabled(String coordinator) {
+    return '$coordinator does not offer swaps.';
+  }
+
+  @override
+  String p2pPayoutSwapNoLiquidity(String coordinator) {
+    return '$coordinator does not have enough on-chain funds for a swap.';
+  }
+
+  @override
+  String p2pPayoutSwapUnavailable(String coordinator) {
+    return '$coordinator does not offer an on-chain payout for this order.';
+  }
+
+  @override
+  String p2pPayoutStepUnlocking(String coordinator) {
+    return 'Reading your robot from $coordinator and unlocking its key. The first time takes a few seconds.';
+  }
+
+  @override
+  String p2pPayoutStepReading(String coordinator) {
+    return 'Reading the order from $coordinator…';
+  }
+
+  @override
+  String p2pPayoutStepSending(String coordinator) {
+    return 'Sending your payout info to $coordinator…';
+  }
+
+  @override
+  String p2pPayoutStepReadingAfter(String coordinator) {
+    return 'Reading the order again from $coordinator…';
+  }
+
+  @override
+  String get p2pPayoutStepWaitingForOrder =>
+      'Waiting for another action on this order to end…';
+
+  @override
+  String get p2pPayoutStepOpening => 'Opening the trade…';
+
+  @override
+  String p2pPayoutGiven(String coordinator) {
+    return '$coordinator received your payout info.';
+  }
+
+  @override
+  String p2pPayoutUnknown(String coordinator) {
+    return 'Bull Market does not know yet whether $coordinator received your payout info. It keeps checking while this screen is open.';
+  }
+
+  @override
+  String p2pPayoutAskedAgain(String coordinator) {
+    return '$coordinator still asks for your payout info: the last you gave was not recorded. You can submit again.';
+  }
+
+  @override
+  String get p2pPayoutChanged =>
+      'Nothing was sent: what is shown changed since you saw it. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedAmount =>
+      'Nothing was sent: the amount changed since it was shown. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedExpiry =>
+      'Nothing was sent: this invoice now expires before the step could end. Check it again before you submit.';
+
+  @override
+  String get p2pPayoutChangedStatus =>
+      'Nothing was sent: the trade\'s status changed since it was shown. Check it again before you submit.';
+
+  @override
+  String p2pPayoutNotSentKey(String coordinator) {
+    return 'The key of your robot could not be read from $coordinator. Nothing was sent.';
+  }
+
+  @override
+  String p2pPayoutNotSentRead(String coordinator) {
+    return 'Could not read the order from $coordinator. Nothing was sent.';
+  }
+
+  @override
+  String get p2pPayoutNotSentSign =>
+      'The key of your robot could not sign this. Nothing was sent.';
+
+  @override
+  String get p2pPayoutNotSentTrade =>
+      'This trade cannot be opened now. Nothing was sent.';
 
   @override
   String p2pPayBalance(String balance) {

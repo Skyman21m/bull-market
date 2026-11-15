@@ -76,6 +76,7 @@ import 'presentation/book_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
+import 'presentation/payout_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -385,6 +386,18 @@ final class P2pLocator {
         locator<CancelTradeUsecase>().execute,
       ),
     );
+    // The payout panel of one shown trade (#91), the only caller of the payout use case and of the key's hold.
+    locator.registerFactoryParam<PayoutCubit, TradeRecord, void>((record, _) {
+      final payout = locator<SubmitPayoutUsecase>();
+      return PayoutCubit(
+        record,
+        payout.ask,
+        payout.check,
+        payout.execute,
+        (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
+        now: locator<P2pClock>().now,
+      );
+    });
     // The bond paid from the wallet (#100): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.
     locator.registerFactory<PayBondFromWalletUsecase>(
       () => PayBondFromWalletUsecase(

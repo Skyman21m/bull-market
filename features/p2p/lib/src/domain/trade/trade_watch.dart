@@ -20,7 +20,15 @@ final class TradeSeen {
   /// False for a status of the trail on disk when the read's own could not be stored, or was kept out by another write (`TradeStatus.beforeFirstRead`: no invoice, no order), for a trail restored and not read yet, and for an end that another write stored first.
   final bool stored;
 
-  const TradeSeen(this.status, {required this.order, this.stored = false});
+  /// When the read [status] comes from was sent, when known: what it shows is no older than that, where [TradeStatus.seenAt] is when its answer was read (review of #132: a read sent before a payout was recorded can come back after it).
+  final DateTime? requestedAt;
+
+  const TradeSeen(
+    this.status, {
+    required this.order,
+    this.stored = false,
+    this.requestedAt,
+  });
 
   @override
   String toString() =>

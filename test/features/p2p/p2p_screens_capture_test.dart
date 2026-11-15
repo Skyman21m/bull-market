@@ -1785,6 +1785,14 @@ void main() {
         wallet.progress(const P2pWalletPaymentPending());
         await nextRead();
         await capture('paiement-caution-bloquee');
+        // The same status from its top: the line of the bond paid from this wallet above « Submit payout info (2/4) », then the payout panel (#91).
+        await tester.ensureVisible(
+          find.textContaining(l10n.p2pTradeTitlePayout),
+        );
+        await settle();
+        await tester.drag(find.byType(ListView).last, const Offset(0, 2000));
+        await settle();
+        await capture('paiement-reception-2-4');
 
         // The bond lost by a cancel at 6: the coordinator keeps it, and the wallet reports the invoice settled (demonstration progress).
         await tester.ensureVisible(find.text(l10n.p2pCommonCancel).last);
@@ -2129,6 +2137,8 @@ void main() {
         await tester.tap(find.text(l10n.p2pTradeTabContract));
         await settle();
 
+        // The coordinator offers the on-chain payout too, for the payout panel's captures (#91).
+        coordinator.swapAllowed = true;
         coordinator.lockBond(taker());
         await nextRead();
         await waitFor(find.textContaining(l10n.p2pTradeTitlePayout));
@@ -2141,6 +2151,68 @@ void main() {
         await capture('echange-6-dialogue-annuler');
         await tester.tap(find.text(l10n.p2pCommonGoBack));
         await settle();
+
+        // The payout panel (#91), through the app's own payout use case and keyring, the scripted coordinator checking the signature: Lightning, an invoice of the test pasted, the routing budget, Onchain, an address refused by the coordinator (its mining fee under the coordinator's minimum), then the invoice given, and the trade at 7.
+        final buyerSats =
+            ScriptedCoordinator.bookSats -
+            (ScriptedCoordinator.bookSats * 0.00175).round();
+        final payoutInvoice = Bolt11TestInvoice(
+          network: Bolt11Network.mainnet,
+          sats: (buyerSats - buyerSats * 1000 / 1000000).floor(),
+          seed: 500,
+          createdAt: now,
+          expiry: const Duration(days: 2),
+        );
+        coordinator.decoder.add(payoutInvoice);
+        await tester.ensureVisible(find.text(l10n.p2pPayoutTabLightning));
+        await settle();
+        await capture('reception-6');
+        await tester.enterText(
+          find.byType(TextField).first,
+          payoutInvoice.text,
+        );
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pTradeInvoiceNetwork));
+        await settle();
+        await capture('reception-facture');
+        final advanced = find.byWidgetPredicate(
+          (widget) => widget.runtimeType.toString() == 'BullSwitch',
+        );
+        await tester.ensureVisible(advanced);
+        await settle();
+        await tester.tap(advanced);
+        await settle();
+        await capture('reception-budget');
+        await tester.tap(advanced);
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pPayoutTabOnchain));
+        await settle();
+        await tester.tap(find.text(l10n.p2pPayoutTabOnchain));
+        await settle();
+        await capture('reception-onchain');
+        coordinator.minimumMiningFeeRate = 10;
+        await tester.enterText(
+          find.byType(TextField).first,
+          'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+        );
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pPayoutSubmit));
+        await settle();
+        await tester.tap(find.text(l10n.p2pPayoutSubmit));
+        await tester.pump();
+        await tester.pump();
+        await capture('reception-attente');
+        await waitFor(find.text(l10n.p2pPayoutRefusedFeeTooLow('10')));
+        await capture('reception-refus');
+        await tester.ensureVisible(find.text(l10n.p2pPayoutTabLightning));
+        await settle();
+        await tester.tap(find.text(l10n.p2pPayoutTabLightning));
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pPayoutSubmit));
+        await settle();
+        await tester.tap(find.text(l10n.p2pPayoutSubmit));
+        await waitFor(find.textContaining(l10n.p2pTradeTitleInfoGood));
+        await capture('reception-donnee');
 
         // The entry « Order » of the tab while the trade runs, which opens it again.
         await backToTab();
@@ -2196,6 +2268,27 @@ void main() {
         await nextRead();
         await waitFor(find.text(l10n.p2pOrderCancelled));
         await capture('echange-annule');
+        await backToTab();
+
+        // Take 4: a failed payout (15), while the coordinator retries, then once the invoice expired (#91).
+        coordinator
+          ..backToPublic()
+          ..swapAllowed = false;
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(15);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pPayoutNextAttempt));
+        await capture('reception-15-essai');
+        coordinator.payoutExpired = true;
+        await nextRead();
+        await waitFor(find.text(l10n.p2pPayoutInvoiceExpiredSubmitNew));
+        await capture('reception-15-nouvelle-facture');
+        // The trade ends (14), so that the order's next take is a new trade.
+        coordinator.moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await backToTab();
 
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
