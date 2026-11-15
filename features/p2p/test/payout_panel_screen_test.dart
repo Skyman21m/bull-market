@@ -405,6 +405,8 @@ void main() {
         '${invoice.text.substring(0, half)}\u200b${invoice.text.substring(half)}',
         '${invoice.text}\n${invoice.text}',
         'LIGHTNING:${invoice.text}',
+        'lightning:lightning:${invoice.text}',
+        'lightning:${invoice.text.toUpperCase()}',
         'lightning:${invoice.text}?amount=1',
         '\u2066${invoice.text}\u2069',
         invoice.text.toUpperCase(),
@@ -419,7 +421,8 @@ void main() {
           reason: '${pasted.length}',
         );
       }
-      clipboard = 'lightning:${invoice.text}';
+      // Spaces and a line break around it are trimmed, then the prefix taken off (second security review of #132, Q5).
+      clipboard = ' lightning:${invoice.text}\n';
       await tester.tap(find.byTooltip('Paste'));
       await tester.pump();
       await tester.pump();
@@ -457,6 +460,101 @@ void main() {
         expect(offered != null, given, reason: '${typed.length}');
         if (offered != null) expect(offered.text, typed);
       }
+    },
+  );
+
+  testWidgets(
+    'Q8: a status that changes a figure between the frame drawn and the tap: nothing sent, the new figure shown, then given (second security review of #132)',
+    (tester) async {
+      final dearer = await statuses.read(
+        await statuses.bondStep(),
+        orderJson(
+          6,
+          changes: {
+            'swap_allowed': true,
+            'swap_failure_reason': null,
+            'suggested_mining_fee_rate': 3.5,
+            'swap_fee_rate': 1.5,
+          },
+        ),
+        after: const Duration(minutes: 1),
+      );
+      final page = await showPage(tester, sixSwap);
+      await tester.tap(find.text('Onchain'));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(PayoutPanel.addressField),
+        mainnetAddress,
+      );
+      await tester.pump();
+      await tester.ensureVisible(submitButton());
+      await tester.pump();
+      expect(find.text('800 Sats (0.75%)'), findsOneWidget);
+      // The status changes the swap fee; the tap comes before the panel is drawn again.
+      page.cubit.show(dearer);
+      await tester.tap(submitButton(), warnIfMissed: false);
+      await tester.pump();
+      expect(page.sender.sent, isEmpty);
+      // `floor(106713 × 1.5 / 100)`.
+      expect(find.text('1,600 Sats (1.5%)'), findsOneWidget);
+      await submit(tester);
+      final sent = page.sender.sent.single as CheckedPayoutAddress;
+      expect(sent.swapFeePercent, 1.5);
+    },
+  );
+
+  testWidgets(
+    'Q4: the budget\'s unit switched after a check: the budget and « Submit » unchanged; an amount out of bounds refused',
+    (tester) async {
+      final page = await showPage(tester, six);
+      await tester.tap(find.byType(BullSwitch));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(PayoutPanel.invoiceField),
+        invoice.text,
+      );
+      await tester.pump();
+      expect(enabled(tester, submitButton()), isTrue);
+      final budget = page.cubit.state.form.budget;
+      await tester.tap(find.text('PPM'));
+      await tester.pump();
+      // `ceil(106606 / 10⁶ × 1000)`.
+      expect(fieldText(tester, PayoutPanel.budgetField), '107');
+      expect(page.cubit.state.form.budget, budget);
+      expect(enabled(tester, submitButton()), isTrue);
+      await tester.enterText(find.byKey(PayoutPanel.budgetField), '999999');
+      await tester.pump();
+      expect(fieldText(tester, PayoutPanel.budgetField), '107');
+      expect(page.cubit.state.form.budget, budget);
+    },
+  );
+
+  testWidgets(
+    'Q10: a suggestion above 500: shown as it is, « Invalid », nothing to submit',
+    (tester) async {
+      final high = await statuses.read(
+        await statuses.bondStep(),
+        orderJson(
+          6,
+          changes: {
+            'swap_allowed': true,
+            'swap_failure_reason': null,
+            'suggested_mining_fee_rate': 600,
+            'swap_fee_rate': 0.75,
+          },
+        ),
+      );
+      await showPage(tester, high);
+      await tester.tap(find.text('Onchain'));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(PayoutPanel.addressField),
+        mainnetAddress,
+      );
+      await tester.pump();
+      expect(fieldText(tester, PayoutPanel.feeField), '600');
+      expect(find.text('Invalid'), findsOneWidget);
+      expect(enabled(tester, submitButton()), isFalse);
     },
   );
 

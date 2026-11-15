@@ -137,7 +137,7 @@ void main() {
         );
         // Nothing pasted: nothing to give.
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         expect(sender.sent, isEmpty);
 
         cubit.editInvoice(invoice.text);
@@ -150,9 +150,9 @@ void main() {
         final listening = cubit.stream.listen((s) => phases.add(s.phase));
         final gate = Completer<void>();
         sender.gate = gate.future;
-        final first = cubit.submit(PayoutKind.lightning);
+        final first = cubit.submitShown(PayoutKind.lightning);
         // A second « Submit » while the first is given does nothing.
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         await pumpEventQueue();
         expect(cubit.state.phase, isA<PayoutSending>());
         gate.complete();
@@ -213,7 +213,7 @@ void main() {
           ..show(six)
           ..editInvoice(invoice.text);
         final shown = cubit.state.submittable(PayoutKind.lightning);
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         expect(identical(sender.sent.single, shown), isTrue);
         final again = cubit.state.submittable(PayoutKind.lightning);
         expect(again, isNotNull);
@@ -238,7 +238,7 @@ void main() {
         );
         await pumpEventQueue();
         expect(sender.sent, hasLength(1));
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         expect(sender.sent, hasLength(2));
         expect(identical(sender.sent.last, again), isTrue);
       },
@@ -252,7 +252,7 @@ void main() {
         final cubit = cubitOf(sender)
           ..show(six)
           ..editInvoice(invoice.text);
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         await pumpEventQueue();
         expect(sender.sent, hasLength(1));
         expect(
@@ -264,17 +264,27 @@ void main() {
           ),
         );
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         expect(sender.sent, hasLength(1));
         // A status read no later than what it told (an older read shown late) offers nothing.
         cubit.show(TradeSeen(six.status, order: six.order, stored: true));
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
-        // A read made after it, at 6 still: the payout is asked again, and offered.
+        // A read with no time of sending, answered after it: not after the outcome, the safe side.
+        final later = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(6),
+          after: const Duration(minutes: 2),
+        );
+        expect(later.requestedAt, isNull);
+        cubit.show(later);
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        // A read sent after it, at 6 still: the payout is asked again, and offered.
         cubit.show(
-          await statuses.read(
-            await statuses.bondStep(),
-            orderJson(6),
-            after: const Duration(minutes: 2),
+          TradeSeen(
+            later.status,
+            order: later.order,
+            stored: true,
+            requestedAt: later.status.seenAt,
           ),
         );
         expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
@@ -291,7 +301,7 @@ void main() {
         final cubit = cubitOf(sender)
           ..show(six)
           ..editInvoice(invoice.text);
-        final running = cubit.submit(PayoutKind.lightning);
+        final running = cubit.submitShown(PayoutKind.lightning);
         await pumpEventQueue();
         cubit.show(
           await statuses.read(
@@ -336,7 +346,7 @@ void main() {
             isA<PayoutNotAsked>(),
           ),
         );
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         expect(sender.sent, isEmpty);
       },
     );
@@ -413,7 +423,7 @@ void main() {
           ..editInvoice(invoice.text)
           ..editAddress(mainnetAddress)
           ..editFee('4');
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         // The values print their kind only.
         Zone.current.print(
           '${cubit.state.invoice} ${cubit.state.address} ${cubit.state.phase}',
@@ -1324,7 +1334,7 @@ void main() {
           ..show(sixSwap)
           ..selectKind(PayoutKind.onchain)
           ..editAddress(mainnetAddress);
-        final running = cubit.submit(PayoutKind.onchain);
+        final running = cubit.submitShown(PayoutKind.onchain);
         await pumpEventQueue();
         cubit
           ..show(later)
@@ -1386,7 +1396,7 @@ void main() {
           ..show(six)
           ..editInvoice(invoice.text);
         await expectLater(
-          cubit.submit(PayoutKind.lightning),
+          cubit.submitShown(PayoutKind.lightning),
           throwsA(isA<StateError>()),
         );
         expect(
@@ -1398,6 +1408,21 @@ void main() {
           ),
         );
         expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+        // A read sent after the fault, still asking: offered again, and said.
+        final later = await statuses.read(
+          await statuses.bondStep(),
+          orderJson(6),
+          after: const Duration(minutes: 2),
+        );
+        cubit.show(
+          TradeSeen(
+            later.status,
+            order: later.order,
+            stored: true,
+            requestedAt: clock().add(const Duration(seconds: 1)),
+          ),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNotNull);
       },
     );
 
@@ -1409,7 +1434,7 @@ void main() {
         final cubit = cubitOf(sender)
           ..show(six)
           ..editInvoice(invoice.text);
-        await cubit.submit(PayoutKind.lightning);
+        await cubit.submitShown(PayoutKind.lightning);
         final read = await statuses.read(
           await statuses.bondStep(),
           orderJson(6),
@@ -1583,6 +1608,41 @@ void main() {
         cubit
           ..show(six)
           ..editInvoice(wrongAmount.text);
+        expect(
+          cubit.state.invoice,
+          isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
+        );
+        expect(cubit.state.submittable(PayoutKind.lightning), isNull);
+      },
+    );
+
+    test(
+      'a check made with another budget than the form\'s is never offered',
+      () async {
+        // A checker that checks with no routing budget whatever the form says: « Submit » trusts the form's budget, not it.
+        final cubit = PayoutCubit(
+          record,
+          PayoutAsk.of,
+          (record, seen, destination) => switch (destination) {
+            PayoutInvoiceText(:final text) => check(
+              record,
+              seen,
+              PayoutInvoiceText(
+                text,
+                budget: RoutingBudgetPpm.of(0) ?? (throw StateError('0')),
+              ),
+            ),
+            _ => check(record, seen, destination),
+          },
+          _Sender().call,
+          _Holds().call,
+          now: clock,
+        );
+        addTearDown(cubit.close);
+        cubit
+          ..show(six)
+          ..editInvoice(wholeAmount.text);
+        expect(cubit.state.form.budget, RoutingBudgetPpm.referenceDefault);
         expect(
           cubit.state.invoice,
           isA<Ok<CheckedPayout, PayoutCheckRefusal>>(),
@@ -1845,4 +1905,10 @@ void _expectNothingCut(WidgetTester tester, String reason) {
       reason: '$reason: ${paragraph.text.toPlainText()}',
     );
   }
+}
+
+/// « Submit » as the panel's button gives it: the payout the tab offers now.
+extension on PayoutCubit {
+  Future<void> submitShown(PayoutKind kind) =>
+      submit(kind, shown: state.submittable(kind));
 }

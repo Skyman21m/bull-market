@@ -680,12 +680,14 @@ class _PayoutPanelState extends State<PayoutPanel> with WidgetsBindingObserver {
       PayoutEditing() => false,
     };
     final cancelling = widget.request.cancelling;
+    // The payout this frame shows: the tap gives it, and the cubit sends it only if it is still the one offered (no frame between what is drawn and what is sent).
+    final payout = state.submittable(kind);
     final button = TradeButton(
       label: l10n.p2pPayoutSubmit,
       busy: sending,
-      onPressed: cancelling || state.submittable(kind) == null
+      onPressed: cancelling || payout == null
           ? null
-          : () => unawaited(_cubit.submit(kind)),
+          : () => unawaited(_cubit.submit(kind, shown: payout)),
     );
     return cancelling
         ? Tooltip(message: l10n.p2pPayoutSubmitWhileCancelling, child: button)

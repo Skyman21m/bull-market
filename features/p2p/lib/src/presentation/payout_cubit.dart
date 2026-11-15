@@ -420,12 +420,13 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
   void _apply(TradeSeen seen) {
     final ask = _ask(record, seen);
     final told = _toldAt;
-    final sentAt = seen.requestedAt ?? seen.status.seenAt;
+    // A read with no time of sending (the cancel's, the bond payment's, a status restored from disk) is never after the outcome: the safe side (second security review of #132).
+    final sentAt = seen.requestedAt;
     var phase = state.phase;
     if (phase case PayoutEditing(
       notice: final PayoutNotice notice,
     ) when notice is PayoutNoticeGiven || notice is PayoutNoticeUnknown) {
-      if (told != null && sentAt.isAfter(told)) {
+      if (told != null && sentAt != null && sentAt.isAfter(told)) {
         _toldAt = null;
         phase = PayoutEditing(
           notice: ask is Ok ? PayoutNoticeAskedAgain(notice.kind) : null,
@@ -570,18 +571,18 @@ class PayoutCubit extends Cubit<PayoutPanelState> {
     _edit(state.form._with(address: text), PayoutKind.onchain);
   }
 
-  /// The mining fee typed as [text]: from now on the rate is the user's, whatever the coordinator suggests.
+  /// The mining fee typed as [text].
   void editFee(String text) {
     if (!_editable) return;
     _edit(state.form._with(fee: () => text), PayoutKind.onchain);
   }
 
-  /// Gives the payout of [kind]'s tab, the one shown: nothing while one is being given, or when the tab holds no checked payout that is exactly what the fields show.
+  /// Gives [shown], the payout « Submit » of [kind]'s tab was drawn with, when it is still the one the tab offers ([PayoutPanelState.submittable], the very same value): nothing otherwise (a status or a change came between the frame drawn and the tap, and the panel shows the new state), nor while one is being given.
   ///
   /// When [SubmitPayoutUsecase.execute] throws (a fault), the payout may have left: the panel says it does not know, never gives it again, and the fault goes on up.
-  Future<void> submit(PayoutKind kind) async {
-    final shown = state.submittable(kind);
+  Future<void> submit(PayoutKind kind, {required CheckedPayout? shown}) async {
     if (isClosed || shown == null) return;
+    if (!identical(shown, state.submittable(kind))) return;
     // What the coordinator asks now, the form shown under the outcome should a read ask nothing any more.
     final asked = state.shownAsk;
     emit(
