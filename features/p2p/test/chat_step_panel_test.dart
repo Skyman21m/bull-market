@@ -1559,6 +1559,20 @@ void main() {
             );
             await tester.pump();
             _expectNothingCut(tester, 'long');
+            // The reviewer's case (second pass of #145): the amount's groups are joined by non-breaking spaces, one word, never broken inside.
+            if (locale.languageCode == 'fr') {
+              expect(
+                find.byWidgetPredicate(
+                  (w) =>
+                      w is TradeButton &&
+                      RegExp(
+                        r"^Confirmer l'envoi de 1[  ]234[  ]567,1234 EUR$",
+                      ).hasMatch(w.label),
+                ),
+                findsOneWidget,
+              );
+            }
+            _expectNoWordBroken(tester, 'long');
             expect(
               find.byWidgetPredicate(
                 (w) =>
@@ -1614,7 +1628,8 @@ void _expectNoWordBroken(WidgetTester tester, String reason) {
     final style = paragraph.text.style;
     final room = paragraph.constraints.maxWidth;
     // A word wider than the paragraph's room can only break letter by letter.
-    for (final word in text.split(RegExp(r'[\s\u00a0\u202f]+'))) {
+    // Split as the line breaks: at breaking spaces only, a group joined by a non-breaking space (U+00A0, U+202F) being one word.
+    for (final word in text.split(RegExp(r'[ \t\n]+'))) {
       if (word.isEmpty) continue;
       final painter = TextPainter(
         text: TextSpan(text: word, style: style),
