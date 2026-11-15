@@ -497,10 +497,22 @@ final class CoordinatorClient {
     'The invoice provided has already expired': PayoutInvoiceRefusal.expired,
   };
 
-  /// `"The invoice provided is not for " + "{:,}".format(num_satoshis) + " Sats"` (`lnd.py:514-520`).
+  /// `"The invoice provided is not for " + "{:,}".format(num_satoshis) + " Sats"` (`lnd.py:514-520`): the amount the coordinator expects, kept as a number only ([_expectedSats]).
   static final RegExp _wrongAmountText = RegExp(
-    r'^The invoice provided is not for [0-9]{1,3}(?:,[0-9]{3}){0,5} Sats$',
+    r'^The invoice provided is not for ([0-9]{1,3}(?:,[0-9]{3}){0,5}) Sats$',
   );
+
+  /// All the bitcoin there will ever be, in sats: an expected amount above it is no amount.
+  static const _maxSats = 2100000000000000;
+
+  /// The amount of a [_wrongAmountText] message, within 0 to [_maxSats], else `null`.
+  static int? _expectedSats(String text) {
+    final digits = _wrongAmountText.firstMatch(text)?.group(1);
+    final sats = digits == null
+        ? null
+        : int.tryParse(digits.replaceAll(',', ''));
+    return sats != null && sats >= 0 && sats <= _maxSats ? sats : null;
+  }
 
   /// The texts of `validate_onchain_address` (`api/utils.py:106-121`), with no code: compared, never kept.
   static const _addressTexts = {
@@ -558,12 +570,14 @@ final class CoordinatorClient {
         textKey,
         maxLength: 500,
       )) {
-        final text? => PayoutInvoiceRefused(
-          _invoiceTexts[text] ??
-              (_wrongAmountText.hasMatch(text)
-                  ? PayoutInvoiceRefusal.wrongAmount
-                  : PayoutInvoiceRefusal.unspecified),
-        ),
+        final text? => switch (_invoiceTexts[text]) {
+          final reason? => PayoutInvoiceRefused(reason),
+          null when _wrongAmountText.hasMatch(text) => PayoutInvoiceRefused(
+            PayoutInvoiceRefusal.wrongAmount,
+            expectedSats: _expectedSats(text),
+          ),
+          null => const PayoutInvoiceRefused(PayoutInvoiceRefusal.unspecified),
+        },
         null => null,
       },
       (null, false) when status == 400 => switch (fields.optionalString(

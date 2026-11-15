@@ -184,6 +184,8 @@ final class TradeWatchSession {
   }
 
   Future<void> _readTrade(RobotRequests requests, OpenTrade trade) async {
+    // When the read leaves: what it shows is no older than that (`TradeSeen.requestedAt`).
+    final requestedAt = _reader.now();
     final read = await _reader.readOrder(
       requests,
       trade.record,
@@ -212,7 +214,12 @@ final class TradeWatchSession {
             return;
         }
     }
-    final step = await _reader.advance(trade, answer, at: at);
+    final step = await _reader.advance(
+      trade,
+      answer,
+      at: at,
+      requestedAt: requestedAt,
+    );
     if (_stopped) return;
     _failedReads = 0;
     _lastReadFailure = null;

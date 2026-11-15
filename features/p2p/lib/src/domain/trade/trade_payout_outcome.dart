@@ -170,3 +170,24 @@ final class PayoutOutcomeUnknown extends PayoutSubmission {
   @override
   String toString() => 'PayoutOutcomeUnknown(${seen.status})';
 }
+
+/// Where a payout being given stands, for the panel to say what it waits for (`SubmitPayoutUsecase.execute`'s `onProgress`): each step is told when it starts.
+enum PayoutProgress {
+  /// The trade opened from its records, before anything else: the panel's first step, which the use case does not tell.
+  opening,
+
+  /// Another action of the trade's order (a take, a cancel, another payout) is under way: the payout waits for it to end (`TradeTakeLocks`).
+  waitingForOrder,
+
+  /// The robot read back from its coordinator and its key unlocked away from the UI isolate: a few seconds the first time, nothing while the trade screen's hold keeps the key.
+  unlockingKey,
+
+  /// The order read again, just before the payout is signed.
+  readingOrder,
+
+  /// The payout sent to the coordinator, its answer awaited.
+  sending,
+
+  /// The order read again after the answer, to show what the coordinator recorded.
+  readingAfter,
+}

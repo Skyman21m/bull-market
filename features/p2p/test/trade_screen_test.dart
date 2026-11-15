@@ -22,6 +22,7 @@ import 'package:p2p/src/presentation/take_order_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/presentation/trade_panel.dart';
+import 'package:p2p/src/ui/trade/payout_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/trade/wallet_payment_section.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -74,12 +75,16 @@ final class _Cancels {
   final List<(TradeSeen, BondLossAcknowledged?)> asked = [];
   Result<CancelOutcome, CancelRefusal> Function(TradeSeen seen)? answer;
 
+  /// What the cancel waits for before it answers, when given.
+  Future<void>? gate;
+
   Future<Result<CancelOutcome, CancelRefusal>> call(
     TradeRecord record,
     TradeSeen seen, {
     BondLossAcknowledged? bondLoss,
   }) async {
     asked.add((seen, bondLoss));
+    if (gate case final gate?) await gate;
     return (answer ?? (seen) => Ok(CancelDone(record, seen)))(seen);
   }
 }
@@ -120,6 +125,8 @@ Future<TradeCubit> _show(
   Size size = const Size(390, 844),
   double textScale = 1,
   WalletPaymentBuilder? walletPayment,
+  PayoutPanelBuilder? payout,
+  bool moneyActionRunning = false,
   bool tickerEnabled = true,
   FakeTransport? transport,
   TakeOrderCubit Function(PublicOrder order)? takeCubitFor,
@@ -169,6 +176,8 @@ Future<TradeCubit> _show(
               now: now ?? () => tradeNow,
               coordinatorDetails: (_) => throw StateError('not opened'),
               walletPayment: walletPayment,
+              payout: payout,
+              moneyActionRunning: (_) => moneyActionRunning,
               takeCubitFor: takeCubitFor,
               onTaken: taken?.add,
             ),
@@ -722,25 +731,111 @@ void main() {
   });
 
   group('statuses 6 to 9', () {
-    testWidgets('6: payout info, the form a later version, the bond locked', (
+    testWidgets(
+      '6: payout info and the bond locked; the form only from the payout panel given (#91)',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('six'));
+        expect(find.text('Submit payout info (2/4)'), findsOneWidget);
+        expect(
+          find.text(
+            'Before letting you send 100 EUR, we want to make sure you are able to receive the BTC.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('later version'), findsNothing);
+        expect(find.byKey(const ValueKey('payout panel')), findsNothing);
+        expect(find.text('Your taker bond is locked'), findsOneWidget);
+        expect(find.byType(QrImageView), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'the payout panel under the prompt at 6 and 8, given the shown status, stored; none at 7 and 9',
+      (tester) async {
+        final requests = <PayoutPanelRequest>[];
+        Widget panel(BuildContext context, PayoutPanelRequest request) {
+          requests.add(request);
+          return const SizedBox(key: ValueKey('payout panel'), height: 10);
+        }
+
+        for (final (name, shown) in [
+          ('six', true),
+          ('eight', true),
+          ('seven', false),
+          ('nine', false),
+        ]) {
+          requests.clear();
+          await _show(
+            tester,
+            watch: _Watch(),
+            state: _watched(name),
+            payout: panel,
+          );
+          expect(
+            find.byKey(const ValueKey('payout panel')),
+            shown ? findsOneWidget : findsNothing,
+            reason: name,
+          );
+          if (shown) {
+            expect(identical(requests.last.seen, _seen[name]), isTrue);
+            expect(requests.last.seen.stored, isTrue);
+            expect(requests.last.record, _record);
+            expect(requests.last.cancelling, isFalse);
+          }
+        }
+      },
+    );
+
+    testWidgets(
+      'while a cancel runs, the payout panel is told so, and « Submit » goes off (review of #132)',
+      (tester) async {
+        final gate = Completer<void>();
+        final cancels = _Cancels()..gate = gate.future;
+        final requests = <PayoutPanelRequest>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          cancels: cancels,
+          state: _watched('six'),
+          payout: (context, request) {
+            requests.add(request);
+            return const SizedBox(height: 10);
+          },
+        );
+        expect(requests.last.cancelling, isFalse);
+        await _reveal(tester, find.text('Cancel'));
+        await tester.tap(find.text('Cancel'));
+        await settle(tester);
+        await tester.tap(find.text('Confirm Cancel'));
+        await tester.pump();
+        await tester.pump();
+        expect(cancels.asked, hasLength(1));
+        expect(requests.last.cancelling, isTrue);
+        gate.complete();
+        await settle(tester);
+      },
+    );
+
+    testWidgets('« Cancel » is off while a payout is being given (#91)', (
       tester,
     ) async {
-      await _show(tester, watch: _Watch(), state: _watched('six'));
-      expect(find.text('Submit payout info (2/4)'), findsOneWidget);
+      await _show(
+        tester,
+        watch: _Watch(),
+        state: _watched('six'),
+        moneyActionRunning: true,
+      );
+      final cancel = find.widgetWithText(TradeButton, 'Cancel');
+      await _reveal(tester, cancel);
+      expect(tester.widget<TradeButton>(cancel).onPressed, isNull);
+      // Why, for a screen reader and a long press.
       expect(
-        find.text(
-          'Before letting you send 100 EUR, we want to make sure you are able to receive the BTC.',
-        ),
+        find.byTooltip('Cancel is off while your payout info is being sent.'),
         findsOneWidget,
       );
-      expect(
-        find.text(
-          'Sending your payout info comes in a later version of Bull Market.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Your taker bond is locked'), findsOneWidget);
-      expect(find.byType(QrImageView), findsNothing);
+      await tester.tap(cancel, warnIfMissed: false);
+      await settle(tester);
+      expect(find.text('Cancel the order?'), findsNothing);
     });
 
     for (final (name, sent) in [
