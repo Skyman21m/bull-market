@@ -2254,11 +2254,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Les ordres ne peuvent pas être annulés si le fiat a été envoyé.';
 
   @override
-  String p2pEndStepSendingRequest(String coordinator) {
-    return 'Envoi de votre demande à $coordinator…';
-  }
-
-  @override
   String get p2pEndTradeMovedOn =>
       'L’échange a changé : votre demande n’a pas été envoyée.';
 
@@ -2289,14 +2284,6 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pEndRequestOffline(String coordinator) {
     return '$coordinator est hors ligne : votre demande n’a pas été envoyée.';
-  }
-
-  @override
-  String get p2pEndOpenOptions => 'ouvrir les options';
-
-  @override
-  String p2pEndWaitSeconds(String seconds) {
-    return 'Attendez $seconds secondes';
   }
 
   @override
@@ -2368,5 +2355,18 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pEndOrderId(String id) {
     return 'ID de l\'ordre : $id';
+  }
+
+  @override
+  String p2pEndStepSendingRequest(String coordinator) {
+    return 'Envoi de votre demande à $coordinator…';
+  }
+
+  @override
+  String get p2pEndOpenOptions => 'ouvrir les options';
+
+  @override
+  String p2pEndWaitSeconds(String seconds) {
+    return 'Attendez $seconds secondes';
   }
 }

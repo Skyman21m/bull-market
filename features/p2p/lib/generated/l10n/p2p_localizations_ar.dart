@@ -1399,7 +1399,7 @@ class P2pLocalizationsAr extends P2pLocalizations {
 
   @override
   String get p2pTradeCancelOnlyTogether =>
-      'Only a collaborative cancel is possible now, which comes in a later version.';
+      'At this step only a collaborative cancel exists, which RoboSats offers from the chat.';
 
   @override
   String get p2pTradeCancelNotPossible => 'You cannot cancel this order';
@@ -2225,11 +2225,6 @@ class P2pLocalizationsAr extends P2pLocalizations {
       'Orders can\'t be cancelled if fiat has been sent.';
 
   @override
-  String p2pEndStepSendingUndo(String coordinator) {
-    return 'Sending your request to $coordinator…';
-  }
-
-  @override
   String get p2pEndTradeMovedOn =>
       'The trade moved on: your request was not sent.';
 
@@ -2331,5 +2326,18 @@ class P2pLocalizationsAr extends P2pLocalizations {
   @override
   String p2pEndOrderId(String id) {
     return 'Order ID: $id';
+  }
+
+  @override
+  String p2pEndStepSendingRequest(String coordinator) {
+    return 'Sending your request to $coordinator…';
+  }
+
+  @override
+  String get p2pEndOpenOptions => 'open options';
+
+  @override
+  String p2pEndWaitSeconds(String seconds) {
+    return 'Wait $seconds seconds';
   }
 }
