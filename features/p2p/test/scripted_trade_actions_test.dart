@@ -99,6 +99,8 @@ void main() {
       await traded();
       coordinator.moveTo(9);
       final chat = await read();
+      // « fiat sent » an hour into the chat: its deadline is the chat's, not restarted (`api/logics.py:1693-1699`).
+      now = now.add(const Duration(hours: 1));
       final sent = accepted(
         await client.confirmFiat(identity: taker, lastRead: chat),
       );
@@ -135,9 +137,7 @@ void main() {
       final chat = await read();
       coordinator.moveTo(11);
       expect(
-        refusedCause(
-          await client.confirmFiat(identity: taker, lastRead: chat),
-        ),
+        refusedCause(await client.confirmFiat(identity: taker, lastRead: chat)),
         isA<TradeActionNotNow>().having(
           (f) => f.fromLastRead,
           'fromLastRead',
@@ -172,10 +172,7 @@ void main() {
       coordinator.moveTo(9);
       final chat = await read();
       coordinator.failNext(ScriptedRequest.confirm, ScriptedFault.answerLost);
-      final lost = await client.confirmFiat(
-        identity: taker,
-        lastRead: chat,
-      );
+      final lost = await client.confirmFiat(identity: taker, lastRead: chat);
       expect(lost, isA<Err<TradeActionOutcome, OrderActionFailure>>());
       expect(
         (lost as Err<TradeActionOutcome, OrderActionFailure>).failure,
