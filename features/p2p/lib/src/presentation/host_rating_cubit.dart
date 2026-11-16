@@ -34,7 +34,9 @@ final class HostRatingUnavailable extends HostRatingState {
   const HostRatingUnavailable();
 }
 
-/// « Rate your host » of one shown trade (#95), over `RateHostUsecase`: the token asked once, the first time a shown status offers the rating, as the reference asks it once when it shows its stars; then each tap publishes once, without waiting, and nothing of the outcome is said, as in the reference.
+/// « Rate your host » of one shown trade (#95), over `RateHostUsecase`: the token asked once, the first time a shown status offers the rating at 14, as the reference asks it once when it shows its stars; then each tap publishes once, without waiting, and nothing of the outcome is said, as in the reference.
+///
+/// The seller's stars show from 13 (#96), where the coordinator does not give the token yet (`ReviewView`, `api/views.py:1236-1269`: 14, 17 or 18 only): the token is asked only once the order shown is at 14, so a screen opened at 13 asks it when 14 arrives, once; the reference asks at 13 and drops the taps silently.
 class HostRatingCubit extends Cubit<HostRatingState> {
   final TradeRecord _record;
   final Future<Result<HostReviewToken, HostTokenNotGiven>> Function(
@@ -53,11 +55,13 @@ class HostRatingCubit extends Cubit<HostRatingState> {
   HostRatingCubit(this._record, this._fetchToken, this._publish)
     : super(const HostRatingIdle());
 
-  /// Asks for the token when [seen], the status shown, offers the rating and it was never asked in this screen.
+  /// Asks for the token when [seen], the status shown, offers the rating at 14, where the coordinator gives it, and it was never asked in this screen.
   ///
   /// An `Error` of the use case leaves the stars off ([HostRatingUnavailable]) and is passed on.
   Future<void> show(TradeSeen seen) async {
-    if (state is! HostRatingIdle || !ChatStepAction.rate.offeredAt(seen)) {
+    if (state is! HostRatingIdle ||
+        !ChatStepAction.rate.offeredAt(seen) ||
+        seen.order?.status != CoordinatorOrderStatus.successful) {
       return;
     }
     emit(const HostRatingAsking());

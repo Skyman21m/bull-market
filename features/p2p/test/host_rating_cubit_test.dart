@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/src/domain/trade/trade_host_rating.dart';
+import 'package:p2p/src/domain/trade/trade_watch.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/host_rating_cubit.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -43,6 +45,32 @@ void main() {
     await cubit.rate(fourteen, rating);
     expect(published, [4]);
   });
+
+  test(
+    'the seller at 13, then 14 in the same screen (#96): asked once, at 14, where the coordinator gives it',
+    () async {
+      final seller = await TradeScreenStatuses.make(role: TradeRole.seller);
+      final asked = <TradeSeen>[];
+      final cubit = HostRatingCubit(
+        TradeScreenStatuses.recordFor(TradeRole.seller),
+        (record, seen) async {
+          asked.add(seen);
+          return Ok(token);
+        },
+        (record, seen, token, rating) async {},
+      );
+      addTearDown(cubit.close);
+      final thirteen = await seller.sendingSats();
+      await cubit.show(thirteen);
+      expect(asked, isEmpty);
+      expect(cubit.state, isA<HostRatingIdle>());
+      final fourteen = await seller.succeeded();
+      await cubit.show(fourteen);
+      await cubit.show(fourteen);
+      expect(asked, [fourteen]);
+      expect(cubit.state, isA<HostRatingReady>());
+    },
+  );
 
   test(
     'a token not given leaves the rating unavailable, never asked again',
