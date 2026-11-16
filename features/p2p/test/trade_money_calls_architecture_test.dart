@@ -31,9 +31,11 @@ void main() {
     );
   });
 
-  test('the money members are these eight, written out', () {
+  test('the money members are these ten, written out', () {
     // A member removed from the list would stop being watched without a sign: the list is pinned here, not looped over itself.
     expect(_moneyMembers, {
+      'makeOrder',
+      'pauseOrder',
       'takeOrder',
       'cancelOrder',
       'submitPayoutInvoice',
@@ -90,8 +92,10 @@ void main() {
       }
     });
 
-    test('each of the eight members is watched', () {
+    test('each of the ten members is watched', () {
       for (final member in [
+        'makeOrder',
+        'pauseOrder',
         'takeOrder',
         'cancelOrder',
         'submitPayoutInvoice',
@@ -236,9 +240,12 @@ final class TradeCubit {
 
 /// The members of `CoordinatorClient` that lock, move or release funds, or that act on a trade whose bond or escrow is locked (design note § 3.1).
 ///
+/// `makeOrder` makes an order whose maker bond is then asked, and `pauseOrder` acts on an order whose maker bond is locked (phase 3 design note `docs/design/phase-3-making-an-order.md` § 3.1, #175).
 /// `fetchOrder`, `ratePlatform`, `fetchReviewToken`, `fetchChat` and `postChat` move no money and are not listed.
 /// A money member added to the package under another name, a reward claim (`POST /api/reward/`, a payout) included, must be added here in the pull request that adds it.
 const _moneyMembers = {
+  'makeOrder',
+  'pauseOrder',
   'takeOrder',
   'cancelOrder',
   'submitPayoutInvoice',

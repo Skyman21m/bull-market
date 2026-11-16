@@ -1,5 +1,12 @@
 import 'package:meta/meta.dart';
 
+/// [value] as JavaScript writes a number: an integral value without a fractional part, as the reference client sends `Number(...)`.
+@internal
+num jsonNumber(double value) =>
+    value == value.truncateToDouble() && value.abs() < 1e15
+    ? value.toInt()
+    : value;
+
 /// The side of an order, from its maker's point of view: `type` 0 and 1 in the API.
 ///
 /// A taker who wants to buy bitcoin takes a [sell] order.
