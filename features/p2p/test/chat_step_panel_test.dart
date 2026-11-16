@@ -2206,14 +2206,40 @@ void main() {
             null,
           ),
         );
+        final cubit = chatCubit(tester, exports: exports, reads: reads);
         await _show(
           tester,
           watch: _Watch(),
-          chatCubit: chatCubit(tester, exports: exports, reads: reads),
+          chatCubit: cubit,
           state: _watched('nine'),
         );
         expect(find.byType(ChatPanel), findsOneWidget);
         await openOptions(tester);
+        // The very cubit the panel shows, provided once above the screen as the route provides it: no second one, so no second watch and no second decryption.
+        expect(
+          identical(
+            tester
+                .widget<ChatExportButton>(find.byType(ChatExportButton))
+                .cubit,
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(
+          identical(
+            tester.widget<ChatAuditButton>(find.byType(ChatAuditButton)).cubit,
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(
+          identical(
+            tester.element(find.byType(ChatPanel)).read<ChatCubit>(),
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(cubit.polling, isTrue);
         final readsBefore = reads.length;
         expect(exports, isEmpty);
         await tester.tap(find.text('Export'));
@@ -2254,6 +2280,24 @@ void main() {
         expect(exports, [_record]);
       },
     );
+
+    // The reference has « Order options » only in its chat prompt, at 9 and 10 (`TradeBox/index.tsx:538-545`, `Prompts/Chat.tsx`): elsewhere neither « … » nor the chat's buttons.
+    for (final name in ['eleven', 'thirteen', 'fourteen', 'sixteen']) {
+      testWidgets(
+        'at $name, past the chat step: no « Order options », so neither button',
+        (tester) async {
+          await _show(
+            tester,
+            watch: _Watch(),
+            chatCubit: chatCubit(tester, exports: [], reads: []),
+            state: _watched(name),
+          );
+          expect(find.byIcon(Icons.more_horiz), findsNothing);
+          expect(find.byType(ChatAuditButton), findsNothing);
+          expect(find.byType(ChatExportButton), findsNothing);
+        },
+      );
+    }
 
     testWidgets(
       'without the chat (the feature holds no robot): « Order options » without them',
