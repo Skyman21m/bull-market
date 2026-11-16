@@ -799,6 +799,20 @@ void main() {
       expect(sent(app, ScriptedRequest.rate), 2);
     });
 
+    test('the read before no longer shows 14: nothing sent', () async {
+      final (app, record, finished) = await at(status: 14);
+      app.coordinator.moveTo(13);
+      expect(
+        await app.chat.rate(record, finished, stars(3)),
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepStatusMoved>(),
+        ),
+      );
+      expect(sent(app, ScriptedRequest.rate), 0);
+    });
+
     test('the read before fails: nothing sent', () async {
       final (app, record, finished) = await at(status: 14);
       app.coordinator.failNext(
