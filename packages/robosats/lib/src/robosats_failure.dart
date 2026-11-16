@@ -412,6 +412,16 @@ final class TradeActionNotNow extends TradeActionRefused {
   const TradeActionNotNow({required super.fromLastRead});
 }
 
+/// Only the seller may confirm the fiat received: the last read does not show this robot as the seller ([fromLastRead] is always true: the coordinator has no code for it, a buyer's `confirm` being its « fiat sent »).
+final class TradeActionNotSeller extends TradeActionRefused {
+  const TradeActionNotSeller({required super.fromLastRead});
+}
+
+/// The coordinator refused the seller's confirmation because the escrow is not larger than what the buyer is to be paid (error 1028, `api/logics.py:1706-1713`, commit ff1998c): it answers before it settles anything.
+final class EscrowBelowPayout extends TradeActionRefused {
+  const EscrowBelowPayout({required super.fromLastRead});
+}
+
 /// A dispute cannot be opened yet: the coordinator takes one only from 18 hours before the end of the chat's time, `expires_at` (error 1054, `api/logics.py:500-501`), or this package's clock is earlier than that for the last read ([fromLastRead]).
 final class DisputeTooEarly extends TradeActionRefused {
   const DisputeTooEarly({required super.fromLastRead});

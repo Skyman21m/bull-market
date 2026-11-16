@@ -362,6 +362,34 @@ final class CoordinatorClient {
     follows: fiatSentFollows,
   );
 
+  /// `POST /api/order/?order_id=` with the action `confirm`, as the seller: tells the coordinator of [lastRead] that the robot [identity] received the fiat (« Confirm {{amount}} {{currencyCode}} received »), which **settles the escrow and pays the buyer** (`Logics.confirm_fiat`, `api/logics.py:1686-1735`, commit ff1998c): 10 → 13, or 14 at once for an on-chain payout. It cannot be taken back.
+  ///
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:261-264`): `{"action":"confirm"}`, the very body of the buyer's « fiat sent »; the coordinator tells them apart by the robot's role.
+  ///
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), does not show this robot as the seller ([TradeActionNotSeller]), or is not at 10 with « fiat sent » recorded ([TradeActionNotNow]), each decided from [lastRead]: read the order again before telling the user.
+  /// The answer is [TradeActionAccepted] with the order as it then is, at 13, 14 or 15 (`fiatReceivedFollows`); a `200` at any other status, 10 included, is an outcome unknown (the reference answers `200` at 10 when it could not settle the escrow). The coordinator's refusals, 1027 and 1029 ([TradeActionNotNow]), 1028 ([EscrowBelowPayout]), 1047 ([OrderNotParticipant]) and the authentication's, come before it settles anything and are an [OrderActionRefused]; every other failure is an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiatReceived({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+  }) => _tradeAction(
+    identity: identity,
+    lastRead: lastRead,
+    refusedFromLastRead: switch (lastRead) {
+      CoordinatorOrder(isSeller: != true) => const TradeActionNotSeller(
+        fromLastRead: true,
+      ),
+      CoordinatorOrder(status: != CoordinatorOrderStatus.fiatSent) ||
+      CoordinatorOrder(
+        isFiatSent: != true,
+      ) => const TradeActionNotNow(fromLastRead: true),
+      _ => null,
+    },
+    body: const {'action': 'confirm'},
+    follows: fiatReceivedFollows,
+  );
+
   /// `POST /api/order/?order_id=` with the action `undo_confirm`, as the buyer: takes back the robot's « fiat sent » (« Payment failed? »), which moves the order from 10 back to 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`, commit ff1998c).
   ///
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:271-274`): `{"action":"undo_confirm"}`.
@@ -519,7 +547,7 @@ final class CoordinatorClient {
     };
   }
 
-  /// Why a coordinator answered an action of the trade with a status other than `200`: the codes of `Logics.confirm_fiat`, `undo_confirm_fiat_sent` and `open_dispute`, and 1047, then the rule of every action on an order ([_orderRefusal]).
+  /// Why a coordinator answered an action of the trade with a status other than `200`: the codes of `Logics.confirm_fiat` (the buyer's and the seller's), `undo_confirm_fiat_sent` and `open_dispute`, and 1047, then the rule of every action on an order ([_orderRefusal]).
   ///
   /// A code is read on a `4xx` answer only.
   static CoordinatorFailure _tradeActionRefusal(CoordinatorResponse answer) {
@@ -534,6 +562,7 @@ final class CoordinatorClient {
     return switch (code) {
       1047 => const OrderNotParticipant(),
       1030 => const TradeActionNotBuyer(fromLastRead: false),
+      1028 => const EscrowBelowPayout(fromLastRead: false),
       1013 ||
       1027 ||
       1029 ||
@@ -545,7 +574,7 @@ final class CoordinatorClient {
 
   /// Whether [failure] of an action of the trade comes before the coordinator changed anything.
   ///
-  /// Refused: every [TradeActionRefused] and [OrderNotParticipant] (each answered before `Logics` changes the order, `api/views.py:617-619`, `api/logics.py:497-501`, `:1703-1704`, `:1732-1733`, `:1742-1746`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Refused: every [TradeActionRefused] and [OrderNotParticipant] (each answered before `Logics` changes the order, `api/views.py:617-619`, `api/logics.py:497-501`, `:1703-1704`, `:1712-1713`, `:1732-1733`, `:1742-1746`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
   /// Everything else is an outcome unknown: a code of another action, a `5xx`, an error of the read that follows the action, a malformed answer, a lost connection.
   static OrderActionFailure _afterTradeAction(CoordinatorFailure failure) =>
       switch (failure) {
