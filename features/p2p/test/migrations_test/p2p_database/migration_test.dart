@@ -1458,7 +1458,9 @@ void main() {
           await expectLater(
             database.customStatement(pin, [drawn.hex, 1, bad[0], bad[1]]),
             throwsA(
-              predicate((error) => '$error'.contains('CHECK constraint failed')),
+              predicate(
+                (error) => '$error'.contains('CHECK constraint failed'),
+              ),
             ),
             reason: '$bad',
           );
@@ -1529,7 +1531,9 @@ void main() {
           await expectLater(
             database.customStatement(pin, [drawn.hex, 1, bad[0], bad[1]]),
             throwsA(
-              predicate((error) => '$error'.contains('CHECK constraint failed')),
+              predicate(
+                (error) => '$error'.contains('CHECK constraint failed'),
+              ),
             ),
             reason: '$bad',
           );
@@ -1565,7 +1569,8 @@ void main() {
           database.customStatement('DELETE FROM trade_chat_nostr_pins'),
           throwsA(
             predicate(
-              (error) => '$error'.contains('the Nostr keys of a trade are kept'),
+              (error) =>
+                  '$error'.contains('the Nostr keys of a trade are kept'),
             ),
           ),
         );

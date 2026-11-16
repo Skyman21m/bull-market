@@ -472,11 +472,16 @@ void main() {
           ),
         );
         expect(
-          await repository.keepNostr(record, ChatNostrPin(peer: 'a' * 64, own: 'b' * 64)),
+          await repository.keepNostr(
+            record,
+            ChatNostrPin(peer: 'a' * 64, own: 'b' * 64),
+          ),
           isA<Err<bool, P2pFailure>>(),
         );
         expect(
-          await app.database.customSelect('SELECT * FROM trade_chat_pins').get(),
+          await app.database
+              .customSelect('SELECT * FROM trade_chat_pins')
+              .get(),
           isEmpty,
         );
         expect(
@@ -760,11 +765,7 @@ void main() {
         for (final (keys, kept) in [(pin, true), (pin, true), (other, false)]) {
           expect(
             await repository.keepNostr(record, keys),
-            isA<Ok<bool, P2pFailure>>().having(
-              (ok) => ok.value,
-              'kept',
-              kept,
-            ),
+            isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'kept', kept),
           );
         }
         expect(

@@ -111,7 +111,10 @@ final class TradeChatPinRepositoryImpl implements TradeChatPinRepository {
       return const Err(P2pStorageFailure());
     }
     if (rows.isEmpty) return const Ok(null);
-    return switch ((rows.single.data['peer_key'], rows.single.data['own_key'])) {
+    return switch ((
+      rows.single.data['peer_key'],
+      rows.single.data['own_key'],
+    )) {
       (final String peer, final String own) => Ok(
         ChatNostrPin(peer: peer, own: own),
       ),
