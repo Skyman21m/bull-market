@@ -165,7 +165,7 @@ What the owner can do: at 9 and 10, read and write messages with the seller, see
 
 ### 2.4 Slice 4 — « fiat sent », the end, the rating
 
-What the owner can do: as buyer, « Confirm {{amount}} {{currencyCode}} sent » with the reference's dialog, « Payment failed? » (undo with its long text and countdown), « Collaborative Cancel » (ask / accept, alert when the peer asked), then « Attempting Lightning Payment », « Lightning Routing Failed » with a new invoice, « Trade finished! », « Rate your host » (`rate_platform`, stars 1-5) and the trade summary; the dispute statuses shown read-only (§ 2.7).
+What the owner can do: as buyer, « Confirm {{amount}} {{currencyCode}} sent » with the reference's dialog, « Payment failed? » (undo with its long text and countdown), « Collaborative Cancel » (ask / accept, alert when the peer asked), then « Attempting Lightning Payment », « Lightning Routing Failed » with a new invoice, « Trade finished! », « Rate your trade experience » (`rate_platform`, stars 1-5; « Rate your host » is a Nostr event, not `rate_platform`) and the trade summary; the dispute statuses shown read-only (§ 2.7).
 
 - **Domain.** `ConfirmFiatSentUsecase`, `UndoFiatSentUsecase`, `CollaborativeCancelUsecase` (same `cancel` action, `cancel_status` set), `RatePlatformUsecase`, the summary parse (`Logics.summarize_trade`, `views.py:500-504`), the payout retry (§ 2.2's form on 15 when `invoice_expired`). « Open Dispute » is shown with the reference's dialog and its 6-hour wait, and opens the dispute (`dispute` action) since the alternative at 24 h is an automatic one anyway; filing a statement is phase 4 (§ 2.7).
 - **Needs:** slices 1-3. **First complete trade as buyer.**

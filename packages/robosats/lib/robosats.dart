@@ -37,6 +37,7 @@ export 'src/coordinator/coordinator_order.dart'
         PayoutFailureReason,
         SwapRefusal,
         TakeOrderOutcome,
+        TradeSideSummary,
         TradeSummary;
 export 'src/coordinator/coordinator_robot.dart'
     show CoordinatorRobot, CoordinatorRobotAnswer, UnprovenCoordinatorRobot;

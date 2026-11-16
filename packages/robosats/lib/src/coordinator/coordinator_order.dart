@@ -215,14 +215,12 @@ final class OnchainPayout {
   String toString() => 'OnchainPayout($sentSatoshis sats, queued: $queued)';
 }
 
-/// What the coordinator says this robot's side of a finished trade was, and the contract's figures (`Logics.summarize_trade`, `api/logics.py:2047-2139`).
-///
-/// Read from this robot's own summary, `maker_summary` or `taker_summary`, and from `platform_summary`; the peer's summary is not read, nor the payment hash or preimage of the payout.
+/// One side of a finished trade as the coordinator sums it up, `maker_summary` or `taker_summary` (`Logics.summarize_trade`, `api/logics.py:2047-2139`, commit ff1998c).
 @immutable
-final class TradeSummary {
+final class TradeSideSummary {
   final bool isBuyer;
 
-  /// The fiat the buyer sent or the seller received, in the order's currency.
+  /// The fiat the buyer sent or the seller received, in the order's currency (`sent_fiat`, `received_fiat`).
   final double? fiatAmount;
 
   /// The sats the buyer received.
@@ -237,28 +235,26 @@ final class TradeSummary {
   /// The trade fee as a fraction of the trade, 0.00175 for a taker with the default fees.
   final double? tradeFeeFraction;
 
-  /// This robot's bond, in sats and in percent.
+  /// This side's bond, in sats and in percent.
   final Sats? bondSats;
   final double? bondPercent;
 
-  /// Whether the buyer was paid on chain, and its costs.
+  /// The payment hash of a buyer's Lightning payout, 64 lowercase hexadecimal characters.
+  final String? paymentHash;
+
+  /// Its preimage, 64 lowercase hexadecimal characters, or `processing` while the coordinator has none.
+  final String? preimage;
+
+  /// Whether the buyer was paid on chain, and its costs, sent to that buyer only.
   final bool isSwap;
   final Sats? receivedOnchainSats;
+  final String? address;
+  final String? txid;
   final Sats? miningFeeSats;
   final Sats? swapFeeSats;
   final double? swapFeePercent;
 
-  /// The price of the contract, in the order's currency per bitcoin.
-  final double? contractExchangeRate;
-
-  /// When the contract's amount in sats was fixed, and how long the trade took from then.
-  final DateTime? contractTimestamp;
-  final Duration? contractTotalTime;
-
-  /// The routing budget the buyer allowed for a Lightning payout, in sats with millisat decimals (a `DecimalField` of 3 places, `api/models/ln_payment.py:95`).
-  final double? routingBudgetSats;
-
-  const TradeSummary._({
+  const TradeSideSummary._({
     required this.isBuyer,
     required this.fiatAmount,
     required this.receivedSats,
@@ -267,19 +263,64 @@ final class TradeSummary {
     required this.tradeFeeFraction,
     required this.bondSats,
     required this.bondPercent,
+    required this.paymentHash,
+    required this.preimage,
     required this.isSwap,
     required this.receivedOnchainSats,
+    required this.address,
+    required this.txid,
     required this.miningFeeSats,
     required this.swapFeeSats,
     required this.swapFeePercent,
+  });
+
+  /// No hash, preimage, address or transaction.
+  @override
+  String toString() => 'TradeSideSummary(buyer: $isBuyer)';
+}
+
+/// What the coordinator says a finished trade was, the « Trade Summary » of the reference (`TradeBox/TradeSummary.tsx`): this robot's side, the peer's, and the contract's figures (`Logics.summarize_trade`, `api/logics.py:2047-2139`).
+@immutable
+final class TradeSummary {
+  /// This robot's side: `maker_summary` for the maker, `taker_summary` for the taker.
+  final TradeSideSummary own;
+
+  /// The other side, `null` when the coordinator sent none or an invalid one: it is display only, and dropped alone.
+  final TradeSideSummary? peer;
+
+  /// Whether this robot is the maker, so that [own] is `maker_summary`.
+  final bool isMaker;
+
+  /// The price of the contract, in the order's currency per bitcoin.
+  final double? contractExchangeRate;
+
+  /// When the contract's amount in sats was fixed, and how long the trade took from then.
+  final DateTime? contractTimestamp;
+  final Duration? contractTotalTime;
+
+  /// The routing budget the buyer allowed for a Lightning payout, in sats with millisat decimals (a `DecimalField` of 3 places, `api/models/ln_payment.py:95`); absent for an on-chain payout.
+  final double? routingBudgetSats;
+
+  /// What the coordinator kept of the escrow once the buyer was paid (`trade_revenue_sats`).
+  final int? tradeRevenueSats;
+
+  const TradeSummary._({
+    required this.own,
+    required this.peer,
+    required this.isMaker,
     required this.contractExchangeRate,
     required this.contractTimestamp,
     required this.contractTotalTime,
     required this.routingBudgetSats,
+    required this.tradeRevenueSats,
   });
 
+  /// The maker's side and the taker's, as the reference's toggle names them.
+  TradeSideSummary? get maker => isMaker ? own : peer;
+  TradeSideSummary? get taker => isMaker ? peer : own;
+
   @override
-  String toString() => 'TradeSummary(buyer: $isBuyer)';
+  String toString() => 'TradeSummary(buyer: ${own.isBuyer})';
 }
 
 /// An order as its coordinator describes it to one robot, the answer of `GET /api/order/` (`OrderView.get`, `api/views.py:226-528`, commit ff1998c), to its maker, its taker, the robot that holds a pre-take of it, or any robot while it is public.
@@ -1018,65 +1059,24 @@ final class CoordinatorOrder {
     );
   }
 
-  /// This robot's own summary and the contract's figures, or `null` when the coordinator sent no valid summary for this robot's side.
+  /// This robot's summary of the trade and the contract's figures, or `null` when the coordinator sent no valid summary for this robot's side or invalid contract figures; an invalid summary of the peer is dropped alone.
   static TradeSummary? _summaryOf(
     JsonFields fields, {
     required bool isMaker,
     required bool isTaker,
   }) {
-    final side = isTaker
-        ? 'taker_summary'
-        : isMaker
-        ? 'maker_summary'
-        : null;
-    if (side == null) return null;
-    final ownObject = fields.objectOrNull(side);
+    if (!isMaker && !isTaker) return null;
+    final ownObject = fields.objectOrNull(
+      isTaker ? 'taker_summary' : 'maker_summary',
+    );
+    final peerObject = fields.objectOrNull(
+      isTaker ? 'maker_summary' : 'taker_summary',
+    );
     final platformObject =
         fields.objectOrNull('platform_summary') ?? const <String, Object?>{};
     if (ownObject == null) return null;
-    final own = JsonFields(ownObject);
-    final isBuyer = own.requiredBool('is_buyer');
-    final sentFiat = own.optionalDouble('sent_fiat', min: 0, max: 1e10);
-    final receivedFiat = own.optionalDouble('received_fiat', min: 0, max: 1e10);
-    final receivedSats = own.optionalInt(
-      'received_sats',
-      min: 0,
-      max: _maxSats,
-    );
-    final sentSats = own.optionalInt('sent_sats', min: 0, max: _maxSats);
-    final tradeFeeSats = own.optionalInt(
-      'trade_fee_sats',
-      min: -_maxSats,
-      max: _maxSats,
-    );
-    final tradeFeeFraction = own.optionalDouble(
-      'trade_fee_percent',
-      min: 0,
-      max: 1,
-    );
-    final bondSats = own.optionalInt('bond_size_sats', min: 0, max: _maxSats);
-    final bondPercent = own.optionalDouble(
-      'bond_size_percent',
-      min: 0,
-      max: 100,
-    );
-    final isSwap = own.optionalBool('is_swap');
-    final receivedOnchainSats = own.optionalInt(
-      'received_onchain_sats',
-      min: 0,
-      max: _maxSats,
-    );
-    final miningFeeSats = own.optionalInt(
-      'mining_fee_sats',
-      min: 0,
-      max: _maxSats,
-    );
-    final swapFeeSats = own.optionalInt('swap_fee_sats', min: 0, max: _maxSats);
-    final swapFeePercent = own.optionalDouble(
-      'swap_fee_percent',
-      min: 0,
-      max: 100,
-    );
+    final own = _sideOf(ownObject);
+    if (own == null) return null;
     final platform = JsonFields(platformObject);
     final exchangeRate = platform.optionalDouble(
       'contract_exchange_rate',
@@ -1095,9 +1095,99 @@ final class CoordinatorOrder {
       min: 0,
       max: _maxSats.toDouble(),
     );
+    // The escrow less the payout: never negative for a coordinator that pays what it holds, read within the bounds of a trade either way.
+    final tradeRevenue = platform.optionalInt(
+      'trade_revenue_sats',
+      min: -_maxSats,
+      max: _maxSats,
+    );
     // The summary is for display only, and comes with what a buyer must act on (a failed payout's retries, an expired invoice): an invalid one is dropped, never the order with it.
-    if (own.rejected != null || platform.rejected != null) return null;
+    if (platform.rejected != null) return null;
     return TradeSummary._(
+      own: own,
+      peer: peerObject == null ? null : _sideOf(peerObject),
+      isMaker: !isTaker,
+      contractExchangeRate: exchangeRate,
+      contractTimestamp: contractTimestamp,
+      contractTotalTime: totalTime == null
+          ? null
+          : Duration(microseconds: (totalTime * 1e6).round()),
+      routingBudgetSats: routingBudget,
+      tradeRevenueSats: tradeRevenue,
+    );
+  }
+
+  static final RegExp _preimage = RegExp(r'^([0-9a-f]{64}|processing)$');
+
+  /// One side's summary, or `null` when any of its fields is invalid.
+  static TradeSideSummary? _sideOf(Map<String, Object?> object) {
+    final side = JsonFields(object);
+    final isBuyer = side.requiredBool('is_buyer');
+    final sentFiat = side.optionalDouble('sent_fiat', min: 0, max: 1e10);
+    final receivedFiat = side.optionalDouble(
+      'received_fiat',
+      min: 0,
+      max: 1e10,
+    );
+    final receivedSats = side.optionalInt(
+      'received_sats',
+      min: 0,
+      max: _maxSats,
+    );
+    final sentSats = side.optionalInt('sent_sats', min: 0, max: _maxSats);
+    final tradeFeeSats = side.optionalInt(
+      'trade_fee_sats',
+      min: -_maxSats,
+      max: _maxSats,
+    );
+    final tradeFeeFraction = side.optionalDouble(
+      'trade_fee_percent',
+      min: 0,
+      max: 1,
+    );
+    final bondSats = side.optionalInt('bond_size_sats', min: 0, max: _maxSats);
+    final bondPercent = side.optionalDouble(
+      'bond_size_percent',
+      min: 0,
+      max: 100,
+    );
+    final paymentHash = side.optionalString('payment_hash', maxLength: 64);
+    final preimage = side.optionalString('preimage', maxLength: 64);
+    final isSwap = side.optionalBool('is_swap');
+    final receivedOnchainSats = side.optionalInt(
+      'received_onchain_sats',
+      min: 0,
+      max: _maxSats,
+    );
+    final address = side.optionalString('address', maxLength: 100);
+    final txid = side.optionalString('txid', maxLength: 64);
+    final miningFeeSats = side.optionalInt(
+      'mining_fee_sats',
+      min: 0,
+      max: _maxSats,
+    );
+    final swapFeeSats = side.optionalInt(
+      'swap_fee_sats',
+      min: 0,
+      max: _maxSats,
+    );
+    final swapFeePercent = side.optionalDouble(
+      'swap_fee_percent',
+      min: 0,
+      max: 100,
+    );
+    if (paymentHash != null && !_txid.hasMatch(paymentHash)) {
+      side.rejected ??= 'payment_hash';
+    }
+    if (preimage != null && !_preimage.hasMatch(preimage)) {
+      side.rejected ??= 'preimage';
+    }
+    if (address != null && !_address.hasMatch(address)) {
+      side.rejected ??= 'address';
+    }
+    if (txid != null && !_txid.hasMatch(txid)) side.rejected ??= 'txid';
+    if (side.rejected != null) return null;
+    return TradeSideSummary._(
       isBuyer: isBuyer,
       fiatAmount: isBuyer ? sentFiat : receivedFiat,
       receivedSats: _sats(receivedSats),
@@ -1106,17 +1196,15 @@ final class CoordinatorOrder {
       tradeFeeFraction: tradeFeeFraction,
       bondSats: _sats(bondSats),
       bondPercent: bondPercent,
+      paymentHash: paymentHash,
+      preimage: preimage,
       isSwap: isSwap ?? false,
       receivedOnchainSats: _sats(receivedOnchainSats),
+      address: address,
+      txid: txid,
       miningFeeSats: _sats(miningFeeSats),
       swapFeeSats: _sats(swapFeeSats),
       swapFeePercent: swapFeePercent,
-      contractExchangeRate: exchangeRate,
-      contractTimestamp: contractTimestamp,
-      contractTotalTime: totalTime == null
-          ? null
-          : Duration(microseconds: (totalTime * 1e6).round()),
-      routingBudgetSats: routingBudget,
     );
   }
 

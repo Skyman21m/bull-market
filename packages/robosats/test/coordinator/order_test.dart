@@ -558,7 +558,7 @@ void main() {
               );
               final summarised =
                   [13, 14].contains(status) || (status == 15 && !buyer);
-              expect(order.summary?.isBuyer, summarised ? buyer : isNull);
+              expect(order.summary?.own.isBuyer, summarised ? buyer : isNull);
               expect(order.payoutRetries, status == 15 && buyer ? 2 : isNull);
             });
           }
@@ -685,29 +685,84 @@ void main() {
       expect(pending.peerAskedToCancel, isTrue);
     });
 
-    test('the summary of a successful buyer, its own side only', () async {
+    test('the summary of a successful buyer: its side, the peer\'s and the contract', () async {
       final order = await read(_answer(14));
       final summary = order.summary ?? fail('no summary');
-      expect(summary.isBuyer, isTrue);
-      expect(summary.fiatAmount, 150);
-      expect(summary.receivedSats, Sats.fromInt(164126));
-      expect(summary.sentSats, isNull);
-      expect(summary.tradeFeeSats, 288);
-      expect(summary.tradeFeeFraction, 0.00175);
-      expect(summary.bondSats, Sats.fromInt(4932));
-      expect(summary.bondPercent, 3);
-      expect(summary.isSwap, isFalse);
+      final own = summary.own;
+      expect(summary.isMaker, isFalse);
+      expect(summary.taker, same(own));
+      expect(own.isBuyer, isTrue);
+      expect(own.fiatAmount, 150);
+      expect(own.receivedSats, Sats.fromInt(164126));
+      expect(own.sentSats, isNull);
+      expect(own.tradeFeeSats, 288);
+      expect(own.tradeFeeFraction, 0.00175);
+      expect(own.bondSats, Sats.fromInt(4932));
+      expect(own.bondPercent, 3);
+      expect(own.paymentHash, 'f' * 64);
+      expect(own.preimage, 'processing');
+      expect(own.isSwap, isFalse);
+      final peer = summary.maker ?? fail('no peer');
+      expect(peer, same(summary.peer));
+      expect(peer.isBuyer, isFalse);
+      expect(peer.sentSats, Sats.fromInt(164702));
+      expect(peer.fiatAmount, 150);
+      expect(peer.tradeFeeFraction, 0.00025);
       expect(summary.contractExchangeRate, 91234.56);
       expect(summary.contractTimestamp, DateTime.utc(2026, 11, 13, 8, 3));
       expect(summary.contractTotalTime, const Duration(milliseconds: 1234500));
       expect(summary.routingBudgetSats, 0.0);
+      expect(summary.tradeRevenueSats, 576);
     });
 
     test('the summary of a successful seller', () async {
       final summary = (await read(_answer(14, buyer: false))).summary;
-      expect(summary?.isBuyer, isFalse);
-      expect(summary?.sentSats, Sats.fromInt(164702));
-      expect(summary?.fiatAmount, 150);
+      expect(summary?.own.isBuyer, isFalse);
+      expect(summary?.own.sentSats, Sats.fromInt(164702));
+      expect(summary?.own.fiatAmount, 150);
+      expect(summary?.peer?.isBuyer, isTrue);
+    });
+
+    test('the swap of a buyer paid on chain, in its own side', () async {
+      final answer = _answer(14);
+      (answer['taker_summary'] as Map<String, Object?>)
+        ..remove('payment_hash')
+        ..remove('preimage')
+        ..addAll({
+          'is_swap': true,
+          'received_onchain_sats': 160000,
+          'address': 'tb1qexampleaddress0',
+          'txid': 'a' * 64,
+          'mining_fee_sats': 1200,
+          'swap_fee_sats': 1640,
+          'swap_fee_percent': 1.0,
+        });
+      (answer['platform_summary'] as Map<String, Object?>)
+        ..remove('routing_budget_sats')
+        ..['routing_fee_sats'] = 0;
+      final summary = (await read(answer)).summary ?? fail('no summary');
+      expect(summary.own.isSwap, isTrue);
+      expect(summary.own.receivedOnchainSats, Sats.fromInt(160000));
+      expect(summary.own.address, 'tb1qexampleaddress0');
+      expect(summary.own.txid, 'a' * 64);
+      expect(summary.own.miningFeeSats, Sats.fromInt(1200));
+      expect(summary.own.swapFeeSats, Sats.fromInt(1640));
+      expect(summary.own.swapFeePercent, 1.0);
+      expect(summary.routingBudgetSats, isNull);
+    });
+
+    test('an invalid side of the peer is dropped alone', () async {
+      for (final change in <void Function(Map<String, Object?>)>[
+        (side) => side['sent_sats'] = -1,
+        (side) => side['is_buyer'] = 'no',
+        (side) => side['bond_size_percent'] = 101,
+      ]) {
+        final answer = _answer(14);
+        change(answer['maker_summary'] as Map<String, Object?>);
+        final summary = (await read(answer)).summary;
+        expect(summary?.own.isBuyer, isTrue);
+        expect(summary?.peer, isNull);
+      }
     });
 
     test('the on-chain payout of a successful buyer', () async {
@@ -1395,6 +1450,14 @@ void main() {
             ('taker_summary', (summary) => summary['sent_fiat'] = '150'),
             ('taker_summary', (summary) => summary['is_buyer'] = null),
             ('taker_summary', (summary) => summary['received_sats'] = -5),
+            ('taker_summary', (summary) => summary['payment_hash'] = 'F' * 64),
+            ('taker_summary', (summary) => summary['preimage'] = 'pending'),
+            ('taker_summary', (summary) => summary['txid'] = 'xyz'),
+            ('taker_summary', (summary) => summary['address'] = 'bc1 q'),
+            (
+              'platform_summary',
+              (summary) => summary['trade_revenue_sats'] = 1.5,
+            ),
             (
               'platform_summary',
               (summary) => summary['contract_timestamp'] = 'then',
@@ -1422,7 +1485,7 @@ void main() {
       final noPlatform = _answer(14);
       noPlatform['platform_summary'] = 'summary';
       final summary = (await read(noPlatform)).summary;
-      expect(summary?.isBuyer, isTrue);
+      expect(summary?.own.isBuyer, isTrue);
       expect(summary?.contractExchangeRate, isNull);
     });
 
@@ -1462,7 +1525,7 @@ void main() {
     test('the peer\'s summary is not read', () async {
       final answer = _answer(14);
       answer['maker_summary'] = 'not an object at all';
-      expect((await read(answer)).summary?.isBuyer, isTrue);
+      expect((await read(answer)).summary?.own.isBuyer, isTrue);
     });
 
     test('a hold invoice comes with its amount', () async {
