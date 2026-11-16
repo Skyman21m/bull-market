@@ -68,6 +68,14 @@ const fiatSentFollows = {
   CoordinatorOrderStatus.takerLostDispute,
 };
 
+/// After the seller's confirmation of the fiat received (`:1700-1730`): the escrow settled and the buyer being paid, 13, or paid at once on chain, 14, then a failed Lightning payment, 15; never 10, which the reference answers with a `200` when the escrow could not be settled or checked, or the on-chain payment not queued (the function falls through to `return True, None`): the outcome is then unknown, never done; nor 11 (a dispute before the confirmation makes the coordinator refuse it with 1029).
+@internal
+const fiatReceivedFollows = {
+  CoordinatorOrderStatus.sendingSats,
+  CoordinatorOrderStatus.successful,
+  CoordinatorOrderStatus.routingFailed,
+};
+
 /// After the undo of « fiat sent » (9, `:1737-1756`): a dispute and what follows it (11, 16, 17, 18); never 10 (only the buyer confirms), nor 13 to 15 (the seller confirms only after « fiat sent », 1027); a collaborative cancel (12) is error 1043 on the read, never a `200`.
 @internal
 const fiatSentUndoneFollows = {
@@ -87,7 +95,7 @@ const disputeFollows = {
   CoordinatorOrderStatus.takerLostDispute,
 };
 
-/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller), at a status the action can lead to when [follows] says which ([fiatSentFollows], [fiatSentUndoneFollows], [disputeFollows]; a rating changes no status).
+/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller), at a status the action can lead to when [follows] says which ([fiatSentFollows], [fiatReceivedFollows], [fiatSentUndoneFollows], [disputeFollows]; a rating changes no status).
 ///
 /// A status the action cannot lead to is malformed (`status`): only a coordinator that answers `200` without acting gives one, and the outcome is then unknown, never done.
 @internal

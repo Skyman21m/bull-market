@@ -418,10 +418,10 @@ final class _Figures {
     P2pFormats formats,
   ) {
     final order = read.order;
-    final estimate = TakerEstimate.ofTrade(
-      order,
-      takerFee: read.terms.takerFee,
-    );
+    // The taker of a buy order sells (#96): the reference counts its sats with the taker fee off and no routing budget, before the take as after it (`components/OrderDetails/index.tsx:237-258`), as the book's figure above does.
+    final estimate = order.type == OrderType.buy
+        ? TakerEstimate.ofTradeAsSeller(order, takerFee: read.terms.takerFee)
+        : TakerEstimate.ofTrade(order, takerFee: read.terms.takerFee);
     final (label, value) = _price(
       order.priceNow,
       read.terms.premium,

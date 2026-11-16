@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  test('the money members are these seven, written out', () {
+  test('the money members are these eight, written out', () {
     // A member removed from the list would stop being watched without a sign: the list is pinned here, not looped over itself.
     expect(_moneyMembers, {
       'takeOrder',
@@ -39,6 +39,7 @@ void main() {
       'submitPayoutInvoice',
       'submitPayoutAddress',
       'confirmFiat',
+      'releaseEscrow',
       'undoConfirmFiat',
       'openDispute',
     });
@@ -89,13 +90,14 @@ void main() {
       }
     });
 
-    test('each of the seven members is watched', () {
+    test('each of the eight members is watched', () {
       for (final member in [
         'takeOrder',
         'cancelOrder',
         'submitPayoutInvoice',
         'submitPayoutAddress',
         'confirmFiat',
+        'releaseEscrow',
         'undoConfirmFiat',
         'openDispute',
       ]) {
@@ -242,6 +244,7 @@ const _moneyMembers = {
   'submitPayoutInvoice',
   'submitPayoutAddress',
   'confirmFiat',
+  'releaseEscrow',
   'undoConfirmFiat',
   'openDispute',
 };

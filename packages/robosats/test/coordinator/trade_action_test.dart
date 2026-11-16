@@ -42,6 +42,13 @@ void main() {
     CoordinatorOrder? lastRead,
   ]) => client.confirmFiat(identity: _us, lastRead: lastRead ?? _readAt(9));
 
+  /// The seller's last read at 10, « fiat sent » recorded.
+  CoordinatorOrder sellerAt(int status) => _read(_answer(status, buyer: false));
+
+  Future<Result<TradeActionOutcome, OrderActionFailure>> received([
+    CoordinatorOrder? lastRead,
+  ]) => client.releaseEscrow(identity: _us, lastRead: lastRead ?? sellerAt(10));
+
   Future<Result<TradeActionOutcome, OrderActionFailure>> undo([
     CoordinatorOrder? lastRead,
   ]) =>
@@ -67,6 +74,7 @@ void main() {
         Future<Result<TradeActionOutcome, OrderActionFailure>> Function()
       >{
         'confirm': confirm,
+        'confirm_received': received,
         'undo_confirm': undo,
         'dispute': dispute,
         'rate_platform': rate,
@@ -97,6 +105,17 @@ void main() {
       expect(outcome.order.status, CoordinatorOrderStatus.fiatSent);
       expect(outcome.order.isFiatSent, isTrue);
     });
+
+    test(
+      '« received » is the reference\'s confirm, sent by the seller',
+      () async {
+        serveJson(_answer(13, buyer: false));
+        final outcome = expectOk(await received());
+        expectPost('{"action":"confirm"}');
+        expect(outcome.order.status, CoordinatorOrderStatus.sendingSats);
+        expect(outcome.order.isSeller, isTrue);
+      },
+    );
 
     test('its undo is the reference\'s undo_confirm', () async {
       serveJson(_answer(9));
@@ -189,6 +208,35 @@ void main() {
       );
     });
 
+    test(
+      '« received » only by the seller, only at 10 with « fiat sent »',
+      () async {
+        await refusedLocally(
+          received(_readAt(10)),
+          fromLastRead<TradeActionNotSeller>(),
+        );
+        for (final status in [6, 7, 8, 9, 11, 13, 14, 15]) {
+          await refusedLocally(
+            received(sellerAt(status)),
+            fromLastRead<TradeActionNotNow>(),
+          );
+        }
+        // At 10 without « fiat sent » recorded, which no honest coordinator answers: the coordinator would refuse with 1027.
+        await refusedLocally(
+          received(
+            _read(_answer(10, buyer: false, changes: {'is_fiat_sent': false})),
+          ),
+          fromLastRead<TradeActionNotNow>(),
+        );
+        await refusedLocally(
+          received(
+            _read(_answer(10, buyer: false, changes: {'is_fiat_sent': null})),
+          ),
+          fromLastRead<TradeActionNotNow>(),
+        );
+      },
+    );
+
     test('its undo only by the buyer, only at 10', () async {
       final seller = _read(_answer(10, buyer: false));
       await refusedLocally(undo(seller), fromLastRead<TradeActionNotBuyer>());
@@ -254,6 +302,7 @@ void main() {
         );
         for (final action in [
           confirm(theirs),
+          received(theirs),
           undo(theirs),
           dispute(theirs),
           rate(theirs),
@@ -274,7 +323,14 @@ void main() {
       ]) {
         for (final MapEntry(key: name, value: action) in actions.entries) {
           final status = name == 'undo_confirm' ? 9 : 10;
-          serveJson(_answer(status, role: role, buyer: buyer));
+          // The seller's confirmation is read against a seller's last read: the other role is the buyer's.
+          serveJson(
+            _answer(
+              status,
+              role: role,
+              buyer: name == 'confirm_received' ? !buyer : buyer,
+            ),
+          );
           final failure = expectErr(await action());
           expect(failure, isA<OrderActionOutcomeUnknown>(), reason: name);
           expect(
@@ -298,9 +354,11 @@ void main() {
           ('confirm', [6, 8, 9, 12, 5]),
           ('undo_confirm', [8, 10, 13, 14, 15]),
           ('dispute', [8, 9, 10, 13, 14]),
+          // A `200` at 10 is the reference's answer when it could not settle the escrow (`api/logics.py:1716-1735` falls through to `return True, None`): never done.
+          ('confirm_received', [9, 10, 11, 12, 16, 17, 18, 5]),
         ]) {
           for (final status in statuses) {
-            serveJson(_answer(status));
+            serveJson(_answer(status, buyer: name != 'confirm_received'));
             final failure = expectErr(await actions[name]!());
             expect(
               failure,
@@ -326,11 +384,12 @@ void main() {
         ('confirm', [10, 11, 13, 14, 15, 16, 17, 18]),
         ('undo_confirm', [9, 11, 16, 17, 18]),
         ('dispute', [11, 16, 17, 18]),
+        ('confirm_received', [13, 14, 15]),
         // A rating changes no status.
         ('rate_platform', [6, 9, 10, 11, 13, 14, 15, 17]),
       ]) {
         for (final status in statuses) {
-          serveJson(_answer(status));
+          serveJson(_answer(status, buyer: name != 'confirm_received'));
           expect(
             expectOk(await actions[name]!()).order.status.wire,
             status,
@@ -353,6 +412,7 @@ void main() {
     final codes = <int, Matcher>{
       1013: isA<TradeActionNotNow>(),
       1027: isA<TradeActionNotNow>(),
+      1028: isA<EscrowBelowPayout>(),
       1029: isA<TradeActionNotNow>(),
       1030: isA<TradeActionNotBuyer>(),
       1031: isA<TradeActionNotNow>(),

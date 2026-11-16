@@ -23,13 +23,12 @@ import 'widgets/trade_button.dart';
 
 /// « Take Order » at the foot of the order details, as the official client's take button (`components/OrderDetails/TakeButton.tsx` at commit ff1998c).
 ///
-/// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) ».
+/// - A range order first asks its amount: « Amount {{currencyCode}} », « Too low » / « Too high » under the field, « Take Order » disabled with « You must specify an amount first » until the amount fits, then « You will receive {{satoshis}} Sats (Approx) » for a sell order, whose taker buys, or « You will send {{satoshis}} Sats (Approx) » for a buy order, whose taker sells (`TakeButton.tsx:289-292`: the same figure, only the words change).
 /// - On press, the reference's order (#119, the owner's decision after the review of #133): « You do not have a Garage Key » without a key, else the take is prepared: the robot that will take the order reads it, while the button shows that it runs, a bar runs under it with a line that says each step (the order checked with the coordinator, the robot built, « Building your robot! » in the reference's words, the order read by the robot) and, after 30 s, that it still waits, as the robot panel of the Garage does.
 /// - Once the order is read, the order details show that read ([TakeOrderDetailsCard]: the maker's description and the fresh figures, which the reference shows in « Order description » with « Go back » / « Continue »), and « Take Order » gives way to « Continue » and « Go back »; « Continue » opens « Store your garage key », whose « Done » sends the take (its wait says its steps too) and whose « Go back », or a tap outside, abandons it as « Go back » does.
 /// - « The order changed. » says, from its start, that a confirmation found the order changed and reads it again: the read the user saw stays shown meanwhile, the rows that differ are marked when the new one arrives, and it waits for « Continue » and « Done » again, never confirmed by itself. When the take was sent, [onTaken] opens its trade, the read shown until then.
 /// - An order found gone is said so, and « Take Order » stays disabled.
 /// - A take that did not happen says why under the button, as the reference shows the coordinator's message there, in words of the app.
-/// - A buy order, whose taker sells, is a later version: the button is shown disabled with a short line (#96).
 ///
 /// Without [canTake] (the feature was set up without the vault's handle, so it holds no robot) a press shows « You do not have a Garage Key », as the reference does without a robot.
 class TakeOrderSection extends StatefulWidget {
@@ -127,12 +126,6 @@ class _TakeOrderSectionState extends State<TakeOrderSection> {
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
     final order = widget.order;
-    if (order.type == OrderType.buy) {
-      return _Column(
-        button: TradeButton(label: l10n.p2pTakeOrder, onPressed: null),
-        under: [_Line(l10n.p2pTakeSellingLater)],
-      );
-    }
     final state = widget.canTake
         ? context.watch<TakeOrderCubit>().state
         : const TakeIdle();
@@ -457,7 +450,9 @@ class _RangeTake extends StatelessWidget {
       under: [
         if (sats != null && sats != 0)
           _Line(
-            l10n.p2pTakeYouWillReceive(formats.sats(sats)),
+            order.type == OrderType.buy
+                ? l10n.p2pTakeYouWillSend(formats.sats(sats))
+                : l10n.p2pTakeYouWillReceive(formats.sats(sats)),
             color: colors.textMuted,
           ),
         ...under,

@@ -16,11 +16,17 @@ import 'trade_orders.dart';
 
 /// The statuses of the trade screens' tests, each made by the trade's state machine from an answer the reference coordinator gives (`trade_orders.dart`), never by hand: the panels are drawn from what the screen will really get.
 ///
-/// Every trade is the book's order 42 on temple, on mainnet, taken as buyer, read at [tradeNow].
+/// Every trade is the book's order 42 on temple, on mainnet, taken as buyer (or as seller with [role], #96), read at [tradeNow].
 final class TradeScreenStatuses {
   final TradeTerms terms;
   final Bolt11TestInvoice invoice;
   final Bolt11Reader reader;
+
+  /// The taker's side: a buyer takes the sell order, a seller the buy order (#96).
+  final TradeRole role;
+
+  /// The seller's escrow invoice at 6 and 7 (#96).
+  final Bolt11TestInvoice escrow;
 
   /// The bond the order says at 3 (`bond_satoshis`), the invoice's amount unless given.
   final int? bondSatoshis;
@@ -30,6 +36,8 @@ final class TradeScreenStatuses {
     this.invoice,
     this.reader,
     this.bondSatoshis,
+    this.role,
+    this.escrow,
   );
 
   /// The statuses of a take whose bond invoice is [invoice] (the book's bond on mainnet by default); with [decodable] `false`, the decoder cannot read it.
@@ -38,18 +46,26 @@ final class TradeScreenStatuses {
     bool decodable = true,
     int? bondSatoshis,
     double? amount,
+    TradeRole role = TradeRole.buyer,
+    Bolt11TestInvoice? escrow,
   }) async {
     final bond = invoice ?? bondInvoice();
+    final lock = escrow ?? escrowInvoice();
     return TradeScreenStatuses._(
-      await tradeTerms(amount: amount),
+      await tradeTerms(amount: amount, role: role),
       bond,
-      Bolt11Reader(Bolt11TestDecoder([if (decodable) bond])),
+      Bolt11Reader(Bolt11TestDecoder([if (decodable) bond, lock])),
       bondSatoshis,
+      role,
+      lock,
     );
   }
 
   /// The record of the trade, as the repository would give it.
-  static final TradeRecord record = TradeRecord(
+  static final TradeRecord record = recordFor(TradeRole.buyer);
+
+  /// The record of the trade taken as [role].
+  static TradeRecord recordFor(TradeRole role) => TradeRecord(
     robot: RobotSlot(RobosatsNetwork.mainnet, switch (GarageKeyFingerprint.of(
       tradeKey,
     )) {
@@ -62,7 +78,7 @@ final class TradeScreenStatuses {
       null => throw StateError('no temple'),
     },
     orderId: tradeOrderId,
-    role: TradeRole.buyer,
+    role: role,
     origin: TradeOrigin.takenHere,
     takenAt: tradeNow,
     confirmedAt: tradeNow,
@@ -72,7 +88,12 @@ final class TradeScreenStatuses {
   /// 3: the take's own answer, the pre-take with its bond.
   Future<TradeSeen> bondStep() async {
     final started = await takeStarted(
-      orderJson(3, bond: invoice, changes: {'bond_satoshis': ?bondSatoshis}),
+      orderJson(
+        3,
+        role: role,
+        bond: invoice,
+        changes: {'bond_satoshis': ?bondSatoshis},
+      ),
     );
     return TradeSeen(
       TradeStatus.afterTake(
@@ -135,35 +156,36 @@ final class TradeScreenStatuses {
 
   /// 6, the bond locked, as the buyer.
   Future<TradeSeen> waitingForBoth() async =>
-      read(await bondStep(), orderJson(6));
+      read(await bondStep(), orderJson(6, role: role, escrow: escrow));
 
   /// 7, the buyer's payout in.
   Future<TradeSeen> waitingForEscrow() async =>
-      read(await waitingForBoth(), orderJson(7));
+      read(await waitingForBoth(), orderJson(7, role: role, escrow: escrow));
 
   /// 8, the escrow locked, the buyer's payout awaited.
   Future<TradeSeen> waitingForPayout() async =>
-      read(await waitingForBoth(), orderJson(8));
+      read(await waitingForBoth(), orderJson(8, role: role));
 
   /// 9, the chat.
   Future<TradeSeen> chatting() async =>
-      read(await waitingForPayout(), orderJson(9));
+      read(await waitingForPayout(), orderJson(9, role: role));
 
   /// 10, « fiat sent » recorded (#95).
-  Future<TradeSeen> fiatSent() async => read(await chatting(), orderJson(10));
+  Future<TradeSeen> fiatSent() async =>
+      read(await chatting(), orderJson(10, role: role));
 
   /// 13, the buyer being paid (#95).
   Future<TradeSeen> sendingSats() async =>
-      read(await fiatSent(), orderJson(13));
+      read(await fiatSent(), orderJson(13, role: role));
 
   /// 14, the trade finished (#95).
   Future<TradeSeen> succeeded() async =>
-      read(await sendingSats(), orderJson(14));
+      read(await sendingSats(), orderJson(14, role: role));
 
   /// 5, expired for [reason] (the reference's `expiry_reason`).
   Future<TradeSeen> expired({int reason = 4}) async => read(
     await waitingForBoth(),
-    orderJson(5, changes: {'expiry_reason': reason}),
+    orderJson(5, role: role, changes: {'expiry_reason': reason}),
   );
 
   /// 1043 after the pre-take, which [bondLost] moves to after the bond's lock.
@@ -184,20 +206,22 @@ final class TradeScreenStatuses {
   );
 
   /// The order public again after the pre-take, this robot no longer its taker.
-  Future<TradeSeen> publicAgain() async => read(await bondStep(), orderJson(1));
+  Future<TradeSeen> publicAgain() async =>
+      read(await bondStep(), orderJson(1, role: role));
 
   /// The order public again after the bond locked: the bond is lost.
   Future<TradeSeen> bondForfeited() async =>
-      read(await waitingForBoth(), orderJson(1));
+      read(await waitingForBoth(), orderJson(1, role: role));
 
-  /// A watch state of [seen].
+  /// A watch state of [seen], of the trade of [of] (the buyer's [record] by default).
   static TradeWatchStatus watched(
     TradeSeen seen, {
     int failedReads = 0,
     P2pFailure? recordProblem,
     bool takePending = false,
+    TradeRecord? of,
   }) => TradeWatchStatus(
-    record,
+    of ?? record,
     seen,
     failedReads: failedReads,
     recordProblem: recordProblem,

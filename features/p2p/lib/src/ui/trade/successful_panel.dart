@@ -8,7 +8,6 @@ import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/trade_chat_step.dart';
-import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../presentation/p2p_formats.dart';
 import '../../presentation/trade_cubit.dart';
@@ -19,7 +18,7 @@ import '../widgets/robot_avatar.dart';
 import '../widgets/word_fit_text.dart';
 import 'chat_step_panel.dart';
 
-/// The buyer's « Trade finished! » at 14 (`TradeBox/Prompts/Successful.tsx`, commit ff1998c; #95), from the top: « Rate your trade experience » and its five stars, « Rate your host » ([hostRating]), « Your TXID » or « Sending coins » for an on-chain payout, then the « Trade Summary » ([TradeSummaryCard]).
+/// « Trade finished! » at 14, and the seller's at 13 and 15, once it confirmed (`TradeBox/Prompts/Successful.tsx`, commit ff1998c; #95, the seller's #96), from the top: « Rate your trade experience » and its five stars, « Rate your host » ([hostRating]), « Your TXID » or « Sending coins » for an on-chain payout, then the « Trade Summary » ([TradeSummaryCard]).
 ///
 /// A tap on a star sends `rate_platform` once through the trade's cubit, for the status shown (`TradeCubit.rate`), as the reference sends each change of its stars; while it runs the stars are off and a line says what it waits for; what it gave is said under them, nothing when it was recorded (the reference says nothing either).
 /// The two ratings are one under the other, where the reference puts them side by side, for the width of a phone.
@@ -27,7 +26,10 @@ import 'chat_step_panel.dart';
 /// The copies are made on the user's tap only; nothing here opens a link.
 class SuccessfulPanel extends StatefulWidget {
   final TradeSeen seen;
-  final Succeeded status;
+
+  /// What the status shown carries: the trade's summary (`Succeeded.summary`, `SendingSats.summary`, `RoutingFailed.summary`), and the buyer's on-chain payout at 14 (`Succeeded.onchainPayout`; the reference gives it to the buyer only, `api/views.py:511-526`).
+  final TradeSummary? summary;
+  final OnchainPayout? onchainPayout;
   final CoordinatorOrder? order;
 
   /// The long alias of the trade's coordinator.
@@ -46,7 +48,8 @@ class SuccessfulPanel extends StatefulWidget {
   const SuccessfulPanel({
     super.key,
     required this.seen,
-    required this.status,
+    required this.summary,
+    required this.onchainPayout,
     required this.order,
     required this.coordinator,
     required this.chatStep,
@@ -111,8 +114,8 @@ class _SuccessfulPanelState extends State<SuccessfulPanel> {
       ),
       _ => null,
     };
-    final payout = widget.status.onchainPayout;
-    final summary = widget.status.summary;
+    final payout = widget.onchainPayout;
+    final summary = widget.summary;
     final order = widget.order;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

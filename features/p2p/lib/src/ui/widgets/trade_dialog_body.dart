@@ -20,6 +20,9 @@ class TradeDialogBody extends StatelessWidget {
   final String? warning;
   final String? afterWarning;
 
+  /// The reference's list under [afterWarning], one line per item with its bullet (`Dialogs/ConfirmFiatReceived.tsx`: `Box component='ul'`); empty for a dialog without one.
+  final List<String> bullets;
+
   /// A line of the app under the reference's text, when there is something the user should know before going on (a payment of the bond on its way); `null` otherwise.
   final String? note;
 
@@ -52,6 +55,7 @@ class TradeDialogBody extends StatelessWidget {
     this.semanticWarning,
     this.warning,
     this.afterWarning,
+    this.bullets = const [],
     this.note,
   });
 
@@ -99,6 +103,28 @@ class TradeDialogBody extends StatelessWidget {
             WordFitText(
               after,
               style: styles.bodyMedium?.copyWith(color: colors.textMuted),
+            ),
+          ],
+          for (final bullet in bullets) ...[
+            const Gap(BullSpacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The list's bullet, which a screen reader does not read.
+                ExcludeSemantics(
+                  child: Text(
+                    '•',
+                    style: styles.bodyMedium?.copyWith(color: colors.textMuted),
+                  ),
+                ),
+                const Gap(BullSpacing.sm),
+                Expanded(
+                  child: WordFitText(
+                    bullet,
+                    style: styles.bodyMedium?.copyWith(color: colors.textMuted),
+                  ),
+                ),
+              ],
             ),
           ],
           if (note case final note?) ...[

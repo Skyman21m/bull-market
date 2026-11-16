@@ -288,11 +288,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       final TradeContract contract when _orderTab => _Line(
                         contract.title.toText(
                           context,
-                          bondSats: switch (contract.status) {
-                            WaitingForTakerBond(:final bond) => P2pFormats.of(
+                          amountSats: switch (contract.titleSats) {
+                            final sats? => P2pFormats.of(
                               context,
-                            ).sats(bond.orderAmount.value.toInt()),
-                            _ => '',
+                            ).sats(sats.value.toInt()),
+                            null => '',
                           },
                         ),
                         center: true,
@@ -311,6 +311,9 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         offersUndoFiatSent: context
                             .read<TradeCubit>()
                             .offersUndoFiatSent,
+                        offersFiatReceived: context
+                            .read<TradeCubit>()
+                            .offersFiatReceived,
                         offersDispute: context.read<TradeCubit>().offersDispute,
                         offersRating: context.read<TradeCubit>().offersRating,
                         clock: widget.now,
@@ -455,6 +458,7 @@ class _Contract extends StatelessWidget {
   final ChatStepState chatStep;
   final bool offersFiatSent;
   final bool offersUndoFiatSent;
+  final bool offersFiatReceived;
   final bool offersDispute;
   final bool offersRating;
 
@@ -478,6 +482,7 @@ class _Contract extends StatelessWidget {
     required this.chatStep,
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
+    required this.offersFiatReceived,
     required this.offersDispute,
     required this.offersRating,
     required this.clock,
@@ -500,11 +505,9 @@ class _Contract extends StatelessWidget {
     final status = contract.status;
     final title = contract.title.toText(
       context,
-      bondSats: switch (status) {
-        WaitingForTakerBond(:final bond) => formats.sats(
-          bond.orderAmount.value.toInt(),
-        ),
-        _ => '',
+      amountSats: switch (contract.titleSats) {
+        final sats? => formats.sats(sats.value.toInt()),
+        null => '',
       },
     );
     final step = contract.step;
@@ -553,10 +556,13 @@ class _Contract extends StatelessWidget {
                       ? title
                       : '$title ${l10n.p2pTradeStep('${step.$1}', '${step.$2}')}',
                   textAlign: TextAlign.center,
+                  // « Trade finished! » in the success colour, the seller's escrow to lock in the warning colour (`titleColor`, `TradeBox/index.tsx:483`, `:501`, `:611`).
                   style: text.headlineLarge?.copyWith(
-                    color: contract.title == TradeTitle.finished
-                        ? colors.success
-                        : colors.primary,
+                    color: switch (contract.title) {
+                      TradeTitle.finished => colors.success,
+                      TradeTitle.lockEscrow => colors.warning,
+                      _ => colors.primary,
+                    },
                   ),
                 ),
               ),
@@ -630,7 +636,34 @@ class _Contract extends StatelessWidget {
         walletPayment: walletPayment,
         now: now,
         swap: order?.currency.isBitcoin ?? false,
+        seller: record.role == TradeRole.seller,
         payable: contract.payable,
+      ),
+      // The seller's escrow (#96), from another wallet in this version.
+      (
+        TradePrompt.lockEscrow,
+        WaitingForBoth(:final escrow, :final currency, :final escrowDuration) ||
+            WaitingForEscrow(
+              :final escrow,
+              :final currency,
+              :final escrowDuration,
+            ),
+      ) =>
+        EscrowPanel(
+          invoice: escrow,
+          currency: currency,
+          escrowDuration: escrowDuration,
+          now: now,
+          payable: contract.payable,
+        ),
+      (TradePrompt.lockEscrow, _) => const SizedBox.shrink(),
+      (TradePrompt.payoutWait, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pTradePayoutWait),
+          const Gap(BullSpacing.sm),
+          _Line(l10n.p2pTradePayoutWaitHangOn),
+        ],
       ),
       (TradePrompt.payout, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -667,7 +700,7 @@ class _Contract extends StatelessWidget {
         center: true,
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
-      // The buyer's chat step (#95), with the chat panel (#93) in its place when the screen was given one.
+      // The chat step (#95; the seller's, #96), with the chat panel (#93) in its place when the screen was given one.
       (TradePrompt.chat, _) => ChatStepPanel(
         seen: contract.seen,
         order: order,
@@ -677,6 +710,7 @@ class _Contract extends StatelessWidget {
         otherActionRunning: moneyActionRunning,
         offersFiatSent: offersFiatSent,
         offersUndoFiatSent: offersUndoFiatSent,
+        offersFiatReceived: offersFiatReceived,
         offersCollaborativeCancel: true,
         offersDispute: offersDispute,
         now: clock,
@@ -717,17 +751,14 @@ class _Contract extends StatelessWidget {
         ],
       ),
       // « Trade finished! »: the rating, the on-chain payment's lines and the trade summary (#95).
-      (TradePrompt.finished, final Succeeded succeeded) => SuccessfulPanel(
-        key: const ValueKey('trade-successful-panel'),
-        seen: contract.seen,
-        status: succeeded,
-        order: order,
-        coordinator: coordinator,
-        chatStep: chatStep,
-        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
-        offersRating: offersRating,
-        hostRating: hostRating?.call(context, contract.seen, coordinator),
-      ),
+      (TradePrompt.finished, Succeeded(:final summary, :final onchainPayout)) =>
+        _successful(context, summary, onchainPayout),
+      // The seller's at 13 and 15 too, where the buyer is still being paid (`TradeBox/index.tsx:602-631`, `:663-690`, #96).
+      (
+        TradePrompt.finished,
+        SendingSats(:final summary) || RoutingFailed(:final summary),
+      ) =>
+        _successful(context, summary, null),
       (TradePrompt.finished, _) => const SizedBox.shrink(),
       (
         TradePrompt.disputeOpen ||
@@ -748,6 +779,24 @@ class _Contract extends StatelessWidget {
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
+
+  /// « Trade finished! »: the rating, the on-chain payment's lines and the trade summary (#95).
+  Widget _successful(
+    BuildContext context,
+    TradeSummary? summary,
+    OnchainPayout? onchainPayout,
+  ) => SuccessfulPanel(
+    key: const ValueKey('trade-successful-panel'),
+    seen: contract.seen,
+    summary: summary,
+    onchainPayout: onchainPayout,
+    order: contract.order,
+    coordinator: coordinator,
+    chatStep: chatStep,
+    otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+    offersRating: offersRating,
+    hostRating: hostRating?.call(context, contract.seen, coordinator),
+  );
 
   /// The payout panel of the status shown, when the screen was given one, keyed so that a change of the prompt around it keeps it.
   Widget? _payoutPanel(BuildContext context) => switch (payout?.call(

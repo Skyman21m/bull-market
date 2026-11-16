@@ -1499,13 +1499,18 @@
       }
     }
   },
+  "p2pTakeYouWillSend": "You will send {satoshis} Sats (Approx)",
+  "@p2pTakeYouWillSend": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Under the amount field of a range buy order, whose taker sells, once the amount is valid (`TakeButton.tsx:292`, #96). {satoshis} is a number of sats written in the conventions of the language.",
+    "placeholders": {
+      "satoshis": {
+        "type": "String"
+      }
+    }
+  },
   "p2pTakeSpecifyAmountFirst": "You must specify an amount first",
   "@p2pTakeSpecifyAmountFirst": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`). Tooltip of « Take Order », disabled while the amount of a range order is empty or out of range (`TakeButton.tsx:251`)."
-  },
-  "p2pTakeSellingLater": "Selling is coming in a later version.",
-  "@p2pTakeSellingLater": {
-    "description": "Not in the RoboSats texts: the project's own (design note § 2.1): under « Take Order », shown disabled on a buy order, whose taker would sell (#96)."
   },
   "p2pStoreKeyTitle": "Store your garage key",
   "@p2pStoreKeyTitle": {
@@ -1718,9 +1723,34 @@
       }
     }
   },
+  "p2pTradeTitleLockEscrow": "Lock {amountSats} Sats as collateral",
+  "@p2pTradeTitleLockEscrow": {
+    "description": "The official client's text: the seller's title at 6 and 7, in the warning colour (`TradeBox/index.tsx:479-485`, `:497-503`, #96), which neither `en.json` nor `fr.json` lists (design note § 1.7); the French is the design note's. {amountSats} is the escrow in sats (`escrow_satoshis`), written in the conventions of the language.",
+    "placeholders": {
+      "amountSats": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeEscrowTimeWarning": "You risk losing your bond if you do not lock the collateral. Total time available is {hours}h {minutes}m.",
+  "@p2pTradeEscrowTimeWarning": {
+    "description": "The official client's text (`Prompts/LockInvoice.tsx:48-56`, the escrow's `ExpirationWarning`, #96), which `fr.json` misses; the French is the project's. {hours} and {minutes} are the order's escrow time (`escrow_duration`) as the reference splits it.",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
   "p2pTradeYouAreBuying": "You are BUYING BTC",
   "@p2pTradeYouAreBuying": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx`), which `fr.json` misses; the French is the project's."
+  },
+  "p2pTradeYouAreSelling": "You are SELLING BTC",
+  "@p2pTradeYouAreSelling": {
+    "description": "The official client's text (`Prompts/LockInvoice.tsx:79`, the bond of a taker who sells, #96), which neither `en.json` nor `fr.json` lists; the French is the project's, as for « You are BUYING BTC »."
   },
   "p2pTradeCompatibleWallets": "See Compatible Wallets",
   "@p2pTradeCompatibleWallets": {
@@ -1734,9 +1764,22 @@
   "@p2pTradeHoldInvoiceBond": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), under the bond's QR code (`Prompts/LockInvoice.tsx`)."
   },
+  "p2pTradeHoldInvoiceEscrow": "This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the {currencyCode}.",
+  "@p2pTradeHoldInvoiceEscrow": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), under the escrow's QR code (`Prompts/LockInvoice.tsx:30-33`, #96). {currencyCode} is the trade's currency.",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
   "p2pTradeInvoiceQr": "QR code of the bond invoice",
   "@p2pTradeInvoiceQr": {
     "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the QR code of the bond invoice."
+  },
+  "p2pTradeEscrowQr": "QR code of the escrow invoice",
+  "@p2pTradeEscrowQr": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the QR code of the seller's escrow invoice (#96)."
   },
   "p2pTradeInvoiceExpires": "Expires at",
   "@p2pTradeInvoiceExpires": {
@@ -1798,6 +1841,10 @@
   "@p2pTradeTitleInfoGood": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 7 for the buyer (`TradeBox/index.tsx:494`), which `fr.json` misses; the French is the project's."
   },
+  "p2pTradeTitleCollateralLocked": "The trade collateral is locked!",
+  "@p2pTradeTitleCollateralLocked": {
+    "description": "The official client's text: the seller's title at 8 (`TradeBox/index.tsx:531`, #96), which neither `en.json` nor `fr.json` lists; the French is the project's."
+  },
   "p2pTradeEscrowWait": "We are waiting for the seller to lock the trade amount.",
   "@p2pTradeEscrowWait": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/EscrowWait.tsx`)."
@@ -1805,6 +1852,14 @@
   "p2pTradeEscrowWaitHangOn": "Just hang on for a moment. If the seller does not deposit, you will get your bond back automatically. In addition, you will receive a compensation (check the rewards in your profile).",
   "@p2pTradeEscrowWaitHangOn": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/EscrowWait.tsx`)."
+  },
+  "p2pTradePayoutWait": "We are waiting for the buyer to post a lightning invoice. Once he does, you will be able to directly communicate the payment details.",
+  "@p2pTradePayoutWait": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/PayoutWait.tsx`): the seller's wait at 8 (#96)."
+  },
+  "p2pTradePayoutWaitHangOn": "Just hang on for a moment. If the buyer does not cooperate, you will get back the trade collateral and your bond automatically. In addition, you will receive a compensation (check the rewards in your profile).",
+  "@p2pTradePayoutWaitHangOn": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/PayoutWait.tsx`): the seller's wait at 8 (#96)."
   },
   "p2pTradeExpiredNotTaken": "Expired not taken",
   "@p2pTradeExpiredNotTaken": {
@@ -1833,6 +1888,10 @@
   "p2pTradeTitleChat": "Chat with the seller",
   "@p2pTradeTitleChat": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c): title at 9 and 10 for the buyer (`TradeBox/index.tsx:542`), which `fr.json` misses; the French is the project's."
+  },
+  "p2pTradeTitleChatWithBuyer": "Chat with the buyer",
+  "@p2pTradeTitleChatWithBuyer": {
+    "description": "The official client's text: title at 9 and 10 for the seller (`TradeBox/index.tsx:542`, #96), which neither `en.json` nor `fr.json` lists; the French is the project's, as « Discutez avec le vendeur »."
   },
   "p2pTradeTitleDispute": "A dispute has been opened",
   "@p2pTradeTitleDispute": {
@@ -2153,6 +2212,10 @@
   "p2pTradeYouAreSwappingIn": "SWAPPING INTO Lightning",
   "@p2pTradeYouAreSwappingIn": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c) (`Prompts/LockInvoice.tsx:78`, without « You are »), in place of « You are BUYING BTC » for an order in bitcoin (a swap), which `fr.json` misses; the French is the project's, worded on the English."
+  },
+  "p2pTradeYouAreSwappingOut": "SWAPPING OUT of Lightning",
+  "@p2pTradeYouAreSwappingOut": {
+    "description": "The official client's text (`Prompts/LockInvoice.tsx:78`, without « You are »), in place of « You are SELLING BTC » for an order in bitcoin whose taker sells (#96), which neither `en.json` nor `fr.json` lists; the French is the project's, worded on « SWAP VERS Lightning »."
   },
   "p2pPayoutTabLightning": "Lightning",
   "@p2pPayoutTabLightning": {
@@ -2908,6 +2971,18 @@
   "@p2pEndChatBuyerHi": {
     "description": "The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:114-118`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: the buyer's prompt at 9 (#95)."
   },
+  "p2pEndChatSellerHi": "Say hi! Be helpful and concise. Let them know how to send you {amount} {currencyCode}.",
+  "@p2pEndChatSellerHi": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:119-127`): the seller's prompt at 9 (#96). {amount} and {currencyCode} are the trade's, as the button writes them.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
   "p2pEndBewareScams": "⚠️ Beware scams",
   "@p2pEndBewareScams": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:176-188`), shown as text: the reference's link to its documentation is not opened (#95)."
@@ -2915,6 +2990,18 @@
   "p2pEndConfirmSent": "Confirm {amount} {currencyCode} sent",
   "@p2pEndConfirmSent": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:215-225`): the buyer's button at 9 (#95). {amount} is the trade's amount, {currencyCode} its currency.",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndConfirmReceived": "Confirm {amount} {currencyCode} received",
+  "@p2pEndConfirmReceived": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:237-247`): the seller's button at 9 (disabled) and 10 (#96).",
     "placeholders": {
       "amount": {
         "type": "String"
@@ -2936,9 +3023,49 @@
       }
     }
   },
+  "p2pEndConfirmReceivedTitle": "✅ Confirm you received {amount} {currencyCode}?",
+  "@p2pEndConfirmReceivedTitle": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): the dialog's title (#96).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
   "p2pEndConfirmSentText": "Confirming will allow your peer to finalize the trade.",
   "@p2pEndConfirmSentText": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatSent.tsx`) (#95)."
+  },
+  "p2pEndConfirmReceivedText": "Confirming will finalize the trade.",
+  "@p2pEndConfirmReceivedText": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): the dialog's first text (#96)."
+  },
+  "p2pEndEscrowReleased": "The satoshis in the escrow will be released to the buyer:",
+  "@p2pEndEscrowReleased": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): above the dialog's list (#96)."
+  },
+  "p2pEndOnlyConfirmAfter": "Only confirm after {amount} {currencyCode} have arrived to your account.",
+  "@p2pEndOnlyConfirmAfter": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): the list's first item (#96).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndNotConfirmingRisk": "If you have received the payment and do not click confirm, you risk losing your bond.",
+  "@p2pEndNotConfirmingRisk": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): the list's second item (#96)."
+  },
+  "p2pEndFiatReversal": "Some fiat payment methods might reverse their transactions up to 80 days after they are completed. Please keep this token and your order data in case you need to use them as proof.",
+  "@p2pEndFiatReversal": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmFiatReceived.tsx`): the list's third item (#96). « This token » is the reference's word for the robot's token, which the app keeps in the Garage Key."
   },
   "p2pEndCannotBeUndone": "⚠️ This action cannot be undone!",
   "@p2pEndCannotBeUndone": {
@@ -2955,6 +3082,10 @@
   "p2pEndWaitSeller": "Wait for the seller to confirm they have received the payment.",
   "@p2pEndWaitSeller": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:141`): the buyer's prompt at 10 (#95)."
+  },
+  "p2pEndBuyerSentFiat": "The buyer has sent the fiat. Click 'Confirm Received' once you receive it.",
+  "@p2pEndBuyerSentFiat": {
+    "description": "The official client's text (`Prompts/Chat.tsx:146`): the seller's prompt at 10 (#96), which neither `en.json` nor `fr.json` lists; the French is the project's, worded as the buyer's prompt at 9 (« appuyez », the button's French)."
   },
   "p2pEndStepSending": "Sending your confirmation to {coordinator}…",
   "@p2pEndStepSending": {
@@ -2994,6 +3125,10 @@
   "p2pEndUnknown": "Bull Market does not know yet whether your confirmation went through. It keeps checking.",
   "@p2pEndUnknown": {
     "description": "Not in the RoboSats texts: the project's own: the answer was lost; the screen shows the order as read again, and nothing is sent again by itself (#95)."
+  },
+  "p2pEndUnknownReceived": "Bull Market does not know yet whether your confirmation went through. It keeps reading the order; if the trade does not finish, confirm again: a second confirmation cannot release more than the one escrow.",
+  "@p2pEndUnknownReceived": {
+    "description": "Not in the RoboSats texts: the project's own (#96): what the seller's « Confirm … received » gave when its answer was lost or unreadable, or came at 10 (the reference coordinator answers `200` at 10 when it could not settle the escrow, `api/logics.py:1716-1735`, and does not try again by itself). The reads go on; a second `confirm` cannot release more than the one escrow nor pay the buyer twice (`Logics.pay_buyer`)."
   },
   "p2pEndSendingSats": "RoboSats is trying to pay your lightning invoice. Remember that lightning nodes must be online in order to receive payments.",
   "@p2pEndSendingSats": {

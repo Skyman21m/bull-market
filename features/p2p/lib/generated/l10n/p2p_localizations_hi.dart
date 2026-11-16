@@ -1081,10 +1081,12 @@ class P2pLocalizationsHi extends P2pLocalizations {
   }
 
   @override
-  String get p2pTakeSpecifyAmountFirst => 'You must specify an amount first';
+  String p2pTakeYouWillSend(String satoshis) {
+    return 'You will send $satoshis Sats (Approx)';
+  }
 
   @override
-  String get p2pTakeSellingLater => 'Selling is coming in a later version.';
+  String get p2pTakeSpecifyAmountFirst => 'You must specify an amount first';
 
   @override
   String get p2pStoreKeyTitle => 'Store your garage key';
@@ -1226,7 +1228,20 @@ class P2pLocalizationsHi extends P2pLocalizations {
   }
 
   @override
+  String p2pTradeTitleLockEscrow(String amountSats) {
+    return 'Lock $amountSats Sats as collateral';
+  }
+
+  @override
+  String p2pTradeEscrowTimeWarning(String hours, String minutes) {
+    return 'You risk losing your bond if you do not lock the collateral. Total time available is ${hours}h ${minutes}m.';
+  }
+
+  @override
   String get p2pTradeYouAreBuying => 'You are BUYING BTC';
+
+  @override
+  String get p2pTradeYouAreSelling => 'You are SELLING BTC';
 
   @override
   String get p2pTradeCompatibleWallets => 'See Compatible Wallets';
@@ -1239,7 +1254,15 @@ class P2pLocalizationsHi extends P2pLocalizations {
       'This is a hold invoice, it will freeze in your wallet. It will be charged only if you cancel or lose a dispute.';
 
   @override
+  String p2pTradeHoldInvoiceEscrow(String currencyCode) {
+    return 'This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the $currencyCode.';
+  }
+
+  @override
   String get p2pTradeInvoiceQr => 'QR code of the bond invoice';
+
+  @override
+  String get p2pTradeEscrowQr => 'QR code of the escrow invoice';
 
   @override
   String get p2pTradeInvoiceExpires => 'Expires at';
@@ -1283,12 +1306,23 @@ class P2pLocalizationsHi extends P2pLocalizations {
   String get p2pTradeTitleInfoGood => 'Your info looks good!';
 
   @override
+  String get p2pTradeTitleCollateralLocked => 'The trade collateral is locked!';
+
+  @override
   String get p2pTradeEscrowWait =>
       'We are waiting for the seller to lock the trade amount.';
 
   @override
   String get p2pTradeEscrowWaitHangOn =>
       'Just hang on for a moment. If the seller does not deposit, you will get your bond back automatically. In addition, you will receive a compensation (check the rewards in your profile).';
+
+  @override
+  String get p2pTradePayoutWait =>
+      'We are waiting for the buyer to post a lightning invoice. Once he does, you will be able to directly communicate the payment details.';
+
+  @override
+  String get p2pTradePayoutWaitHangOn =>
+      'Just hang on for a moment. If the buyer does not cooperate, you will get back the trade collateral and your bond automatically. In addition, you will receive a compensation (check the rewards in your profile).';
 
   @override
   String get p2pTradeExpiredNotTaken => 'Expired not taken';
@@ -1311,6 +1345,9 @@ class P2pLocalizationsHi extends P2pLocalizations {
 
   @override
   String get p2pTradeTitleChat => 'Chat with the seller';
+
+  @override
+  String get p2pTradeTitleChatWithBuyer => 'Chat with the buyer';
 
   @override
   String get p2pTradeTitleDispute => 'A dispute has been opened';
@@ -1539,6 +1576,9 @@ class P2pLocalizationsHi extends P2pLocalizations {
 
   @override
   String get p2pTradeYouAreSwappingIn => 'SWAPPING INTO Lightning';
+
+  @override
+  String get p2pTradeYouAreSwappingOut => 'SWAPPING OUT of Lightning';
 
   @override
   String get p2pPayoutTabLightning => 'Lightning';
@@ -2078,6 +2118,11 @@ class P2pLocalizationsHi extends P2pLocalizations {
       'Say hi! Ask for payment details and click \'Confirm Sent\' as soon as the payment is sent.';
 
   @override
+  String p2pEndChatSellerHi(String amount, String currencyCode) {
+    return 'Say hi! Be helpful and concise. Let them know how to send you $amount $currencyCode.';
+  }
+
+  @override
   String get p2pEndBewareScams => '⚠️ Beware scams';
 
   @override
@@ -2086,13 +2131,43 @@ class P2pLocalizationsHi extends P2pLocalizations {
   }
 
   @override
+  String p2pEndConfirmReceived(String amount, String currencyCode) {
+    return 'Confirm $amount $currencyCode received';
+  }
+
+  @override
   String p2pEndConfirmSentTitle(String amount, String currencyCode) {
     return '✅ Confirm you sent $amount $currencyCode?';
   }
 
   @override
+  String p2pEndConfirmReceivedTitle(String amount, String currencyCode) {
+    return '✅ Confirm you received $amount $currencyCode?';
+  }
+
+  @override
   String get p2pEndConfirmSentText =>
       'Confirming will allow your peer to finalize the trade.';
+
+  @override
+  String get p2pEndConfirmReceivedText => 'Confirming will finalize the trade.';
+
+  @override
+  String get p2pEndEscrowReleased =>
+      'The satoshis in the escrow will be released to the buyer:';
+
+  @override
+  String p2pEndOnlyConfirmAfter(String amount, String currencyCode) {
+    return 'Only confirm after $amount $currencyCode have arrived to your account.';
+  }
+
+  @override
+  String get p2pEndNotConfirmingRisk =>
+      'If you have received the payment and do not click confirm, you risk losing your bond.';
+
+  @override
+  String get p2pEndFiatReversal =>
+      'Some fiat payment methods might reverse their transactions up to 80 days after they are completed. Please keep this token and your order data in case you need to use them as proof.';
 
   @override
   String get p2pEndCannotBeUndone => '⚠️ This action cannot be undone!';
@@ -2107,6 +2182,10 @@ class P2pLocalizationsHi extends P2pLocalizations {
   @override
   String get p2pEndWaitSeller =>
       'Wait for the seller to confirm they have received the payment.';
+
+  @override
+  String get p2pEndBuyerSentFiat =>
+      'The buyer has sent the fiat. Click \'Confirm Received\' once you receive it.';
 
   @override
   String p2pEndStepSending(String coordinator) {
@@ -2133,6 +2212,10 @@ class P2pLocalizationsHi extends P2pLocalizations {
   @override
   String get p2pEndUnknown =>
       'Bull Market does not know yet whether your confirmation went through. It keeps checking.';
+
+  @override
+  String get p2pEndUnknownReceived =>
+      'Bull Market does not know yet whether your confirmation went through. It keeps reading the order; if the trade does not finish, confirm again: a second confirmation cannot release more than the one escrow.';
 
   @override
   String get p2pEndSendingSats =>

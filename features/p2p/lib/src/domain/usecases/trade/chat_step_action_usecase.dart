@@ -14,7 +14,7 @@ import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]); and, once the trade is finished, « Rate your trade experience » ([rate], `Prompts/Successful.tsx`).
+/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), the seller's « Confirm {{amount}} {{currencyCode}} received » ([confirmFiatReceived], #96), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]); and, once the trade is finished, « Rate your trade experience » ([rate], `Prompts/Successful.tsx`).
 ///
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
@@ -54,6 +54,22 @@ final class ChatStepActionUsecase {
         _client.confirmFiat(identity: identity, lastRead: lastRead),
   );
 
+  /// The seller's « Confirm {{amount}} {{currencyCode}} received » for the trade of [record] at [seen] (10, « fiat sent » recorded), the status the screen showed when the user confirmed the reference's dialog (#96): the coordinator settles the escrow and pays the buyer, which cannot be taken back.
+  ///
+  /// The same steps and outcomes as [confirmFiatSent], each the more important here: nothing is sent unless the status seen and the order read again just before, under the order's lock, both show this robot as the seller at 10 with « fiat sent » recorded ([ChatStepAction.offeredAt]); a read that shows 13, 14 or 15 already is [ChatStepDone] with nothing sent ([ChatStepAction.doneAt]: a request of an earlier tap that landed); the action leaves once, never again by itself; an answer lost, unreadable, or a `200` at 10 (the reference's answer when it could not settle the escrow) is [ChatStepOutcomeUnknown] unless the read after shows 13 to 15.
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> confirmFiatReceived(
+    TradeRecord record,
+    TradeSeen seen, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) => _run(
+    ChatStepAction.confirmFiatReceived,
+    record,
+    seen,
+    onProgress: onProgress,
+    send: (identity, lastRead) =>
+        _client.releaseEscrow(identity: identity, lastRead: lastRead),
+  );
+
   /// The buyer's « Payment failed? » for the trade of [record] at [seen] (10), the status the screen showed when the user confirmed the reference's dialog: « fiat sent » taken back, 10 → 9; the same steps and outcomes as [confirmFiatSent].
   Future<Result<ChatStepOutcome, ChatStepRefusal>> undoFiatSent(
     TradeRecord record,
@@ -82,9 +98,9 @@ final class ChatStepActionUsecase {
         _client.openDispute(identity: identity, lastRead: lastRead),
   );
 
-  /// « Rate your trade experience » for the trade of [record] at [seen] (14, the buyer, from an order read), the status the screen showed when the user tapped the [rating]'s star.
+  /// « Rate your trade experience » for the trade of [record] at [seen] (14, or 13 and 15 for the seller, from an order read), the status the screen showed when the user tapped the [rating]'s star.
   ///
-  /// The same discipline as the chat step's actions, at an end: the trade opened and checked, one action of the order at a time, the order read again just before, and the rating sent once through the robot's places only if that read still shows 14 ([ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent), with that read as the last one; never sent again, whatever the outcome.
+  /// The same discipline as the chat step's actions, at an end: the trade opened and checked, one action of the order at a time, the order read again just before, and the rating sent once through the robot's places only if that read still shows a status where the reference shows its stars to this side ([ChatStepAction.ratedAt]: 14, and 13 and 15 for the seller; [ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent), with that read as the last one; never sent again, whatever the outcome.
   /// An end is never left and its trail and record are written already (`TradeReader.advance`): nothing is written, no read follows (the order never shows a rating), and every outcome carries [seen], the status shown. A lost answer is [ChatStepOutcomeUnknown], which no later read resolves.
   Future<Result<ChatStepOutcome, ChatStepRefusal>> rate(
     TradeRecord record,
@@ -139,7 +155,7 @@ final class ChatStepActionUsecase {
             case Ok(value: Ok(:final value)):
               lastRead = value;
           }
-          if (lastRead.status != CoordinatorOrderStatus.successful) {
+          if (!ChatStepAction.ratedAt(terms.role, lastRead.status)) {
             return Err(ChatStepStatusMoved(seen, record: trade.record));
           }
           tell?.call(ChatStepProgress.sending);

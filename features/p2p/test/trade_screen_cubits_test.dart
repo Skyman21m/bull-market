@@ -7,6 +7,7 @@ import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/active_trades_cubit.dart';
 import 'package:p2p/src/presentation/take_order_cubit.dart';
@@ -161,28 +162,28 @@ void main() {
       await cubit.close();
     });
 
-    test('a buy order is refused, nothing sent with a robot', () async {
-      final harness = await TradeHarness.start(orderType: 0);
-      final cubit = _takeCubit(harness, await harness.shownOrder());
+    test(
+      'a buy order is taken as a sell order is: its taker sells (#96)',
+      () async {
+        final harness = await TradeHarness.start(orderType: 0);
+        final cubit = _takeCubit(harness, await harness.shownOrder());
 
-      await cubit.take();
+        await cubit.take();
+        await harness.settle();
+        expect(cubit.state, isA<TakeReady>());
+        expect(_requestsOf(harness, ScriptedRequest.take), 0);
 
-      expect(
-        cubit.state,
-        isA<TakeIdle>().having(
-          (s) => s.problem,
-          'problem',
-          isA<TakeWasRefused>().having(
-            (p) => p.refusal,
-            'refusal',
-            isA<TakeOfBuyOrderRefused>(),
-          ),
-        ),
-      );
-      expect(_requestsOf(harness, ScriptedRequest.take), 0);
-      expect(_requestsOf(harness, ScriptedRequest.robot), 0);
-      await cubit.close();
-    });
+        await cubit.confirm();
+        await harness.settle();
+
+        final sent = cubit.state;
+        expect(sent, isA<TakeSent>());
+        expect((sent as TakeSent).record.role, TradeRole.seller);
+        expect(_requestsOf(harness, ScriptedRequest.take), 1);
+        expect(harness.coordinator.holdsPreTake(harness.robot(0)), isTrue);
+        await cubit.close();
+      },
+    );
 
     test(
       'a take the coordinator did not make says so, and can be prepared again with a fresh robot',

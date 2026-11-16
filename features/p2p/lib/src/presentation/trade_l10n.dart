@@ -28,7 +28,6 @@ extension TakeProblemL10n on TakeProblem {
         ),
         TakeOrderGone() => l10n.p2pOrderNotAvailable,
         TakeOrderChanged() => l10n.p2pTakeOrderChanged,
-        TakeOfBuyOrderRefused() => l10n.p2pTakeSellingLater,
         TakeAmountRefused() => l10n.p2pTakeAmountOutOfRange,
         TakeTermsRefused(reason: TakerFeeTooHigh()) => l10n.p2pTakeFeeTooHigh(
           coordinator,
@@ -158,11 +157,14 @@ extension TradeMessageKindL10n on TradeMessageKind {
 
 /// The title of a contract.
 extension TradeTitleL10n on TradeTitle {
-  /// [bondSats] is the bond of the title at 3, written already.
-  String toText(BuildContext context, {required String bondSats}) {
+  /// [amountSats] is the bond of the title at 3, or the seller's escrow at 6 and 7, written already (`TradeContract.titleSats`).
+  String toText(BuildContext context, {required String amountSats}) {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
-      TradeTitle.lockBond => l10n.p2pTradeTitleLockBond(bondSats),
+      TradeTitle.lockBond => l10n.p2pTradeTitleLockBond(amountSats),
+      TradeTitle.lockEscrow => l10n.p2pTradeTitleLockEscrow(amountSats),
+      TradeTitle.collateralLocked => l10n.p2pTradeTitleCollateralLocked,
+      TradeTitle.chatWithBuyer => l10n.p2pTradeTitleChatWithBuyer,
       TradeTitle.payout => l10n.p2pTradeTitlePayout,
       TradeTitle.infoGood => l10n.p2pTradeTitleInfoGood,
       TradeTitle.expired => l10n.p2pOrderExpired,
@@ -239,13 +241,14 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     required ChatStepAction action,
   }) {
     final l10n = P2pLocalizations.of(context);
-    // Each action in its own words: « confirmation » for « fiat sent », « request » for « Payment failed? », the dispute named for « Open Dispute », so that the user knows whether the dispute is open, not open, or not known yet (review of #156).
+    // Each action in its own words: « confirmation » for « fiat sent » and the seller's « received », « request » for « Payment failed? », the dispute named for « Open Dispute », so that the user knows whether the dispute is open, not open, or not known yet (review of #156).
     String said({
       required String confirmation,
       required String request,
       required String dispute,
     }) => switch (action) {
-      ChatStepAction.confirmFiatSent => confirmation,
+      ChatStepAction.confirmFiatSent ||
+      ChatStepAction.confirmFiatReceived => confirmation,
       // A rating is a request too: « Rate your trade experience » says nothing when it is done, as the reference.
       ChatStepAction.undoFiatSent || ChatStepAction.rate => request,
       ChatStepAction.dispute => dispute,
@@ -292,6 +295,10 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       // « Open Dispute » too early, by the coordinator's clock (1054) or the package's for the last read: the reference coordinator's own words.
       ChatStepWasNotDone(cause: DisputeTooEarly()) =>
         l10n.p2pEndDisputeTooEarly,
+      // The seller's confirmation refused because the escrow is not above the buyer's payout (1028): the order did not move, the coordinator refused it.
+      ChatStepWasNotDone(cause: EscrowBelowPayout()) => l10n.p2pEndRefusedBy(
+        coordinator,
+      ),
       // Decided here from the read, nothing sent: as the read before sending would have said.
       ChatStepWasNotDone(cause: TradeActionRefused(fromLastRead: true)) =>
         movedOn,
@@ -329,6 +336,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       // No read tells a rating: nothing keeps checking it.
       ChatStepWasUnknown() when action == ChatStepAction.rate =>
         l10n.p2pEndRateUnknown,
+      // The seller's release of the escrow: the reference coordinator answers `200` at 10 when it could not settle it and does not try again by itself, so the reads alone may never move on: say what to do (#96).
+      ChatStepWasUnknown() when action == ChatStepAction.confirmFiatReceived =>
+        l10n.p2pEndUnknownReceived,
       ChatStepWasUnknown() => said(
         confirmation: l10n.p2pEndUnknown,
         request: l10n.p2pEndUnknownRequest,
@@ -353,7 +363,8 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       ChatStepProgress.waitingForOrder => l10n.p2pPayoutStepWaitingForOrder,
       ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       ChatStepProgress.sending => switch (action) {
-        ChatStepAction.confirmFiatSent => l10n.p2pEndStepSending(coordinator),
+        ChatStepAction.confirmFiatSent || ChatStepAction.confirmFiatReceived =>
+          l10n.p2pEndStepSending(coordinator),
         ChatStepAction.undoFiatSent ||
         ChatStepAction.rate => l10n.p2pEndStepSendingRequest(coordinator),
         ChatStepAction.dispute => l10n.p2pEndStepSendingDispute(coordinator),

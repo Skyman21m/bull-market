@@ -73,7 +73,8 @@ enum ScriptedRequest {
 /// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`), `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`), and the buyer's payout, `update_invoice` and `update_address` (#90: the clear signature checked against the robot's kept public key and split as the coordinator splits it, then the rules of `Logics.update_invoice` and `update_address`, `api/views.py:617-649`, `api/logics.py:752-947`, with the node's and bitcoind's refusals as their bare texts).
 /// From the chat (#95) it also answers `cancel` as the collaborative cancel of 8 and 9 (the first ask raises the asker's flag, `asked_for_cancel` to the asker and `pending_cancel` to the other; the second side's ask returns everything, 12, with the short body of a cancel that ended the order, `api/logics.py:1130-1202`, `api/views.py:604-615`), `confirm` (the buyer's « fiat sent », 9 or 10 → 10, the step's deadline kept; the seller's confirmation only after it, `api/logics.py:1686-1735`), `undo_confirm` (the buyer only, 10 → 9, `:1737-1756`), `dispute` (9 or 10, not earlier than 18 hours before the step's deadline, `:485-533`) and `rate_platform` (the serializer's choices « 1 » to « 5 », kept in [platformRating]), each refused with the reference's code, and 1047 to a robot that is no participant (`api/views.py:617-619`).
 /// It answers `POST /api/review/` as `ReviewView` (`api/views.py:1236-1269`, #95): a body without a key an empty 400, a robot whose order is not at 14, 17 or 18 or whose Nostr key is not the one kept at its first contact 1052, otherwise the token, of the reference's form ([reviewToken]).
-/// Known gaps, the seller's side of #96, not played: at 8 the reference shows the collaborative cancel's flags to the seller only (`api/views.py:415`, `:431`), and the seller's `confirm` may be refused with 1028 or reach 15 (`api/logics.py:1706-1730`); here the seller's confirmation goes straight to 13.
+/// The seller's side (#96, an order of [orderType] 0): the escrow invoice is made once, at the first read of 6 or 7 by the taker who sells, and given with `escrow_satoshis` at 6 and 7 as `Logics.gen_escrow_hold_invoice` gives it (`api/views.py:398-411`, `api/logics.py:1484-1551`: the trade's frozen sats and the taker fee, `:733-749`, valid for the escrow's time); [lockEscrow] locks it (6 → 8, 7 → 9, `:1469-1481`); the seller's `confirm` is refused before « fiat sent » (1027) and with [escrowBelowPayout] (1028), answered `200` at 10 with nothing done when [confirmFallsThrough] (the reference's function falls through when it cannot settle the escrow, `:1716-1735`), and otherwise settles and pays the buyer: 13 (Lightning), or 14 when [onchainPayout].
+/// Known gaps: at 8 the reference shows the collaborative cancel's flags to the seller only (`api/views.py:415`, `:431`), not played.
 /// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price, [peerAsksToCancel] and [peerAcceptsCancel] for the maker's side of a collaborative cancel, [landLate] for requests held by [ScriptedFault.landsLate]), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
 final class ScriptedCoordinator implements CoordinatorTransport {
@@ -125,6 +126,26 @@ final class ScriptedCoordinator implements CoordinatorTransport {
   bool swapAllowed = false;
   double swapFeeRate = 0.75;
   double suggestedMiningFeeRate = 3.5;
+
+  /// The seller's escrow invoice, made at the first read of 6 or 7 by its taker; `null` before.
+  Bolt11TestInvoice? escrowInvoice;
+
+  /// A hostile or mistaken coordinator (#96): the escrow invoice is made for these sats rather than the trade's and its fee; [escrowSatoshisAnswered] is what `escrow_satoshis` then says (the invoice's own amount when `null`), and [tradeSatoshisAnswered] what `trade_satoshis` says (the trade's and its fee when `null`).
+  int? escrowInvoiceSats;
+  int? escrowSatoshisAnswered;
+  int? tradeSatoshisAnswered;
+
+  /// The seller's `confirm` is refused with 1028: the escrow is not above the buyer's payout (`api/logics.py:1706-1713`).
+  bool escrowBelowPayout = false;
+
+  /// The seller's `confirm` is answered `200` at 10 with nothing done, as the reference does when it cannot settle the escrow (`api/logics.py:1716-1735`).
+  bool confirmFallsThrough = false;
+
+  /// The buyer is paid on chain: the seller's confirmation completes the order at once, 14 (`Logics.pay_buyer`, `api/logics.py:1655-1667`).
+  bool onchainPayout = false;
+
+  /// How many times the seller's confirmation settled the escrow: never more than once by an honest coordinator.
+  int escrowSettlements = 0;
 
   /// A coordinator that sends its swap rates with `swap_allowed` false, which the reference never does (it sends them only with a swap offered, `api/logics.py:724-728`).
   bool swapRatesWithoutSwap = false;
@@ -292,6 +313,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     // A new trade: no ask of a collaborative cancel yet.
     _makerAskedCancel = false;
     _takerAskedCancel = false;
+    escrowInvoice = null;
     _lastSatoshis = _satsOf(_chosen[robot.sessionKey] ?? bookAmount);
     _status = 6;
     _deadline = clock().toUtc().add(const Duration(seconds: escrowSeconds));
@@ -313,6 +335,18 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       9 || 10 || 11 => const Duration(hours: 24),
       _ => const Duration(days: 100),
     });
+  }
+
+  /// The seller's escrow locks (`Logics.trade_escrow_received`, `api/logics.py:1469-1481`): 6 → 8, 7 → 9, whose chat's time starts.
+  void lockEscrow() {
+    switch (_status) {
+      case 6:
+        _status = 8;
+      case 7:
+        moveTo(9);
+      default:
+        throw StateError('no escrow awaited at $_status');
+    }
   }
 
   /// The order is public again, its taker gone (a taker's cancel or timeout after its bond locked, its bond settled).
@@ -689,8 +723,11 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           _status = 10;
         } else if (_status != 10) {
           return _json(400, {'error_code': 1027, 'bad_request': 'not sent'});
-        } else {
-          moveTo(13);
+        } else if (escrowBelowPayout) {
+          return _json(400, {'error_code': 1028, 'bad_request': 'escrow'});
+        } else if (!confirmFallsThrough) {
+          escrowSettlements++;
+          moveTo(onchainPayout ? 14 : 13);
         }
       case ScriptedRequest.undoConfirm:
         // `Logics.undo_confirm_fiat_sent` (`api/logics.py:1737-1756`).
@@ -1035,6 +1072,22 @@ final class ScriptedCoordinator implements CoordinatorTransport {
     return invoice;
   }
 
+  Bolt11TestInvoice _escrowInvoice(int sats) {
+    final invoice = Bolt11TestInvoice(
+      network: network == RobosatsNetwork.mainnet
+          ? Bolt11Network.mainnet
+          : Bolt11Network.testnet,
+      sats: sats,
+      seed: _invoiceSeed++,
+      createdAt: clock().toUtc(),
+      expiry: const Duration(seconds: escrowSeconds),
+      description:
+          "${coordinator.shortAlias} - Escrow amount for 'Order $orderId' - It WILL FREEZE IN YOUR WALLET. It will be released to the buyer once you confirm you received the fiat. It will automatically return if buyer does not confirm the payment.",
+    );
+    decoder.add(invoice);
+    return invoice;
+  }
+
   int get _last => _lastSatoshis ?? _satsNow;
 
   /// The sats of the order's largest amount now: its own for an order priced in sats.
@@ -1181,7 +1234,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
             'None';
     }
     if ([6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
-      data['trade_satoshis'] = buyer ? payout : escrow;
+      data['trade_satoshis'] = buyer ? payout : tradeSatoshisAnswered ?? escrow;
     }
     switch (status) {
       case 3:
@@ -1204,6 +1257,15 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           data['swap_failure_reason'] =
               'On-the-fly submarine swaps are disabled';
         }
+      case 6 || 7 when !buyer:
+        // Made once, at the first read that asks for it, and given again while it waits (`api/logics.py:1490-1496`).
+        final invoice = escrowInvoice ??= _escrowInvoice(
+          escrowInvoiceSats ?? escrow,
+        );
+        data
+          ..['escrow_invoice'] = invoice.text
+          ..['escrow_satoshis'] =
+              escrowSatoshisAnswered ?? invoice.facts.amount.value.toInt();
       case 15 when buyer:
         data
           ..['retries'] = 3

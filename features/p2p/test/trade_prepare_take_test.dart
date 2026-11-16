@@ -1,13 +1,14 @@
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_take.dart';
+import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/prepared_takes.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/testing.dart'
     show ScriptedCoordinator, ScriptedFault, ScriptedRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart'
-    show CoordinatorHttpMethod, RobotHashId, RobotIdentity;
+    show CoordinatorHttpMethod, OrderType, RobotHashId, RobotIdentity;
 import 'package:test/test.dart';
 
 import 'support/key_output.dart';
@@ -77,16 +78,24 @@ void main() {
       },
     );
 
-    test('a buy order is refused before anything is sent', () async {
-      final app = await TradeHarness.start(orderType: 0);
-      final shown = await app.shownOrder();
-      final before = app.coordinator.requests.length;
-      expect(
-        await app.take.prepare(shown, network: app.network),
-        refused<TakeOfBuyOrderRefused>(),
-      );
-      expect(app.coordinator.requests, hasLength(before));
-    });
+    test(
+      'a buy order is prepared as a sell order is: its taker sells (#96)',
+      () async {
+        final app = await TradeHarness.start(orderType: 0);
+        final shown = await app.shownOrder();
+        final prepared = switch (await app.take.prepare(
+          shown,
+          network: app.network,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('not prepared: $failure'),
+        };
+        expect(prepared.terms.role, TradeRole.seller);
+        expect(prepared.terms.type, OrderType.buy);
+        expect(app.coordinator.received.last, ScriptedRequest.order);
+        expect(await app.allTrades(), isEmpty);
+      },
+    );
 
     test(
       'a coordinator that answers the robot otherwise than the book is refused; nothing is taken, and a new preparation of the order reuses the robot',

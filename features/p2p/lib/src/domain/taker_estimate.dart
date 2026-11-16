@@ -42,7 +42,21 @@ final class TakerEstimate {
   static TakerEstimate? ofTrade(
     CoordinatorOrder order, {
     required double takerFee,
-  }) {
+  }) => _ofTrade(
+    order,
+    (sats) => sats * (1 + takerFee) * (1 - defaultRoutingBudget),
+  );
+
+  /// The estimate the official client's order details show to the taker who sells (#96), when the coordinator gives neither `trade_satoshis` nor `escrow_satoshis` yet (`components/OrderDetails/index.tsx:237-258`): the same rate as [ofTrade], and `computeSats` with the taker fee as a positive fee and no routing budget, the sats times one less the fee (`utils/computeSats.ts`), as the reference writes it although the seller locks the trade's sats and the fee.
+  static TakerEstimate? ofTradeAsSeller(
+    CoordinatorOrder order, {
+    required double takerFee,
+  }) => _ofTrade(order, (sats) => sats * (1 - takerFee));
+
+  static TakerEstimate? _ofTrade(
+    CoordinatorOrder order,
+    double Function(double sats) counted,
+  ) {
     final satoshisNow = order.satoshisNow?.value.toInt();
     if (satoshisNow == null || satoshisNow <= 0) return null;
     final single = switch ((order.takenAmount, order.amount)) {
@@ -53,12 +67,7 @@ final class TakerEstimate {
     final top = single ?? order.amount.max;
     final rate = top.value / (satoshisNow / 100000000);
     int sats(FiatAmount amount) =>
-        (amount.value /
-                rate *
-                100000000 *
-                (1 + takerFee) *
-                (1 - defaultRoutingBudget))
-            .round();
+        counted(amount.value / rate * 100000000).round();
     if (single != null) {
       final value = sats(single);
       return TakerEstimate._(value, value);
