@@ -114,6 +114,8 @@ class _ChatExportButtonState extends State<ChatExportButton> {
       _outcome = null;
     });
     final exported = await widget.cubit.exported();
+    // Left while the key was being had (« Order options » closed): nothing is copied, so that the robot's token never replaces, later and unseen, what the user copied meanwhile (security review of #161).
+    if (!mounted) return;
     final outcome = exported == null
         ? _ExportOutcome.keyFailed
         : await _copy(ChatCubit.exportText(exported))

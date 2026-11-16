@@ -1146,6 +1146,27 @@ void main() {
     );
 
     testWidgets(
+      '« Export » left while it waits for the key (« Order options » closed): nothing is copied, then or later; what the user copied meanwhile stays (security review of #161)',
+      (tester) async {
+        await showActions(tester);
+        final gate = Completer<void>();
+        lastChat.exportGate = gate;
+        await tester.tap(find.text('Export'));
+        await tester.pump();
+        expect(find.textContaining('Reading your robot from'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(find.byType(ChatExportButton), findsNothing);
+        await Clipboard.setData(const ClipboardData(text: 'test-iban'));
+        gate.complete();
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(copied, ['test-iban']);
+      },
+    );
+
+    testWidgets(
       '« Export » the clipboard refuses: said, no « Copied! » (review of #161)',
       (tester) async {
         await showActions(tester, locale: const Locale('fr'));

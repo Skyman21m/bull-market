@@ -1,6 +1,8 @@
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
 import 'package:test/test.dart';
@@ -129,6 +131,147 @@ void main() {
       );
     },
   );
+
+  // An end read by the action's fresh read: the watch never goes back to an open status (security review of #161).
+  for (final (end, status, ended) in [
+    ('the trade succeeded (14)', 14, isA<Succeeded>()),
+    ('the trade was cancelled (12)', 12, isA<Cancelled>()),
+  ]) {
+    test(
+      '« status moved » to an end, $end, then the watch\'s read fails: the end stays shown, the record closed, the notice stays, nothing offered, the watch ends',
+      () async {
+        final (app, cubit) = await shownAt(10);
+        final before = shown(cubit);
+        expect(ChatStepAction.dispute.offeredAt(before), isTrue);
+        app.coordinator.moveTo(status);
+        await cubit.startDispute(before);
+        expect(refusalOf(cubit), isA<ChatStepStatusMoved>());
+        expect(shown(cubit).status, ended);
+        await app.settle();
+        await app.elapse(const Duration(seconds: 1));
+        expect(failedReads(cubit), 1);
+        expect(shown(cubit).status, ended);
+        expect(cubit.state.record.closedAt, isNotNull);
+        for (final action in ChatStepAction.values) {
+          expect(action.offeredAt(shown(cubit)), isFalse, reason: '$action');
+        }
+        expect(refusalOf(cubit), isA<ChatStepStatusMoved>());
+        // At an end the watch has ended: it reads no more, not even when the screen asks.
+        final reads = app.coordinator.received
+            .where((kind) => kind == ScriptedRequest.order)
+            .length;
+        cubit.signal(TradeWatchSignal.readNow);
+        await app.settle();
+        await app.elapse(const Duration(minutes: 10));
+        expect(
+          app.coordinator.received
+              .where((kind) => kind == ScriptedRequest.order)
+              .length,
+          reads,
+        );
+        expect(
+          app.coordinator.received.contains(ScriptedRequest.dispute),
+          isFalse,
+        );
+      },
+    );
+  }
+
+  test(
+    'the dispute opened (11) by the action, then the watch\'s read fails: the watch goes on from 11, at its cadence, not 9\'s',
+    () async {
+      final (app, cubit) = await shownAt(9);
+      final before = shown(cubit);
+      expect(ChatStepAction.dispute.offeredAt(before), isTrue);
+      await cubit.startDispute(before);
+      expect(shown(cubit).status, isA<InDispute>());
+      await app.settle();
+      await app.elapse(const Duration(seconds: 1));
+      expect(failedReads(cubit), 1);
+      expect(shown(cubit).status, isA<InDispute>());
+      int orderReads() => app.coordinator.received
+          .where((kind) => kind == ScriptedRequest.order)
+          .length;
+      final reads = orderReads();
+      // 9 is read every 10 s (50 s off screen), 11 every 100 s (500 s off screen).
+      await app.elapse(const Duration(seconds: 90));
+      expect(orderReads(), reads);
+    },
+  );
+
+  group('the watch\'s rule, at the reader (security review of #161)', () {
+    /// The trade of [record] opened from what is stored.
+    Future<OpenTrade> opened(TradeHarness app, TradeRecord record) async =>
+        switch (await app.reader.open(record)) {
+          TradeOpened(:final trade) => trade,
+          final other => throw StateError('$other'),
+        };
+
+    /// A trade at 9 whose « Open Dispute » an action refused from its fresh read, which it stored.
+    Future<(TradeHarness, OpenTrade)> afterAnAction() async {
+      final (app, cubit) = await shownAt(9);
+      app.coordinator.moveDeadline(app.now.add(const Duration(hours: 30)));
+      await cubit.startDispute(shown(cubit));
+      expect(refusalOf(cubit), isA<ChatStepTooEarly>());
+      return (app, await opened(app, cubit.state.record));
+    }
+
+    test('the status stored for this trade is taken', () async {
+      final (app, trade) = await afterAnAction();
+      final newest = app.reader.newestStored(trade);
+      expect(identical(newest, trade), isFalse);
+      expect(newest.seen.stored, isTrue);
+    });
+
+    test(
+      'a status stored for another trade of the same robot is never taken',
+      () async {
+        final (app, trade) = await afterAnAction();
+        final record = trade.record;
+        final other = OpenTrade(
+          record: TradeRecord(
+            robot: record.robot,
+            coordinatorAlias: record.coordinatorAlias,
+            coordinatorOnion: record.coordinatorOnion,
+            orderId: record.orderId + 1,
+            role: record.role,
+            origin: record.origin,
+            takenAt: record.takenAt,
+            confirmedAt: record.confirmedAt,
+            closedAt: null,
+          ),
+          robot: trade.robot,
+          coordinator: trade.coordinator,
+          terms: trade.terms,
+          seen: trade.seen,
+        );
+        expect(identical(app.reader.newestStored(other), other), isTrue);
+      },
+    );
+
+    test(
+      'a trail on disk read after the status kept in memory: the watch keeps its own, as the return to the app checks (#152)',
+      () async {
+        final (app, trade) = await afterAnAction();
+        final newer = OpenTrade(
+          record: trade.record,
+          robot: trade.robot,
+          coordinator: trade.coordinator,
+          terms: trade.terms,
+          seen: TradeSeen(
+            TradeStatus.beforeFirstRead(
+              TradeTrail.recovered(
+                trade.terms,
+                app.now.add(const Duration(minutes: 1)),
+              ),
+            ),
+            order: null,
+          ),
+        );
+        expect(identical(app.reader.newestStored(newer), newer), isTrue);
+      },
+    );
+  });
 
   test(
     'a failed read with no action meanwhile: the watch keeps its own status, as before',

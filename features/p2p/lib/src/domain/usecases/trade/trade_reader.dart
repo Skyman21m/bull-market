@@ -159,24 +159,28 @@ final class TradeReader {
   TradeSeen? lastStored(TradeRecord record) {
     final last = _requestOrder.lastStored(record.robot);
     if (last == null) return null;
-    final known = last.record;
     // Kept per robot already ([TradeReadOrder.lastStored]): the rest of the trade must match.
-    final same =
-        known.coordinatorAlias == record.coordinatorAlias &&
-        known.coordinatorOnion == record.coordinatorOnion &&
-        known.orderId == record.orderId &&
-        known.role == record.role;
-    return same ? last.seen : null;
+    return _sameTrade(last.record, record) ? last.seen : null;
   }
 
-  /// [trade] at the newest status stored for its trade in this process ([TradeReadOrder.lastStored]) when another step stored one since [trade]'s own, such as an action's fresh read before sending or its read after (review of #161); [trade] itself otherwise.
+  /// Whether [known] is the record of the same trade as [record], whose robot it shares: its coordinator, order and role.
+  static bool _sameTrade(TradeRecord known, TradeRecord record) =>
+      known.coordinatorAlias == record.coordinatorAlias &&
+      known.coordinatorOnion == record.coordinatorOnion &&
+      known.orderId == record.orderId &&
+      known.role == record.role;
+
+  /// [trade] at the newest status stored for its trade in this process ([TradeReadOrder.newestStored], an end and a closed record included), with the furthest record known, when a step other than [trade]'s own stored one since, such as an action's fresh read before sending or its read after (reviews of #161); [trade] itself otherwise: when none was stored in this run, when a newer answer was claimed and its trail not stored, when the status stored is of another trade of the same robot, or when its trail was read before [trade]'s by this device's clock.
   ///
-  /// Every status stored in this process comes from an answer whose request left after the answer of the status stored before it arrived ([TradeReadOrder.claim]), so a status stored since [trade]'s is never older than it; and while an answer newer than it is not stored, none is given ([TradeReadOrder.lastStored]). What a watch whose read failed stands at: never a status older than one an action already read.
+  /// Every status stored in this process comes from an answer whose request left after the answer of the status stored before it arrived ([TradeReadOrder.claim]); the last condition, as the return to the app's check (#152), keeps [trade]'s own when its trail on disk is newer than the status kept in memory. What a watch whose read failed stands at: the status an action stored after the watch's last one, an end included, rather than the watch's older one, but in the cases above.
   OpenTrade newestStored(OpenTrade trade) {
-    final last = _requestOrder.lastStored(trade.record.robot);
+    final last = _requestOrder.newestStored(trade.record.robot);
     if (last == null ||
         identical(last.seen, trade.seen) ||
-        lastStored(trade.record) == null) {
+        !_sameTrade(last.record, trade.record) ||
+        last.seen.status.trail.readAt.isBefore(
+          trade.seen.status.trail.readAt,
+        )) {
       return trade;
     }
     return trade._with(
