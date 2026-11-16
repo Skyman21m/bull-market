@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_ui/testing.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -20,15 +21,20 @@ import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/p2p_router.dart';
+import 'package:p2p/src/domain/trade/trade_host_rating.dart';
 import 'package:p2p/src/presentation/chat_cubit.dart';
+import 'package:p2p/src/presentation/host_rating_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/ui/garage/garage_wizard.dart' show simplexGroupUrl;
 import 'package:p2p/src/ui/coordinator_details_dialog.dart'
     show CoordinatorContacts;
 import 'package:p2p/src/ui/trade/chat_actions.dart';
 import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
+import 'package:p2p/src/ui/trade/host_rating_section.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
+import 'package:p2p/src/ui/widgets/coordinator_link_sheet.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:primitives/primitives.dart' show Failure;
 import 'package:robosats/robosats.dart';
@@ -124,6 +130,31 @@ final class _Rates {
   }
 }
 
+/// « Rate your host » (#95) as its use case answers the tests: the token given when [token] completes, every publication kept.
+final class _HostRates {
+  final List<TradeSeen> asked = [];
+  final List<(TradeSeen, HostReviewToken, int)> published = [];
+  final Completer<Result<HostReviewToken, HostTokenNotGiven>> token =
+      Completer();
+
+  late final HostRatingCubit cubit = HostRatingCubit(
+    _record,
+    (record, seen) {
+      asked.add(seen);
+      return token.future;
+    },
+    (record, seen, token, rating) async =>
+        published.add((seen, token, rating.stars)),
+  );
+
+  static final HostReviewToken given =
+      HostReviewToken.parse('ab' * 64) ?? (throw StateError('token'));
+
+  void give() => token.complete(Ok(given));
+
+  void refuse() => token.complete(const Err(HostTokenNotGiven()));
+}
+
 late TradeScreenStatuses _statuses;
 
 /// The watch of the trade screen last shown by « Open Dispute »'s tests, to give it a new read.
@@ -170,6 +201,7 @@ Future<TradeCubit> _show(
   bool moneyActionRunning = false,
   ChatPanelBuilder? chat,
   ChatCubit? chatCubit,
+  HostRatingCubit? hostRating,
   TradeWatchState? state,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -220,6 +252,8 @@ Future<TradeCubit> _show(
             BlocProvider.value(value: page),
             // The chat's cubit above the screen, as the route provides it (`P2pRouter.tradePage`).
             if (chatCubit != null) BlocProvider.value(value: chatCubit),
+            // « Rate your host »'s cubit, as the route provides it.
+            if (hostRating != null) BlocProvider.value(value: hostRating),
           ],
           child: TradeScreen(
             now: now ?? () => tradeNow,
@@ -232,6 +266,10 @@ Future<TradeCubit> _show(
                     : (context, request) => ChatPanel(request: request)),
             // As the route gives them.
             chatOptions: chatCubit == null ? null : chatOptionsOf,
+            hostRating: hostRating == null
+                ? null
+                : (context, seen, coordinator) =>
+                      HostRatingSection(seen: seen, coordinator: coordinator),
           ),
         ),
       ),
@@ -1070,6 +1108,370 @@ void main() {
         await tester.pump();
         expect(find.text(said), findsOneWidget);
         expect(find.textContaining('confirmation'), findsNothing);
+      }
+    });
+
+    group('« Rate your host » (#95)', () {
+      Finder hostStar(int n) => find.byKey(ValueKey('trade-host-star-$n'));
+      IconButton hostButton(WidgetTester tester, int n) =>
+          tester.widget<IconButton>(hostStar(n));
+
+      testWidgets(
+        'the token asked once; the stars off until it comes; each tap publishes once; the thanks of the reference',
+        (tester) async {
+          final host = _HostRates();
+          addTearDown(host.cubit.close);
+          final watch = _Watch();
+          final seen = _seenOf('fourteenSummary');
+          await _show(
+            tester,
+            watch: watch,
+            rate: _Rates(),
+            hostRating: host.cubit,
+            state: TradeScreenStatuses.watched(seen),
+          );
+          expect(find.text('Rate your host'), findsOneWidget);
+          expect(find.text('Temple of Sats'), findsWidgets);
+          expect(host.asked, [seen]);
+          expect(
+            find.text(
+              'Asking Temple of Sats for permission to publish your rating…',
+            ),
+            findsOneWidget,
+          );
+          for (var n = 1; n <= 5; n++) {
+            expect(hostButton(tester, n).onPressed, isNull);
+          }
+          // A new read of the end asks nothing more.
+          watch.emit(TradeScreenStatuses.watched(seen));
+          await tester.pump();
+          expect(host.asked, hasLength(1));
+          host.give();
+          await tester.pump();
+          await tester.pump();
+          expect(find.textContaining('permission'), findsNothing);
+          expect(hostButton(tester, 5).onPressed, isNotNull);
+          // Nothing said before a tap.
+          expect(find.textContaining('Thank you'), findsNothing);
+          await _reveal(tester, hostStar(5));
+          await tester.tap(hostStar(5));
+          await tester.pump();
+          expect(host.published, hasLength(1));
+          expect(identical(host.published.single.$1, seen), isTrue);
+          expect(host.published.single.$2, _HostRates.given);
+          expect(host.published.single.$3, 5);
+          expect(
+            find.text('Thank you! Temple of Sats loves you too'),
+            findsOneWidget,
+          );
+          expect(find.byIcon(Icons.favorite), findsOneWidget);
+          expect(
+            find.text(
+              'RoboSats gets better with more liquidity and users. Tell a bitcoiner friend about Robosats!',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('Let us know'), findsNothing);
+          // The same star again publishes again, as each tap does.
+          await tester.tap(hostStar(5));
+          await tester.pump();
+          await tester.tap(hostStar(3));
+          await tester.pump();
+          expect(host.published.map((p) => p.$3), [5, 5, 3]);
+          expect(find.text('Thank you for using Robosats!'), findsOneWidget);
+          expect(find.textContaining('loves you'), findsNothing);
+          expect(find.byIcon(Icons.favorite), findsNothing);
+          final improve = find.byKey(const ValueKey('trade-host-improve'));
+          expect(
+            tester
+                .widget<RichText>(
+                  find.descendant(of: improve, matching: find.byType(RichText)),
+                )
+                .text
+                .toPlainText(),
+            'Let us know how the platform could improve (SimpleX / Matrix / Github)',
+          );
+          // The platform's stars are not touched by the host's.
+          expect(
+            tester
+                .widget<Icon>(
+                  find.descendant(
+                    of: find.byKey(const ValueKey('trade-rate-star-1')),
+                    matching: find.byType(Icon),
+                  ),
+                )
+                .icon,
+            Icons.star_border,
+          );
+        },
+      );
+
+      testWidgets('a link of the thanks is shown for copy, never opened', (
+        tester,
+      ) async {
+        final host = _HostRates();
+        addTearDown(host.cubit.close);
+        await _show(
+          tester,
+          watch: _Watch(),
+          rate: _Rates(),
+          hostRating: host.cubit,
+          state: _watched('fourteenSummary'),
+        );
+        host.give();
+        await tester.pump();
+        await tester.pump();
+        await _reveal(tester, hostStar(2));
+        await tester.tap(hostStar(2));
+        await tester.pump();
+        final improve = find.byKey(const ValueKey('trade-host-improve'));
+        await _reveal(tester, improve);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: improve, matching: find.byType(RichText)),
+        );
+        final links = <String, String>{
+          'SimpleX': simplexGroupUrl,
+          'Matrix': HostRatingSection.matrixUrl,
+          'Github': HostRatingSection.githubUrl,
+        };
+        for (final MapEntry(key: name, value: url) in links.entries) {
+          var tapped = false;
+          paragraph.text.visitChildren((span) {
+            if (span is TextSpan && span.text == name) {
+              final recognizer = span.recognizer;
+              if (recognizer is TapGestureRecognizer) {
+                recognizer.onTap?.call();
+                tapped = true;
+              }
+            }
+            return !tapped;
+          });
+          expect(tapped, isTrue, reason: name);
+          await tester.pumpAndSettle();
+          final sheet = find.byType(CoordinatorLinkSheet);
+          expect(sheet, findsOneWidget, reason: name);
+          expect(tester.widget<CoordinatorLinkSheet>(sheet).value, url);
+          expect(tester.widget<CoordinatorLinkSheet>(sheet).title, name);
+          Navigator.of(tester.element(sheet)).pop();
+          await tester.pumpAndSettle();
+        }
+      });
+
+      testWidgets(
+        'no token: the stars stay off and a line says the rating cannot be published',
+        (tester) async {
+          final host = _HostRates();
+          addTearDown(host.cubit.close);
+          await _show(
+            tester,
+            watch: _Watch(),
+            rate: _Rates(),
+            hostRating: host.cubit,
+            state: _watched('fourteenSummary'),
+          );
+          host.refuse();
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.text(
+              'Your rating cannot be published: Temple of Sats could not be asked for permission, or refused it. Open this trade again to try again.',
+            ),
+            findsOneWidget,
+          );
+          for (var n = 1; n <= 5; n++) {
+            expect(hostButton(tester, n).onPressed, isNull);
+          }
+          expect(host.published, isEmpty);
+          expect(host.asked, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'a finished trade opened again: the token asked only once the order is read, the stars off again for a status read from no order',
+        (tester) async {
+          final host = _HostRates();
+          addTearDown(host.cubit.close);
+          final watch = _Watch();
+          final read = _seenOf('fourteenSummary');
+          // The end from the records, before the read of the order: it offers no rating.
+          final fromRecords = TradeSeen(read.status, order: null);
+          await _show(
+            tester,
+            watch: watch,
+            rate: _Rates(),
+            hostRating: host.cubit,
+            state: TradeScreenStatuses.watched(fromRecords),
+          );
+          expect(find.text('Rate your host'), findsOneWidget);
+          expect(host.asked, isEmpty);
+          expect(find.textContaining('permission'), findsNothing);
+          expect(hostButton(tester, 5).onPressed, isNull);
+          watch.emit(TradeScreenStatuses.watched(read));
+          await tester.pump();
+          await tester.pump();
+          expect(host.asked, [read]);
+          host.give();
+          await tester.pump();
+          await tester.pump();
+          expect(hostButton(tester, 5).onPressed, isNotNull);
+          await _reveal(tester, hostStar(4));
+          await tester.tap(hostStar(4));
+          await tester.pump();
+          expect(host.published.map((p) => p.$3), [4]);
+          // A later status from no order offers no rating: the host's stars are off again, as the trade's, nothing is asked again, and the star tapped stays shown although the summary went.
+          watch.emit(TradeScreenStatuses.watched(fromRecords));
+          await tester.pump();
+          await tester.pump();
+          expect(hostButton(tester, 5).onPressed, isNull);
+          expect(host.asked, hasLength(1));
+          expect(
+            tester
+                .widget<Icon>(
+                  find.descendant(of: hostStar(4), matching: find.byType(Icon)),
+                )
+                .icon,
+            Icons.star,
+          );
+          expect(host.published, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'as the route builds the trade page (`P2pRouter.tradePage`): one cubit per page, closed with it',
+        (tester) async {
+          tester.view
+            ..physicalSize = const Size(390, 1200) * 3
+            ..devicePixelRatio = 3;
+          addTearDown(tester.view.reset);
+          final watch = _Watch();
+          final made = <_HostRates>[];
+          final locator = GetIt.asNewInstance();
+          addTearDown(locator.reset);
+          final reads = FakeTransport();
+          locator
+            ..registerSingleton<P2pClock>(P2pClock(() => tradeNow))
+            ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+              (record, _) => TradeCubit(
+                record,
+                watch.call,
+                (record, seen, {bondLoss}) async =>
+                    Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
+                rate: _Rates().call,
+              ),
+            )
+            ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+              (record, _) => TradeOrderPageCubit(
+                coordinator('temple'),
+                RobosatsNetwork.mainnet,
+                FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+                FindPublicOrderUsecase(
+                  CoordinatorClient(reads, clock: () => testNow),
+                ).execute,
+              ),
+            )
+            ..registerFactoryParam<HostRatingCubit, TradeRecord, void>((
+              record,
+              _,
+            ) {
+              final host = _HostRates();
+              made.add(host);
+              return host.cubit;
+            });
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: testTheme,
+              localizationsDelegates: P2pLocalizations.localizationsDelegates,
+              supportedLocales: P2pLocalizations.supportedLocales,
+              home: Scaffold(
+                body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+              ),
+            ),
+          );
+          await tester.pump();
+          watch.emit(_watched('fourteenSummary'));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(HostRatingSection), findsOneWidget);
+          expect(made, hasLength(1));
+          expect(made.single.asked, hasLength(1));
+          expect(
+            tester
+                .element(find.byType(HostRatingSection))
+                .read<HostRatingCubit>(),
+            same(made.single.cubit),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          expect(made.single.cubit.isClosed, isTrue);
+        },
+      );
+
+      testWidgets(
+        'not asked, and not shown, where the screen offers no rating',
+        (tester) async {
+          final host = _HostRates();
+          addTearDown(host.cubit.close);
+          await _show(
+            tester,
+            watch: _Watch(),
+            hostRating: host.cubit,
+            state: _watched('fourteenSummary'),
+          );
+          expect(find.text('Rate your host'), findsNothing);
+          expect(host.asked, isEmpty);
+        },
+      );
+
+      for (final locale in const [Locale('en'), Locale('fr')]) {
+        for (final scale in const [2.0, 3.0]) {
+          testWidgets(
+            '${locale.languageCode} at ×$scale on 320 points, in the app font: « Rate your host », its lines and its thanks, nothing cut, no word broken',
+            (tester) async {
+              final host = _HostRates();
+              addTearDown(host.cubit.close);
+              await _show(
+                tester,
+                watch: _Watch(),
+                rate: _Rates(),
+                hostRating: host.cubit,
+                locale: locale,
+                size: const Size(320, 640),
+                textScale: scale,
+                appFont: true,
+                state: _watched('fourteenSummary'),
+              );
+              _expectNothingCut(tester, 'asking');
+              _expectNoWordBroken(tester, 'asking');
+              host.give();
+              await tester.pump();
+              await tester.pump();
+              for (final n in [5, 3]) {
+                await _reveal(tester, hostStar(n));
+                await tester.tap(hostStar(n));
+                await tester.pump();
+                _expectNothingCut(tester, '$n stars');
+                _expectNoWordBroken(tester, '$n stars');
+              }
+              final unavailable = _HostRates();
+              addTearDown(unavailable.cubit.close);
+              await _show(
+                tester,
+                watch: _Watch(),
+                rate: _Rates(),
+                hostRating: unavailable.cubit,
+                locale: locale,
+                size: const Size(320, 640),
+                textScale: scale,
+                appFont: true,
+                state: _watched('fourteenSummary'),
+              );
+              unavailable.refuse();
+              await tester.pump();
+              await tester.pump();
+              _expectNothingCut(tester, 'unavailable');
+              _expectNoWordBroken(tester, 'unavailable');
+            },
+          );
+        }
       }
     });
 

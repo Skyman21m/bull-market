@@ -28,4 +28,7 @@ abstract final class CoordinatorReadBounds {
   ///
   /// Nothing bounds what a peer posts (`chat/serializers.py:62-65`), so a peer can make a page larger than this: it is then `ChatPageTooLarge`, and the history cannot be read from that offset (see there).
   static const chatBytes = 4194304;
+
+  /// Bytes of a `/api/review/` body: about 220 bytes, a robot's Nostr key and the coordinator's signature in hexadecimal (`api/views.py:1269`).
+  static const reviewBytes = 4096;
 }

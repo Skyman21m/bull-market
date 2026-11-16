@@ -10,6 +10,26 @@ import 'package:robosats/robosats.dart';
 /// `generate` gives [pair], a pair the test made once, since making one hashes 32 MiB, or [generateFailure]; `prove` proves as the package proves, or gives [proveFailure].
 final class RecordingRobotKeys implements RobotKeyComputePort {
   @override
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingHostRating.compose(
+      sender,
+      token: token,
+      coordinator: coordinator,
+      orderId: orderId,
+      rating: rating,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
+  @override
   Future<
     Result<
       Result<OutgoingNostrChatMessage, NostrChatFailure>,

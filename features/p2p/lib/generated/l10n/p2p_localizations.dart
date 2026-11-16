@@ -4404,6 +4404,66 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The order could not be read again from {coordinator}: your rating was not sent.'**
   String p2pEndRateReadFailed(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): above the five stars that rate the trade's coordinator on Nostr, followed by its name in bold (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Rate your host'**
+  String get p2pEndRateHost;
+
+  /// Not in the RoboSats texts: the project's own: under the stars of « Rate your host », off while the token the coordinator gives for a rating (`POST /api/review/`) is asked; the reference leaves its stars on and drops a tap made before the token (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Asking {coordinator} for permission to publish your rating…'**
+  String p2pEndRateHostAsking(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: under the stars of « Rate your host », which stay off: no token for a rating, whether the coordinator refused it (1052) or could not be asked (Tor, a coordinator unreachable or busy), which the app does not tell apart; the token is asked again only when the trade is opened again; the reference says nothing and publishes nothing (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your rating cannot be published: {coordinator} could not be asked for permission, or refused it. Open this trade again to try again.'**
+  String p2pEndRateHostUnavailable(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): « Thank you! {{shortAlias}} loves you too », with the coordinator's long alias, after five stars of « Rate your host » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Thank you! {coordinator} loves you too'**
+  String p2pEndHostLovesYou(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): under the thanks for five stars of « Rate your host » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'RoboSats gets better with more liquidity and users. Tell a bitcoiner friend about Robosats!'**
+  String get p2pEndTellAFriend;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): after one to four stars of « Rate your host » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Thank you for using Robosats!'**
+  String get p2pEndThanksForUsing;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): `let_us_know_hot_to_improve`, after one to four stars of « Rate your host », its punctuation in the text; each placeholder is replaced by the name of a link (`p2pEndImproveSimplex`, `p2pEndImproveMatrix`, `p2pEndImproveGithub`), shown for copy; the names are those of the reference's code, since its translation puts « Telegram » on the SimpleX link and « Github » on the Matrix one (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Let us know how the platform could improve ({simplex} / {matrix} / {github})'**
+  String p2pEndImprove(String simplex, String matrix, String github);
+
+  /// The name of the RoboSats group on SimpleX in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'SimpleX'**
+  String get p2pEndImproveSimplex;
+
+  /// The name of the RoboSats group on Matrix in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Matrix'**
+  String get p2pEndImproveMatrix;
+
+  /// The name of the issues of the RoboSats repository in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Github'**
+  String get p2pEndImproveGithub;
 }
 
 class _P2pLocalizationsDelegate

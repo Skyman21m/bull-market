@@ -372,6 +372,11 @@ void main() {
           '${_tradeUseCases}chat_step_action_usecase.dart',
         }, reason: member);
       }
+      // « Rate your host » (#95): the token to rate the coordinator on Nostr, asked by its own use case.
+      expect(
+        referring((r) => r == 'request CoordinatorClient.fetchReviewToken'),
+        {'${_tradeUseCases}rate_host_usecase.dart'},
+      );
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
         expect(
@@ -391,6 +396,7 @@ void main() {
               'request CoordinatorClient.undoConfirmFiat',
               'request CoordinatorClient.openDispute',
               'request CoordinatorClient.ratePlatform',
+              'request CoordinatorClient.fetchReviewToken',
             }),
           ),
           reason: path,

@@ -8,8 +8,11 @@ import 'package:robosats/robosats.dart'
         Coordinator,
         CoordinatorOrder,
         CoordinatorRobot,
+        HostRating,
+        HostReviewToken,
         NostrChatFailure,
         NostrKeyPair,
+        OutgoingHostRating,
         OutgoingNostrChatMessage,
         RobosatsNetwork,
         DecryptedChatMessage,
@@ -87,6 +90,36 @@ final class IsolateRobotKeyCompute implements RobotKeyComputePort {
     required String text,
     required DateTime now,
   }) => _composeApart(sender, order, coordinator, network, text, now);
+
+  @override
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
+    required DateTime now,
+  }) => _rateApart(sender, token, coordinator, orderId, rating, now);
+
+  /// The rating of the coordinator composed apart, in an isolate of its own for each tap of a star (#95): see [RobotKeyComputePort.composeHostRating] for what is copied there.
+  static Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> _rateApart(
+    NostrKeyPair sender,
+    HostReviewToken token,
+    Coordinator coordinator,
+    int orderId,
+    HostRating rating,
+    DateTime now,
+  ) => _run(
+    () => OutgoingHostRating.compose(
+      sender,
+      token: token,
+      coordinator: coordinator,
+      orderId: orderId,
+      rating: rating,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
 
   /// The Nostr copy composed apart, in an isolate of its own for each message (#94): see [RobotKeyComputePort.composeNostrChat] for what is copied there.
   static Future<

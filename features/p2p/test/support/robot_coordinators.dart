@@ -178,6 +178,26 @@ final class FakeRobotCoordinators implements CoordinatorTransport {
 /// The key work of the robots on the test's own isolate: each robot gets the pair the test made for it, and the proofs are the package's.
 final class PairsByRobot implements RobotKeyComputePort {
   @override
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingHostRating.compose(
+      sender,
+      token: token,
+      coordinator: coordinator,
+      orderId: orderId,
+      rating: rating,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
+  @override
   Future<
     Result<
       Result<OutgoingNostrChatMessage, NostrChatFailure>,

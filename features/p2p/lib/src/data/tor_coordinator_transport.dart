@@ -271,7 +271,7 @@ final class TorCoordinatorTransport
   @override
   Future<NostrRelayOutcome> publish(
     Uri relay,
-    OutgoingNostrChatMessage message, {
+    NostrRelayPublication message, {
     required RobotSessionKey robot,
   }) {
     final completer = Completer<NostrRelayOutcome>();
@@ -359,7 +359,7 @@ final class TorCoordinatorTransport
 
   Future<NostrRelayOutcome> _publishOnRelay(
     Uri relay,
-    OutgoingNostrChatMessage message,
+    NostrRelayPublication message,
     RobotSessionKey robot,
     _Deadline deadline,
   ) async {
@@ -399,7 +399,7 @@ final class TorCoordinatorTransport
   Future<NostrRelayOutcome> _runOnRelay(
     _RouteKey key,
     Uri relay,
-    OutgoingNostrChatMessage message,
+    NostrRelayPublication message,
     _Deadline deadline,
     _RobotRequests requests,
   ) async {
@@ -458,7 +458,7 @@ final class TorCoordinatorTransport
   Future<_RelayAttempt> _relayAttempt(
     _Route route,
     Uri relay,
-    OutgoingNostrChatMessage message,
+    NostrRelayPublication message,
     _Deadline deadline,
   ) async {
     // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension or subprotocol is accepted, compression included (a small compressed message could inflate in memory), and the bytes that come after it are counted before `dart:io` assembles a message (reviews of #158).

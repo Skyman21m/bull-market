@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart' show sha256;
+import 'package:crypto/crypto.dart' show sha256, sha512;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
@@ -63,12 +63,16 @@ enum ScriptedRequest {
 
   /// `rate_platform`.
   rate,
+
+  /// `POST /api/review/`: the token to rate the coordinator on Nostr.
+  review,
 }
 
 /// One coordinator of the federation list and one order of its book, played for the tests of the trade use cases, as the reference backend at commit ff1998c answers them (`api/views.py`, `api/logics.py`; design note § 1, § 5): never a real coordinator, never money.
 ///
 /// It answers `GET /api/info/`, `GET /api/book/`, `GET /api/robot/` (a first contact keeps the robot with the key pair it sent, a robot it does not know is error 7001), `GET /api/order/` as the order then stands for the robot that asks (3 injected for a live pre-take only, 1043 for a cancelled order, 1044 for a robot that is no participant of an order that is not public), and the `POST /api/order/` actions `take` (a pre-take with its bond invoice on a public order; on any other, the answer of the read, as the reference does, `api/views.py:595-596`), `cancel` (guarded by `cancel_status` against the stored status, 1020 otherwise; free at the pre-take, the bond lost at 6 and 7, `api/logics.py:1005-1181`), and the buyer's payout, `update_invoice` and `update_address` (#90: the clear signature checked against the robot's kept public key and split as the coordinator splits it, then the rules of `Logics.update_invoice` and `update_address`, `api/views.py:617-649`, `api/logics.py:752-947`, with the node's and bitcoind's refusals as their bare texts).
 /// From the chat (#95) it also answers `cancel` as the collaborative cancel of 8 and 9 (the first ask raises the asker's flag, `asked_for_cancel` to the asker and `pending_cancel` to the other; the second side's ask returns everything, 12, with the short body of a cancel that ended the order, `api/logics.py:1130-1202`, `api/views.py:604-615`), `confirm` (the buyer's « fiat sent », 9 or 10 → 10, the step's deadline kept; the seller's confirmation only after it, `api/logics.py:1686-1735`), `undo_confirm` (the buyer only, 10 → 9, `:1737-1756`), `dispute` (9 or 10, not earlier than 18 hours before the step's deadline, `:485-533`) and `rate_platform` (the serializer's choices « 1 » to « 5 », kept in [platformRating]), each refused with the reference's code, and 1047 to a robot that is no participant (`api/views.py:617-619`).
+/// It answers `POST /api/review/` as `ReviewView` (`api/views.py:1236-1269`, #95): a body without a key an empty 400, a robot whose order is not at 14, 17 or 18 or whose Nostr key is not the one kept at its first contact 1052, otherwise the token, of the reference's form ([reviewToken]).
 /// Known gaps, the seller's side of #96, not played: at 8 the reference shows the collaborative cancel's flags to the seller only (`api/views.py:415`, `:431`), and the seller's `confirm` may be refused with 1028 or reach 15 (`api/logics.py:1706-1730`); here the seller's confirmation goes straight to 13.
 /// The test moves the order along by itself ([lockBond], [moveTo], [takenByAnother], [backToPublic], [cancelByMaker], [expire], [pause], [satoshisNow] for the market's price, [peerAsksToCancel] and [peerAcceptsCancel] for the maker's side of a collaborative cancel, [landLate] for requests held by [ScriptedFault.landsLate]), refuses a take as the reference does ([refuseNextTake]: 409, 1011, 1012, 1045; a pre-taker's cancel gives its robot a penalty; a protected order wants its [password]), and says what a robot holds ([robotAnswerHas]); a paused order is shown to its participants only (1044 to anyone else, a take included); a [range] order takes the amount the take sends; time is [clock], and a pre-take ends at its deadline.
 /// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
@@ -139,6 +143,13 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// The last rating the taker gave the coordinator (`robot.platform_rating`, `api/logics.py:1785-1789`), 1 to 5, or `null`.
   int? platformRating;
+
+  /// What `POST /api/review/` gives as its token instead, when set: another form than the reference's.
+  Object? reviewTokenOverride;
+
+  /// The token `POST /api/review/` gives for the Nostr key [pubkey]: 128 lowercase hexadecimal characters, the form of the reference's signature of `<pubkey><order id>` (`api/nostr.py:164-175`), here a SHA-512 of that text, never a coordinator's signature.
+  String reviewToken(String pubkey) =>
+      sha512.convert(utf8.encode('$pubkey$orderId')).toString();
 
   /// Whether the taker reverted a « fiat sent » (`order.reverted_fiat_sent`, `api/logics.py:1748-1750`).
   bool revertedFiatSent = false;
@@ -533,7 +544,38 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           ScriptedRequest.dispute ||
           ScriptedRequest.rate:
         return _tradeAction(kind, _robotOf(request), request);
+      case ScriptedRequest.review:
+        return _review(_robotOf(request), request);
     }
+  }
+
+  /// `POST /api/review/` as the reference answers it (`ReviewView`, `api/views.py:1236-1269`).
+  CoordinatorResponse _review(RobotIdentity robot, CoordinatorRequest request) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final pubkey = body is Map<String, Object?> ? body['pubkey'] : null;
+    if (pubkey is! String || pubkey.isEmpty) {
+      return CoordinatorResponse(
+        statusCode: 400,
+        headers: const {},
+        body: Uint8List(0),
+      );
+    }
+    const noFinishedOrder = {
+      'error_code': 1052,
+      'bad_request': 'Robot has no finished order',
+    };
+    if (_taker != robot.sessionKey || !const {14, 17, 18}.contains(_status)) {
+      return _json(400, noFinishedOrder);
+    }
+    final kept = _kept[robot.sessionKey];
+    final held = kept?['nostr_pubkey'];
+    if (held is String && held.isNotEmpty && held != pubkey) {
+      return _json(400, noFinishedOrder);
+    }
+    return _json(200, {
+      'pubkey': pubkey,
+      'token': reviewTokenOverride ?? reviewToken(pubkey),
+    });
   }
 
   /// `GET /api/chat/` as the reference answers it (`chat/views.py:40-113`): no `order_id` 6000, an unknown order a server error (`Order.objects.get`), for the taker at 9, 10, 11 and 16 the messages above the offset (0 when not given, a server error when not an integer), the peer's connection and key.
@@ -955,6 +997,7 @@ final class ScriptedCoordinator implements CoordinatorTransport {
       '/api/info/' => ScriptedRequest.info,
       '/api/book/' => ScriptedRequest.book,
       '/api/robot/' => ScriptedRequest.robot,
+      '/api/review/' => ScriptedRequest.review,
       _ when action == 'take' => ScriptedRequest.take,
       _ when action == 'cancel' => ScriptedRequest.cancel,
       _ when action == 'update_invoice' || action == 'update_address' =>

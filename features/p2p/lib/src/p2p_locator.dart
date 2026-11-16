@@ -66,6 +66,7 @@ import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'domain/usecases/trade/payout_from_wallet_usecase.dart';
 import 'domain/usecases/trade/prepared_takes.dart';
+import 'domain/usecases/trade/rate_host_usecase.dart';
 import 'domain/usecases/trade/export_chat_usecase.dart';
 import 'domain/usecases/trade/send_chat_message_usecase.dart';
 import 'domain/usecases/trade/submit_payout_usecase.dart';
@@ -83,6 +84,7 @@ import 'presentation/active_trades_cubit.dart';
 import 'presentation/bond_payment_cubit.dart';
 import 'presentation/book_cubit.dart';
 import 'presentation/chat_cubit.dart';
+import 'presentation/host_rating_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
 import 'presentation/order_details_cubit.dart';
@@ -410,6 +412,18 @@ final class P2pLocator {
         locator(),
       ),
     );
+    // « Rate your host » (#95): the coordinator's token and the rating published on Nostr, over the robot's sessions as the chat's copies.
+    locator.registerFactory<RateHostUsecase>(
+      () => RateHostUsecase(
+        CoordinatorClient(transport(), clock: clock),
+        locator(),
+        locator(),
+        locator(),
+        relays(),
+        Federation.robosats,
+        Random.secure(),
+      ),
+    );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.
     TakeCalls takeCalls() {
       final take = locator<TakeOrderUsecase>();
@@ -478,6 +492,14 @@ final class P2pLocator {
         locator<ExportChatUsecase>().execute,
         (record) => locator<HoldTradeKeyUsecase>().execute(record).release,
       );
+    });
+    // « Rate your host » of one shown trade (#95), the only caller of its use case.
+    locator.registerFactoryParam<HostRatingCubit, TradeRecord, void>((
+      record,
+      _,
+    ) {
+      final rate = locator<RateHostUsecase>();
+      return HostRatingCubit(record, rate.fetchToken, rate.publish);
     });
     // The bond paid from the wallet (#100): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.
     locator.registerFactory<PayBondFromWalletUsecase>(

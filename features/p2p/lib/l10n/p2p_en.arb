@@ -3845,5 +3845,71 @@
         "type": "String"
       }
     }
+  },
+  "p2pEndRateHost": "Rate your host",
+  "@p2pEndRateHost": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): above the five stars that rate the trade's coordinator on Nostr, followed by its name in bold (#95)."
+  },
+  "p2pEndRateHostAsking": "Asking {coordinator} for permission to publish your rating…",
+  "@p2pEndRateHostAsking": {
+    "description": "Not in the RoboSats texts: the project's own: under the stars of « Rate your host », off while the token the coordinator gives for a rating (`POST /api/review/`) is asked; the reference leaves its stars on and drops a tap made before the token (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRateHostUnavailable": "Your rating cannot be published: {coordinator} could not be asked for permission, or refused it. Open this trade again to try again.",
+  "@p2pEndRateHostUnavailable": {
+    "description": "Not in the RoboSats texts: the project's own: under the stars of « Rate your host », which stay off: no token for a rating, whether the coordinator refused it (1052) or could not be asked (Tor, a coordinator unreachable or busy), which the app does not tell apart; the token is asked again only when the trade is opened again; the reference says nothing and publishes nothing (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndHostLovesYou": "Thank you! {coordinator} loves you too",
+  "@p2pEndHostLovesYou": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): « Thank you! {{shortAlias}} loves you too », with the coordinator's long alias, after five stars of « Rate your host » (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndTellAFriend": "RoboSats gets better with more liquidity and users. Tell a bitcoiner friend about Robosats!",
+  "@p2pEndTellAFriend": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): under the thanks for five stars of « Rate your host » (#95)."
+  },
+  "p2pEndThanksForUsing": "Thank you for using Robosats!",
+  "@p2pEndThanksForUsing": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): after one to four stars of « Rate your host » (#95)."
+  },
+  "p2pEndImprove": "Let us know how the platform could improve ({simplex} / {matrix} / {github})",
+  "@p2pEndImprove": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): `let_us_know_hot_to_improve`, after one to four stars of « Rate your host », its punctuation in the text; each placeholder is replaced by the name of a link (`p2pEndImproveSimplex`, `p2pEndImproveMatrix`, `p2pEndImproveGithub`), shown for copy; the names are those of the reference's code, since its translation puts « Telegram » on the SimpleX link and « Github » on the Matrix one (#95).",
+    "placeholders": {
+      "simplex": {
+        "type": "String"
+      },
+      "matrix": {
+        "type": "String"
+      },
+      "github": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndImproveSimplex": "SimpleX",
+  "@p2pEndImproveSimplex": {
+    "description": "The name of the RoboSats group on SimpleX in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95)."
+  },
+  "p2pEndImproveMatrix": "Matrix",
+  "@p2pEndImproveMatrix": {
+    "description": "The name of the RoboSats group on Matrix in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95)."
+  },
+  "p2pEndImproveGithub": "Github",
+  "@p2pEndImproveGithub": {
+    "description": "The name of the issues of the RoboSats repository in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95)."
   }
 }

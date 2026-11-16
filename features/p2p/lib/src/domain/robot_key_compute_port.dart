@@ -3,8 +3,11 @@ import 'package:robosats/robosats.dart'
     show
         Coordinator,
         CoordinatorOrder,
+        HostRating,
+        HostReviewToken,
         NostrChatFailure,
         NostrKeyPair,
+        OutgoingHostRating,
         OutgoingNostrChatMessage,
         RobosatsNetwork,
         CoordinatorRobot,
@@ -84,6 +87,19 @@ abstract interface class RobotKeyComputePort {
     required Coordinator coordinator,
     required RobosatsNetwork network,
     required String text,
+    required DateTime now,
+  });
+
+  /// The rating of the trade's coordinator over Nostr (#95, « Rate your host »), as `OutgoingHostRating.compose` builds it with a secure source of randomness: one BIP-340 signature, checked, in pure Dart, which on the UI isolate would hold the screen at the tap of a star.
+  ///
+  /// What is copied there: the robot's Nostr key pair [sender], never its identity or token, the coordinator's [token], the coordinator, the order's id, the stars and [now]; what comes back: the signed event, public by nature.
+  /// The [RobotKeyComputeFailure] when the work could not be started: nothing was built.
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
     required DateTime now,
   });
 }

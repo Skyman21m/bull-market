@@ -8,22 +8,31 @@ import 'package:robosats/src/coordinator/nostr_chat.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/coordinator/robot_session_key.dart';
 
-/// The port to the coordinators' Nostr relays, which the app implements over Tor in `features/p2p`: publishes the gift wraps of one [OutgoingNostrChatMessage] on one relay.
+/// Signed events ready to publish on a relay: the two gift wraps of an [OutgoingNostrChatMessage] (#94), or the one event of an `OutgoingHostRating`.
+abstract interface class NostrRelayPublication {
+  /// The `["EVENT", <event>]` messages to send to a relay, in order.
+  List<String> get relayMessages;
+
+  /// The ids of the events, in the order of [relayMessages]: what a relay's `OK` names.
+  List<String> get eventIds;
+}
+
+/// The port to the coordinators' Nostr relays, which the app implements over Tor in `features/p2p`: publishes the events of one [NostrRelayPublication] on one relay.
 ///
 /// Contract of an implementation:
 /// - [publish] always completes, never throws, within a bound of its own;
-/// - it connects to the relay, sends [OutgoingNostrChatMessage.relayMessages] in order, waits for the relay's `OK` to each event ([NostrRelayOk]) and closes, the wait only serving to close cleanly and to report;
+/// - it connects to the relay, sends [NostrRelayPublication.relayMessages] in order, waits for the relay's `OK` to each event ([NostrRelayOk]) and closes, the wait only serving to close cleanly and to report;
 /// - it goes through a Tor session of [robot] to the relay's onion service, apart from every other robot;
-/// - it logs nothing of the message, of the relay or of the robot.
+/// - it logs nothing of the events, of the relay or of the robot.
 abstract interface class NostrRelayTransport {
   Future<NostrRelayOutcome> publish(
     Uri relay,
-    OutgoingNostrChatMessage message, {
+    NostrRelayPublication message, {
     required RobotSessionKey robot,
   });
 }
 
-/// What one relay did with the events of a message: a value for a log line, nothing else, since the official client neither waits nor tells anything (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:360-364`).
+/// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client neither waits nor tells anything (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:360-364`).
 sealed class NostrRelayOutcome {
   const NostrRelayOutcome();
 

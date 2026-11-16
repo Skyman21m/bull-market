@@ -19,10 +19,11 @@ import '../widgets/robot_avatar.dart';
 import '../widgets/word_fit_text.dart';
 import 'chat_step_panel.dart';
 
-/// The buyer's « Trade finished! » at 14 (`TradeBox/Prompts/Successful.tsx`, commit ff1998c; #95), from the top: « Rate your trade experience » and its five stars, « Your TXID » or « Sending coins » for an on-chain payout, then the « Trade Summary » ([TradeSummaryCard]).
+/// The buyer's « Trade finished! » at 14 (`TradeBox/Prompts/Successful.tsx`, commit ff1998c; #95), from the top: « Rate your trade experience » and its five stars, « Rate your host » ([hostRating]), « Your TXID » or « Sending coins » for an on-chain payout, then the « Trade Summary » ([TradeSummaryCard]).
 ///
 /// A tap on a star sends `rate_platform` once through the trade's cubit, for the status shown (`TradeCubit.rate`), as the reference sends each change of its stars; while it runs the stars are off and a line says what it waits for; what it gave is said under them, nothing when it was recorded (the reference says nothing either).
-/// Left out, each declared in `AGENTS.md`: « Rate your host », which the reference publishes on Nostr only, and its thanks; « Start Again » and « Renew », whose order creation does not exist here.
+/// The two ratings are one under the other, where the reference puts them side by side, for the width of a phone.
+/// Left out, each declared in `AGENTS.md`: « Start Again » and « Renew », whose order creation does not exist here.
 /// The copies are made on the user's tap only; nothing here opens a link.
 class SuccessfulPanel extends StatefulWidget {
   final TradeSeen seen;
@@ -39,6 +40,9 @@ class SuccessfulPanel extends StatefulWidget {
   /// Whether the screen may send the rating (`TradeCubit.offersRating`).
   final bool offersRating;
 
+  /// « Rate your host » (`HostRatingSection`), shown under « Rate your trade experience » when the screen offers that one; `null` where the feature holds no robot.
+  final Widget? hostRating;
+
   const SuccessfulPanel({
     super.key,
     required this.seen,
@@ -48,6 +52,7 @@ class SuccessfulPanel extends StatefulWidget {
     required this.chatStep,
     required this.otherActionRunning,
     required this.offersRating,
+    this.hostRating,
   });
 
   @override
@@ -166,6 +171,16 @@ class _SuccessfulPanelState extends State<SuccessfulPanel> {
               notice: notice,
               coordinator: widget.coordinator,
               action: action,
+            ),
+          ],
+          if (widget.hostRating case final hostRating?) ...[
+            const Gap(BullSpacing.md),
+            Divider(color: colors.outlineVariant, height: 1),
+            const Gap(BullSpacing.sm),
+            // Keyed, so that the section keeps its state (the star tapped, the token asked) when the lines around it come and go with a new read.
+            KeyedSubtree(
+              key: const ValueKey('trade-host-rating-slot'),
+              child: hostRating,
             ),
           ],
         ],

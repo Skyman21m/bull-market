@@ -11,6 +11,7 @@ import 'package:robosats/src/coordinator/coordinator_robot.dart';
 import 'package:robosats/src/coordinator/coordinator_transport.dart';
 import 'package:robosats/src/coordinator/currency_limits.dart';
 import 'package:robosats/src/coordinator/dropped_order_reason.dart';
+import 'package:robosats/src/coordinator/host_rating.dart';
 import 'package:robosats/src/coordinator/order_book.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/payout.dart';
@@ -24,7 +25,7 @@ import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
-/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator.
+/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator; and the token to rate the coordinator on Nostr.
 ///
 /// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
 /// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
@@ -438,6 +439,45 @@ final class CoordinatorClient {
         : const OrderNotParticipant(),
     body: {'action': 'rate_platform', 'rating': rating.stars},
   );
+
+  /// `POST /api/review/`, the token with which the robot [identity] rates [coordinator] on Nostr once its last order there is finished (« Rate your host », `Robot.loadReviewToken`, `frontend/src/models/Robot.model.ts:220-245`, commit ff1998c): the body `{"pubkey": <the robot's Nostr key>}` with the robot's short header, as the reference sends it.
+  ///
+  /// The coordinator answers `200` with the token only when the robot's last order is at 14, 17 or 18 and the key is the one it holds for the robot, which it records when it holds none (`ReviewView`, `api/views.py:1236-1269`); otherwise a `400` (1052), read as [CoordinatorUnexpectedStatus], its text never kept.
+  /// A `200` whose `token` is not 128 lowercase hexadecimal characters ([HostReviewToken.parse]) is [CoordinatorResponseMalformed]: the reference's `""` when its signature failed, or anything a coordinator could slip into a public event.
+  /// Sent once, never again by this client; the transport never retries a request that is not a `GET`. Whatever the transport throws, an `Error` included, is [CoordinatorTransportFailed].
+  Future<Result<HostReviewToken, CoordinatorFailure>> fetchReviewToken({
+    required RobotIdentity identity,
+    required Coordinator coordinator,
+    required RobosatsNetwork network,
+    required String nostrPublicKeyHex,
+  }) async {
+    final onion = coordinator.origins(network).onion;
+    if (onion == null) return const Err(CoordinatorNotOnNetwork());
+    final response = await _send(
+      CoordinatorRequest(
+        method: CoordinatorHttpMethod.post,
+        url: Uri.parse(onion).replace(path: '/api/review/'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': identity.authorizationHeader(),
+        },
+        body: utf8.encode(jsonEncode({'pubkey': nostrPublicKeyHex})),
+        maxResponseBytes: CoordinatorReadBounds.reviewBytes,
+        robot: identity.sessionKey,
+      ),
+      catchErrors: true,
+    );
+    return switch (_decodeOk(response)) {
+      Err(:final failure) => Err(failure),
+      Ok(value: {'token': final Object? token}) =>
+        switch (HostReviewToken.parse(token)) {
+          final parsed? => Ok(parsed),
+          null => const Err(CoordinatorResponseMalformed('token')),
+        },
+      Ok() => const Err(CoordinatorResponseMalformed('token')),
+    };
+  }
 
   /// The checks every action of the trade makes before it is sent, [refusedFromLastRead] included, then the request and the reading of its answer.
   Future<Result<TradeActionOutcome, OrderActionFailure>> _tradeAction({
