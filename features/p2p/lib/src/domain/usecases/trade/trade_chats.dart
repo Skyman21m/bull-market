@@ -4,9 +4,10 @@ import 'package:robosats/robosats.dart';
 import '../../robot_binding.dart';
 import '../../robot_key_compute_port.dart';
 import '../../trade/trade_chat.dart';
+import '../../trade/trade_chat_pin.dart';
 import '../../trade_record.dart';
 
-/// The chats of the trades, in memory only (#93, design note § 3.6, `AGENTS.md` « The encrypted chat of a trade »): one [TradeChat] per trade, kept for the life of the process so that the peer's key stays pinned when the trade screen is opened again, and nothing of it is ever written.
+/// The chats of the trades, in memory (#93, design note § 3.6, `AGENTS.md` « The encrypted chat of a trade »): one [TradeChat] per trade, kept for the life of the process so that the peer's key stays pinned when the trade screen is opened again. This class writes nothing; the chat use cases keep the pins with the trade's record (#139, part of #159), and the messages are never written.
 ///
 /// One for the feature (a lazy singleton of the composition); only the chat use cases reach it.
 final class TradeChats {
@@ -52,7 +53,17 @@ final class TradeChat {
   String? _nostrOwnKey;
   bool _nostrKeysChanged = false;
 
+  /// The Nostr keys this run pinned, while they are not kept with the trade's record (part of #159).
+  ChatNostrPin? _nostrToKeep;
+
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
+
+  /// The peer key kept with the trade's record (#139): read once a run, before the first page is taken; `null` when the trade has none. Read only while no key is pinned in this run.
+  PgpPublicKey? _kept;
+  bool _pinRead = false;
+
+  /// The key this run pinned, while it is not kept with the trade's record yet.
+  PgpPublicKey? _toKeep;
   bool _peerConnected = false;
   bool _connected = false;
   PgpPublicKey? _ownKey;
@@ -78,6 +89,50 @@ final class TradeChat {
 
   /// The offset the next read asks from.
   int get offset => _offset;
+
+  /// Whether the pins kept with the trade's record were read in this run: no page is taken before (#139).
+  bool get pinRead => _pinRead;
+
+  /// The pins kept with the trade's record, [kept] and [nostr], or none: after a restart, the first keys served are compared with them rather than trusted.
+  ///
+  /// Each read calls it until one has: two first reads at once may both call it, with the same pins or, for the second, pins written since by the first; either way nothing shown changes, since [kept] is read only before a key is pinned in this run and [nostr] only replaces the Nostr keys with the ones kept.
+  void restorePin(PgpPublicKey? kept, {ChatNostrPin? nostr}) {
+    _pinRead = true;
+    _kept = kept;
+    if (nostr != null) {
+      _nostrPeerKey = nostr.peer;
+      _nostrOwnKey = nostr.own;
+    }
+  }
+
+  /// Whether every pin of this run is kept with the trade's record: no message is posted before, so that a restart cannot trust another key again (review of #139).
+  bool get pinsKept => _toKeep == null;
+
+  /// The Nostr keys this run pinned at its first Nostr copy, while they are not kept with the trade's record; no Nostr copy is published before (part of #159).
+  ChatNostrPin? get nostrPinToKeep => _nostrToKeep;
+
+  /// The keys of [nostrPinToKeep] are now kept with the trade's record.
+  void nostrPinKept() => _nostrToKeep = null;
+
+  /// Other Nostr keys were found kept with the trade's record: the Nostr copies stop for the trade, as when the order changes a key.
+  void nostrPinKeptOther() {
+    _nostrToKeep = null;
+    _nostrKeysChanged = true;
+  }
+
+  /// The key this run pinned and that is not kept with the trade's record yet, `null` otherwise.
+  PgpPublicKey? get pinToKeep => _toKeep;
+
+  /// The key of [pinToKeep] is now kept with the trade's record.
+  void pinKept() => _toKeep = null;
+
+  /// Another key, [kept], was found kept with the trade's record in place of [pinToKeep]: the key pinned in this run is not that one, the same breach as a key that changed, with the key kept as the one pinned before (functional review of #139).
+  void pinKeptOther(PgpPublicKey kept) {
+    _toKeep = null;
+    if (_peerKey is ChatPeerKeyPinned) {
+      _peerKey = ChatPeerKeyBreach(pinned: kept);
+    }
+  }
 
   /// The pinned peer key, when there is one and no breach.
   PgpPublicKey? get pinnedKey => switch (_peerKey) {
@@ -228,6 +283,13 @@ final class TradeChat {
         )) {
       _peerKey = ChatPeerKeyBreach(pinned: key);
     }
+    // A key pinned in this run, not known from the trade's record: to keep with it (#139).
+    if ((keyBefore, _peerKey) case (
+      ChatPeerKeyAwaited(),
+      ChatPeerKeyPinned(:final key),
+    ) when _kept == null) {
+      _toKeep = key;
+    }
 
     // The pending messages the coordinator now shows as stored.
     _pending.removeWhere((p) => page.indexOf(p.message) != null);
@@ -310,17 +372,27 @@ final class TradeChat {
   };
 
   /// The peer's key after a page that gives [given]: pinned at the first key named after the peer, any other later key, a misnamed one, none or an unreadable one after it a breach, which stays.
-  ChatPeerKeyState _keyAfter(ChatPeerKey given) => switch ((_peerKey, given)) {
-    (ChatPeerKeyBreach(), _) => _peerKey,
-    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key)) => ChatPeerKeyPinned(
-      key,
-    ),
-    (ChatPeerKeyAwaited(), ChatPeerKeyMisnamed()) => const ChatPeerKeyBreach(),
-    (ChatPeerKeyAwaited(), _) => _peerKey,
-    (ChatPeerKeyPinned(:final key), ChatPeerKeyOfPeer(key: final again))
+  ///
+  /// After a restart, the key kept with the trade's record stands for the key pinned before (#139): the same key is pinned again silently, and another one, a misnamed one, none or an unreadable one is the same breach as within one run, the key kept as the one pinned before, so that the peer's earlier messages stay read and checked with it (functional review of #139).
+  ChatPeerKeyState _keyAfter(ChatPeerKey given) => switch ((
+    _peerKey,
+    given,
+    _kept,
+  )) {
+    (ChatPeerKeyBreach(), _, _) => _peerKey,
+    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key), final kept?)
+        when key == kept =>
+      ChatPeerKeyPinned(key),
+    (ChatPeerKeyAwaited(), _, final kept?) => ChatPeerKeyBreach(pinned: kept),
+    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key), null) =>
+      ChatPeerKeyPinned(key),
+    (ChatPeerKeyAwaited(), ChatPeerKeyMisnamed(), null) =>
+      const ChatPeerKeyBreach(),
+    (ChatPeerKeyAwaited(), _, null) => _peerKey,
+    (ChatPeerKeyPinned(:final key), ChatPeerKeyOfPeer(key: final again), _)
         when again == key =>
       _peerKey,
-    (ChatPeerKeyPinned(:final key), _) => ChatPeerKeyBreach(pinned: key),
+    (ChatPeerKeyPinned(:final key), _, _) => ChatPeerKeyBreach(pinned: key),
   };
 
   /// The marks of every message, from the messages in index order: a gap before it, a signature older than an earlier message of the same author.
@@ -405,7 +477,7 @@ final class TradeChat {
   /// Whether the Nostr copies of this trade may go on, given the order's Nostr keys as last read, the peer's [peer] and this robot's [own] (reviews of #158): pins them the first time both are keys a copy can be written to ([isKey]); then yes while they are the pinned ones, and never again for the trade once one differs. A missing key is no change: no copy can be made without it anyway.
   ///
   /// Called synchronously when the post leaves, before any composition, so that two messages composed at once cannot go to two different keys.
-  /// What it covers: a coordinator that substitutes a key during the trade. What it does not: one that substitutes it from the first read, and the pins are lost when the app restarts, as the PGP pin is (#139). The official client pins nothing.
+  /// What it covers: a coordinator that substitutes a key during the trade, also across a restart of the app, the pin being kept with the trade's record before the first copy is published (part of #159). What it does not: one that substitutes it from the first copy. The official client pins nothing.
   bool admitNostrKeys({
     required String? peer,
     required String? own,
@@ -418,6 +490,7 @@ final class TradeChat {
       if (peer != null && own != null && isKey(peer) && isKey(own)) {
         _nostrPeerKey = peer;
         _nostrOwnKey = own;
+        _nostrToKeep = ChatNostrPin(peer: peer, own: own);
       }
       return true;
     }

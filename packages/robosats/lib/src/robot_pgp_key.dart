@@ -55,6 +55,9 @@ final class PgpPublicKey {
   /// A coordinator accepts a clear-signed invoice only when GnuPG reports this fingerprint as the signer (`api/utils.py:641`).
   final String fingerprint;
 
+  /// The fingerprint of the encryption subkey, written as [fingerprint]: with it, the two fingerprints that [operator ==] compares, which a client can keep to know the same key again without keeping the key (#139).
+  final String subkeyFingerprint;
+
   /// The user ID the primary key certifies: `RoboSats ID <hash id>` on a key made by the official client.
   ///
   /// No coordinator reads it: it is a convention between clients.
@@ -67,6 +70,7 @@ final class PgpPublicKey {
 
   PgpPublicKey._(this.armored, this._key)
     : fingerprint = hex.encode(_key.primary.fingerprint).toUpperCase(),
+      subkeyFingerprint = hex.encode(_key.subkey.fingerprint).toUpperCase(),
       userId = _key.userId,
       createdAt = DateTime.fromMillisecondsSinceEpoch(
         _key.primary.createdAt * 1000,
@@ -77,19 +81,21 @@ final class PgpPublicKey {
   ///
   /// Armor headers such as `Version` or `Comment` are accepted, as GnuPG writes them, and dropped: [armored] is the canonical armor of the packets read.
   /// The key is not checked against a clock: [verifyCleartext] and the chat methods do that.
-  /// Fails with [PgpInputTooLarge], [PgpArmorMalformed] or [PgpKeyUnsupported].
+  /// Fails with [PgpInputTooLarge] when [armored] or its canonical armor is longer than `PgpLimits.keyArmorChars`, with [PgpArmorMalformed] or with [PgpKeyUnsupported].
   static Result<PgpPublicKey, PgpFailure> parse(String armored) {
     if (armored.length > PgpLimits.keyArmorChars) {
       return const Err(PgpInputTooLarge());
     }
     final bytes = armorDecode(ArmorBlock.publicKey, pgpArmorFromWire(armored));
     if (bytes == null) return const Err(PgpArmorMalformed());
+    // The bound holds for [armored] too: a block read from fewer lines, one line say, can be longer once armored again, and a client keeps that armor (a pinned peer key).
+    final canonical = armorEncode(ArmorBlock.publicKey, bytes);
+    if (canonical.length > PgpLimits.keyArmorChars) {
+      return const Err(PgpInputTooLarge());
+    }
     try {
       return Ok(
-        PgpPublicKey._(
-          armorEncode(ArmorBlock.publicKey, bytes),
-          TransferableKey.parse(bytes, secret: false),
-        ),
+        PgpPublicKey._(canonical, TransferableKey.parse(bytes, secret: false)),
       );
     } on FormatException {
       return const Err(PgpKeyUnsupported());

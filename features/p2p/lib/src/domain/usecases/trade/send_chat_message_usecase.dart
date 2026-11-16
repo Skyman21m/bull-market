@@ -5,6 +5,8 @@ import 'package:bull_logger/bull_logger.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import '../../p2p_failure.dart';
+import '../../repositories/trade_chat_pin_repository.dart';
 import '../../robot_key_compute_port.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/trade_chat.dart';
@@ -25,7 +27,8 @@ import 'watch_chat_usecase.dart';
 /// When the coordinator then refuses the post, the copy has left already, as in the reference: the screen says the coordinator did not take the message while a peer in the official client's Nostr view may read it, and a message typed again shows twice there (declared deviation, nothing built to avoid it).
 /// Nothing is built when the order lacks a Nostr key or holds for this robot a key that is not the robot's ([OutgoingNostrChatMessage.compose]).
 /// « Send again » publishes the same Nostr events again only when no relay accepted them, so that a peer never sees a message twice.
-/// Nothing here is printed or stored; the Nostr copy logs only fixed words.
+/// Nothing is posted while the peer key pinned in this run is not kept with the trade's record (review of #139), and no Nostr copy is published while the trade's Nostr keys are not (part of #159).
+/// Nothing here is printed, and nothing stored but those pins; the Nostr copy logs only fixed words.
 final class SendChatMessageUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;
@@ -38,6 +41,7 @@ final class SendChatMessageUsecase {
 
   /// [Random.secure] in the app: the NIP-44 nonces, the signatures' aux, the throwaway keys, the dates of the gift wraps and the choice of relays.
   final Random _random;
+  final TradeChatPinRepository _pins;
 
   const SendChatMessageUsecase(
     this._client,
@@ -49,6 +53,7 @@ final class SendChatMessageUsecase {
     this._relays,
     this._federation,
     this._random,
+    this._pins,
   );
 
   /// Why [text] cannot be sent, said as the user types, or `null`: what needs no key and no request (the robot's token is checked when it is encrypted).
@@ -76,6 +81,8 @@ final class SendChatMessageUsecase {
   ) async {
     if (refusalOf(text) case final refusal?) return Err(refusal);
     final chat = _chats.of(record);
+    // A pin whose write failed at the last read is written now, so that trying again sends (functional review of #139).
+    await keepChatPin(_pins, record, chat);
     final PgpPublicKey peer;
     switch (chat.peerKey) {
       case ChatPeerKeyPinned(:final key):
@@ -84,6 +91,9 @@ final class SendChatMessageUsecase {
         return const Err(ChatPeerKeyChanged());
       case ChatPeerKeyAwaited():
         return const Err(ChatPeerKeyNotKnown());
+    }
+    if (!chat.pinsKept) {
+      return const Err(ChatSendUnavailable(P2pStorageFailure()));
     }
     final order = seen.order;
     if (order == null) return const Err(ChatClosed());
@@ -212,12 +222,29 @@ final class SendChatMessageUsecase {
   }
 
   /// Publishes [copy] on the relays of the trade's network, each through a Tor session of the robot, all at once; marks it delivered when one relay accepted it.
+  ///
+  /// The Nostr keys this run pinned are kept with the trade's record first, so that a restart compares the order's keys with them (part of #159): no copy leaves under keys not kept. When the record holds other keys, the copies stop for the trade, as when the order changes a key; when the keys could not be written, this copy is let go and the next one tries again.
   Future<void> _publishOverNostr(
     TradeChat chat,
     OutgoingChatMessage message,
     OutgoingNostrChatMessage copy,
     OpenTrade trade,
   ) async {
+    if (chat.nostrPinToKeep case final pin?) {
+      switch (await _pins.keepNostr(trade.record, pin)) {
+        case Ok(value: true):
+          chat.nostrPinKept();
+        case Ok(value: false):
+          chat.nostrPinKeptOther();
+          chat.cancelNostrCopy(message);
+          log.info('P2P Nostr copy not sent: other Nostr keys kept');
+          return;
+        case Err():
+          chat.cancelNostrCopy(message);
+          log.info('P2P Nostr copy not sent: its keys were not kept');
+          return;
+      }
+    }
     final relays = nostrRelaysFor(
       trade.coordinator,
       _federation,
@@ -242,6 +269,7 @@ final class SendChatMessageUsecase {
     final chat = _chats.of(record);
     final message = chat.pendingMessage(id);
     if (message == null) return const Err(ChatClosed());
+    await keepChatPin(_pins, record, chat);
     if (chat.peerKey is! ChatPeerKeyPinned) {
       return const Err(ChatPeerKeyChanged());
     }
@@ -287,6 +315,10 @@ final class SendChatMessageUsecase {
     // Encrypted to the key pinned for the trade as it is now, right before the post: a breach read while this send waited stops it.
     if (chat.pinnedKey?.fingerprint != message.peerFingerprint) {
       return const Err(ChatPeerKeyChanged());
+    }
+    // Nothing is posted while the key pinned in this run is not kept with the trade's record, so that a restart cannot trust another key again (review of #139): the send writes it first, and the next read tries again.
+    if (!chat.pinsKept) {
+      return const Err(ChatSendUnavailable(P2pStorageFailure()));
     }
     if (pending != null) chat.sentAgain(message);
     final offset = chat.offset;
