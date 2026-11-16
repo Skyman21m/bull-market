@@ -395,6 +395,29 @@ final class TradeReader {
     );
   }
 
+  /// What a read of an end reached with success shows, written nowhere (#95): the status after [answer] over [trade]'s own end, with the order read, only when [trade] stands at a successful end (14), the read is not superseded ([TradeReadOrder.claim]) and still shows that end with its order; `null` otherwise, and the trade stays as it is.
+  ///
+  /// The reference reads an order again whenever its page opens, and the coordinator sums up a finished trade in every read of it at 13, 14 and 15 (`api/views.py:490-504`); [advance] never leaves an end nor writes it again, so the watch reads an end once through this, for the summary, the payment's lines and the rating. Nothing here stores a trail or touches the record.
+  TradeSeen? endShown(
+    OpenTrade trade,
+    TradeAnswer answer, {
+    required DateTime at,
+    required RequestTimes request,
+  }) {
+    final end = trade.seen.status;
+    if (end.position != TradePosition.succeeded) return null;
+    if (_requestOrder.claim(trade.record.robot, request) != null) return null;
+    final seen = _seenAfter(
+      end,
+      answer,
+      trade.terms,
+      at,
+      requestedAt: request.leftAt,
+    );
+    if (seen.status is! Succeeded || seen.order == null) return null;
+    return seen;
+  }
+
   /// The status after [answer] read at [at], from [previous], with the order it was read from when the status comes from it (an answer refused as a whole leaves the last status, whose order is no longer known).
   TradeSeen _seenAfter(
     TradeStatus previous,

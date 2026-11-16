@@ -246,7 +246,8 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       required String dispute,
     }) => switch (action) {
       ChatStepAction.confirmFiatSent => confirmation,
-      ChatStepAction.undoFiatSent => request,
+      // A rating is a request too: « Rate your trade experience » says nothing when it is done, as the reference.
+      ChatStepAction.undoFiatSent || ChatStepAction.rate => request,
       ChatStepAction.dispute => dispute,
     };
     final movedOn = said(
@@ -261,6 +262,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     );
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
+        // The rating in its own words: the user rated, confirmed nothing; and no read of an end is coming to wait for.
+        ChatStepNotOffered() when action == ChatStepAction.rate =>
+          l10n.p2pEndRateNotSent,
         ChatStepNotOffered() =>
           action == ChatStepAction.dispute
               ? l10n.p2pEndDisputeNeedsRead
@@ -269,6 +273,8 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         ChatStepTooEarly() => l10n.p2pEndDisputeTooEarly,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
+        ChatStepReadFailed() when action == ChatStepAction.rate =>
+          l10n.p2pEndRateReadFailed(coordinator),
         ChatStepReadFailed() =>
           action == ChatStepAction.dispute
               ? l10n.p2pEndDisputeReadFailed(coordinator)
@@ -320,6 +326,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       ) =>
         notSent(l10n.p2pRobotBusy),
       ChatStepWasNotDone() => notSent(l10n.p2pBookError),
+      // No read tells a rating: nothing keeps checking it.
+      ChatStepWasUnknown() when action == ChatStepAction.rate =>
+        l10n.p2pEndRateUnknown,
       ChatStepWasUnknown() => said(
         confirmation: l10n.p2pEndUnknown,
         request: l10n.p2pEndUnknownRequest,
@@ -345,9 +354,8 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       ChatStepProgress.sending => switch (action) {
         ChatStepAction.confirmFiatSent => l10n.p2pEndStepSending(coordinator),
-        ChatStepAction.undoFiatSent => l10n.p2pEndStepSendingRequest(
-          coordinator,
-        ),
+        ChatStepAction.undoFiatSent ||
+        ChatStepAction.rate => l10n.p2pEndStepSendingRequest(coordinator),
         ChatStepAction.dispute => l10n.p2pEndStepSendingDispute(coordinator),
       },
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(

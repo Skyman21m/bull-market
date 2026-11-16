@@ -2673,4 +2673,97 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pEndDisputeUnknown =>
       'Bull Market ne sait pas encore si le litige a été ouvert et continue de vérifier : le litige s’affichera ici une fois ouvert.';
+
+  @override
+  String get p2pEndRateTrade => 'Évaluez votre expérience de trading';
+
+  @override
+  String p2pEndRateStar(String stars) {
+    return '$stars sur 5';
+  }
+
+  @override
+  String get p2pEndYourTxid => 'Votre TXID';
+
+  @override
+  String get p2pEndCopyTxid => 'Copier le TXID';
+
+  @override
+  String get p2pEndSendingCoins => 'Envoi des bitcoins en cours';
+
+  @override
+  String get p2pEndCopyAddress => 'Copier l’adresse';
+
+  @override
+  String get p2pSummaryTitle => 'Résumé de la transaction';
+
+  @override
+  String get p2pSummaryExport => 'Exporter le résumé de la transaction';
+
+  @override
+  String get p2pSummaryExportCopyFailed =>
+      'Le résumé de la transaction n’a pas pu être copié.';
+
+  @override
+  String get p2pSummaryUserRole => 'Rôle utilisateur';
+
+  @override
+  String get p2pSummarySent => 'Envoyé';
+
+  @override
+  String get p2pSummaryReceived => 'Reçu';
+
+  @override
+  String get p2pSummaryBtcReceived => 'BTC reçus';
+
+  @override
+  String get p2pSummaryBtcSent => 'BTC envoyés';
+
+  @override
+  String get p2pSummaryTradeFee => 'Frais de transaction';
+
+  @override
+  String p2pSummarySats(String sats) {
+    return '$sats Sats';
+  }
+
+  @override
+  String p2pSummarySatsPercent(String sats, String percent) {
+    return '$sats Sats ($percent%)';
+  }
+
+  @override
+  String get p2pSummaryOnchainSwapFee => 'Frais d\'échange onchain';
+
+  @override
+  String get p2pSummaryMakerBond => 'Caution du créateur';
+
+  @override
+  String get p2pSummaryUnlocked => 'Débloqué';
+
+  @override
+  String get p2pSummaryRevenue => 'Revenu de la transaction du coordinateur';
+
+  @override
+  String get p2pSummaryRoutingBudget => 'Budget de routage';
+
+  @override
+  String p2pSummaryRate(String rate, String currencyCode) {
+    return '$rate $currencyCode/BTC';
+  }
+
+  @override
+  String get p2pSummaryContractRate => 'Taux de change du contrat';
+
+  @override
+  String get p2pEndRateUnknown =>
+      'Bull Market ne sait pas si votre note est passée : l’ordre ne l’indique pas. Touchez une étoile pour l’envoyer de nouveau.';
+
+  @override
+  String get p2pEndRateNotSent => 'Votre note n’a pas été envoyée.';
+
+  @override
+  String p2pEndRateReadFailed(String coordinator) {
+    return 'L’ordre n’a pas pu être relu chez $coordinator : votre note n’a pas été envoyée.';
+  }
 }

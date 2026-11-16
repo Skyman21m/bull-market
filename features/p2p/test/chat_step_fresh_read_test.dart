@@ -153,7 +153,12 @@ void main() {
         expect(shown(cubit).status, ended);
         expect(cubit.state.record.closedAt, isNotNull);
         for (final action in ChatStepAction.values) {
-          expect(action.offeredAt(shown(cubit)), isFalse, reason: '$action');
+          // The rating is the end's own action, offered at 14 from the order read there (#95).
+          expect(
+            action.offeredAt(shown(cubit)),
+            action == ChatStepAction.rate && shown(cubit).status is Succeeded,
+            reason: '$action',
+          );
         }
         expect(refusalOf(cubit), isA<ChatStepStatusMoved>());
         // At an end the watch has ended: it reads no more, not even when the screen asks.

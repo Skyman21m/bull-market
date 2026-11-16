@@ -14,7 +14,7 @@ import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]).
+/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]); and, once the trade is finished, « Rate your trade experience » ([rate], `Prompts/Successful.tsx`).
 ///
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
@@ -81,6 +81,97 @@ final class ChatStepActionUsecase {
     send: (identity, lastRead) =>
         _client.openDispute(identity: identity, lastRead: lastRead),
   );
+
+  /// « Rate your trade experience » for the trade of [record] at [seen] (14, the buyer, from an order read), the status the screen showed when the user tapped the [rating]'s star.
+  ///
+  /// The same discipline as the chat step's actions, at an end: the trade opened and checked, one action of the order at a time, the order read again just before, and the rating sent once through the robot's places only if that read still shows 14 ([ChatStepReadFailed], [ChatStepStatusMoved] otherwise, nothing sent), with that read as the last one; never sent again, whatever the outcome.
+  /// An end is never left and its trail and record are written already (`TradeReader.advance`): nothing is written, no read follows (the order never shows a rating), and every outcome carries [seen], the status shown. A lost answer is [ChatStepOutcomeUnknown], which no later read resolves.
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> rate(
+    TradeRecord record,
+    TradeSeen seen,
+    PlatformRating rating, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) async {
+    final tell = onProgress == null ? null : _told(onProgress);
+    final shown = seen.order;
+    if (shown == null || !ChatStepAction.rate.offeredAt(seen)) {
+      return const Err(ChatStepNotOffered());
+    }
+    final OpenTrade trade;
+    switch (await _reader.open(record)) {
+      case TradeOpened(trade: final opened):
+        trade = opened;
+      case TradeNotRestorable(:final reason):
+        return Err(ChatStepTradeUnrestorable(reason));
+      case TradeNotOpened(:final failure):
+        return Err(ChatStepTradeUnavailable(failure));
+      case TradeTakeNeverSent():
+        return const Err(ChatStepOfAnotherTrade());
+    }
+    final terms = trade.terms;
+    if (shown.id != terms.orderId ||
+        shown.coordinator != terms.coordinator ||
+        shown.network != terms.network) {
+      return const Err(ChatStepOfAnotherTrade());
+    }
+    tell?.call(ChatStepProgress.waitingForOrder);
+    return _locks.run(
+      record.network,
+      trade.coordinator,
+      record.orderId,
+      () => _reader.duringAction(record, () async {
+        final requests = _limiter.open(trade.robot.identity.sessionKey);
+        try {
+          tell?.call(ChatStepProgress.readingOrder);
+          final read = await _reader.readOrder(
+            requests,
+            record,
+            trade.robot,
+            trade.coordinator,
+            times: _reader.request(),
+          );
+          final CoordinatorOrder lastRead;
+          switch (read) {
+            case Err(:final failure):
+              return Err(ChatStepReadFailed(cause: failure));
+            case Ok(value: Err(:final failure)):
+              return Err(ChatStepReadFailed(cause: failure));
+            case Ok(value: Ok(:final value)):
+              lastRead = value;
+          }
+          if (lastRead.status != CoordinatorOrderStatus.successful) {
+            return Err(ChatStepStatusMoved(seen, record: trade.record));
+          }
+          tell?.call(ChatStepProgress.sending);
+          final sent = await requests.send(
+            record.network,
+            trade.coordinator,
+            () => _client.ratePlatform(
+              identity: trade.robot.identity,
+              lastRead: lastRead,
+              rating: rating,
+            ),
+            isBusy: _answeredBusy,
+          );
+          return Ok(switch (sent) {
+            Ok(value: Ok()) => ChatStepDone(trade.record, seen),
+            Ok(value: Err(failure: OrderActionRefused(:final cause))) =>
+              ChatStepNotDone(trade.record, seen, cause: cause),
+            Ok(value: Err(failure: OrderActionOutcomeUnknown())) =>
+              ChatStepOutcomeUnknown(trade.record, seen),
+            // Busy every time, or the robot released: the rating never reached the coordinator.
+            Err(:final failure) => ChatStepNotDone(
+              trade.record,
+              seen,
+              cause: failure,
+            ),
+          });
+        } finally {
+          requests.close();
+        }
+      }),
+    );
+  }
 
   Future<Result<ChatStepOutcome, ChatStepRefusal>> _run(
     ChatStepAction action,

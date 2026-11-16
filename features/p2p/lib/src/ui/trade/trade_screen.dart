@@ -36,6 +36,7 @@ import 'chat_panel.dart';
 import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'payout_panel.dart';
+import 'successful_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
 
@@ -306,6 +307,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                             .read<TradeCubit>()
                             .offersUndoFiatSent,
                         offersDispute: context.read<TradeCubit>().offersDispute,
+                        offersRating: context.read<TradeCubit>().offersRating,
                         clock: widget.now,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
@@ -448,6 +450,7 @@ class _Contract extends StatelessWidget {
   final bool offersFiatSent;
   final bool offersUndoFiatSent;
   final bool offersDispute;
+  final bool offersRating;
 
   /// The screen's clock, which a countdown of a dialog reads as it ticks.
   final DateTime Function() clock;
@@ -469,6 +472,7 @@ class _Contract extends StatelessWidget {
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
     required this.offersDispute,
+    required this.offersRating,
     required this.clock,
     required this.coordinator,
     required this.walletPayment,
@@ -567,8 +571,9 @@ class _Contract extends StatelessWidget {
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status),
-        // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it.
-        if (contract.prompt != TradePrompt.chat)
+        // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it, and at 14 the panel of the end, under its stars, when it offers them.
+        if (contract.prompt != TradePrompt.chat &&
+            !(contract.prompt == TradePrompt.finished && offersRating))
           if (chatStep case ChatStepIdle(:final notice?, :final action)) ...[
             const Gap(BullSpacing.md),
             ChatStepNoticeLine(
@@ -703,7 +708,17 @@ class _Contract extends StatelessWidget {
           Center(child: CircularProgressIndicator(color: colors.primary)),
         ],
       ),
-      // « Trade finished! » with its title alone: the rating and the summary come with a later pull request of #95.
+      // « Trade finished! »: the rating, the on-chain payment's lines and the trade summary (#95).
+      (TradePrompt.finished, final Succeeded succeeded) => SuccessfulPanel(
+        key: const ValueKey('trade-successful-panel'),
+        seen: contract.seen,
+        status: succeeded,
+        order: order,
+        coordinator: coordinator,
+        chatStep: chatStep,
+        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        offersRating: offersRating,
+      ),
       (TradePrompt.finished, _) => const SizedBox.shrink(),
       (
         TradePrompt.disputeOpen ||

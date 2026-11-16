@@ -29,6 +29,9 @@ enum ScriptedFault {
   /// The coordinator answers the request as the order stands when it arrives, and the answer reaches the app only when the test calls `ScriptedCoordinator.deliverDelayed`, after later requests were answered: a read overtaken on its way back over Tor (#141).
   answerDelayed,
 
+  /// The coordinator refuses the request before it changes anything, as it refuses a robot that is no participant (1047, `api/views.py:617-619`).
+  refused,
+
   /// The request reaches the coordinator but is served only when the test calls `ScriptedCoordinator.serveLate`, after requests that left later were served and answered: a request that leaves earlier but is served later (#141).
   servedLate,
 }
@@ -121,6 +124,12 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   /// A coordinator that sends its swap rates with `swap_allowed` false, which the reference never does (it sends them only with a swap offered, `api/logics.py:724-728`).
   bool swapRatesWithoutSwap = false;
+
+  /// The summaries `Logics.summarize_trade` adds to a participant's read at 13, 14 and 15 (`api/views.py:500-504`), when the test sets them: `maker_summary`, `taker_summary`, `platform_summary`.
+  Map<String, Object?>? tradeSummary;
+
+  /// Whether the coordinator no longer knows the order: every read of it is refused as an unknown order (`api/views.py`, « Invalid Order Id », 404).
+  bool orderForgotten = false;
 
   /// The coordinator's economy estimate, which an address's mining fee rate must reach (`get_minning_fee("minimum")`, at least 2: `api/logics.py:780-793`).
   double minimumMiningFeeRate = 2;
@@ -426,6 +435,8 @@ final class ScriptedCoordinator implements CoordinatorTransport {
         _servedLate.add(served);
         await served.future;
         return Ok(_answer(kind, request));
+      case ScriptedFault.refused:
+        return Ok(_json(403, {'error_code': 1047, 'bad_request': 'refused'}));
       case ScriptedFault.answerDelayed:
         final answer = _answer(kind, request);
         final delivered = Completer<void>();
@@ -904,6 +915,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
 
   CoordinatorResponse _orderFor(RobotIdentity robot) {
     final key = robot.sessionKey;
+    if (orderForgotten) {
+      return _json(404, {'bad_request': 'Invalid Order Id'});
+    }
     if (_status == 4 || _status == 12) {
       return _json(400, {'error_code': 1043, 'bad_request': 'cancelled'});
     }
@@ -1176,6 +1190,9 @@ final class ScriptedCoordinator implements CoordinatorTransport {
           ..['public_duration'] = 86399
           ..['expiry_reason'] = 3
           ..['expiry_message'] = 'Invoice not submitted';
+    }
+    if (tradeSummary case final summary? when status >= 13 && status <= 15) {
+      data.addAll(summary);
     }
     return data;
   }

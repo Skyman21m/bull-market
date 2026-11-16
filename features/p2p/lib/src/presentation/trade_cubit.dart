@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show PlatformRating;
 
 import '../domain/trade/trade_cancel.dart';
 import '../domain/trade/trade_chat_step.dart';
@@ -37,6 +38,15 @@ typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
       TradeRecord record,
       TradeSeen seen, {
+      void Function(ChatStepProgress step)? onProgress,
+    });
+
+/// [ChatStepActionUsecase.rate], which the locator gives the cubit: « Rate your trade experience » (#95).
+typedef TradeRater =
+    Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
+      TradeRecord record,
+      TradeSeen seen,
+      PlatformRating rating, {
       void Function(ChatStepProgress step)? onProgress,
     });
 
@@ -190,6 +200,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeLastStored? _lastStored;
   final TradeFiatSender? _undoFiatSent;
   final TradeFiatSender? _startDispute;
+  final TradeRater? _rate;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -206,6 +217,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._confirmFiatSent,
     this._undoFiatSent,
     this._startDispute,
+    this._rate,
     this._lastStored,
   }) : super(TradeScreenState(record));
 
@@ -217,6 +229,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   /// Whether the screen may offer « Open Dispute ».
   bool get offersDispute => _startDispute != null;
+
+  /// Whether the screen may offer « Rate your trade experience ».
+  bool get offersRating => _rate != null;
 
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
@@ -412,6 +427,19 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Opens a dispute at [seen], the status the screen showed when the user agreed to the reference's dialog: as [confirmFiatSent].
   Future<void> startDispute(TradeSeen seen) =>
       _chatStep(ChatStepAction.dispute, _startDispute, seen);
+
+  /// Sends « Rate your trade experience » with [rating] at [seen], the status the screen showed when the user tapped the star: as [confirmFiatSent].
+  Future<void> rate(TradeSeen seen, PlatformRating rating) {
+    final rate = _rate;
+    return _chatStep(
+      ChatStepAction.rate,
+      rate == null
+          ? null
+          : (record, seen, {onProgress}) =>
+                rate(record, seen, rating, onProgress: onProgress),
+      seen,
+    );
+  }
 
   Future<void> _chatStep(
     ChatStepAction action,

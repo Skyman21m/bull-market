@@ -419,7 +419,7 @@ final class CoordinatorClient {
     follows: disputeFollows,
   );
 
-  /// `POST /api/order/?order_id=` with the action `rate_platform`: the robot [identity] gives its coordinator, the one of [lastRead], [rating] stars (« Rate your host », `Logics.rate_platform`, `api/logics.py:1785-1789`, commit ff1998c).
+  /// `POST /api/order/?order_id=` with the action `rate_platform`: the robot [identity] gives its coordinator, the one of [lastRead], [rating] stars (« Rate your trade experience », `Logics.rate_platform`, `api/logics.py:1785-1789`, commit ff1998c).
   ///
   /// The coordinator keeps the latest rating of the robot, whatever the order's status; the reference client offers it once the trade is finished (`TradeBox/Prompts/Successful.tsx`).
   /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:315-317`): `{"action":"rate_platform","rating":N}`, a number the coordinator's serializer reads as one of its choices « 1 » to « 5 ».
