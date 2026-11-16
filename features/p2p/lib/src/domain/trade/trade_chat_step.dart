@@ -49,10 +49,9 @@ enum ChatStepAction {
           (seen.order?.status == CoordinatorOrderStatus.sendingFiat ||
               seen.order?.status == CoordinatorOrderStatus.fiatSent) &&
           seen.status is Chatting,
-    // The buyer at 14, where the reference shows its stars to a buyer (`TradeBox/index.tsx:631-650`).
+    // The buyer at 14, where the reference shows its stars to a buyer (`TradeBox/index.tsx:631-650`), from an order read; not necessarily marked stored: a rating moves nothing, and an end the trail holds is never left nor written again (`TradeReader.advance`), so a later read of it is never marked stored.
     ChatStepAction.rate =>
-      seen.stored &&
-          seen.order?.status == CoordinatorOrderStatus.successful &&
+      seen.order?.status == CoordinatorOrderStatus.successful &&
           switch (seen.status) {
             Succeeded(role: TradeRole.buyer) => true,
             _ => false,

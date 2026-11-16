@@ -2717,4 +2717,8 @@ class P2pLocalizationsIt extends P2pLocalizations {
 
   @override
   String get p2pSummaryContractRate => 'Contract exchange rate';
+
+  @override
+  String get p2pEndRateUnknown =>
+      'Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.';
 }

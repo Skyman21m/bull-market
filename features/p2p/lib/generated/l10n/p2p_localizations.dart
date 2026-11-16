@@ -4386,6 +4386,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Contract exchange rate'**
   String get p2pSummaryContractRate;
+
+  /// Not in the RoboSats texts: the project's own: the answer to « Rate your trade experience » was lost; no read can tell a rating, so nothing keeps checking, and only a new tap sends again (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.'**
+  String get p2pEndRateUnknown;
 }
 
 class _P2pLocalizationsDelegate

@@ -321,6 +321,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       ) =>
         notSent(l10n.p2pRobotBusy),
       ChatStepWasNotDone() => notSent(l10n.p2pBookError),
+      // No read tells a rating: nothing keeps checking it.
+      ChatStepWasUnknown() when action == ChatStepAction.rate =>
+        l10n.p2pEndRateUnknown,
       ChatStepWasUnknown() => said(
         confirmation: l10n.p2pEndUnknown,
         request: l10n.p2pEndUnknownRequest,

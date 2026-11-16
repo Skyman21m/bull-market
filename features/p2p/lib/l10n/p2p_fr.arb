@@ -702,5 +702,6 @@
   "p2pSummaryRevenue": "Revenu de la transaction du coordinateur",
   "p2pSummaryRoutingBudget": "Budget de routage",
   "p2pSummaryRate": "{rate} {currencyCode}/BTC",
-  "p2pSummaryContractRate": "Taux de change du contrat"
+  "p2pSummaryContractRate": "Taux de change du contrat",
+  "p2pEndRateUnknown": "Bull Market ne sait pas si votre note est passée : l’ordre ne l’indique pas. Touchez une étoile pour l’envoyer de nouveau."
 }

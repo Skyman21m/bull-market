@@ -159,4 +159,23 @@ void main() {
     expect(en.chartBtc(2), '2');
     expect(fr.chartBtc(0.065), '0,065');
   });
+
+  test(
+    'the trade summary\'s numbers as `pn` writes them, its fee as `toPrecision(3)` and its price as `toPrecision(7)`',
+    () {
+      expect(en.summaryNumber(150), '150');
+      expect(en.summaryNumber(164.126), '164.126');
+      expect(en.summaryNumber(1234567.5), '1,234,567.5');
+      expect(en.summaryFeePercent(0.00175), '0.175');
+      expect(en.summaryFeePercent(0.00025), '0.025');
+      expect(en.summaryFeePercent(0.002), '0.2');
+      expect(en.summaryFeePercent(0.0012345), '0.123');
+      expect(en.summaryRate(60849.5), '60,849.50');
+      expect(en.summaryRate(91234.56), '91,234.56');
+      expect(en.summaryRate(1234567.89), '1,234,568');
+      expect(en.summaryRate(0.5), '0.5000000');
+      expect(fr.summaryFeePercent(0.00175), '0,175');
+      expect(fr.summaryRate(60849.5), '60\u202f849,50');
+    },
+  );
 }

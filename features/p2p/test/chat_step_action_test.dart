@@ -754,4 +754,109 @@ void main() {
       },
     );
   });
+
+  group('« Rate your trade experience »', () {
+    PlatformRating stars(int n) => PlatformRating.of(n) ?? fail('no rating');
+
+    test('sent once from 14, after a fresh read, with its stars', () async {
+      final (app, record, finished) = await at(status: 14);
+      expect(finished.status, isA<Succeeded>());
+      app.coordinator.requests.clear();
+      final steps = <ChatStepProgress>[];
+      final result = await app.chat.rate(
+        record,
+        finished,
+        stars(4),
+        onProgress: steps.add,
+      );
+      final outcome = switch (result) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      expect(outcome, isA<ChatStepDone>());
+      // The end shown stays: nothing is written at an end, and no read tells a rating.
+      expect(identical(outcome.seen, finished), isTrue);
+      expect(app.coordinator.platformRating, 4);
+      expect(app.coordinator.received, [
+        ScriptedRequest.order,
+        ScriptedRequest.rate,
+      ]);
+      expect(steps, [
+        ChatStepProgress.waitingForOrder,
+        ChatStepProgress.readingOrder,
+        ChatStepProgress.sending,
+      ]);
+      // Another tap sends again, as the reference sends each change of its stars; from an unmarked read of the end too.
+      expect(
+        await app.chat.rate(
+          outcome.record,
+          TradeSeen(finished.status, order: finished.order),
+          stars(5),
+        ),
+        isA<Ok<ChatStepOutcome, ChatStepRefusal>>(),
+      );
+      expect(app.coordinator.platformRating, 5);
+      expect(sent(app, ScriptedRequest.rate), 2);
+    });
+
+    test('the read before fails: nothing sent', () async {
+      final (app, record, finished) = await at(status: 14);
+      app.coordinator.failNext(
+        ScriptedRequest.order,
+        ScriptedFault.unreachable,
+      );
+      expect(
+        await app.chat.rate(record, finished, stars(3)),
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepReadFailed>(),
+        ),
+      );
+      expect(sent(app, ScriptedRequest.rate), 0);
+    });
+
+    test(
+      'not offered before 14, nor from a status without an order read',
+      () async {
+        final (app, record, nine) = await at();
+        app.coordinator.requests.clear();
+        expect(
+          await app.chat.rate(record, nine, stars(5)),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        final (other, otherRecord, finished) = await at(status: 14);
+        other.coordinator.requests.clear();
+        expect(
+          await other.chat.rate(
+            otherRecord,
+            TradeSeen(finished.status, order: null, stored: true),
+            stars(5),
+          ),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        expect(app.coordinator.requests, isEmpty);
+        expect(other.coordinator.requests, isEmpty);
+      },
+    );
+
+    test('an answer lost: an outcome unknown, never sent again', () async {
+      final (app, record, finished) = await at(status: 14);
+      app.coordinator.failNext(ScriptedRequest.rate, ScriptedFault.answerLost);
+      final outcome = switch (await app.chat.rate(record, finished, stars(3))) {
+        Ok(:final value) => value,
+        Err(:final failure) => fail('$failure'),
+      };
+      expect(outcome, isA<ChatStepOutcomeUnknown>());
+      expect(sent(app, ScriptedRequest.rate), 1);
+    });
+  });
 }

@@ -106,6 +106,24 @@ final class _FiatSent {
   }
 }
 
+/// The ratings the screen sends, held by [gate] and answered as the test says.
+final class _Rates {
+  final List<(TradeSeen, int)> asked = [];
+  Completer<Result<ChatStepOutcome, ChatStepRefusal>>? gate;
+  void Function(ChatStepProgress step)? progress;
+
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> call(
+    TradeRecord record,
+    TradeSeen seen,
+    PlatformRating rating, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) {
+    asked.add((seen, rating.stars));
+    progress = onProgress;
+    return (gate ??= Completer()).future;
+  }
+}
+
 late TradeScreenStatuses _statuses;
 
 /// The watch of the trade screen last shown by « Open Dispute »'s tests, to give it a new read.
@@ -146,6 +164,7 @@ Future<TradeCubit> _show(
   _FiatSent? fiatSent,
   _FiatSent? undoFiatSent,
   _FiatSent? dispute,
+  _Rates? rate,
   DateTime Function()? now,
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
@@ -168,6 +187,7 @@ Future<TradeCubit> _show(
     confirmFiatSent: offersFiatSent ? (fiatSent ?? _FiatSent()).call : null,
     undoFiatSent: offersFiatSent ? (undoFiatSent ?? _FiatSent()).call : null,
     startDispute: dispute?.call,
+    rate: rate?.call,
   )..start();
   addTearDown(cubit.close);
   final reads = FakeTransport();
@@ -250,6 +270,45 @@ ChatPanelBuilder _chatPanel(WidgetTester tester) {
   );
 }
 
+/// The summaries `Logics.summarize_trade` adds at 14 (`api/logics.py:2047-2139`) for this robot, the taker and buyer, paid over Lightning, or on chain with [swap].
+Map<String, Object?> _summaryOf({bool swap = false}) => {
+  'maker_summary': {
+    'trade_fee_percent': 0.00025,
+    'bond_size_sats': 4932,
+    'bond_size_percent': 3.0,
+    'is_buyer': false,
+    'sent_sats': 164702,
+    'received_fiat': 100.0,
+    'trade_fee_sats': 41,
+  },
+  'taker_summary': {
+    'trade_fee_percent': 0.00175,
+    'bond_size_sats': 4932,
+    'bond_size_percent': 3.0,
+    'is_buyer': true,
+    'sent_fiat': 100.0,
+    'received_sats': 164126,
+    if (!swap) ...{'payment_hash': 'f' * 64, 'preimage': 'processing'},
+    'trade_fee_sats': 288,
+    if (swap) ...{
+      'is_swap': true,
+      'received_onchain_sats': 160000,
+      'address': 'bc1qexampleaddress0',
+      'txid': 'a' * 64,
+      'mining_fee_sats': 1200,
+      'swap_fee_sats': 2926,
+      'swap_fee_percent': 1.0,
+    },
+  },
+  'platform_summary': {
+    'contract_exchange_rate': 60849.5,
+    'contract_timestamp': '2026-11-13T08:03:00Z',
+    'contract_total_time': 1234.5,
+    if (swap) 'routing_fee_sats': 0 else 'routing_budget_sats': 0.0,
+    'trade_revenue_sats': 576,
+  },
+};
+
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pump();
@@ -277,6 +336,36 @@ void main() {
       'ten': await _statuses.fiatSent(),
       'thirteen': await _statuses.sendingSats(),
       'fourteen': await _statuses.succeeded(),
+      'fourteenSummary': await _statuses.read(
+        await _statuses.sendingSats(),
+        orderJson(14, changes: _summaryOf()),
+      ),
+      'fourteenTxid': await _statuses.read(
+        await _statuses.sendingSats(),
+        orderJson(
+          14,
+          changes: {
+            ..._summaryOf(swap: true),
+            'num_satoshis': 164126,
+            'sent_satoshis': 160000,
+            'network': 'mainnet',
+            'txid': 'a' * 64,
+          },
+        ),
+      ),
+      'fourteenQueued': await _statuses.read(
+        await _statuses.sendingSats(),
+        orderJson(
+          14,
+          changes: {
+            'num_satoshis': 164126,
+            'sent_satoshis': 160000,
+            'network': 'mainnet',
+            'tx_queued': true,
+            'address': 'bc1qexampleaddress0',
+          },
+        ),
+      ),
       'nineAsked': await _statuses.read(
         await _statuses.waitingForPayout(),
         orderJson(9, changes: {'asked_for_cancel': true}),
@@ -631,6 +720,306 @@ void main() {
     await _show(tester, watch: _Watch(), state: _watched('fourteen'));
     expect(find.text('Trade finished!'), findsOneWidget);
     expect(find.text('Bull Market cannot show this step yet.'), findsNothing);
+  });
+
+  group('14, the end of a successful trade (`Prompts/Successful.tsx`)', () {
+    Finder star(int n) => find.byKey(ValueKey('trade-rate-star-$n'));
+    IconButton starButton(WidgetTester tester, int n) =>
+        tester.widget<IconButton>(star(n));
+    late List<String> copied;
+
+    setUp(() {
+      copied = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied.add('${(call.arguments as Map)['text']}');
+            }
+            return null;
+          });
+    });
+
+    tearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    testWidgets(
+      'a star sends « Rate your trade experience » once, for the status shown; off while it runs',
+      (tester) async {
+        final rates = _Rates();
+        final seen = _seenOf('fourteenSummary');
+        await _show(
+          tester,
+          watch: _Watch(),
+          rate: rates,
+          state: TradeScreenStatuses.watched(seen),
+        );
+        expect(find.text('Rate your trade experience'), findsOneWidget);
+        await _reveal(tester, star(4));
+        await tester.tap(star(4));
+        await tester.pump();
+        expect(rates.asked.single.$2, 4);
+        expect(identical(rates.asked.single.$1, seen), isTrue);
+        expect(starButton(tester, 5).onPressed, isNull);
+        rates.progress?.call(ChatStepProgress.sending);
+        await tester.pump();
+        expect(find.textContaining('Sending your request to'), findsOneWidget);
+        await tester.tap(star(5), warnIfMissed: false);
+        await tester.pump();
+        expect(rates.asked, hasLength(1));
+        rates.gate?.complete(Ok(ChatStepDone(_record, seen)));
+        rates.gate = null;
+        await tester.pump();
+        await tester.pump();
+        // Recorded: nothing said, as the reference.
+        expect(find.textContaining('Sending your request to'), findsNothing);
+        expect(find.textContaining('rating'), findsNothing);
+        expect(starButton(tester, 5).onPressed, isNotNull);
+        expect(
+          tester
+              .widget<Icon>(
+                find.descendant(of: star(4), matching: find.byType(Icon)),
+              )
+              .icon,
+          Icons.star,
+        );
+        expect(
+          tester
+              .widget<Icon>(
+                find.descendant(of: star(5), matching: find.byType(Icon)),
+              )
+              .icon,
+          Icons.star_border,
+        );
+        await tester.tap(star(5));
+        await tester.pump();
+        expect(rates.asked.map((asked) => asked.$2), [4, 5]);
+        rates.gate?.complete(Ok(ChatStepDone(_record, seen)));
+        await tester.pump();
+        await tester.pump();
+      },
+    );
+
+    testWidgets('an outcome unknown is said under the stars as such', (
+      tester,
+    ) async {
+      final rates = _Rates();
+      final seen = _seenOf('fourteenSummary');
+      await _show(
+        tester,
+        watch: _Watch(),
+        rate: rates,
+        state: TradeScreenStatuses.watched(seen),
+      );
+      await _reveal(tester, star(2));
+      await tester.tap(star(2));
+      await tester.pump();
+      rates.gate?.complete(Ok(ChatStepOutcomeUnknown(_record, seen)));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('It keeps checking'), findsNothing);
+    });
+
+    testWidgets(
+      'no stars without the rating; from an order read at 14 even unmarked, never from a status without one',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: _watched('fourteenSummary'),
+        );
+        expect(find.text('Rate your trade experience'), findsNothing);
+        expect(star(1), findsNothing);
+        final rates = _Rates();
+        final seen = _seenOf('fourteenSummary');
+        await _show(
+          tester,
+          watch: _Watch(),
+          rate: rates,
+          state: TradeScreenStatuses.watched(
+            TradeSeen(seen.status, order: seen.order),
+          ),
+        );
+        expect(starButton(tester, 3).onPressed, isNotNull);
+        await _show(
+          tester,
+          watch: _Watch(),
+          rate: rates,
+          state: TradeScreenStatuses.watched(
+            TradeSeen(seen.status, order: null, stored: true),
+          ),
+        );
+        expect(starButton(tester, 3).onPressed, isNull);
+        expect(
+          find.text('Wait until the order is read again.'),
+          findsOneWidget,
+        );
+        expect(rates.asked, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'the trade summary: this robot\'s side first, the peer\'s and the coordinator\'s, and its export',
+      (tester) async {
+        final seen = _seenOf('fourteenSummary');
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: TradeScreenStatuses.watched(seen),
+        );
+        await _reveal(tester, find.text('Trade Summary'));
+        for (final text in [
+          'Buyer',
+          'User role',
+          '100 EUR',
+          'Sent',
+          '164,126 Sats',
+          'BTC received',
+          '288 Sats (0.175%)',
+          'Trade fee',
+          '4,932 Sats (3%)',
+          'Taker bond',
+          'Unlocked',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        await tester.tap(find.text('Maker'));
+        await tester.pump();
+        for (final text in [
+          'Seller',
+          'Received',
+          '164,702 Sats',
+          'BTC sent',
+          '41 Sats (0.025%)',
+          'Maker bond',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        expect(find.text('Buyer'), findsNothing);
+        final order = seen.order ?? fail('no order');
+        // The coordinator's view, named by the coordinator.
+        await tester.tap(find.byTooltip(order.coordinator.longAlias));
+        await tester.pump();
+        for (final text in [
+          '576 Sats',
+          'Coordinator trade revenue',
+          '0 Sats',
+          'Routing budget',
+          '60,849.50 EUR/BTC',
+          'Contract exchange rate',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        await tester.tap(find.byKey(const ValueKey('trade-summary-export')));
+        await tester.pump();
+        expect(find.text('Copied!'), findsOneWidget);
+        final text = copied.single;
+        expect(text, startsWith('{\n  "coordinator": '));
+        expect(jsonDecode(text), {
+          'coordinator': order.coordinator.longAlias,
+          'order_id': order.id,
+          'currency': 'EUR',
+          'robot': order.taker?.nickname,
+          'role': 'taker',
+          'maker': {
+            'trade_fee_percent': 0.00025,
+            'bond_size_sats': 4932,
+            'bond_size_percent': 3,
+            'is_buyer': false,
+            'sent_sats': 164702,
+            'received_fiat': 100,
+            'trade_fee_sats': 41,
+          },
+          'taker': {
+            'trade_fee_percent': 0.00175,
+            'bond_size_sats': 4932,
+            'bond_size_percent': 3,
+            'is_buyer': true,
+            'sent_fiat': 100,
+            'received_sats': 164126,
+            'payment_hash': 'f' * 64,
+            'preimage': 'processing',
+            'trade_fee_sats': 288,
+          },
+          'platform': {
+            'contract_exchange_rate': 60849.5,
+            'contract_timestamp': '2026-11-13T08:03:00.000Z',
+            'contract_total_time': 1234.5,
+            'routing_budget_sats': 0,
+            'trade_revenue_sats': 576,
+          },
+        });
+      },
+    );
+
+    testWidgets(
+      'on chain: « Your TXID » copies the transaction, the swap\'s costs in the summary',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('fourteenTxid'));
+        expect(find.text('Your TXID'), findsOneWidget);
+        expect(find.text('Sending coins'), findsNothing);
+        // The transaction is copied, never written nor opened, as the reference.
+        expect(find.textContaining('a' * 64), findsNothing);
+        await tester.tap(find.byTooltip('Copy the TXID'));
+        await tester.pump();
+        expect(copied, ['a' * 64]);
+        expect(find.text('Copied!'), findsOneWidget);
+        await _reveal(tester, find.text('Trade Summary'));
+        for (final text in [
+          '2,926 Sats (1%)',
+          'Onchain swap fee',
+          '1,200 Sats',
+          'Mining fee',
+        ]) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+
+    testWidgets(
+      'on chain, queued: « Sending coins » copies the address; no summary without one',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('fourteenQueued'));
+        expect(find.text('Sending coins'), findsOneWidget);
+        expect(find.text('Your TXID'), findsNothing);
+        expect(find.text('Trade Summary'), findsNothing);
+        await tester.tap(find.byTooltip('Copy the address'));
+        await tester.pump();
+        expect(copied, ['bc1qexampleaddress0']);
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+
+    testWidgets(
+      'in French, the reference\'s French and the separators of the language',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          rate: _Rates(),
+          locale: const Locale('fr'),
+          state: _watched('fourteenSummary'),
+        );
+        expect(
+          find.text('Évaluez votre expérience de trading'),
+          findsOneWidget,
+        );
+        await _reveal(tester, find.text('Résumé de la transaction'));
+        expect(find.text('Acheteur'), findsOneWidget);
+        expect(find.text('Rôle utilisateur'), findsOneWidget);
+        expect(find.textContaining('(0,175%)'), findsOneWidget);
+        expect(find.text('Caution du preneur'), findsOneWidget);
+        expect(find.text('Débloqué'), findsOneWidget);
+      },
+    );
   });
 
   testWidgets(

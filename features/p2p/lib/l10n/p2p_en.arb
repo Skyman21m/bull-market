@@ -3828,5 +3828,9 @@
   "p2pSummaryContractRate": "Contract exchange rate",
   "@p2pSummaryContractRate": {
     "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pEndRateUnknown": "Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.",
+  "@p2pEndRateUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: the answer to « Rate your trade experience » was lost; no read can tell a rating, so nothing keeps checking, and only a new tap sends again (#95)."
   }
 }
