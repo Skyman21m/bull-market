@@ -17,7 +17,7 @@ import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
 
-/// The peer's key a trade's chat pinned, kept with the trade's record by its two fingerprints (#139): after a restart of the app, played by fresh chats over the same database, the key served is compared with it instead of being trusted again. Over the coordinator the tests play, never a real one, key or message.
+/// The peer's public key a trade's chat pinned, kept with the trade's record with its two fingerprints (#139): after a restart of the app, played by fresh chats over the same database, the key served is compared with it instead of being trusted again. Over the coordinator the tests play, never a real one, key or message.
 void main() {
   // The peer, the order's maker: a robot of another Garage Key of the tests, and the key the official client would make for it.
   final makerRobot = switch (NetworkGarageKey(

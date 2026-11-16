@@ -1308,7 +1308,7 @@ void main() {
       await database.close();
     });
 
-    // Schema 6 (#139, part of #159): the fingerprints of the peer's key each trade's chat pinned, and the Nostr keys of its first Nostr copy.
+    // Schema 6 (#139, part of #159): the peer's public key each trade's chat pinned, with its fingerprints, and the Nostr keys of its first Nostr copy.
 
     /// The schema 6 objects of [database], by name, compared as [objectsOf] compares them.
     Future<Map<String, String>> pinObjectsOf(

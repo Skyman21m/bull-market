@@ -8,7 +8,7 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade, the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (PGP by their fingerprints, and Nostr).
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade, the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -124,7 +124,7 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradePaymentsForward);
       },
       from5To6: (m, schema) async {
-        // Two new tables, the fingerprints of the peer's PGP key each trade's chat pinned (#139) and the Nostr keys of its first Nostr copy (part of #159), and the triggers that keep their rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // Two new tables, the peer's PGP public key each trade's chat pinned, with its fingerprints (#139), and the Nostr keys of its first Nostr copy (part of #159), and the triggers that keep their rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
         // No row of an older table is copied, changed or dropped; a trade of an older file has no pin, and its chat pins at its first read and its first Nostr copy as before.
         await m.createTable(schema.tradeChatPins);
         await m.createTrigger(schema.tradeChatPinsNeverDeleted);

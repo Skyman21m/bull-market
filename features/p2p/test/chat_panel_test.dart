@@ -10,10 +10,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/chat_cubit.dart';
+import 'package:p2p/src/presentation/chat_l10n.dart';
 import 'package:p2p/src/ui/trade/chat_actions.dart';
 import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
@@ -221,6 +223,39 @@ void main() {
       expect(cubit.state.readFailure, isNull);
       cubit.deactivate();
     });
+
+    testWidgets(
+      'a failed read of the pins kept on this device is said without naming the coordinator (functional review of #139)',
+      (tester) async {
+        BuildContext? shown;
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) {
+                shown = context;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+        final context = shown ?? fail('not built');
+        final l10n = P2pLocalizations.of(context);
+        expect(
+          const ChatReadFailed(
+            P2pStorageFailure(),
+          ).toText(context, coordinator: 'Temple'),
+          l10n.p2pChatUnavailable,
+        );
+        expect(
+          const ChatReadFailed(
+            CoordinatorUnreachable(),
+          ).toText(context, coordinator: 'Temple'),
+          l10n.p2pChatReadFailed('Temple'),
+        );
+      },
+    );
 
     testWidgets(
       '« Send » sends the text shown, once; a message not confirmed is sent again only by the user, never by a read',

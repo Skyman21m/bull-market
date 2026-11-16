@@ -292,7 +292,7 @@ final class P2pLocator {
     locator.registerLazySingleton<TradePaymentRepository>(
       () => TradePaymentRepositoryImpl(locator()),
     );
-    // The peer's key each trade's chat pinned, by its fingerprints (#139).
+    // The peer's public key each trade's chat pinned, with its fingerprints, and its Nostr keys (#139, part of #159).
     locator.registerLazySingleton<TradeChatPinRepository>(
       () => TradeChatPinRepositoryImpl(locator()),
     );

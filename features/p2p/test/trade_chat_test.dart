@@ -326,6 +326,48 @@ void main() {
     );
 
     test(
+      'after a restart with no pin kept, a key forged in the peer\'s name that does not verify the peer\'s earlier messages is a breach: nothing leaves (#138, security review of #139)',
+      () async {
+        final (app, record, seen) = await atNine();
+        app.coordinator.peerSays(written(app, 'My IBAN follows'));
+        // The pin is never written in this run, as for a trade of an older version of the app.
+        app.pins.refuseWrites = true;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyPinned>(),
+        );
+        final (restartedRead, restartedSend) = app.chatAfterRestart();
+        app.coordinator.peerPublicKey = keyOf(maker, 934).key.publicKey.armored;
+        final again = switch (await restartedRead.read(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(again.peerKey, isA<ChatPeerKeyBreach>());
+        expect(again.canSend, isFalse);
+        expect(again.entries.single.validSignature, isFalse);
+        final posts = _posts(app);
+        expect(
+          await restartedSend.send(record, seen, 'Here it is'),
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+        expect(app.pins.keeps, greaterThan(0));
+        expect(
+          await app.pins.pinOf(record),
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
+            (ok) => ok.value,
+            'pin',
+            isNull,
+          ),
+        );
+      },
+    );
+
+    test(
       'the decryption that could not run takes nothing: the next read decrypts the page (second pass of the review of #93)',
       () async {
         final (app, record, seen) = await atNine();

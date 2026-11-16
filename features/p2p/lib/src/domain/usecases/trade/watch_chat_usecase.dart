@@ -14,7 +14,7 @@ import 'trade_reader.dart';
 /// Reads the chat of a trade (#93, design note § 3.6, `AGENTS.md` « The encrypted chat of a trade »): one [read] each time the screen polls, every 5 s while the chat is shown (the reference's `CHAT_POLL_INTERVAL_MS`, `EncryptedApiChat/index.tsx:51`).
 ///
 /// A read asks `GET /api/chat/` through the robot's places in [RobotRequestLimiter], from the offset the trade's chat has reached ([TradeChat.offset]), pins or compares the peer's key, and decrypts each new message once with the robot's key, leased from [TradeKeyring] (kept while the chat holds it, `HoldTradeKeyUsecase`); the chat is kept in [TradeChats], in memory only.
-/// Nothing of the messages is printed, logged or stored: the peer's key it pins is kept with the trade's record, by its fingerprints only ([TradeChatPinRepository], #139), so that after a restart the key served is compared with it instead of being trusted again.
+/// Nothing of the messages is printed, logged or stored: the peer's public key it pins is kept with the trade's record, with its two fingerprints ([TradeChatPinRepository], #139), so that after a restart the key served is compared with it instead of being trusted again.
 final class WatchChatUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;

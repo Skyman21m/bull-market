@@ -4,6 +4,7 @@ import 'package:convert/convert.dart';
 import 'package:robosats/robosats.dart';
 import 'package:robosats/src/pgp/armor.dart';
 import 'package:robosats/src/pgp/bytes.dart';
+import 'package:robosats/src/pgp/limits.dart';
 import 'package:robosats/src/pgp/signature_packets.dart';
 import 'package:test/test.dart';
 
@@ -291,6 +292,45 @@ void main() {
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(repositoryRobotKey(2).publicKey));
     });
+
+    test(
+      'refuses a key whose canonical armor would pass the size bound, however few lines it was read from, so that every key it reads can be kept in that armor (security review of #139)',
+      () {
+        final bytes =
+            armorDecode(ArmorBlock.publicKey, armored) ??
+            fail('the robot\'s key');
+        // The key padded with a packet the reader skips (tag 17, a user attribute), of [size] bytes, armored on one line, as a peer or a coordinator may serve it.
+        List<int> padded(int size) => [
+          ...bytes,
+          ...encodePacket(17, List.filled(size, 0x55)),
+        ];
+        String oneLine(List<int> data) =>
+            '${ArmorBlock.publicKey.begin}\n\n${base64.encode(data)}\n${ArmorBlock.publicKey.end}\n';
+        int canonical(int size) =>
+            armorEncode(ArmorBlock.publicKey, padded(size)).length;
+        // The largest padding whose canonical armor is within the bound.
+        var low = 0;
+        var high = PgpLimits.keyArmorChars;
+        while (low < high) {
+          final middle = (low + high + 1) ~/ 2;
+          if (canonical(middle) <= PgpLimits.keyArmorChars) {
+            low = middle;
+          } else {
+            high = middle - 1;
+          }
+        }
+        final fits = oneLine(padded(low));
+        final over = oneLine(padded(low + 1));
+        // Both are within the bound as read: only the canonical armor tells them apart.
+        expect(over.length, lessThanOrEqualTo(PgpLimits.keyArmorChars));
+        final kept = expectOk(PgpPublicKey.parse(fits));
+        expect(kept.armored.length, canonical(low));
+        expect(kept.armored.length, lessThanOrEqualTo(PgpLimits.keyArmorChars));
+        expect(kept, expectOk(PgpPublicKey.parse(armored)));
+        expect(canonical(low + 1), greaterThan(PgpLimits.keyArmorChars));
+        expect(expectErr(PgpPublicKey.parse(over)), isA<PgpInputTooLarge>());
+      },
+    );
   });
 
   group('RobotPgpKey.parse', () {

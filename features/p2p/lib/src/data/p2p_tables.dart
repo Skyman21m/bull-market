@@ -335,6 +335,7 @@ class StoredTradePayments extends Table {
 ///
 /// It holds the peer's public key in canonical armor and the two fingerprints that `PgpPublicKey` equality compares, its primary key's and its encryption subkey's: not secret, since the coordinator and the peer already hold that public key and the chat's export hands it out; never a private key, a message, or anything decrypted. The key read back is parsed by the package's bounded parser and must give these fingerprints, or the pin is unreadable. The chat's messages stay in memory only: this and the Nostr pin below are the only things of the chat that are stored.
 /// The triggers of `trade_chat_pins.drift` keep it: a row is never deleted nor changed, a second one for a trade writes nothing, and a row is written only for an open trade.
+/// They keep it against the app's own SQL, not against whoever can write the file, who can drop them (security review of #139).
 /// Read and written only by `TradeChatPinRepositoryImpl`.
 @DataClassName('TradeChatPinRow')
 class StoredTradeChatPins extends Table {
