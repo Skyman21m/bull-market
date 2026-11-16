@@ -6,7 +6,7 @@
 /// The same client makes a robot known to a coordinator and reads it back (`/api/robot/`), checked against what this device computed: a [CoordinatorRobot] when the coordinator returns the key pair this device has just sent, and otherwise an [UnprovenCoordinatorRobot], which gives the robot only once the robot's token has proved the pair it returned.
 /// For the robot of this device, the client also reads an order as the coordinator describes it to that robot (`/api/order/`, a [CoordinatorOrder]), sends a taker's take and cancel of it, and the buyer's payout: a Lightning invoice or an on-chain address, clear-signed by the robot's key ([SignedPayout]), the address first checked by [BitcoinAddress.check].
 /// It also sends the actions of the trade's chat step, each answered with a [TradeActionOutcome]: the buyer's « fiat sent » and its undo, a dispute, and the robot's rating of its coordinator ([PlatformRating]).
-/// As a maker, the client makes an order from a checked [MakeOrderRequest], answered with a [MadeOrder] that proves the order's terms but not its maker, and pauses or resumes it ([CoordinatorClient.pauseOrder], a toggle); nothing in the app calls them yet.
+/// As a maker, the client makes an order from a checked [MakeOrderRequest], answered with a [MadeOrder], the coordinator's word on the order's number and on the terms its answer carries, which proves neither the terms it leaves out nor the maker, and pauses or resumes it ([CoordinatorClient.pauseOrder], a toggle); nothing in the app calls them yet.
 /// Invalid input is reported as a [RobosatsFailure] in a `Result`, never thrown.
 /// No Flutter, no networking of its own, no logging.
 ///

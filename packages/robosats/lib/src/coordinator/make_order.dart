@@ -238,10 +238,13 @@ final class MakeOrderRequest {
   String toString() => 'MakeOrderRequest(${type.name}, ${currency.code})';
 }
 
-/// What a coordinator answered to a make: an order numbered [id], waiting for its maker bond, with the terms of [request].
+/// What a coordinator answered to a make: an order numbered [id], at status 0, waiting for its maker bond.
 ///
-/// It proves only that [coordinator] made an order with these terms: the answer names no robot (its `maker` and `taker` are the coordinator's internal user ids, read as nothing), so it does not prove that this robot is the order's maker.
-/// The first read of the order by the robot (`CoordinatorClient.fetchOrder`), which checks `is_maker` against the robot's hash id, is what proves it; the bond invoice comes with that read too (`api/views.py:373-379`), never with this answer.
+/// It is the coordinator's word, checked for consistency with [request] on the fields the answer carries, and nothing more.
+/// Compared with [request] and found equal: the type, the currency, the fixed amount or the range (`amount`, `has_range`, `min_amount`, `max_amount`), the payment method, the premium, the escrow duration and the bond size; and found as this package sends them: `is_explicit` false, `satoshis`, `latitude` and `longitude` `null`.
+/// Not in the answer (`ListOrderSerializer`, `api/serializers.py:83-107`), so not checked here: the public duration, the description and the password; fields the answer adds beyond the serializer's are ignored.
+/// The first read of the order by the robot (`CoordinatorClient.fetchOrder`) gives them: `expires_at` at status 1 is the creation plus the public duration, with `description` and `has_password`; the make use case (#179) compares them with what it asked.
+/// The answer names no robot either (its `maker` and `taker` are the coordinator's internal user ids, read as nothing), so it does not prove that this robot is the order's maker: that first read, which checks `is_maker` against the robot's hash id, does; the bond invoice comes with it too (`api/views.py:373-379`), never with this answer.
 @immutable
 final class MadeOrder {
   final Coordinator coordinator;
@@ -252,10 +255,10 @@ final class MadeOrder {
 
   final DateTime createdAt;
 
-  /// When the time to lock the maker bond ends (`EXP_MAKER_BOND_INVOICE`, 300 seconds by default, `api/views.py:190`).
+  /// When the time to lock the maker bond ends, as the coordinator says (`EXP_MAKER_BOND_INVOICE`, 300 seconds by default, `api/views.py:190`): only after [createdAt] and within 2020 to 2100, not bounded further, so not a deadline to rely on; the bond invoice's own expiry is.
   final DateTime expiresAt;
 
-  /// What was sent, which every term of the answer equals.
+  /// What was sent: every term the answer carries equals it (see the class).
   final MakeOrderRequest request;
 
   const MadeOrder._({

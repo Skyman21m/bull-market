@@ -580,6 +580,41 @@ void main() {
       }
     });
 
+    test(
+      'a valid 201 larger than the bound is an outcome unknown, never a made order',
+      () async {
+        final request = testMakeRequest();
+        // The answer of `madeAnswer` with a field the parser ignores, padded to exactly [CoordinatorReadBounds.orderBytes] bytes, then one more.
+        List<int> padded(int size) {
+          final bare = utf8.encode(
+            jsonEncode(madeAnswer(request, changes: {'padding': ''})),
+          );
+          return utf8.encode(
+            jsonEncode(
+              madeAnswer(
+                request,
+                changes: {'padding': 'x' * (size - bare.length)},
+              ),
+            ),
+          );
+        }
+
+        final atBound = padded(CoordinatorReadBounds.orderBytes);
+        expect(atBound, hasLength(CoordinatorReadBounds.orderBytes));
+        serve(Ok(rawResponse(atBound, statusCode: 201)));
+        expect(expectOk(await make(request)).request, request);
+
+        final over = padded(CoordinatorReadBounds.orderBytes + 1);
+        expect(over, hasLength(CoordinatorReadBounds.orderBytes + 1));
+        transport.requests.clear();
+        serve(Ok(rawResponse(over, statusCode: 201)));
+        final failure = expectErr(await make(request));
+        expect(failure, isA<OrderActionOutcomeUnknown>());
+        expect(failure.cause, isA<CoordinatorResponseTooLarge>());
+        expect(transport.requests, hasLength(1));
+      },
+    );
+
     test('a 201 that is not JSON', () async {
       serve(
         Ok(
