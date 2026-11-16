@@ -29,7 +29,10 @@ final class MakeOrderRequest {
   /// The most code points of a description (`max_length=240`, `api/models/order.py:178-184`).
   static const maxDescriptionCodePoints = 240;
 
-  /// The ratio a range's maximum must keep to its minimum: at least [minRangeRatio] (error 1006) and at most [maxRangeRatio] times (error 1009), as the coordinator compares them (`api/logics.py:164-175`); the reference client keeps 1.6 and 14.8 in its form (`AmountRange.tsx:54-55`).
+  /// The coordinator's nominal ratios of a range's maximum to its minimum: at least [minRangeRatio] (error 1006) and at most [maxRangeRatio] times (error 1009, `api/logics.py:164-175`).
+  ///
+  /// The package refuses a range that the coordinator would refuse whatever its price; it does not promise that the coordinator takes a range at these exact bounds: the coordinator compares sats it computes in floating point at its price of the moment (`Logics.calc_sats`, `api/logics.py:256-259`), so a range at a bound may still get 1006 or 1009, a refusal known to come before the order is made ([OrderSizeRefused]).
+  /// The reference client keeps a margin in its form, 1.6 and 14.8 (`components/MakerForm/AmountRange.tsx:54-55`): that margin is the form's to apply (design note § 2.2, #183), not this package's.
   static const minRangeRatio = 1.5;
   static const maxRangeRatio = 15.0;
 
@@ -82,7 +85,7 @@ final class MakeOrderRequest {
   /// The request, or `null` when a field is outside what the coordinator stores as sent.
   ///
   /// - [currency]: any currency of RoboSats but bitcoin (1000).
-  /// - [amount]: each amount above 0 and below [amountLimit], with at most [amountDecimals] decimals; a range's maximum from [minRangeRatio] to [maxRangeRatio] times its minimum.
+  /// - [amount]: each amount above 0 and below [amountLimit], with at most [amountDecimals] decimals; a range's maximum from [minRangeRatio] to [maxRangeRatio] times its minimum, the coordinator's nominal bounds (see there).
   /// - [paymentMethod]: 1 to [maxPaymentMethodCodePoints] code points of clean text (see below).
   /// - [premium]: above -100 (excluded: a price of zero, which the coordinator cannot divide by) and at most 999, with at most [premiumDecimals] decimals.
   /// - [publicDuration] and [escrowDuration]: whole seconds within their bounds.
@@ -106,7 +109,7 @@ final class MakeOrderRequest {
       RangeOrderAmount(:final min, :final max) =>
         _isAmount(min) &&
             _isAmount(max) &&
-            // The coordinator's own comparisons, `min_sats > max_sats / 1.5` and `min_sats < max_sats / 15`, made here on the amounts, whose ratio is the sats' (`Logics.calc_sats`, `api/logics.py:256-259`).
+            // The coordinator's comparisons, `min_sats > max_sats / 1.5` and `min_sats < max_sats / 15`, written on the amounts: the nominal bounds, which its own floating-point sats can still miss by a rounding (see [minRangeRatio]).
             !(min.value > max.value / minRangeRatio) &&
             !(min.value < max.value / maxRangeRatio),
     };

@@ -129,7 +129,7 @@ void main() {
       }
     });
 
-    test('a range from 1.5 to 15 times its minimum, as the coordinator', () {
+    test('a range from 1.5 to 15 times its minimum, the coordinator\'s nominal bounds, each bound a valid amount', () {
       for (final (min, max) in [
         (100.0, 150.0),
         (100.0, 1500.0),
@@ -150,6 +150,10 @@ void main() {
         (100.0, 3000.0),
         (100.0, 1e10),
         (0.000000001, 0.000000002),
+        // A bound that is no amount the coordinator stores, the ratio valid: the minimum, then the maximum.
+        (100.000000001, 200.0),
+        (100.0, 200.000000001),
+        (1e9, 1e10),
       ]) {
         expect(
           request(amount: testRange(min, max)),
