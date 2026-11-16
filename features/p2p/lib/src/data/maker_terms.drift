@@ -1,0 +1,28 @@
+-- The rules of the terms a maker asked that the database keeps itself (schema 8, #176): see `StoredMakerTerms` in `p2p_tables.dart`.
+import 'p2p_tables.dart';
+
+-- The terms of a make are never deleted.
+CREATE TRIGGER IF NOT EXISTS maker_terms_never_deleted BEFORE DELETE ON maker_terms
+BEGIN
+  SELECT RAISE(ABORT, 'the terms of a make are kept');
+END;
+
+-- The terms of a make are set once: any update is refused.
+CREATE TRIGGER IF NOT EXISTS maker_terms_set_once BEFORE UPDATE ON maker_terms
+BEGIN
+  SELECT RAISE(ABORT, 'the terms of a make are set once');
+END;
+
+-- The terms of a make are written once: a second insert, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
+CREATE TRIGGER IF NOT EXISTS maker_terms_inserted_once BEFORE INSERT ON maker_terms
+WHEN EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
+-- The terms belong to the pending make of their robot, written before its request leaves: an open trade made here, of the same network, coordinator and role, whose order id is not known yet.
+CREATE TRIGGER IF NOT EXISTS maker_terms_of_their_make BEFORE INSERT ON maker_terms
+WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND role = NEW.role AND origin = 'madeHere' AND order_id IS NULL AND closed_at IS NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'terms of no pending make');
+END;

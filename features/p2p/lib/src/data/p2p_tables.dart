@@ -83,9 +83,11 @@ class RobotBindings extends Table {
 
 /// The trades of this device's robots, one row per robot that ever had one, so that a trade survives the app being killed (schema 3, #85; design note `docs/design/phase-2-taking-an-order.md` § 3.5, § 4.5).
 ///
-/// A row is written before the take's request leaves, as a pending take, or on the user's take-over of a trade that recovery found; it is never deleted.
-/// Its only changes are the times of its state, each set once: `confirmed_at` when the coordinator showed the robot as the taker, `closed_at` when the trade ended or the pending take turned out not to have happened.
+/// A row is written before the take's request leaves, as a pending take, before the make's request leaves, as a pending make (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.4, § 3.5), or on the user's take-over of a trade that recovery found; it is never deleted.
+/// Its only changes are the times of its state, each set once: `confirmed_at` when the coordinator showed the robot as the taker, or as the maker, `closed_at` when the trade ended or the pending take or make turned out not to have happened; a pending make gains its order id once, in the update that confirms it, and only once its maker's terms are recorded.
 /// The triggers of `trades.drift` refuse any other update, any delete and a second insert of a robot (`INSERT OR REPLACE` included), whatever the code that writes.
+///
+/// Schema 8 rebuilt the table (the order id became nullable, the origin `madeHere` joined the CHECKs, which SQLite cannot change in place): its step copied the rows aside, dropped the table and made it again, copied the rows back, then made its triggers again (`P2pDatabase`, from 7 to 8).
 /// Its robot is bound, on the trade's network, to the coordinator it records (a foreign key to `robot_bindings`), and its network and coordinator are copied from that binding by the statement that writes it.
 @DataClassName('TradeRow')
 class Trades extends Table {
@@ -104,19 +106,19 @@ class Trades extends Table {
   /// The onion origin of the coordinator's instance, as the robot's binding records it.
   TextColumn get coordinatorOnion => text()();
 
-  /// The id of the order on that coordinator.
-  IntColumn get orderId => integer()();
+  /// The id of the order on that coordinator; absent only for a pending make, whose order the coordinator has not numbered yet (schema 8).
+  IntColumn get orderId => integer().nullable()();
 
-  /// `buyer` or `seller`, fixed at the take.
+  /// `buyer` or `seller`, fixed at the take, or at the make.
   TextColumn get role => text()();
 
-  /// `takenHere` for a take of this device, `recovered` for a trade the user took over after recovery found it.
+  /// `takenHere` for a take of this device, `madeHere` for an order this device made (schema 8), `recovered` for a trade the user took over after recovery found it.
   TextColumn get origin => text()();
 
   /// When the row was written, in milliseconds since the epoch.
   IntColumn get takenAt => integer()();
 
-  /// When the coordinator showed this robot as the order's taker, in milliseconds since the epoch; absent while the take is pending.
+  /// When the coordinator showed this robot as the order's taker, or as its maker, in milliseconds since the epoch; absent while the take or the make is pending.
   IntColumn get confirmedAt => integer().nullable()();
 
   /// When the trade ended, or its pending take turned out not to have happened, in milliseconds since the epoch; absent while it is active.
@@ -133,11 +135,14 @@ class Trades extends Table {
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
     'CHECK (length(coordinator_alias) > 0)',
     'CHECK (length(coordinator_onion) > 0)',
-    'CHECK (order_id > 0)',
+    // An order id, but for a pending make (schema 8): written before its order exists, never confirmed without one. Each part is true or false, never `NULL`, which a CHECK would let pass.
+    "CHECK ((order_id IS NOT NULL AND order_id > 0) OR (order_id IS NULL AND origin = 'madeHere' AND confirmed_at IS NULL))",
     "CHECK (role IN ('buyer', 'seller'))",
-    "CHECK (origin IN ('takenHere', 'recovered'))",
-    // A recovered trade is held by its robot when it is recorded: it is never a pending take.
-    "CHECK (origin = 'takenHere' OR confirmed_at IS NOT NULL)",
+    "CHECK (origin IN ('takenHere', 'madeHere', 'recovered'))",
+    // A make is confirmed when, and only when, its order id is written.
+    "CHECK (origin <> 'madeHere' OR ((order_id IS NULL) = (confirmed_at IS NULL)))",
+    // A recovered trade is held by its robot when it is recorded: it is never pending.
+    "CHECK (origin <> 'recovered' OR confirmed_at IS NOT NULL)",
     // Times of the records this code writes: from the epoch to the last a `DateTime` holds.
     'CHECK (taken_at BETWEEN 0 AND 8640000000000000)',
     'CHECK (confirmed_at IS NULL OR confirmed_at BETWEEN 0 AND 8640000000000000)',
@@ -149,7 +154,7 @@ class Trades extends Table {
 
 /// The terms each trade was taken with, `TradeTermsRecord` column for column, written once with the pending take and never changed nor deleted (schema 4, #87; design note § 3.5).
 ///
-/// One row per trade, keyed as `trades` is (a foreign key to it); the triggers of `trade_trails.drift` refuse any update, any delete, a second insert (`INSERT OR REPLACE` included) and terms of no open trade or of another order, coordinator, network or role than the trade's, whatever the code that writes.
+/// One row per trade, keyed as `trades` is (a foreign key to it); the triggers of `trade_trails.drift` refuse any update, any delete, a second insert (`INSERT OR REPLACE` included) and terms of no open trade, of a trade made here (whose terms are in `maker_terms`, schema 8), or of another order, coordinator, network or role than the trade's, whatever the code that writes.
 /// Read and written only by `TradeTrailRepositoryImpl`.
 @DataClassName('TradeTermsRow')
 class StoredTradeTerms extends Table {
@@ -217,9 +222,11 @@ class StoredTradeTerms extends Table {
 /// What the state machine remembers of each trade between two reads, `TradeTrailRecord` column for column: written with the pending take, then after each read (schema 4, #87; design note § 3.5, § 4.5).
 ///
 /// One row per trade, keyed as `trades` is (a foreign key to it), never deleted.
-/// The triggers of `trade_trails.drift` keep it monotonic whatever the code does: the trade it belongs to never changes, the version and the read never go back, a breach is never cleared, whether the history is known never changes, a pinned payment hash is never cleared or changed, the pre-take's last read is never cleared or moved back nor its deadline cleared, an end is never left, and the trail of a closed trade is never written again; a trail is written only for an open trade whose terms are recorded.
+/// The triggers of `trade_trails.drift` keep it monotonic whatever the code does: the trade it belongs to never changes, the version and the read never go back, a breach is never cleared, whether the history is known never changes, a pinned payment hash is never cleared or changed (but the escrow's, in the write that opens a maker's next contract), the pre-take's last read is never cleared or moved back nor its deadline cleared, an end is never left, a maker's contract only moves forward, and the trail of a closed trade is never written again; a trail is written only for an open trade whose order id is known and whose terms are recorded.
 /// That the position moves only along the edges of the trade is `TradeTrailRecord.whyNotReplace`'s alone, which the repository asks before every write.
 /// Read and written only by `TradeTrailRepositoryImpl`.
+///
+/// Schema 8 (#176) rebuilt the table, as it rebuilt `trades` (the maker's positions joined the CHECK of the position, and four columns keep a maker's current contract): a trail of an older file keeps every value, and its contract columns their defaults, which a taker's trail always keeps.
 @DataClassName('TradeTrailRow')
 class StoredTradeTrails extends Table {
   @override
@@ -256,6 +263,18 @@ class StoredTradeTrails extends Table {
   BoolColumn get breached => boolean()();
   BoolColumn get historyUnknown => boolean()();
 
+  /// The index of a maker's current contract (schema 8; design note `docs/design/phase-3-making-an-order.md` § 3.2): 0 for the order's first take, one more for each take after the order went back to the book; always 0 for a trade not made here.
+  IntColumn get take => integer().withDefault(const Constant(0))();
+
+  /// The deadline the coordinator gave the current contract, in microseconds since the epoch; absent until a read of 6, 7 or 8 opens the first contract, and always for a trade not made here.
+  IntColumn get takeDeadline => integer().nullable()();
+
+  /// The hash id of the current contract's taker, 64 lowercase hexadecimal characters; absent until a read names it, and always for a trade not made here.
+  TextColumn get takerHashId => text().nullable()();
+
+  /// The fiat amount the current contract took of a range, in the order's currency; absent for a fixed amount, until a read gives it, and always for a trade not made here.
+  RealColumn get takenAmount => real().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
 
@@ -270,8 +289,8 @@ class StoredTradeTrails extends Table {
     "CHECK (role IN ('buyer', 'seller'))",
     // The storage class of each column this code writes, as for the terms.
     "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(order_id) = 'integer' AND typeof(role) = 'text' AND typeof(position) = 'text' AND typeof(read_at) = 'integer' AND (bond_hash IS NULL OR typeof(bond_hash) = 'text') AND (escrow_hash IS NULL OR typeof(escrow_hash) = 'text') AND (deadline IS NULL OR typeof(deadline) = 'integer') AND (bond_step_seen_at IS NULL OR typeof(bond_step_seen_at) = 'integer') AND (bond_step_deadline IS NULL OR typeof(bond_step_deadline) = 'integer') AND typeof(breached) = 'integer' AND typeof(history_unknown) = 'integer')",
-    // `TradePosition.values`, written out: a position added to the state machine needs a schema step.
-    "CHECK (position IN ('start', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable'))",
+    // `TradePosition.values`, written out, and the maker's three positions (schema 8): a position added to the state machine needs a schema step.
+    "CHECK (position IN ('start', 'makerBondStep', 'public', 'paused', 'bondStep', 'preTakeUnavailable', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout', 'chatting', 'fiatSent', 'inDispute', 'sendingSats', 'succeeded', 'routingFailed', 'waitingDisputeResolution', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable'))",
     // Times from the epoch to the year 9999, as `TradeTrail.restore` takes them.
     'CHECK (read_at BETWEEN 0 AND 253402300799999999)',
     'CHECK (deadline IS NULL OR deadline BETWEEN 0 AND 253402300799999999)',
@@ -279,16 +298,24 @@ class StoredTradeTrails extends Table {
     'CHECK (bond_step_deadline IS NULL OR bond_step_deadline BETWEEN 0 AND 253402300799999999)',
     "CHECK (bond_hash IS NULL OR (length(bond_hash) = 64 AND bond_hash NOT GLOB '*[^0-9a-f]*'))",
     "CHECK (escrow_hash IS NULL OR (length(escrow_hash) = 64 AND escrow_hash NOT GLOB '*[^0-9a-f]*'))",
+    // A maker's contract (schema 8): the storage class of each of its columns, its index from 0, its deadline a time as the others, its taker a hash id, the amount it took a positive real below the make's own bound (`MakeOrderRequest.amountLimit`, written out), and a later contract always with its deadline.
+    "CHECK (typeof(take) = 'integer' AND (take_deadline IS NULL OR typeof(take_deadline) = 'integer') AND (taker_hash_id IS NULL OR typeof(taker_hash_id) = 'text') AND (taken_amount IS NULL OR typeof(taken_amount) = 'real'))",
+    'CHECK (take >= 0)',
+    'CHECK (take_deadline IS NULL OR take_deadline BETWEEN 0 AND 253402300799999999)',
+    "CHECK (taker_hash_id IS NULL OR (length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB '*[^0-9a-f]*'))",
+    'CHECK (taken_amount IS NULL OR (taken_amount > 0 AND taken_amount < 10000000000))',
+    'CHECK (take = 0 OR take_deadline IS NOT NULL)',
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }
 
-/// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
+/// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade, step and contract, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
 ///
 /// Schema 7 (#97) widened its step to `('bond', 'escrow')`: the trigger that refuses any delete does not fire on a drop, so its step rebuilt the table (the rows copied aside, the table dropped and made again, the rows copied back, then the triggers), the one step allowed to drop it (`P2pDatabase`, from 6 to 7).
+/// Schema 8 (#176) rebuilt it again, as it rebuilt `trades` and `trade_trails`, for the contract of a maker's escrow (`take`, in the primary key; design note `docs/design/phase-3-making-an-order.md` § 3.5): every payment of an older file is of contract 0.
 ///
 /// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
-/// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step and payment hash never change, its start never goes back, and a row is written only for an open trade whose trail is recorded.
+/// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step, contract and payment hash never change, its start never goes back, a row is written only for an open trade whose trail is recorded at the row's contract, and a payment hash another row holds is never written again, whatever its trade, step or contract.
 /// Read and written only by `TradePaymentRepositoryImpl`.
 @DataClassName('TradePaymentRow')
 class StoredTradePayments extends Table {
@@ -313,8 +340,11 @@ class StoredTradePayments extends Table {
   /// Recorded for the record's sake (a support question, a later reading): nothing decides on it, since the payment is found again by its hash (`P2pWalletPort.findPayment`), which the wallet's records key.
   TextColumn get walletPaymentId => text().nullable()();
 
+  /// The contract the invoice belongs to, the trail's `take` when the row was written (schema 8): 0 for a bond and for every payment of a trade not made here, one more for a maker seller's escrow of each later contract.
+  IntColumn get take => integer().withDefault(const Constant(0))();
+
   @override
-  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex, step};
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex, step, take};
 
   @override
   List<String> get customConstraints => const [
@@ -327,6 +357,101 @@ class StoredTradePayments extends Table {
     'CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)',
     // The storage class of each column this code writes, as for the terms and the trails.
     "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(step) = 'text' AND typeof(payment_hash) = 'text' AND typeof(started_at) = 'integer' AND (wallet_payment_id IS NULL OR typeof(wallet_payment_id) = 'text'))",
+    // The contract (schema 8): an integer from 0, and 0 for a bond, which is one for the order's whole life.
+    "CHECK (typeof(take) = 'integer' AND take >= 0)",
+    "CHECK (step = 'escrow' OR take = 0)",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}
+
+/// What the maker asked, for each order this device made (schema 8, #176; design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5): `MakerTermsRecord` column for column, written once with the pending make, before the make's request leaves, and never changed nor deleted.
+///
+/// One row per trade, keyed as `trades` is (a foreign key to it); it names no order, which does not exist yet when it is written.
+/// It holds the order as the maker asked it, the description and the meeting point included, which the coordinator holds and shows anyway; whether the order has a password, never the password nor its hash.
+/// The triggers of `maker_terms.drift` refuse any update, any delete, a second insert (`INSERT OR REPLACE` included) and terms of anything but a pending make of the same network, coordinator and role, whatever the code that writes.
+/// Read and written only by `TradeTrailRepositoryImpl`.
+@DataClassName('MakerTermsRow')
+class StoredMakerTerms extends Table {
+  @override
+  String get tableName => 'maker_terms';
+
+  /// The trade's robot, as `trades` keys it.
+  TextColumn get keyFingerprint => text()();
+  IntColumn get robotIndex => integer()();
+
+  /// `MakerTermsRecord.version`.
+  IntColumn get version => integer()();
+
+  /// The make the terms belong to, which must be the pending make of the row of `trades` they are keyed by: `RobosatsNetwork.name`, the coordinator's short alias, `TradeRole.name`.
+  TextColumn get network => text()();
+  TextColumn get coordinatorAlias => text()();
+  TextColumn get role => text()();
+
+  /// `OrderType.wire`: 0 buy, 1 sell.
+  IntColumn get orderType => integer()();
+  IntColumn get currencyId => integer()();
+
+  /// The fixed amount, or the bounds of a range, in the order's currency: one or the other.
+  RealColumn get amount => real().nullable()();
+  RealColumn get minAmount => real().nullable()();
+  RealColumn get maxAmount => real().nullable()();
+
+  RealColumn get premiumPercent => real()();
+
+  /// The payment methods as sent, one text.
+  TextColumn get paymentMethod => text()();
+  RealColumn get bondSizePercent => real()();
+
+  /// The public duration and the escrow duration asked, in seconds.
+  IntColumn get publicSeconds => integer()();
+  IntColumn get escrowSeconds => integer()();
+
+  /// The description sent, or absent.
+  TextColumn get description => text().nullable()();
+
+  /// Whether the order was sent with a password: never the password nor its hash.
+  BoolColumn get hasPassword => boolean()();
+
+  /// The meeting point sent, both coordinates or none.
+  RealColumn get latitude => real().nullable()();
+  RealColumn get longitude => real().nullable()();
+
+  /// The coordinator's price of a bitcoin in the order's currency, read from `/api/limits/` just before the make.
+  RealColumn get createdPrice => real()();
+
+  /// The maker fee of `/api/info/`, read just before the make.
+  RealColumn get makerFee => real()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    // The storage class of each column this code writes, as for the terms of a take; the real numbers have theirs in their own CHECKs.
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(version) = 'integer' AND typeof(network) = 'text' AND typeof(coordinator_alias) = 'text' AND typeof(role) = 'text' AND typeof(order_type) = 'integer' AND typeof(currency_id) = 'integer' AND typeof(payment_method) = 'text' AND typeof(public_seconds) = 'integer' AND typeof(escrow_seconds) = 'integer' AND (description IS NULL OR typeof(description) = 'text') AND typeof(has_password) = 'integer')",
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    'CHECK (version >= 1)',
+    "CHECK (network IN ('mainnet', 'testnet'))",
+    'CHECK (length(coordinator_alias) > 0)',
+    "CHECK (role IN ('buyer', 'seller'))",
+    // Making a buy order makes a buyer, making a sell order a seller: the opposite of a take.
+    "CHECK ((order_type = 0 AND role = 'buyer') OR (order_type = 1 AND role = 'seller'))",
+    'CHECK (currency_id > 0)',
+    // A fixed amount, or a range within the coordinator's nominal ratios, 1.5 to 15, compared as `MakeOrderRequest.tryCreate` compares the same doubles; each amount above 0 and below 10^10 (`MakeOrderRequest.amountLimit`), written out, since drift's snapshot reads an exponent as 0.
+    "CHECK ((amount IS NOT NULL AND min_amount IS NULL AND max_amount IS NULL AND typeof(amount) = 'real' AND amount > 0 AND amount < 10000000000) OR (amount IS NULL AND min_amount IS NOT NULL AND max_amount IS NOT NULL AND typeof(min_amount) = 'real' AND typeof(max_amount) = 'real' AND min_amount > 0 AND max_amount < 10000000000 AND min_amount <= max_amount / 1.5 AND min_amount >= max_amount / 15))",
+    // The bounds of `MakeOrderRequest.tryCreate`: a premium above -100 and at most 999, a payment method of 1 to 70 characters, a bond of 2 to 15 %, a public duration of 600 to 86,400 s, an escrow duration of 1,800 to 36,000 s, a description of 1 to 240 characters.
+    "CHECK (typeof(premium_percent) = 'real' AND premium_percent > -100 AND premium_percent <= 999)",
+    'CHECK (length(payment_method) BETWEEN 1 AND 70)',
+    "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
+    'CHECK (public_seconds BETWEEN 600 AND 86400)',
+    'CHECK (escrow_seconds BETWEEN 1800 AND 36000)',
+    'CHECK (description IS NULL OR length(description) BETWEEN 1 AND 240)',
+    // The meeting point: both coordinates or none, within the coordinator's bounds (`api/models/order.py:148-168`).
+    "CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND typeof(latitude) = 'real' AND typeof(longitude) = 'real' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180))",
+    "CHECK (typeof(created_price) = 'real' AND created_price > 0 AND created_price < 1000000000000000)",
+    // The maker fee, refused above 1 % as the taker fee is.
+    "CHECK (typeof(maker_fee) = 'real' AND maker_fee BETWEEN 0 AND 0.01)",
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }

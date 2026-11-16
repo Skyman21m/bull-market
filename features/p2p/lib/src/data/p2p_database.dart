@@ -8,7 +8,7 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade, the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade (a make's terms apart, since schema 8), the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (the PGP public key with its fingerprints, and the Nostr keys).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -23,16 +23,18 @@ part 'p2p_database.g.dart';
     StoredTradePayments,
     StoredTradeChatPins,
     StoredTradeChatNostrPins,
+    StoredMakerTerms,
   ],
   include: {
     'trades.drift',
     'trade_trails.drift',
     'trade_payments.drift',
     'trade_chat_pins.drift',
+    'maker_terms.drift',
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 7;
+  static const int schema = 8;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///

@@ -1,4 +1,4 @@
--- The rules of the trades' terms and trails that the database keeps itself (schema 4, #87): see `StoredTradeTerms` and `StoredTradeTrails` in `p2p_tables.dart`.
+-- The rules of the trades' terms and trails that the database keeps itself (schema 4, #87; a maker's trail and contract, schema 8, #176): see `StoredTradeTerms` and `StoredTradeTrails` in `p2p_tables.dart`.
 -- What a trigger cannot say, that the position of a trail moves only along the edges of the trade, is `TradeTrailRecord.whyNotReplace`'s, which the repository asks before every write.
 import 'p2p_tables.dart';
 
@@ -6,6 +6,13 @@ import 'p2p_tables.dart';
 -- A trigger rather than a unique index, so that the step from schema 3 never fails: a file holding two open trades of one order (no version wrote a take before this one) keeps them, and only a new one is refused.
 CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades
 WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'an order has one open trade');
+END;
+
+-- The same rule for an order id written after the insert, as when a pending make is confirmed (schema 8): an order id another open trade of the network and coordinator holds is refused.
+CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order_update BEFORE UPDATE OF order_id ON trades
+WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index))
 BEGIN
   SELECT RAISE(ABORT, 'an order has one open trade');
 END;
@@ -29,9 +36,9 @@ BEGIN
   SELECT RAISE(IGNORE);
 END;
 
--- The terms belong to the open trade of their robot: the same order, coordinator, network and role.
+-- The terms belong to the open trade of their robot: the same order, coordinator, network and role, and a trade taken here or recovered (schema 8: a trade made here has its terms in `maker_terms`).
 CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms
-WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND closed_at IS NULL)
+WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND origin IN ('takenHere', 'recovered') AND closed_at IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'terms of no open trade');
 END;
@@ -49,9 +56,10 @@ BEGIN
   SELECT RAISE(IGNORE);
 END;
 
--- The trail belongs to the open trade of its robot, whose terms are recorded: the same order, coordinator, network and role.
+-- The trail belongs to the open trade of its robot, whose order id is known and whose terms are recorded: the same order, coordinator, network and role.
+-- Since schema 8, the terms of a trade taken here or recovered are in `trade_terms`, those of a trade made here in `maker_terms`; a first trail is at the first contract, and a trail of a trade not made here never has one.
 CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails
-WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL)
+WHEN NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL AND NEW.take = 0 AND ((trades.origin IN ('takenHere', 'recovered') AND NEW.take_deadline IS NULL AND NEW.taker_hash_id IS NULL AND NEW.taken_amount IS NULL AND EXISTS (SELECT 1 FROM trade_terms WHERE trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index)) OR (trades.origin = 'madeHere' AND EXISTS (SELECT 1 FROM maker_terms WHERE maker_terms.key_fingerprint = trades.key_fingerprint AND maker_terms.robot_index = trades.robot_index))))
 BEGIN
   SELECT RAISE(ABORT, 'a trail of no open trade');
 END;
@@ -64,6 +72,7 @@ BEGIN
 END;
 
 -- The trail only moves forward: its trade never changes, the version and the read never go back, a breach is never cleared, whether the history is known never changes, a pinned payment hash is never cleared or changed, the pre-take's last read is never cleared or moved back nor its deadline cleared, and an end is never left.
+-- A maker's contract only moves forward too (schema 8; design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5): `take` never goes back and moves by one at most, only for a trade made here, from a trail at `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` that has a contract deadline, to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one; the contract's deadline, taker and amount taken go from NULL to a value only with `take` unchanged, change only in the write that moves `take`, never go back to NULL, and are never written for a trade not made here; the escrow's hash stays pinned within a contract, and in the write that moves `take` is cleared or replaced by another hash, never kept; the bond's hash stays pinned for the order's whole life.
 CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails
 WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
   OR NEW.robot_index IS NOT OLD.robot_index
@@ -76,10 +85,21 @@ WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
   OR NEW.breached < OLD.breached
   OR NEW.history_unknown IS NOT OLD.history_unknown
   OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)
-  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash)
+  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)
+  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)
   OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))
   OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)
   OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position)
+  OR (NEW.take IS NOT OLD.take AND NOT (NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')))
+  OR (OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)
+  OR (OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)
+  OR (OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)
+  OR (NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)
+  OR (NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)
+  OR (NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)
+  OR (NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)
+  OR (NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)
+  OR ((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))
 BEGIN
   SELECT RAISE(ABORT, 'a trail only moves forward');
 END;
