@@ -975,6 +975,7 @@ class RobotCoordinatorCubit {
       ),
       {
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
         'lib/src/data/trade_trail_repository_impl.dart',
@@ -993,6 +994,7 @@ class RobotCoordinatorCubit {
         // The migration steps `make drift-migrations` writes from the snapshots.
         'lib/src/data/p2p_database.steps.dart',
         'lib/src/data/robot_binding_repository_impl.dart',
+        'lib/src/data/trade_chat_pin_repository_impl.dart',
         'lib/src/data/trade_payment_repository_impl.dart',
         'lib/src/data/trade_record_repository_impl.dart',
         'lib/src/data/trade_trail_repository_impl.dart',
@@ -1146,6 +1148,17 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradePaymentsInsertedOnce)',
       'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
       'm.createTrigger(schema.tradePaymentsForward)',
+      // Schema 6 (#139, part of #159): the PGP and Nostr pins of the trades' chats.
+      'm.createTable(schema.tradeChatPins)',
+      'm.createTrigger(schema.tradeChatPinsNeverDeleted)',
+      'm.createTrigger(schema.tradeChatPinsNeverChanged)',
+      'm.createTrigger(schema.tradeChatPinsInsertedOnce)',
+      'm.createTrigger(schema.tradeChatPinsOfTheirTrade)',
+      'm.createTable(schema.tradeChatNostrPins)',
+      'm.createTrigger(schema.tradeChatNostrPinsNeverDeleted)',
+      'm.createTrigger(schema.tradeChatNostrPinsNeverChanged)',
+      'm.createTrigger(schema.tradeChatNostrPinsInsertedOnce)',
+      'm.createTrigger(schema.tradeChatNostrPinsOfTheirTrade)',
     ]);
     // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
     expect(
@@ -1185,6 +1198,25 @@ class RobotCoordinatorCubit {
     expect(
       _drifted(File('lib/src/data/trade_payments.drift').readAsStringSync()),
       '${_paymentTriggers.join(';')};',
+    );
+    // And on the pins of the trades' chats, PGP and Nostr, as written in `trade_chat_pins.drift` (#139, part of #159).
+    expect(
+      _drifted(File('lib/src/data/trade_chat_pins.drift').readAsStringSync()),
+      '${_pinTriggers.join(';')};',
+    );
+    // No other file holds SQL that writes either table of the pins, but the triggers as drift copies them.
+    expect(
+      where(
+        (facts) => facts.strings.any(
+          (text) =>
+              RegExp(
+                r'\b(into|update|delete\s+from)\s+"?trade_chat_(nostr_)?pins\b',
+                caseSensitive: false,
+              ).hasMatch(text) &&
+              !_driftTriggers.contains(_squeezed(text)),
+        ),
+      ),
+      {'lib/src/data/trade_chat_pin_repository_impl.dart'},
     );
   });
 
@@ -2284,9 +2316,27 @@ final _paymentTriggers = [
   for (final trigger in _paymentTriggersAsWritten) _squeezed(trigger),
 ];
 
+/// The statements of `trade_chat_pins.drift` (#139, part of #159), as written: the PGP pin and the Nostr pin of a trade's chat each written once, only for an open trade, never changed nor deleted.
+const _pinTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_deleted BEFORE DELETE ON trade_chat_pins BEGIN SELECT RAISE(ABORT, 'the pinned key of a trade is kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_never_changed BEFORE UPDATE ON trade_chat_pins BEGIN SELECT RAISE(ABORT, 'the pinned key of a trade never changes'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_inserted_once BEFORE INSERT ON trade_chat_pins WHEN EXISTS (SELECT 1 FROM trade_chat_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a pin of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins BEGIN SELECT RAISE(ABORT, 'the Nostr keys of a trade are kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins BEGIN SELECT RAISE(ABORT, 'the Nostr keys of a trade never change'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a Nostr pin of no open trade'); END",
+];
+
+/// The triggers of `trade_chat_pins.drift`, squeezed.
+final _pinTriggers = [
+  for (final trigger in _pinTriggersAsWritten) _squeezed(trigger),
+];
+
 /// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,
+  ..._pinTriggers,
 };

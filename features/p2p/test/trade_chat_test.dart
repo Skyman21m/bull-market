@@ -287,7 +287,7 @@ void main() {
     );
 
     test(
-      'after a restart, a key forged in the peer\'s name that does not verify the peer\'s earlier messages is a breach: nothing leaves',
+      'after a restart, a key forged in the peer\'s name is a breach: nothing leaves, and the peer\'s earlier message stays verified with the key kept (#139)',
       () async {
         final (app, record, seen) = await atNine();
         app.coordinator.peerSays(written(app, 'My IBAN follows'));
@@ -295,9 +295,49 @@ void main() {
           (await read(app, record, seen)).peerKey,
           isA<ChatPeerKeyPinned>(),
         );
-        // The process killed in the background: a new run has no pin, and the coordinator serves a key of its own in the peer's name.
+        // The process killed in the background: a new run has only the key kept with the trade's record (#139), and the coordinator serves a key of its own in the peer's name. Without a key kept, #138's rule makes it a breach too (`trade_chat_pin_test.dart`).
         final (restartedRead, restartedSend) = app.chatAfterRestart();
         app.coordinator.peerPublicKey = keyOf(maker, 933).key.publicKey.armored;
+        final again = switch (await restartedRead.read(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(again.peerKey, isA<ChatPeerKeyBreach>());
+        expect(again.canSend, isFalse);
+        expect(again.entries.single.validSignature, isTrue);
+        expect(again.entries.single.text, 'My IBAN follows');
+        final posts = _posts(app);
+        expect(
+          await restartedSend.send(record, seen, 'Here it is'),
+          isA<Err<ChatSent, ChatSendRefusal>>().having(
+            (e) => e.failure,
+            'refusal',
+            isA<ChatPeerKeyChanged>(),
+          ),
+        );
+        expect(_posts(app), posts);
+        // The real key served again: the breach stays.
+        app.coordinator.peerPublicKey = makerKey.key.publicKey.armored;
+        expect(switch (await restartedRead.read(record, seen)) {
+          Ok(:final value) => value.peerKey,
+          Err(:final failure) => throw StateError('$failure'),
+        }, isA<ChatPeerKeyBreach>());
+      },
+    );
+
+    test(
+      'after a restart with no pin kept, a key forged in the peer\'s name that does not verify the peer\'s earlier messages is a breach: nothing leaves (#138, security review of #139)',
+      () async {
+        final (app, record, seen) = await atNine();
+        app.coordinator.peerSays(written(app, 'My IBAN follows'));
+        // The pin is never written in this run, as for a trade of an older version of the app.
+        app.pins.refuseWrites = true;
+        expect(
+          (await read(app, record, seen)).peerKey,
+          isA<ChatPeerKeyPinned>(),
+        );
+        final (restartedRead, restartedSend) = app.chatAfterRestart();
+        app.coordinator.peerPublicKey = keyOf(maker, 934).key.publicKey.armored;
         final again = switch (await restartedRead.read(record, seen)) {
           Ok(:final value) => value,
           Err(:final failure) => throw StateError('$failure'),
@@ -315,12 +355,15 @@ void main() {
           ),
         );
         expect(_posts(app), posts);
-        // The real key served again: the breach stays.
-        app.coordinator.peerPublicKey = makerKey.key.publicKey.armored;
-        expect(switch (await restartedRead.read(record, seen)) {
-          Ok(:final value) => value.peerKey,
-          Err(:final failure) => throw StateError('$failure'),
-        }, isA<ChatPeerKeyBreach>());
+        expect(app.pins.keeps, greaterThan(0));
+        expect(
+          await app.pins.pinOf(record),
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
+            (ok) => ok.value,
+            'pin',
+            isNull,
+          ),
+        );
       },
     );
 

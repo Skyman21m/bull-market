@@ -14,6 +14,7 @@ import 'data/isolate_robot_key_compute.dart';
 import 'data/p2p_database.dart';
 import 'data/robot_binding_repository_impl.dart';
 import 'data/tor_coordinator_transport.dart';
+import 'data/trade_chat_pin_repository_impl.dart';
 import 'data/trade_payment_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
@@ -25,6 +26,7 @@ import 'domain/p2p_waits.dart';
 import 'domain/repositories/garage_key_repository.dart';
 import 'domain/interim_trade_robots.dart';
 import 'domain/repositories/robot_binding_repository.dart';
+import 'domain/repositories/trade_chat_pin_repository.dart';
 import 'domain/repositories/trade_payment_repository.dart';
 import 'domain/repositories/trade_record_repository.dart';
 import 'domain/repositories/trade_trail_repository.dart';
@@ -290,6 +292,10 @@ final class P2pLocator {
     locator.registerLazySingleton<TradePaymentRepository>(
       () => TradePaymentRepositoryImpl(locator()),
     );
+    // The peer's public key each trade's chat pinned, with its fingerprints, and its Nostr keys (#139, part of #159).
+    locator.registerLazySingleton<TradeChatPinRepository>(
+      () => TradeChatPinRepositoryImpl(locator()),
+    );
     locator.registerLazySingleton<TradeRobots>(
       () => InterimTradeRobots(locator(), locator()),
     );
@@ -383,6 +389,7 @@ final class P2pLocator {
         locator(),
         locator(),
         locator(),
+        locator(),
       ),
     );
     // The chat as the reference exports it (#93), the robot's token included: on the user's tap only, through the chat panel's cubit.
@@ -400,6 +407,7 @@ final class P2pLocator {
         relays(),
         Federation.robosats,
         Random.secure(),
+        locator(),
       ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.
