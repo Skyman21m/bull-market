@@ -440,6 +440,15 @@ void main() {
           ).difference({_recoverTradeUseCase}),
           isEmpty,
         );
+        // A record of origin `madeHere` comes only from the make use case (#179), and its order id only from a read that shows its robot as the maker: no file writes, confirms or closes a pending make yet, nor writes a make's terms (#176).
+        for (final member in [
+          'TradeRecordRepository.recordPendingMake',
+          'TradeRecordRepository.confirmMake',
+          'TradeRecordRepository.closePendingMake',
+          'TradeTrailRepository.recordMakerTerms',
+        ]) {
+          expect(referring((r) => r == member), isEmpty, reason: member);
+        }
         // The state of a record follows what the coordinator says: only the trade use cases change it.
         for (final member in [
           'TradeRecordRepository.confirmTake',
@@ -1038,7 +1047,7 @@ class RobotCoordinatorCubit {
       if (File('lib/src/data/p2p_database.g.dart').existsSync())
         'lib/src/data/p2p_database.g.dart',
     });
-    // No SQL text of another file reads or writes the trades, but the triggers as drift copies them.
+    // No SQL text of another file reads or writes the trades, but the triggers as drift copies them, and the statements of the step to schema 8 (#176) that copy the rows of the rebuilt tables aside and back, each pinned as written in the database (`_schema8Rebuild`).
     expect(
       where(
         (facts) => facts.strings.any(
@@ -1047,7 +1056,8 @@ class RobotCoordinatorCubit {
                 r'\b(from|into|update|join)\s+"?trades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_driftTriggers.contains(_squeezed(text)),
+              !_driftTriggers.contains(_squeezed(text)) &&
+              !_schema8Rebuild.contains(text),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -1101,9 +1111,8 @@ class RobotCoordinatorCubit {
             _driftTriggers.contains(_squeezed(text))) {
           continue;
         }
-        // The step to schema 7 rebuilds the payments of the trades (#97), never a binding: its two drops, pinned as written below.
-        if (identical(facts, database) &&
-            _paymentsRebuildDrops.contains(text)) {
+        // The steps to schema 7 and 8 rebuild the payments, the trades and their trails (#97, #176), never a binding: their drops, of tables and of the triggers schema 8 replaces, pinned as written below.
+        if (identical(facts, database) && _rebuildDrops.contains(text)) {
           continue;
         }
         expect(
@@ -1178,8 +1187,33 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradePaymentsInsertedOnce)',
       'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
       'm.createTrigger(schema.tradePaymentsForward)',
+      // Schema 8 (#176): the trades, their trails and their payments rebuilt, the maker's terms, and every trigger of the three tables made again, the new ones and the replaced ones included.
+      'm.createTable(schema.trades)',
+      'm.createTable(schema.tradeTrails)',
+      'm.createTable(schema.tradePayments)',
+      'm.createTable(schema.makerTerms)',
+      'm.createTrigger(schema.tradesNeverDeleted)',
+      'm.createTrigger(schema.tradesSetOnce)',
+      'm.createTrigger(schema.tradesInsertedOnce)',
+      'm.createTrigger(schema.tradesOneOpenPerOrder)',
+      'm.createTrigger(schema.tradesOneOpenPerOrderUpdate)',
+      'm.createTrigger(schema.makerTermsNeverDeleted)',
+      'm.createTrigger(schema.makerTermsSetOnce)',
+      'm.createTrigger(schema.makerTermsInsertedOnce)',
+      'm.createTrigger(schema.makerTermsOfTheirMake)',
+      'm.createTrigger(schema.tradeTermsOfTheirTrade)',
+      'm.createTrigger(schema.tradeTrailsNeverDeleted)',
+      'm.createTrigger(schema.tradeTrailsInsertedOnce)',
+      'm.createTrigger(schema.tradeTrailsOfTheirTrade)',
+      'm.createTrigger(schema.tradeTrailsClosed)',
+      'm.createTrigger(schema.tradeTrailsForward)',
+      'm.createTrigger(schema.tradePaymentsNeverDeleted)',
+      'm.createTrigger(schema.tradePaymentsInsertedOnce)',
+      'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
+      'm.createTrigger(schema.tradePaymentsForward)',
+      'm.createTrigger(schema.tradePaymentsHashOnce)',
     ]);
-    // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only, and the foreign keys of the trades, on, at each opening.
+    // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and the triggers it replaces only; and the foreign keys of the trades, on, at each opening.
     expect(
       database.calls.where((call) => call.startsWith('customStatement(')),
       [
@@ -1188,9 +1222,106 @@ class RobotCoordinatorCubit {
         'customStatement(_dropPayments)',
         'customStatement(_restorePayments)',
         'customStatement(_dropPaymentsCopy)',
+        'customStatement(_dropTradesCopy)',
+        'customStatement(_copyTrades)',
+        'customStatement(_dropTrades)',
+        'customStatement(_restoreTrades)',
+        'customStatement(_dropTrailsCopy)',
+        'customStatement(_copyTrails)',
+        'customStatement(_dropTrails)',
+        'customStatement(_restoreTrails)',
+        'customStatement(_dropPaymentsOfSchema7)',
+        'customStatement(_copyPaymentsOfSchema7)',
+        'customStatement(_dropPayments)',
+        'customStatement(_restorePaymentsOfSchema7)',
+        'customStatement(_dropTradesSetOnce)',
+        'customStatement(_dropTermsOfTheirTrade)',
+        'customStatement(_dropTrailsOfTheirTrade)',
+        'customStatement(_dropTrailsForward)',
+        'customStatement(_dropPaymentsInsertedOnce)',
+        'customStatement(_dropPaymentsOfTheirTrade)',
+        'customStatement(_dropPaymentsForward)',
+        'customStatement(_dropTradesCopy)',
+        'customStatement(_dropTrailsCopy)',
+        'customStatement(_dropPaymentsOfSchema7)',
         'customStatement(_foreignKeysOn)',
       ],
     );
+    // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
+    final migration =
+        database.callsByMethod['migration'] ?? fail('no migration');
+    expect(migration.skip(migration.indexOf('_foreignKeysAreOn()')), [
+      '_foreignKeysAreOn()',
+      '_tableText(_trades)',
+      'contains("\'madeHere\'")',
+      'customStatement(_dropTradesCopy)',
+      'customStatement(_copyTrades)',
+      'customStatement(_dropTrades)',
+      '_tableText(_trades)',
+      'createTable(schema.trades)',
+      '_tableText(_tradesCopy)',
+      'customStatement(_restoreTrades)',
+      '_tableText(_trails)',
+      '_hasColumn(_trails, \'take\')',
+      'customStatement(_dropTrailsCopy)',
+      'customStatement(_copyTrails)',
+      'customStatement(_dropTrails)',
+      '_tableText(_trails)',
+      'createTable(schema.tradeTrails)',
+      '_tableText(_trailsCopy)',
+      'customStatement(_restoreTrails)',
+      '_tableText(_payments)',
+      '_hasColumn(_payments, \'take\')',
+      'customStatement(_dropPaymentsOfSchema7)',
+      'customStatement(_copyPaymentsOfSchema7)',
+      'customStatement(_dropPayments)',
+      '_tableText(_payments)',
+      'createTable(schema.tradePayments)',
+      '_tableText(_paymentsOfSchema7)',
+      'customStatement(_restorePaymentsOfSchema7)',
+      'createTable(schema.makerTerms)',
+      'createTrigger(schema.tradesNeverDeleted)',
+      'customStatement(_dropTradesSetOnce)',
+      'createTrigger(schema.tradesSetOnce)',
+      'createTrigger(schema.tradesInsertedOnce)',
+      'createTrigger(schema.tradesOneOpenPerOrder)',
+      'createTrigger(schema.tradesOneOpenPerOrderUpdate)',
+      'createTrigger(schema.makerTermsNeverDeleted)',
+      'createTrigger(schema.makerTermsSetOnce)',
+      'createTrigger(schema.makerTermsInsertedOnce)',
+      'createTrigger(schema.makerTermsOfTheirMake)',
+      'customStatement(_dropTermsOfTheirTrade)',
+      'createTrigger(schema.tradeTermsOfTheirTrade)',
+      'createTrigger(schema.tradeTrailsNeverDeleted)',
+      'createTrigger(schema.tradeTrailsInsertedOnce)',
+      'customStatement(_dropTrailsOfTheirTrade)',
+      'createTrigger(schema.tradeTrailsOfTheirTrade)',
+      'createTrigger(schema.tradeTrailsClosed)',
+      'customStatement(_dropTrailsForward)',
+      'createTrigger(schema.tradeTrailsForward)',
+      'createTrigger(schema.tradePaymentsNeverDeleted)',
+      'customStatement(_dropPaymentsInsertedOnce)',
+      'createTrigger(schema.tradePaymentsInsertedOnce)',
+      'customStatement(_dropPaymentsOfTheirTrade)',
+      'createTrigger(schema.tradePaymentsOfTheirTrade)',
+      'customStatement(_dropPaymentsForward)',
+      'createTrigger(schema.tradePaymentsForward)',
+      'createTrigger(schema.tradePaymentsHashOnce)',
+      '_breaksAForeignKey()',
+      'customStatement(_dropTradesCopy)',
+      'customStatement(_dropTrailsCopy)',
+      'customStatement(_dropPaymentsOfSchema7)',
+      'customStatement(_foreignKeysOn)',
+    ]);
+    // What the two checks read, and that they refuse by throwing, before the first drop and before the copies are dropped.
+    expect(database.callsByMethod['_foreignKeysAreOn'], [
+      'customSelect(_foreignKeys)',
+      'getSingle()',
+    ]);
+    expect(database.callsByMethod['_breaksAForeignKey'], [
+      'customSelect(_foreignKeyCheck)',
+      'get()',
+    ]);
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
     expect(
       database.constants['_dropPaymentsCopy'],
@@ -1201,7 +1332,7 @@ class RobotCoordinatorCubit {
       'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
     );
     expect(database.constants['_dropPayments'], 'DROP TABLE trade_payments');
-    // Every string constant of the database, each value as written: the rebuild's statement that writes rows (`_restorePayments`) copies the payments' own columns from their copy back into `trade_payments`, and nowhere else; a new constant, or another value, fails here (security review of #172).
+    // Every string constant of the database, each value as written: the rebuilds' statements that write rows (`_restorePayments`, and since schema 8 `_restoreTrades`, `_restoreTrails`, `_restorePaymentsOfSchema7`) copy each table's own columns from its copy back into that table, each row once, and nowhere else; the copies are the tables as they were; the drops name the rebuilt tables, their copies and the triggers schema 8 replaces; the pragmas read whether the foreign keys are on and which rows break one; a new constant, or another value, fails here (security review of #172).
     expect(database.constants, {
       '_foreignKeysOn': 'PRAGMA foreign_keys = ON',
       'fileName': 'p2p.sqlite',
@@ -1215,10 +1346,61 @@ class RobotCoordinatorCubit {
           'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
           'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6 AS copy '
           'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step)',
+      '_trades': 'trades',
+      '_tradesCopy': 'trades_of_schema7',
+      '_dropTradesCopy': 'DROP TABLE IF EXISTS trades_of_schema7',
+      '_copyTrades': 'CREATE TABLE trades_of_schema7 AS SELECT * FROM trades',
+      '_dropTrades': 'DROP TABLE trades',
+      '_restoreTrades':
+          'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) '
+          'SELECT network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at FROM trades_of_schema7 AS copy '
+          'WHERE NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = copy.key_fingerprint AND trades.robot_index = copy.robot_index)',
+      '_trails': 'trade_trails',
+      '_trailsCopy': 'trade_trails_of_schema7',
+      '_dropTrailsCopy': 'DROP TABLE IF EXISTS trade_trails_of_schema7',
+      '_copyTrails':
+          'CREATE TABLE trade_trails_of_schema7 AS SELECT * FROM trade_trails',
+      '_dropTrails': 'DROP TABLE trade_trails',
+      '_restoreTrails':
+          'INSERT INTO trade_trails (key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown) '
+          'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy '
+          'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)',
+      '_paymentsOfSchema7': 'trade_payments_of_schema7',
+      '_dropPaymentsOfSchema7': 'DROP TABLE IF EXISTS trade_payments_of_schema7',
+      '_copyPaymentsOfSchema7':
+          'CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments',
+      '_restorePaymentsOfSchema7':
+          'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) '
+          'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy '
+          'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)',
+      '_dropTradesSetOnce': 'DROP TRIGGER IF EXISTS trades_set_once',
+      '_dropTermsOfTheirTrade':
+          'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
+      '_dropTrailsOfTheirTrade':
+          'DROP TRIGGER IF EXISTS trade_trails_of_their_trade',
+      '_dropTrailsForward': 'DROP TRIGGER IF EXISTS trade_trails_forward',
+      '_dropPaymentsInsertedOnce':
+          'DROP TRIGGER IF EXISTS trade_payments_inserted_once',
+      '_dropPaymentsOfTheirTrade':
+          'DROP TRIGGER IF EXISTS trade_payments_of_their_trade',
+      '_dropPaymentsForward': 'DROP TRIGGER IF EXISTS trade_payments_forward',
+      '_foreignKeys': 'PRAGMA foreign_keys',
+      '_foreignKeyCheck': 'PRAGMA foreign_key_check',
     });
-    expect(_paymentsRebuildDrops, {
-      database.constants['_dropPaymentsCopy'],
-      database.constants['_dropPayments'],
+    expect(_rebuildDrops, {
+      for (final MapEntry(:key, :value) in database.constants.entries)
+        if (key.startsWith('_drop')) value,
+    });
+    expect(_schema8Rebuild, {
+      for (final name in [
+        '_copyTrades',
+        '_restoreTrades',
+        '_copyTrails',
+        '_restoreTrails',
+        '_copyPaymentsOfSchema7',
+        '_restorePaymentsOfSchema7',
+      ])
+        database.constants[name],
     });
     // Its two `customSelect`s, the steps' looks at a table and at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
     expect(database.calls.where((call) => call.startsWith('customSelect(')), [
@@ -1229,6 +1411,9 @@ class RobotCoordinatorCubit {
       startsWith(
         "customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',",
       ),
+      // The step to schema 8's two checks of the foreign keys (#176), which read and change nothing.
+      'customSelect(_foreignKeys)',
+      'customSelect(_foreignKeyCheck)',
     ]);
     expect(
       database.strings.where(
@@ -1236,6 +1421,8 @@ class RobotCoordinatorCubit {
       ),
       [
         'PRAGMA foreign_keys = ON',
+        'PRAGMA foreign_keys',
+        'PRAGMA foreign_key_check',
         // The setup of the app's connection, before any statement.
         'PRAGMA busy_timeout = 2000;',
         'PRAGMA journal_mode = WAL;',
@@ -1262,6 +1449,11 @@ class RobotCoordinatorCubit {
       _drifted(File('lib/src/data/trade_chat_pins.drift').readAsStringSync()),
       '${_pinTriggers.join(';')};',
     );
+    // And on the terms a maker asked, as written in `maker_terms.drift` (#176).
+    expect(
+      _drifted(File('lib/src/data/maker_terms.drift').readAsStringSync()),
+      '${_makerTermsTriggers.join(';')};',
+    );
     // No other file holds SQL that writes either table of the pins, but the triggers as drift copies them.
     expect(
       where(
@@ -1281,16 +1473,17 @@ class RobotCoordinatorCubit {
   test(
     'the terms and trails of the trades are written by their repository alone, one statement each, a trail only after whyNotReplace',
     () {
-      // No other file holds SQL that writes either table, but the triggers as drift copies them (#87).
+      // No other file holds SQL that writes any of the three tables, but the triggers as drift copies them (#87) and the step to schema 8's copy of the trails back into their table (#176, pinned in the database).
       expect(
         where(
           (facts) => facts.strings.any(
             (text) =>
                 RegExp(
-                  r'\b(into|update|delete\s+from)\s+"?trade_(terms|trails)\b',
+                  r'\b(into|update|delete\s+from)\s+"?(trade_(terms|trails)|maker_terms)\b',
                   caseSensitive: false,
                 ).hasMatch(text) &&
-                !_driftTriggers.contains(_squeezed(text)),
+                !_driftTriggers.contains(_squeezed(text)) &&
+                !_schema8Rebuild.contains(text),
           ),
         ),
         {'lib/src/data/trade_trail_repository_impl.dart'},
@@ -1300,7 +1493,8 @@ class RobotCoordinatorCubit {
         where(
           (facts) =>
               facts.names.contains('storedTradeTerms') ||
-              facts.names.contains('storedTradeTrails'),
+              facts.names.contains('storedTradeTrails') ||
+              facts.names.contains('storedMakerTerms'),
         ),
         {
           'lib/src/data/trade_trail_repository_impl.dart',
@@ -1340,7 +1534,26 @@ class RobotCoordinatorCubit {
           reason: text,
         );
       }
-      // Its three writes, as written: the terms and a first trail inserted once, a later trail only over the one compared, every column of it.
+      // Its four writes, as written: the terms of a take, the terms of a make (#176) and a first trail inserted once, a later trail only over the one compared, every column of it, the maker's contract included (#176).
+      expect(
+        trails.constants['_recordMakerTermsSql'],
+        'INSERT INTO maker_terms (key_fingerprint, robot_index, version, '
+        'network, coordinator_alias, role, order_type, currency_id, amount, '
+        'min_amount, max_amount, premium_percent, payment_method, '
+        'bond_size_percent, public_seconds, escrow_seconds, description, '
+        'has_password, latitude, longitude, created_price, maker_fee) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING robot_index',
+      );
+      expect(
+        trails.constants['_makerTermsSql'],
+        'SELECT version, network, coordinator_alias, role, order_type, '
+        'currency_id, amount, min_amount, max_amount, premium_percent, '
+        'payment_method, bond_size_percent, public_seconds, escrow_seconds, '
+        'description, has_password, latitude, longitude, created_price, '
+        'maker_fee FROM maker_terms WHERE key_fingerprint = ? AND robot_index = ?',
+      );
       expect(
         trails.constants['_recordTermsSql'],
         'INSERT INTO trade_terms (key_fingerprint, robot_index, version, '
@@ -1356,8 +1569,9 @@ class RobotCoordinatorCubit {
         'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
         'network, coordinator_alias, order_id, role, position, read_at, '
         'bond_hash, escrow_hash, deadline, bond_step_seen_at, '
-        'bond_step_deadline, breached, history_unknown) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+        'bond_step_deadline, breached, history_unknown, take, take_deadline, '
+        'taker_hash_id, taken_amount) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING robot_index',
       );
@@ -1365,16 +1579,20 @@ class RobotCoordinatorCubit {
         trails.constants['_replaceTrailSql'],
         'UPDATE trade_trails SET version = ?, position = ?, read_at = ?, '
         'bond_hash = ?, escrow_hash = ?, deadline = ?, bond_step_seen_at = ?, '
-        'bond_step_deadline = ?, breached = ?, history_unknown = ? '
+        'bond_step_deadline = ?, breached = ?, history_unknown = ?, take = ?, '
+        'take_deadline = ?, taker_hash_id = ?, taken_amount = ? '
         'WHERE key_fingerprint = ? AND robot_index = ? AND version IS ? '
         'AND network IS ? AND coordinator_alias IS ? AND order_id IS ? '
         'AND role IS ? AND position IS ? AND read_at IS ? AND bond_hash IS ? '
         'AND escrow_hash IS ? AND deadline IS ? AND bond_step_seen_at IS ? '
         'AND bond_step_deadline IS ? AND breached IS ? AND history_unknown IS ? '
+        'AND take IS ? AND take_deadline IS ? AND taker_hash_id IS ? '
+        'AND taken_amount IS ? '
         'RETURNING robot_index',
       );
       final pinned = [
         for (final name in [
+          '_recordMakerTermsSql',
           '_recordTermsSql',
           '_insertTrailSql',
           '_replaceTrailSql',
@@ -1392,16 +1610,22 @@ class RobotCoordinatorCubit {
         ),
         isEmpty,
       );
-      // The terms by `recordTerms` alone; the trails by `storeTrail` alone, which asks `whyNotReplace` of the stored trail before either write.
+      // The terms by `recordTerms` alone, a make's terms by `recordMakerTerms` alone; the trails by `storeTrail` alone, which asks `whyNotReplace` of the stored trail before either write.
       final writes = trails.calls.where(
         (call) => call.startsWith('customWriteReturning('),
       );
-      expect(writes, hasLength(3));
+      expect(writes, hasLength(4));
       expect(
         trails.callsByMethod['recordTerms']?.where(
           (call) => call.startsWith('customWriteReturning('),
         ),
         [startsWith('customWriteReturning(_recordTermsSql,')],
+      );
+      expect(
+        trails.callsByMethod['recordMakerTerms']?.where(
+          (call) => call.startsWith('customWriteReturning('),
+        ),
+        [startsWith('customWriteReturning(_recordMakerTermsSql,')],
       );
       final store = trails.callsByMethod['storeTrail'] ?? fail('no storeTrail');
       final asked = store.indexWhere(
@@ -1477,9 +1701,26 @@ class RobotCoordinatorCubit {
         reason: text,
       );
     }
-    // Its only SQL that changes a row: the two changes of a record, on the trades, each setting one time that is still unset.
+    // Its only SQL that changes a row: the two changes of a record, on the trades, each setting one time that is still unset, and the two of a pending make (#176): its order id with its confirmation, once, or its close.
     final confirm = trades.constants['_confirmSql'] ?? fail('no _confirmSql');
     final close = trades.constants['_closeSql'] ?? fail('no _closeSql');
+    final confirmMake =
+        trades.constants['_confirmMakeSql'] ?? fail('no _confirmMakeSql');
+    final closeMake =
+        trades.constants['_closePendingMakeSql'] ??
+        fail('no _closePendingMakeSql');
+    expect(
+      confirmMake,
+      'UPDATE trades SET order_id = ?, confirmed_at = ? WHERE key_fingerprint = ? '
+      "AND robot_index = ? AND network = ? AND origin = 'madeHere' "
+      'AND order_id IS NULL AND confirmed_at IS NULL AND closed_at IS NULL',
+    );
+    expect(
+      closeMake,
+      'UPDATE trades SET closed_at = ? WHERE key_fingerprint = ? '
+      "AND robot_index = ? AND network = ? AND origin = 'madeHere' "
+      'AND order_id IS NULL AND closed_at IS NULL',
+    );
     expect(
       confirm,
       'UPDATE trades SET confirmed_at = ? WHERE key_fingerprint = ? '
@@ -1497,14 +1738,28 @@ class RobotCoordinatorCubit {
         (text) =>
             RegExp(r'\bupdate\b', caseSensitive: false).hasMatch(text) &&
             !confirm.contains(text) &&
-            !close.contains(text),
+            !close.contains(text) &&
+            !confirmMake.contains(text) &&
+            !closeMake.contains(text),
       ),
       isEmpty,
     );
-    // Run by one helper, from the two methods that name them.
+    // The two of a record run by one helper, from the two methods that name them; the two of a pending make each by its own method.
     expect(
       trades.calls.where((call) => call.startsWith('customUpdate(')),
-      hasLength(1),
+      hasLength(3),
+    );
+    expect(
+      trades.callsByMethod['confirmMake']?.where(
+        (call) => call.startsWith('customUpdate('),
+      ),
+      [startsWith('customUpdate(_confirmMakeSql,')],
+    );
+    expect(
+      trades.callsByMethod['closePendingMake']?.where(
+        (call) => call.startsWith('customUpdate('),
+      ),
+      [startsWith('customUpdate(_closePendingMakeSql,')],
     );
     expect(
       trades.callsByMethod['_change']?.where(
@@ -1547,10 +1802,11 @@ class RobotCoordinatorCubit {
       final writes = trades.calls.where(
         (call) => call.startsWith('customWriteReturning('),
       );
-      expect(writes, hasLength(3));
+      expect(writes, hasLength(4));
       for (final (method, statement) in [
         ('reserveForNewTrade', '_reserveSql'),
         ('recordPendingTake', '_recordPendingTakeSql'),
+        ('recordPendingMake', '_recordPendingMakeSql'),
         ('recordRecoveredTrade', '_recordRecoveredTradeSql'),
       ]) {
         expect(
@@ -1592,6 +1848,23 @@ class RobotCoordinatorCubit {
         'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
         'RETURNING *',
       );
+      // A pending make (#176) is `madeHere`, has no order id yet, and needs what a pending take needs.
+      expect(
+        trades.constants['_recordPendingMakeSql'],
+        'INSERT INTO trades (network, key_fingerprint, robot_index, '
+        'coordinator_alias, coordinator_onion, order_id, role, origin, '
+        'taken_at, confirmed_at, closed_at) '
+        "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+        "coordinator_onion, NULL, ?, 'madeHere', ?, NULL, NULL "
+        'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+        'AND network = ? AND provenance = ? AND coordinator_alias = ? '
+        'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+        'AND coordinator_nostr_key = ? '
+        'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+        'WHERE key_fingerprint = ? AND origin <> ?) '
+        'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+        'RETURNING *',
+      );
       expect(
         trades.constants['_recordRecoveredTradeSql'],
         'INSERT INTO trades (network, key_fingerprint, robot_index, '
@@ -1611,6 +1884,7 @@ class RobotCoordinatorCubit {
           '_reserveSql',
           '_recordPendingTakeSql',
           '_recordRecoveredTradeSql',
+          '_recordPendingMakeSql',
         ])
           trades.constants[name] ?? fail('no $name'),
       ];
@@ -1630,6 +1904,28 @@ class RobotCoordinatorCubit {
       expect(
         trades.strings.where((text) => text.contains("'recovered'")),
         everyElement(predicate<String>((text) => pinned[2].contains(text))),
+      );
+      // `madeHere` is written by the pending make alone; the make's two changes and the pending makes' read only name it.
+      final makes = [
+        pinned[3],
+        for (final name in [
+          '_confirmMakeSql',
+          '_closePendingMakeSql',
+          '_pendingMakesSql',
+        ])
+          trades.constants[name] ?? fail('no $name'),
+      ];
+      expect(
+        trades.strings.where((text) => text.contains("'madeHere'")),
+        everyElement(
+          predicate<String>(
+            (text) => makes.any((statement) => statement.contains(text)),
+          ),
+        ),
+      );
+      expect(
+        makes.skip(1),
+        everyElement(isNot(matches(RegExp(r'\binsert\b', caseSensitive: false)))),
       );
       // And no other file of the feature inserts into the bindings or the trades but the two repositories.
       expect(
@@ -1906,10 +2202,17 @@ const _watched = {
       'recordRecoveredTrade',
       'confirmTake',
       'closeTrade',
+      // The pending make (#176): who writes it, confirms it with its order id, or closes it.
+      'recordPendingMake',
+      'confirmMake',
+      'closePendingMake',
     },
   ),
-  // The terms and trails of the trades (#87): who writes them.
-  'TradeTrailRepository': ('package:p2p/', {'recordTerms', 'storeTrail'}),
+  // The terms and trails of the trades (#87), and the terms of a make (#176): who writes them.
+  'TradeTrailRepository': (
+    'package:p2p/',
+    {'recordTerms', 'storeTrail', 'recordMakerTerms'},
+  ),
   // The fresh trails of the state machine (#86, #87): only the take starts a trade, only the take and the resolution of a pending take read one on a pending take's trail.
   'TradeStatus': ('package:p2p/', {'afterTake'}),
   'TradeTrail': ('package:p2p/', {'forPendingTake', 'recovered'}),
@@ -2322,15 +2625,15 @@ String _drifted(String source) => _squeezed(
       .join('\n'),
 );
 
-/// The two triggers of the trades, as `trades.drift` writes them.
+/// The three triggers of the trades, as `trades.drift` writes them.
 final _tradeTriggers = {
   for (final trigger in _tradeTriggersAsWritten) _squeezed(trigger),
 };
 
-/// The two triggers, as `trades.drift` writes them.
+/// The three triggers, as `trades.drift` writes them: since schema 8 (#176), `trades_set_once` lets a pending make gain its order id once, with its confirmation, once its terms are recorded.
 const _tradeTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
-  "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR (NEW.order_id IS NOT OLD.order_id AND NOT (OLD.origin IS 'madeHere' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index))) OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
   "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
 ];
 
@@ -2342,18 +2645,19 @@ final _tradeRules = [
   ..._tradeTriggers,
 ];
 
-/// The statements of `trade_trails.drift` (#87), as written: the terms set once and kept, the trails written once, then only forward, never deleted, never written again once their trade is closed.
+/// The statements of `trade_trails.drift` (#87), as written: the terms set once and kept, the trails written once, then only forward, never deleted, never written again once their trade is closed; since schema 8 (#176), one open trade per order when an order id is written later too, a taker's terms only for a trade taken here or recovered, a trail only for a trade whose order id is known, and a maker's contract only forward.
 const _trailTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'an order has one open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_one_open_per_order_update BEFORE UPDATE OF order_id ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND closed_at IS NULL AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)) BEGIN SELECT RAISE(ABORT, 'an order has one open trade'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms BEGIN SELECT RAISE(ABORT, 'the terms of a trade are set once'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms WHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'terms of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND origin IN ('takenHere', 'recovered') AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'terms of no open trade'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails BEGIN SELECT RAISE(ABORT, 'the trail of a trade is kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails WHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a trail of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL AND NEW.take = 0 AND ((trades.origin IN ('takenHere', 'recovered') AND NEW.take_deadline IS NULL AND NEW.taker_hash_id IS NULL AND NEW.taken_amount IS NULL AND EXISTS (SELECT 1 FROM trade_terms WHERE trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index)) OR (trades.origin = 'madeHere' AND EXISTS (SELECT 1 FROM maker_terms WHERE maker_terms.key_fingerprint = trades.key_fingerprint AND maker_terms.robot_index = trades.robot_index)))) BEGIN SELECT RAISE(ABORT, 'a trail of no open trade'); END",
   "CREATE TRIGGER IF NOT EXISTS trade_trails_closed BEFORE UPDATE ON trade_trails WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND closed_at IS NOT NULL) BEGIN SELECT RAISE(IGNORE); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) OR (NEW.take IS NOT OLD.take AND NOT (NEW.take IS OLD.take + 1 AND OLD.position IN ('public', 'paused', 'waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND NEW.position IN ('waitingForBoth', 'waitingForEscrow', 'waitingForPayout') AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere'))) OR (OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL) OR (OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL) OR (OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL) OR (NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline) OR (NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id) OR (NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount) OR (NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL) OR (NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL) OR ((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = 'madeHere')) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
 ];
 
 /// The triggers of `trade_trails.drift`, squeezed.
@@ -2361,12 +2665,13 @@ final _trailTriggers = [
   for (final trigger in _trailTriggersAsWritten) _squeezed(trigger),
 ];
 
-/// The statements of `trade_payments.drift` (#100), as written: the payments of the trades' invoices written once per trade and step, only for an open trade whose trail is recorded, then only forward, never deleted.
+/// The statements of `trade_payments.drift` (#100), as written: the payments of the trades' invoices written once per trade, step and contract (schema 8, #176), only for an open trade whose trail is recorded at that contract, then only forward, never deleted, and never two of one payment hash.
 const _paymentTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments BEGIN SELECT RAISE(ABORT, 'the payment of a trade is kept'); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step) BEGIN SELECT RAISE(IGNORE); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a payment of no open trade'); END",
-  "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at BEGIN SELECT RAISE(ABORT, 'a payment only moves forward'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL AND trade_trails.take = NEW.take AND (NEW.take = 0 OR trades.origin = 'madeHere')) BEGIN SELECT RAISE(ABORT, 'a payment of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at OR NEW.take IS NOT OLD.take BEGIN SELECT RAISE(ABORT, 'a payment only moves forward'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_hash_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE payment_hash = NEW.payment_hash AND NOT (key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step AND take = NEW.take)) BEGIN SELECT RAISE(ABORT, 'an invoice is paid once'); END",
 ];
 
 /// The triggers of `trade_payments.drift`, squeezed.
@@ -2391,16 +2696,70 @@ final _pinTriggers = [
   for (final trigger in _pinTriggersAsWritten) _squeezed(trigger),
 ];
 
-/// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
+/// The statements of `maker_terms.drift` (#176), as written: the terms a maker asked written once, only for a pending make of the same network, coordinator and role, never changed nor deleted.
+const _makerTermsTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS maker_terms_never_deleted BEFORE DELETE ON maker_terms BEGIN SELECT RAISE(ABORT, 'the terms of a make are kept'); END",
+  "CREATE TRIGGER IF NOT EXISTS maker_terms_set_once BEFORE UPDATE ON maker_terms BEGIN SELECT RAISE(ABORT, 'the terms of a make are set once'); END",
+  "CREATE TRIGGER IF NOT EXISTS maker_terms_inserted_once BEFORE INSERT ON maker_terms WHEN EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS maker_terms_of_their_make BEFORE INSERT ON maker_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND role = NEW.role AND origin = 'madeHere' AND order_id IS NULL AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'terms of no pending make'); END",
+];
+
+/// The triggers of `maker_terms.drift`, squeezed.
+final _makerTermsTriggers = [
+  for (final trigger in _makerTermsTriggersAsWritten) _squeezed(trigger),
+];
+
+/// The triggers schema 8 replaced (#176), as the `.drift` files wrote them up to schema 7: the migration steps keep them in the schemas of their versions, as drift copies them.
+const _replacedTriggersAsWritten = [
+  "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_terms_of_their_trade BEFORE INSERT ON trade_terms WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND network = NEW.network AND coordinator_alias = NEW.coordinator_alias AND order_id = NEW.order_id AND role = NEW.role AND closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'terms of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a trail of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash) OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash) OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at)) OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL) OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position) BEGIN SELECT RAISE(ABORT, 'a trail only moves forward'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments WHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step) BEGIN SELECT RAISE(IGNORE); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments WHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL) BEGIN SELECT RAISE(ABORT, 'a payment of no open trade'); END",
+  "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at BEGIN SELECT RAISE(ABORT, 'a payment only moves forward'); END",
+];
+
+/// Every trigger the `.drift` files write, or wrote before schema 8 replaced it, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,
   ..._pinTriggers,
+  ..._makerTermsTriggers,
+  for (final trigger in _replacedTriggersAsWritten) _squeezed(trigger),
 };
 
-/// The two drops of the step to schema 7 (#97): the payments' table and its copy, never a binding.
-const _paymentsRebuildDrops = {
+/// The drops of the steps to schema 7 (#97) and 8 (#176): the tables they rebuild, their copies, and the triggers schema 8 replaces, never a binding.
+const _rebuildDrops = {
   'DROP TABLE IF EXISTS trade_payments_of_schema6',
   'DROP TABLE trade_payments',
+  'DROP TABLE IF EXISTS trades_of_schema7',
+  'DROP TABLE trades',
+  'DROP TABLE IF EXISTS trade_trails_of_schema7',
+  'DROP TABLE trade_trails',
+  'DROP TABLE IF EXISTS trade_payments_of_schema7',
+  'DROP TRIGGER IF EXISTS trades_set_once',
+  'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
+  'DROP TRIGGER IF EXISTS trade_trails_of_their_trade',
+  'DROP TRIGGER IF EXISTS trade_trails_forward',
+  'DROP TRIGGER IF EXISTS trade_payments_inserted_once',
+  'DROP TRIGGER IF EXISTS trade_payments_of_their_trade',
+  'DROP TRIGGER IF EXISTS trade_payments_forward',
+};
+
+/// The statements of the step to schema 8 (#176) that copy the rows of the trades, their trails and their payments aside and back, as `P2pDatabase` writes them (pinned there by value).
+const _schema8Rebuild = {
+  'CREATE TABLE trades_of_schema7 AS SELECT * FROM trades',
+  'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) '
+      'SELECT network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at FROM trades_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = copy.key_fingerprint AND trades.robot_index = copy.robot_index)',
+  'CREATE TABLE trade_trails_of_schema7 AS SELECT * FROM trade_trails',
+  'INSERT INTO trade_trails (key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown) '
+      'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)',
+  'CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments',
+  'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) '
+      'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)',
 };

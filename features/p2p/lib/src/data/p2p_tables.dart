@@ -344,7 +344,12 @@ class StoredTradePayments extends Table {
   IntColumn get take => integer().withDefault(const Constant(0))();
 
   @override
-  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex, step, take};
+  Set<Column<Object>> get primaryKey => {
+    keyFingerprint,
+    robotIndex,
+    step,
+    take,
+  };
 
   @override
   List<String> get customConstraints => const [

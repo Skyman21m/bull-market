@@ -8,7 +8,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:test/test.dart';
 
-/// A trade record of origin `takenHere` exists only as the take wrote it, and a reservation only as the repository's reservation wrote its binding: the constructors of `TradeRecord` and `TradeReservation` are called by the repository of the trade records alone, and nothing extends or implements either (#85, review of #102).
+/// A trade record of origin `takenHere` exists only as the take wrote it, a pending make only as the repository wrote it (#176), and a reservation only as the repository's reservation wrote its binding: the constructors of `TradeRecord`, `PendingMake` and `TradeReservation` are called by the repository of the trade records alone, and nothing extends or implements any of them (#85, review of #102).
 ///
 /// Resolved by the analyzer, so that an alias, a dot shorthand or a prefixed tear-off is the constructor it names; tests run with the package directory as working directory.
 void main() {
@@ -49,6 +49,7 @@ void main() {
       expect(makers.toSet(), {
         'TradeRecord lib/src/data/trade_record_repository_impl.dart',
         'TradeReservation lib/src/data/trade_record_repository_impl.dart',
+        'PendingMake lib/src/data/trade_record_repository_impl.dart',
       });
     },
     timeout: const Timeout(Duration(minutes: 3)),
@@ -62,6 +63,8 @@ void main() {
           'TradeRecord test/fixtures/trade_record_makers.dart',
         for (var i = 0; i < 2; i++)
           'TradeReservation test/fixtures/trade_record_makers.dart',
+        for (var i = 0; i < 2; i++)
+          'PendingMake test/fixtures/trade_record_makers.dart',
       ]);
     },
     timeout: const Timeout(Duration(minutes: 3)),
@@ -92,7 +95,7 @@ String _dartSdkPath() {
 }
 
 /// The classes whose instances only the repository of the trade records makes.
-const _watched = {'TradeRecord', 'TradeReservation'};
+const _watched = {'TradeRecord', 'TradeReservation', 'PendingMake'};
 
 /// Each place that calls or tears off a constructor of a class of [_watched], resolved: through its name, a `typedef`, a prefix, a dot shorthand or a `super(…)` of a subclass; and each class that extends or implements one.
 final class _MakerVisitor extends RecursiveAstVisitor<void> {

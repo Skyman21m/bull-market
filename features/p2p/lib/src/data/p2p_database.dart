@@ -61,7 +61,8 @@ final class P2pDatabase extends _$P2pDatabase {
   /// Each copy keeps every column of its table at schema 7 and is dropped only at the very end, once the foreign keys of the file were checked.
   static const String _trades = 'trades';
   static const String _tradesCopy = 'trades_of_schema7';
-  static const String _dropTradesCopy = 'DROP TABLE IF EXISTS trades_of_schema7';
+  static const String _dropTradesCopy =
+      'DROP TABLE IF EXISTS trades_of_schema7';
   static const String _copyTrades =
       'CREATE TABLE trades_of_schema7 AS SELECT * FROM trades';
   static const String _dropTrades = 'DROP TABLE trades';

@@ -25,6 +25,7 @@ import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
+import 'generated/schema_v7.dart' as v7;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -715,7 +716,7 @@ void main() {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name <> 'trades_one_open_per_order'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name NOT IN ('trades_one_open_per_order', 'trades_one_open_per_order_update')",
               )
               .get())
         row.read<String>('name'): row
@@ -1183,14 +1184,14 @@ void main() {
 
     // Schema 5 (#100): the payments of a trade's invoices asked of the wallet.
 
-    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them.
+    /// The schema 5 objects of [database], by name, compared as [objectsOf] compares them: the trigger schema 8 adds to the payments is not one.
     Future<Map<String, String>> paymentObjectsOf(
       GeneratedDatabase database,
     ) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments' AND name <> 'trade_payments_hash_once'",
               )
               .get())
         row.read<String>('name'): row
@@ -1707,7 +1708,7 @@ void main() {
         expect(before, hasLength(2));
 
         final migrated = P2pDatabase.open(() async => own);
-        expect(await versionOf(migrated), 7);
+        expect(await versionOf(migrated), P2pDatabase.schema);
         await migrated.validateDatabaseSchema();
         expect(await paymentObjectsOf(migrated), expected);
         expect(await paymentsOf(migrated), before);
@@ -1768,14 +1769,17 @@ void main() {
         addTearDown(() => freshDirectory.delete(recursive: true));
         final fresh = P2pDatabase.open(() async => freshDirectory);
         final expected = await paymentObjectsOf(fresh);
+        await fresh.close();
+        // The table the step from 6 makes is schema 7's, which the step to 8 then rebuilds.
+        final seven = v7.DatabaseAtV7(NativeDatabase.memory());
         final newTable =
-            (await fresh
+            (await seven
                     .customSelect(
                       "SELECT sql FROM sqlite_master WHERE name = 'trade_payments'",
                     )
                     .getSingle())
                 .read<String>('sql');
-        await fresh.close();
+        await seven.close();
 
         // What the file holds after each statement of the step, in order.
         const copied = [
@@ -1804,7 +1808,11 @@ void main() {
           await half.close();
 
           final database = P2pDatabase.open(() async => own);
-          expect(await versionOf(database), 7, reason: '$turn');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$turn',
+          );
           await database.validateDatabaseSchema();
           expect(await paymentObjectsOf(database), expected, reason: '$turn');
           expect(await paymentsOf(database), rows, reason: '$turn');
@@ -1833,7 +1841,7 @@ void main() {
         await migrated.close();
 
         final database = P2pDatabase.open(() async => own);
-        expect(await versionOf(database), 7);
+        expect(await versionOf(database), P2pDatabase.schema);
         await database.validateDatabaseSchema();
         expect(await paymentObjectsOf(database), objects);
         expect(await paymentsOf(database), rows);
