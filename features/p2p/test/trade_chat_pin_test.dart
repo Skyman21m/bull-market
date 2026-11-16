@@ -173,12 +173,12 @@ void main() {
 
   group('the pin kept with the trade', () {
     test(
-      'the first read pins the peer\'s key and keeps its two fingerprints, nothing else',
+      'the first read pins the peer\'s key and keeps it, its two fingerprints with it, nothing else',
       () async {
         final (app, record, seen) = await atNine();
         expect(
           await app.pins.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
             isNull,
@@ -190,9 +190,16 @@ void main() {
           Ok(value: final pin?) => pin,
           final other => throw StateError('$other'),
         };
-        expect(pin.primary, makerKey.key.publicKey.fingerprint);
-        expect(pin.subkey, makerKey.key.publicKey.subkeyFingerprint);
-        expect(pin.subkey, isNot(pin.primary));
+        expect(pin, makerKey.key.publicKey);
+        expect(pin.armored, makerKey.key.publicKey.armored);
+        final stored =
+            (await app.database
+                    .customSelect('SELECT * FROM trade_chat_pins')
+                    .getSingle())
+                .data;
+        expect(stored['primary_fingerprint'], pin.fingerprint);
+        expect(stored['subkey_fingerprint'], pin.subkeyFingerprint);
+        expect(stored['armored_key'], pin.armored);
         // Kept once: later reads write nothing.
         await read(app, record, seen);
         expect(app.pins.keeps, 1);
@@ -206,6 +213,7 @@ void main() {
             'robot_index',
             'primary_fingerprint',
             'subkey_fingerprint',
+            'armored_key',
           ]),
         );
       },
@@ -261,10 +269,10 @@ void main() {
         );
         expect(
           await app.pins.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
-            ChatPinFingerprints.of(makerKey.key.publicKey),
+            makerKey.key.publicKey,
           ),
         );
       },
@@ -335,7 +343,7 @@ void main() {
         );
         expect(
           await app.pins.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
             isNull,
@@ -346,27 +354,98 @@ void main() {
         expect(app.pins.keeps, 2);
         expect(
           await app.pins.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
-            ChatPinFingerprints.of(makerKey.key.publicKey),
+            makerKey.key.publicKey,
           ),
         );
       },
     );
 
     test(
-      'another pin found kept when this run keeps its own is a breach',
+      'another pin found kept when this run keeps its own is a breach, with the key kept as the one pinned before (functional review of #139)',
       () async {
         final (app, record, seen) = await atNine();
-        final other = ChatPinFingerprints.of(keyOf(maker, 934).key.publicKey);
+        final other = keyOf(maker, 934).key.publicKey;
         app.pins.beforeKeep = () async {
           await TradeChatPinRepositoryImpl(app.database).keep(record, other);
         };
         expect(
           (await read(app, record, seen)).peerKey,
-          isA<ChatPeerKeyBreach>(),
+          isA<ChatPeerKeyBreach>().having((b) => b.pinned, 'pinned', other),
         );
+      },
+    );
+
+    test(
+      'after a restart a forged key is the same breach as within one run: the key kept stays the one pinned, the peer\'s earlier messages stay read and checked with it, and a message signed by the forged key is not valid (functional review of #139)',
+      () async {
+        final (app, record, seen) = await atNine();
+        app.coordinator.peerSays(written(app, 'My IBAN'));
+        await read(app, record, seen);
+        final (restarted, _) = app.chatAfterRestart();
+        final forged = keyOf(maker, 937);
+        app.coordinator.peerPublicKey = forged.key.publicKey.armored;
+        app.coordinator.peerSays(written(app, 'Pay here', from: forged));
+        final view = viewOf(await restarted.read(record, seen));
+        expect(
+          view.peerKey,
+          isA<ChatPeerKeyBreach>().having(
+            (b) => b.pinned,
+            'pinned',
+            makerKey.key.publicKey,
+          ),
+        );
+        expect(view.entries, hasLength(2));
+        expect(view.entries.first.text, 'My IBAN');
+        expect(view.entries.first.validSignature, isTrue);
+        expect(view.entries.first.awaitingPeerKey, isFalse);
+        expect(view.entries.last.validSignature, isFalse);
+      },
+    );
+
+    test(
+      'a key kept that does not parse, or whose fingerprints are not the ones kept, is an unreadable pin: the read fails and pins nothing',
+      () async {
+        for (final (primary, armored) in [
+          // Another key under the fingerprints of the peer's key.
+          (makerKey.key.publicKey.fingerprint, forgedKey(938)),
+          // Not a key.
+          (
+            makerKey.key.publicKey.fingerprint,
+            '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nnot a key',
+          ),
+        ]) {
+          final (app, record, seen) = await atNine();
+          await app.database.customStatement(
+            'INSERT INTO trade_chat_pins VALUES (?, ?, ?, ?, ?)',
+            [
+              record.robot.keyFingerprint.hex,
+              record.robot.accountIndex,
+              primary,
+              makerKey.key.publicKey.subkeyFingerprint,
+              armored,
+            ],
+          );
+          expect(
+            await app.pins.pinOf(record),
+            isA<Err<PgpPublicKey?, P2pFailure>>(),
+          );
+          expect(
+            await app.chatRead.read(record, seen),
+            isA<Err<ChatView, ChatReadFailure>>().having(
+              (e) => e.failure,
+              'failure',
+              isA<ChatReadFailed>().having(
+                (f) => f.cause,
+                'cause',
+                isA<P2pStorageFailure>(),
+              ),
+            ),
+          );
+          expect(app.chats.of(record).peerKey, isA<ChatPeerKeyAwaited>());
+        }
       },
     );
 
@@ -375,23 +454,22 @@ void main() {
       () async {
         final (app, record, _) = await atNine();
         final repository = TradeChatPinRepositoryImpl(app.database);
-        final pin = ChatPinFingerprints.of(makerKey.key.publicKey);
-        final other = ChatPinFingerprints.of(keyOf(maker, 935).key.publicKey);
-        expect(
-          await repository.keep(record, pin),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'kept', isTrue),
-        );
-        expect(
-          await repository.keep(record, pin),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'kept', isTrue),
-        );
-        expect(
-          await repository.keep(record, other),
-          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'kept', isFalse),
-        );
+        final pin = makerKey.key.publicKey;
+        final other = keyOf(maker, 935).key.publicKey;
+        // Each keep gives the key kept: this one, again, and not the other.
+        for (final key in [pin, pin, other]) {
+          expect(
+            await repository.keep(record, key),
+            isA<Ok<PgpPublicKey, P2pFailure>>().having(
+              (ok) => ok.value,
+              'kept',
+              pin,
+            ),
+          );
+        }
         expect(
           await repository.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
             pin,
@@ -404,7 +482,7 @@ void main() {
         await expectLater(
           app.database.customStatement(
             "UPDATE trade_chat_pins SET primary_fingerprint = ?",
-            [other.primary],
+            [other.fingerprint],
           ),
           throwsA(anything),
         );
@@ -436,7 +514,7 @@ void main() {
         ]) {
           expect(
             await repository.pinOf(stranger),
-            isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+            isA<Ok<PgpPublicKey?, P2pFailure>>().having(
               (ok) => ok.value,
               'pin',
               isNull,
@@ -452,7 +530,7 @@ void main() {
           );
           expect(
             await repository.keep(stranger, pin),
-            isA<Err<bool, P2pFailure>>(),
+            isA<Err<PgpPublicKey, P2pFailure>>(),
           );
         }
       },
@@ -468,11 +546,8 @@ void main() {
         );
         final repository = TradeChatPinRepositoryImpl(app.database);
         expect(
-          await repository.keep(
-            record,
-            ChatPinFingerprints.of(makerKey.key.publicKey),
-          ),
-          isA<Err<bool, P2pFailure>>().having(
+          await repository.keep(record, makerKey.key.publicKey),
+          isA<Err<PgpPublicKey, P2pFailure>>().having(
             (e) => e.failure,
             'failure',
             isA<P2pStorageFailure>(),
@@ -553,7 +628,7 @@ void main() {
         expect(app.pins.keeps, 0);
         expect(
           await app.pins.pinOf(record),
-          isA<Ok<ChatPinFingerprints?, P2pFailure>>().having(
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
             (ok) => ok.value,
             'pin',
             isNull,
@@ -563,7 +638,7 @@ void main() {
     );
 
     test(
-      'no message is posted while the pin is not kept: the send is refused as « not sent », and goes once a read kept the pin (review of #139)',
+      'no message is posted while the pin is not kept: the send writes it first, is refused as « not sent » while it cannot, and goes once it could, with no read between (reviews of #139)',
       () async {
         final (app, record, seen) = await atNine();
         app.pins.refuseWrites = true;
@@ -587,14 +662,23 @@ void main() {
         expect(posts(app), before);
         await pumpEventQueue();
         expect(app.relays.published, isEmpty);
-        // Not kept, a restart would trust whatever key is served: so nothing went.
+        // Not kept, a restart would trust whatever key is served: so nothing went. The send tried to write it.
+        expect(app.pins.keeps, 2);
         app.pins.refuseWrites = false;
-        await read(app, record, seen);
         expect(
           await app.chatSend.send(record, seen, 'Hello'),
           isA<Ok<ChatSent, ChatSendRefusal>>(),
         );
         expect(posts(app), before + 1);
+        expect(app.pins.keeps, 3);
+        expect(
+          await app.pins.pinOf(record),
+          isA<Ok<PgpPublicKey?, P2pFailure>>().having(
+            (ok) => ok.value,
+            'pin',
+            makerKey.key.publicKey,
+          ),
+        );
       },
     );
   });

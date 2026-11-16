@@ -57,7 +57,7 @@ final class WatchChatUsecase {
     final chat = _chats.of(record);
     // The pins kept with the trade's record, read once a run before any page is taken: a key is never pinned without knowing whether one was kept (#139, part of #159).
     if (!chat.pinRead) {
-      final ChatPinFingerprints? kept;
+      final PgpPublicKey? kept;
       switch (await _pins.pinOf(record)) {
         case Err(:final failure):
           return Err(ChatReadFailed(failure));
@@ -111,18 +111,9 @@ final class WatchChatUsecase {
     }
   }
 
-  /// Keeps with [record] the key [chat] pinned in this run, and gives the chat: a pin that could not be written is tried again at the next read; another pin found kept is a breach.
+  /// Keeps with [record] the key [chat] pinned in this run, and gives the chat.
   Future<ChatView> _keepPin(TradeRecord record, TradeChat chat) async {
-    final key = chat.pinToKeep;
-    if (key == null) return chat.view;
-    switch (await _pins.keep(record, ChatPinFingerprints.of(key))) {
-      case Ok(value: true):
-        chat.pinKept();
-      case Ok(value: false):
-        chat.pinKeptOther();
-      case Err():
-        break;
-    }
+    await keepChatPin(_pins, record, chat);
     return chat.view;
   }
 
@@ -139,6 +130,24 @@ final class WatchChatUsecase {
       return const Err(ChatSkipNeedsOrderRead());
     }
     return Ok(chat.view);
+  }
+}
+
+/// Keeps in [pins], with [record], the key [chat] pinned in this run, if it is not kept yet (#139): at each read, and at a send, so that a pin whose write failed is written again before a message leaves (functional review of #139). A write that fails changes nothing, to be tried again; another key found kept is a breach, with that key as the one pinned before.
+Future<void> keepChatPin(
+  TradeChatPinRepository pins,
+  TradeRecord record,
+  TradeChat chat,
+) async {
+  final key = chat.pinToKeep;
+  if (key == null) return;
+  switch (await pins.keep(record, key)) {
+    case Ok(:final value) when value == key:
+      chat.pinKept();
+    case Ok(:final value):
+      chat.pinKeptOther(value);
+    case Err():
+      break;
   }
 }
 

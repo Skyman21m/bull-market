@@ -751,20 +751,20 @@ final class TestPins implements TradeChatPinRepository {
   TestPins(this._pins);
 
   @override
-  Future<Result<ChatPinFingerprints?, P2pFailure>> pinOf(TradeRecord trade) =>
+  Future<Result<PgpPublicKey?, P2pFailure>> pinOf(TradeRecord trade) =>
       refuseReads
       ? Future.value(const Err(P2pStorageFailure()))
       : _pins.pinOf(trade);
 
   @override
-  Future<Result<bool, P2pFailure>> keep(
+  Future<Result<PgpPublicKey, P2pFailure>> keep(
     TradeRecord trade,
-    ChatPinFingerprints pin,
+    PgpPublicKey key,
   ) async {
     keeps++;
     await beforeKeep?.call();
     if (refuseWrites) return const Err(P2pStorageFailure());
-    return _pins.keep(trade, pin);
+    return _pins.keep(trade, key);
   }
 
   @override

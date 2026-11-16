@@ -1337,10 +1337,11 @@ final class Schema6 extends i0.VersionedSchema {
         'CHECK(robot_index BETWEEN 0 AND 2147483647)',
         'CHECK(length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB \'*[^0-9A-F]*\')',
         'CHECK(length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB \'*[^0-9A-F]*\')',
-        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(primary_fingerprint) = \'text\' AND typeof(subkey_fingerprint) = \'text\')',
+        'CHECK(length(armored_key) <= 20000 AND armored_key GLOB \'-----BEGIN PGP PUBLIC KEY BLOCK-----*\')',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(primary_fingerprint) = \'text\' AND typeof(subkey_fingerprint) = \'text\' AND typeof(armored_key) = \'text\')',
         'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
       ],
-      columns: [_column_1, _column_4, _column_40, _column_41],
+      columns: [_column_1, _column_4, _column_40, _column_41, _column_42],
       attachedDatabase: database,
     ),
     alias: null,
@@ -1375,7 +1376,7 @@ final class Schema6 extends i0.VersionedSchema {
         'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(peer_key) = \'text\' AND typeof(own_key) = \'text\')',
         'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
       ],
-      columns: [_column_1, _column_4, _column_42, _column_43],
+      columns: [_column_1, _column_4, _column_43, _column_44],
       attachedDatabase: database,
     ),
     alias: null,
@@ -1619,6 +1620,8 @@ class Shape6 extends i0.VersionedTable {
       columnsByName['primary_fingerprint']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<String> get subkeyFingerprint =>
       columnsByName['subkey_fingerprint']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get armoredKey =>
+      columnsByName['armored_key']! as i1.GeneratedColumn<String>;
 }
 
 i1.GeneratedColumn<String> _column_40(String aliasedName) =>
@@ -1637,6 +1640,14 @@ i1.GeneratedColumn<String> _column_41(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
+i1.GeneratedColumn<String> _column_42(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'armored_key',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
 
 class Shape7 extends i0.VersionedTable {
   Shape7({required super.source, required super.alias}) : super.aliased();
@@ -1650,7 +1661,7 @@ class Shape7 extends i0.VersionedTable {
       columnsByName['own_key']! as i1.GeneratedColumn<String>;
 }
 
-i1.GeneratedColumn<String> _column_42(String aliasedName) =>
+i1.GeneratedColumn<String> _column_43(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'peer_key',
       aliasedName,
@@ -1658,7 +1669,7 @@ i1.GeneratedColumn<String> _column_42(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<String> _column_43(String aliasedName) =>
+i1.GeneratedColumn<String> _column_44(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'own_key',
       aliasedName,

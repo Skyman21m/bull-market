@@ -81,6 +81,8 @@ final class SendChatMessageUsecase {
   ) async {
     if (refusalOf(text) case final refusal?) return Err(refusal);
     final chat = _chats.of(record);
+    // A pin whose write failed at the last read is written now, so that trying again sends (functional review of #139).
+    await keepChatPin(_pins, record, chat);
     final PgpPublicKey peer;
     switch (chat.peerKey) {
       case ChatPeerKeyPinned(:final key):
@@ -89,6 +91,9 @@ final class SendChatMessageUsecase {
         return const Err(ChatPeerKeyChanged());
       case ChatPeerKeyAwaited():
         return const Err(ChatPeerKeyNotKnown());
+    }
+    if (!chat.pinsKept) {
+      return const Err(ChatSendUnavailable(P2pStorageFailure()));
     }
     final order = seen.order;
     if (order == null) return const Err(ChatClosed());
@@ -264,6 +269,7 @@ final class SendChatMessageUsecase {
     final chat = _chats.of(record);
     final message = chat.pendingMessage(id);
     if (message == null) return const Err(ChatClosed());
+    await keepChatPin(_pins, record, chat);
     if (chat.peerKey is! ChatPeerKeyPinned) {
       return const Err(ChatPeerKeyChanged());
     }
@@ -310,7 +316,7 @@ final class SendChatMessageUsecase {
     if (chat.pinnedKey?.fingerprint != message.peerFingerprint) {
       return const Err(ChatPeerKeyChanged());
     }
-    // Nothing is posted while the key pinned in this run is not kept with the trade's record, so that a restart cannot trust another key again (review of #139): the next read writes it, and the user tries again.
+    // Nothing is posted while the key pinned in this run is not kept with the trade's record, so that a restart cannot trust another key again (review of #139): the send writes it first, and the next read tries again.
     if (!chat.pinsKept) {
       return const Err(ChatSendUnavailable(P2pStorageFailure()));
     }

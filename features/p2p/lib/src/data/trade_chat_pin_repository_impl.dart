@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
 
 import '../domain/p2p_failure.dart';
 import '../domain/repositories/trade_chat_pin_repository.dart';
@@ -7,7 +8,7 @@ import '../domain/trade/trade_chat_pin.dart';
 import '../domain/trade_record.dart';
 import 'p2p_database.dart';
 
-/// The peer's keys the trades' chats pinned, by their fingerprints, and the Nostr keys of their first Nostr copies, in the feature's database (schema 6, #139, part of #159).
+/// The peer's public keys the trades' chats pinned, with their fingerprints, and the Nostr keys of their first Nostr copies, in the feature's database (schema 6, #139, part of #159).
 ///
 /// Each write is one statement, which SQLite runs atomically. The triggers of `trade_chat_pins.drift` refuse, whatever the code, any delete, any update, a second pin of a trade, and a pin of no open trade, in both tables.
 /// This class is the only writer of the two tables, and opens no transaction.
@@ -16,21 +17,19 @@ final class TradeChatPinRepositoryImpl implements TradeChatPinRepository {
   /// A trade's first pin: a second insert writes nothing (the trigger `trade_chat_pins_inserted_once`), and one of a closed trade is refused (`trade_chat_pins_of_their_trade`).
   static const String _keepSql =
       'INSERT INTO trade_chat_pins (key_fingerprint, robot_index, '
-      'primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?) '
-      'RETURNING robot_index';
+      'primary_fingerprint, subkey_fingerprint, armored_key) '
+      'VALUES (?, ?, ?, ?, ?) RETURNING robot_index';
 
   static const String _pinSql =
-      'SELECT primary_fingerprint, subkey_fingerprint FROM trade_chat_pins '
-      'WHERE key_fingerprint = ? AND robot_index = ?';
+      'SELECT primary_fingerprint, subkey_fingerprint, armored_key '
+      'FROM trade_chat_pins WHERE key_fingerprint = ? AND robot_index = ?';
 
   final P2pDatabase _database;
 
   const TradeChatPinRepositoryImpl(this._database);
 
   @override
-  Future<Result<ChatPinFingerprints?, P2pFailure>> pinOf(
-    TradeRecord trade,
-  ) async {
+  Future<Result<PgpPublicKey?, P2pFailure>> pinOf(TradeRecord trade) async {
     final List<QueryRow> rows;
     try {
       rows = await _database
@@ -44,41 +43,52 @@ final class TradeChatPinRepositoryImpl implements TradeChatPinRepository {
       return const Err(P2pStorageFailure());
     }
     if (rows.isEmpty) return const Ok(null);
-    return switch ((
-      rows.single.data['primary_fingerprint'],
-      rows.single.data['subkey_fingerprint'],
-    )) {
-      (final String primary, final String subkey) => Ok(
-        ChatPinFingerprints(primary: primary, subkey: subkey),
-      ),
-      _ => const Err(P2pStorageFailure()),
-    };
+    final row = rows.single.data;
+    if ((
+          row['primary_fingerprint'],
+          row['subkey_fingerprint'],
+          row['armored_key'],
+        )
+        case (
+          final String primary,
+          final String subkey,
+          final String armored,
+        )) {
+      // Read again through the package's bounded parser: the key kept is the key whose fingerprints were kept, or the pin is unreadable.
+      if (PgpPublicKey.parse(armored) case Ok(
+        value: final key,
+      ) when key.fingerprint == primary && key.subkeyFingerprint == subkey) {
+        return Ok(key);
+      }
+    }
+    return const Err(P2pStorageFailure());
   }
 
   @override
-  Future<Result<bool, P2pFailure>> keep(
+  Future<Result<PgpPublicKey, P2pFailure>> keep(
     TradeRecord trade,
-    ChatPinFingerprints pin,
+    PgpPublicKey key,
   ) async {
     try {
       final written = await _database.customWriteReturning(
         _keepSql,
         variables: [
           ..._tradeVariables(trade),
-          Variable.withString(pin.primary),
-          Variable.withString(pin.subkey),
+          Variable.withString(key.fingerprint),
+          Variable.withString(key.subkeyFingerprint),
+          Variable.withString(key.armored),
         ],
         updates: {_database.storedTradeChatPins},
         updateKind: UpdateKind.insert,
       );
-      if (written.isNotEmpty) return const Ok(true);
+      if (written.isNotEmpty) return Ok(key);
     } on Exception {
       // A closed trade is refused by a trigger that aborts: nothing was written.
       return const Err(P2pStorageFailure());
     }
     // Nothing written: a pin was kept already, this one or another.
     return switch (await pinOf(trade)) {
-      Ok(value: final stored?) => Ok(stored == pin),
+      Ok(value: final stored?) => Ok(stored),
       Ok(value: null) => const Err(P2pStorageFailure()),
       Err(:final failure) => Err(failure),
     };

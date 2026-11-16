@@ -315,6 +315,16 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "armored_key",
+            "getter_name": "armoredKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -324,7 +334,8 @@
           "CHECK (robot_index BETWEEN 0 AND 2147483647)",
           "CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*')",
           "CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*')",
-          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text')",
+          "CHECK (length(armored_key) <= 20000 AND armored_key GLOB '-----BEGIN PGP PUBLIC KEY BLOCK-----*')",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text' AND typeof(armored_key) = 'text')",
           "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
         ],
         "explicit_pk": [
@@ -1400,7 +1411,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"trade_chat_pins\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"primary_fingerprint\" TEXT NOT NULL, \"subkey_fingerprint\" TEXT NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text'), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_chat_pins\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"primary_fingerprint\" TEXT NOT NULL, \"subkey_fingerprint\" TEXT NOT NULL, \"armored_key\" TEXT NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*'), CHECK (length(armored_key) <= 20000 AND armored_key GLOB '-----BEGIN PGP PUBLIC KEY BLOCK-----*'), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text' AND typeof(armored_key) = 'text'), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
         }
       ]
     },

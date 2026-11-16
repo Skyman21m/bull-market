@@ -58,8 +58,8 @@ final class TradeChat {
 
   ChatPeerKeyState _peerKey = const ChatPeerKeyAwaited();
 
-  /// The pin kept with the trade's record (#139): read once a run, before the first page is taken; `null` when the trade has none.
-  ChatPinFingerprints? _kept;
+  /// The peer key kept with the trade's record (#139): read once a run, before the first page is taken; `null` when the trade has none. Read only while no key is pinned in this run.
+  PgpPublicKey? _kept;
   bool _pinRead = false;
 
   /// The key this run pinned, while it is not kept with the trade's record yet.
@@ -93,9 +93,10 @@ final class TradeChat {
   /// Whether the pins kept with the trade's record were read in this run: no page is taken before (#139).
   bool get pinRead => _pinRead;
 
-  /// The pins kept with the trade's record, [kept] and [nostr], or none: after a restart, the first keys served are compared with them rather than trusted. Only the first call of a run counts, so that a read that ends late cannot undo a pin kept since.
-  void restorePin(ChatPinFingerprints? kept, {ChatNostrPin? nostr}) {
-    if (_pinRead) return;
+  /// The pins kept with the trade's record, [kept] and [nostr], or none: after a restart, the first keys served are compared with them rather than trusted.
+  ///
+  /// Each read calls it until one has: two first reads at once may both call it, with the same pins or, for the second, pins written since by the first; either way nothing shown changes, since [kept] is read only before a key is pinned in this run and [nostr] only replaces the Nostr keys with the ones kept.
+  void restorePin(PgpPublicKey? kept, {ChatNostrPin? nostr}) {
     _pinRead = true;
     _kept = kept;
     if (nostr != null) {
@@ -123,16 +124,13 @@ final class TradeChat {
   PgpPublicKey? get pinToKeep => _toKeep;
 
   /// The key of [pinToKeep] is now kept with the trade's record.
-  void pinKept() {
-    if (_toKeep case final key?) _kept = ChatPinFingerprints.of(key);
-    _toKeep = null;
-  }
+  void pinKept() => _toKeep = null;
 
-  /// Another pin than [pinToKeep] was found kept with the trade's record: the key pinned in this run is not that one, the same breach as a key that changed.
-  void pinKeptOther() {
+  /// Another key, [kept], was found kept with the trade's record in place of [pinToKeep]: the key pinned in this run is not that one, the same breach as a key that changed, with the key kept as the one pinned before (functional review of #139).
+  void pinKeptOther(PgpPublicKey kept) {
     _toKeep = null;
-    if (_peerKey case ChatPeerKeyPinned(:final key)) {
-      _peerKey = ChatPeerKeyBreach(pinned: key);
+    if (_peerKey is ChatPeerKeyPinned) {
+      _peerKey = ChatPeerKeyBreach(pinned: kept);
     }
   }
 
@@ -375,24 +373,26 @@ final class TradeChat {
 
   /// The peer's key after a page that gives [given]: pinned at the first key named after the peer, any other later key, a misnamed one, none or an unreadable one after it a breach, which stays.
   ///
-  /// After a restart, the pin kept with the trade's record stands for the key pinned before (#139): the same key is pinned again silently, and another one, none or an unreadable one is the same breach.
-  ChatPeerKeyState _keyAfter(ChatPeerKey given) => switch ((_peerKey, given)) {
-    (ChatPeerKeyBreach(), _) => _peerKey,
-    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key))
-        when _kept?.matches(key) == false =>
+  /// After a restart, the key kept with the trade's record stands for the key pinned before (#139): the same key is pinned again silently, and another one, a misnamed one, none or an unreadable one is the same breach as within one run, the key kept as the one pinned before, so that the peer's earlier messages stay read and checked with it (functional review of #139).
+  ChatPeerKeyState _keyAfter(ChatPeerKey given) => switch ((
+    _peerKey,
+    given,
+    _kept,
+  )) {
+    (ChatPeerKeyBreach(), _, _) => _peerKey,
+    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key), final kept?)
+        when key == kept =>
+      ChatPeerKeyPinned(key),
+    (ChatPeerKeyAwaited(), _, final kept?) => ChatPeerKeyBreach(pinned: kept),
+    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key), null) =>
+      ChatPeerKeyPinned(key),
+    (ChatPeerKeyAwaited(), ChatPeerKeyMisnamed(), null) =>
       const ChatPeerKeyBreach(),
-    (ChatPeerKeyAwaited(), ChatPeerKeyMissing() || ChatPeerKeyUnreadable())
-        when _kept != null =>
-      const ChatPeerKeyBreach(),
-    (ChatPeerKeyAwaited(), ChatPeerKeyOfPeer(:final key)) => ChatPeerKeyPinned(
-      key,
-    ),
-    (ChatPeerKeyAwaited(), ChatPeerKeyMisnamed()) => const ChatPeerKeyBreach(),
-    (ChatPeerKeyAwaited(), _) => _peerKey,
-    (ChatPeerKeyPinned(:final key), ChatPeerKeyOfPeer(key: final again))
+    (ChatPeerKeyAwaited(), _, null) => _peerKey,
+    (ChatPeerKeyPinned(:final key), ChatPeerKeyOfPeer(key: final again), _)
         when again == key =>
       _peerKey,
-    (ChatPeerKeyPinned(:final key), _) => ChatPeerKeyBreach(pinned: key),
+    (ChatPeerKeyPinned(:final key), _, _) => ChatPeerKeyBreach(pinned: key),
   };
 
   /// The marks of every message, from the messages in index order: a gap before it, a signature older than an earlier message of the same author.

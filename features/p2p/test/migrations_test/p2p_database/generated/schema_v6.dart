@@ -1106,12 +1106,21 @@ class TradeChatPins extends Table
         requiredDuringInsert: true,
         $customConstraints: 'NOT NULL',
       );
+  late final GeneratedColumn<String> armoredKey = GeneratedColumn<String>(
+    'armored_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
   @override
   List<GeneratedColumn> get $columns => [
     keyFingerprint,
     robotIndex,
     primaryFingerprint,
     subkeyFingerprint,
+    armoredKey,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1140,6 +1149,10 @@ class TradeChatPins extends Table
         DriftSqlType.string,
         data['${effectivePrefix}subkey_fingerprint'],
       )!,
+      armoredKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}armored_key'],
+      )!,
     );
   }
 
@@ -1155,7 +1168,8 @@ class TradeChatPins extends Table
     'CHECK(robot_index BETWEEN 0 AND 2147483647)',
     'CHECK(length(primary_fingerprint) = 40 AND primary_fingerprint NOT GLOB \'*[^0-9A-F]*\')',
     'CHECK(length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB \'*[^0-9A-F]*\')',
-    'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(primary_fingerprint) = \'text\' AND typeof(subkey_fingerprint) = \'text\')',
+    'CHECK(length(armored_key) <= 20000 AND armored_key GLOB \'-----BEGIN PGP PUBLIC KEY BLOCK-----*\')',
+    'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(primary_fingerprint) = \'text\' AND typeof(subkey_fingerprint) = \'text\' AND typeof(armored_key) = \'text\')',
     'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
   ];
   @override
@@ -1168,11 +1182,13 @@ class TradeChatPinsData extends DataClass
   final int robotIndex;
   final String primaryFingerprint;
   final String subkeyFingerprint;
+  final String armoredKey;
   const TradeChatPinsData({
     required this.keyFingerprint,
     required this.robotIndex,
     required this.primaryFingerprint,
     required this.subkeyFingerprint,
+    required this.armoredKey,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1181,6 +1197,7 @@ class TradeChatPinsData extends DataClass
     map['robot_index'] = Variable<int>(robotIndex);
     map['primary_fingerprint'] = Variable<String>(primaryFingerprint);
     map['subkey_fingerprint'] = Variable<String>(subkeyFingerprint);
+    map['armored_key'] = Variable<String>(armoredKey);
     return map;
   }
 
@@ -1190,6 +1207,7 @@ class TradeChatPinsData extends DataClass
       robotIndex: Value(robotIndex),
       primaryFingerprint: Value(primaryFingerprint),
       subkeyFingerprint: Value(subkeyFingerprint),
+      armoredKey: Value(armoredKey),
     );
   }
 
@@ -1205,6 +1223,7 @@ class TradeChatPinsData extends DataClass
         json['primaryFingerprint'],
       ),
       subkeyFingerprint: serializer.fromJson<String>(json['subkeyFingerprint']),
+      armoredKey: serializer.fromJson<String>(json['armoredKey']),
     );
   }
   @override
@@ -1215,6 +1234,7 @@ class TradeChatPinsData extends DataClass
       'robotIndex': serializer.toJson<int>(robotIndex),
       'primaryFingerprint': serializer.toJson<String>(primaryFingerprint),
       'subkeyFingerprint': serializer.toJson<String>(subkeyFingerprint),
+      'armoredKey': serializer.toJson<String>(armoredKey),
     };
   }
 
@@ -1223,11 +1243,13 @@ class TradeChatPinsData extends DataClass
     int? robotIndex,
     String? primaryFingerprint,
     String? subkeyFingerprint,
+    String? armoredKey,
   }) => TradeChatPinsData(
     keyFingerprint: keyFingerprint ?? this.keyFingerprint,
     robotIndex: robotIndex ?? this.robotIndex,
     primaryFingerprint: primaryFingerprint ?? this.primaryFingerprint,
     subkeyFingerprint: subkeyFingerprint ?? this.subkeyFingerprint,
+    armoredKey: armoredKey ?? this.armoredKey,
   );
   TradeChatPinsData copyWithCompanion(TradeChatPinsCompanion data) {
     return TradeChatPinsData(
@@ -1243,6 +1265,9 @@ class TradeChatPinsData extends DataClass
       subkeyFingerprint: data.subkeyFingerprint.present
           ? data.subkeyFingerprint.value
           : this.subkeyFingerprint,
+      armoredKey: data.armoredKey.present
+          ? data.armoredKey.value
+          : this.armoredKey,
     );
   }
 
@@ -1252,7 +1277,8 @@ class TradeChatPinsData extends DataClass
           ..write('keyFingerprint: $keyFingerprint, ')
           ..write('robotIndex: $robotIndex, ')
           ..write('primaryFingerprint: $primaryFingerprint, ')
-          ..write('subkeyFingerprint: $subkeyFingerprint')
+          ..write('subkeyFingerprint: $subkeyFingerprint, ')
+          ..write('armoredKey: $armoredKey')
           ..write(')'))
         .toString();
   }
@@ -1263,6 +1289,7 @@ class TradeChatPinsData extends DataClass
     robotIndex,
     primaryFingerprint,
     subkeyFingerprint,
+    armoredKey,
   );
   @override
   bool operator ==(Object other) =>
@@ -1271,7 +1298,8 @@ class TradeChatPinsData extends DataClass
           other.keyFingerprint == this.keyFingerprint &&
           other.robotIndex == this.robotIndex &&
           other.primaryFingerprint == this.primaryFingerprint &&
-          other.subkeyFingerprint == this.subkeyFingerprint);
+          other.subkeyFingerprint == this.subkeyFingerprint &&
+          other.armoredKey == this.armoredKey);
 }
 
 class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
@@ -1279,12 +1307,14 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
   final Value<int> robotIndex;
   final Value<String> primaryFingerprint;
   final Value<String> subkeyFingerprint;
+  final Value<String> armoredKey;
   final Value<int> rowid;
   const TradeChatPinsCompanion({
     this.keyFingerprint = const Value.absent(),
     this.robotIndex = const Value.absent(),
     this.primaryFingerprint = const Value.absent(),
     this.subkeyFingerprint = const Value.absent(),
+    this.armoredKey = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TradeChatPinsCompanion.insert({
@@ -1292,16 +1322,19 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
     required int robotIndex,
     required String primaryFingerprint,
     required String subkeyFingerprint,
+    required String armoredKey,
     this.rowid = const Value.absent(),
   }) : keyFingerprint = Value(keyFingerprint),
        robotIndex = Value(robotIndex),
        primaryFingerprint = Value(primaryFingerprint),
-       subkeyFingerprint = Value(subkeyFingerprint);
+       subkeyFingerprint = Value(subkeyFingerprint),
+       armoredKey = Value(armoredKey);
   static Insertable<TradeChatPinsData> custom({
     Expression<String>? keyFingerprint,
     Expression<int>? robotIndex,
     Expression<String>? primaryFingerprint,
     Expression<String>? subkeyFingerprint,
+    Expression<String>? armoredKey,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1309,6 +1342,7 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
       if (robotIndex != null) 'robot_index': robotIndex,
       if (primaryFingerprint != null) 'primary_fingerprint': primaryFingerprint,
       if (subkeyFingerprint != null) 'subkey_fingerprint': subkeyFingerprint,
+      if (armoredKey != null) 'armored_key': armoredKey,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1318,6 +1352,7 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
     Value<int>? robotIndex,
     Value<String>? primaryFingerprint,
     Value<String>? subkeyFingerprint,
+    Value<String>? armoredKey,
     Value<int>? rowid,
   }) {
     return TradeChatPinsCompanion(
@@ -1325,6 +1360,7 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
       robotIndex: robotIndex ?? this.robotIndex,
       primaryFingerprint: primaryFingerprint ?? this.primaryFingerprint,
       subkeyFingerprint: subkeyFingerprint ?? this.subkeyFingerprint,
+      armoredKey: armoredKey ?? this.armoredKey,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1344,6 +1380,9 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
     if (subkeyFingerprint.present) {
       map['subkey_fingerprint'] = Variable<String>(subkeyFingerprint.value);
     }
+    if (armoredKey.present) {
+      map['armored_key'] = Variable<String>(armoredKey.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1357,6 +1396,7 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
           ..write('robotIndex: $robotIndex, ')
           ..write('primaryFingerprint: $primaryFingerprint, ')
           ..write('subkeyFingerprint: $subkeyFingerprint, ')
+          ..write('armoredKey: $armoredKey, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();

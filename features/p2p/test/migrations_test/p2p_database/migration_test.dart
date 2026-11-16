@@ -1438,25 +1438,35 @@ void main() {
     );
 
     test(
-      'a pin is written once, never changed nor deleted, and only for an open trade',
+      'a pin is written once, never changed nor deleted, only for an open trade, and holds two fingerprints and an armored public key of bounded size',
       () async {
         final own = await writeSchema5();
         final database = P2pDatabase.open(() async => own);
         const pin =
-            "INSERT INTO trade_chat_pins (key_fingerprint, robot_index, primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?)";
+            "INSERT INTO trade_chat_pins (key_fingerprint, robot_index, primary_fingerprint, subkey_fingerprint, armored_key) VALUES (?, ?, ?, ?, ?)";
         final first = 'A' * 40;
         final other = 'B' * 40;
-        // Only fingerprints, as text: 40 uppercase hexadecimal characters each. Robot 1's trade is open and has no pin yet, so that the CHECK refuses these and not a trigger.
+        const block = '-----BEGIN PGP PUBLIC KEY BLOCK-----';
+        const armored = '$block\n\nkey';
+        // Two fingerprints, as text, 40 uppercase hexadecimal characters each, and an armored public key block of at most 20,000 characters (`PgpLimits.keyArmorChars`). Robot 1's trade is open and has no pin yet, so that the CHECK refuses these and not a trigger.
         for (final bad in [
-          ['a' * 40, other],
-          ['A' * 39, other],
-          ['A' * 41, other],
-          ['G' * 40, other],
-          [first, 'b' * 40],
-          [first, 'B' * 39],
+          ['a' * 40, other, armored],
+          ['A' * 39, other, armored],
+          ['A' * 41, other, armored],
+          ['G' * 40, other, armored],
+          [first, 'b' * 40, armored],
+          [first, 'B' * 39, armored],
+          [first, other, 'key'],
+          [first, other, '$block${'k' * (20000 - block.length + 1)}'],
         ]) {
           await expectLater(
-            database.customStatement(pin, [drawn.hex, 1, bad[0], bad[1]]),
+            database.customStatement(pin, [
+              drawn.hex,
+              1,
+              bad[0],
+              bad[1],
+              bad[2],
+            ]),
             throwsA(
               predicate(
                 (error) => '$error'.contains('CHECK constraint failed'),
@@ -1467,16 +1477,30 @@ void main() {
         }
         await expectLater(
           database.customStatement(
-            "INSERT INTO trade_chat_pins VALUES (?, 1, CAST('$first' AS BLOB), ?)",
-            [drawn.hex, other],
+            "INSERT INTO trade_chat_pins VALUES (?, 1, CAST('$first' AS BLOB), ?, ?)",
+            [drawn.hex, other, armored],
           ),
           throwsA(
             predicate((error) => '$error'.contains('CHECK constraint failed')),
           ),
         );
         // Robot 1's trade is open, robot 2's closed (schema 3's rows).
-        await database.customStatement(pin, [drawn.hex, 1, first, other]);
-        await database.customStatement(pin, [drawn.hex, 1, other, other]);
+        // The longest key allowed is taken.
+        final longest = '$block${'k' * (20000 - block.length)}';
+        await database.customStatement(pin, [
+          drawn.hex,
+          1,
+          first,
+          other,
+          longest,
+        ]);
+        await database.customStatement(pin, [
+          drawn.hex,
+          1,
+          other,
+          other,
+          armored,
+        ]);
         final rows = await database
             .customSelect('SELECT primary_fingerprint FROM trade_chat_pins')
             .get();
@@ -1502,7 +1526,7 @@ void main() {
           ),
         );
         await expectLater(
-          database.customStatement(pin, [drawn.hex, 2, first, other]),
+          database.customStatement(pin, [drawn.hex, 2, first, other, armored]),
           throwsA(
             predicate((error) => '$error'.contains('a pin of no open trade')),
           ),

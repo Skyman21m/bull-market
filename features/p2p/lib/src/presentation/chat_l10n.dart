@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../generated/l10n/p2p_localizations.dart';
+import '../domain/p2p_failure.dart';
 import '../domain/trade/trade_chat.dart';
 
 /// Why a message was not sent (#93), in words of the reference or of the app: never the text typed, never a coordinator's text.
@@ -35,6 +36,8 @@ extension ChatReadFailureL10n on ChatReadFailure {
       ChatNotOpen() => null,
       ChatTradeUnavailable() => l10n.p2pChatUnavailable,
       ChatReadFailed(cause: CoordinatorTransportBusy()) => l10n.p2pRobotBusy,
+      // The pins kept on this device could not be read (#139): the coordinator has no part in it.
+      ChatReadFailed(cause: P2pStorageFailure()) => l10n.p2pChatUnavailable,
       ChatReadFailed() => l10n.p2pChatReadFailed(coordinator),
     };
   }
