@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:bull_logger/bull_logger.dart';
 import 'package:bull_tor/tor.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:meta/meta.dart';
@@ -28,6 +31,20 @@ final coordinatorRequestDeadline = torConnectDeadline * 2;
 
 /// Retries of an idempotent request after a connection failure, each on a new Tor session.
 const coordinatorConnectRetries = 2;
+
+/// Retries of the connection to a Nostr relay after a connection failure, on a new Tor session: one, publishing the same events again being harmless (same ids).
+const relayConnectRetries = 1;
+
+/// The longest message of a relay that is read: an `OK` takes less than 200 characters; anything longer is ignored.
+const maxRelayFrameLength = 4096;
+
+/// The most bytes read from a relay's socket in one publication after the handshake, frame headers included: about 300 times what two `OK`s take. Beyond, the socket is destroyed and the publication fails (review of #158).
+///
+/// It bounds memory too: `dart:io` assembles a message whole before it delivers it, so the bytes are counted as they come off the socket, before any assembly; what is held at most is this bound plus one read of the socket, after the handshake's head, which `dart:io` bounds at 1 MiB (`_headerTotalSizeLimit` of its HTTP parser).
+const maxRelayBytes = 64 * 1024;
+
+/// The most messages read from a relay in one publication: two `OK`s are expected, and a relay may add a few notices. Beyond, the publication fails.
+const maxRelayFrames = 64;
 
 /// Places for robot Tor sessions, all coordinators together: one per coordinator and robot, so a few robots on every coordinator of a network.
 ///
@@ -105,11 +122,17 @@ const maxTotalHeaderLength = 32 * 1024;
 /// An answer that is not valid HTTP (garbage, an invalid or duplicated `Content-Length`, a forbidden character or an endless header section) means the coordinator answered: it fails with [CoordinatorTransportFailed], without retry.
 /// When the deadline passes before the headers, the session is also replaced, so that closing its client cancels a connection still in progress, once the other requests of that session end.
 ///
+/// Nostr relays ([publish], #94): a relay is the coordinator's own origin (`ws://<onion>/relay/`), so its websocket goes through the robot's session to that origin, the one its requests use, with the same `HttpClient`, through its SOCKS connection factory, and a handshake of this transport's own: no redirect followed, no extension offered or accepted (so no compression), the accept key checked; then the bytes read are counted before `dart:io` assembles a message, at most [maxRelayBytes] and [maxRelayFrames] messages, beyond which the socket is destroyed (security review of #158).
+/// [publish] always completes within [coordinatorRequestDeadline] too, with a [NostrRelayOutcome]; a connection failure replaces the session and is retried [relayConnectRetries] time; messages longer than [maxRelayFrameLength] and binary ones are ignored; only the outcome's fixed label is logged, never the relay, the robot, an event id or a relay's text.
+///
 /// `User-Agent`: none is sent, whatever the request headers say (decision of 10/11/2026).
 /// Its absence is the same for every Troc user, so it singles none of them out, and Troc does not pretend to be the official client.
 /// `Accept-Encoding` is `identity` for every request, where `dart:io` would ask for `gzip`, and a body is never decompressed: the size cap counts the bytes that arrive, so a small compressed body cannot inflate in memory.
 final class TorCoordinatorTransport
-    implements CoordinatorTransport, CoordinatorSessionsPort {
+    implements
+        CoordinatorTransport,
+        CoordinatorSessionsPort,
+        NostrRelayTransport {
   final OpenTorSession _openSession;
   final CreateTorHttpClient _createHttpClient;
   final Duration _deadline;
@@ -117,6 +140,10 @@ final class TorCoordinatorTransport
   final Duration _closeTimeout;
   final bool Function(String host) _acceptsHost;
   final int _placesPerCoordinator;
+
+  /// Starts the timer that answers a relay's publication when its deadline passes: [Timer.new], or a late one in a test, which shows that nothing inside the publication waits for it to know the deadline has passed (review of #158).
+  final Timer Function(Duration duration, void Function() callback)
+  _publicationTimer;
 
   /// The session new requests use for each origin and robot, opening or open, the least recently used first.
   final Map<_RouteKey, _Slot> _slots = {};
@@ -168,7 +195,10 @@ final class TorCoordinatorTransport
     Duration? closeTimeout,
     bool Function(String host)? acceptsHost,
     int? placesPerCoordinator,
-  }) : _deadline = deadline ?? coordinatorRequestDeadline,
+    Timer Function(Duration duration, void Function() callback)?
+    publicationTimer,
+  }) : _publicationTimer = publicationTimer ?? Timer.new,
+       _deadline = deadline ?? coordinatorRequestDeadline,
        _attemptTimeout = attemptTimeout ?? torConnectDeadline,
        _closeTimeout = closeTimeout ?? torSessionCloseTimeout,
        _acceptsHost = acceptsHost ?? _isOnion,
@@ -237,6 +267,46 @@ final class TorCoordinatorTransport
     ]);
   }
 
+  /// Publishes the events of [message] on [relay] through a Tor session of [robot], then closes the websocket: see the class doc.
+  @override
+  Future<NostrRelayOutcome> publish(
+    Uri relay,
+    OutgoingNostrChatMessage message, {
+    required RobotSessionKey robot,
+  }) {
+    final completer = Completer<NostrRelayOutcome>();
+    final deadline = _Deadline(_deadline);
+    final timer = _publicationTimer(_deadline, () {
+      deadline.expire();
+      if (!completer.isCompleted) {
+        completer.complete(const NostrRelayTimedOut());
+      }
+    });
+    _publishOnRelay(relay, message, robot, deadline).then(
+      (outcome) {
+        timer.cancel();
+        if (!completer.isCompleted) completer.complete(outcome);
+      },
+      onError: (Object error, StackTrace trace) {
+        timer.cancel();
+        if (completer.isCompleted) {
+          Zone.current.handleUncaughtError(error, trace);
+        } else if (error is Exception) {
+          completer.complete(const NostrRelayFailed());
+        } else {
+          completer.completeError(error, trace);
+        }
+      },
+    );
+    return completer.future.then((outcome) {
+      // The fixed label only: the relay, the robot, the event ids and the message never go to a log (#94, decision D3).
+      if (outcome is! NostrRelayAccepted) {
+        log.info('P2P Nostr chat publication: ${outcome.label}');
+      }
+      return outcome;
+    });
+  }
+
   /// The counts behind the bounds, for tests.
   @visibleForTesting
   TorTransportCounts get countsForTesting => TorTransportCounts(
@@ -287,6 +357,283 @@ final class TorCoordinatorTransport
     }
   }
 
+  Future<NostrRelayOutcome> _publishOnRelay(
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    RobotSessionKey robot,
+    _Deadline deadline,
+  ) async {
+    // The relay of a coordinator, `getRelayUrl` of the reference: checked here as a request URL is.
+    if (!relay.isScheme('ws') ||
+        relay.host.isEmpty ||
+        relay.userInfo.isNotEmpty ||
+        relay.path != '/relay/' ||
+        relay.hasQuery ||
+        relay.hasFragment ||
+        !_acceptsHost(relay.host)) {
+      return const NostrRelayFailed();
+    }
+    final origin = Uri(
+      scheme: 'http',
+      host: relay.host,
+      port: relay.hasPort ? relay.port : null,
+    ).origin;
+    final requests = _robotRequests.putIfAbsent(robot, _RobotRequests.new);
+    requests.running++;
+    try {
+      return await _runOnRelay(
+        (origin: origin, robot: robot),
+        relay,
+        message,
+        deadline,
+        requests,
+      );
+    } finally {
+      requests.running--;
+      if (requests.running == 0 && identical(_robotRequests[robot], requests)) {
+        _robotRequests.remove(robot);
+      }
+    }
+  }
+
+  Future<NostrRelayOutcome> _runOnRelay(
+    _RouteKey key,
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    _Deadline deadline,
+    _RobotRequests requests,
+  ) async {
+    final epoch = _epoch;
+    final generation = requests.generation;
+    bool closed() => epoch != _epoch || generation != requests.generation;
+    for (var attempt = 0; ; attempt++) {
+      if (deadline.passed) return const NostrRelayTimedOut();
+      if (closed()) return const NostrRelayFailed();
+      final slot = _slotFor(key);
+      if (slot == null) return const NostrRelayBusy();
+      final _Route route;
+      slot.waiting++;
+      try {
+        route = await slot.opening;
+      } on _RouteException catch (exception) {
+        return switch (exception.failure) {
+          CoordinatorTransportBusy() => const NostrRelayBusy(),
+          CoordinatorUnreachable() => const NostrRelayUnreachable(),
+          CoordinatorTimedOut() => const NostrRelayTimedOut(),
+          _ => const NostrRelayFailed(),
+        };
+      } finally {
+        slot.waiting--;
+      }
+      if (closed()) return const NostrRelayFailed();
+      if (deadline.passed) return const NostrRelayTimedOut();
+
+      route.acquire();
+      final _RelayAttempt outcome;
+      try {
+        outcome = await _relayAttempt(route, relay, message, deadline);
+      } finally {
+        route.release();
+      }
+      switch (outcome) {
+        case _RelayAnswered(:final outcome):
+          return outcome;
+        case _RelayConnectFailed(:final reason):
+          // Given up whatever the deadline: its client is closed with it, which cancels a connection still being made.
+          _retire(key, slot, route);
+          // Never a new session once the deadline has passed (review of #158).
+          if (deadline.passed) return const NostrRelayTimedOut();
+          if (attempt >= relayConnectRetries) {
+            return const NostrRelayUnreachable();
+          }
+          // The reason only, as for a request: the relay and the robot never go to a log.
+          log.info(
+            'P2P Nostr relay connection failed (${reason.name}), retrying on a new Tor session',
+          );
+      }
+    }
+  }
+
+  /// One websocket to [relay] on [route]: connect, send the events in order, wait for an `OK` to each, close.
+  Future<_RelayAttempt> _relayAttempt(
+    _Route route,
+    Uri relay,
+    OutgoingNostrChatMessage message,
+    _Deadline deadline,
+  ) async {
+    // The handshake is this transport's own (RFC 6455, § 4.1), on the session's client, so that no redirect is ever followed, no extension or subprotocol is accepted, compression included (a small compressed message could inflate in memory), and the bytes that come after it are counted before `dart:io` assembles a message (reviews of #158).
+    // Its head is bounded by `dart:io`, at 1 MiB; each of its steps falls under the shorter of an attempt and what is left of the publication's deadline, so that none outlasts the deadline.
+    // Whatever fails between the request and the end of the checks, the connection is destroyed in the `finally`: no socket is left open with the session.
+    final key = base64.encode(
+      List<int>.generate(16, (_) => _handshakeRandom.nextInt(256)),
+    );
+    Duration budget() {
+      final left = deadline.left;
+      return left < _attemptTimeout ? left : _attemptTimeout;
+    }
+
+    HttpClientRequest? request;
+    Socket? detached;
+    var upgradedOk = false;
+    final Socket upgraded;
+    try {
+      final opened = await route.client
+          .openUrl(
+            'GET',
+            Uri(
+              scheme: 'http',
+              host: relay.host,
+              port: relay.hasPort ? relay.port : null,
+              path: relay.path,
+            ),
+          )
+          .timeout(budget());
+      request = opened;
+      opened
+        ..followRedirects = false
+        ..maxRedirects = 0
+        ..persistentConnection = false;
+      opened.headers
+        ..set(HttpHeaders.connectionHeader, 'Upgrade')
+        ..set(HttpHeaders.upgradeHeader, 'websocket')
+        ..set('Sec-WebSocket-Key', key)
+        ..set('Sec-WebSocket-Version', '13');
+      final response = await opened.close().timeout(budget());
+      // Taken off the client in every case, so that an answer that is not an upgrade, a redirect among them, is dropped with its connection and never followed.
+      final socket = await response.detachSocket().timeout(budget());
+      detached = socket;
+      if (_isWebSocketUpgrade(response, key) case final refused?) {
+        return _RelayAnswered(refused);
+      }
+      // The deadline passed while the websocket connected: nothing is written, and the socket is destroyed in the `finally`, inside this future, so that no late write or close can fail outside it.
+      if (deadline.passed) return const _RelayAnswered(NostrRelayTimedOut());
+      upgradedOk = true;
+      upgraded = socket;
+    } on TimeoutException {
+      // The session is given up in every case, so that closing its client cancels a connection still being made, which would otherwise stay open with the session (review of #158); no other attempt is made once the deadline has passed.
+      return const _RelayConnectFailed(TorConnectFailure.timeout);
+    } on HttpException {
+      // The service answered, not in HTTP: a new circuit would get the same answer, and the message of the exception, which quotes the address, is dropped here.
+      return const _RelayAnswered(NostrRelayUnreachable());
+    } on Exception catch (exception) {
+      return _RelayConnectFailed(TorHttpClientFactory.classify(exception));
+    } finally {
+      if (!upgradedOk) {
+        if (detached != null) {
+          detached.destroy();
+        } else {
+          request?.abort();
+        }
+      }
+    }
+    final socket = WebSocket.fromUpgradedSocket(
+      _CappedSocket(upgraded, maxRelayBytes),
+      serverSide: false,
+      compression: CompressionOptions.compressionOff,
+    );
+    var frames = 0;
+    final waiting = {...message.eventIds};
+    var refused = false;
+    final answered = Completer<NostrRelayOutcome>();
+    void finish(NostrRelayOutcome outcome) {
+      if (!answered.isCompleted) answered.complete(outcome);
+    }
+
+    final subscription = socket.listen(
+      (Object? frame) {
+        if (++frames > maxRelayFrames) {
+          finish(const NostrRelayFailed());
+          return;
+        }
+        // Binary frames and long ones are ignored: an `OK` is short text.
+        if (frame is! String || frame.length > maxRelayFrameLength) return;
+        final ok = NostrRelayOk.parse(frame);
+        if (ok == null || !waiting.remove(ok.eventId)) return;
+        if (!ok.accepted) refused = true;
+        if (waiting.isEmpty) {
+          finish(
+            refused ? const NostrRelayRefused() : const NostrRelayAccepted(),
+          );
+        }
+      },
+      // Closed by the relay, or broken, before every event was answered.
+      onError: (Object _) => finish(
+        refused ? const NostrRelayRefused() : const NostrRelayFailed(),
+      ),
+      onDone: () => finish(
+        refused ? const NostrRelayRefused() : const NostrRelayFailed(),
+      ),
+      cancelOnError: true,
+    );
+    deadline.watchSocket(socket);
+    try {
+      for (final frame in message.relayMessages) {
+        socket.add(frame);
+      }
+      return _RelayAnswered(
+        await answered.future.timeout(
+          _attemptTimeout,
+          onTimeout: () => const NostrRelayTimedOut(),
+        ),
+      );
+    } finally {
+      deadline.forgetSocket(socket);
+      await subscription.cancel();
+      await _closeRelaySocket(socket);
+    }
+  }
+
+  /// Draws the handshake's `Sec-WebSocket-Key`, which RFC 6455 wants random, though it protects nothing secret.
+  static final Random _handshakeRandom = Random.secure();
+
+  /// The GUID of RFC 6455 that an accepted handshake hashes with the key.
+  static const _webSocketGuid = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+
+  /// `null` when [response] accepts the websocket of [key] as RFC 6455 wants it, with no extension and no subprotocol, which this client asks for neither; otherwise what the publication gives: a redirect, never followed, is a failure, as is an extension or a subprotocol, and anything else that is not an upgrade means no relay there.
+  ///
+  /// Each header is read whole, a header given twice included, so that nothing here can throw (review of #158): `Upgrade` must be exactly the token `websocket`, `Connection` must hold the token `upgrade`, compared without case, and `Sec-WebSocket-Accept` must be given once, the value of [key].
+  static NostrRelayOutcome? _isWebSocketUpgrade(
+    HttpClientResponse response,
+    String key,
+  ) {
+    final status = response.statusCode;
+    if (status >= 300 && status < 400) return const NostrRelayFailed();
+    if (status != HttpStatus.switchingProtocols) {
+      return const NostrRelayUnreachable();
+    }
+    final headers = response.headers;
+    List<String> tokensOf(String name) => [
+      for (final value in headers[name] ?? const <String>[])
+        for (final token in value.split(','))
+          if (token.trim().isNotEmpty) token.trim().toLowerCase(),
+    ];
+    final upgrade = tokensOf(HttpHeaders.upgradeHeader);
+    final accept = headers['Sec-WebSocket-Accept'] ?? const <String>[];
+    final expected = base64.encode(
+      sha1.convert(ascii.encode('$key$_webSocketGuid')).bytes,
+    );
+    if (upgrade.length != 1 ||
+        upgrade.single != 'websocket' ||
+        !tokensOf(HttpHeaders.connectionHeader).contains('upgrade') ||
+        accept.length != 1 ||
+        accept.single.trim() != expected) {
+      return const NostrRelayUnreachable();
+    }
+    if (tokensOf('Sec-WebSocket-Extensions').isNotEmpty ||
+        tokensOf('Sec-WebSocket-Protocol').isNotEmpty) {
+      return const NostrRelayFailed();
+    }
+    return null;
+  }
+
+  Future<void> _closeRelaySocket(WebSocket socket) async {
+    try {
+      await socket.close(WebSocketStatus.normalClosure).timeout(_closeTimeout);
+    } on Exception {
+      // Closing is best effort: the session's client is closed with the session anyway.
+    }
+  }
+
   static final RegExp _headerName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
   static final RegExp _headerValue = RegExp(r'^[\x20-\x7E]*$');
 
@@ -322,6 +669,20 @@ final class TorCoordinatorTransport
     final retries = request.method == CoordinatorHttpMethod.get
         ? coordinatorConnectRetries
         : 0;
+    var handedOver = false;
+    // Told once, when the body of the request starts to be written on a connection to the coordinator (#94, review of #158): never when nothing was written. Whatever the hook does stays out of the request.
+    void written() {
+      if (handedOver) return;
+      handedOver = true;
+      try {
+        request.onSending?.call();
+        // The hook is the caller's: a bug in it must neither stop this request nor reach the zone (decided in the review of #158).
+      } on Object catch (error) {
+        // The type only, never the message, which could quote a value.
+        log.info('P2P coordinator request hook failed (${error.runtimeType})');
+      }
+    }
+
     final epoch = _epoch;
     final generation = requests?.generation;
     // Whether [closeSessions], or [closeRobotSessions] for the robot of this request, ran since the request started.
@@ -349,7 +710,7 @@ final class TorCoordinatorTransport
       route.acquire();
       final _Attempt outcome;
       try {
-        outcome = await _attempt(route, request, deadline);
+        outcome = await _attempt(route, request, deadline, written);
       } finally {
         route.release();
       }
@@ -612,6 +973,7 @@ final class TorCoordinatorTransport
     _Route route,
     CoordinatorRequest request,
     _Deadline deadline,
+    void Function() written,
   ) async {
     final cancel = CancelToken();
     deadline.watch(cancel);
@@ -630,6 +992,10 @@ final class TorCoordinatorTransport
             },
           ),
           cancelToken: cancel,
+          // Called by Dio as the body is written on the connection it obtained: the moment `CoordinatorRequest.onSending` is for.
+          onSendProgress: request.onSending == null
+              ? null
+              : (_, _) => written(),
         );
       } on DioException catch (exception) {
         return _failureBeforeHeaders(exception);
@@ -863,6 +1229,9 @@ final class _Route {
   final void Function(_Route route) _onClosed;
   final Dio dio;
   int _users = 0;
+
+  /// The client of the session, which a relay's websocket connects through.
+  HttpClient get client => _client;
   bool _retired = false;
   Future<bool>? _closing;
 
@@ -959,6 +1328,23 @@ final class _ConnectFailed extends _Attempt {
   const _ConnectFailed(this.reason);
 }
 
+/// What one websocket to a relay gave.
+sealed class _RelayAttempt {
+  const _RelayAttempt();
+}
+
+final class _RelayAnswered extends _RelayAttempt {
+  final NostrRelayOutcome outcome;
+
+  const _RelayAnswered(this.outcome);
+}
+
+final class _RelayConnectFailed extends _RelayAttempt {
+  final TorConnectFailure reason;
+
+  const _RelayConnectFailed(this.reason);
+}
+
 /// Why no session could serve a request.
 final class _RouteException implements Exception {
   final CoordinatorTransportFailure failure;
@@ -968,12 +1354,40 @@ final class _RouteException implements Exception {
 
 /// The overall deadline of one request: once it passes, it cancels the attempt in progress and allows no other.
 final class _Deadline {
-  bool passed = false;
+  /// The whole time of a relay's publication, measured from this deadline's creation: one instant, the single truth of [left] and [passed] (review of #158); `null` for a request, whose deadline only [expire] ends.
+  final Duration? _total;
+  final Stopwatch _clock = Stopwatch()..start();
+  bool _expired = false;
   CancelToken? _current;
+  WebSocket? _socket;
+
+  _Deadline([this._total]);
+
+  /// What is left of the publication's time: zero once it has passed.
+  Duration get left {
+    final total = _total;
+    if (_expired || total == null) return Duration.zero;
+    final left = total - _clock.elapsed;
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// Whether the deadline has passed: [expire] ran, or, for a publication, nothing is [left].
+  bool get passed => _expired || (_total != null && left == Duration.zero);
 
   void expire() {
-    passed = true;
+    _expired = true;
     _current?.cancel();
+    _socket?.close().ignore();
+  }
+
+  /// The websocket of a relay publication: closed when the deadline passes.
+  void watchSocket(WebSocket socket) {
+    _socket = socket;
+    if (passed) socket.close().ignore();
+  }
+
+  void forgetSocket(WebSocket socket) {
+    if (identical(_socket, socket)) _socket = null;
   }
 
   void watch(CancelToken cancel) {
@@ -984,4 +1398,100 @@ final class _Deadline {
   void forget(CancelToken cancel) {
     if (identical(_current, cancel)) _current = null;
   }
+}
+
+/// The socket of a relay's websocket, whose incoming bytes are counted as they come off the socket, before `dart:io` assembles a message: past the bound, the socket is destroyed and the stream ends, which fails the publication (review of #158).
+final class _CappedSocket extends StreamView<Uint8List> implements Socket {
+  final Socket _inner;
+
+  _CappedSocket._(this._inner, Stream<Uint8List> counted) : super(counted);
+
+  factory _CappedSocket(Socket inner, int maxBytes) {
+    var received = 0;
+    var capped = false;
+    final counted = inner.transform(
+      StreamTransformer<Uint8List, Uint8List>.fromHandlers(
+        handleData: (data, sink) {
+          // Bytes already on their way when the socket was destroyed are dropped.
+          if (capped) return;
+          received += data.length;
+          if (received > maxBytes) {
+            capped = true;
+            inner.destroy();
+            // Ended here, once: the websocket sees its socket close, and the publication fails.
+            sink.close();
+            return;
+          }
+          sink.add(data);
+        },
+        handleDone: (sink) {
+          if (!capped) sink.close();
+        },
+      ),
+    );
+    return _CappedSocket._(inner, counted);
+  }
+
+  @override
+  Encoding get encoding => _inner.encoding;
+
+  @override
+  set encoding(Encoding value) => _inner.encoding = value;
+
+  @override
+  void add(List<int> data) => _inner.add(data);
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) =>
+      _inner.addError(error, stackTrace);
+
+  @override
+  Future<void> addStream(Stream<List<int>> stream) => _inner.addStream(stream);
+
+  @override
+  Future<void> close() => _inner.close();
+
+  @override
+  Future<void> get done => _inner.done;
+
+  @override
+  Future<void> flush() => _inner.flush();
+
+  @override
+  void write(Object? object) => _inner.write(object);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _inner.writeAll(objects, separator);
+
+  @override
+  void writeCharCode(int charCode) => _inner.writeCharCode(charCode);
+
+  @override
+  void writeln([Object? object = '']) => _inner.writeln(object);
+
+  @override
+  InternetAddress get address => _inner.address;
+
+  @override
+  int get port => _inner.port;
+
+  @override
+  InternetAddress get remoteAddress => _inner.remoteAddress;
+
+  @override
+  int get remotePort => _inner.remotePort;
+
+  @override
+  void destroy() => _inner.destroy();
+
+  @override
+  bool setOption(SocketOption option, bool enabled) =>
+      _inner.setOption(option, enabled);
+
+  @override
+  Uint8List getRawOption(RawSocketOption option) => _inner.getRawOption(option);
+
+  @override
+  void setRawOption(RawSocketOption option) => _inner.setRawOption(option);
 }

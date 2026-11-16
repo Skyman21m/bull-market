@@ -2411,10 +2411,10 @@ abstract class P2pLocalizations {
   /// **'Wait until the order is read again before cancelling.'**
   String get p2pTradeCancelNeedsRead;
 
-  /// Not in the RoboSats texts: the project's own: the escrow is locked (8 or 9).
+  /// Not in the RoboSats texts: the project's own: a cancel asked at 8, where the coordinator takes only a collaborative cancel and the reference offers it from the chat only (#95); no screen offers a cancel at 8.
   ///
   /// In en, this message translates to:
-  /// **'Only a collaborative cancel is possible now, which comes in a later version.'**
+  /// **'At this step only a collaborative cancel exists, which RoboSats offers from the chat.'**
   String get p2pTradeCancelOnlyTogether;
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c): the coordinator's message of error 1021 (`api/errors.py`); the French is the project's.
@@ -3547,11 +3547,701 @@ abstract class P2pLocalizations {
     String currencyCode,
   );
 
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:228-237`): the buyer's button at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Payment failed?'**
+  String get p2pEndPaymentFailed;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Revert the confirmation of fiat sent?'**
+  String get p2pEndUndoTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (« » and non-breaking spaces) (`Dialogs/ConfirmUndoFiatSent.tsx`), in full (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.'**
+  String get p2pEndUndoText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmUndoFiatSent.tsx`): the button that sends, off for 60 seconds from the dialog's opening, {time} the seconds left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait ({time})'**
+  String p2pEndWaitCountdown(String time);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative cancel the order?'**
+  String get p2pEndCollabTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.'**
+  String get p2pEndCollabText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), after the text when the peer asked (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer has asked for cancellation'**
+  String get p2pEndCollabPeerAsked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`), the reference's spelling (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Accept Cancelation'**
+  String get p2pEndCollabAccept;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmCollabCancel.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for Cancel'**
+  String get p2pEndCollabAsk;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`): {nickname} is the peer's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{nickname} is asking for a collaborative cancel'**
+  String p2pEndCollabPeerAlert(String nickname);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/CollabCancelAlert.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'You asked for a collaborative cancellation'**
+  String get p2pEndCollabAskedAlert;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c); its `fr.json` leaves it in English, the French is the project's (`Prompts/Chat.tsx:262`): the dialog behind « … » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Order options'**
+  String get p2pEndOrderOptions;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:345`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Collaborative Cancel'**
+  String get p2pEndCollabCancel;
+
+  /// The official client's text, from its code (`TradeBox/Prompts/Chat.tsx:330`, commit ff1998c): `en.json` and `fr.json` have no entry, the French is the project's: why « Collaborative Cancel » is off at 10 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Orders can\'t be cancelled if fiat has been sent.'**
+  String get p2pEndCollabAfterFiat;
+
+  /// Not in the RoboSats texts: the project's own: a request of the chat step sent, its answer awaited: « Payment failed? » or the collaborative cancel's ask or acceptance (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending your request to {coordinator}…'**
+  String p2pEndStepSendingRequest(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » not sent, the read just before sending showing another status than the one the user acted at (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: your request was not sent.'**
+  String get p2pEndTradeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: the answer of « Payment failed? » was lost; nothing is sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your request went through. It keeps checking.'**
+  String get p2pEndUnknownRequest;
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it, the order no longer at 10 (1031) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: {coordinator} did not record your request.'**
+  String p2pEndRequestNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » left and the coordinator refused it before acting (1030, 1047, the empty 400, the authentication's) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not record your request.'**
+  String p2pEndRequestRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Payment failed? » never left; {reason} says why (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} Your request was not sent.'**
+  String p2pEndRequestNotDoneAfter(String reason);
+
   /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, the confirmation never left (#95).
   ///
   /// In en, this message translates to:
   /// **'{coordinator} is offline: your confirmation was not sent.'**
   String p2pEndOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Payment failed? » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: your request was not sent.'**
+  String p2pEndRequestOffline(String coordinator);
+
+  /// The official client's label of « … » (`Prompts/Chat.tsx:211`, its `aria-label`, not in `en.json`): what a screen reader reads of the button; the French is the project's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'open options'**
+  String get p2pEndOpenOptions;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader reads of « Wait ({{time}}) » (#95), plural-aware.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds, plural, =1{Wait 1 second} other{Wait {seconds} seconds}}'**
+  String p2pEndWaitSeconds(int seconds);
+
+  /// The chat panel (#93): the reference's header, `t('You') + ': '` and the state (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'You: {state}'**
+  String p2pChatYouState(String state);
+
+  /// The chat panel (#93): the reference's header, `t('Peer') + ': '` and the state (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Peer: {state}'**
+  String p2pChatPeerState(String state);
+
+  /// The chat panel (#93): the reference's (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'connected'**
+  String get p2pChatConnected;
+
+  /// The chat panel (#93): the reference's (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'disconnected'**
+  String get p2pChatDisconnected;
+
+  /// The chat panel (#93): the reference's, the peer's state while its key is not known (`ChatHeader/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'...waiting'**
+  String get p2pChatWaitingShort;
+
+  /// The chat panel (#93): the reference's label of the field (`EncryptedApiChat/index.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Type a message'**
+  String get p2pChatTypeMessage;
+
+  /// The chat panel (#93): the reference's tooltip of the disabled send, also in place of a peer's message that waits for the peer's key; the reference leaves it untranslated in French: ours, with its word « Pair ».
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for peer...'**
+  String get p2pChatWaitingForPeer;
+
+  /// The chat panel (#93): ours: the spoken name and tooltip of the send button, which in the reference has only an icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get p2pChatSend;
+
+  /// The chat panel (#93): the reference's tooltip of a message's tick (`MessageCard/index.tsx`); the reference has no French for it: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified signature by {nickname}'**
+  String p2pChatSignatureVerified(String nickname);
+
+  /// The chat panel (#93): the reference's tooltip of a message's cross (`MessageCard/index.tsx`); the reference has no French for it: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot verify signature of {nickname}'**
+  String p2pChatSignatureUnverified(String nickname);
+
+  /// The chat panel (#93): the reference's alert when the text holds the robot's token (`EncryptedApiChat/index.tsx:210`, its « robot robot.token » read as « robot token »), not translated by the reference: ours in French.
+  ///
+  /// In en, this message translates to:
+  /// **'Aye! You just sent your own robot token to your peer in chat, that\'s a catastrophic idea! So bad your message was blocked.'**
+  String get p2pChatTokenBlocked;
+
+  /// The chat panel (#93): ours: the text holds a Garage Key, said as the user types.
+  ///
+  /// In en, this message translates to:
+  /// **'This message holds your Garage Key, which controls all your robots. It will not be sent.'**
+  String get p2pChatGarageKeyBlocked;
+
+  /// The chat panel (#93): ours: the text is over the coordinator's limit.
+  ///
+  /// In en, this message translates to:
+  /// **'This message is too long. Shorten it to send it.'**
+  String get p2pChatTooLong;
+
+  /// The chat panel (#93): ours: the status shown is not one where a message is posted.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages are not sent at this step.'**
+  String get p2pChatClosed;
+
+  /// The chat panel (#93): ours: one wording for a peer's key that changed after it was pinned and one that is not the peer's; also the greyed « Send »'s tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.'**
+  String get p2pChatKeyChanged;
+
+  /// The chat panel (#93): ours: the wait of a send.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending the message to {coordinator}…'**
+  String p2pChatSending(String coordinator);
+
+  /// The chat panel (#93): ours: a message whose post had no known outcome and that the chat does not show; never « not sent ».
+  ///
+  /// In en, this message translates to:
+  /// **'Not confirmed by {coordinator}. It may still reach your peer.'**
+  String p2pChatNotConfirmed(String coordinator);
+
+  /// The chat panel (#93): ours: sends a message not confirmed again, the user's tap only.
+  ///
+  /// In en, this message translates to:
+  /// **'Send again'**
+  String get p2pChatSendAgain;
+
+  /// The chat panel (#93): ours: the trade or the robot's key could not be opened; nothing left.
+  ///
+  /// In en, this message translates to:
+  /// **'The message was not sent. Try again.'**
+  String get p2pChatSendFailed;
+
+  /// The chat panel (#93): ours: the coordinator refused the message before storing it.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not take the message. Try again.'**
+  String p2pChatSendRefused(String coordinator);
+
+  /// The chat panel (#93): ours: the last read of the order no longer allows a message.
+  ///
+  /// In en, this message translates to:
+  /// **'The message was not sent: the trade has moved on.'**
+  String get p2pChatTradeMoved;
+
+  /// The chat panel (#93): ours: the last read failed; the chat as it was stays shown.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot read the chat from {coordinator}. Trying again…'**
+  String p2pChatReadFailed(String coordinator);
+
+  /// The chat panel (#93): ours: the trade or the robot's key could not be opened for a read.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat cannot be read on this device.'**
+  String get p2pChatUnavailable;
+
+  /// The chat panel (#93): ours: the history from the start is over what a read takes.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is too long to be read from its first message.'**
+  String get p2pChatHistoryTooLarge;
+
+  /// The chat panel (#93): ours: the user's choice when the history is too long.
+  ///
+  /// In en, this message translates to:
+  /// **'Read only the newer messages'**
+  String get p2pChatReadNewer;
+
+  /// The chat panel (#93): ours: the first read of the chat (Tor, and the robot's key for the messages), until one succeeds or fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the chat from {coordinator}…'**
+  String p2pChatReading(String coordinator);
+
+  /// The chat panel (#93): ours: « Read only the newer messages » chosen, waiting for a newer read of the order.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the newer messages…'**
+  String get p2pChatSkipAwaited;
+
+  /// The chat panel (#93): ours: after « Read only the newer messages ».
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier messages are not shown.'**
+  String get p2pChatEarlierHidden;
+
+  /// The chat panel (#93): the Garage's text, for the chat.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen protection could not be turned on, so the chat stays hidden.'**
+  String get p2pChatScreenPrivacyUnavailable;
+
+  /// The chat panel (#93): ours: a message that is not encrypted, too long, or not for this robot.
+  ///
+  /// In en, this message translates to:
+  /// **'This message cannot be read.'**
+  String get p2pChatUnreadable;
+
+  /// The chat panel (#93): ours: a gap in the coordinator's numbering.
+  ///
+  /// In en, this message translates to:
+  /// **'A message may be missing before this one.'**
+  String get p2pChatMarkAfterGap;
+
+  /// The chat panel (#93): ours: the same signed message at a second number.
+  ///
+  /// In en, this message translates to:
+  /// **'This message was already shown above.'**
+  String get p2pChatMarkRepeat;
+
+  /// The chat panel (#93): ours: a message this robot sent again after a post with no known outcome.
+  ///
+  /// In en, this message translates to:
+  /// **'You sent this message twice.'**
+  String get p2pChatMarkSentTwice;
+
+  /// The chat panel (#93): ours: its signature is older than an earlier message of the same author.
+  ///
+  /// In en, this message translates to:
+  /// **'This message may be older than it looks.'**
+  String get p2pChatMarkOutOfOrder;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`); the reference leaves it untranslated in French: ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Audit Chat'**
+  String get p2pChatAuditChat;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get p2pChatExport;
+
+  /// « Export » of « Order options » (#157): ours, not in the reference (whose export cannot fail): the clipboard refused the export; the button tries again.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat log could not be copied.'**
+  String get p2pChatExportCopyFailed;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t trust, verify'**
+  String get p2pChatAuditTitle;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's (`Dialogs/AuditPGP.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.'**
+  String get p2pChatAuditText;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your public key'**
+  String get p2pChatYourPublicKey;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PGP public key. Your peer uses it to encrypt messages only you can read.'**
+  String get p2pChatYourPublicKeyTooltip;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's.
+  ///
+  /// In en, this message translates to:
+  /// **'Peer public key'**
+  String get p2pChatPeerPublicKey;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip (its English source, the English file's text having a typo).
+  ///
+  /// In en, this message translates to:
+  /// **'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.'**
+  String get p2pChatPeerPublicKeyTooltip;
+
+  /// « Don't trust, verify » (#93): the reference's (`Dialogs/AuditPGP.tsx`).
+  ///
+  /// In en, this message translates to:
+  /// **'Your encrypted private key'**
+  String get p2pChatYourEncryptedPrivateKey;
+
+  /// « Don't trust, verify » (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.'**
+  String get p2pChatYourEncryptedPrivateKeyTooltip;
+
+  /// « Don't trust, verify » (#93): the reference's; the value shown is the robot's token.
+  ///
+  /// In en, this message translates to:
+  /// **'Your private key passphrase (keep secure!)'**
+  String get p2pChatPassphrase;
+
+  /// « Don't trust, verify » (#93): the reference's tooltip (its English source).
+  ///
+  /// In en, this message translates to:
+  /// **'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.'**
+  String get p2pChatPassphraseTooltip;
+
+  /// « Don't trust, verify » (#93): ours, the payout panel's words: the robot's key could not be had for the export; with « Retry ».
+  ///
+  /// In en, this message translates to:
+  /// **'The key of your robot could not be read from {coordinator}.'**
+  String p2pChatAuditKeyFailed(String coordinator);
+
+  /// « Don't trust, verify » and the chat's actions (#93): ours: the key's fingerprint in groups of four, to compare with the peer's outside the app (the rules of #92).
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprint: {fingerprint}'**
+  String p2pChatFingerprint(String fingerprint);
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button; hands the public keys to the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Keys'**
+  String get p2pChatSaveKeys;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save credentials as a JSON file'**
+  String get p2pChatSaveKeysTooltip;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's button; hands the messages to the share sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get p2pChatSaveMessages;
+
+  /// « Don't trust, verify » and the chat's actions (#93): the reference's tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save messages as a JSON file'**
+  String get p2pChatSaveMessagesTooltip;
+
+  /// The wallet's slot of the payout panel (#90): the button of the Lightning tab, the wallet's own words for the same act (`receiveGenerateInvoice`, « Generate Invoice » / « Générer une facture »); the reference has no wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Invoice'**
+  String get p2pPayoutWalletGenerateInvoice;
+
+  /// The wallet's slot of the payout panel (#90): the button of the Onchain tab, the wallet's own words (`receiveGenerateAddress`, « Generate New Address » / « Générer une nouvelle adresse »).
+  ///
+  /// In en, this message translates to:
+  /// **'Generate New Address'**
+  String get p2pPayoutWalletGenerateAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, what the wait for the wallet's invoice waits for, with the bar (the owner's rule: every wait says what it waits for).
+  ///
+  /// In en, this message translates to:
+  /// **'Generating the invoice…'**
+  String get p2pPayoutWalletMakingInvoice;
+
+  /// The wallet's slot of the payout panel (#90): ours, the wait for a new address of the wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating a new address…'**
+  String get p2pPayoutWalletMakingAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, after 30 s of a wait for the wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Still waiting for the wallet.'**
+  String get p2pPayoutWalletStillWaiting;
+
+  /// The wallet's slot of the payout panel (#90): what arrives in Instant payments once the invoice is paid, the swap fees taken; the wallet's label (`receiveReceiveAmount`, « Receive Amount » / « Montant à recevoir »).
+  ///
+  /// In en, this message translates to:
+  /// **'Receive Amount: {amount} sats'**
+  String p2pPayoutWalletReceived(String amount);
+
+  /// The wallet's slot of the payout panel (#90): the wallet's own sentence under its receive fees (`receiveFeeExplanation`, « This fee will be deducted from the amount sent » / « Ces frais seront déduits du montant envoyé »).
+  ///
+  /// In en, this message translates to:
+  /// **'This fee will be deducted from the amount sent'**
+  String get p2pPayoutWalletFeeTaken;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet cannot give an invoice for another reason than the swap's limits or its server (no Instant payments wallet, a wallet that cannot be read, an answer that does not fit).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet cannot create an invoice now.'**
+  String get p2pPayoutWalletNoInvoice;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet cannot give a new address of its Bitcoin wallet (none, or it cannot be read).
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet cannot give an address now.'**
+  String get p2pPayoutWalletNoAddress;
+
+  /// The wallet's slot of the payout panel (#90): ours, when the wallet already waits for the payment of another invoice of this amount (made for another payout, by its own Receive screen, or before a restart), which its swap store would answer instead of a new one (security review of #150); it ends at that order's deadline, which may be hours away, so no time is said.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.'**
+  String get p2pPayoutWalletAnotherWaiting;
+
+  /// The wallet's slot of the payout panel (#90): ours, at status 15, when the wallet gives again the invoice it gave for this trade before the payout failed (it still waits for its payment): the coordinator refuses the same invoice (« You must submit a NEW invoice », `api/logics.py:878-880`), so it is not put in the field.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.'**
+  String get p2pPayoutWalletEarlierStillOpen;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:310-324`): the button of « Order options » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Open Dispute'**
+  String get p2pEndOpenDispute;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), and the countdown its prompt adds (`Prompts/Chat.tsx:86-96`, « {{hours}}h {{minutes}}m », the minutes on two digits): under « Open Dispute », off until 18 hours before the chat's end (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'To open a dispute you need to wait {hours}h {minutes}m'**
+  String p2pEndDisputeWait(String hours, String minutes);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Do you want to open a dispute?'**
+  String get p2pEndDisputeTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The RoboSats staff will examine the statements and evidence provided. You need to build a complete case, as the staff cannot read the chat. It is best to provide a burner contact method with your statement. The satoshis in the trade escrow will be sent to the dispute winner, while the dispute loser will lose the bond.'**
+  String get p2pEndDisputeText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure to EXPORT the chat log. The staff might request your exported chat log JSON in order to solve discrepancies. It is your responsibility to store it.'**
+  String get p2pEndDisputeExport;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the dialog's button that goes back, its focus (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Disagree'**
+  String get p2pEndDisagree;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the button that sends (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Agree and open dispute'**
+  String get p2pEndAgreeDispute;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » sent, its answer awaited (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the dispute at {coordinator}…'**
+  String p2pEndStepSendingDispute(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitPeer.tsx`): 11, this robot's statement received (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.'**
+  String get p2pEndDisputeWaitPeer;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitPeer.tsx`): 11 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.'**
+  String get p2pEndDisputeSaveInfoPeer;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitResolution.tsx`): 16 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.'**
+  String get p2pEndDisputeWaitResolution;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitResolution.tsx`): 16 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).'**
+  String get p2pEndDisputeSaveInfoResolution;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWinner.tsx`): 17 for a taker; {email} is the coordinator's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to {email} (or via your provided burner contact method).'**
+  String p2pEndDisputeWinner(String email);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeLoser.tsx`), without a full stop as the reference: 18 for a taker; {email} is the coordinator's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to {email}'**
+  String p2pEndDisputeLoser(String email);
+
+  /// Not in the RoboSats texts: the project's own: at 11, in place of the reference's statement form, which comes in a later phase (#95, design note § 2.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot send a dispute statement yet. Contact {coordinator} through one of its contacts below, with the information to identify your order.'**
+  String p2pEndStatementLater(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: at 17, the reference's « claim from your profile rewards » not being in Bull Market yet (#95, design note § 2.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot claim rewards yet: contact {coordinator} through one of its contacts below.'**
+  String p2pEndRewardsLater(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « p2pEndStatementLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot send a dispute statement yet. Contact {coordinator} with the information to identify your order.'**
+  String p2pEndStatementLaterNoContacts(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « p2pEndRewardsLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot claim rewards yet: contact {coordinator}.'**
+  String p2pEndRewardsLaterNoContacts(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: at 11 and 16, the order's number to give the coordinator, which the reference asks to save (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Order ID: {id}'**
+  String p2pEndOrderId(String id);
+
+  /// The reference coordinator's own text of its error 1054 (`api/errors.py:62` at commit ff1998c), which the official client shows as the answer's `bad_request`: « Open Dispute » refused as too early by the coordinator, its clock the judge (#95). Not in `en.json` nor `fr.json`: the French is ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot open a dispute yet. You need to wait until 18 hours before expiry.'**
+  String get p2pEndDisputeTooEarly;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » from a status not marked stored, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again. The dispute was not opened.'**
+  String get p2pEndDisputeNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the read before « Open Dispute » failed (Tor, the coordinator), nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: the dispute was not opened.'**
+  String p2pEndDisputeReadFailed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the trade moved on before « Open Dispute » was sent, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: the dispute was not opened.'**
+  String get p2pEndDisputeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » never left (a busy robot, an error before sending); {reason} is a full sentence of the app (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} The dispute was not opened.'**
+  String p2pEndDisputeNotSentAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » left and the coordinator refused it, the trade having moved on (1013) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: {coordinator} did not open the dispute.'**
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Open Dispute » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: the dispute was not opened.'**
+  String p2pEndDisputeOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: any other refusal of « Open Dispute » by the coordinator (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not open the dispute.'**
+  String p2pEndDisputeRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the answer to « Open Dispute » was lost and the read after does not show it yet; never sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.'**
+  String get p2pEndDisputeUnknown;
 }
 
 class _P2pLocalizationsDelegate

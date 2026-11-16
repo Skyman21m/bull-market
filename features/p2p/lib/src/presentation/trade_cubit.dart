@@ -29,7 +29,10 @@ typedef TradeCanceller =
       BondLossAcknowledged? bondLoss,
     });
 
-/// [ChatStepActionUsecase.confirmFiatSent], which the locator gives the cubit.
+/// [WatchTradeUsecase.lastStored], which the locator gives the cubit (#152).
+typedef TradeLastStored = TradeSeen? Function(TradeRecord record);
+
+/// [ChatStepActionUsecase.confirmFiatSent] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
 typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
       TradeRecord record,
@@ -93,7 +96,10 @@ final class CancelIdle extends TradeCancelState {
 
 /// A cancel runs: its button cannot be pressed again.
 final class CancelRunning extends TradeCancelState {
-  const CancelRunning();
+  /// Whether it has run [TradeCubit.stillWaitingAfter]: the screen adds « Still waiting for {coordinator}. Tor can take a minute. ».
+  final bool waitedLong;
+
+  const CancelRunning({this.waitedLong = false});
 }
 
 /// What a cancel gave that the screen says, as a type: never a coordinator's text.
@@ -127,11 +133,15 @@ sealed class ChatStepState {
   const ChatStepState();
 }
 
-/// No action of the chat step runs; [notice] says what the last one gave, when one was tried and it says something.
+/// No action of the chat step runs; [notice] says what the last one, [action], gave, when one was tried and it says something.
 final class ChatStepIdle extends ChatStepState {
   final ChatStepNotice? notice;
+  final ChatStepAction action;
 
-  const ChatStepIdle({this.notice});
+  const ChatStepIdle({
+    this.notice,
+    this.action = ChatStepAction.confirmFiatSent,
+  });
 }
 
 /// [action] runs, at [progress] once the use case told its first step: its button cannot be pressed again, and the screen says what it waits for; [waitedLong] once it has waited [TradeCubit.stillWaitingAfter].
@@ -177,6 +187,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
+  final TradeLastStored? _lastStored;
+  final TradeFiatSender? _undoFiatSent;
+  final TradeFiatSender? _startDispute;
   StreamSubscription<TradeWatchState>? _subscription;
 
   /// How long an action of the chat step runs before the screen adds « Still waiting for {coordinator}. Tor can take a minute. », as the payout's (`PayoutCubit.stillWaitingAfter`).
@@ -185,20 +198,33 @@ class TradeCubit extends Cubit<TradeScreenState> {
   StreamController<TradeWatchSignal>? _signals;
   bool _onScreen = true;
 
-  /// [confirmFiatSent] is `null` where the screen offers no action of the chat step.
+  /// [confirmFiatSent] and [undoFiatSent] are `null` where the screen offers no action of the chat step; [lastStored], where the screen shows nothing again when it opens the trade anew.
   TradeCubit(
     TradeRecord record,
     this._watch,
     this._cancel, {
     this._confirmFiatSent,
+    this._undoFiatSent,
+    this._startDispute,
+    this._lastStored,
   }) : super(TradeScreenState(record));
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
   bool get offersFiatSent => _confirmFiatSent != null;
 
+  /// Whether the screen may offer « Payment failed? ».
+  bool get offersUndoFiatSent => _undoFiatSent != null;
+
+  /// Whether the screen may offer « Open Dispute ».
+  bool get offersDispute => _startDispute != null;
+
   /// Whether a watch subscription is open: for the tests.
   @visibleForTesting
   bool get watching => _subscription != null;
+
+  /// What [TradeLastStored] gives for this trade now, `null` without one: for the tests of the composition.
+  @visibleForTesting
+  TradeSeen? get lastStoredNow => _lastStored?.call(state.record);
 
   /// Starts following the trade: does nothing when it is already followed.
   void start() {
@@ -216,7 +242,13 @@ class TradeCubit extends Cubit<TradeScreenState> {
             // Superseded by a newer watch of the trade: not an error; the stream ends and this cubit stops, showing what it showed.
             if (isClosed || watch is TradeWatchSuperseded) return;
             final kept = _keepingWhatWasRead(watch);
-            emit(state._with(watch: kept, chatStep: _chatStepAfter(kept)));
+            emit(
+              state._with(
+                watch: kept,
+                chatStep: _chatStepAfter(kept),
+                cancel: _cancelAfter(kept),
+              ),
+            );
           },
           onDone: () {
             // Only this subscription's end clears it: a later start's subscription stays.
@@ -236,30 +268,55 @@ class TradeCubit extends Cubit<TradeScreenState> {
     final shown = state.seen;
     final moved =
         shown != null && shown.status.position != seen.status.position;
-    if (ChatStepAction.confirmFiatSent.doneAt(seen) || moved) {
+    // The action the notice is about: « Payment failed? »'s notice stays at 10, where « fiat sent »'s would be done (review of #95's third pull request).
+    if (chatStep.action.doneAt(seen) || moved) {
       return const ChatStepIdle();
     }
     return null;
   }
 
-  /// [watch], or, when it is a status not understood yet ([StatusUnknown], as the watch gives when it opens a trade again from its stored trail, or when the stored trail won over its read) at the very position of the status shown, that status with what [watch] says of its reads and records: the screen does not fall back to its wait for a status it has already shown at that position.
-  TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
+  /// What a cancel's notice becomes once the watch gives [watch], by the same rule as an action of the chat step's: gone when the status shows the ask recorded (`asked_for_cancel`), the order cancelled, or another position than the one the notice was given at; kept otherwise, a running cancel included.
+  TradeCancelState? _cancelAfter(TradeWatchState watch) {
+    final cancel = state.cancel;
+    if (cancel is! CancelIdle || cancel.notice == null) return null;
+    if (watch is! TradeWatchStatus) return null;
+    final seen = watch.seen;
     final shown = state.seen;
-    // A status not marked stored is shown as it is: nothing payable is kept from before.
+    final moved =
+        shown != null && shown.status.position != seen.status.position;
+    final recorded = switch (seen.status) {
+      Chatting(:final askedToCancel) => askedToCancel,
+      Cancelled() => true,
+      _ => false,
+    };
+    if (recorded || moved) return const CancelIdle();
+    return null;
+  }
+
+  /// [watch], or, when it is the stored trail's own status ([StatusUnknown]: the watch opened the trade anew, on the app's return or on a new screen, and its first read is not in, or has failed since) and that trail is the very one the newest status this run stored was stored with, that status, with what [watch] says of its reads: the screen does not fall back to its wait for a status this run has already read, as the official client keeps the order it shows while it reads it again (`frontend/src/basic/OrderPage/index.tsx:76-96`, `models/Order.model.ts:264-281`) (#152).
+  ///
+  /// The status kept is the newest this run stored for the trade ([TradeLastStored]): every status marked [TradeSeen.stored] is stored there by `TradeReader.keep`, the status this screen shows included, so it is the only source, and it gives nothing once a newer answer was accepted and its trail not stored (review of #152). Only a status marked stored (the one rule of #117 for an invoice or a payment), never one whose trail is not the stored trail (another position, or the same position stored by a later write), and never under a write that failed ([TradeWatchStatus.recordProblem]: the trail on disk's own status is shown then, as before). Without [TradeLastStored], nothing is kept. The watch gives such a status only once it has opened the trade with the Garage Key there now, so a robot gone, or another key, never gets it. Nothing is sent from it alone: the actions read the order first, and « Cancel » sends that status's guard, as the reference cancels from the order it holds.
+  /// The watch's own status is never marked stored (`TradeReader.open` and `keep` give the trail's own status unmarked by design): requiring `stored` of it, as this did before, kept nothing.
+  TradeWatchState _keepingWhatWasRead(TradeWatchState watch) {
     if (watch is! TradeWatchStatus ||
-        !watch.stored ||
-        shown == null ||
         watch.seen.status is! StatusUnknown ||
-        shown.status is StatusUnknown ||
-        shown.status.position != watch.seen.status.position) {
+        watch.recordProblem != null) {
+      return watch;
+    }
+    final onDisk = watch.seen.status.trail;
+    final kept = _lastStored?.call(state.record);
+    if (kept == null ||
+        !kept.stored ||
+        kept.status.position != onDisk.position ||
+        kept.status.trail.readAt.microsecondsSinceEpoch !=
+            onDisk.readAt.microsecondsSinceEpoch) {
       return watch;
     }
     return TradeWatchStatus(
       watch.record,
-      shown,
+      kept,
       failedReads: watch.failedReads,
       lastReadFailure: watch.lastReadFailure,
-      recordProblem: watch.recordProblem,
       takePending: watch.takePending,
     );
   }
@@ -297,6 +354,12 @@ class TradeCubit extends Cubit<TradeScreenState> {
   Future<void> cancel(TradeSeen seen, {BondLossAcknowledged? bondLoss}) async {
     if (isClosed || state.actionRunning) return;
     emit(state._with(cancel: const CancelRunning()));
+    // After 30 s, the long wait's line, as for an action of the chat step.
+    final longWait = Timer(stillWaitingAfter, () {
+      if (!isClosed && state.cancel is CancelRunning) {
+        emit(state._with(cancel: const CancelRunning(waitedLong: true)));
+      }
+    });
     final Result<CancelOutcome, CancelRefusal> result;
     try {
       result = await _cancel(state.record, seen, bondLoss: bondLoss);
@@ -306,6 +369,8 @@ class TradeCubit extends Cubit<TradeScreenState> {
         emit(state._with(cancel: const CancelIdle(notice: CancelWasUnknown())));
       }
       rethrow;
+    } finally {
+      longWait.cancel();
     }
     if (isClosed) return;
     switch (result) {
@@ -337,11 +402,24 @@ class TradeCubit extends Cubit<TradeScreenState> {
   }
 
   /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
-  Future<void> confirmFiatSent(TradeSeen seen) async {
-    final send = _confirmFiatSent;
+  Future<void> confirmFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.confirmFiatSent, _confirmFiatSent, seen);
+
+  /// Sends the buyer's « Payment failed? » at [seen], the status the screen showed when the user confirmed the reference's dialog: as [confirmFiatSent].
+  Future<void> undoFiatSent(TradeSeen seen) =>
+      _chatStep(ChatStepAction.undoFiatSent, _undoFiatSent, seen);
+
+  /// Opens a dispute at [seen], the status the screen showed when the user agreed to the reference's dialog: as [confirmFiatSent].
+  Future<void> startDispute(TradeSeen seen) =>
+      _chatStep(ChatStepAction.dispute, _startDispute, seen);
+
+  Future<void> _chatStep(
+    ChatStepAction action,
+    TradeFiatSender? send,
+    TradeSeen seen,
+  ) async {
     if (send == null || isClosed || state.actionRunning) return;
-    const action = ChatStepAction.confirmFiatSent;
-    emit(state._with(chatStep: const ChatStepRunning(action)));
+    emit(state._with(chatStep: ChatStepRunning(action)));
     // After 30 s, « Still waiting for {coordinator}. Tor can take a minute. », as the payout and the take say it.
     _stillWaiting?.cancel();
     _stillWaiting = Timer(stillWaitingAfter, () {
@@ -383,7 +461,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
       if (!isClosed) {
         emit(
           state._with(
-            chatStep: const ChatStepIdle(notice: ChatStepWasUnknown()),
+            chatStep: ChatStepIdle(
+              notice: const ChatStepWasUnknown(),
+              action: action,
+            ),
           ),
         );
       }
@@ -395,22 +476,21 @@ class TradeCubit extends Cubit<TradeScreenState> {
     if (isClosed) return;
     switch (result) {
       case Err(:final failure):
+        // A read kept before the refusal is shown: the status now.
+        final read = switch (failure) {
+          ChatStepStatusMoved(:final seen, :final record) ||
+          ChatStepReadFailed(seen: final seen?, :final record) ||
+          ChatStepTooEarly(seen: final seen?, :final record) =>
+            TradeWatchStatus(record ?? state.record, seen, takePending: false),
+          _ => null,
+        };
         emit(
           state._with(
-            // A read kept before the refusal is shown: the status now.
-            watch: switch (failure) {
-              ChatStepStatusMoved(:final seen, :final record) ||
-              ChatStepReadFailed(
-                seen: final seen?,
-                :final record,
-              ) => TradeWatchStatus(
-                record ?? state.record,
-                seen,
-                takePending: false,
-              ),
-              _ => null,
-            },
-            chatStep: ChatStepIdle(notice: ChatStepWasRefused(failure)),
+            watch: read,
+            chatStep: ChatStepIdle(
+              notice: ChatStepWasRefused(failure),
+              action: action,
+            ),
           ),
         );
       case Ok(value: final outcome):
@@ -428,6 +508,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
                 ChatStepNotDone(:final cause) => ChatStepWasNotDone(cause),
                 ChatStepOutcomeUnknown() => const ChatStepWasUnknown(),
               },
+              action: action,
             ),
           ),
         );

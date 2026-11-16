@@ -322,12 +322,11 @@ void main() {
     });
 
     test(
-      'the feature never names a robot\'s token: the proof is the package\'s',
+      'the feature names a robot\'s token only for the chat\'s export, as the reference\'s: the proof is the package\'s',
       () {
-        expect(
-          referring((r) => r == 'credential RobotIdentity.token'),
-          isEmpty,
-        );
+        expect(referring((r) => r == 'credential RobotIdentity.token'), {
+          'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+        });
       },
     );
 
@@ -354,19 +353,6 @@ void main() {
           '${_tradeUseCases}submit_payout_usecase.dart',
         }, reason: member);
       }
-      // The chat step's actions (#95): one use case, which reads and sends under the order's lock.
-      for (final member in ['confirmFiat']) {
-        expect(referring((r) => r == 'request CoordinatorClient.$member'), {
-          '${_tradeUseCases}chat_step_action_usecase.dart',
-        }, reason: member);
-      }
-      for (final member in ['undoConfirmFiat', 'openDispute', 'ratePlatform']) {
-        expect(
-          referring((r) => r == 'request CoordinatorClient.$member'),
-          isEmpty,
-          reason: member,
-        );
-      }
       // The chat of a trade (#93): read by its own use case, and read again by the one that sends, after a post whose outcome is unknown; posted by the one that sends.
       expect(referring((r) => r == 'request CoordinatorClient.fetchChat'), {
         '${_tradeUseCases}watch_chat_usecase.dart',
@@ -375,6 +361,19 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.postChat'), {
         '${_tradeUseCases}send_chat_message_usecase.dart',
       });
+      // The chat step's actions (#95): one use case, which reads and sends under the order's lock.
+      for (final member in ['confirmFiat', 'undoConfirmFiat', 'openDispute']) {
+        expect(referring((r) => r == 'request CoordinatorClient.$member'), {
+          '${_tradeUseCases}chat_step_action_usecase.dart',
+        }, reason: member);
+      }
+      for (final member in ['ratePlatform']) {
+        expect(
+          referring((r) => r == 'request CoordinatorClient.$member'),
+          isEmpty,
+          reason: member,
+        );
+      }
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
         expect(
@@ -388,9 +387,11 @@ void main() {
               'request CoordinatorClient.cancelOrder',
               'request CoordinatorClient.submitPayoutInvoice',
               'request CoordinatorClient.submitPayoutAddress',
-              'request CoordinatorClient.confirmFiat',
               'request CoordinatorClient.fetchChat',
               'request CoordinatorClient.postChat',
+              'request CoordinatorClient.confirmFiat',
+              'request CoordinatorClient.undoConfirmFiat',
+              'request CoordinatorClient.openDispute',
             }),
           ),
           reason: path,
@@ -594,6 +595,8 @@ void main() {
         // The chat (#93): decrypted in the file the read and the send share, encrypted in the send's own.
         const chatRead = '${_tradeUseCases}watch_chat_usecase.dart';
         const chatSend = '${_tradeUseCases}send_chat_message_usecase.dart';
+        // The chat as the reference exports it, on the user's tap (#93): the encrypted private key from a lease.
+        const chatExport = '${_tradeUseCases}export_chat_usecase.dart';
         expect(referring((r) => r == 'RobotKeyComputePort.unlock'), {keyring});
         expect(
           referring((r) => r == 'ReadRobotOnCoordinatorUsecase.provenPairOf'),
@@ -601,11 +604,13 @@ void main() {
         );
         // A lease only for the payout's signature and the chat's messages, a hold only through the use case the screens call.
         expect(referring((r) => r == 'TradeKeyring.lease'), {
+          chatExport,
           payout,
           chatRead,
           chatSend,
         });
         expect(referring((r) => r == 'TradeKeyLease.key'), {
+          chatExport,
           payout,
           chatRead,
           chatSend,
@@ -621,6 +626,7 @@ void main() {
               payout,
               chatRead,
               chatSend,
+              chatExport,
               '${_tradeUseCases}hold_trade_key_usecase.dart',
               'lib/src/p2p_locator.dart',
             }),
@@ -674,6 +680,8 @@ void main() {
               payout,
               chatRead,
               chatSend,
+              // The tests' library, which names the type for the app's captures to encrypt the maker's messages (#93); no library of the app imports it.
+              'lib/testing.dart',
             }),
           ),
         );
@@ -699,16 +707,26 @@ void main() {
       // The fingerprint keys an HMAC with the token of the key's first robot, which never leaves the device.
       expect(referring((r) => r == 'credential RobotToken.reveal'), {
         'lib/src/domain/garage_key_fingerprint.dart',
+        // The chat's export, as the reference's, holds the token as the private key's passphrase (#93, the owner's choice): on the user's tap only, through the chat panel's cubit.
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
       });
       // The token hash, the token and the headers made of them: the coordinator client of `package:robosats` builds them for the use case, and no file of the feature reads them.
       expect(
         referring(
           (r) =>
               r.startsWith('credential ') &&
-              r != 'credential RobotToken.reveal',
+              r != 'credential RobotToken.reveal' &&
+              r != 'credential RobotIdentity.token',
         ),
         isEmpty,
       );
+      expect(referring((r) => r == 'credential RobotIdentity.token'), {
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+      });
+      // Its encrypted private key too, which the token unlocks.
+      expect(referring((r) => r == 'RobotPgpKey.encryptedPrivateKeyArmored'), {
+        'lib/src/domain/usecases/trade/export_chat_usecase.dart',
+      });
     });
 
     test('only the transport holds a raw network client', () {
@@ -1908,7 +1926,13 @@ const _watched = {
   'CoordinatorRobotAnswer': ('package:robosats/', {'parse'}),
   'RobotPgpKey': (
     'package:robosats/',
-    {'generate', 'generateWith', 'unlock', 'proveMadeBy'},
+    {
+      'generate',
+      'generateWith',
+      'unlock',
+      'proveMadeBy',
+      'encryptedPrivateKeyArmored',
+    },
   ),
 };
 

@@ -1399,7 +1399,7 @@ class P2pLocalizationsTr extends P2pLocalizations {
 
   @override
   String get p2pTradeCancelOnlyTogether =>
-      'Only a collaborative cancel is possible now, which comes in a later version.';
+      'At this step only a collaborative cancel exists, which RoboSats offers from the chat.';
 
   @override
   String get p2pTradeCancelNotPossible => 'You cannot cancel this order';
@@ -2180,7 +2180,460 @@ class P2pLocalizationsTr extends P2pLocalizations {
   }
 
   @override
+  String get p2pEndPaymentFailed => 'Payment failed?';
+
+  @override
+  String get p2pEndUndoTitle => 'Revert the confirmation of fiat sent?';
+
+  @override
+  String get p2pEndUndoText =>
+      'READ. In case your payment to the seller has been blocked and it is absolutely impossible to finish the trade, you can revert your confirmation of \"Fiat sent\". Do so only if you and the seller have ALREADY AGREED in the chat to proceed to a collaborative cancellation. After confirming, the \"Collaborative cancel\" button will be visible again. Only click this button if you know what you are doing. First time users of RoboSats are highly discouraged from performing this action! Make 100% sure your payment has failed and the amount is in your account.';
+
+  @override
+  String p2pEndWaitCountdown(String time) {
+    return 'Wait ($time)';
+  }
+
+  @override
+  String get p2pEndCollabTitle => 'Collaborative cancel the order?';
+
+  @override
+  String get p2pEndCollabText =>
+      'The trade escrow has been posted. The order can be cancelled only if both, maker and taker, agree to cancel.';
+
+  @override
+  String get p2pEndCollabPeerAsked => 'Your peer has asked for cancellation';
+
+  @override
+  String get p2pEndCollabAccept => 'Accept Cancelation';
+
+  @override
+  String get p2pEndCollabAsk => 'Ask for Cancel';
+
+  @override
+  String p2pEndCollabPeerAlert(String nickname) {
+    return '$nickname is asking for a collaborative cancel';
+  }
+
+  @override
+  String get p2pEndCollabAskedAlert =>
+      'You asked for a collaborative cancellation';
+
+  @override
+  String get p2pEndOrderOptions => 'Order options';
+
+  @override
+  String get p2pEndCollabCancel => 'Collaborative Cancel';
+
+  @override
+  String get p2pEndCollabAfterFiat =>
+      'Orders can\'t be cancelled if fiat has been sent.';
+
+  @override
+  String p2pEndStepSendingRequest(String coordinator) {
+    return 'Sending your request to $coordinator…';
+  }
+
+  @override
+  String get p2pEndTradeMovedOn =>
+      'The trade moved on: your request was not sent.';
+
+  @override
+  String get p2pEndUnknownRequest =>
+      'Bull Market does not know yet whether your request went through. It keeps checking.';
+
+  @override
+  String p2pEndRequestNotRecordedMovedOn(String coordinator) {
+    return 'The trade moved on: $coordinator did not record your request.';
+  }
+
+  @override
+  String p2pEndRequestRefusedBy(String coordinator) {
+    return '$coordinator did not record your request.';
+  }
+
+  @override
+  String p2pEndRequestNotDoneAfter(String reason) {
+    return '$reason Your request was not sent.';
+  }
+
+  @override
   String p2pEndOffline(String coordinator) {
     return '$coordinator is offline: your confirmation was not sent.';
   }
+
+  @override
+  String p2pEndRequestOffline(String coordinator) {
+    return '$coordinator is offline: your request was not sent.';
+  }
+
+  @override
+  String get p2pEndOpenOptions => 'open options';
+
+  @override
+  String p2pEndWaitSeconds(int seconds) {
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Wait $seconds seconds',
+      one: 'Wait 1 second',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String p2pChatYouState(String state) {
+    return 'You: $state';
+  }
+
+  @override
+  String p2pChatPeerState(String state) {
+    return 'Peer: $state';
+  }
+
+  @override
+  String get p2pChatConnected => 'connected';
+
+  @override
+  String get p2pChatDisconnected => 'disconnected';
+
+  @override
+  String get p2pChatWaitingShort => '...waiting';
+
+  @override
+  String get p2pChatTypeMessage => 'Type a message';
+
+  @override
+  String get p2pChatWaitingForPeer => 'Waiting for peer...';
+
+  @override
+  String get p2pChatSend => 'Send';
+
+  @override
+  String p2pChatSignatureVerified(String nickname) {
+    return 'Verified signature by $nickname';
+  }
+
+  @override
+  String p2pChatSignatureUnverified(String nickname) {
+    return 'Cannot verify signature of $nickname';
+  }
+
+  @override
+  String get p2pChatTokenBlocked =>
+      'Aye! You just sent your own robot token to your peer in chat, that\'s a catastrophic idea! So bad your message was blocked.';
+
+  @override
+  String get p2pChatGarageKeyBlocked =>
+      'This message holds your Garage Key, which controls all your robots. It will not be sent.';
+
+  @override
+  String get p2pChatTooLong =>
+      'This message is too long. Shorten it to send it.';
+
+  @override
+  String get p2pChatClosed => 'Messages are not sent at this step.';
+
+  @override
+  String get p2pChatKeyChanged =>
+      'This chat is no longer secure: your peer’s key changed. Nothing more is sent here. Do not trust payment details received from now on.';
+
+  @override
+  String p2pChatSending(String coordinator) {
+    return 'Sending the message to $coordinator…';
+  }
+
+  @override
+  String p2pChatNotConfirmed(String coordinator) {
+    return 'Not confirmed by $coordinator. It may still reach your peer.';
+  }
+
+  @override
+  String get p2pChatSendAgain => 'Send again';
+
+  @override
+  String get p2pChatSendFailed => 'The message was not sent. Try again.';
+
+  @override
+  String p2pChatSendRefused(String coordinator) {
+    return '$coordinator did not take the message. Try again.';
+  }
+
+  @override
+  String get p2pChatTradeMoved =>
+      'The message was not sent: the trade has moved on.';
+
+  @override
+  String p2pChatReadFailed(String coordinator) {
+    return 'Cannot read the chat from $coordinator. Trying again…';
+  }
+
+  @override
+  String get p2pChatUnavailable => 'The chat cannot be read on this device.';
+
+  @override
+  String get p2pChatHistoryTooLarge =>
+      'This chat is too long to be read from its first message.';
+
+  @override
+  String get p2pChatReadNewer => 'Read only the newer messages';
+
+  @override
+  String p2pChatReading(String coordinator) {
+    return 'Reading the chat from $coordinator…';
+  }
+
+  @override
+  String get p2pChatSkipAwaited => 'Reading the newer messages…';
+
+  @override
+  String get p2pChatEarlierHidden => 'Earlier messages are not shown.';
+
+  @override
+  String get p2pChatScreenPrivacyUnavailable =>
+      'Screen protection could not be turned on, so the chat stays hidden.';
+
+  @override
+  String get p2pChatUnreadable => 'This message cannot be read.';
+
+  @override
+  String get p2pChatMarkAfterGap => 'A message may be missing before this one.';
+
+  @override
+  String get p2pChatMarkRepeat => 'This message was already shown above.';
+
+  @override
+  String get p2pChatMarkSentTwice => 'You sent this message twice.';
+
+  @override
+  String get p2pChatMarkOutOfOrder =>
+      'This message may be older than it looks.';
+
+  @override
+  String get p2pChatAuditChat => 'Audit Chat';
+
+  @override
+  String get p2pChatExport => 'Export';
+
+  @override
+  String get p2pChatExportCopyFailed => 'The chat log could not be copied.';
+
+  @override
+  String get p2pChatAuditTitle => 'Don\'t trust, verify';
+
+  @override
+  String get p2pChatAuditText =>
+      'Your communication is end-to-end encrypted with OpenPGP. You can verify the privacy of this chat using any tool based on the OpenPGP standard.';
+
+  @override
+  String get p2pChatYourPublicKey => 'Your public key';
+
+  @override
+  String get p2pChatYourPublicKeyTooltip =>
+      'Your PGP public key. Your peer uses it to encrypt messages only you can read.';
+
+  @override
+  String get p2pChatPeerPublicKey => 'Peer public key';
+
+  @override
+  String get p2pChatPeerPublicKeyTooltip =>
+      'Your peer PGP public key. You use it to encrypt messages only he can read and to verify your peer signed the incoming messages.';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKey => 'Your encrypted private key';
+
+  @override
+  String get p2pChatYourEncryptedPrivateKeyTooltip =>
+      'Your encrypted private key. You use it to decrypt the messages that your peer encrypted for you. You also use it to sign the messages you send.';
+
+  @override
+  String get p2pChatPassphrase => 'Your private key passphrase (keep secure!)';
+
+  @override
+  String get p2pChatPassphraseTooltip =>
+      'The passphrase to decrypt your private key. Only you know it! Do not share. It is also your robot token.';
+
+  @override
+  String p2pChatAuditKeyFailed(String coordinator) {
+    return 'The key of your robot could not be read from $coordinator.';
+  }
+
+  @override
+  String p2pChatFingerprint(String fingerprint) {
+    return 'Fingerprint: $fingerprint';
+  }
+
+  @override
+  String get p2pChatSaveKeys => 'Keys';
+
+  @override
+  String get p2pChatSaveKeysTooltip => 'Save credentials as a JSON file';
+
+  @override
+  String get p2pChatSaveMessages => 'Messages';
+
+  @override
+  String get p2pChatSaveMessagesTooltip => 'Save messages as a JSON file';
+
+  @override
+  String get p2pPayoutWalletGenerateInvoice => 'Generate Invoice';
+
+  @override
+  String get p2pPayoutWalletGenerateAddress => 'Generate New Address';
+
+  @override
+  String get p2pPayoutWalletMakingInvoice => 'Generating the invoice…';
+
+  @override
+  String get p2pPayoutWalletMakingAddress => 'Generating a new address…';
+
+  @override
+  String get p2pPayoutWalletStillWaiting => 'Still waiting for the wallet.';
+
+  @override
+  String p2pPayoutWalletReceived(String amount) {
+    return 'Receive Amount: $amount sats';
+  }
+
+  @override
+  String get p2pPayoutWalletFeeTaken =>
+      'This fee will be deducted from the amount sent';
+
+  @override
+  String get p2pPayoutWalletNoInvoice =>
+      'This wallet cannot create an invoice now.';
+
+  @override
+  String get p2pPayoutWalletNoAddress =>
+      'This wallet cannot give an address now.';
+
+  @override
+  String get p2pPayoutWalletAnotherWaiting =>
+      'This wallet is already waiting for a payment of this amount. Paste an invoice from another wallet, or try again later.';
+
+  @override
+  String get p2pPayoutWalletEarlierStillOpen =>
+      'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.';
+
+  @override
+  String get p2pEndOpenDispute => 'Open Dispute';
+
+  @override
+  String p2pEndDisputeWait(String hours, String minutes) {
+    return 'To open a dispute you need to wait ${hours}h ${minutes}m';
+  }
+
+  @override
+  String get p2pEndDisputeTitle => 'Do you want to open a dispute?';
+
+  @override
+  String get p2pEndDisputeText =>
+      'The RoboSats staff will examine the statements and evidence provided. You need to build a complete case, as the staff cannot read the chat. It is best to provide a burner contact method with your statement. The satoshis in the trade escrow will be sent to the dispute winner, while the dispute loser will lose the bond.';
+
+  @override
+  String get p2pEndDisputeExport =>
+      'Make sure to EXPORT the chat log. The staff might request your exported chat log JSON in order to solve discrepancies. It is your responsibility to store it.';
+
+  @override
+  String get p2pEndDisagree => 'Disagree';
+
+  @override
+  String get p2pEndAgreeDispute => 'Agree and open dispute';
+
+  @override
+  String p2pEndStepSendingDispute(String coordinator) {
+    return 'Opening the dispute at $coordinator…';
+  }
+
+  @override
+  String get p2pEndDisputeWaitPeer =>
+      'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.';
+
+  @override
+  String get p2pEndDisputeSaveInfoPeer =>
+      'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.';
+
+  @override
+  String get p2pEndDisputeWaitResolution =>
+      'Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.';
+
+  @override
+  String get p2pEndDisputeSaveInfoResolution =>
+      'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).';
+
+  @override
+  String p2pEndDisputeWinner(String email) {
+    return 'You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to $email (or via your provided burner contact method).';
+  }
+
+  @override
+  String p2pEndDisputeLoser(String email) {
+    return 'Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to $email';
+  }
+
+  @override
+  String p2pEndStatementLater(String coordinator) {
+    return 'Bull Market cannot send a dispute statement yet. Contact $coordinator through one of its contacts below, with the information to identify your order.';
+  }
+
+  @override
+  String p2pEndRewardsLater(String coordinator) {
+    return 'Bull Market cannot claim rewards yet: contact $coordinator through one of its contacts below.';
+  }
+
+  @override
+  String p2pEndStatementLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot send a dispute statement yet. Contact $coordinator with the information to identify your order.';
+  }
+
+  @override
+  String p2pEndRewardsLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot claim rewards yet: contact $coordinator.';
+  }
+
+  @override
+  String p2pEndOrderId(String id) {
+    return 'Order ID: $id';
+  }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
+
+  @override
+  String get p2pEndDisputeNeedsRead =>
+      'Wait until the order is read again. The dispute was not opened.';
+
+  @override
+  String p2pEndDisputeReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: the dispute was not opened.';
+  }
+
+  @override
+  String get p2pEndDisputeMovedOn =>
+      'The trade moved on: the dispute was not opened.';
+
+  @override
+  String p2pEndDisputeNotSentAfter(String reason) {
+    return '$reason The dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator) {
+    return 'The trade moved on: $coordinator did not open the dispute.';
+  }
+
+  @override
+  String p2pEndDisputeOffline(String coordinator) {
+    return '$coordinator is offline: the dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeRefusedBy(String coordinator) {
+    return '$coordinator did not open the dispute.';
+  }
+
+  @override
+  String get p2pEndDisputeUnknown =>
+      'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.';
 }

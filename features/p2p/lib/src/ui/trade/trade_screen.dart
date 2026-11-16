@@ -11,6 +11,7 @@ import 'package:robosats/robosats.dart';
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
+import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
@@ -30,6 +31,8 @@ import '../widgets/testnet_banner.dart';
 import '../widgets/trade_button.dart';
 import 'bond_panel.dart';
 import 'cancel_order_dialog.dart';
+import 'chat_actions.dart';
+import 'chat_panel.dart';
 import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'payout_panel.dart';
@@ -63,6 +66,12 @@ class TradeScreen extends StatefulWidget {
   /// Whether an action that moves money runs for this trade (a payout being given, #91): « Cancel » is then off, so that a cancel never leaves while it runs; `null` for none.
   final bool Function(BuildContext context)? moneyActionRunning;
 
+  /// The chat panel of 9 and 10 (#93): `null`, and the chat step shows no chat, where the feature holds no robot (see [ChatPanel]).
+  final ChatPanelBuilder? chat;
+
+  /// « Audit Chat » and « Export » of « Order options » (#157), over the cubit of [chat]: given with it, `null` with it.
+  final ChatOptionsBuilder? chatOptions;
+
   /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
   final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
@@ -82,6 +91,8 @@ class TradeScreen extends StatefulWidget {
     this.walletPayment,
     this.payout,
     this.moneyActionRunning,
+    this.chat,
+    this.chatOptions,
     this.walletBond,
     this.walletBondLine,
     this.takeCubitFor,
@@ -242,7 +253,10 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         text: kind.toText(context, coordinator: coordinator),
                         waits: kind == TradeMessageKind.takePending,
                         notice: switch (state.chatStep) {
-                          ChatStepIdle(:final notice?) => notice,
+                          ChatStepIdle(:final notice?, :final action) => (
+                            notice,
+                            action,
+                          ),
                           _ => null,
                         },
                         coordinator: coordinator,
@@ -288,9 +302,16 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         offersFiatSent: context
                             .read<TradeCubit>()
                             .offersFiatSent,
+                        offersUndoFiatSent: context
+                            .read<TradeCubit>()
+                            .offersUndoFiatSent,
+                        offersDispute: context.read<TradeCubit>().offersDispute,
+                        clock: widget.now,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
+                        chat: widget.chat,
+                        chatOptions: widget.chatOptions,
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
@@ -368,7 +389,7 @@ class _Message extends StatelessWidget {
   final bool waits;
 
   /// What an action of the chat step gave, when the order it was sent for is now shown as a message (cancelled, ended): said under it, as the reference says its `bad_request` whatever the status (#95).
-  final ChatStepNotice? notice;
+  final (ChatStepNotice, ChatStepAction)? notice;
   final String coordinator;
 
   const _Message({
@@ -401,9 +422,13 @@ class _Message extends StatelessWidget {
             const Gap(BullSpacing.md),
             LinearProgressIndicator(color: colors.primary),
           ],
-          if (notice case final notice?) ...[
+          if (notice case (final notice, final action)) ...[
             const Gap(BullSpacing.md),
-            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
           ],
         ],
       ),
@@ -421,9 +446,16 @@ class _Contract extends StatelessWidget {
   final TradeCancelState cancel;
   final ChatStepState chatStep;
   final bool offersFiatSent;
+  final bool offersUndoFiatSent;
+  final bool offersDispute;
+
+  /// The screen's clock, which a countdown of a dialog reads as it ticks.
+  final DateTime Function() clock;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
+  final ChatPanelBuilder? chat;
+  final ChatOptionsBuilder? chatOptions;
   final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
@@ -435,9 +467,14 @@ class _Contract extends StatelessWidget {
     required this.cancel,
     required this.chatStep,
     required this.offersFiatSent,
+    required this.offersUndoFiatSent,
+    required this.offersDispute,
+    required this.clock,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
+    required this.chat,
+    required this.chatOptions,
     required this.moneyActionRunning,
     required this.walletBond,
   });
@@ -460,9 +497,29 @@ class _Contract extends StatelessWidget {
     );
     final step = contract.step;
     final warnings = warningsOf(status, now: now);
+    // The reference's alert of a collaborative cancel, above the title, at 9 only (`TradeBox/CollabCancelAlert.tsx`): the peer's ask, or this robot's.
+    final collabAlert = switch ((status, contract.order)) {
+      (Chatting(fiatSent: false, peerAskedToCancel: true), final order?) =>
+        l10n.p2pEndCollabPeerAlert(order.maker.nickname),
+      // A status kept from no order (a read refused as a whole): no nickname to name, so the reference's own words for the peer's ask (`Dialogs/ConfirmCollabCancel.tsx`).
+      (Chatting(fiatSent: false, peerAskedToCancel: true), null) =>
+        l10n.p2pEndCollabPeerAsked,
+      (Chatting(fiatSent: false, askedToCancel: true), _) =>
+        l10n.p2pEndCollabAskedAlert,
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (collabAlert != null) ...[
+          _Line(
+            collabAlert,
+            color: colors.warning,
+            icon: Icons.warning_amber_rounded,
+            live: true,
+          ),
+          const Gap(BullSpacing.md),
+        ],
         // The title is what a screen reader reads out when the status changes, rather than each line of the panel.
         Semantics(
           container: true,
@@ -512,9 +569,13 @@ class _Contract extends StatelessWidget {
         _prompt(context, status),
         // What an action of the chat step gave, once the order moved past the chat step (a dispute, an end): said under the new status's prompt, as the reference says its `bad_request` whatever the status (#95); at 9 and 10 the chat step's panel says it.
         if (contract.prompt != TradePrompt.chat)
-          if (chatStep case ChatStepIdle(:final notice?)) ...[
+          if (chatStep case ChatStepIdle(:final notice?, :final action)) ...[
             const Gap(BullSpacing.md),
-            ChatStepNoticeLine(notice: notice, coordinator: coordinator),
+            ChatStepNoticeLine(
+              notice: notice,
+              coordinator: coordinator,
+              action: action,
+            ),
           ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
@@ -541,6 +602,13 @@ class _Contract extends StatelessWidget {
     final colors = context.bull;
     final formats = P2pFormats.of(context);
     final order = contract.order;
+    final chat = this.chat;
+    final chatOptions = this.chatOptions;
+    final chatRequest = ChatPanelRequest(
+      record: record,
+      seen: contract.seen,
+      coordinator: coordinator,
+    );
     return switch ((contract.prompt, status)) {
       (TradePrompt.lockInvoice, final WaitingForTakerBond bond) => BondPanel(
         record: record,
@@ -586,14 +654,30 @@ class _Contract extends StatelessWidget {
         center: true,
       ),
       (TradePrompt.expired, _) => const SizedBox.shrink(),
-      // The buyer's chat step (#95): the chat's place stays empty until the chat panel (#93) fills it.
+      // The buyer's chat step (#95), with the chat panel (#93) in its place when the screen was given one.
       (TradePrompt.chat, _) => ChatStepPanel(
         seen: contract.seen,
         order: order,
         coordinator: coordinator,
         chatStep: chatStep,
-        otherActionRunning: moneyActionRunning || cancel is CancelRunning,
+        cancel: cancel,
+        otherActionRunning: moneyActionRunning,
         offersFiatSent: offersFiatSent,
+        offersUndoFiatSent: offersUndoFiatSent,
+        offersCollaborativeCancel: true,
+        offersDispute: offersDispute,
+        now: clock,
+        // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
+        chat: chat == null
+            ? null
+            : KeyedSubtree(
+                key: const ValueKey('trade-chat-panel'),
+                child: chat(context, chatRequest),
+              ),
+        // « Audit Chat » and « Export » in « Order options » (#157), over the chat panel's cubit.
+        chatOptions: chatOptions == null
+            ? null
+            : () => chatOptions(context, chatRequest),
       ),
       (TradePrompt.sendingSats, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -621,6 +705,22 @@ class _Contract extends StatelessWidget {
       ),
       // « Trade finished! » with its title alone: the rating and the summary come with a later pull request of #95.
       (TradePrompt.finished, _) => const SizedBox.shrink(),
+      (
+        TradePrompt.disputeOpen ||
+            TradePrompt.disputeWaitPeer ||
+            TradePrompt.disputeWaitResolution ||
+            TradePrompt.disputeWon ||
+            TradePrompt.disputeLost,
+        _,
+      ) =>
+        _DisputePrompt(
+          prompt: contract.prompt,
+          coordinator:
+              contract.order?.coordinator ??
+              Federation.robosats.byAlias(record.coordinatorAlias),
+          coordinatorName: coordinator,
+          orderId: record.orderId,
+        ),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
@@ -735,6 +835,7 @@ class _CancelRowState extends State<_CancelRow> {
         : null;
     try {
       // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
+      // A status kept while the trade is opened anew (#152) is cancelled as the reference cancels from the order it holds (`TradeBox/index.tsx:244-253`): the request carries that status's guard, which the coordinator refuses for another status (1020).
       if (seen.order == null) {
         await cubit.cancel(seen);
         return;
@@ -1023,6 +1124,85 @@ class _PublicAgain extends StatelessWidget {
               ),
             _ => const SizedBox.shrink(),
           },
+      ],
+    );
+  }
+}
+
+/// 11, 16, 17 and 18, read-only (#95, design note § 2.7): the reference's texts of each prompt, the order's number to identify it, and the coordinator's contacts as its dialog shows them (`CoordinatorContacts`).
+///
+/// At 11, before this robot's statement is in, the reference shows its statement form, which comes in a later phase: in its place, the project's line that says to contact the coordinator, then the reference's advice to save what identifies the order. At 17 the reference says to claim from the profile's rewards, which Bull Market cannot yet: the project's line says so.
+class _DisputePrompt extends StatelessWidget {
+  final TradePrompt prompt;
+  final Coordinator? coordinator;
+  final String coordinatorName;
+  final int orderId;
+
+  const _DisputePrompt({
+    required this.prompt,
+    required this.coordinator,
+    required this.coordinatorName,
+    required this.orderId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final contact = coordinator?.contact;
+    // The coordinator's email in the reference's texts of 17 and 18, cleaned as every coordinator's text is; its name when it gives none.
+    final email = switch (contact?.email) {
+      final email? when email.trim().isNotEmpty => CoordinatorText.of(
+        email,
+        maxCodePoints: CoordinatorText.copyBound,
+      ),
+      _ => coordinatorName,
+    };
+    // The project's lines point to the contacts below only when there are some: a coordinator missing from the app's list has none (review of #156).
+    final lines = switch (prompt) {
+      TradePrompt.disputeOpen => [
+        if (contact != null)
+          l10n.p2pEndStatementLater(coordinatorName)
+        else
+          l10n.p2pEndStatementLaterNoContacts(coordinatorName),
+        l10n.p2pEndDisputeSaveInfoPeer,
+      ],
+      TradePrompt.disputeWaitPeer => [
+        l10n.p2pEndDisputeWaitPeer,
+        l10n.p2pEndDisputeSaveInfoPeer,
+      ],
+      TradePrompt.disputeWaitResolution => [
+        l10n.p2pEndDisputeWaitResolution,
+        l10n.p2pEndDisputeSaveInfoResolution,
+      ],
+      TradePrompt.disputeWon => [
+        l10n.p2pEndDisputeWinner(email),
+        if (contact != null)
+          l10n.p2pEndRewardsLater(coordinatorName)
+        else
+          l10n.p2pEndRewardsLaterNoContacts(coordinatorName),
+      ],
+      _ => [l10n.p2pEndDisputeLoser(email)],
+    };
+    final showsId =
+        prompt == TradePrompt.disputeOpen ||
+        prompt == TradePrompt.disputeWaitPeer ||
+        prompt == TradePrompt.disputeWaitResolution;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, line) in lines.indexed) ...[
+          if (i > 0) const Gap(BullSpacing.sm),
+          _Line(line),
+        ],
+        if (showsId) ...[
+          const Gap(BullSpacing.sm),
+          _Line(l10n.p2pEndOrderId('$orderId'), color: colors.textMuted),
+        ],
+        if (contact != null) ...[
+          const Gap(BullSpacing.sm),
+          CoordinatorContacts(contact: contact),
+        ],
       ],
     );
   }

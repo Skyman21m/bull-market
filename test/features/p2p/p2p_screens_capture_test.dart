@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:bb_mobile/core/themes/app_theme.dart';
@@ -1903,6 +1904,8 @@ void main() {
           clock: () => now,
           garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
           bolt11Decoder: transport,
+          // The robots' keys dated by the screen's clock, so that the chat's messages sign and verify at it (#93).
+          robotKeys: _DatedRobotKeys(() => now),
         );
         await tester.pumpWidget(
           _App(
@@ -1936,13 +1939,33 @@ void main() {
           Err() => throw StateError('not a key'),
         };
         final identities = [
-          for (var i = 0; i < 16; i++)
+          for (var i = 0; i < 24; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
         ];
+        // The maker: a robot of the RoboSats example key, with the key the official client would make for it, so that its chat messages are its own (#93).
+        final maker = switch (GarageKey.parse(_exampleGarageKey())) {
+          Ok(:final value) => switch (value.deriveIdentity(0)) {
+            Ok(:final value) => value,
+            Err() => throw StateError('no maker'),
+          },
+          Err() => throw StateError('not a key'),
+        };
+        final makerKey = switch (RobotPgpKey.generateWith(
+          maker,
+          now: now,
+          random: Random(93),
+        )) {
+          Ok(:final value) => switch (value.unlock(maker)) {
+            Ok(:final value) => value,
+            Err() => throw StateError('not unlocked'),
+          },
+          Err() => throw StateError('no maker key'),
+        };
         final coordinator = ScriptedCoordinator(
           network: RobosatsNetwork.mainnet,
           robots: identities,
           clock: () => now,
+          maker: maker,
         );
         transport.temple = coordinator;
         await tester.tap(find.text(l10n.p2pCommonContinue));
@@ -2301,7 +2324,192 @@ void main() {
         await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
         await backToTab();
 
-        // Take 5: the buyer's straight path (#95): the chat step with « Confirm … sent » and the reference's dialog, the wait for the seller, then the buyer being paid and the trade finished.
+        // Take 5: the chat at 9 (#93), in the chat step's place: its first read, the maker's messages encrypted to this robot's key as the official client does, a message sent, its wait, one not confirmed, a refusal, at 320 points, the breach, a history too long, and « Don't trust, verify » with test values.
+        coordinator.backToPublic();
+        await take();
+        final chatter = taker();
+        final ownKey = switch (PgpPublicKey.parse(
+          coordinator.publicKeyOf(chatter) ?? '',
+        )) {
+          Ok(:final value) => value,
+          Err() => throw StateError('no key'),
+        };
+        OutgoingChatMessage written(String text, UnlockedRobotPgpKey from) =>
+            switch (from.encryptChatMessageToPost(
+              text,
+              peer: ownKey,
+              now: now,
+            )) {
+              Ok(:final value) => value,
+              Err() => throw StateError('not encrypted'),
+            };
+        final fr = locale.languageCode == 'fr';
+        for (final text
+            in fr
+                ? [
+                    'Bonjour ! Je vous envoie les euros par Revolut dans quelques minutes.',
+                    'C’est envoyé, la référence est 4821.',
+                  ]
+                : [
+                    'Hi! I am sending the euros with Revolut in a few minutes.',
+                    'Sent, the reference is 4821.',
+                  ]) {
+          coordinator.peerSays(written(text, makerKey));
+        }
+        // The first read of the chat held, with what follows it, until the test lets them go: its wait is captured.
+        final chatRead = Completer<void>();
+        coordinator
+          ..onRequest = (request) {
+            if (request.url.path == '/api/chat/' &&
+                request.body == null &&
+                !chatRead.isCompleted) {
+              coordinator.hold = chatRead.future;
+            }
+          }
+          ..lockBond(chatter)
+          ..moveTo(9)
+          ..peerPublicKey = makerKey.key.publicKey.armored;
+        await nextRead();
+        final reading = l10n.p2pChatReading(coordinator.coordinator.longAlias);
+        await waitFor(find.text(reading));
+        await reveal(find.text(reading));
+        await capture('chat-lecture');
+        coordinator
+          ..onRequest = null
+          ..hold = null;
+        chatRead.complete();
+        await nextRead();
+        final own = fr
+            ? 'Merci, je vérifie mon compte.'
+            : 'Thanks, I am checking my account.';
+        Future<void> type(String text) async {
+          await tester.enterText(find.byType(TextField).last, text);
+          await settle();
+        }
+
+        Future<void> pressSend() async {
+          final send = find.byIcon(Icons.send);
+          await tester.ensureVisible(send);
+          await settle();
+          await tester.tap(send);
+        }
+
+        await type(own);
+        await pressSend();
+        await waitFor(find.text(own));
+        await reveal(find.text(l10n.p2pChatTypeMessage));
+        await capture('chat');
+        // The same at 320 points.
+        tester.view.physicalSize = const Size(640, 1688);
+        await settle();
+        await reveal(find.text(l10n.p2pChatTypeMessage));
+        await capture('chat-320');
+        tester.view.physicalSize = const Size(780, 1688);
+        await settle();
+        // A send held, with what follows it, until the test lets it go: its wait.
+        final post = Completer<void>();
+        coordinator.onRequest = (request) {
+          if (request.url.path == '/api/chat/' && request.body != null) {
+            coordinator.hold = post.future;
+          }
+        };
+        await type(fr ? 'Reçu, merci !' : 'Received, thank you!');
+        await pressSend();
+        final sending = l10n.p2pChatSending(coordinator.coordinator.longAlias);
+        await waitFor(find.text(sending));
+        await capture('chat-envoi');
+        coordinator
+          ..onRequest = null
+          ..hold = null;
+        post.complete();
+        await nextRead();
+        // A message whose answer is lost and that the next read does not show: not confirmed, sent again only on the user's tap.
+        Map<String, Object?>? hidden;
+        coordinator
+          ..failNext(ScriptedRequest.chatPost, ScriptedFault.answerLost)
+          ..onRequest = (request) {
+            if (request.url.path == '/api/chat/' &&
+                request.body == null &&
+                hidden == null &&
+                coordinator.chat.isNotEmpty) {
+              hidden = coordinator.chat.removeLast();
+            }
+          };
+        await type(fr ? 'Avez-vous reçu ?' : 'Did you get it?');
+        await pressSend();
+        await waitFor(find.text(l10n.p2pChatSendAgain));
+        coordinator.onRequest = null;
+        await reveal(find.text(l10n.p2pChatSendAgain));
+        await capture('chat-non-confirme');
+        await tester.tap(find.text(l10n.p2pChatSendAgain));
+        await nextRead();
+        // A text over the limit: said as it is typed.
+        await type('x' * 3300);
+        await reveal(find.text(l10n.p2pChatTooLong));
+        await capture('chat-refus');
+        await type('');
+        // A key forged in the maker's name: the breach.
+        final forged = switch (RobotPgpKey.generateWith(
+          maker,
+          now: now,
+          random: Random(94),
+        )) {
+          Ok(:final value) => value.publicKey.armored,
+          Err() => throw StateError('no key'),
+        };
+        coordinator.peerPublicKey = forged;
+        await nextRead();
+        await waitFor(find.text(l10n.p2pChatKeyChanged));
+        await reveal(find.text(l10n.p2pChatKeyChanged));
+        await capture('chat-rupture');
+        // A history too long to read from where the chat is (the coordinator's 4 MiB a page may take).
+        coordinator.chat.add({
+          'index': coordinator.chat.length + 1,
+          'time': now.toIso8601String(),
+          'message': 'x' * (4 * 1024 * 1024 + 1),
+          'nick': maker.nickname,
+        });
+        await nextRead();
+        await waitFor(find.text(l10n.p2pChatHistoryTooLarge));
+        await reveal(find.text(l10n.p2pChatHistoryTooLarge));
+        await capture('chat-trop-long');
+        // « Don't trust, verify »: test values, never a robot's token or key.
+        unawaited(
+          ChatAuditDialog.show(
+            tester.element(find.text(l10n.p2pChatTypeMessage)),
+            coordinator: coordinator.coordinator.longAlias,
+            exported: () async => {
+              'credentials': {
+                'own_public_key': ownKey.armored,
+                'peer_public_key': makerKey.key.publicKey.armored,
+                'encrypted_private_key':
+                    '-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n(test value)\n-----END PGP PRIVATE KEY BLOCK-----',
+                'passphrase': 'test-value-not-a-token',
+              },
+              'messages': const <Object?>[],
+            },
+          ),
+        );
+        await settle();
+        await capture('chat-audit');
+        final back = find.descendant(
+          of: find.byType(ChatAuditDialog),
+          matching: find.text(l10n.p2pCommonGoBack),
+        );
+        await tester.ensureVisible(back);
+        await settle();
+        await tester.tap(back);
+        await settle();
+        // The next takes are new trades: their chats start empty, the maker's key given again.
+        coordinator
+          ..chat.clear()
+          ..peerPublicKey = makerKey.key.publicKey.armored
+          ..moveTo(14);
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pTradeTitleFinished));
+        await backToTab();
+
+        // Take 6: the buyer's straight path (#95): the chat step with « Confirm … sent » and the reference's dialog, the wait for the seller, then the buyer being paid and the trade finished.
         coordinator.backToPublic();
         await take();
         coordinator
@@ -2344,7 +2552,7 @@ void main() {
         await capture('fin-14');
         await backToTab();
 
-        // Take 6: the notices of « Confirm … sent » (#95): a request that lands late (the answer lost, the order still read at 9), then a confirmation whose order expired before it was sent.
+        // Take 7: the notices of « Confirm … sent » (#95): a request that lands late (the answer lost, the order still read at 9), then a confirmation whose order expired before it was sent.
         coordinator.backToPublic();
         await take();
         coordinator
@@ -2389,6 +2597,157 @@ void main() {
         await capture('fin-avis-non-envoye');
         await backToTab();
 
+        // Take 7: « Payment failed? » (#95): at 10, its button and the reference's dialog with its wait; back at 9, « Order options », the collaborative cancel asked by this robot, then accepted by the peer.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9);
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        coordinator.moveTo(10);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndPaymentFailed));
+        await capture('fin-10-paiement-echoue');
+        // « Order options » at 10: « Collaborative Cancel » off, and the reference's reason.
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options-10');
+        Navigator.of(tester.element(find.text(l10n.p2pEndOrderOptions))).pop();
+        await settle();
+        await tester.ensureVisible(find.text(l10n.p2pEndPaymentFailed));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndPaymentFailed));
+        await settle();
+        await capture('fin-annuler-confirmation');
+        await tester.pump(const Duration(seconds: 61));
+        await tester.ensureVisible(find.text(l10n.p2pEndConfirm));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndConfirm));
+        await waitFor(find.text(fiatSent));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options');
+        await tester.tap(find.text(l10n.p2pEndCollabCancel));
+        await settle();
+        await capture('fin-annulation-dialogue');
+        // The ask held by the coordinator, so that its wait is captured; then it lands after the read that follows it.
+        final askHeld = Completer<void>();
+        coordinator
+          ..hold = askHeld.future
+          ..failNext(ScriptedRequest.cancel, ScriptedFault.landsLate);
+        await tester.tap(find.text(l10n.p2pEndCollabAsk));
+        await waitFor(
+          find.text(
+            l10n.p2pEndStepSendingRequest(coordinator.coordinator.longAlias),
+          ),
+        );
+        await settle();
+        await capture('fin-annulation-attente');
+        coordinator.hold = null;
+        askHeld.complete();
+        await waitFor(find.text(l10n.p2pEndUnknownRequest));
+        await settle();
+        await capture('fin-avis-demande-inconnue');
+        coordinator.landLate();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndCollabAskedAlert));
+        await settle();
+        await capture('fin-annulation-demandee');
+        coordinator.peerAcceptsCancel();
+        await nextRead();
+        await waitFor(find.text(l10n.p2pOrderCancelled));
+        await backToTab();
+
+        // Take 8: the collaborative cancel asked by the peer first: its alert, then « Accept Cancelation » on the user's tap.
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9)
+          ..peerAsksToCancel();
+        await nextRead();
+        await waitFor(find.textContaining(l10n.p2pEndCollabPeerAlert('')));
+        await settle();
+        await capture('fin-annulation-pair');
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndCollabCancel));
+        await settle();
+        await capture('fin-annulation-accepter');
+        await tester.tap(find.text(l10n.p2pEndCollabAccept));
+        await waitFor(find.text(l10n.p2pOrderCancelled));
+        await backToTab();
+
+        // Take 9: « Open Dispute » (#95): its time come (the chat ends in an hour), the reference's dialog, the dispute opened (11), both statements in (16), then won (17).
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9)
+          ..moveDeadline(coordinator.clock().add(const Duration(hours: 1)));
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options-litige');
+        await tester.tap(find.text(l10n.p2pEndOpenDispute));
+        await settle();
+        await capture('fin-litige-dialogue');
+        // The dispute's answer held, so that its step is captured.
+        coordinator.failNext(
+          ScriptedRequest.dispute,
+          ScriptedFault.answerDelayed,
+        );
+        await tester.ensureVisible(find.text(l10n.p2pEndAgreeDispute));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndAgreeDispute));
+        await waitFor(
+          find.text(
+            l10n.p2pEndStepSendingDispute(coordinator.coordinator.longAlias),
+          ),
+        );
+        await settle();
+        await capture('fin-litige-envoi');
+        coordinator.deliverDelayed();
+        await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
+        await settle();
+        await capture('fin-litige-11');
+        // The watch reads every 100 s at 11 and every 300 s at 16 (the reference's cadence).
+        Future<void> slowRead(int seconds) async {
+          for (var i = 0; i < seconds ~/ 10 + 1; i++) {
+            await tester.pump(const Duration(seconds: 10));
+            await settle();
+          }
+        }
+
+        coordinator.moveTo(16);
+        await slowRead(100);
+        await waitFor(find.text(l10n.p2pEndDisputeWaitResolution));
+        await settle();
+        await capture('fin-litige-16');
+        coordinator.moveTo(17);
+        await slowRead(300);
+        await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeWon));
+        await settle();
+        await capture('fin-litige-17');
+        await backToTab();
+
+        // Take 10: a dispute lost (18).
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(11);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
+        coordinator.moveTo(18);
+        await slowRead(100);
+        await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeLost));
+        await settle();
+        await capture('fin-litige-18');
+        await backToTab();
+
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.
         coordinator.backToPublic();
         await take();
@@ -2410,6 +2769,52 @@ void main() {
 }
 
 const _frame = ValueKey('p2p-capture-frame');
+
+/// The key work of the app, but a new robot's key dated by the screen's clock, a day back, as the app dates it by the system's: the captures' chat signs and verifies at that clock (#93).
+final class _DatedRobotKeys implements RobotKeyComputePort {
+  final DateTime Function() now;
+
+  static const _keys = IsolateRobotKeyCompute();
+
+  _DatedRobotKeys(this.now);
+
+  @override
+  generate(identity) async => switch (RobotPgpKey.generateWith(
+    identity,
+    now: now(),
+    random: Random.secure(),
+  )) {
+    Ok(:final value) => Ok(value),
+    Err() => throw StateError('the screen\'s clock is outside a key\'s dates'),
+  };
+
+  @override
+  prove(robot) => _keys.prove(robot);
+
+  @override
+  unlock(key, identity) => _keys.unlock(key, identity);
+
+  @override
+  decryptChat(key, jobs, {required now}) =>
+      _keys.decryptChat(key, jobs, now: now);
+
+  @override
+  composeNostrChat(
+    sender, {
+    required order,
+    required coordinator,
+    required network,
+    required text,
+    required now,
+  }) => _keys.composeNostrChat(
+    sender,
+    order: order,
+    coordinator: coordinator,
+    network: network,
+    text: text,
+    now: now,
+  );
+}
 
 /// The coordinators of the trade captures: Temple of Sats is [temple], the scripted coordinator of the test seam once the test knows the robots of the key it drew, Lake answers a book of one range order of the test, the others an empty book; every invoice is read by [temple]'s decoder.
 final class _TradeTransport implements CoordinatorTransport, Bolt11Decoder {
@@ -2639,4 +3044,17 @@ final class _CaptureWallet implements P2pWalletPort {
       P2pWalletPaymentFound(payment: payment, progress: _progress),
     _ => null,
   });
+
+  // The payout's wallet button (#90) is captured with its own pull request.
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) async => const Err(P2pWalletUnavailable());
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) async => const Err(P2pWalletUnavailable());
 }

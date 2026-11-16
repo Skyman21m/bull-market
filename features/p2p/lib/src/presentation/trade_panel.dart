@@ -43,6 +43,13 @@ enum TradePrompt {
   chat,
   sendingSats,
   finished,
+
+  /// 11 and later, read-only (#95, design note § 2.7): a dispute opened, this robot's statement not in (`Prompts/Dispute.tsx`, whose statement form comes in a later phase); received (`Prompts/DisputeWaitPeer.tsx`); both statements in, 16 (`DisputeWaitResolution.tsx`); won, 17 for a taker (`DisputeWinner.tsx`); lost, 18 (`DisputeLoser.tsx`).
+  disputeOpen,
+  disputeWaitPeer,
+  disputeWaitResolution,
+  disputeWon,
+  disputeLost,
   later,
 }
 
@@ -212,6 +219,11 @@ final class TradeContract extends TradeView {
     Chatting(role: TradeRole.buyer) => TradePrompt.chat,
     SendingSats(role: TradeRole.buyer) => TradePrompt.sendingSats,
     Succeeded() => TradePrompt.finished,
+    InDispute(statementSubmitted: true) => TradePrompt.disputeWaitPeer,
+    InDispute() => TradePrompt.disputeOpen,
+    WaitingDisputeResolution() => TradePrompt.disputeWaitResolution,
+    DisputeWon() => TradePrompt.disputeWon,
+    DisputeLost() => TradePrompt.disputeLost,
     Expired() => TradePrompt.expired,
     _ => TradePrompt.later,
   };

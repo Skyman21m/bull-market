@@ -8,7 +8,7 @@ import 'package:test/test.dart';
 /// What the shell's side of the wallet port, `lib/features/p2p_wallet` of the app (#100), may reach: reads of the wallet, the swap service's quote and, in one file only, the payment.
 ///
 /// It is an allow-list, pinned literally: every import of the feature, conditional alternatives included, is one of its own files, one of [_shellImports], or one of the imports [_perFileImports] gives that file alone; every member, constructor and type its code names, every label of a named argument it passes and every field a pattern of it reads, is one of [_shellVocabulary] or of the names [_perFile] gives that file alone; and every name of these lists is used, each per-file name in its own file, so that nothing is allowed by a stale entry.
-/// The names that commit funds or trigger a signature, [_fundNames] (creating an order, signing, saving a signed payin, marking it, broadcasting, and the receive address sent as the refund destination), are allowed in the pay use case's file only (`domain/usecases/pay_checked_invoice_usecase.dart`, reviewed as money code and key material): no other file of the feature names any of them, whatever object it reaches them through. The reads of the payment (the wallet's records of its swap orders, its decoder of invoices) have per-file lists of their own; the shared list holds no name of the wallet's code that the quote of #103 did not already need. An `extension`, an `extension type`, a `mixin`, an `extends` or a `with` counts as a name too, none of them listed: through them a member could be reached with an implicit `this`, unseen (the second review's evasion file, a fixture below). A label allows the argument, not its value: the feature passes no `sync:` to the wallet's reader, so `sync: true` fails as any `sync:` does. Any other name of the wallet's code (an order, a signature, a broadcast, a sync, a new address) fails it, whatever object it is reached through.
+/// The names that commit funds or trigger a signature, [_fundNames] (creating an order, signing, saving a signed payin, marking it, broadcasting, and the receive address sent as the refund destination), are allowed in the pay use case's file only (`domain/usecases/pay_checked_invoice_usecase.dart`, reviewed as money code and key material), but for the payout's receiving (#90), [_receiveFundNames]: `createOrder` and `GetReceiveAddressUsecase` in the wallet's invoice use case (a receive order, paid to a new address of the wallet), `GetReceiveAddressUsecase` in its address use case; no other file of the feature names any of them, whatever object it reaches them through. The reads of the payment (the wallet's records of its swap orders, its decoder of invoices) have per-file lists of their own; the shared list holds no name of the wallet's code that the quote of #103 did not already need. An `extension`, an `extension type`, a `mixin`, an `extends` or a `with` counts as a name too, none of them listed: through them a member could be reached with an implicit `this`, unseen (the second review's evasion file, a fixture below). A label allows the argument, not its value: the feature passes no `sync:` to the wallet's reader, so `sync: true` fails as any `sync:` does. Any other name of the wallet's code (an order, a signature, a broadcast, a sync, a new address) fails it, whatever object it is reached through.
 /// It lives in `features/p2p`, whose tests have the analyzer, and reads the app's files from here, as `trade_money_calls_architecture_test.dart` reads the integration tests: the app has no analyzer among its dependencies. The sources are parsed without resolution: comments and strings are not code.
 /// It cannot see a name used bare (a top-level function or variable of an allowed import named without a call or a dot, such as one torn off under an allowed local name), nor what an allowed member does: the allowed members are the quote of `SwapFacade`, the `execute` of the readers the feature calls, and the build and fee read of an unsigned transaction, read in the reviews of this pull request.
 /// A pattern's field counts as a name too (`case LiquidWalletRepository(signPset: final sign)` tears a method off as surely as `.signPset` does).
@@ -76,7 +76,11 @@ void main() {
       expect(_shellVocabulary.intersection(_fundNames), isEmpty);
       for (final MapEntry(key: path, value: names) in _perFile.entries) {
         if (path != pay) {
-          expect(names.intersection(_fundNames), isEmpty, reason: path);
+          expect(
+            names.intersection(_fundNames),
+            _receiveFundNames[path] ?? isEmpty,
+            reason: path,
+          );
         }
       }
       expect(_perFileImports[pay], {
@@ -85,13 +89,29 @@ void main() {
       });
     });
 
+    test(
+      'the payout\'s receiving names two of them, in its two files, and these alone (#90)',
+      () {
+        // The invoice of the wallet creates an order at the swap service, paid to a new address of the Instant Payments wallet; the address of the Bitcoin wallet is revealed: neither signs, saves a payin, marks or broadcasts anything, nor moves the user's funds.
+        expect(_receiveFundNames, {
+          'domain/usecases/receive_wallet_invoice_usecase.dart': {
+            'createOrder',
+            'GetReceiveAddressUsecase',
+          },
+          'domain/usecases/receive_wallet_address_usecase.dart': {
+            'GetReceiveAddressUsecase',
+          },
+        });
+      },
+    );
+
     test('no other file of the feature names any of them', () {
       expect(sources.keys, contains(pay));
       for (final MapEntry(key: path, value: source) in sources.entries) {
         if (path == pay) continue;
         expect(
           _vocabularyOf([source]).intersection(_fundNames),
-          isEmpty,
+          _receiveFundNames[path] ?? isEmpty,
           reason: path,
         );
       }
@@ -373,7 +393,7 @@ Future<void> leak(String pset) async {
     });
 
     test('each member that would move funds is outside the lists', () {
-      // The names that commit funds are allowed in the pay use case's file only, never in the shared list; none of the others is allowed anywhere.
+      // The names that commit funds are allowed in the pay use case's file only (and two of them in the payout's receiving), never in the shared list; none of the others is allowed anywhere, but `generateNew` in the payout's receiving files.
       for (final name in _fundNames) {
         expect(_shellVocabulary, isNot(contains(name)), reason: name);
         expect(
@@ -384,8 +404,36 @@ Future<void> leak(String pset) async {
       }
       final everywhere = {
         _shellVocabulary,
-        for (final names in _perFile.values) names,
+        for (final MapEntry(key: path, value: names) in _perFile.entries)
+          if (!_receiveFundNames.containsKey(path)) names,
       }.expand((names) => names).toSet();
+      // The payout's receiving reveals a new address (`generateNew: true`, owner's decision of 2026-11-15) and nothing else of these.
+      for (final path in _receiveFundNames.keys) {
+        expect(
+          (_perFile[path] ?? const <String>{}).intersection({
+            'signPsbt',
+            'replacePreparedPayin',
+            'refreshOrder',
+            'refreshOrders',
+            'getPendingOrders',
+            'broadcast',
+            'broadcastTransaction',
+            'broadcastPsbt',
+            'consolidate',
+            'generateNewReceiveAddress',
+            'getNewAddress',
+            'sendPayment',
+            'SyncWalletUsecase',
+            'SpFacade',
+            'dynamic',
+            'noSuchMethod',
+            'apply',
+          }),
+          isEmpty,
+          reason: path,
+        );
+        expect(_perFile[path], contains('generateNew'), reason: path);
+      }
       for (final name in [
         'signPsbt',
         'replacePreparedPayin',
@@ -741,6 +789,17 @@ const _fundNames = {
 };
 
 /// The names each of these files may use besides [_shellVocabulary], and no other file: the wallet's code each one needs, and its own private helpers.
+/// The names of [_fundNames] that the payout's receiving (#90) needs, each in its one file: creating an order (a receive order, paid to the wallet) and revealing a receive address.
+const _receiveFundNames = <String, Set<String>>{
+  'domain/usecases/receive_wallet_invoice_usecase.dart': {
+    'createOrder',
+    'GetReceiveAddressUsecase',
+  },
+  'domain/usecases/receive_wallet_address_usecase.dart': {
+    'GetReceiveAddressUsecase',
+  },
+};
+
 const _perFile = <String, Set<String>>{
   // The payment: the names that commit funds, and what it reads of the order it creates and of the transaction it builds.
   'domain/usecases/pay_checked_invoice_usecase.dart': {
@@ -862,7 +921,7 @@ const _perFile = <String, Set<String>>{
   },
   // The record of the quotes given.
   'domain/entities/issued_quotes.dart': {'_QuoteUse', 'Expando', 'used'},
-  // The composition of the feature: the only file that resolves from the locator, and with the facade the only one that names the two use cases that quote and pay, so that no other file can reach them.
+  // The composition of the feature: the only file that resolves from the locator, and with the facade the only one that names the use cases that quote, pay and receive, so that no other file can reach them.
   'p2p_wallet_locator.dart': {
     'GetIt',
     'IssuedQuotes',
@@ -870,12 +929,71 @@ const _perFile = <String, Set<String>>{
     'P2pWalletFacade',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
+    'ReceiveWalletAddressUsecase',
+    'ReceiveWalletInvoiceUsecase',
     'registerFactory',
     'registerLazySingleton',
   },
   'public/p2p_wallet_facade.dart': {
+    'P2pWalletAddress',
+    'P2pWalletInvoice',
+    'payout',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
+    'ReceiveWalletAddressUsecase',
+    'ReceiveWalletInvoiceUsecase',
+  },
+  // The payout's receiving (#90): the wallet's invoice, a receive order at the swap service paid to a new address of the Instant Payments wallet, and the wallet's earlier invoices read to give one again. Of the names that commit funds, `createOrder` and `GetReceiveAddressUsecase` alone ([_receiveFundNames]).
+  'domain/usecases/receive_wallet_invoice_usecase.dart': {
+    '_bounded',
+    '_delay',
+    '_invoiceOf',
+    '_make',
+    '_mayReuse',
+    '_refusalOf',
+    '_toTheSecond',
+    'any',
+    'awaitingUserConfirmation',
+    'confirmationDeadline',
+    'create',
+    'createOrder',
+    'delayed',
+    'destination',
+    'destinationAddress',
+    'destinationWalletId',
+    'fallbackAddress',
+    'generateNew',
+    'getOrders',
+    'GetReceiveAddressUsecase',
+    'isAppUpdateRequired',
+    'isBefore',
+    'lightningInvoice',
+    'localId',
+    'localStatus',
+    'millisecondsSinceEpoch',
+    'order',
+    'OrderSwapEnvironment',
+    'OrderSwapQuote',
+    'OrderSwapRecord',
+    'P2pWalletAnotherInvoiceWaiting',
+    'P2pWalletInvoice',
+    'payinAmountSat',
+    'payoutAmountSat',
+    'purpose',
+    'quotedCounterpartAmountSat',
+    'receiveLightning',
+    'received',
+    'seconds',
+    'toUtc',
+  },
+  // The payout's receiving (#90): a new address of the default Bitcoin wallet. Of the names that commit funds, `GetReceiveAddressUsecase` alone.
+  'domain/usecases/receive_wallet_address_usecase.dart': {
+    'generateNew',
+    'GetReceiveAddressUsecase',
+    'isBitcoin',
+    'onlyBitcoin',
+    'P2pWalletAddress',
+    'P2pWalletNoBitcoinWallet',
   },
   'domain/usecases/quote_invoice_payment_usecase.dart': {
     'IssuedQuotes',
@@ -891,6 +1009,12 @@ const _perFileImports = <String, Set<String>>{
   },
   'data/wallet_invoice_repository_impl.dart': {'package:bull_sdk/boltz.dart'},
   'p2p_wallet_locator.dart': {'package:get_it/get_it.dart'},
+  'domain/usecases/receive_wallet_invoice_usecase.dart': {
+    'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
+  },
+  'domain/usecases/receive_wallet_address_usecase.dart': {
+    'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
+  },
 };
 
 /// Each file of [sources] that names what neither [_shellVocabulary] nor its own entry of [_perFile] allows, with those names.

@@ -2912,6 +2912,43 @@ void main() {
       });
     },
   );
+
+  group('the post and the Nostr copy (#94)', () {
+    test(
+      'the post hands its onSending to the transport, which calls it when it sends',
+      () async {
+        final transport = _answering(Ok(jsonResponse(_page(messages: []))));
+        var calls = 0;
+        void sending() => calls++;
+        await CoordinatorClient(transport).postChat(
+          identity: _us,
+          lastRead: await _readAt(9),
+          message: _outgoing('Hello'),
+          offset: 0,
+          onSending: sending,
+        );
+        expect(transport.requests.single.onSending, same(sending));
+      },
+    );
+
+    test(
+      'a post refused before anything leaves gives the transport nothing, so no onSending',
+      () async {
+        final transport = _answering(Ok(jsonResponse(_page(messages: []))));
+        var calls = 0;
+        final refused = await CoordinatorClient(transport).postChat(
+          identity: _us,
+          lastRead: await _readAt(11),
+          message: _outgoing('Hello'),
+          offset: 0,
+          onSending: () => calls++,
+        );
+        expect(refused, isA<Err<ChatPage, OrderActionFailure>>());
+        expect(transport.requests, isEmpty);
+        expect(calls, 0);
+      },
+    );
+  });
 }
 
 const _remove = Object();

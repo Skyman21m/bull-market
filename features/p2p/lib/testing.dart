@@ -25,6 +25,7 @@ import 'src/domain/p2p_tor_state.dart';
 import 'src/domain/p2p_waits.dart';
 import 'src/domain/repositories/garage_key_repository.dart';
 import 'src/domain/repositories/robot_binding_repository.dart';
+import 'src/domain/robot_key_compute_port.dart';
 import 'src/domain/trade/bolt11.dart';
 import 'src/testing/bolt11_test_invoice.dart';
 import 'src/p2p_locator.dart';
@@ -44,15 +45,20 @@ export 'package:robosats/robosats.dart'
         Federation,
         GarageKey,
         NostrKeyDerivation,
+        OutgoingChatMessage,
+        PgpPublicKey,
         RobotIdentity,
         RobotKeysRefused,
         RobotPgpKey,
         RobotPgpKeyNotProven,
         RobotUnknown,
+        UnlockedRobotPgpKey,
         UnprovenCoordinatorRobot;
 
 // The port that makes and proves a robot's key pair in isolates of their own, for the live test to prove what a coordinator returns on the path of the app.
 export 'src/data/isolate_robot_key_compute.dart' show IsolateRobotKeyCompute;
+// The port of that work, for a test that gives its own (#93).
+export 'src/domain/robot_key_compute_port.dart' show RobotKeyComputePort;
 export 'src/domain/p2p_shuffle.dart' show P2pShuffle;
 // BOLT11 invoices made by the tests (never real ones), for the tests of the app's decoder against the trade's checks (#86).
 export 'src/testing/bolt11_test_invoice.dart'
@@ -69,6 +75,8 @@ export 'src/domain/map_marks.dart' show MapGroup, MapMark, MapPin;
 // The world map of the « Map » view and its pinned source, which the app's tests load through the app's own asset bundle.
 export 'src/domain/world_map.dart' show WorldMap, WorldMapSource;
 export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
+// « Don't trust, verify » over an export the test gives, for the app's captures (#93): test values, never a robot's.
+export 'src/ui/trade/chat_actions.dart' show ChatAuditDialog;
 
 /// Registers what [P2pFeature.route] needs in [locator]: every coordinator request goes to [transport], Tor reports [torStates] to each new listener, and the screens read [clock].
 ///
@@ -78,6 +86,7 @@ export 'src/ui/map_chart_view.dart' show MapChartPainter, MapLayout;
 /// With [garageKeys], a handle on a vault the test made over its own keystore, the Garage is registered as the app registers it, over a database in memory; without it, the Garage is disabled, as in a feature set up without the vault's handle.
 /// The trade's invoices are decoded by [bolt11Decoder], a decoder of the tests' invoices by default.
 /// With [wallet], a port the test wrote (never the shell's), the bond can be paid from the wallet in the trade screen (#100), as when the shell lends its port.
+/// The chat's messages are published over Nostr to [relays], a port the test wrote; by default to none, every publication answering « failed » at once.
 /// With [databaseUnavailable], that database cannot be opened, as when the directory the shell gives cannot be read: every record and read of it fails, a key drawn is stored of unknown history, and a delete asks the PIN.
 @visibleForTesting
 void setUpP2pForTesting(
@@ -91,6 +100,8 @@ void setUpP2pForTesting(
   bool databaseUnavailable = false,
   Bolt11Decoder? bolt11Decoder,
   P2pWalletPort? wallet,
+  RobotKeyComputePort? robotKeys,
+  NostrRelayTransport? relays,
 }) {
   final Stream<P2pTorReport> Function() reports = switch ((
     torStates,
@@ -133,10 +144,17 @@ void setUpP2pForTesting(
         ),
       ),
       transport: () => transport,
+      relays: () => relays ?? const _NoRelays(),
       clock: clock,
     );
   }
   if (wallet != null) locator.registerSingleton<P2pWalletPort>(wallet);
+  // The key work of the robots, when the test gives its own (#93: the captures date the robots' keys by the screen's clock, so that the chat's messages sign and verify at it).
+  if (robotKeys != null) {
+    locator
+      ..unregister<RobotKeyComputePort>()
+      ..registerSingleton<RobotKeyComputePort>(robotKeys);
+  }
 }
 
 /// The draw in the middle of the range, which spreads no wait.
@@ -192,7 +210,8 @@ const testPaymentHash =
 /// Each [quote] takes the next answer of [scriptQuote], in order, and each [payInvoice] the next of [scriptPayment]; either fails with a `StateError` when none is left, so that a test never gets an answer it did not write.
 /// Like the real port, [payInvoice] takes a quote once (a quote presented again is `P2pWalletQuoteStale`, without taking an answer) and gives an invoice one attempt: once a payment of a payment hash was answered with a handle (or `P2pWalletBroadcastUnknown`, `P2pWalletPaymentInterrupted`), a later payment of that hash is `P2pWalletPaymentExists` with the progress last set for it (preparing when none), without taking an answer either.
 /// [watchPayment] gives the last progress given to [setProgress] for that payment, then each new one; a refusal ends the stream. [findPayment] answers what [setFound] gave for the hash, `null` otherwise.
-/// It records what it was asked: [balanceRequests], [quoted], [paid] and [found].
+/// Each [newLightningInvoice] takes the next answer of [scriptInvoice], each [newReceiveAddress] the next of [scriptAddress], in order, and fails with a `StateError` when none is left.
+/// It records what it was asked: [balanceRequests], [quoted], [paid], [found], [invoicesAsked] and [addressesAsked].
 @visibleForTesting
 final class FakeP2pWalletPort implements P2pWalletPort {
   Result<Sats, P2pWalletRefusal> _balance;
@@ -251,6 +270,43 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   ) {
     _progress[payment] = progress;
     _progressChanges.add((payment, progress));
+  }
+
+  final _invoices = <Result<P2pWalletInvoice, P2pWalletRefusal>>[];
+  final _addresses = <Result<P2pWalletAddress, P2pWalletRefusal>>[];
+
+  /// The invoices asked, with their network, amount and payout key, in order.
+  final List<(RobosatsNetwork, Sats, String)> invoicesAsked = [];
+
+  /// The networks of the addresses asked, in order.
+  final List<RobosatsNetwork> addressesAsked = [];
+
+  /// Adds the answer of a coming [newLightningInvoice].
+  void scriptInvoice(Result<P2pWalletInvoice, P2pWalletRefusal> answer) =>
+      _invoices.add(answer);
+
+  /// Adds the answer of a coming [newReceiveAddress].
+  void scriptAddress(Result<P2pWalletAddress, P2pWalletRefusal> answer) =>
+      _addresses.add(answer);
+
+  @override
+  Future<Result<P2pWalletInvoice, P2pWalletRefusal>> newLightningInvoice(
+    RobosatsNetwork network,
+    Sats amount, {
+    required String payout,
+  }) async {
+    invoicesAsked.add((network, amount, payout));
+    if (_invoices.isEmpty) throw StateError('No invoice scripted');
+    return _invoices.removeAt(0);
+  }
+
+  @override
+  Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
+    RobosatsNetwork network,
+  ) async {
+    addressesAsked.add(network);
+    if (_addresses.isEmpty) throw StateError('No address scripted');
+    return _addresses.removeAt(0);
   }
 
   /// Sets what [findPayment] answers for [paymentHash].
@@ -367,6 +423,18 @@ final class FakeP2pWalletPort implements P2pWalletPort {
 @visibleForTesting
 CoordinatorTransport liveCoordinatorTransportForTesting(GetIt locator) =>
     locator<TorCoordinatorTransport>();
+
+/// No relay: every publication fails at once, and nothing leaves the test.
+final class _NoRelays implements NostrRelayTransport {
+  const _NoRelays();
+
+  @override
+  Future<NostrRelayOutcome> publish(
+    Uri relay,
+    OutgoingNostrChatMessage message, {
+    required RobotSessionKey robot,
+  }) async => const NostrRelayFailed();
+}
 
 final class _NoSessions implements CoordinatorSessionsPort {
   const _NoSessions();

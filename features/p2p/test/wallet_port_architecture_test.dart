@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  test('the members of the port are these five, written out', () {
+  test('the members of the port are these seven, written out', () {
     // A member removed from the list would stop being watched without a sign: the list is pinned here, not looped over itself.
     expect(_portMembers, {
       'instantBalance',
@@ -39,8 +39,28 @@ void main() {
       'payInvoice',
       'watchPayment',
       'findPayment',
+      'newLightningInvoice',
+      'newReceiveAddress',
     });
   });
+
+  test(
+    'only the payout\'s use case names a member of the payout\'s receiving',
+    () {
+      // The wallet's invoice and address for the payout (#90): `PayoutFromWalletUsecase` is the one trade use case that asks them.
+      expect(_receiveMembers, {'newLightningInvoice', 'newReceiveAddress'});
+      expect(
+        [
+          for (final MapEntry(key: path, value: source) in sources.entries)
+            if ((_Names(
+              _receiveMembers,
+            )..visit(_parse(source))).named.isNotEmpty)
+              path,
+        ],
+        ['lib/src/domain/usecases/trade/payout_from_wallet_usecase.dart'],
+      );
+    },
+  );
 
   test('only the bond\'s use case names a member of the payment', () {
     // The bond's panel (#100, W4): `PayBondFromWalletUsecase` is the one trade use case that pays, follows and finds a payment; the escrow's (#97) adds its own here.
@@ -374,7 +394,12 @@ const _portMembers = {
   'payInvoice',
   'watchPayment',
   'findPayment',
+  'newLightningInvoice',
+  'newReceiveAddress',
 };
+
+/// The members of the payout's receiving (#90): the wallet's invoice, which creates an order at the swap service, and its address.
+const _receiveMembers = {'newLightningInvoice', 'newReceiveAddress'};
 
 /// The members of the payment, which no file names until the bond's panel (#100, W4) adds its trade use case.
 const _paymentMembers = {'payInvoice', 'watchPayment', 'findPayment'};

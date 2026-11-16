@@ -224,7 +224,7 @@ final class TradeWatchSession {
     final TradeAnswer answer;
     switch (read) {
       case Err(:final failure):
-        _failed(trade, failure);
+        await _failed(trade, failure);
         return;
       case Ok(value: final result):
         switch (TradeAnswer.ofRead(result)) {
@@ -232,7 +232,7 @@ final class TradeWatchSession {
             answer = told;
           case null:
             // An answer that says nothing of the trade keeps the last status.
-            _failed(trade, switch (result) {
+            await _failed(trade, switch (result) {
               Err(:final failure) => failure,
               Ok() => null,
             });
@@ -271,10 +271,15 @@ final class TradeWatchSession {
     if (next.seen.status.isTerminal) await _finish();
   }
 
-  void _failed(OpenTrade trade, Failure? failure) {
+  /// A read that said nothing of the trade: the last status stays, or the newer one an action of the trade stored meanwhile (its fresh read before sending, its read after), which this subscription never read itself ([TradeReader.newestStored]); at an end so adopted, the stream ends, as after a read of that end (reviews of #161).
+  Future<void> _failed(OpenTrade trade, Failure? failure) async {
     _failedReads++;
     _lastReadFailure = failure;
-    _emitStatus(trade, null);
+    final newest = _reader.newestStored(trade);
+    // The cadence and the next read go on from it.
+    _trade = newest;
+    _emitStatus(newest, null);
+    if (newest.seen.status.isTerminal) await _finish();
   }
 
   /// The next read, the cadence's delay after the last one ended; none at a terminal position.

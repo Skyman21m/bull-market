@@ -384,4 +384,374 @@ void main() {
     );
     expect(errors, hasLength(4));
   });
+
+  group('« Payment failed? »', () {
+    test(
+      'sent once from 10, after a fresh read; 9 shown once recorded',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        final result = await app.chat.undoFiatSent(record, ten);
+        final outcome = switch (result) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(outcome, isA<ChatStepDone>());
+        expect(outcome.seen.status, isA<Chatting>());
+        expect(fiatSentShown(outcome.seen), isFalse);
+        expect(app.coordinator.status, 9);
+        expect(app.coordinator.revertedFiatSent, isTrue);
+        expect(sent(app, ScriptedRequest.undoConfirm), 1);
+      },
+    );
+
+    test('not offered at 9: nothing read or sent', () async {
+      final (app, record, nine) = await at();
+      app.coordinator.requests.clear();
+      expect(
+        await app.chat.undoFiatSent(record, nine),
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepNotOffered>(),
+        ),
+      );
+      expect(app.coordinator.requests, isEmpty);
+    });
+
+    test(
+      'the seller confirmed meanwhile: nothing sent, the status now',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        app.coordinator.moveTo(13);
+        expect(
+          await app.chat.undoFiatSent(record, ten),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepStatusMoved>(),
+          ),
+        );
+        expect(sent(app, ScriptedRequest.undoConfirm), 0);
+      },
+    );
+
+    test(
+      'a request that lands late, then a second tap: done, nothing sent again',
+      () async {
+        final (app, record, ten) = await at(status: 10);
+        app.coordinator.failNext(
+          ScriptedRequest.undoConfirm,
+          ScriptedFault.landsLate,
+        );
+        final first = switch (await app.chat.undoFiatSent(record, ten)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(first, isA<ChatStepOutcomeUnknown>());
+        expect(fiatSentShown(first.seen), isTrue);
+        app.coordinator.landLate();
+        final second = switch (await app.chat.undoFiatSent(
+          first.record,
+          first.seen,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(second, isA<ChatStepDone>());
+        expect(fiatSentShown(second.seen), isFalse);
+        expect(sent(app, ScriptedRequest.undoConfirm), 1);
+      },
+    );
+  });
+
+  group('« Open Dispute »', () {
+    /// [record]'s trade read again by the watch, once the coordinator moved the step's end to [deadlineIn] from now.
+    Future<TradeSeen> readWithEnd(
+      TradeHarness app,
+      TradeRecord record,
+      Duration deadlineIn,
+    ) async {
+      app.coordinator.moveDeadline(app.now.add(deadlineIn));
+      final run = app.watchOf(record);
+      await app.elapse(const Duration(seconds: 5));
+      final last = run.lastStatus;
+      await run.subscription.cancel();
+      expect(last.stored, isTrue);
+      return last.seen;
+    }
+
+    test(
+      'before its time (the chat\'s end less 18 hours, by this device\'s clock): refused with what is left, nothing read or sent',
+      () async {
+        final (app, record, nine) = await at();
+        // The chat's 24 hours: open in 6 hours.
+        expect(ChatStepAction.dispute.offeredAt(nine), isTrue);
+        app.coordinator.requests.clear();
+        final result = await app.chat.startDispute(record, nine);
+        expect(
+          result,
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepTooEarly>()
+                .having(
+                  (t) => t.opensAt,
+                  'opens at',
+                  (nine.status as Chatting).deadline.subtract(
+                    const Duration(hours: 18),
+                  ),
+                )
+                .having(
+                  (t) => t.left,
+                  'left',
+                  allOf(
+                    greaterThan(const Duration(hours: 5, minutes: 59)),
+                    lessThanOrEqualTo(const Duration(hours: 6)),
+                  ),
+                )
+                // From the status shown, before any read: no read to show.
+                .having((t) => t.seen, 'seen', isNull),
+          ),
+        );
+        expect(app.coordinator.requests, isEmpty);
+      },
+    );
+
+    for (final status in [9, 10]) {
+      test(
+        'at $status, its time come: sent once after a fresh read; the dispute shown once recorded',
+        () async {
+          final (app, record, _) = await at(status: status);
+          final seen = await readWithEnd(app, record, const Duration(hours: 1));
+          app.coordinator.requests.clear();
+          final steps = <ChatStepProgress>[];
+          final outcome = switch (await app.chat.startDispute(
+            record,
+            seen,
+            onProgress: steps.add,
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(outcome, isA<ChatStepDone>());
+          expect(outcome.seen.status, isA<InDispute>());
+          expect(outcome.seen.stored, isTrue);
+          expect(app.coordinator.status, 11);
+          expect(app.coordinator.received, [
+            ScriptedRequest.order,
+            ScriptedRequest.dispute,
+            ScriptedRequest.order,
+          ]);
+          expect(steps, [
+            ChatStepProgress.waitingForOrder,
+            ChatStepProgress.readingOrder,
+            ChatStepProgress.sending,
+            ChatStepProgress.readingAfter,
+          ]);
+        },
+      );
+    }
+
+    test(
+      'the fresh read shows a later end: refused as too early with that read, for the screen to show it, nothing sent (review of #156)',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        final later = app.now.add(const Duration(hours: 30));
+        app.coordinator.moveDeadline(later);
+        expect(
+          await app.chat.startDispute(record, seen),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepTooEarly>()
+                .having(
+                  (t) => switch (t.seen?.status) {
+                    Chatting(:final deadline) =>
+                      deadline.difference(later).abs(),
+                    _ => null,
+                  },
+                  'the fresh read\'s end, to the second',
+                  lessThan(const Duration(seconds: 1)),
+                )
+                .having((t) => t.seen?.stored, 'stored', isTrue)
+                .having((t) => t.record?.orderId, 'record', record.orderId),
+          ),
+        );
+        expect(sent(app, ScriptedRequest.dispute), 0);
+      },
+    );
+
+    test(
+      'refused by the coordinator as too early (1054): not done, said as such, nothing sent again',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        // The coordinator's end moves later as the request arrives: its clock is the judge.
+        app.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            app.coordinator.moveDeadline(
+              app.now.add(const Duration(hours: 30)),
+            );
+          }
+        };
+        final outcome = switch (await app.chat.startDispute(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        app.coordinator.onRequest = null;
+        expect(
+          outcome,
+          isA<ChatStepNotDone>().having(
+            (n) => n.cause,
+            'cause',
+            isA<DisputeTooEarly>(),
+          ),
+        );
+        expect(outcome.seen.status, isA<Chatting>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+      },
+    );
+
+    test(
+      'an answer lost, the read after shows the dispute: done, nothing sent again',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.failNext(
+          ScriptedRequest.dispute,
+          ScriptedFault.answerLost,
+        );
+        final outcome = switch (await app.chat.startDispute(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(outcome, isA<ChatStepDone>());
+        expect(outcome.seen.status, isA<InDispute>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+      },
+    );
+
+    test(
+      'a request that lands late, then a second tap: done, nothing sent again',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.failNext(
+          ScriptedRequest.dispute,
+          ScriptedFault.landsLate,
+        );
+        final first = switch (await app.chat.startDispute(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(first, isA<ChatStepOutcomeUnknown>());
+        expect(first.seen.status, isA<Chatting>());
+        app.coordinator.landLate();
+        final second = switch (await app.chat.startDispute(
+          first.record,
+          first.seen,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(second, isA<ChatStepDone>());
+        expect(second.seen.status, isA<InDispute>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+      },
+    );
+
+    for (final status in [16, 17, 18]) {
+      test(
+        'the fresh read shows the dispute further on ($status): done, nothing sent (review of #156)',
+        () async {
+          final (app, record, _) = await at();
+          final seen = await readWithEnd(app, record, const Duration(hours: 1));
+          app.coordinator
+            ..moveTo(11)
+            ..moveTo(status);
+          final outcome = switch (await app.chat.startDispute(record, seen)) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(outcome, isA<ChatStepDone>());
+          expect(sent(app, ScriptedRequest.dispute), 0);
+        },
+      );
+    }
+
+    test(
+      'refused by the coordinator as not now (1013, the trade moved on after the fresh read): not done, nothing sent again (review of #156)',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            app.coordinator.moveTo(13);
+          }
+        };
+        final outcome = switch (await app.chat.startDispute(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        app.coordinator.onRequest = null;
+        expect(
+          outcome,
+          isA<ChatStepNotDone>().having(
+            (n) => n.cause,
+            'cause',
+            isA<TradeActionNotNow>().having(
+              (r) => r.fromLastRead,
+              'from the last read',
+              isFalse,
+            ),
+          ),
+        );
+        expect(outcome.seen.status, isA<SendingSats>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+      },
+    );
+
+    test(
+      'the fresh read fails (Tor, the coordinator): refused, nothing sent (review of #156)',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        expect(
+          await app.chat.startDispute(record, seen),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepReadFailed>(),
+          ),
+        );
+        expect(sent(app, ScriptedRequest.dispute), 0);
+      },
+    );
+
+    test(
+      'not offered from a status not marked stored: nothing read or sent',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.requests.clear();
+        expect(
+          await app.chat.startDispute(
+            record,
+            TradeSeen(seen.status, order: seen.order),
+          ),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        expect(app.coordinator.requests, isEmpty);
+      },
+    );
+  });
 }

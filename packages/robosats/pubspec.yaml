@@ -15,6 +15,9 @@ resolution: workspace
 
 dependencies:
   bech32: ^0.2.2
+  # BIP-340 Schnorr signatures of the Nostr events of the chat (#94), by the author of the Nostr protocol; pinned exactly.
+  # 0.3.0, not 0.3.1: 0.3.1 requires pointycastle ^4 while the workspace is on pointycastle ^3 (bip85_entropy, dart_pg); the code of lib/ is identical in both. Move to 0.3.1 with pointycastle 4.
+  bip340: 0.3.0
   convert: ^3.1.2
   crypto: ^3.0.7
   meta: ^1.17.0
