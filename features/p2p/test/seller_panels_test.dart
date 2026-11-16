@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:bull_ui/bull_ui.dart' show BullThemeX;
 import 'package:flutter/material.dart';
@@ -15,6 +17,7 @@ import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
+import 'package:p2p/src/ui/trade/bond_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
 import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:robosats/robosats.dart';
@@ -51,6 +54,15 @@ void main() {
         ten,
         orderJson(15, role: TradeRole.seller),
       ),
+      // « fiat sent » recorded, the coordinator now giving another amount than the one taken: the last screen before the escrow is released.
+      'ten200': await statuses.read(
+        eight,
+        orderJson(
+          10,
+          role: TradeRole.seller,
+          changes: {'amount': '200.00000000'},
+        ),
+      ),
     };
   });
 
@@ -61,6 +73,7 @@ void main() {
     String status, {
     Completer<Result<ChatStepOutcome, ChatStepRefusal>>? received,
     Locale locale = const Locale('en'),
+    FakeTransport? reads,
     double textScale = 1,
     Size size = const Size(390, 844),
   }) async {
@@ -88,16 +101,18 @@ void main() {
           Ok(ChatStepDone(record, seen)),
     )..start();
     addTearDown(cubit.close);
-    final reads = FakeTransport();
+    final transport = reads ?? FakeTransport();
     final page = TradeOrderPageCubit(
       coordinator('temple'),
       RobosatsNetwork.mainnet,
-      FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+      FetchCoordinatorInfoUsecase(CoordinatorClient(transport)).execute,
       FindPublicOrderUsecase(
-        CoordinatorClient(reads, clock: () => testNow),
+        CoordinatorClient(transport, clock: () => testNow),
       ).execute,
     );
     addTearDown(page.close);
+    // As the route does when the trade's page opens.
+    unawaited(page.loadInfo());
     await tester.pumpWidget(
       MaterialApp(
         theme: testTheme,
@@ -156,6 +171,110 @@ void main() {
   );
 
   const received = 'Confirm 100 EUR received';
+
+  testWidgets(
+    '3 for an order in bitcoin: « SWAPPING OUT of Lightning » for the seller',
+    (tester) async {
+      final three = at('three');
+      final bond = three.status;
+      if (bond is! WaitingForTakerBond) fail('not the bond step');
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: BondPanel(
+                record: record,
+                status: bond,
+                seen: three,
+                walletPayment: null,
+                now: tradeNow,
+                swap: true,
+                seller: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('SWAPPING OUT of Lightning'), findsOneWidget);
+      expect(find.text('SWAPPING INTO Lightning'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'the « Order » tab at 3: the reference\'s estimate for a seller, the taker fee off',
+    (tester) async {
+      final info =
+          jsonDecode(
+                File(
+                  '../../packages/robosats/test/fixtures/coordinator/temple-mainnet-info.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, Object?>;
+      await show(
+        tester,
+        'three',
+        reads: FakeTransport(infos: {'temple': info}),
+      );
+      await settle(tester);
+      await tester.tap(find.text('Order').last);
+      await settle(tester);
+      // `computeSats` with the taker fee (0.175 %) as a positive fee and no routing budget, at the pre-take's `satoshis_now` (111,221): 111,026.
+      expect(find.textContaining('111,026'), findsOneWidget);
+      expect(find.textContaining('You send via Lightning'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'refused with 1028: said as the coordinator\'s refusal, never as an order that moved on',
+    (tester) async {
+      final answer = Completer<Result<ChatStepOutcome, ChatStepRefusal>>();
+      await show(tester, 'ten', received: answer);
+      await reveal(tester, find.text(received));
+      await tester.tap(find.text(received));
+      await tester.pumpAndSettle();
+      await reveal(tester, find.text('Confirm'));
+      await tester.tap(find.text('Confirm'));
+      await tester.pump();
+      answer.complete(
+        Ok(
+          ChatStepNotDone(
+            record,
+            at('ten'),
+            cause: const EscrowBelowPayout(fromLastRead: false),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Temple of Sats did not record your confirmation.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('moved on'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    '10, the coordinator giving another amount: the button and the dialog keep the trade\'s terms, and a line gives both figures',
+    (tester) async {
+      await show(tester, 'ten200');
+      expect(find.text(received), findsOneWidget);
+      expect(find.text('Confirm 200 EUR received'), findsNothing);
+      expect(
+        find.text(
+          'Temple of Sats now gives 200 EUR; the order was taken for 100 EUR.',
+        ),
+        findsOneWidget,
+      );
+      await reveal(tester, find.text(received));
+      await tester.tap(find.text(received));
+      await tester.pumpAndSettle();
+      expect(find.text('✅ Confirm you received 100 EUR?'), findsOneWidget);
+    },
+  );
 
   testWidgets('3: the bond, « You are SELLING BTC »', (tester) async {
     await show(tester, 'three');
@@ -358,7 +477,7 @@ void main() {
       await tester.pump();
       expect(
         find.text(
-          'Bull Market does not know yet whether your confirmation went through. It keeps checking.',
+          'Bull Market does not know yet whether your confirmation went through. It keeps reading the order; if the trade does not finish, confirm again: a second confirmation cannot release more than the one escrow.',
         ),
         findsOneWidget,
       );
