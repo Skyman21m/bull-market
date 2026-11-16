@@ -2740,7 +2740,7 @@ class P2pLocalizationsRu extends P2pLocalizations {
 
   @override
   String p2pEndRateHostUnavailable(String coordinator) {
-    return 'Your rating cannot be published: $coordinator gave no permission for it.';
+    return 'Your rating cannot be published: $coordinator could not be asked for permission, or refused it. Open this trade again to try again.';
   }
 
   @override
@@ -2756,7 +2756,9 @@ class P2pLocalizationsRu extends P2pLocalizations {
   String get p2pEndThanksForUsing => 'Thank you for using Robosats!';
 
   @override
-  String get p2pEndImproveIntro => 'Let us know how the platform could improve';
+  String p2pEndImprove(String simplex, String matrix, String github) {
+    return 'Let us know how the platform could improve ($simplex / $matrix / $github)';
+  }
 
   @override
   String get p2pEndImproveSimplex => 'SimpleX';

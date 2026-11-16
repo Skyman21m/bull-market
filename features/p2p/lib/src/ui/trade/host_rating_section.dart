@@ -96,6 +96,34 @@ class _HostRatingSectionState extends State<HostRatingSection> {
     unawaited(context.read<HostRatingCubit>().rate(widget.seen, rating));
   }
 
+  /// « Let us know how the platform could improve (SimpleX / Matrix / Github) »: the translation's sentence, its punctuation included, written with a mark at the place of each name, then each mark replaced by its link.
+  List<InlineSpan> _improveSpans(P2pLocalizations l10n, Color linkColor) {
+    const marks = ['\u0000', '\u0001', '\u0002'];
+    final sentence = l10n.p2pEndImprove(marks[0], marks[1], marks[2]);
+    final spans = <InlineSpan>[];
+    var start = 0;
+    for (var i = 0; i < sentence.length; i++) {
+      final index = marks.indexOf(sentence[i]);
+      if (index < 0) continue;
+      if (i > start) spans.add(TextSpan(text: sentence.substring(start, i)));
+      spans.add(
+        TextSpan(
+          text: _linkTargets[index].$1(l10n),
+          recognizer: _links[index],
+          style: TextStyle(
+            color: linkColor,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      );
+      start = i + 1;
+    }
+    if (start < sentence.length) {
+      spans.add(TextSpan(text: sentence.substring(start)));
+    }
+    return spans;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = P2pLocalizations.of(context);
@@ -195,23 +223,7 @@ class _HostRatingSectionState extends State<HostRatingSection> {
             ),
             Text.rich(
               key: const ValueKey('trade-host-improve'),
-              TextSpan(
-                children: [
-                  TextSpan(text: '${l10n.p2pEndImproveIntro} ('),
-                  for (final (index, (name, _)) in _linkTargets.indexed) ...[
-                    if (index > 0) const TextSpan(text: ' / '),
-                    TextSpan(
-                      text: name(l10n),
-                      recognizer: _links[index],
-                      style: TextStyle(
-                        color: colors.primary,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ],
-                  const TextSpan(text: ')'),
-                ],
-              ),
+              TextSpan(children: _improveSpans(l10n, colors.primary)),
               textAlign: TextAlign.center,
               style: body?.copyWith(color: colors.text),
             ),

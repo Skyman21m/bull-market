@@ -1274,7 +1274,7 @@ void main() {
           await tester.pump();
           expect(
             find.text(
-              'Your rating cannot be published: Temple of Sats gave no permission for it.',
+              'Your rating cannot be published: Temple of Sats could not be asked for permission, or refused it. Open this trade again to try again.',
             ),
             findsOneWidget,
           );
@@ -1283,6 +1283,56 @@ void main() {
           }
           expect(host.published, isEmpty);
           expect(host.asked, hasLength(1));
+        },
+      );
+
+      testWidgets(
+        'a finished trade opened again: the token asked only once the order is read, the stars off again for a status read from no order',
+        (tester) async {
+          final host = _HostRates();
+          addTearDown(host.cubit.close);
+          final watch = _Watch();
+          final read = _seenOf('fourteenSummary');
+          // The end from the records, before the read of the order: it offers no rating.
+          final fromRecords = TradeSeen(read.status, order: null);
+          await _show(
+            tester,
+            watch: watch,
+            rate: _Rates(),
+            hostRating: host.cubit,
+            state: TradeScreenStatuses.watched(fromRecords),
+          );
+          expect(find.text('Rate your host'), findsOneWidget);
+          expect(host.asked, isEmpty);
+          expect(find.textContaining('permission'), findsNothing);
+          expect(hostButton(tester, 5).onPressed, isNull);
+          watch.emit(TradeScreenStatuses.watched(read));
+          await tester.pump();
+          await tester.pump();
+          expect(host.asked, [read]);
+          host.give();
+          await tester.pump();
+          await tester.pump();
+          expect(hostButton(tester, 5).onPressed, isNotNull);
+          await _reveal(tester, hostStar(4));
+          await tester.tap(hostStar(4));
+          await tester.pump();
+          expect(host.published.map((p) => p.$3), [4]);
+          // A later status from no order offers no rating: the host's stars are off again, as the trade's, nothing is asked again, and the star tapped stays shown although the summary went.
+          watch.emit(TradeScreenStatuses.watched(fromRecords));
+          await tester.pump();
+          await tester.pump();
+          expect(hostButton(tester, 5).onPressed, isNull);
+          expect(host.asked, hasLength(1));
+          expect(
+            tester
+                .widget<Icon>(
+                  find.descendant(of: hostStar(4), matching: find.byType(Icon)),
+                )
+                .icon,
+            Icons.star,
+          );
+          expect(host.published, hasLength(1));
         },
       );
 

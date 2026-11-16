@@ -4417,10 +4417,10 @@ abstract class P2pLocalizations {
   /// **'Asking {coordinator} for permission to publish your rating…'**
   String p2pEndRateHostAsking(String coordinator);
 
-  /// Not in the RoboSats texts: the project's own: under the stars of « Rate your host », which stay off: the coordinator refused the token for a rating, or could not be asked; the reference says nothing and publishes nothing (#95).
+  /// Not in the RoboSats texts: the project's own: under the stars of « Rate your host », which stay off: no token for a rating, whether the coordinator refused it (1052) or could not be asked (Tor, a coordinator unreachable or busy), which the app does not tell apart; the token is asked again only when the trade is opened again; the reference says nothing and publishes nothing (#95).
   ///
   /// In en, this message translates to:
-  /// **'Your rating cannot be published: {coordinator} gave no permission for it.'**
+  /// **'Your rating cannot be published: {coordinator} could not be asked for permission, or refused it. Open this trade again to try again.'**
   String p2pEndRateHostUnavailable(String coordinator);
 
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): « Thank you! {{shortAlias}} loves you too », with the coordinator's long alias, after five stars of « Rate your host » (#95).
@@ -4441,11 +4441,11 @@ abstract class P2pLocalizations {
   /// **'Thank you for using Robosats!'**
   String get p2pEndThanksForUsing;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): the start of `let_us_know_hot_to_improve`, after one to four stars of « Rate your host », followed by the three links in parentheses; the link names are those of the reference's code, since its translation puts « Telegram » on the SimpleX link and « Github » on the Matrix one (#95).
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): `let_us_know_hot_to_improve`, after one to four stars of « Rate your host », its punctuation in the text; each placeholder is replaced by the name of a link (`p2pEndImproveSimplex`, `p2pEndImproveMatrix`, `p2pEndImproveGithub`), shown for copy; the names are those of the reference's code, since its translation puts « Telegram » on the SimpleX link and « Github » on the Matrix one (#95).
   ///
   /// In en, this message translates to:
-  /// **'Let us know how the platform could improve'**
-  String get p2pEndImproveIntro;
+  /// **'Let us know how the platform could improve ({simplex} / {matrix} / {github})'**
+  String p2pEndImprove(String simplex, String matrix, String github);
 
   /// The name of the RoboSats group on SimpleX in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95).
   ///

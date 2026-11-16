@@ -177,7 +177,11 @@ class _SuccessfulPanelState extends State<SuccessfulPanel> {
             const Gap(BullSpacing.md),
             Divider(color: colors.outlineVariant, height: 1),
             const Gap(BullSpacing.sm),
-            hostRating,
+            // Keyed, so that the section keeps its state (the star tapped, the token asked) when the lines around it come and go with a new read.
+            KeyedSubtree(
+              key: const ValueKey('trade-host-rating-slot'),
+              child: hostRating,
+            ),
           ],
         ],
         // The transaction once it is in the mempool, or the payment waiting in the coordinator's queue, each with its copy (`Successful.tsx:229-270`).

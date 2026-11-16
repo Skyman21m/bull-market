@@ -21,8 +21,14 @@ void main() {
   Future<(TradeHarness, TradeRecord, TradeSeen)> at({
     int status = 14,
     int orderId = 42,
+    String alias = 'temple',
+    RobosatsNetwork network = RobosatsNetwork.testnet,
   }) async {
-    final app = await TradeHarness.start(orderId: orderId);
+    final app = await TradeHarness.start(
+      orderId: orderId,
+      alias: alias,
+      network: network,
+    );
     final taken = await app.takeShown();
     expect(taken, isA<Ok<TakeOutcome, TakeRefusal>>());
     final record = TradeHarness.recordOf(taken);
@@ -127,6 +133,31 @@ void main() {
       expect(app.coordinator.requests, isEmpty);
       expect(finishedApp.coordinator.requests, isEmpty);
     });
+
+    test(
+      'neither asked nor published for the same order number on another coordinator or network',
+      () async {
+        final (app, record, finished) = await at();
+        final token = tokenOf(await app.rateHost.fetchToken(record, finished));
+        final (_, _, lake) = await at(alias: 'lake');
+        final (_, _, mainnet) = await at(network: RobosatsNetwork.mainnet);
+        for (final (name, other) in [('lake', lake), ('mainnet', mainnet)]) {
+          expect(other.order?.id, record.orderId, reason: name);
+          app.coordinator.requests.clear();
+          expect(
+            await app.rateHost.fetchToken(record, other),
+            notGiven,
+            reason: name,
+          );
+          await app.rateHost.publish(record, other, token, stars(5));
+          expect(app.coordinator.requests, isEmpty, reason: name);
+        }
+        expect(lake.order?.coordinator.shortAlias, 'lake');
+        expect(mainnet.order?.network, RobosatsNetwork.mainnet);
+        expect(app.relays.published, isEmpty);
+        expect(app.keys.rated, isEmpty);
+      },
+    );
 
     test(
       'neither asked nor published for the order of another trade',

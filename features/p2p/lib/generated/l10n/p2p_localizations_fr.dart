@@ -2777,7 +2777,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pEndRateHostUnavailable(String coordinator) {
-    return 'Votre note ne peut pas être publiée : $coordinator n’en a pas donné l’autorisation.';
+    return 'Votre note ne peut pas être publiée : $coordinator n’a pas pu être joint pour donner son autorisation, ou l’a refusée. Rouvrez cet échange pour réessayer.';
   }
 
   @override
@@ -2793,8 +2793,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pEndThanksForUsing => 'Merci d\'utiliser Robosats!';
 
   @override
-  String get p2pEndImproveIntro =>
-      'Faites-nous savoir comment la plateforme pourrait être améliorée';
+  String p2pEndImprove(String simplex, String matrix, String github) {
+    return 'Faites-nous savoir comment la plateforme pourrait être améliorée ($simplex / $matrix / $github)';
+  }
 
   @override
   String get p2pEndImproveSimplex => 'SimpleX';

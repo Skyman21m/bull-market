@@ -844,6 +844,42 @@ void main() {
   );
 
   test(
+    'the rating of the coordinator is composed in the real isolate, which gets the Nostr key pair and gives back the signed event (#95)',
+    () async {
+      final token =
+          HostReviewToken.parse('ab' * 64) ?? (throw StateError('no token'));
+      final rating = HostRating.of(5) ?? (throw StateError('no rating'));
+      final temple = coordinator('temple');
+      final now = DateTime.utc(2026, 11, 16, 12, 0, 0, 750);
+      final composed = await const IsolateRobotKeyCompute().composeHostRating(
+        us.nostrKeyPair(),
+        token: token,
+        coordinator: temple,
+        orderId: 42,
+        rating: rating,
+        now: now,
+      );
+      final event = switch (composed) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      final json =
+          (jsonDecode(event.relayMessages.single) as List<dynamic>)[1]
+              as Map<String, dynamic>;
+      expect(json['kind'], 31986);
+      expect(json['pubkey'], us.nostrKeyPair().publicKeyHex);
+      expect(json['created_at'], now.millisecondsSinceEpoch ~/ 1000);
+      expect(json['tags'], [
+        ['sig', token.hex],
+        ['d', 'temple:42'],
+        ['p', temple.nostrHexPubkey],
+        ['rating', '1'],
+      ]);
+      expect(event.eventIds, [json['id']]);
+    },
+  );
+
+  test(
     'the websocket goes through a real SOCKS5 proxy with the client factory of the Tor sessions',
     () async {
       final fake = await relay(_RelayBehaviour.accept);
