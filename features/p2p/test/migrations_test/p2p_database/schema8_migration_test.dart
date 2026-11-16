@@ -4,13 +4,26 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/trade_record_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart' show RobosatsNetwork;
 import 'package:test/test.dart';
 
+import 'generated/schema_v1.dart' as v1;
+import 'generated/schema_v2.dart' as v2;
+import 'generated/schema_v3.dart' as v3;
+import 'generated/schema_v4.dart' as v4;
+import 'generated/schema_v5.dart' as v5;
+import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
 
 /// The step from schema 7 to schema 8 of `p2p.sqlite` (#176; design note `docs/design/phase-3-making-an-order.md` § 3.5) over a file of schema 7 that holds every shape of row a user's file can hold: open and closed trades, a pending take never sent, a recovered trade, two open trades of one order, terms, trails with and without the hashes of a bond and an escrow, payments of a bond and of an escrow (two of them of one payment hash), the PGP and Nostr pins of a chat, bindings with and without a trade, and the histories of two keys.
 ///
-/// Every row is compared before and after, column by column, value and storage class; the step is stopped after each of its statements and run again; it refuses a connection whose foreign keys are on, and stops at schema 7, its copies kept, on a file with an orphan row.
+/// Every row is compared before and after, column by column, value and storage class; the step is stopped after each of its statements and run again; it turns the foreign keys off on a connection that has them on, refuses one where they stay on, gives every table a new file's triggers in a new file's order, and stops at schema 7, its copies kept, on a file with an orphan row.
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -275,7 +288,39 @@ void main() {
   );
 
   test(
-    'refuses a connection whose foreign keys are on, before it changes anything, at every opening',
+    'turns the foreign keys off when a connection has them on, and ends as the app\'s own connection does',
+    () async {
+      final file = await schema7File();
+      final reference = copyOf(file, 'reference.sqlite');
+      final once = P2pDatabase.forTesting(NativeDatabase(reference));
+      expect(await _versionOf(once), P2pDatabase.schema);
+      final rows = await _rowsOf(once, _schema8Columns);
+      final objects = await _objectsOf(once);
+      await once.close();
+
+      final on = P2pDatabase.forTesting(
+        NativeDatabase(
+          file,
+          setup: (database) => database.execute('PRAGMA foreign_keys = ON'),
+        ),
+      );
+      expect(await _versionOf(on), P2pDatabase.schema);
+      expect(await _rowsOf(on, _schema8Columns), rows);
+      expect(await _objectsOf(on), objects);
+      // On again once the step is over, as `beforeOpen` turns them on.
+      expect(
+        (await on.customSelect('PRAGMA foreign_keys').getSingle())
+            .data
+            .values
+            .single,
+        1,
+      );
+      await on.close();
+    },
+  );
+
+  test(
+    'refuses, before it writes anything, at every opening, a connection whose foreign keys stay on',
     () async {
       final file = await schema7File();
       final old = v7.DatabaseAtV7(NativeDatabase(file));
@@ -284,11 +329,13 @@ void main() {
       await old.close();
 
       for (var turn = 0; turn < 2; turn++) {
+        // A connection where turning them off does nothing, as inside a transaction.
+        final stuck = _KeepsForeignKeysOn();
         final on = P2pDatabase.forTesting(
           NativeDatabase(
             file,
             setup: (database) => database.execute('PRAGMA foreign_keys = ON'),
-          ),
+          ).interceptWith(stuck),
         );
         await expectLater(
           _versionOf(on),
@@ -301,6 +348,9 @@ void main() {
           ),
         );
         await on.close();
+        expect(stuck.statements, [
+          'PRAGMA foreign_keys = OFF',
+        ], reason: '$turn');
         final left = v7.DatabaseAtV7(NativeDatabase(file));
         expect(await _versionOf(left), 7);
         expect(await _rowsOf(left, _schema7Columns), rows);
@@ -313,6 +363,114 @@ void main() {
       expect(await _versionOf(migrated), P2pDatabase.schema);
       expect(await _rowsOf(migrated, _schema7Columns), rows);
       await migrated.close();
+    },
+  );
+
+  test(
+    'from every schema, each table has the triggers of a new file in a new file\'s order, which decides the refusal a write meets',
+    () async {
+      final freshDirectory = await Directory.systemTemp.createTemp(
+        'p2p-fresh-',
+      );
+      addTearDown(() => freshDirectory.delete(recursive: true));
+      final fresh = P2pDatabase.open(() async => freshDirectory);
+      final expected = await _objectsOf(fresh);
+      await fresh.close();
+      // The order of the triggers of the trades, as a new file has them: the one that writes nothing on a robot already recorded fires before the one that aborts on an order already open, SQLite firing the newest first.
+      expect(
+        [
+          for (final object in expected)
+            if (object.startsWith('trades trades_')) object.split(' ')[1],
+        ],
+        [
+          'trades_one_open_per_order',
+          'trades_one_open_per_order_update',
+          'trades_never_deleted',
+          'trades_set_once',
+          'trades_made_pending',
+          'trades_inserted_once',
+        ],
+      );
+      final born = <int, GeneratedDatabase Function(QueryExecutor)>{
+        1: v1.DatabaseAtV1.new,
+        2: v2.DatabaseAtV2.new,
+        3: v3.DatabaseAtV3.new,
+        4: v4.DatabaseAtV4.new,
+        5: v5.DatabaseAtV5.new,
+        6: v6.DatabaseAtV6.new,
+        7: v7.DatabaseAtV7.new,
+      };
+      for (final MapEntry(key: version, value: open) in born.entries) {
+        final file = File('${directory.path}/born-$version.sqlite');
+        final old = open(NativeDatabase(file));
+        expect(await _versionOf(old), version);
+        await old.close();
+        final migrated = P2pDatabase.forTesting(NativeDatabase(file));
+        expect(await _versionOf(migrated), P2pDatabase.schema);
+        expect(
+          await _objectsOf(migrated),
+          expected,
+          reason: 'born at $version',
+        );
+        await migrated.close();
+      }
+      // And the file of schema 7 with its rows.
+      final rows = await schema7File();
+      final migrated = P2pDatabase.forTesting(NativeDatabase(rows));
+      expect(await _objectsOf(migrated), expected);
+      await migrated.close();
+    },
+  );
+
+  test(
+    'a pending take written again for a robot already recorded on an open order is a robot already recorded, on a migrated file as on a new one',
+    () async {
+      final file = await schema7File();
+      final database = P2pDatabase.forTesting(NativeDatabase(file));
+      final records = TradeRecordRepositoryImpl(
+        database,
+        clock: () => DateTime.utc(2026, 11, 16),
+      );
+      final key = GarageKeyFingerprint.stored(_key);
+      if (key == null) fail('no key');
+      // Robot 1's binding, as the file of schema 7 holds it; its trade is open on order 101.
+      final temple = CoordinatorIdentity(
+        network: RobosatsNetwork.testnet,
+        alias: 'temple',
+        onion: 'http://temple.onion',
+        nodeKeys: const ['node1', 'node2'],
+        nostrKey: 'nostr1',
+      );
+      final reservation = TradeReservation(
+        RobotSlot(RobosatsNetwork.testnet, key, 1),
+        temple,
+      );
+      expect(
+        await records.recordPendingTake(
+          reservation,
+          orderId: 101,
+          role: TradeRole.buyer,
+        ),
+        isA<Err<TradeRecord, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<TradeAlreadyRecordedFailure>(),
+        ),
+      );
+      expect(
+        await records.recordRecoveredTrade(
+          reservation.robot,
+          temple,
+          orderId: 101,
+          role: TradeRole.buyer,
+        ),
+        isA<Err<TradeRecord, P2pFailure>>().having(
+          (err) => err.failure,
+          'failure',
+          isA<TradeAlreadyRecordedFailure>(),
+        ),
+      );
+      await database.close();
     },
   );
 
@@ -417,6 +575,31 @@ final class _StopAfter extends QueryInterceptor {
   }
 }
 
+/// A connection where `PRAGMA foreign_keys = OFF` does nothing, as inside a transaction, which records every write it is asked.
+final class _KeepsForeignKeysOn extends QueryInterceptor {
+  final List<String> statements = [];
+
+  @override
+  Future<bool> ensureOpen(QueryExecutor executor, QueryExecutorUser user) =>
+      executor.ensureOpen(_OpenedThrough(user, this));
+
+  @override
+  Future<void> runCustom(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    final lower = statement.toLowerCase();
+    if (lower.startsWith('pragma user_version') ||
+        lower.startsWith('pragma foreign_keys = on')) {
+      return super.runCustom(executor, statement, args);
+    }
+    statements.add(statement);
+    if (lower == 'pragma foreign_keys = off') return Future.value();
+    return super.runCustom(executor, statement, args);
+  }
+}
+
 /// The database opening, its steps run through [_interceptor].
 final class _OpenedThrough implements QueryExecutorUser {
   final QueryExecutorUser _user;
@@ -471,32 +654,42 @@ const _stepKinds = [
   'create trade_payments',
   'restore trade_payments',
   'create maker_terms',
-  'trigger trades_never_deleted',
+  'drop trigger trades_one_open_per_order',
+  'drop trigger trades_one_open_per_order_update',
+  'drop trigger trades_never_deleted',
   'drop trigger trades_set_once',
+  'drop trigger trades_made_pending',
+  'drop trigger trades_inserted_once',
+  'trigger trades_one_open_per_order',
+  'trigger trades_one_open_per_order_update',
+  'trigger trades_never_deleted',
   'trigger trades_set_once',
   'trigger trades_made_pending',
   'trigger trades_inserted_once',
-  'trigger trades_one_open_per_order',
-  'trigger trades_one_open_per_order_update',
   'trigger maker_terms_never_deleted',
   'trigger maker_terms_set_once',
   'trigger maker_terms_inserted_once',
   'trigger maker_terms_of_their_make',
   'drop trigger trade_terms_of_their_trade',
   'trigger trade_terms_of_their_trade',
+  'drop trigger trade_trails_never_deleted',
+  'drop trigger trade_trails_inserted_once',
+  'drop trigger trade_trails_of_their_trade',
+  'drop trigger trade_trails_closed',
+  'drop trigger trade_trails_forward',
   'trigger trade_trails_never_deleted',
   'trigger trade_trails_inserted_once',
-  'drop trigger trade_trails_of_their_trade',
   'trigger trade_trails_of_their_trade',
   'trigger trade_trails_closed',
-  'drop trigger trade_trails_forward',
   'trigger trade_trails_forward',
-  'trigger trade_payments_never_deleted',
+  'drop trigger trade_payments_never_deleted',
   'drop trigger trade_payments_inserted_once',
-  'trigger trade_payments_inserted_once',
   'drop trigger trade_payments_of_their_trade',
-  'trigger trade_payments_of_their_trade',
   'drop trigger trade_payments_forward',
+  'drop trigger trade_payments_hash_once',
+  'trigger trade_payments_never_deleted',
+  'trigger trade_payments_inserted_once',
+  'trigger trade_payments_of_their_trade',
   'trigger trade_payments_forward',
   'trigger trade_payments_hash_once',
   'drop if any trades_of_schema7',
@@ -521,19 +714,16 @@ Future<Set<String>> _namesOf(GeneratedDatabase database) async => {
     row.read<String>('name'),
 };
 
-/// Every table, index and trigger of [database], by name, its text without quotes and white space (drift quotes names when it creates a file only).
-Future<Map<String, String>> _objectsOf(GeneratedDatabase database) async => {
+/// Every table, index and trigger of [database], table by table and, within a table, in the order SQLite made them (the order it fires the triggers of one event in, newest first), each as its table, its name and its text without quotes and white space (drift quotes names when it creates a file only).
+Future<List<String>> _objectsOf(GeneratedDatabase database) async => [
   for (final row
       in await database
           .customSelect(
-            "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'",
+            "SELECT tbl_name, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, rowid",
           )
           .get())
-    row.read<String>('name'): row
-        .read<String>('sql')
-        .replaceAll('"', '')
-        .replaceAll(RegExp(r'\s+'), ''),
-};
+    '${row.read<String>('tbl_name')} ${row.read<String>('name')} ${row.read<String>('sql').replaceAll('"', '').replaceAll(RegExp(r'\s+'), '')}',
+];
 
 /// The rows of each table of [columns] in [database], ordered by their primary key, each as the storage class and the value of each of its columns, in the order given.
 Future<Map<String, List<List<Object?>>>> _rowsOf(

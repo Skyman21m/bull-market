@@ -1111,7 +1111,7 @@ class RobotCoordinatorCubit {
             _driftTriggers.contains(_squeezed(text))) {
           continue;
         }
-        // The steps to schema 7 and 8 rebuild the payments, the trades and their trails (#97, #176), never a binding: their drops, of tables and of the triggers schema 8 replaces, pinned as written below.
+        // The steps to schema 7 and 8 rebuild the payments, the trades and their trails (#97, #176), never a binding: their drops, of tables and of triggers, pinned as written below.
         if (identical(facts, database) && _rebuildDrops.contains(text)) {
           continue;
         }
@@ -1192,12 +1192,13 @@ class RobotCoordinatorCubit {
       'm.createTable(schema.tradeTrails)',
       'm.createTable(schema.tradePayments)',
       'm.createTable(schema.makerTerms)',
+      // Each table's triggers in the order a new file has them (functional review of #176): SQLite fires the triggers of one event newest first.
+      'm.createTrigger(schema.tradesOneOpenPerOrder)',
+      'm.createTrigger(schema.tradesOneOpenPerOrderUpdate)',
       'm.createTrigger(schema.tradesNeverDeleted)',
       'm.createTrigger(schema.tradesSetOnce)',
       'm.createTrigger(schema.tradesMadePending)',
       'm.createTrigger(schema.tradesInsertedOnce)',
-      'm.createTrigger(schema.tradesOneOpenPerOrder)',
-      'm.createTrigger(schema.tradesOneOpenPerOrderUpdate)',
       'm.createTrigger(schema.makerTermsNeverDeleted)',
       'm.createTrigger(schema.makerTermsSetOnce)',
       'm.createTrigger(schema.makerTermsInsertedOnce)',
@@ -1214,7 +1215,7 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradePaymentsForward)',
       'm.createTrigger(schema.tradePaymentsHashOnce)',
     ]);
-    // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and the triggers it replaces only; and the foreign keys of the trades, on, at each opening.
+    // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only; the rebuild of the trades, their trails and their payments in the step to schema 8 (#176), which names those tables, their copies and their triggers and the trigger it replaces on `trade_terms` only, and turns the foreign keys off when a connection has them on; and the foreign keys of the trades, on, at each opening.
     expect(
       database.calls.where((call) => call.startsWith('customStatement(')),
       [
@@ -1223,6 +1224,7 @@ class RobotCoordinatorCubit {
         'customStatement(_dropPayments)',
         'customStatement(_restorePayments)',
         'customStatement(_dropPaymentsCopy)',
+        'customStatement(_foreignKeysOff)',
         'customStatement(_dropTradesCopy)',
         'customStatement(_copyTrades)',
         'customStatement(_dropTrades)',
@@ -1235,23 +1237,35 @@ class RobotCoordinatorCubit {
         'customStatement(_copyPaymentsOfSchema7)',
         'customStatement(_dropPayments)',
         'customStatement(_restorePaymentsOfSchema7)',
+        'customStatement(_dropTradesOneOpenPerOrder)',
+        'customStatement(_dropTradesOneOpenPerOrderUpdate)',
+        'customStatement(_dropTradesNeverDeleted)',
         'customStatement(_dropTradesSetOnce)',
+        'customStatement(_dropTradesMadePending)',
+        'customStatement(_dropTradesInsertedOnce)',
         'customStatement(_dropTermsOfTheirTrade)',
-        'customStatement(_dropTrailsOfTheirTrade)',
-        'customStatement(_dropTrailsForward)',
-        'customStatement(_dropPaymentsInsertedOnce)',
-        'customStatement(_dropPaymentsOfTheirTrade)',
-        'customStatement(_dropPaymentsForward)',
+        'customStatement(_dropTradeTrailsNeverDeleted)',
+        'customStatement(_dropTradeTrailsInsertedOnce)',
+        'customStatement(_dropTradeTrailsOfTheirTrade)',
+        'customStatement(_dropTradeTrailsClosed)',
+        'customStatement(_dropTradeTrailsForward)',
+        'customStatement(_dropTradePaymentsNeverDeleted)',
+        'customStatement(_dropTradePaymentsInsertedOnce)',
+        'customStatement(_dropTradePaymentsOfTheirTrade)',
+        'customStatement(_dropTradePaymentsForward)',
+        'customStatement(_dropTradePaymentsHashOnce)',
         'customStatement(_dropTradesCopy)',
         'customStatement(_dropTrailsCopy)',
         'customStatement(_dropPaymentsOfSchema7)',
         'customStatement(_foreignKeysOn)',
       ],
     );
-    // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
+    // The step to schema 8, call by call, in its order (#176): the foreign keys found off before anything, or turned off and read again, each rebuilt table copied aside only while it is schema 7's, made again only while missing, filled again from its copy only while the copy exists, `trades` first; then the maker's terms, the triggers (each replaced one dropped first), the foreign keys of the file checked, and only then the copies dropped.
     final migration =
         database.callsByMethod['migration'] ?? fail('no migration');
     expect(migration.skip(migration.indexOf('_foreignKeysAreOn()')), [
+      '_foreignKeysAreOn()',
+      'customStatement(_foreignKeysOff)',
       '_foreignKeysAreOn()',
       '_tableText(_trades)',
       'contains("\'madeHere\'")',
@@ -1281,32 +1295,42 @@ class RobotCoordinatorCubit {
       '_tableText(_paymentsOfSchema7)',
       'customStatement(_restorePaymentsOfSchema7)',
       'createTable(schema.makerTerms)',
-      'createTrigger(schema.tradesNeverDeleted)',
+      'customStatement(_dropTradesOneOpenPerOrder)',
+      'customStatement(_dropTradesOneOpenPerOrderUpdate)',
+      'customStatement(_dropTradesNeverDeleted)',
       'customStatement(_dropTradesSetOnce)',
+      'customStatement(_dropTradesMadePending)',
+      'customStatement(_dropTradesInsertedOnce)',
+      'createTrigger(schema.tradesOneOpenPerOrder)',
+      'createTrigger(schema.tradesOneOpenPerOrderUpdate)',
+      'createTrigger(schema.tradesNeverDeleted)',
       'createTrigger(schema.tradesSetOnce)',
       'createTrigger(schema.tradesMadePending)',
       'createTrigger(schema.tradesInsertedOnce)',
-      'createTrigger(schema.tradesOneOpenPerOrder)',
-      'createTrigger(schema.tradesOneOpenPerOrderUpdate)',
       'createTrigger(schema.makerTermsNeverDeleted)',
       'createTrigger(schema.makerTermsSetOnce)',
       'createTrigger(schema.makerTermsInsertedOnce)',
       'createTrigger(schema.makerTermsOfTheirMake)',
       'customStatement(_dropTermsOfTheirTrade)',
       'createTrigger(schema.tradeTermsOfTheirTrade)',
+      'customStatement(_dropTradeTrailsNeverDeleted)',
+      'customStatement(_dropTradeTrailsInsertedOnce)',
+      'customStatement(_dropTradeTrailsOfTheirTrade)',
+      'customStatement(_dropTradeTrailsClosed)',
+      'customStatement(_dropTradeTrailsForward)',
       'createTrigger(schema.tradeTrailsNeverDeleted)',
       'createTrigger(schema.tradeTrailsInsertedOnce)',
-      'customStatement(_dropTrailsOfTheirTrade)',
       'createTrigger(schema.tradeTrailsOfTheirTrade)',
       'createTrigger(schema.tradeTrailsClosed)',
-      'customStatement(_dropTrailsForward)',
       'createTrigger(schema.tradeTrailsForward)',
+      'customStatement(_dropTradePaymentsNeverDeleted)',
+      'customStatement(_dropTradePaymentsInsertedOnce)',
+      'customStatement(_dropTradePaymentsOfTheirTrade)',
+      'customStatement(_dropTradePaymentsForward)',
+      'customStatement(_dropTradePaymentsHashOnce)',
       'createTrigger(schema.tradePaymentsNeverDeleted)',
-      'customStatement(_dropPaymentsInsertedOnce)',
       'createTrigger(schema.tradePaymentsInsertedOnce)',
-      'customStatement(_dropPaymentsOfTheirTrade)',
       'createTrigger(schema.tradePaymentsOfTheirTrade)',
-      'customStatement(_dropPaymentsForward)',
       'createTrigger(schema.tradePaymentsForward)',
       'createTrigger(schema.tradePaymentsHashOnce)',
       '_breaksAForeignKey()',
@@ -1334,7 +1358,7 @@ class RobotCoordinatorCubit {
       'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
     );
     expect(database.constants['_dropPayments'], 'DROP TABLE trade_payments');
-    // Every string constant of the database, each value as written: the rebuilds' statements that write rows (`_restorePayments`, and since schema 8 `_restoreTrades`, `_restoreTrails`, `_restorePaymentsOfSchema7`) copy each table's own columns from its copy back into that table, each row once, and nowhere else; the copies are the tables as they were; the drops name the rebuilt tables, their copies and the triggers schema 8 replaces; the pragmas read whether the foreign keys are on and which rows break one; a new constant, or another value, fails here (security review of #172).
+    // Every string constant of the database, each value as written: the rebuilds' statements that write rows (`_restorePayments`, and since schema 8 `_restoreTrades`, `_restoreTrails`, `_restorePaymentsOfSchema7`) copy each table's own columns from its copy back into that table, each row once, and nowhere else; the copies are the tables as they were; the drops name the rebuilt tables, their copies, their triggers and the trigger schema 8 replaces on `trade_terms`; the pragmas read whether the foreign keys are on and which rows break one, and turn them off for the step to schema 8; a new constant, or another value, fails here (security review of #172).
     expect(database.constants, {
       '_foreignKeysOn': 'PRAGMA foreign_keys = ON',
       'fileName': 'p2p.sqlite',
@@ -1376,18 +1400,36 @@ class RobotCoordinatorCubit {
           'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) '
           'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy '
           'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)',
+      '_dropTradesOneOpenPerOrder':
+          'DROP TRIGGER IF EXISTS trades_one_open_per_order',
+      '_dropTradesOneOpenPerOrderUpdate':
+          'DROP TRIGGER IF EXISTS trades_one_open_per_order_update',
+      '_dropTradesNeverDeleted': 'DROP TRIGGER IF EXISTS trades_never_deleted',
       '_dropTradesSetOnce': 'DROP TRIGGER IF EXISTS trades_set_once',
+      '_dropTradesMadePending': 'DROP TRIGGER IF EXISTS trades_made_pending',
+      '_dropTradesInsertedOnce': 'DROP TRIGGER IF EXISTS trades_inserted_once',
+      '_dropTradeTrailsNeverDeleted':
+          'DROP TRIGGER IF EXISTS trade_trails_never_deleted',
+      '_dropTradeTrailsInsertedOnce':
+          'DROP TRIGGER IF EXISTS trade_trails_inserted_once',
+      '_dropTradeTrailsOfTheirTrade':
+          'DROP TRIGGER IF EXISTS trade_trails_of_their_trade',
+      '_dropTradeTrailsClosed': 'DROP TRIGGER IF EXISTS trade_trails_closed',
+      '_dropTradeTrailsForward': 'DROP TRIGGER IF EXISTS trade_trails_forward',
+      '_dropTradePaymentsNeverDeleted':
+          'DROP TRIGGER IF EXISTS trade_payments_never_deleted',
+      '_dropTradePaymentsInsertedOnce':
+          'DROP TRIGGER IF EXISTS trade_payments_inserted_once',
+      '_dropTradePaymentsOfTheirTrade':
+          'DROP TRIGGER IF EXISTS trade_payments_of_their_trade',
+      '_dropTradePaymentsForward':
+          'DROP TRIGGER IF EXISTS trade_payments_forward',
+      '_dropTradePaymentsHashOnce':
+          'DROP TRIGGER IF EXISTS trade_payments_hash_once',
       '_dropTermsOfTheirTrade':
           'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
-      '_dropTrailsOfTheirTrade':
-          'DROP TRIGGER IF EXISTS trade_trails_of_their_trade',
-      '_dropTrailsForward': 'DROP TRIGGER IF EXISTS trade_trails_forward',
-      '_dropPaymentsInsertedOnce':
-          'DROP TRIGGER IF EXISTS trade_payments_inserted_once',
-      '_dropPaymentsOfTheirTrade':
-          'DROP TRIGGER IF EXISTS trade_payments_of_their_trade',
-      '_dropPaymentsForward': 'DROP TRIGGER IF EXISTS trade_payments_forward',
       '_foreignKeys': 'PRAGMA foreign_keys',
+      '_foreignKeysOff': 'PRAGMA foreign_keys = OFF',
       '_foreignKeyCheck': 'PRAGMA foreign_key_check',
     });
     expect(_rebuildDrops, {
@@ -1425,6 +1467,8 @@ class RobotCoordinatorCubit {
       [
         'PRAGMA foreign_keys = ON',
         'PRAGMA foreign_keys',
+        // The step to schema 8 turns them off when a connection has them on, before it drops `trades`, and `beforeOpen` turns them on again after every step (functional review of #176).
+        'PRAGMA foreign_keys = OFF',
         'PRAGMA foreign_key_check',
         // The setup of the app's connection, before any statement.
         'PRAGMA busy_timeout = 2000;',
@@ -2739,7 +2783,7 @@ final _driftTriggers = {
   for (final trigger in _replacedTriggersAsWritten) _squeezed(trigger),
 };
 
-/// The drops of the steps to schema 7 (#97) and 8 (#176): the tables they rebuild, their copies, and the triggers schema 8 replaces, never a binding.
+/// The drops of the steps to schema 7 (#97) and 8 (#176): the tables they rebuild, their copies, the triggers of the tables schema 8 rebuilds (made again together, in a new file's order) and the one it replaces on a table it does not rebuild, never a binding.
 const _rebuildDrops = {
   'DROP TABLE IF EXISTS trade_payments_of_schema6',
   'DROP TABLE trade_payments',
@@ -2748,13 +2792,23 @@ const _rebuildDrops = {
   'DROP TABLE IF EXISTS trade_trails_of_schema7',
   'DROP TABLE trade_trails',
   'DROP TABLE IF EXISTS trade_payments_of_schema7',
+  'DROP TRIGGER IF EXISTS trades_one_open_per_order',
+  'DROP TRIGGER IF EXISTS trades_one_open_per_order_update',
+  'DROP TRIGGER IF EXISTS trades_never_deleted',
   'DROP TRIGGER IF EXISTS trades_set_once',
-  'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
+  'DROP TRIGGER IF EXISTS trades_made_pending',
+  'DROP TRIGGER IF EXISTS trades_inserted_once',
+  'DROP TRIGGER IF EXISTS trade_trails_never_deleted',
+  'DROP TRIGGER IF EXISTS trade_trails_inserted_once',
   'DROP TRIGGER IF EXISTS trade_trails_of_their_trade',
+  'DROP TRIGGER IF EXISTS trade_trails_closed',
   'DROP TRIGGER IF EXISTS trade_trails_forward',
+  'DROP TRIGGER IF EXISTS trade_payments_never_deleted',
   'DROP TRIGGER IF EXISTS trade_payments_inserted_once',
   'DROP TRIGGER IF EXISTS trade_payments_of_their_trade',
   'DROP TRIGGER IF EXISTS trade_payments_forward',
+  'DROP TRIGGER IF EXISTS trade_payments_hash_once',
+  'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
 };
 
 /// The statements of the step to schema 8 (#176) that copy the rows of the trades, their trails and their payments aside and back, as `P2pDatabase` writes them (pinned there by value).

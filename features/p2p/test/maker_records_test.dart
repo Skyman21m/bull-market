@@ -1082,6 +1082,31 @@ void main() {
     );
 
     test(
+      'a contract with no deadline is followed by none: its index never moves from a trail that has no contract deadline',
+      () async {
+        for (final (index, from) in [(0, 'public'), (1, 'waitingForBoth')]) {
+          final made = await confirmedMake(index: index, orderId: 100 + index);
+          expect(
+            await trails.storeTrail(
+              made,
+              trailOf(orderId: 100 + index, position: from),
+            ),
+            isA<Ok<TrailStoreOutcome, P2pFailure>>(),
+          );
+          // A NULL deadline compared with a later one is NULL, never true: the move is refused all the same (functional review of #176, mutant T02).
+          await expectLater(
+            update(
+              index,
+              "take = 1, take_deadline = $deadline, position = 'waitingForBoth'",
+            ),
+            refusedBy(forward),
+            reason: from,
+          );
+        }
+      },
+    );
+
+    test(
       'its deadline, taker and amount: written once within a contract, changed only by the next, never cleared',
       () async {
         await makeAt(0, 'waitingForBoth');
