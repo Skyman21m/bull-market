@@ -2214,6 +2214,10 @@ class P2pLocalizationsTr extends P2pLocalizations {
       'Bull Market does not know yet whether your confirmation went through. It keeps checking.';
 
   @override
+  String get p2pEndUnknownReceived =>
+      'Bull Market does not know yet whether your confirmation went through. It keeps reading the order; if the trade does not finish, confirm again: a second confirmation cannot release more than the one escrow.';
+
+  @override
   String get p2pEndSendingSats =>
       'RoboSats is trying to pay your lightning invoice. Remember that lightning nodes must be online in order to receive payments.';
 

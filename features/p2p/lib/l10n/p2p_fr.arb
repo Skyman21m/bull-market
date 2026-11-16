@@ -574,6 +574,7 @@
   "p2pEndReadFailed": "L’ordre n’a pas pu être relu chez {coordinator} : votre confirmation n’a pas été envoyée.",
   "p2pEndNotDoneAfter": "{reason} Votre confirmation n’a pas été envoyée.",
   "p2pEndUnknown": "Bull Market ne sait pas encore si votre confirmation est passée et continue de vérifier.",
+  "p2pEndUnknownReceived": "Bull Market ne sait pas encore si votre confirmation est passée. L'application continue de lire l'ordre ; si l'échange ne se termine pas, confirmez de nouveau : une seconde confirmation ne peut pas libérer plus que l'unique séquestre.",
   "p2pEndSendingSats": "RoboSats tente de payer votre facture lightning. Rappelez-vous que les nœuds lightning doivent être en ligne pour recevoir les paiements.",
   "p2pEndTakingTooLong": "Trop long ?",
   "p2pEndTakingTooLongText": "Les paiements Lightning sont généralement instantanés, mais parfois un nœud sur la route peut être inactif, ce qui peut entraîner un délai pouvant atteindre 24 heures pour que votre paiement arrive dans votre portefeuille.",

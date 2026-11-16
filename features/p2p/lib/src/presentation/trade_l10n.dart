@@ -336,6 +336,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       // No read tells a rating: nothing keeps checking it.
       ChatStepWasUnknown() when action == ChatStepAction.rate =>
         l10n.p2pEndRateUnknown,
+      // The seller's release of the escrow: the reference coordinator answers `200` at 10 when it could not settle it and does not try again by itself, so the reads alone may never move on: say what to do (#96).
+      ChatStepWasUnknown() when action == ChatStepAction.confirmFiatReceived =>
+        l10n.p2pEndUnknownReceived,
       ChatStepWasUnknown() => said(
         confirmation: l10n.p2pEndUnknown,
         request: l10n.p2pEndUnknownRequest,

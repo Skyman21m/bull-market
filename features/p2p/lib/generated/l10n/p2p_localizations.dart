@@ -3603,6 +3603,12 @@ abstract class P2pLocalizations {
   /// **'Bull Market does not know yet whether your confirmation went through. It keeps checking.'**
   String get p2pEndUnknown;
 
+  /// Not in the RoboSats texts: the project's own (#96): what the seller's « Confirm … received » gave when its answer was lost or unreadable, or came at 10 (the reference coordinator answers `200` at 10 when it could not settle the escrow, `api/logics.py:1716-1735`, and does not try again by itself). The reads go on; a second `confirm` cannot release more than the one escrow nor pay the buyer twice (`Logics.pay_buyer`).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether your confirmation went through. It keeps reading the order; if the trade does not finish, confirm again: a second confirmation cannot release more than the one escrow.'**
+  String get p2pEndUnknownReceived;
+
   /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/SendingSats.tsx`): the buyer at 13 (#95).
   ///
   /// In en, this message translates to:
