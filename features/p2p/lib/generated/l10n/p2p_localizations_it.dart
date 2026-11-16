@@ -2721,4 +2721,12 @@ class P2pLocalizationsIt extends P2pLocalizations {
   @override
   String get p2pEndRateUnknown =>
       'Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.';
+
+  @override
+  String get p2pEndRateNotSent => 'Your rating was not sent.';
+
+  @override
+  String p2pEndRateReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: your rating was not sent.';
+  }
 }

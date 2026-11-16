@@ -262,6 +262,9 @@ extension ChatStepNoticeL10n on ChatStepNotice {
     );
     return switch (this) {
       ChatStepWasRefused(:final refusal) => switch (refusal) {
+        // The rating in its own words: the user rated, confirmed nothing; and no read of an end is coming to wait for.
+        ChatStepNotOffered() when action == ChatStepAction.rate =>
+          l10n.p2pEndRateNotSent,
         ChatStepNotOffered() =>
           action == ChatStepAction.dispute
               ? l10n.p2pEndDisputeNeedsRead
@@ -270,6 +273,8 @@ extension ChatStepNoticeL10n on ChatStepNotice {
         ChatStepTooEarly() => l10n.p2pEndDisputeTooEarly,
         // The status moved before anything was sent: the screen shows the fresh status, and its buttons.
         ChatStepStatusMoved() => movedOn,
+        ChatStepReadFailed() when action == ChatStepAction.rate =>
+          l10n.p2pEndRateReadFailed(coordinator),
         ChatStepReadFailed() =>
           action == ChatStepAction.dispute
               ? l10n.p2pEndDisputeReadFailed(coordinator)

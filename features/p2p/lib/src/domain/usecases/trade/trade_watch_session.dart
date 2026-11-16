@@ -112,12 +112,63 @@ final class TradeWatchSession {
               takePending: record.isPendingTake,
             ),
           );
+          // A successful end is read once, as the reference reads an order whenever its page opens: the coordinator sums it up in every read (#95).
+          if (trade.seen.status.position == TradePosition.succeeded) {
+            await _readEndOnce(trade, record, problem);
+          }
           await _finish();
           return;
         }
         _requests = _limiter.open(trade.robot.identity.sessionKey);
         _emitStatus(trade, null);
         unawaited(_read());
+    }
+  }
+
+  /// One read of [trade]'s successful end, through the robot's places as every read of the watch, never sent while an action of the trade runs: what it shows is emitted with [record] when [TradeReader.endShown] takes it (the summary, the payment's lines, the rating); a read that fails, an order the coordinator no longer knows or one no longer at that end leave the end shown as it is, with no notice. Nothing is written, the record is not touched, and no other read follows.
+  Future<void> _readEndOnce(
+    OpenTrade trade,
+    TradeRecord record,
+    P2pFailure? problem,
+  ) async {
+    // Its own places, never [_requests]: a read the screen asks for meanwhile finds none and sends nothing, so that this read stays the only one.
+    final requests = _limiter.open(trade.robot.identity.sessionKey);
+    final inFlight = _inFlight = Completer<void>();
+    try {
+      final times = _reader.request();
+      final read = await _reader.readOrder(
+        requests,
+        trade.record,
+        trade.robot,
+        trade.coordinator,
+        times: times,
+        watch: true,
+      );
+      if (_stopped || times.heldBack) return;
+      if (read case Ok(value: final result)) {
+        if (TradeAnswer.ofRead(result) case final answer?) {
+          final seen = _reader.endShown(
+            trade,
+            answer,
+            at: _reader.now(),
+            request: times,
+          );
+          if (seen != null && !_stopped) {
+            _emit(
+              TradeWatchStatus(
+                record,
+                seen,
+                recordProblem: problem,
+                takePending: record.isPendingTake,
+              ),
+            );
+          }
+        }
+      }
+    } finally {
+      requests.close();
+      inFlight.complete();
+      if (identical(_inFlight, inFlight)) _inFlight = null;
     }
   }
 

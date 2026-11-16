@@ -174,6 +174,9 @@ void main() {
       expect(en.summaryRate(91234.56), '91,234.56');
       expect(en.summaryRate(1234567.89), '1,234,568');
       expect(en.summaryRate(0.5), '0.5000000');
+      // Past 10 million per bitcoin the reference writes `1.234568e+8`: the app writes the number, rounded to 7 significant digits (declared).
+      expect(en.summaryRate(123456789), '123,456,800');
+      expect(en.summaryRate(9999999.5), '10,000,000');
       expect(fr.summaryFeePercent(0.00175), '0,175');
       expect(fr.summaryRate(60849.5), '60\u202f849,50');
     },

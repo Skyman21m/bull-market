@@ -16,6 +16,7 @@ import '../../presentation/trade_l10n.dart';
 import '../../presentation/trade_summary_export.dart';
 import '../widgets/coordinator_avatar.dart';
 import '../widgets/robot_avatar.dart';
+import '../widgets/word_fit_text.dart';
 import 'chat_step_panel.dart';
 
 /// The buyer's « Trade finished! » at 14 (`TradeBox/Prompts/Successful.tsx`, commit ff1998c; #95), from the top: « Rate your trade experience » and its five stars, « Your TXID » or « Sending coins » for an on-chain payout, then the « Trade Summary » ([TradeSummaryCard]).
@@ -112,7 +113,7 @@ class _SuccessfulPanelState extends State<SuccessfulPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.offersRating) ...[
-          Text(
+          WordFitText(
             l10n.p2pEndRateTrade,
             textAlign: TextAlign.center,
             style: body?.copyWith(color: colors.text),
@@ -255,7 +256,7 @@ class _CopyLine extends StatelessWidget {
                 ExcludeSemantics(child: leading),
                 const Gap(BullSpacing.sm),
                 Expanded(
-                  child: Text(
+                  child: WordFitText(
                     text,
                     style: Theme.of(
                       context,
@@ -272,7 +273,7 @@ class _CopyLine extends StatelessWidget {
             if (copied)
               Semantics(
                 liveRegion: true,
-                child: Text(
+                child: WordFitText(
                   l10n.p2pCommonCopied,
                   textAlign: TextAlign.center,
                   style: Theme.of(
@@ -369,24 +370,30 @@ class _TradeSummaryCardState extends State<TradeSummaryCard> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Flexible(
-                  child: Text(
+                  child: WordFitText(
                     l10n.p2pSummaryTitle,
                     textAlign: TextAlign.center,
                     style: text.titleMedium?.copyWith(color: colors.textMuted),
                   ),
                 ),
-                IconButton(
-                  key: const ValueKey('trade-summary-export'),
-                  tooltip: l10n.p2pSummaryExport,
-                  onPressed: () => unawaited(_export()),
-                  icon: Icon(Icons.ios_share, size: 20, color: colors.primary),
-                ),
+                // Offered only with both sides read: an export without the peer's would say « Copied! » for half a summary.
+                if (summary.peer != null)
+                  IconButton(
+                    key: const ValueKey('trade-summary-export'),
+                    tooltip: l10n.p2pSummaryExport,
+                    onPressed: () => unawaited(_export()),
+                    icon: Icon(
+                      Icons.ios_share,
+                      size: 20,
+                      color: colors.primary,
+                    ),
+                  ),
               ],
             ),
             if (_exported case final outcome?)
               Semantics(
                 liveRegion: true,
-                child: Text(
+                child: WordFitText(
                   switch (outcome) {
                     _ExportOutcome.copied => l10n.p2pCommonCopied,
                     _ExportOutcome.copyFailed =>
@@ -401,37 +408,50 @@ class _TradeSummaryCardState extends State<TradeSummaryCard> {
                 ),
               ),
             const Gap(BullSpacing.xs),
-            SegmentedButton<_SummaryView>(
-              showSelectedIcon: false,
-              segments: [
-                ButtonSegment(
-                  value: _SummaryView.maker,
-                  icon: RobotAvatar(seed: order.maker.hex, size: 20),
-                  label: Text(l10n.p2pOrderFeeMaker),
-                ),
-                ButtonSegment(
-                  value: _SummaryView.platform,
-                  tooltip: widget.coordinator,
-                  label: Semantics(
-                    label: widget.coordinator,
-                    child: CoordinatorAvatar(
-                      coordinator: order.coordinator,
-                      size: 20,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // The peer's side only when the coordinator gave a valid one.
+                if (summary.maker != null)
+                  Expanded(
+                    child: _ToggleTile(
+                      key: const ValueKey('trade-summary-maker'),
+                      selected: _view == _SummaryView.maker,
+                      onTap: () => setState(() => _view = _SummaryView.maker),
+                      avatar: RobotAvatar(seed: order.maker.hex, size: 20),
+                      label: l10n.p2pOrderFeeMaker,
+                    ),
+                  ),
+                Expanded(
+                  child: Tooltip(
+                    message: widget.coordinator,
+                    child: _ToggleTile(
+                      key: const ValueKey('trade-summary-platform'),
+                      selected: _view == _SummaryView.platform,
+                      onTap: () =>
+                          setState(() => _view = _SummaryView.platform),
+                      avatar: CoordinatorAvatar(
+                        coordinator: order.coordinator,
+                        size: 20,
+                      ),
+                      semanticLabel: widget.coordinator,
                     ),
                   ),
                 ),
-                ButtonSegment(
-                  value: _SummaryView.taker,
-                  icon: switch (order.taker) {
-                    final taker? => RobotAvatar(seed: taker.hex, size: 20),
-                    null => null,
-                  },
-                  label: Text(l10n.p2pOrderFeeTaker),
-                ),
+                if (summary.taker != null)
+                  Expanded(
+                    child: _ToggleTile(
+                      key: const ValueKey('trade-summary-taker'),
+                      selected: _view == _SummaryView.taker,
+                      onTap: () => setState(() => _view = _SummaryView.taker),
+                      avatar: switch (order.taker) {
+                        final taker? => RobotAvatar(seed: taker.hex, size: 20),
+                        null => null,
+                      },
+                      label: l10n.p2pOrderFeeTaker,
+                    ),
+                  ),
               ],
-              selected: {_view},
-              onSelectionChanged: (views) =>
-                  setState(() => _view = views.first),
             ),
             const Gap(BullSpacing.sm),
             if (_view == _SummaryView.platform)
@@ -566,6 +586,9 @@ class _SummaryRow extends StatelessWidget {
   final (String, String?)? second;
   final Color? secondColor;
 
+  /// From this text scale on, a row's two figures are stacked rather than side by side, so that each has the row's whole width.
+  static const stackedFrom = 1.5;
+
   const _SummaryRow({
     required this.icon,
     this.iconColor,
@@ -577,36 +600,43 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
-    Widget item((String, String?)? item, {Color? color, bool bold = false}) =>
-        Expanded(
-          child: switch (item) {
-            (final primary, final secondary) => MergeSemantics(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    primary,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: color ?? colors.text,
-                      fontWeight: bold ? FontWeight.bold : null,
+    final textTheme = Theme.of(context).textTheme;
+    final stacked =
+        MediaQuery.textScalerOf(context).scale(14) / 14 >= stackedFrom;
+    Widget? item((String, String?)? item, {Color? color, bool bold = false}) =>
+        switch (item) {
+          (final primary, final secondary) => MergeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                WordFitText(
+                  primary,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: color ?? colors.text,
+                    fontWeight: bold ? FontWeight.bold : null,
+                  ),
+                ),
+                if (secondary != null)
+                  WordFitText(
+                    secondary,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.textMuted,
                     ),
                   ),
-                  if (secondary != null)
-                    Text(
-                      secondary,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
-                    ),
-                ],
-              ),
+              ],
             ),
-            null => const SizedBox.shrink(),
-          },
-        );
+          ),
+          null => null,
+        };
+    final items = [
+      ?item(first),
+      if (second != null || secondColor != null)
+        ?item(second, color: secondColor, bold: secondColor != null),
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: BullSpacing.xs),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 40,
@@ -614,10 +644,81 @@ class _SummaryRow extends StatelessWidget {
               child: Icon(icon, color: iconColor ?? colors.onSurfaceVariant),
             ),
           ),
-          item(first),
-          if (second != null || secondColor != null)
-            item(second, color: secondColor, bold: secondColor != null),
+          if (stacked)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, child) in items.indexed) ...[
+                    if (index > 0) const Gap(BullSpacing.xs),
+                    child,
+                  ],
+                ],
+              ),
+            )
+          else
+            for (final child in items) Expanded(child: child),
         ],
+      ),
+    );
+  }
+}
+
+/// One view of the summary's toggle, as the reference's `ToggleButton`: an avatar and, for a side, its label, which wraps at word boundaries only.
+class _ToggleTile extends StatelessWidget {
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget? avatar;
+  final String? label;
+  final String? semanticLabel;
+
+  const _ToggleTile({
+    super.key,
+    required this.selected,
+    required this.onTap,
+    required this.avatar,
+    this.label,
+    this.semanticLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final label = this.label;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: semanticLabel,
+      child: Material(
+        color: selected ? colors.surfaceContainerHighest : colors.transparent,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: colors.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: BullSpacing.xs,
+              vertical: BullSpacing.xs,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ?avatar,
+                if (label != null)
+                  WordFitText(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: selected ? colors.text : colors.textMuted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -634,7 +735,7 @@ class _Live extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     container: true,
     liveRegion: true,
-    child: Text(
+    child: WordFitText(
       text,
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color),

@@ -890,7 +890,7 @@ void main() {
         ]) {
           expect(find.text(text), findsOneWidget, reason: text);
         }
-        await tester.tap(find.text('Maker'));
+        await tester.tap(find.byKey(const ValueKey('trade-summary-maker')));
         await tester.pump();
         for (final text in [
           'Seller',
@@ -921,43 +921,187 @@ void main() {
         await tester.pump();
         expect(find.text('Copied!'), findsOneWidget);
         final text = copied.single;
-        expect(text, startsWith('{\n  "coordinator": '));
-        expect(jsonDecode(text), {
-          'coordinator': order.coordinator.longAlias,
-          'order_id': order.id,
-          'currency': 'EUR',
-          'robot': order.taker?.nickname,
-          'role': 'taker',
-          'maker': {
-            'trade_fee_percent': 0.00025,
-            'bond_size_sats': 4932,
-            'bond_size_percent': 3,
-            'is_buyer': false,
-            'sent_sats': 164702,
-            'received_fiat': 100,
-            'trade_fee_sats': 41,
-          },
-          'taker': {
-            'trade_fee_percent': 0.00175,
-            'bond_size_sats': 4932,
-            'bond_size_percent': 3,
-            'is_buyer': true,
-            'sent_fiat': 100,
-            'received_sats': 164126,
-            'payment_hash': 'f' * 64,
-            'preimage': 'processing',
-            'trade_fee_sats': 288,
-          },
-          'platform': {
-            'contract_exchange_rate': 60849.5,
-            'contract_timestamp': '2026-11-13T08:03:00.000Z',
-            'contract_total_time': 1234.5,
-            'routing_budget_sats': 0,
-            'trade_revenue_sats': 576,
-          },
-        });
+        // The text itself, in the reference's order and with JavaScript's numbers (`100`, not `100.0`), as `JSON.stringify(summary, null, 2)` writes it.
+        expect(
+          text,
+          const JsonEncoder.withIndent('  ').convert({
+            'coordinator': order.coordinator.longAlias,
+            'order_id': order.id,
+            'currency': 'EUR',
+            'robot': order.taker?.nickname,
+            'role': 'taker',
+            'maker': {
+              'trade_fee_percent': 0.00025,
+              'bond_size_sats': 4932,
+              'bond_size_percent': 3,
+              'is_buyer': false,
+              'sent_sats': 164702,
+              'received_fiat': 100,
+              'trade_fee_sats': 41,
+            },
+            'taker': {
+              'trade_fee_percent': 0.00175,
+              'bond_size_sats': 4932,
+              'bond_size_percent': 3,
+              'is_buyer': true,
+              'sent_fiat': 100,
+              'received_sats': 164126,
+              'payment_hash': 'f' * 64,
+              'preimage': 'processing',
+              'trade_fee_sats': 288,
+            },
+            'platform': {
+              'contract_exchange_rate': 60849.5,
+              'contract_timestamp': '2026-11-13T08:03:00.000Z',
+              'contract_total_time': 1234.5,
+              'routing_budget_sats': 0,
+              'trade_revenue_sats': 576,
+            },
+          }),
+        );
       },
     );
+
+    testWidgets(
+      'on chain: the export writes the swap\'s block of this robot\'s side',
+      (tester) async {
+        final seen = _seenOf('fourteenTxid');
+        await _show(tester, watch: _Watch(), state: _watched('fourteenTxid'));
+        final export = find.byKey(const ValueKey('trade-summary-export'));
+        await _reveal(tester, export);
+        await tester.tap(export);
+        await tester.pump();
+        final order = seen.order ?? fail('no order');
+        expect(
+          copied.single,
+          const JsonEncoder.withIndent('  ').convert({
+            'coordinator': order.coordinator.longAlias,
+            'order_id': order.id,
+            'currency': 'EUR',
+            'robot': order.taker?.nickname,
+            'role': 'taker',
+            'maker': {
+              'trade_fee_percent': 0.00025,
+              'bond_size_sats': 4932,
+              'bond_size_percent': 3,
+              'is_buyer': false,
+              'sent_sats': 164702,
+              'received_fiat': 100,
+              'trade_fee_sats': 41,
+            },
+            'taker': {
+              'trade_fee_percent': 0.00175,
+              'bond_size_sats': 4932,
+              'bond_size_percent': 3,
+              'is_buyer': true,
+              'sent_fiat': 100,
+              'received_sats': 164126,
+              'trade_fee_sats': 288,
+              'is_swap': true,
+              'received_onchain_sats': 160000,
+              'address': 'bc1qexampleaddress0',
+              'txid': 'a' * 64,
+              'mining_fee_sats': 1200,
+              'swap_fee_sats': 2926,
+              'swap_fee_percent': 1,
+            },
+            'platform': {
+              'contract_exchange_rate': 60849.5,
+              'contract_timestamp': '2026-11-13T08:03:00.000Z',
+              'contract_total_time': 1234.5,
+              'trade_revenue_sats': 576,
+            },
+          }),
+        );
+        await tester.pump(const Duration(seconds: 3));
+      },
+    );
+
+    testWidgets(
+      'a peer\'s side the coordinator gave invalid: no view of it and no export',
+      (tester) async {
+        final summary = _summaryOf();
+        (summary['maker_summary'] as Map<String, Object?>)['is_buyer'] = 'no';
+        final seen = await _statuses.read(
+          await _statuses.sendingSats(),
+          orderJson(14, changes: summary),
+        );
+        await _show(
+          tester,
+          watch: _Watch(),
+          state: TradeScreenStatuses.watched(seen),
+        );
+        await _reveal(tester, find.text('Trade Summary'));
+        expect(find.text('Buyer'), findsOneWidget);
+        expect(find.byKey(const ValueKey('trade-summary-maker')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('trade-summary-taker')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('trade-summary-export')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('a rating not sent says so in its own words', (tester) async {
+      final rates = _Rates();
+      final seen = _seenOf('fourteenSummary');
+      await _show(
+        tester,
+        watch: _Watch(),
+        rate: rates,
+        state: TradeScreenStatuses.watched(seen),
+      );
+      for (final (refusal, said) in [
+        (
+          const ChatStepReadFailed(),
+          'The order could not be read again from ${seen.order?.coordinator.longAlias}: your rating was not sent.',
+        ),
+        (const ChatStepNotOffered(), 'Your rating was not sent.'),
+      ]) {
+        await _reveal(tester, star(3));
+        await tester.tap(star(3));
+        await tester.pump();
+        rates.gate?.complete(Err(refusal));
+        rates.gate = null;
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(said), findsOneWidget);
+        expect(find.textContaining('confirmation'), findsNothing);
+      }
+    });
+
+    for (final locale in const [Locale('en'), Locale('fr')]) {
+      for (final scale in const [2.0, 3.0]) {
+        testWidgets(
+          '${locale.languageCode} at ×$scale on 320 points, in the app font: no word broken at 14, the stars and each view of the summary',
+          (tester) async {
+            await _show(
+              tester,
+              watch: _Watch(),
+              rate: _Rates(),
+              locale: locale,
+              size: const Size(320, 640),
+              textScale: scale,
+              appFont: true,
+              state: _watched('fourteenSummary'),
+            );
+            _expectNothingCut(tester, 'taker');
+            _expectNoWordBroken(tester, 'taker');
+            for (final view in ['maker', 'platform']) {
+              final tile = find.byKey(ValueKey('trade-summary-$view'));
+              await _reveal(tester, tile);
+              await tester.tap(tile);
+              await tester.pump();
+              _expectNothingCut(tester, view);
+              _expectNoWordBroken(tester, view);
+            }
+          },
+        );
+      }
+    }
 
     testWidgets(
       'on chain: « Your TXID » copies the transaction, the swap\'s costs in the summary',
@@ -2990,6 +3134,8 @@ void _expectNoWordBroken(WidgetTester tester, String reason) {
       'TradeDialogBody',
       'TradeButton',
       '_QuietButton',
+      // The end's panel, its stars and its summary (#95).
+      'SuccessfulPanel',
     }.contains(w.runtimeType.toString()),
   );
   for (final paragraph in tester.renderObjectList<RenderParagraph>(

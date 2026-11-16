@@ -703,5 +703,7 @@
   "p2pSummaryRoutingBudget": "Budget de routage",
   "p2pSummaryRate": "{rate} {currencyCode}/BTC",
   "p2pSummaryContractRate": "Taux de change du contrat",
-  "p2pEndRateUnknown": "Bull Market ne sait pas si votre note est passée : l’ordre ne l’indique pas. Touchez une étoile pour l’envoyer de nouveau."
+  "p2pEndRateUnknown": "Bull Market ne sait pas si votre note est passée : l’ordre ne l’indique pas. Touchez une étoile pour l’envoyer de nouveau.",
+  "p2pEndRateNotSent": "Votre note n’a pas été envoyée.",
+  "p2pEndRateReadFailed": "L’ordre n’a pas pu être relu chez {coordinator} : votre note n’a pas été envoyée."
 }

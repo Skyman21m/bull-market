@@ -813,6 +813,50 @@ void main() {
       expect(sent(app, ScriptedRequest.rate), 0);
     });
 
+    test('the order seen is another trade\'s: nothing read or sent', () async {
+      final (app, record, _) = await at(status: 14);
+      final other = await TradeHarness.start(orderId: 43);
+      final taken = await other.takeShown();
+      final run = other.watchOf(TradeHarness.recordOf(taken));
+      await other.settle();
+      other.coordinator
+        ..lockBond(other.robot(0))
+        ..moveTo(14);
+      await other.elapse(const Duration(seconds: 5));
+      final otherSeen = run.lastStatus.seen;
+      await run.subscription.cancel();
+      expect(otherSeen.order?.id, 43);
+      expect(ChatStepAction.rate.offeredAt(otherSeen), isTrue);
+      app.coordinator.requests.clear();
+      expect(
+        await app.chat.rate(record, otherSeen, stars(5)),
+        isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+          (err) => err.failure,
+          'refusal',
+          isA<ChatStepOfAnotherTrade>(),
+        ),
+      );
+      expect(app.coordinator.requests, isEmpty);
+    });
+
+    test(
+      'refused by the coordinator: not done, told apart from an outcome unknown',
+      () async {
+        final (app, record, finished) = await at(status: 14);
+        app.coordinator.failNext(ScriptedRequest.rate, ScriptedFault.refused);
+        final outcome = switch (await app.chat.rate(
+          record,
+          finished,
+          stars(2),
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(outcome, isA<ChatStepNotDone>());
+        expect(app.coordinator.platformRating, isNull);
+      },
+    );
+
     test('the read before fails: nothing sent', () async {
       final (app, record, finished) = await at(status: 14);
       app.coordinator.failNext(

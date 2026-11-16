@@ -3832,5 +3832,18 @@
   "p2pEndRateUnknown": "Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.",
   "@p2pEndRateUnknown": {
     "description": "Not in the RoboSats texts: the project's own: the answer to « Rate your trade experience » was lost; no read can tell a rating, so nothing keeps checking, and only a new tap sends again (#95)."
+  },
+  "p2pEndRateNotSent": "Your rating was not sent.",
+  "@p2pEndRateNotSent": {
+    "description": "Not in the RoboSats texts: the project's own: « Rate your trade experience » not sent, the status shown not offering it (no order read at 14); the reference sends its stars with no such check (#95)."
+  },
+  "p2pEndRateReadFailed": "The order could not be read again from {coordinator}: your rating was not sent.",
+  "@p2pEndRateReadFailed": {
+    "description": "Not in the RoboSats texts: the project's own: the read just before « Rate your trade experience » failed, nothing sent; the reference reads nothing before its rating (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   }
 }

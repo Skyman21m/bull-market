@@ -4392,6 +4392,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Bull Market does not know whether your rating went through: the order does not show it. Tap a star to send it again.'**
   String get p2pEndRateUnknown;
+
+  /// Not in the RoboSats texts: the project's own: « Rate your trade experience » not sent, the status shown not offering it (no order read at 14); the reference sends its stars with no such check (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your rating was not sent.'**
+  String get p2pEndRateNotSent;
+
+  /// Not in the RoboSats texts: the project's own: the read just before « Rate your trade experience » failed, nothing sent; the reference reads nothing before its rating (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: your rating was not sent.'**
+  String p2pEndRateReadFailed(String coordinator);
 }
 
 class _P2pLocalizationsDelegate
