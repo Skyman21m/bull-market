@@ -285,7 +285,7 @@ class StoredTradeTrails extends Table {
 
 /// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
 ///
-/// `step IN ('bond')` and the trigger that refuses any delete mean that the escrow's panel (#97) rebuilds the table in its schema step (a new table, the rows copied, the old one dropped), the one step allowed to drop it.
+/// Schema 7 (#97) widened its step to `('bond', 'escrow')`: the trigger that refuses any delete does not fire on a drop, so its step rebuilt the table (the rows copied aside, the table dropped and made again, the rows copied back, then the triggers), the one step allowed to drop it (`P2pDatabase`, from 6 to 7).
 ///
 /// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
 /// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step and payment hash never change, its start never goes back, and a row is written only for an open trade whose trail is recorded.

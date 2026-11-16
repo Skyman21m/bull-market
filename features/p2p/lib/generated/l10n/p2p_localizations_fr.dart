@@ -1994,7 +1994,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayEscrowHeld =>
-      'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, le swap est remboursé vers Paiements instantanés sans les frais de swap, et le remboursement peut tarder.';
+      'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, le swap est remboursé vers Paiements instantanés sans les frais de swap ni les frais de réseau, et le remboursement peut tarder.';
 
   @override
   String p2pPayServiceFee(String serviceFee) {
@@ -2162,7 +2162,17 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pPayEscrowCancelNote =>
-      'Un paiement de cette garantie est en route depuis ce portefeuille. Annuler maintenant coûte les frais de swap, et le remboursement peut tarder.';
+      'Un paiement de cette garantie est en route depuis ce portefeuille. Annuler ne l’arrête pas : s’il arrive chez le coordinateur, celui-ci le rend, puis le service de swap le rembourse vers Paiements instantanés sans les frais de swap ni les frais de réseau. Le remboursement peut tarder.';
+
+  @override
+  String p2pPayLineBond(String line) {
+    return 'Caution : $line';
+  }
+
+  @override
+  String p2pPayLineEscrow(String line) {
+    return 'Garantie : $line';
+  }
 
   @override
   String get p2pPayServiceRefunded =>

@@ -118,7 +118,7 @@ class BondPanel extends StatelessWidget {
 ///
 /// From the top, as the reference: « You risk losing your bond if you do not lock the collateral. Total time available is {{deposit_timer_hours}}h {{deposit_timer_minutes}}m. » (the escrow's time of the trade's terms, split as the reference splits `escrow_duration`), the QR code of the invoice in capitals, the facts read from it (amount, expiry, network, description: design note § 4.4), « Copy to clipboard », then « This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the {{currencyCode}}. »; no « See Compatible Wallets » and no « You are SELLING BTC », which the reference shows for the bond only.
 /// The QR code and the copy show only as [invoiceDisplayOf] allows, as for the bond: never for an `UnusableInvoice`, nor once the screen's clock passed the invoice's `payableUntil`, nor for a status not marked stored ([payable]); behind « Show anyway » for the amount checks (the escrow not the trade's sats, the implied fee above the announced one, the invoice not `escrow_satoshis`), not at all for the others. While the coordinator has not given the invoice yet, the two lines are shown without the QR code.
-/// While this wallet quotes, confirms, sends or paid the escrow ([WalletPaymentSlot.othersHidden]), the QR code, the copy and the reference's hold-invoice line are not shown (the facts stay), so that nothing invites a second payment and the line, then in the wallet's confirmation, is never on screen twice (#135); the reference has no « Pay with another wallet » section around the escrow, so none is drawn.
+/// While this wallet quotes, confirms, sends or paid the escrow ([WalletPaymentSlot.othersHidden]), the QR code, the copy and the reference's hold-invoice line are not shown (the facts stay), so that nothing invites a second payment and the line, then in the wallet's confirmation, is never on screen twice (#135); the reference has no « Pay with another wallet » section around the escrow, so none is drawn. While it is not known yet, or cannot be read, whether this wallet paid the invoice ([WalletPaymentSlot.othersBehindTap]), the QR code and the copy wait behind « Pay with another wallet », as the bond's section stays closed then.
 /// Tapping the QR code opens nothing (the reference opens `lightning:`).
 class EscrowPanel extends StatefulWidget {
   /// The escrow invoice of the status shown, `null` until the coordinator gives it.
@@ -153,6 +153,9 @@ class EscrowPanel extends StatefulWidget {
 
 class _EscrowPanelState extends State<EscrowPanel> {
   bool _shownAnyway = false;
+
+  /// Whether the user asked for the other wallet while it is not known whether this wallet paid the invoice ([WalletPaymentSlot.othersBehindTap]): for one payment hash.
+  bool _otherWalletAsked = false;
   bool _copied = false;
   Timer? _copiedTimer;
 
@@ -162,6 +165,7 @@ class _EscrowPanelState extends State<EscrowPanel> {
     // « Show anyway » holds for one payment hash.
     if (_hashOf(widget.invoice) != _hashOf(oldWidget.invoice)) {
       _shownAnyway = false;
+      _otherWalletAsked = false;
     }
   }
 
@@ -221,6 +225,8 @@ class _EscrowPanelState extends State<EscrowPanel> {
         : null;
     final wallet = slot?.child;
     final heldByWallet = slot?.othersHidden ?? false;
+    // Not known yet, or not readable, whether this wallet paid the invoice: the QR code and the copy only after a tap, so that the whole trade is not paid a second time from another wallet by mistake.
+    final behindTap = (slot?.othersBehindTap ?? false) && !_otherWalletAsked;
     final display = invoice != null && widget.payable && !heldByWallet
         ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway, now: widget.now)
         : InvoiceDisplay.hidden;
@@ -235,6 +241,14 @@ class _EscrowPanelState extends State<EscrowPanel> {
         if (wallet != null) ...[const Gap(BullSpacing.md), wallet],
         if (invoice case CheckedInvoice(:final bolt11)) ...[
           switch (display) {
+            InvoiceDisplay.shown when behindTap => Padding(
+              padding: const EdgeInsets.only(top: BullSpacing.md),
+              child: TradeButton(
+                label: l10n.p2pTradePayOtherWallet,
+                outlined: true,
+                onPressed: () => setState(() => _otherWalletAsked = true),
+              ),
+            ),
             InvoiceDisplay.shown => Padding(
               padding: const EdgeInsets.only(top: BullSpacing.md),
               child: _Qr(bolt11: bolt11, label: l10n.p2pTradeEscrowQr),
@@ -252,7 +266,7 @@ class _EscrowPanelState extends State<EscrowPanel> {
           },
           const Gap(BullSpacing.md),
           _Facts(invoice: invoice),
-          if (display == InvoiceDisplay.shown) ...[
+          if (display == InvoiceDisplay.shown && !behindTap) ...[
             const Gap(BullSpacing.sm),
             TradeButton(
               label: _copied

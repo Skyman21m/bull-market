@@ -13,6 +13,12 @@ import 'package:p2p/src/domain/usecases/trade/bond_payments_in_flight.dart';
 import 'package:p2p/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/testing.dart';
+import 'package:get_it/get_it.dart';
+import 'package:p2p/src/domain/repositories/trade_payment_repository.dart';
+import 'package:p2p/src/domain/robot_request_limiter.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
+import 'package:p2p/src/p2p_locator.dart';
+import 'package:p2p/src/presentation/bond_payment_cubit.dart';
 import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
@@ -410,6 +416,53 @@ void main() {
         (await seller.recorded(InvoiceStep.escrow))?.paymentHash,
         escrowHash,
       );
+    },
+  );
+
+  test(
+    'the composition gives each cubit its own step\'s use case: the escrow\'s cubit quotes the escrow',
+    () async {
+      final seller = await _Seller.at();
+      final locator = GetIt.asNewInstance();
+      addTearDown(locator.reset);
+      P2pLocator.registerTrades(
+        locator,
+        transport: () => throw StateError('no transport'),
+        relays: () => throw StateError('no relay'),
+        clock: DateTime.now,
+      );
+      // The trade's reads, records and locks of the harness, over its scripted coordinator: the use cases themselves are the composition's.
+      locator
+        ..allowReassignment = true
+        ..registerSingleton<TradeReader>(seller.app.reader)
+        ..registerSingleton<RobotRequestLimiter>(seller.app.limiter)
+        ..registerSingleton<TradePaymentRepository>(seller.payments)
+        ..registerSingleton<TradeTakeLocks>(seller.app.locks)
+        ..registerSingleton<P2pWalletPort>(seller.wallet);
+      expect(P2pLocator.paysBondFromWallet(locator), isTrue);
+      final bond = locator<BondPaymentCubit>(param1: seller.record);
+      final escrow = locator<EscrowPaymentCubit>(param1: seller.record);
+      addTearDown(bond.close);
+      addTearDown(escrow.close);
+      expect(bond, isNot(isA<EscrowPaymentCubit>()));
+      expect(bond.step, InvoiceStep.bond);
+      expect(escrow.step, InvoiceStep.escrow);
+      // The escrow's cubit quotes the escrow's invoice; the bond's offers nothing at 6.
+      final invoice = await seller.offered();
+      seller.wallet.scriptQuote(Ok(seller.quoteOf(invoice)));
+      final seen = await seller.seen();
+      escrow.start();
+      for (var i = 0; i < 50 && escrow.state.step is! BondPayIdle; i++) {
+        await seller.app.settle();
+      }
+      expect(escrow.state.step, isA<BondPayIdle>());
+      await escrow.offerFor(seen);
+      expect(escrow.state.offer, isA<Ok<void, BondPayRefusal>>());
+      await escrow.ask(seen);
+      expect(escrow.state.step, isA<BondPayConfirming>());
+      expect(seller.wallet.quoted.last.bolt11, invoice.bolt11);
+      await bond.offerFor(seen);
+      expect(bond.state.offer, isA<Err<void, BondPayRefusal>>());
     },
   );
 }

@@ -1968,7 +1968,7 @@ class P2pLocalizationsVi extends P2pLocalizations {
 
   @override
   String get p2pPayEscrowHeld =>
-      'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees, and the refund may take time.';
+      'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
 
   @override
   String p2pPayServiceFee(String serviceFee) {
@@ -2134,7 +2134,17 @@ class P2pLocalizationsVi extends P2pLocalizations {
 
   @override
   String get p2pPayEscrowCancelNote =>
-      'A payment of this collateral is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.';
+      'A payment of this collateral is on its way from this wallet. Cancelling does not stop it: if it reaches the coordinator, the coordinator returns it, then the swap service refunds it to Instant payments without the swap fees and the network fee. The refund may take time.';
+
+  @override
+  String p2pPayLineBond(String line) {
+    return 'Bond: $line';
+  }
+
+  @override
+  String p2pPayLineEscrow(String line) {
+    return 'Collateral: $line';
+  }
 
   @override
   String get p2pPayServiceRefunded =>

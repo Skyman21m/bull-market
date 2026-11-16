@@ -48,10 +48,14 @@ final class WalletPaymentSlot {
   /// Whether this wallet is paying the invoice or paid it: « Pay with another wallet » then closes and offers neither the QR code nor the copy.
   final bool othersHidden;
 
+  /// Whether it is not known yet, or cannot be read, whether this wallet paid the invoice: the other way is offered only after a tap (the bond's section stays closed; the escrow's QR code waits behind « Pay with another wallet », #97).
+  final bool othersBehindTap;
+
   const WalletPaymentSlot(
     this.child, {
     this.othersOpen = false,
     this.othersHidden = false,
+    this.othersBehindTap = false,
   });
 }
 

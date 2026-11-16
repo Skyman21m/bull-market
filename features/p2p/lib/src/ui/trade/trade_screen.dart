@@ -256,15 +256,17 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       ),
                       const Gap(BullSpacing.sm),
                     ],
-                    // After the escrow's step, where an escrow paid by this wallet stands (refunded, under review, support); at 6 and 7 the escrow panel itself says it.
+                    // After the escrow's step, where an escrow paid by this wallet stands (refunded, under review, support), whatever the view, as the bond's: a cancelled trade (`TradeMessage`) and an order back in the book (`TradeOrderOnly`) are where an escrow returned is said; at 6 and 7 the escrow panel itself says it.
                     if (widget.walletEscrowLine case final escrowLine?
-                        when view is TradeContract &&
-                            view.prompt != TradePrompt.lockEscrow) ...[
+                        when view is! TradeWaiting &&
+                            !(view is TradeContract &&
+                                view.prompt == TradePrompt.lockEscrow)) ...[
                       escrowLine(
                         context,
                         // Locked while the reference's title says so: « The trade collateral is locked! », « Chat with the buyer ».
-                        view.title == TradeTitle.collateralLocked ||
-                            view.title == TradeTitle.chatWithBuyer,
+                        view is TradeContract &&
+                            (view.title == TradeTitle.collateralLocked ||
+                                view.title == TradeTitle.chatWithBuyer),
                       ),
                       const Gap(BullSpacing.sm),
                     ],

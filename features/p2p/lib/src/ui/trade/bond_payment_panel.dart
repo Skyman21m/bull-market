@@ -40,6 +40,8 @@ class BondPaymentPanel extends StatefulWidget {
       InvoiceStep.bond => context.watch<BondPaymentCubit>(),
       InvoiceStep.escrow => context.watch<EscrowPaymentCubit>(),
     };
+    // A cubit wired to another step's use case offers nothing: the wallet is never offered for an invoice its use case does not pay.
+    if (cubit.step != request.step) return null;
     final state = cubit.state;
     // The panel and its lines read the cubit of the request's step.
     final panel = BlocProvider<BondPaymentCubit>.value(
@@ -63,7 +65,10 @@ class BondPaymentPanel extends StatefulWidget {
       BondPayUnreadable(:final paymentMayExist) => WalletPaymentSlot(
         panel,
         othersHidden: paymentMayExist,
+        othersBehindTap: !paymentMayExist,
       ),
+      // Not known yet whether this wallet paid the invoice: the other way only after a tap.
+      BondPayLooking() => WalletPaymentSlot(panel, othersBehindTap: true),
       // The user chose this wallet: the other way closes while the quote is asked and confirmed, and while the payment is sent.
       BondPayQuoting() ||
       BondPayConfirming() ||
@@ -465,6 +470,11 @@ class BondPaymentLine extends StatelessWidget {
               cubit?.record ?? (throw StateError('no cubit')),
             ),
             step: escrow ? InvoiceStep.escrow : InvoiceStep.bond,
+            // Said whose payment it is: always for the escrow, and for the bond while a payment of the escrow is followed too, so that two lines are never the same (a buyer, who pays no escrow, sees the bond's line as before).
+            named:
+                escrow ||
+                context.watch<EscrowPaymentCubit?>()?.state.step
+                    is BondPayFollowing,
           ),
           _ => null,
         };
@@ -559,20 +569,27 @@ String? bondPaymentAfterText(
   required bool bondHeld,
   required String coordinator,
   InvoiceStep step = InvoiceStep.bond,
+  bool named = false,
 }) {
   final l10n = P2pLocalizations.of(context);
   final escrow = step == InvoiceStep.escrow;
+  // The swap's words, which name no payment: prefixed with the payment's name when [named].
+  String of(String line) => !named
+      ? line
+      : escrow
+      ? l10n.p2pPayLineEscrow(line)
+      : l10n.p2pPayLineBond(line);
   return switch (progress) {
     P2pWalletPaymentPreparing() || P2pWalletPaymentSigned() => null,
-    P2pWalletPaymentBroadcastUnknown() => l10n.p2pPayMaybeSent,
+    P2pWalletPaymentBroadcastUnknown() => of(l10n.p2pPayMaybeSent),
     P2pWalletPaymentSent() || P2pWalletPaymentPending() =>
       // While the bond, or the escrow, is locked the reference's own line or title says so: nothing of ours is added (#135).
-      bondHeld ? null : l10n.p2pPayWithSwapService,
-    P2pWalletPaymentUnderReview() => l10n.p2pPayUnderReview,
+      bondHeld ? null : of(l10n.p2pPayWithSwapService),
+    P2pWalletPaymentUnderReview() => of(l10n.p2pPayUnderReview),
     // An escrow charged is the trade's normal end, or a dispute's start: the reference's own texts say each.
     P2pWalletPaymentPaid() => escrow ? null : l10n.p2pPaySettled(coordinator),
-    P2pWalletPaymentRefundPending() => l10n.p2pPayRefundPending,
-    P2pWalletPaymentRefunded() => l10n.p2pPayRefunded,
+    P2pWalletPaymentRefundPending() => of(l10n.p2pPayRefundPending),
+    P2pWalletPaymentRefunded() => of(l10n.p2pPayRefunded),
     P2pWalletPaymentExpired(funds: P2pWalletFunds.notSent) ||
     P2pWalletPaymentFailed(funds: P2pWalletFunds.notSent) => null,
     P2pWalletPaymentExpired(:final funds) => _askSupport(

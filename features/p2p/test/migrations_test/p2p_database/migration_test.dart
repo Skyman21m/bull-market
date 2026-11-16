@@ -1614,6 +1614,24 @@ void main() {
         await database.close();
       },
     );
+  });
+
+  group('a file of schema 6 with payments', () {
+    /// The schema 7 objects of the payments in [database], by name, compared without quotes and white space, as the earlier groups compare theirs.
+    Future<Map<String, String>> paymentObjectsOf(
+      GeneratedDatabase database,
+    ) async => {
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments'",
+              )
+              .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
 
     // Schema 7 (#97): the payments of the trades gain the seller's escrow, the table rebuilt with its rows and its triggers.
 
@@ -1639,14 +1657,14 @@ void main() {
       ]) {
         await old.customStatement(
           "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) VALUES (?, ?, 'bond', ?, ?, ?)",
-          [drawn.hex, index, hash, 1000 + index, id],
+          [_payer, index, hash, 1000 + index, id],
         );
       }
       await old.customStatement(trigger.read<String>('sql'));
       await expectLater(
         old.customStatement(
           "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 3, 'escrow', ?, 0)",
-          [drawn.hex, 'ef${'0' * 62}'],
+          [_payer, 'ef${'0' * 62}'],
         ),
         throwsA(anything),
         reason: 'schema 6 has no escrow',
@@ -1724,7 +1742,7 @@ void main() {
         await expectLater(
           migrated.customStatement(
             "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 3, 'escrow', ?, 0)",
-            [drawn.hex, 'ef${'0' * 62}'],
+            [_payer, 'ef${'0' * 62}'],
           ),
           throwsA(
             predicate(
@@ -1878,3 +1896,6 @@ const _schema4Objects = [
   'trade_trails_closed',
   'trade_trails_forward',
 ];
+
+/// A key fingerprint of the payments written in a file of schema 6: fixed test text, not a key anyone uses.
+final _payer = 'ab' * 32;

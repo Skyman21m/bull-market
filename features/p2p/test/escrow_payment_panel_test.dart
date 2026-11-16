@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_clock.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/trade/bond_payment.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
@@ -13,6 +16,8 @@ import 'package:p2p/src/domain/trade/wallet_payment.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
+import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/bond_payment_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
@@ -35,10 +40,13 @@ final _record = TradeScreenStatuses.recordFor(TradeRole.seller);
 final _payment = P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash);
 late WalletPaymentOffered _offered;
 
+/// The bond's payments of the last screen shown, which a test may follow too.
+late Payments _bondPayments;
+
 const _holdLine =
     'This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the EUR.';
 const _heldLine =
-    'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees, and the refund may take time.';
+    'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
 
 /// Shows the trade screen at [state] with the escrow's panel over [escrow]'s payments (the bond's cubit idle beside it).
 Future<(EscrowPaymentCubit, Payments)> _show(
@@ -48,6 +56,8 @@ Future<(EscrowPaymentCubit, Payments)> _show(
   Size size = const Size(390, 844),
   double textScale = 1,
   Future<Result<CancelOutcome, CancelRefusal>>? cancel,
+  BondPaymentWatch? escrowFound = const BondPaymentNone(),
+  InvoiceStep escrowStep = InvoiceStep.escrow,
 }) async {
   tester.view
     ..physicalSize = size * 3
@@ -86,6 +96,7 @@ Future<(EscrowPaymentCubit, Payments)> _show(
     payments.pay,
     payments.follow,
     (record) => payments.running,
+    step: escrowStep,
   )..start();
   addTearDown(escrow.close);
   await tester.pumpWidget(
@@ -129,9 +140,14 @@ Future<(EscrowPaymentCubit, Payments)> _show(
   );
   bondPayments.balances.add(Ok(Sats.fromInt(50000)));
   payments.balances.add(Ok(Sats.fromInt(500000)));
-  for (final follows in [bondPayments.follows, payments.follows]) {
-    if (follows.isNotEmpty) follows.single.add(const BondPaymentNone());
+  if (bondPayments.follows.isNotEmpty) {
+    bondPayments.follows.single.add(const BondPaymentNone());
   }
+  // `null`: the escrow's records not answered yet, the panel still looking.
+  if (escrowFound != null && payments.follows.isNotEmpty) {
+    payments.follows.single.add(escrowFound);
+  }
+  _bondPayments = bondPayments;
   await tester.pump();
   await tester.pump();
   await tester.pump();
@@ -174,6 +190,9 @@ void main() {
       'six': await statuses.waitingForBoth(),
       'seven': await statuses.waitingForEscrow(),
       'eight': await statuses.waitingForPayout(),
+      'cancelled': await statuses.cancelled(),
+      'forfeited': await statuses.bondForfeited(),
+      'expired': await statuses.expired(),
     };
     final six = _seen['six'] ?? (throw StateError('six'));
     final offer = walletPaymentFor(
@@ -386,9 +405,232 @@ void main() {
       await tester.pump();
       expect(
         find.text(
+          'Collateral: Swap will be refunded shortly. The swap fees are not refunded.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  for (final state in ['cancelled', 'forfeited', 'expired']) {
+    testWidgets(
+      'the trade over ($state): where the escrow\'s swap stands is still said, the escrow returned to the swap service',
+      (tester) async {
+        final (_, payments) = await _show(tester, state: state);
+        expect(find.byType(BondPaymentPanel), findsNothing);
+        _follow(payments, const P2pWalletPaymentRefundPending());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'Collateral: Swap will be refunded shortly. The swap fees are not refunded.',
+          ),
+          findsOneWidget,
+        );
+        _follow(payments, const P2pWalletPaymentRefunded());
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'Collateral: Swap has been refunded. The swap fees are not refunded.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
+  testWidgets(
+    'the bond and the escrow both paid from this wallet: each line says whose payment it is, in English and in French',
+    (tester) async {
+      for (final (locale, bond, escrow) in const [
+        (
+          Locale('en'),
+          'Bond: Swap will be refunded shortly. The swap fees are not refunded.',
+          'Collateral: Swap will be refunded shortly. The swap fees are not refunded.',
+        ),
+        (
+          Locale('fr'),
+          'Caution : Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.',
+          'Garantie : Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.',
+        ),
+      ]) {
+        final (_, payments) = await _show(
+          tester,
+          state: 'cancelled',
+          locale: locale,
+        );
+        _bondPayments.follows.last.add(
+          BondPaymentFollowed(_payment, const P2pWalletPaymentRefundPending()),
+        );
+        await tester.pump();
+        await tester.pump();
+        _follow(payments, const P2pWalletPaymentRefundPending());
+        await tester.pump();
+        await tester.pump();
+        expect(find.text(bond), findsOneWidget, reason: '$locale');
+        expect(find.text(escrow), findsOneWidget, reason: '$locale');
+      }
+    },
+  );
+
+  testWidgets(
+    'the bond alone paid from this wallet: its line as before, not named',
+    (tester) async {
+      await _show(tester, state: 'cancelled');
+      _bondPayments.follows.last.add(
+        BondPaymentFollowed(_payment, const P2pWalletPaymentRefundPending()),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
           'Swap will be refunded shortly. The swap fees are not refunded.',
         ),
         findsOneWidget,
+      );
+      expect(find.textContaining('Bond: '), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'while the panel looks for an earlier payment of the escrow: no QR code nor copy without a tap on « Pay with another wallet »',
+    (tester) async {
+      await _show(tester, state: 'six', escrowFound: null);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Copy to clipboard'), findsNothing);
+      final other = find.widgetWithText(TradeButton, 'Pay with another wallet');
+      expect(other, findsOneWidget);
+      await tester.ensureVisible(other);
+      await tester.pump();
+      await tester.tap(other);
+      await tester.pump();
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(find.text('Copy to clipboard'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the escrow\'s records unreadable: no QR code without a tap, the reason said',
+    (tester) async {
+      await _show(
+        tester,
+        state: 'six',
+        escrowFound: const BondPaymentUnreadable(P2pStorageFailure()),
+      );
+      expect(
+        find.text('Bull Market cannot read where this payment stands.'),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(
+        find.widgetWithText(TradeButton, 'Pay with another wallet'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'an escrow cubit wired to the bond\'s use case offers nothing in the escrow panel',
+    (tester) async {
+      await _show(tester, state: 'six', escrowStep: InvoiceStep.bond);
+      expect(find.byType(BondPaymentPanel), findsNothing);
+      expect(find.text('Pay with this wallet'), findsNothing);
+      expect(find.byType(QrImageView), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the trade page provides the escrow\'s cubit and its line: a seller\'s escrow returned is said by the escrow\'s line',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(390, 1800) * 3
+        ..devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final watch = StreamController<TradeWatchState>.broadcast();
+      addTearDown(watch.close);
+      final bondPayments = Payments();
+      final escrowPayments = Payments();
+      final reads = FakeTransport();
+      final locator = GetIt.asNewInstance();
+      addTearDown(locator.reset);
+      locator
+        ..registerSingleton<P2pClock>(P2pClock(() => tradeNow))
+        ..registerSingleton<P2pWalletPort>(
+          FakeP2pWalletPort(Ok(Sats.fromInt(500000))),
+        )
+        ..registerFactory<TradeReader>(
+          () => throw StateError('the page reads no trade itself'),
+        )
+        ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+          (record, _) => TradeCubit(record, (
+            record, {
+            signals = const Stream.empty(),
+            onScreen = true,
+          }) {
+            signals.listen((_) {});
+            return watch.stream;
+          }, (record, seen, {bondLoss}) => throw StateError('no cancel')),
+        )
+        ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+          (record, _) => TradeOrderPageCubit(
+            coordinator('temple'),
+            RobosatsNetwork.mainnet,
+            FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+            FindPublicOrderUsecase(
+              CoordinatorClient(reads, clock: () => testNow),
+            ).execute,
+          ),
+        )
+        ..registerFactoryParam<BondPaymentCubit, TradeRecord, void>(
+          (record, _) => bondPayments.cubit(),
+        )
+        ..registerFactoryParam<EscrowPaymentCubit, TradeRecord, void>(
+          (record, _) => EscrowPaymentCubit(
+            record,
+            escrowPayments.balance,
+            escrowPayments.check,
+            escrowPayments.quote,
+            escrowPayments.pay,
+            escrowPayments.follow,
+            (record) => escrowPayments.running,
+            step: InvoiceStep.escrow,
+          ),
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: testTheme,
+          localizationsDelegates: P2pLocalizations.localizationsDelegates,
+          supportedLocales: P2pLocalizations.supportedLocales,
+          home: Scaffold(
+            body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+          ),
+        ),
+      );
+      await tester.pump();
+      watch.add(
+        TradeScreenStatuses.watched(
+          _seen['cancelled'] ?? (throw StateError('cancelled')),
+        ),
+      );
+      await tester.pump();
+      bondPayments.follows.single.add(const BondPaymentNone());
+      escrowPayments.follows.single.add(
+        BondPaymentFollowed(_payment, const P2pWalletPaymentRefundPending()),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Collateral: Swap will be refunded shortly. The swap fees are not refunded.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Swap will be refunded shortly. The swap fees are not refunded.',
+        ),
+        findsNothing,
       );
     },
   );

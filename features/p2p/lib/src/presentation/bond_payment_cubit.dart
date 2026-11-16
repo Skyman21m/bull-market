@@ -147,6 +147,9 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   final BondFollower _follower;
   final BondPaymentRunning _running;
   final Duration _stillWaitingAfter;
+
+  /// The invoice this cubit pays, the step of the use case whose functions it was given (the locator passes `PayBondFromWalletUsecase.step`): the panel offers the wallet only for a request of that step.
+  final InvoiceStep step;
   Timer? _stillWaiting;
 
   StreamSubscription<Result<Sats, P2pWalletRefusal>>? _balances;
@@ -164,10 +167,8 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     this._follower,
     this._running, {
     this._stillWaitingAfter = BondPaymentCubit.stillWaitingAfter,
+    this.step = InvoiceStep.bond,
   }) : super(const BondPaymentState());
-
-  /// The invoice this cubit pays: the taker's bond here, the seller's escrow in [EscrowPaymentCubit].
-  InvoiceStep get step => InvoiceStep.bond;
 
   /// Reads the balance and looks for a payment of the bond made earlier: once.
   void start() {
@@ -349,7 +350,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   }
 }
 
-/// The wallet's payment of a seller's escrow (#97): the same cubit, over the functions of the escrow's [PayBondFromWalletUsecase], of a type of its own so that one trade page provides both.
+/// The wallet's payment of a seller's escrow (#97): the same cubit, over the functions of the escrow's [PayBondFromWalletUsecase] and its [step], of a type of its own so that one trade page provides both.
 final class EscrowPaymentCubit extends BondPaymentCubit {
   EscrowPaymentCubit(
     super.record,
@@ -360,8 +361,6 @@ final class EscrowPaymentCubit extends BondPaymentCubit {
     super.follower,
     super.running, {
     super.stillWaitingAfter,
+    required super.step,
   });
-
-  @override
-  InvoiceStep get step => InvoiceStep.escrow;
 }

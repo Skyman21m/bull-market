@@ -3246,7 +3246,7 @@ abstract class P2pLocalizations {
   /// The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): in the confirmation, above the reference's line on the escrow's hold invoice: the facts of a whole trade paid through the swap service (the study of #97: the service holds the payin until the coordinator settles or cancels the hold invoice, and refunds it to the wallet without its fees when it is cancelled); informs, never stops; in French the wallet's sentence with the reference's word for the swap, « swap », as the bond's.
   ///
   /// In en, this message translates to:
-  /// **'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees, and the refund may take time.'**
+  /// **'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.'**
   String get p2pPayEscrowHeld;
 
   /// The panel of « Pay with this wallet » (#100, #135): the wallet's label for the same fee (`transactionDetailLabelSwapFees`, « Swap fees » / « Frais d'échange »); in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.
@@ -3483,11 +3483,23 @@ abstract class P2pLocalizations {
   /// **'A payment of this bond is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.'**
   String get p2pPayCancelNote;
 
-  /// The panel of « Pay with this wallet » at status 6 and 7, the seller's escrow (#97), the project's own text (RoboSats has no such panel: the owner's request): ours, under the reference's text of the cancel dialog at 6 and 7 (the bond lost), for a payment of the escrow on its way, as the bond's `p2pPayCancelNote` at 3; in French the wallet's sentence with the reference's word for the swap, « swap », as the bond's.
+  /// The panel of « Pay with this wallet » (#97), the project's own text: under the reference's text of the cancel dialog at 6 and 7 (the bond lost), for a payment of the escrow on its way. The reference does not cancel the escrow's hold invoice when the taker cancels (`api/logics.py` case 4.b, `publish_order` detaches it); its invoice follower returns a payment that locks it afterwards (`follow_invoices.py`, « Weird! »), the swap service then refunding the wallet; in French the wallet's sentence with the reference's word for the swap, « swap », as the bond's.
   ///
   /// In en, this message translates to:
-  /// **'A payment of this collateral is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.'**
+  /// **'A payment of this collateral is on its way from this wallet. Cancelling does not stop it: if it reaches the coordinator, the coordinator returns it, then the swap service refunds it to Instant payments without the swap fees and the network fee. The refund may take time.'**
   String get p2pPayEscrowCancelNote;
+
+  /// The panel of « Pay with this wallet » (#97), the project's own text: the line after the bond's step, prefixed with the payment's name while a payment of the escrow is followed too, so that the two lines are told apart; {line} is one of the swap's lines (« Swap will be refunded shortly. … »).
+  ///
+  /// In en, this message translates to:
+  /// **'Bond: {line}'**
+  String p2pPayLineBond(String line);
+
+  /// The panel of « Pay with this wallet » (#97), the project's own text: the line after the escrow's step, always prefixed with the payment's name; « collateral » as the reference's title of the escrow, « garantie » in French as the project's (#96); {line} is one of the swap's lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Collateral: {line}'**
+  String p2pPayLineEscrow(String line);
 
   /// The panel of « Pay with this wallet » (#100, #135): the wallet's `coreSwapsLnSendFailed` (in sentence case) and `coreSwapsLnSendCompletedRefunded`, then ours for the fees; at status 3, the refund done; in French the wallet's sentence with the reference's word for the swap, « swap » (« SWAP VERS Lightning »), since the wallet's French word, « échange », is the P2P screens' word for the trade.
   ///
