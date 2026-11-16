@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/src/coordinator/coordinator.dart';
 import 'package:robosats/src/coordinator/coordinator_order.dart';
+import 'package:robosats/src/coordinator/nostr_relay.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
 import 'package:robosats/src/nostr/gift_wrap.dart';
 import 'package:robosats/src/nostr/nip44.dart';
@@ -21,7 +22,7 @@ import 'package:robosats/src/robot_identity.dart';
 /// Publishing the same value again publishes the same two events, which relays and the official client count once (same ids).
 /// It holds the text encrypted only, and prints nothing of it.
 @immutable
-final class OutgoingNostrChatMessage {
+final class OutgoingNostrChatMessage implements NostrRelayPublication {
   /// The kind of a NIP-17 chat message.
   static const int chatMessageKind = 14;
 
@@ -32,9 +33,11 @@ final class OutgoingNostrChatMessage {
   static const int _maxRumorBytes = 32768;
 
   /// The two `["EVENT", <gift wrap>]` messages to send to a relay: the peer's first, then the robot's own, the order of the reference.
+  @override
   final List<String> relayMessages;
 
   /// The ids of the two gift wraps, in the order of [relayMessages]: what a relay's `OK` names.
+  @override
   final List<String> eventIds;
 
   OutgoingNostrChatMessage._(List<NostrEvent> wraps)

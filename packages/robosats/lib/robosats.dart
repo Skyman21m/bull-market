@@ -11,6 +11,7 @@
 ///
 /// The client also reads the encrypted chat of a trade as a [ChatPage] and posts to it an [OutgoingChatMessage], which only the robot's unlocked key makes ([UnlockedRobotPgpKey.encryptChatMessageToPost]).
 /// As the official client, a message is also sent over Nostr: an [OutgoingNostrChatMessage] holds its two NIP-59 gift wraps (NIP-44 v2, BIP-340 signatures through the `bip340` package), which the app publishes to the coordinators' relays.
+/// At the end of a trade, the client asks the coordinator for a [HostReviewToken] (`/api/review/`), with which an [OutgoingHostRating] rates the coordinator over Nostr, as « Rate your host » of the official client.
 library;
 
 export 'src/bitcoin_address.dart' show BitcoinAddress, BitcoinAddressKind;
@@ -77,6 +78,8 @@ export 'src/coordinator/payout.dart'
         SignedPayoutInvoice;
 export 'src/coordinator/public_order.dart' show PublicOrder;
 export 'src/coordinator/read_bounds.dart' show CoordinatorReadBounds;
+export 'src/coordinator/host_rating.dart'
+    show HostRating, HostReviewToken, OutgoingHostRating;
 export 'src/coordinator/nostr_chat.dart' show OutgoingNostrChatMessage;
 export 'src/coordinator/nostr_relay.dart'
     show
@@ -85,6 +88,7 @@ export 'src/coordinator/nostr_relay.dart'
         NostrRelayFailed,
         NostrRelayOk,
         NostrRelayOutcome,
+        NostrRelayPublication,
         NostrRelayRefused,
         NostrRelayTimedOut,
         NostrRelayTransport,
