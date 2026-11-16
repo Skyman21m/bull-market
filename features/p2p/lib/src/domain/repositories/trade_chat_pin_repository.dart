@@ -8,7 +8,7 @@ import '../trade_record.dart';
 ///
 /// One pin per trade, written once and never changed nor deleted: the database's triggers refuse anything else, and a pin is written only for an open trade.
 /// Each method is one statement that commits on its own; never call it inside a database transaction.
-/// It holds no secret: two public fingerprints.
+/// It holds no secret: the two fingerprints of a public key, and two Nostr public keys.
 abstract interface class TradeChatPinRepository {
   /// The pin of [trade]'s chat, `null` when its chat never pinned a key on this device (a trade of an older version of the app included).
   ///

@@ -27,7 +27,8 @@ import 'watch_chat_usecase.dart';
 /// When the coordinator then refuses the post, the copy has left already, as in the reference: the screen says the coordinator did not take the message while a peer in the official client's Nostr view may read it, and a message typed again shows twice there (declared deviation, nothing built to avoid it).
 /// Nothing is built when the order lacks a Nostr key or holds for this robot a key that is not the robot's ([OutgoingNostrChatMessage.compose]).
 /// « Send again » publishes the same Nostr events again only when no relay accepted them, so that a peer never sees a message twice.
-/// Nothing here is printed or stored; the Nostr copy logs only fixed words.
+/// Nothing is posted while the peer key pinned in this run is not kept with the trade's record (review of #139), and no Nostr copy is published while the trade's Nostr keys are not (part of #159).
+/// Nothing here is printed, and nothing stored but those pins; the Nostr copy logs only fixed words.
 final class SendChatMessageUsecase {
   final CoordinatorClient _client;
   final TradeReader _reader;

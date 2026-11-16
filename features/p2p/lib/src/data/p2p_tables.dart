@@ -368,7 +368,7 @@ class StoredTradeChatPins extends Table {
 
 /// The Nostr keys of a trade pinned at its first Nostr copy (schema 6, part of #159): one row per trade, written before that copy is published, so that after a restart of the app a key the order changes stops the Nostr copies as within one run.
 ///
-/// It holds the peer's and this robot's Nostr public keys as the order gives them: not secret, public keys the coordinator publishes to both parties; never a message or anything decrypted.
+/// It holds the peer's and this robot's Nostr public keys as the order gives them: not secret, public keys that the coordinator gives both parties and that each gift wrap of the chat names in the clear to the relays; never a private key, a message or anything decrypted.
 /// The triggers of `trade_chat_pins.drift` keep it as they keep the PGP pins: never deleted nor changed, a second one for a trade writes nothing, written only for an open trade.
 /// Read and written only by `TradeChatPinRepositoryImpl`.
 @DataClassName('TradeChatNostrPinRow')
