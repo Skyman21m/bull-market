@@ -1,7 +1,6 @@
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade/trade_watch.dart';
-import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/testing.dart' show ScriptedFault, ScriptedRequest;
 import 'package:test/test.dart';
