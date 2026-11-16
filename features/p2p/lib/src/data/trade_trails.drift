@@ -73,6 +73,7 @@ END;
 
 -- The trail only moves forward: its trade never changes, the version and the read never go back, a breach is never cleared, whether the history is known never changes, a pinned payment hash is never cleared or changed, the pre-take's last read is never cleared or moved back nor its deadline cleared, and an end is never left.
 -- A maker's contract only moves forward too (schema 8; design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5): `take` never goes back and moves by one at most, only for a trade made here, from a trail at `public`, `paused`, `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` that has a contract deadline, to `waitingForBoth`, `waitingForEscrow` or `waitingForPayout` with a later one; the contract's deadline, taker and amount taken go from NULL to a value only with `take` unchanged, change only in the write that moves `take`, never go back to NULL, and are never written for a trade not made here; the escrow's hash stays pinned within a contract, and in the write that moves `take` is cleared or replaced by another hash, never kept; the bond's hash stays pinned for the order's whole life.
+-- Limit (for #178): the escrows of earlier contracts are not kept, so a hash cleared at a new contract and pinned again later within it is taken here; its payment from this wallet stays refused by `trade_payments_hash_once`.
 CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails
 WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint
   OR NEW.robot_index IS NOT OLD.robot_index

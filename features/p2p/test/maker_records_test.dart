@@ -315,10 +315,17 @@ void main() {
           record,
         ]);
         expect(valueOf(await trades.watchPendingMakes(testnet).first), isEmpty);
-        // Its terms are kept as they were, never written again; a confirmed make is not closed as pending.
+        // Its terms are kept as they were, never written again (refused, a confirmed make being no pending make); a confirmed make is not closed as pending.
         expect(
           await trails.recordMakerTerms(make, makerTerms()),
-          isA<Err<void, P2pFailure>>(),
+          refusedWith<P2pStorageFailure>(),
+        );
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO maker_terms (key_fingerprint, robot_index, version, network, coordinator_alias, role, order_type, currency_id, amount, premium_percent, payment_method, bond_size_percent, public_seconds, escrow_seconds, has_password, created_price, maker_fee) VALUES (?, 0, 1, 'testnet', 'temple', 'buyer', 0, 2, 100.0, 1.5, 'Revolut', 3.0, 86340, 10800, 0, 93545.25, 0.00025)",
+            [fingerprint.hex],
+          ),
+          refusedBy('terms of no pending make'),
         );
         expect(valueOf(await trails.makerTermsOf(robot(0))), terms);
         expect(
@@ -554,24 +561,33 @@ void main() {
       },
     );
 
-    test(
-      'one open trade per order when an order id is written after the insert',
-      () async {
-        await pendingTake(orderId: 7);
-        final make = await pendingMake();
-        expect(await trails.recordMakerTerms(make, makerTerms()), isA<Ok>());
-        await expectLater(
-          database.customStatement(
-            'UPDATE trades SET order_id = 7, confirmed_at = 5 WHERE robot_index = 0',
-          ),
-          refusedBy('an order has one open trade'),
-        );
-        // Another order of the coordinator: written.
-        await database.customStatement(
-          'UPDATE trades SET order_id = 8, confirmed_at = 5 WHERE robot_index = 0',
-        );
-      },
-    );
+    test('one open trade per order when an order id is written after the insert', () async {
+      await pendingTake(orderId: 7);
+      final make = await pendingMake();
+      expect(await trails.recordMakerTerms(make, makerTerms()), isA<Ok>());
+      await expectLater(
+        database.customStatement(
+          'UPDATE trades SET order_id = 7, confirmed_at = 5 WHERE robot_index = 0',
+        ),
+        refusedBy('an order has one open trade'),
+      );
+      // The same number on the other network is another order: written.
+      await database.customStatement(
+        "INSERT INTO robot_bindings VALUES ('mainnet', ?, 50, 'temple', 'http://temple.onion', '', 'nostr', 10, 'generated')",
+        [fingerprint.hex],
+      );
+      await database.customStatement(
+        "INSERT INTO trades VALUES ('mainnet', ?, 50, 'temple', 'http://temple.onion', 8, 'buyer', 'takenHere', 1, NULL, NULL)",
+        [fingerprint.hex],
+      );
+      await database.customStatement(
+        'UPDATE trades SET order_id = 8, confirmed_at = 5 WHERE robot_index = 0',
+      );
+      // An update that names the order id and keeps it is no second trade of the order: the take of order 7 closed so.
+      await database.customStatement(
+        'UPDATE trades SET order_id = order_id, closed_at = 6 WHERE robot_index = 10',
+      );
+    });
   });
 
   group('the terms of a make', () {
@@ -1427,6 +1443,58 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'pay a hash once whatever differs: the contract, the robot or the key',
+      () async {
+        const once = 'an invoice is paid once';
+        final made = await makeAtContract();
+        expect(
+          valueOf(
+            await payments.recordStart(
+              made,
+              InvoiceStep.escrow,
+              paymentHash: hashA,
+              at: testNow,
+            ),
+          ),
+          isTrue,
+        );
+        // The trigger that asks for the trail's contract is set aside, so that the rule of one hash is tried alone, each key apart.
+        await database.customStatement(
+          'DROP TRIGGER trade_payments_of_their_trade',
+        );
+        await pendingTake();
+        final otherKey = 'e' * 64;
+        await database.customStatement(
+          "INSERT INTO robot_bindings VALUES ('testnet', ?, 0, 'temple', 'http://temple.onion', '', 'nostr', 10, 'generated')",
+          [otherKey],
+        );
+        await database.customStatement(
+          "INSERT INTO trades VALUES ('testnet', ?, 0, 'temple', 'http://temple.onion', 77, 'buyer', 'takenHere', 1, NULL, NULL)",
+          [otherKey],
+        );
+        for (final (label, key, index, take) in [
+          (
+            'another contract of the same trade and step',
+            fingerprint.hex,
+            0,
+            1,
+          ),
+          ('another robot of the same key', fingerprint.hex, 10, 0),
+          ('the same robot index of another key', otherKey, 0, 0),
+        ]) {
+          await expectLater(
+            database.customStatement(
+              "INSERT INTO trade_payments (key_fingerprint, robot_index, step, take, payment_hash, started_at) VALUES (?, ?, 'escrow', ?, ?, 0)",
+              [key, index, take, hashA],
+            ),
+            refusedBy(once),
+            reason: label,
+          );
+        }
+      },
+    );
 
     test(
       'never change their contract, and a bond, and a take, have contract 0 only',
