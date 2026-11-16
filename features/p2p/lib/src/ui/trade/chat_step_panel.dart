@@ -16,6 +16,7 @@ import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
 import '../widgets/word_fit_text.dart';
 import 'confirm_collab_cancel_dialog.dart';
+import 'confirm_dispute_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
 import 'confirm_undo_fiat_sent_dialog.dart';
 import 'order_options_dialog.dart';
@@ -48,6 +49,12 @@ class ChatStepPanel extends StatefulWidget {
   final bool offersUndoFiatSent;
   final bool offersCollaborativeCancel;
 
+  /// Whether « Open Dispute » may be offered in « Order options »: the screen's cubit sends it.
+  final bool offersDispute;
+
+  /// The screen's clock, for « Open Dispute »'s countdown.
+  final DateTime Function() now;
+
   /// The chat of the trade (#93, `ChatPanel`), where the reference puts it: between the prompt's text and the action buttons; `null` where the feature holds no robot, and the step is shown without it.
   final Widget? chat;
 
@@ -62,6 +69,8 @@ class ChatStepPanel extends StatefulWidget {
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
     required this.offersCollaborativeCancel,
+    this.offersDispute = false,
+    required this.now,
     this.chat,
   });
 
@@ -78,10 +87,33 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     ConfirmUndoFiatSentDialog.firstWait,
   );
 
+  /// Rebuilds the panel when « Open Dispute »'s time comes, so that a « too early » notice goes then (review of #156).
+  Timer? _disputeOpens;
+
   @override
   void dispose() {
+    _disputeOpens?.cancel();
     _undoWait.dispose();
     super.dispose();
+  }
+
+  /// Whether [chatStep]'s notice is not « Open Dispute » refused as too early by its fresh read, or is still true: that refusal goes once the dispute's time has come by the status shown, which a new read may move, as « Open Dispute » turns on in « Order options » at that very time (review of #156); the panel is rebuilt then. The coordinator's own 1054 is not judged by this device's clock, which already said the time had come when it was sent: it goes as the other notices go.
+  bool _tooEarlyStillTrue(ChatStepState chatStep) {
+    _disputeOpens?.cancel();
+    _disputeOpens = null;
+    final tooEarly = switch (chatStep) {
+      ChatStepIdle(notice: ChatStepWasRefused(refusal: ChatStepTooEarly())) =>
+        true,
+      _ => false,
+    };
+    final status = widget.seen.status;
+    if (!tooEarly || status is! Chatting) return true;
+    final left = ChatStepAction.disputeOpensAt(status).difference(widget.now());
+    if (left <= Duration.zero) return false;
+    _disputeOpens = Timer(left, () {
+      if (mounted) setState(() {});
+    });
+    return true;
   }
 
   /// The trade's amount and currency as the button and the dialog write them, from the trade's terms (`Chatting.amount`, `Chatting.currency`), never from a read: an amount in bitcoin in sats, as the payout's prompt.
@@ -168,11 +200,27 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     cubit,
     seen,
   ) async {
+    final status = seen.status;
     final chosen = await OrderOptionsDialog.show(
       context,
       collaborativeCancel: collaborativeCancel,
+      // « Open Dispute » where the status shown offers it, with its time; not drawn otherwise.
+      disputeOpensAt:
+          widget.offersDispute &&
+              status is Chatting &&
+              ChatStepAction.dispute.offeredAt(seen)
+          ? ChatStepAction.disputeOpensAt(status)
+          : null,
+      now: widget.now,
     );
-    if (chosen != OrderOption.collaborativeCancel || !mounted) return;
+    if (!mounted) return;
+    if (chosen == OrderOption.dispute) {
+      if (await ConfirmDisputeDialog.show(context)) {
+        await cubit.startDispute(seen);
+      }
+      return;
+    }
+    if (chosen != OrderOption.collaborativeCancel) return;
     // The dialog follows the cubit: a peer's ask that arrives while it is open turns its button into « Accept Cancelation ».
     if (await ConfirmCollabCancelDialog.show(context, cubit: cubit)) {
       await cubit.cancel(seen);
@@ -238,11 +286,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         ? null
         : _amountDiffers(context, amount);
     final chatNotice = switch (chatStep) {
-      ChatStepIdle(:final notice?, :final action) => notice.toText(
-        context,
-        coordinator: widget.coordinator,
-        action: action,
-      ),
+      ChatStepIdle(:final notice?, :final action)
+          when _tooEarlyStillTrue(chatStep) =>
+        notice.toText(context, coordinator: widget.coordinator, action: action),
       _ => null,
     };
     final cancelNotice = switch (widget.cancel) {

@@ -2511,4 +2511,116 @@ class P2pLocalizationsTh extends P2pLocalizations {
   @override
   String get p2pPayoutWalletEarlierStillOpen =>
       'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.';
+
+  @override
+  String get p2pEndOpenDispute => 'Open Dispute';
+
+  @override
+  String p2pEndDisputeWait(String hours, String minutes) {
+    return 'To open a dispute you need to wait ${hours}h ${minutes}m';
+  }
+
+  @override
+  String get p2pEndDisputeTitle => 'Do you want to open a dispute?';
+
+  @override
+  String get p2pEndDisputeText =>
+      'The RoboSats staff will examine the statements and evidence provided. You need to build a complete case, as the staff cannot read the chat. It is best to provide a burner contact method with your statement. The satoshis in the trade escrow will be sent to the dispute winner, while the dispute loser will lose the bond.';
+
+  @override
+  String get p2pEndDisputeExport =>
+      'Make sure to EXPORT the chat log. The staff might request your exported chat log JSON in order to solve discrepancies. It is your responsibility to store it.';
+
+  @override
+  String get p2pEndDisagree => 'Disagree';
+
+  @override
+  String get p2pEndAgreeDispute => 'Agree and open dispute';
+
+  @override
+  String p2pEndStepSendingDispute(String coordinator) {
+    return 'Opening the dispute at $coordinator…';
+  }
+
+  @override
+  String get p2pEndDisputeWaitPeer =>
+      'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.';
+
+  @override
+  String get p2pEndDisputeSaveInfoPeer =>
+      'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.';
+
+  @override
+  String get p2pEndDisputeWaitResolution =>
+      'Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.';
+
+  @override
+  String get p2pEndDisputeSaveInfoResolution =>
+      'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).';
+
+  @override
+  String p2pEndDisputeWinner(String email) {
+    return 'You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to $email (or via your provided burner contact method).';
+  }
+
+  @override
+  String p2pEndDisputeLoser(String email) {
+    return 'Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to $email';
+  }
+
+  @override
+  String p2pEndStatementLater(String coordinator) {
+    return 'Bull Market cannot send a dispute statement yet. Contact $coordinator through one of its contacts below, with the information to identify your order.';
+  }
+
+  @override
+  String p2pEndRewardsLater(String coordinator) {
+    return 'Bull Market cannot claim rewards yet: contact $coordinator through one of its contacts below.';
+  }
+
+  @override
+  String p2pEndOrderId(String id) {
+    return 'Order ID: $id';
+  }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
+
+  @override
+  String get p2pEndDisputeNeedsRead =>
+      'Wait until the order is read again. The dispute was not opened.';
+
+  @override
+  String p2pEndDisputeReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: the dispute was not opened.';
+  }
+
+  @override
+  String get p2pEndDisputeMovedOn =>
+      'The trade moved on: the dispute was not opened.';
+
+  @override
+  String p2pEndDisputeNotSentAfter(String reason) {
+    return '$reason The dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator) {
+    return 'The trade moved on: $coordinator did not open the dispute.';
+  }
+
+  @override
+  String p2pEndDisputeOffline(String coordinator) {
+    return '$coordinator is offline: the dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeRefusedBy(String coordinator) {
+    return '$coordinator did not open the dispute.';
+  }
+
+  @override
+  String get p2pEndDisputeUnknown =>
+      'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.';
 }

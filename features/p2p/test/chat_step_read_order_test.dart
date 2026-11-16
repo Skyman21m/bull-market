@@ -13,7 +13,7 @@ import 'package:test/test.dart';
 
 import 'support/trade_harness.dart';
 
-/// « Payment failed? » and the collaborative cancel kept in the order the coordinator served their answers (#141, #95): their reads are ranked as every read of a trade is, so that a read of the watch that left before them and answers after them is superseded, and the watch sends no read while they run; over the coordinator the tests play (never a real coordinator).
+/// « Payment failed? », « Open Dispute » and the collaborative cancel kept in the order the coordinator served their answers (#141, #95): their reads are ranked as every read of a trade is, so that a read of the watch that left before them and answers after them is superseded, and the watch sends no read while they run; over the coordinator the tests play (never a real coordinator).
 void main() {
   /// A trade taken on a fresh run, its bond locked, at [status] as the watch stored it, the peer's ask of a collaborative cancel raised when [peerAsked], the watch still running, told [signals].
   Future<(TradeHarness, TradeRecord, TradeSeen, WatchRun)> watchedAt(
@@ -170,6 +170,87 @@ void main() {
         expect(orderReads(app), reads + 3);
         expect(sent(app, ScriptedRequest.undoConfirm), 1);
         await run.subscription.cancel();
+      },
+    );
+  });
+
+  group('« Open Dispute »', () {
+    /// At [status], the dispute's window open: the step's deadline moved to an hour from now, as the watch then stored it.
+    Future<(TradeHarness, TradeRecord, TradeSeen, WatchRun)> disputableAt(
+      int status, {
+      Stream<TradeWatchSignal> signals = const Stream.empty(),
+    }) async {
+      final (app, _, _, run) = await watchedAt(status, signals: signals);
+      app.coordinator.moveDeadline(app.now.add(const Duration(hours: 1)));
+      await app.elapse(const Duration(seconds: 15));
+      final last = run.lastStatus;
+      expect(last.stored, isTrue);
+      expect(ChatStepAction.dispute.offeredAt(last.seen), isTrue);
+      return (app, last.record, last.seen, run);
+    }
+
+    test(
+      'a read of the watch sent at 9 before the dispute, answered after its read after stored 11: superseded, the dispute stays, no breach',
+      () async {
+        final (app, record, seen, run) = await disputableAt(9);
+        final states = run.states.length;
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.answerDelayed,
+        );
+        await app.elapse(const Duration(seconds: 15));
+        final done = switch (await app.chat.startDispute(record, seen)) {
+          Ok(value: final ChatStepDone done) => done,
+          final other => fail('$other'),
+        };
+        expect(done.seen.status, isA<InDispute>());
+        final position = await positionOnDisk(app, record);
+        await app.elapse(const Duration(seconds: 1));
+        app.coordinator.deliverDelayed();
+        await app.settle();
+        expect(run.states.length, states);
+        expect(await positionOnDisk(app, record), position);
+        expect(await breachOnDisk(app, record), isFalse);
+        await app.elapse(const Duration(minutes: 2));
+        expect(run.lastStatus.seen.status, isA<InDispute>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+        await run.subscription.cancel();
+      },
+    );
+
+    test(
+      'the screen asks the watch to read while the dispute\'s answer is on its way: nothing leaves until the dispute ended, then the watch reads',
+      () async {
+        final signals = StreamController<TradeWatchSignal>.broadcast();
+        final (app, record, seen, run) = await disputableAt(
+          10,
+          signals: signals.stream,
+        );
+        app.coordinator.failNext(
+          ScriptedRequest.dispute,
+          ScriptedFault.answerDelayed,
+        );
+        final reads = orderReads(app);
+        final opening = app.chat.startDispute(record, seen);
+        await app.settle();
+        // The fresh read, then the dispute, whose answer is held.
+        expect(orderReads(app), reads + 1);
+        expect(sent(app, ScriptedRequest.dispute), 1);
+        signals.add(TradeWatchSignal.readNow);
+        await app.settle();
+        expect(orderReads(app), reads + 1);
+        app.coordinator.deliverDelayed();
+        final done = switch (await opening) {
+          Ok(value: final ChatStepDone done) => done,
+          final other => fail('$other'),
+        };
+        expect(done.seen.status, isA<InDispute>());
+        // The read after, then the watch's once the dispute ended.
+        await app.settle();
+        expect(orderReads(app), reads + 3);
+        expect(sent(app, ScriptedRequest.dispute), 1);
+        await run.subscription.cancel();
+        await signals.close();
       },
     );
   });

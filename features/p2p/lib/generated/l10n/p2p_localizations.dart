@@ -4068,6 +4068,162 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'This wallet\'s earlier invoice for this trade is still open, and the coordinator takes only a new one. Paste an invoice from another wallet, or try again once it has expired.'**
   String get p2pPayoutWalletEarlierStillOpen;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Chat.tsx:310-324`): the button of « Order options » (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Open Dispute'**
+  String get p2pEndOpenDispute;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), and the countdown its prompt adds (`Prompts/Chat.tsx:86-96`, « {{hours}}h {{minutes}}m », the minutes on two digits): under « Open Dispute », off until 18 hours before the chat's end (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'To open a dispute you need to wait {hours}h {minutes}m'**
+  String p2pEndDisputeWait(String hours, String minutes);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Do you want to open a dispute?'**
+  String get p2pEndDisputeTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The RoboSats staff will examine the statements and evidence provided. You need to build a complete case, as the staff cannot read the chat. It is best to provide a burner contact method with your statement. The satoshis in the trade escrow will be sent to the dispute winner, while the dispute loser will lose the bond.'**
+  String get p2pEndDisputeText;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure to EXPORT the chat log. The staff might request your exported chat log JSON in order to solve discrepancies. It is your responsibility to store it.'**
+  String get p2pEndDisputeExport;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the dialog's button that goes back, its focus (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Disagree'**
+  String get p2pEndDisagree;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Dialogs/ConfirmDispute.tsx`): the button that sends (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Agree and open dispute'**
+  String get p2pEndAgreeDispute;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » sent, its answer awaited (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the dispute at {coordinator}…'**
+  String p2pEndStepSendingDispute(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitPeer.tsx`): 11, this robot's statement received (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.'**
+  String get p2pEndDisputeWaitPeer;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitPeer.tsx`): 11 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.'**
+  String get p2pEndDisputeSaveInfoPeer;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWaitResolution.tsx`): 16 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Both statements have been received, wait for the staff to resolve the dispute. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods. If you did not provide a contact method, or are unsure whether you wrote it right, write your coordinator immediately.'**
+  String get p2pEndDisputeWaitResolution;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`), in French typography (`Prompts/DisputeWaitResolution.tsx`): 16 (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself as the user involved in this trade via email (or other contact methods).'**
+  String get p2pEndDisputeSaveInfoResolution;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeWinner.tsx`): 17 for a taker; {email} is the coordinator's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'You can claim the dispute resolution amount (escrow and fidelity bond) from your profile rewards. If there is anything the staff can help with, do not hesitate to contact to {email} (or via your provided burner contact method).'**
+  String p2pEndDisputeWinner(String email);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/DisputeLoser.tsx`), without a full stop as the reference: 18 for a taker; {email} is the coordinator's (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Unfortunately you have lost the dispute. If you think this is a mistake you can ask to re-open the case by contacting your coordinator. If you think your coordinator was unfair, please fill a claim via email to {email}'**
+  String p2pEndDisputeLoser(String email);
+
+  /// Not in the RoboSats texts: the project's own: at 11, in place of the reference's statement form, which comes in a later phase (#95, design note § 2.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot send a dispute statement yet. Contact {coordinator} through one of its contacts below, with the information to identify your order.'**
+  String p2pEndStatementLater(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: at 17, the reference's « claim from your profile rewards » not being in Bull Market yet (#95, design note § 2.7).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot claim rewards yet: contact {coordinator} through one of its contacts below.'**
+  String p2pEndRewardsLater(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: at 11 and 16, the order's number to give the coordinator, which the reference asks to save (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Order ID: {id}'**
+  String p2pEndOrderId(String id);
+
+  /// The reference coordinator's own text of its error 1054 (`api/errors.py:62` at commit ff1998c), which the official client shows as the answer's `bad_request`: « Open Dispute » refused as too early by the coordinator, its clock the judge (#95). Not in `en.json` nor `fr.json`: the French is ours.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot open a dispute yet. You need to wait until 18 hours before expiry.'**
+  String get p2pEndDisputeTooEarly;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » from a status not marked stored, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again. The dispute was not opened.'**
+  String get p2pEndDisputeNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the read before « Open Dispute » failed (Tor, the coordinator), nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: the dispute was not opened.'**
+  String p2pEndDisputeReadFailed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the trade moved on before « Open Dispute » was sent, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: the dispute was not opened.'**
+  String get p2pEndDisputeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » never left (a busy robot, an error before sending); {reason} is a full sentence of the app (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} The dispute was not opened.'**
+  String p2pEndDisputeNotSentAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » left and the coordinator refused it, the trade having moved on (1013) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: {coordinator} did not open the dispute.'**
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Open Dispute » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: the dispute was not opened.'**
+  String p2pEndDisputeOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: any other refusal of « Open Dispute » by the coordinator (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not open the dispute.'**
+  String p2pEndDisputeRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the answer to « Open Dispute » was lost and the read after does not show it yet; never sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.'**
+  String get p2pEndDisputeUnknown;
 }
 
 class _P2pLocalizationsDelegate

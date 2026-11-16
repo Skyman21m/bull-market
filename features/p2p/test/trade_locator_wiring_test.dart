@@ -11,6 +11,7 @@ void main() {
     for (final (argument, method) in [
       ('confirmFiatSent', 'confirmFiatSent'),
       ('undoFiatSent', 'undoFiatSent'),
+      ('startDispute', 'startDispute'),
     ]) {
       expect(
         RegExp(

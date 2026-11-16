@@ -1939,7 +1939,7 @@ void main() {
           Err() => throw StateError('not a key'),
         };
         final identities = [
-          for (var i = 0; i < 16; i++)
+          for (var i = 0; i < 24; i++)
             if (key.deriveIdentity(i) case Ok(:final value)) value,
         ];
         // The maker: a robot of the RoboSats example key, with the key the official client would make for it, so that its chat messages are its own (#93).
@@ -2677,6 +2677,75 @@ void main() {
         await capture('fin-annulation-accepter');
         await tester.tap(find.text(l10n.p2pEndCollabAccept));
         await waitFor(find.text(l10n.p2pOrderCancelled));
+        await backToTab();
+
+        // Take 9: « Open Dispute » (#95): its time come (the chat ends in an hour), the reference's dialog, the dispute opened (11), both statements in (16), then won (17).
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(9)
+          ..moveDeadline(coordinator.clock().add(const Duration(hours: 1)));
+        await nextRead();
+        await waitFor(find.text(fiatSent));
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await settle();
+        await capture('fin-options-litige');
+        await tester.tap(find.text(l10n.p2pEndOpenDispute));
+        await settle();
+        await capture('fin-litige-dialogue');
+        // The dispute's answer held, so that its step is captured.
+        coordinator.failNext(
+          ScriptedRequest.dispute,
+          ScriptedFault.answerDelayed,
+        );
+        await tester.ensureVisible(find.text(l10n.p2pEndAgreeDispute));
+        await settle();
+        await tester.tap(find.text(l10n.p2pEndAgreeDispute));
+        await waitFor(
+          find.text(
+            l10n.p2pEndStepSendingDispute(coordinator.coordinator.longAlias),
+          ),
+        );
+        await settle();
+        await capture('fin-litige-envoi');
+        coordinator.deliverDelayed();
+        await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
+        await settle();
+        await capture('fin-litige-11');
+        // The watch reads every 100 s at 11 and every 300 s at 16 (the reference's cadence).
+        Future<void> slowRead(int seconds) async {
+          for (var i = 0; i < seconds ~/ 10 + 1; i++) {
+            await tester.pump(const Duration(seconds: 10));
+            await settle();
+          }
+        }
+
+        coordinator.moveTo(16);
+        await slowRead(100);
+        await waitFor(find.text(l10n.p2pEndDisputeWaitResolution));
+        await settle();
+        await capture('fin-litige-16');
+        coordinator.moveTo(17);
+        await slowRead(300);
+        await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeWon));
+        await settle();
+        await capture('fin-litige-17');
+        await backToTab();
+
+        // Take 10: a dispute lost (18).
+        coordinator.backToPublic();
+        await take();
+        coordinator
+          ..lockBond(taker())
+          ..moveTo(11);
+        await nextRead();
+        await waitFor(find.text(l10n.p2pEndDisputeSaveInfoPeer));
+        coordinator.moveTo(18);
+        await slowRead(100);
+        await waitFor(find.textContaining(l10n.p2pTradeTitleDisputeLost));
+        await settle();
+        await capture('fin-litige-18');
         await backToTab();
 
         // Last, another robot's bond locks first: the trade stays open while 1044 may still be a pause, so the order's next take would open it again.

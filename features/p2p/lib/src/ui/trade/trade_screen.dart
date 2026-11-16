@@ -300,6 +300,8 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         offersUndoFiatSent: context
                             .read<TradeCubit>()
                             .offersUndoFiatSent,
+                        offersDispute: context.read<TradeCubit>().offersDispute,
+                        clock: widget.now,
                         coordinator: coordinator,
                         walletPayment: widget.walletPayment,
                         payout: widget.payout,
@@ -439,6 +441,10 @@ class _Contract extends StatelessWidget {
   final ChatStepState chatStep;
   final bool offersFiatSent;
   final bool offersUndoFiatSent;
+  final bool offersDispute;
+
+  /// The screen's clock, which a countdown of a dialog reads as it ticks.
+  final DateTime Function() clock;
   final String coordinator;
   final WalletPaymentBuilder? walletPayment;
   final PayoutPanelBuilder? payout;
@@ -455,6 +461,8 @@ class _Contract extends StatelessWidget {
     required this.chatStep,
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
+    required this.offersDispute,
+    required this.clock,
     required this.coordinator,
     required this.walletPayment,
     required this.payout,
@@ -643,6 +651,8 @@ class _Contract extends StatelessWidget {
         offersFiatSent: offersFiatSent,
         offersUndoFiatSent: offersUndoFiatSent,
         offersCollaborativeCancel: true,
+        offersDispute: offersDispute,
+        now: clock,
         // The chat panel (#93) in the step's place for it, between the prompt's text and the action buttons.
         chat: chat == null
             ? null
@@ -684,6 +694,22 @@ class _Contract extends StatelessWidget {
       ),
       // « Trade finished! » with its title alone: the rating and the summary come with a later pull request of #95.
       (TradePrompt.finished, _) => const SizedBox.shrink(),
+      (
+        TradePrompt.disputeOpen ||
+            TradePrompt.disputeWaitPeer ||
+            TradePrompt.disputeWaitResolution ||
+            TradePrompt.disputeWon ||
+            TradePrompt.disputeLost,
+        _,
+      ) =>
+        _DisputePrompt(
+          prompt: contract.prompt,
+          coordinator:
+              contract.order?.coordinator ??
+              Federation.robosats.byAlias(record.coordinatorAlias),
+          coordinatorName: coordinator,
+          orderId: record.orderId,
+        ),
       _ => _Line(l10n.p2pTradeStepLater, color: colors.textMuted),
     };
   }
@@ -1087,6 +1113,78 @@ class _PublicAgain extends StatelessWidget {
               ),
             _ => const SizedBox.shrink(),
           },
+      ],
+    );
+  }
+}
+
+/// 11, 16, 17 and 18, read-only (#95, design note § 2.7): the reference's texts of each prompt, the order's number to identify it, and the coordinator's contacts as its dialog shows them (`CoordinatorContacts`).
+///
+/// At 11, before this robot's statement is in, the reference shows its statement form, which comes in a later phase: in its place, the project's line that says to contact the coordinator, then the reference's advice to save what identifies the order. At 17 the reference says to claim from the profile's rewards, which Bull Market cannot yet: the project's line says so.
+class _DisputePrompt extends StatelessWidget {
+  final TradePrompt prompt;
+  final Coordinator? coordinator;
+  final String coordinatorName;
+  final int orderId;
+
+  const _DisputePrompt({
+    required this.prompt,
+    required this.coordinator,
+    required this.coordinatorName,
+    required this.orderId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final contact = coordinator?.contact;
+    // The coordinator's email in the reference's texts of 17 and 18, cleaned as every coordinator's text is; its name when it gives none.
+    final email = switch (contact?.email) {
+      final email? when email.trim().isNotEmpty => CoordinatorText.of(
+        email,
+        maxCodePoints: CoordinatorText.copyBound,
+      ),
+      _ => coordinatorName,
+    };
+    final lines = switch (prompt) {
+      TradePrompt.disputeOpen => [
+        l10n.p2pEndStatementLater(coordinatorName),
+        l10n.p2pEndDisputeSaveInfoPeer,
+      ],
+      TradePrompt.disputeWaitPeer => [
+        l10n.p2pEndDisputeWaitPeer,
+        l10n.p2pEndDisputeSaveInfoPeer,
+      ],
+      TradePrompt.disputeWaitResolution => [
+        l10n.p2pEndDisputeWaitResolution,
+        l10n.p2pEndDisputeSaveInfoResolution,
+      ],
+      TradePrompt.disputeWon => [
+        l10n.p2pEndDisputeWinner(email),
+        l10n.p2pEndRewardsLater(coordinatorName),
+      ],
+      _ => [l10n.p2pEndDisputeLoser(email)],
+    };
+    final showsId =
+        prompt == TradePrompt.disputeOpen ||
+        prompt == TradePrompt.disputeWaitPeer ||
+        prompt == TradePrompt.disputeWaitResolution;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, line) in lines.indexed) ...[
+          if (i > 0) const Gap(BullSpacing.sm),
+          _Line(line),
+        ],
+        if (showsId) ...[
+          const Gap(BullSpacing.sm),
+          _Line(l10n.p2pEndOrderId('$orderId'), color: colors.textMuted),
+        ],
+        if (contact != null) ...[
+          const Gap(BullSpacing.sm),
+          CoordinatorContacts(contact: contact),
+        ],
       ],
     );
   }

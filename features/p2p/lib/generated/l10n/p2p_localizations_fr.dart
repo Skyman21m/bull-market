@@ -2547,4 +2547,116 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayoutWalletEarlierStillOpen =>
       'La facture précédente de ce portefeuille pour cet échange est encore ouverte, et le coordinateur n’en accepte qu’une nouvelle. Collez une facture d’un autre portefeuille, ou réessayez une fois qu’elle aura expiré.';
+
+  @override
+  String get p2pEndOpenDispute => 'Ouvrir un litige';
+
+  @override
+  String p2pEndDisputeWait(String hours, String minutes) {
+    return 'Pour ouvrir un litige, vous devez attendre ${hours}h ${minutes}m';
+  }
+
+  @override
+  String get p2pEndDisputeTitle => 'Voulez-vous ouvrir un litige ?';
+
+  @override
+  String get p2pEndDisputeText =>
+      'Le personnel de RoboSats examinera les déclarations et les preuves fournies. Vous devez constituer un dossier complet, car le personnel ne peut pas lire le chat. Il est préférable de fournir une méthode de contact temporaire avec votre déclaration. Les satoshis dans le séquestre commercial seront envoyés au gagnant du litige, tandis que le perdant du litige perdra la caution.';
+
+  @override
+  String get p2pEndDisputeExport =>
+      'Assurez-vous d\'EXPORTER le journal du chat. Le personnel pourrait demander votre journal de chat exporté en JSON pour résoudre les divergences. Il est de votre responsabilité de le stocker.';
+
+  @override
+  String get p2pEndDisagree => 'Être en désaccord';
+
+  @override
+  String get p2pEndAgreeDispute => 'Accepter et ouvrir un litige';
+
+  @override
+  String p2pEndStepSendingDispute(String coordinator) {
+    return 'Ouverture du litige chez $coordinator…';
+  }
+
+  @override
+  String get p2pEndDisputeWaitPeer =>
+      'Nous attendons la déclaration de votre contrepartie commerciale. Si vous hésitez sur l\'état du litige ou si vous souhaitez ajouter plus d\'informations, contactez votre coordinateur de commande (l\'hôte) via l\'une de leurs méthodes de contact.';
+
+  @override
+  String get p2pEndDisputeSaveInfoPeer =>
+      'Veuillez sauvegarder les informations nécessaires pour identifier votre commande et vos paiements : ID de l\'ordre ; hachages de paiement des cautions ou des comptes (vérifiez sur votre portefeuille lightning) ; montant exact de satoshis ; et surnom du robot. Vous devrez vous identifier en utilisant ces informations si vous contactez votre coordinateur de transaction.';
+
+  @override
+  String get p2pEndDisputeWaitResolution =>
+      'Les deux déclarations ont été reçues, attendez que le personnel résolve le litige. Si vous hésitez sur l\'état du litige ou si vous souhaitez ajouter plus d\'informations, contactez votre coordinateur de commande (l\'hôte) via l\'une de leurs méthodes de contact. Si vous n\'avez pas fourni de méthode de contact, ou si vous n\'êtes pas sûr de l\'avoir bien rédigé, écrivez à votre coordinateur immédiatement.';
+
+  @override
+  String get p2pEndDisputeSaveInfoResolution =>
+      'Veuillez enregistrer les informations nécessaires pour identifier votre commande et vos paiements : ID de l\'ordre ; hachages de paiement des cautions ou des comptes (vérifiez sur votre portefeuille lightning) ; montant exact de satoshis ; et surnom du robot. Vous devrez vous identifier en tant qu\'utilisateur impliqué dans cette transaction par e-mail (ou autres méthodes de contact).';
+
+  @override
+  String p2pEndDisputeWinner(String email) {
+    return 'Vous pouvez réclamer le montant de résolution du litige (compte séquestre et caution de fidélité) à partir des récompenses de votre profil. Si le personnel peut vous aider en quoi que ce soit, n\'hésitez pas à contacter $email (ou via la méthode de contact temporaire que vous avez fournie).';
+  }
+
+  @override
+  String p2pEndDisputeLoser(String email) {
+    return 'Malheureusement, vous avez perdu le litige. Si vous pensez que c\'est une erreur, vous pouvez demander à rouvrir le cas en contactant votre coordinateur. Si vous pensez que votre coordinateur a été injuste, veuillez déposer une réclamation par e-mail à $email';
+  }
+
+  @override
+  String p2pEndStatementLater(String coordinator) {
+    return 'Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez $coordinator par l’un de ses contacts ci-dessous, avec les informations qui identifient votre ordre.';
+  }
+
+  @override
+  String p2pEndRewardsLater(String coordinator) {
+    return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator par l’un de ses contacts ci-dessous.';
+  }
+
+  @override
+  String p2pEndOrderId(String id) {
+    return 'ID de l’ordre : $id';
+  }
+
+  @override
+  String get p2pEndDisputeTooEarly =>
+      'Impossible d’ouvrir un litige pour l’instant. Vous devez attendre jusqu’à 18 heures avant l’expiration.';
+
+  @override
+  String get p2pEndDisputeNeedsRead =>
+      'Attendez que l’ordre soit relu. Le litige n’a pas été ouvert.';
+
+  @override
+  String p2pEndDisputeReadFailed(String coordinator) {
+    return 'L’ordre n’a pas pu être relu chez $coordinator : le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String get p2pEndDisputeMovedOn =>
+      'L’échange a changé : le litige n’a pas été ouvert.';
+
+  @override
+  String p2pEndDisputeNotSentAfter(String reason) {
+    return '$reason Le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator) {
+    return 'L’échange a changé : $coordinator n’a pas ouvert le litige.';
+  }
+
+  @override
+  String p2pEndDisputeOffline(String coordinator) {
+    return '$coordinator est hors ligne : le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String p2pEndDisputeRefusedBy(String coordinator) {
+    return '$coordinator n’a pas ouvert le litige.';
+  }
+
+  @override
+  String get p2pEndDisputeUnknown =>
+      'Bull Market ne sait pas encore si le litige a été ouvert et continue de vérifier : le litige s’affichera ici une fois ouvert.';
 }
