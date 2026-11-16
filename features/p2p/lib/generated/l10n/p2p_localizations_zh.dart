@@ -2579,6 +2579,16 @@ class P2pLocalizationsZh extends P2pLocalizations {
   }
 
   @override
+  String p2pEndStatementLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot send a dispute statement yet. Contact $coordinator with the information to identify your order.';
+  }
+
+  @override
+  String p2pEndRewardsLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot claim rewards yet: contact $coordinator.';
+  }
+
+  @override
   String p2pEndOrderId(String id) {
     return 'Order ID: $id';
   }

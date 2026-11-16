@@ -4165,6 +4165,18 @@ abstract class P2pLocalizations {
   /// **'Bull Market cannot claim rewards yet: contact {coordinator} through one of its contacts below.'**
   String p2pEndRewardsLater(String coordinator);
 
+  /// Not in the RoboSats texts: the project's own: « p2pEndStatementLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot send a dispute statement yet. Contact {coordinator} with the information to identify your order.'**
+  String p2pEndStatementLaterNoContacts(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « p2pEndRewardsLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market cannot claim rewards yet: contact {coordinator}.'**
+  String p2pEndRewardsLaterNoContacts(String coordinator);
+
   /// Not in the RoboSats texts: the project's own: at 11 and 16, the order's number to give the coordinator, which the reference asks to save (#95).
   ///
   /// In en, this message translates to:

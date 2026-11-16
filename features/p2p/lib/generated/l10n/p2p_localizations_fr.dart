@@ -2615,6 +2615,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pEndStatementLaterNoContacts(String coordinator) {
+    return 'Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez $coordinator avec les informations qui identifient votre ordre.';
+  }
+
+  @override
+  String p2pEndRewardsLaterNoContacts(String coordinator) {
+    return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator.';
+  }
+
+  @override
   String p2pEndOrderId(String id) {
     return 'ID de l’ordre : $id';
   }

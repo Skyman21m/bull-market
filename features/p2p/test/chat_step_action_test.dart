@@ -567,9 +567,8 @@ void main() {
             isA<ChatStepTooEarly>()
                 .having(
                   (t) => switch (t.seen?.status) {
-                    Chatting(:final deadline) => deadline
-                        .difference(later)
-                        .abs(),
+                    Chatting(:final deadline) =>
+                      deadline.difference(later).abs(),
                     _ => null,
                   },
                   'the fresh read\'s end, to the second',
