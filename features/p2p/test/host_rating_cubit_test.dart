@@ -11,8 +11,9 @@ import 'support/trade_screens.dart';
 /// The cubit of « Rate your host » (#95): the token asked once, the first time a status offers the rating, and a rating published only with a token in hand.
 void main() {
   late TradeScreenStatuses statuses;
-  final token = HostReviewToken.parse('cd' * 64);
-  final rating = HostRating.of(4);
+  final token =
+      HostReviewToken.parse('cd' * 64) ?? (throw StateError('no token'));
+  final rating = HostRating.of(4) ?? (throw StateError('no rating'));
 
   setUpAll(() async {
     statuses = await TradeScreenStatuses.make();
@@ -25,12 +26,12 @@ void main() {
       TradeScreenStatuses.record,
       (record, seen) async {
         asked.add(seen);
-        return Ok(token ?? fail('token'));
+        return Ok(token);
       },
       (record, seen, token, rating) async => published.add(rating.stars),
     );
     addTearDown(cubit.close);
-    await cubit.rate(await statuses.succeeded(), rating ?? fail('rating'));
+    await cubit.rate(await statuses.succeeded(), rating);
     expect(published, isEmpty);
     await cubit.show(await statuses.chatting());
     expect(cubit.state, isA<HostRatingIdle>());
@@ -39,7 +40,7 @@ void main() {
     await cubit.show(fourteen);
     expect(asked, [fourteen]);
     expect(cubit.state, isA<HostRatingReady>());
-    await cubit.rate(fourteen, rating ?? fail('rating'));
+    await cubit.rate(fourteen, rating);
     expect(published, [4]);
   });
 
@@ -61,7 +62,7 @@ void main() {
       await cubit.show(fourteen);
       expect(cubit.state, isA<HostRatingUnavailable>());
       expect(asked, 1);
-      await cubit.rate(fourteen, rating ?? fail('rating'));
+      await cubit.rate(fourteen, rating);
     },
   );
 
@@ -92,7 +93,7 @@ void main() {
     final shown = cubit.show(await statuses.succeeded());
     expect(cubit.state, isA<HostRatingAsking>());
     await cubit.close();
-    answer.complete(Ok(token ?? fail('token')));
+    answer.complete(Ok(token));
     await shown;
     expect(cubit.state, isA<HostRatingAsking>());
   });
