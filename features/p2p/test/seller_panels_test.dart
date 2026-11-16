@@ -195,6 +195,18 @@ void main() {
   }
 
   testWidgets(
+    'the « Order » tab for the seller: the sats sent over Lightning, the fiat received',
+    (tester) async {
+      await show(tester, 'six');
+      await tester.tap(find.text('Order').last);
+      await tester.pump();
+      expect(find.textContaining('You send via Lightning'), findsOneWidget);
+      expect(find.textContaining('You receive via'), findsOneWidget);
+      expect(find.textContaining('You receive '), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'the escrow\'s title is in the warning colour and states the escrow',
     (tester) async {
       await show(tester, 'six');

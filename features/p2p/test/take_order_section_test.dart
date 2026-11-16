@@ -1289,17 +1289,28 @@ void main() {
     });
   }
 
-  testWidgets('a buy order: « Take Order » disabled, selling a later version', (
-    tester,
-  ) async {
-    final take = _Take();
-    await _show(tester, await _order(type: 0), take: take);
-    await _reveal(tester, find.text('Selling is coming in a later version.'));
-    expect(find.text('Selling is coming in a later version.'), findsOneWidget);
-    await tester.tap(_takeButton, warnIfMissed: false);
-    await settle(tester);
-    expect(take.amounts, isEmpty);
-  });
+  testWidgets(
+    'a buy order is taken as a sell order is: its taker sells (#96)',
+    (tester) async {
+      final take = _Take();
+      await _show(tester, await _order(type: 0), take: take);
+      expect(find.text('Selling is coming in a later version.'), findsNothing);
+      await _prepare(tester);
+      expect(take.amounts, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'a range buy order: « You will send … Sats (Approx) », the same figure (#96)',
+    (tester) async {
+      await _show(tester, await _order(type: 0, range: true));
+      await _reveal(tester, _takeButton);
+      await tester.enterText(find.byType(TextField), '100');
+      await tester.pump();
+      expect(find.text('You will send 53,450 Sats (Approx)'), findsOneWidget);
+      expect(find.textContaining('You will receive'), findsNothing);
+    },
+  );
 
   testWidgets(
     'a range order: the amount first, « Too low », « Too high », the estimate, then the read with the amount kept and its own estimate',
