@@ -23,7 +23,7 @@ import 'trade_take_locks.dart';
 ///
 /// One take of an order at a time in the process ([TradeTakeLocks]), and none of an order that already has an open trade here: [TakeOrderAlreadyTraded], with its record (the database refuses a second open trade of an order too, the trigger `trades_one_open_per_order`).
 /// In this order, each step only once the one before it succeeded:
-/// 1. the order is read again just before the take, from the coordinator's book (`GET /api/book/` of its currency and type) with its `/api/info/` (the taker fee), both anonymous: never from a book left open; the terms are built from that read ([TradeTerms.take]), and a take that cannot be checked (a taker fee above the ceiling, an order gone or changed, its sats moved by more than [TradeTolerances.price] from what the user saw, an amount outside the range, a buy order) stops here, nothing sent with a robot;
+/// 1. the order is read again just before the take, from the coordinator's book (`GET /api/book/` of its currency and type) with its `/api/info/` (the taker fee), both anonymous: never from a book left open; the terms are built from that read ([TradeTerms.take]), and a take that cannot be checked (a taker fee above the ceiling, an order gone or changed, its sats moved by more than [TradeTolerances.price] from what the user saw, an amount outside the range) stops here, nothing sent with a robot;
 /// 2. a fresh robot is reserved for the trade, bound to the order's coordinator ([TradeRobots.robotForNewTrade]), then put on it ([PutRobotOnCoordinatorUsecase]: read back, then its first contact); a robot that already existed there, or held an order, is not used; and a robot whose Garage Key was deleted or replaced meanwhile is not used either ([TradeRobots.robotOfSlot]), a trade of it could never be read again;
 /// 3. the pending take, its terms and the first trail of a pending take are written, in that order ([TradeRecordRepository.recordPendingTake], [TradeTrailRepository.recordTerms], [TradeTrailRepository.storeTrail]): the take is refused when any of them fails;
 /// 4. the take is sent once, through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again;
@@ -66,7 +66,6 @@ final class TakeOrderUsecase {
     TakeAmount? amount,
     OrderPassword? password,
   }) async {
-    if (shown.type == OrderType.buy) return const Err(TakeOfBuyOrderRefused());
     return _locks.run(
       network,
       shown.coordinator,
@@ -83,7 +82,7 @@ final class TakeOrderUsecase {
   /// 3. `GET /api/order/` by that robot, through its places in `RobotRequestLimiter`: it must be of a public order without a password that this robot takes no part in ([TakeOrderGone] otherwise), and agree with the book's read (type, currency, amount or range, payment methods, maker, bond size, escrow duration, sats of an order priced in sats, premium of an order priced against the market, sats at the current price within `TradeTolerances.price`) and with [shown]'s sats ([TakeOrderChanged] otherwise), the read of the robot never being preferred over the book's, nor the book's over it;
   /// 4. the terms built from the robot's read (`TradeTerms.takeRead`): the read of the robot that takes is the one the take and every later answer are checked against.
   ///
-  /// A robot reserved stays the order's until the take is confirmed or abandoned, the order is gone or refused for good ([TakeOrderGone], [TakeTermsRefused], [TakeOfBuyOrderRefused], [TakeOrderAlreadyTraded]: then it is forgotten), or another order is prepared: a new preparation of the order (a second tap, a read that failed, figures that changed, another amount) reuses it. A robot reserved and put on the coordinator is a robot the coordinator now knows, without an order, whatever comes next.
+  /// A robot reserved stays the order's until the take is confirmed or abandoned, the order is gone or refused for good ([TakeOrderGone], [TakeTermsRefused], [TakeOrderAlreadyTraded]: then it is forgotten), or another order is prepared: a new preparation of the order (a second tap, a read that failed, figures that changed, another amount) reuses it. A robot reserved and put on the coordinator is a robot the coordinator now knows, without an order, whatever comes next.
   /// [TakePreparationGone] when the order was abandoned or another order prepared while this preparation ran.
   /// [onStep] is told [TakeStep.checkingOrder], [TakeStep.creatingRobot] when a fresh robot is reserved, then [TakeStep.readingOrder], each as it starts.
   /// Orders protected by a password are not in the public book: not prepared here.
@@ -93,7 +92,6 @@ final class TakeOrderUsecase {
     TakeAmount? amount,
     TakeProgress? onStep,
   }) async {
-    if (shown.type == OrderType.buy) return const Err(TakeOfBuyOrderRefused());
     return _locks.run(network, shown.coordinator, shown.id, () async {
       final prepared = await _prepare(
         shown,
@@ -104,7 +102,6 @@ final class TakeOrderUsecase {
       if (prepared case Err(
         failure: TakeOrderGone() ||
             TakeTermsRefused() ||
-            TakeOfBuyOrderRefused() ||
             TakeOrderAlreadyTraded(),
       )) {
         // Refused for good: its robot, if one was reserved, is never used again.
@@ -171,8 +168,6 @@ final class TakeOrderUsecase {
       rangeAmount: amount?.amount,
       takerFee: fresh.takerFee,
     )) {
-      case Ok(value: final terms) when terms.role != TradeRole.buyer:
-        return const Err(TakeOfBuyOrderRefused());
       case Ok():
         break;
       case Err(:final failure):
@@ -222,9 +217,6 @@ final class TakeOrderUsecase {
         terms = value;
       case Err(:final failure):
         return Err(TakeTermsRefused(failure));
-    }
-    if (terms.role != TradeRole.buyer) {
-      return const Err(TakeOfBuyOrderRefused());
     }
     final prepared = PreparedTake(
       order: read,
@@ -405,9 +397,6 @@ final class TakeOrderUsecase {
       case Err(:final failure):
         return Err(TakeTermsRefused(failure));
     }
-    if (terms.role != TradeRole.buyer) {
-      return const Err(TakeOfBuyOrderRefused());
-    }
     // 2. A fresh robot, bound to the coordinator, then put on it.
     final ReservedRobot reserved;
     switch (await _freshRobot(network, coordinator)) {
@@ -475,7 +464,6 @@ final class TakeOrderUsecase {
       case Err(:final failure):
         return Err(TakeCoordinatorUnreadable(failure));
     }
-    if (fresh.type == OrderType.buy) return const Err(TakeOfBuyOrderRefused());
     if (!_sameTerms(shown, fresh)) return const Err(TakeOrderChanged());
     final chosen = amount?.amount;
     switch ((fresh.amount, chosen)) {

@@ -22,7 +22,7 @@ import 'wallet_payment_section.dart';
 
 /// The prompt of status 3, the taker's bond to lock: the official client's `Prompts/LockInvoice.tsx` (concept `bond`, commit ff1998c) in the wallet's look, with the owner's layout (#88).
 ///
-/// From the top: « You are BUYING BTC »; the slot of « Pay with this wallet » ([WalletPaymentSection], empty today); « Pay with another wallet », which holds what the reference shows: « See Compatible Wallets » (the link shown for copy, never opened), the QR code of the invoice in capitals and « Copy to clipboard », with the facts read from the invoice under the QR code (amount, expiry, network, description: design note § 4.4); then « This is a hold invoice… ».
+/// From the top: « You are BUYING BTC », or « You are SELLING BTC » for a taker who sells (#96); the slot of « Pay with this wallet » ([WalletPaymentSection], empty today); « Pay with another wallet », which holds what the reference shows: « See Compatible Wallets » (the link shown for copy, never opened), the QR code of the invoice in capitals and « Copy to clipboard », with the facts read from the invoice under the QR code (amount, expiry, network, description: design note § 4.4); then « This is a hold invoice… ».
 /// « Pay with another wallet » is open at first while the wallet's slot offers nothing, as today.
 /// The QR code and the copy show only as [invoiceDisplayOf] allows: never for an `UnusableInvoice` nor once the screen's clock passed the invoice's `payableUntil`, behind « Show anyway » for the amount checks, not at all for the others; the warnings themselves are shown by the contract above.
 /// Tapping the QR code opens nothing (the reference opens `lightning:`; the feature cannot open a link).
@@ -34,8 +34,11 @@ class BondPanel extends StatelessWidget {
   final TradeSeen seen;
   final WalletPaymentBuilder? walletPayment;
 
-  /// Whether the order is in bitcoin, a swap into Lightning, as the order read says.
+  /// Whether the order is in bitcoin, a swap into Lightning (or out of it, for a seller), as the order read says.
   final bool swap;
+
+  /// Whether this robot sells: « You are SELLING BTC » (`LockInvoice.tsx:78-79`, `order.is_buyer`).
+  final bool seller;
 
   /// Whether the status came with its trail stored: otherwise neither the wallet's slot nor the QR code and the copy are offered (`AGENTS.md`, « Rules for #88 »).
   final bool payable;
@@ -51,6 +54,7 @@ class BondPanel extends StatelessWidget {
     required this.walletPayment,
     required this.now,
     this.swap = false,
+    this.seller = false,
     this.payable = true,
   });
 
@@ -79,8 +83,13 @@ class BondPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          // An order in bitcoin is a swap into Lightning (`LockInvoice.tsx:76-80`).
-          swap ? l10n.p2pTradeYouAreSwappingIn : l10n.p2pTradeYouAreBuying,
+          // An order in bitcoin is a swap into Lightning, or out of it for a seller (`LockInvoice.tsx:76-80`).
+          switch ((swap, seller)) {
+            (true, false) => l10n.p2pTradeYouAreSwappingIn,
+            (true, true) => l10n.p2pTradeYouAreSwappingOut,
+            (false, false) => l10n.p2pTradeYouAreBuying,
+            (false, true) => l10n.p2pTradeYouAreSelling,
+          },
           textAlign: TextAlign.center,
           style: text.headlineLarge?.copyWith(color: colors.secondary),
         ),
@@ -99,6 +108,131 @@ class BondPanel extends StatelessWidget {
           heldByWallet: slot?.othersHidden ?? false,
           payable: payable,
           now: now,
+        ),
+      ],
+    );
+  }
+}
+
+/// The seller's escrow to lock at 6 and 7 (#96): the official client's `Prompts/LockInvoice.tsx` with the concept `escrow` (commit ff1998c), paid from another wallet in this version (« Pay with this wallet » for the escrow is #97).
+///
+/// From the top, as the reference: « You risk losing your bond if you do not lock the collateral. Total time available is {{deposit_timer_hours}}h {{deposit_timer_minutes}}m. » (the escrow's time of the trade's terms, split as the reference splits `escrow_duration`), the QR code of the invoice in capitals, the facts read from it (amount, expiry, network, description: design note § 4.4), « Copy to clipboard », then « This is a hold invoice, it will freeze in your wallet. It will be released to the buyer once you confirm to have received the {{currencyCode}}. »; no « See Compatible Wallets » and no « You are SELLING BTC », which the reference shows for the bond only.
+/// The QR code and the copy show only as [invoiceDisplayOf] allows, as for the bond: never for an `UnusableInvoice`, nor once the screen's clock passed the invoice's `payableUntil`, nor for a status not marked stored ([payable]); behind « Show anyway » for the amount checks (the escrow not the trade's sats, the implied fee above the announced one, the invoice not `escrow_satoshis`), not at all for the others. While the coordinator has not given the invoice yet, the two lines are shown without the QR code.
+/// Tapping the QR code opens nothing (the reference opens `lightning:`).
+class EscrowPanel extends StatefulWidget {
+  /// The escrow invoice of the status shown, `null` until the coordinator gives it.
+  final StepInvoice? invoice;
+
+  /// The trade's currency, which the hold invoice's line names, and the escrow's time: both from the trade's terms.
+  final RobosatsCurrency currency;
+  final Duration escrowDuration;
+  final bool payable;
+  final DateTime now;
+
+  const EscrowPanel({
+    super.key,
+    required this.invoice,
+    required this.currency,
+    required this.escrowDuration,
+    required this.now,
+    this.payable = true,
+  });
+
+  @override
+  State<EscrowPanel> createState() => _EscrowPanelState();
+}
+
+class _EscrowPanelState extends State<EscrowPanel> {
+  bool _shownAnyway = false;
+  bool _copied = false;
+  Timer? _copiedTimer;
+
+  @override
+  void didUpdateWidget(EscrowPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // « Show anyway » holds for one payment hash.
+    if (_hashOf(widget.invoice) != _hashOf(oldWidget.invoice)) {
+      _shownAnyway = false;
+    }
+  }
+
+  static String? _hashOf(StepInvoice? invoice) => switch (invoice) {
+    CheckedInvoice(:final paymentHash) => paymentHash,
+    _ => null,
+  };
+
+  @override
+  void dispose() {
+    _copiedTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy(String bolt11) async {
+    await Clipboard.setData(ClipboardData(text: bolt11));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _copiedTimer?.cancel();
+    _copiedTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final invoice = widget.invoice;
+    // `LockInvoice.tsx:37-46`: whole hours, then whole minutes of what is left.
+    final hours = widget.escrowDuration.inHours;
+    final minutes = widget.escrowDuration.inMinutes - hours * 60;
+    final display = invoice != null && widget.payable
+        ? invoiceDisplayOf(invoice, shownAnyway: _shownAnyway, now: widget.now)
+        : InvoiceDisplay.hidden;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          l10n.p2pTradeEscrowTimeWarning('$hours', '$minutes'),
+          textAlign: TextAlign.center,
+          style: text.bodyMedium?.copyWith(color: colors.text),
+        ),
+        if (invoice case CheckedInvoice(:final bolt11)) ...[
+          switch (display) {
+            InvoiceDisplay.shown => Padding(
+              padding: const EdgeInsets.only(top: BullSpacing.md),
+              child: _Qr(bolt11: bolt11, label: l10n.p2pTradeEscrowQr),
+            ),
+            InvoiceDisplay.hiddenUntilShownAnyway => Padding(
+              padding: const EdgeInsets.only(top: BullSpacing.md),
+              child: TradeButton(
+                label: l10n.p2pTradeShowAnyway,
+                outlined: true,
+                color: colors.warning,
+                onPressed: () => setState(() => _shownAnyway = true),
+              ),
+            ),
+            InvoiceDisplay.hidden => const SizedBox.shrink(),
+          },
+          const Gap(BullSpacing.md),
+          _Facts(invoice: invoice),
+          if (display == InvoiceDisplay.shown) ...[
+            const Gap(BullSpacing.sm),
+            TradeButton(
+              label: _copied
+                  ? l10n.p2pCommonCopied
+                  : l10n.p2pTradeCopyToClipboard,
+              icon: Icons.copy,
+              outlined: true,
+              onPressed: () => unawaited(_copy(bolt11)),
+            ),
+          ],
+        ],
+        const Gap(BullSpacing.md),
+        Text(
+          l10n.p2pTradeHoldInvoiceEscrow(widget.currency.code),
+          textAlign: TextAlign.center,
+          style: text.labelMedium?.copyWith(color: colors.textMuted),
         ),
       ],
     );
@@ -231,7 +365,10 @@ class _OtherWalletState extends State<_OtherWallet> {
                     switch (display) {
                       InvoiceDisplay.shown => Padding(
                         padding: const EdgeInsets.only(top: BullSpacing.md),
-                        child: _Qr(bolt11: bolt11),
+                        child: _Qr(
+                          bolt11: bolt11,
+                          label: l10n.p2pTradeInvoiceQr,
+                        ),
                       ),
                       InvoiceDisplay.hiddenUntilShownAnyway => Padding(
                         padding: const EdgeInsets.only(top: BullSpacing.md),
@@ -282,19 +419,21 @@ class _OtherWalletState extends State<_OtherWallet> {
 class _Qr extends StatelessWidget {
   final String bolt11;
 
-  const _Qr({required this.bolt11});
+  /// What a screen reader says of it: the bond's or the escrow's invoice.
+  final String label;
+
+  const _Qr({required this.bolt11, required this.label});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
-    final l10n = P2pLocalizations.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = math.min(constraints.maxWidth, 300.0);
         return Center(
           child: Semantics(
             container: true,
-            label: l10n.p2pTradeInvoiceQr,
+            label: label,
             image: true,
             child: Container(
               width: size,

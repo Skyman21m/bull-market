@@ -138,11 +138,6 @@ final class TakeOrderChanged extends TakeRefusal {
   const TakeOrderChanged();
 }
 
-/// The order is a buy order: taking it would make this robot the seller, a later slice (#96): « Selling is coming in a later version. »
-final class TakeOfBuyOrderRefused extends TakeRefusal {
-  const TakeOfBuyOrderRefused();
-}
-
 /// An amount was given for a fixed order, none for a range, or one outside the range of the order read just before the take.
 final class TakeAmountRefused extends TakeRefusal {
   const TakeAmountRefused();

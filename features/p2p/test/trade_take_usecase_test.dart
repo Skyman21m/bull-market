@@ -138,20 +138,21 @@ void main() {
       );
     });
 
-    test('a buy order, whose taker would sell: nothing sent at all', () async {
-      final app = await TradeHarness.start(orderType: 0);
-      final shown = await app.shownOrder();
-      final before = app.coordinator.requests.length;
-      expect(
-        await app.take.execute(shown, network: app.network),
-        isA<Err<TakeOutcome, TakeRefusal>>().having(
-          (err) => err.failure,
-          'refusal',
-          isA<TakeOfBuyOrderRefused>(),
-        ),
-      );
-      expect(app.coordinator.requests, hasLength(before));
-    });
+    test(
+      'a buy order, whose taker sells (#96): taken as a sell order is, a seller at the pre-take',
+      () async {
+        final app = await TradeHarness.start(orderType: 0);
+        final started = switch (await app.takeShown()) {
+          Ok(value: final TakeStarted started) => started,
+          final other => fail('not started: $other'),
+        };
+        expect(started.record.role, TradeRole.seller);
+        expect(started.status, isA<WaitingForTakerBond>());
+        expect(started.status.warnings, isEmpty);
+        expect(app.coordinator.holdsPreTake(app.robot(0)), isTrue);
+        expect(app.coordinator.received.where((r) => r == take), hasLength(1));
+      },
+    );
 
     test('an order no longer in the book: no robot', () async {
       final app = await TradeHarness.start();

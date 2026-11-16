@@ -14,26 +14,37 @@ enum ChatStepAction {
   /// « Confirm {{amount}} {{currencyCode}} sent »: the buyer's « fiat sent », 9 → 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`).
   confirmFiatSent,
 
+  /// « Confirm {{amount}} {{currencyCode}} received »: the seller's confirmation at 10, once « fiat sent » is recorded (#96): the coordinator settles the escrow, returns both bonds and pays the buyer, 13 (or 14 for an on-chain payout) (`Logics.confirm_fiat`, `api/logics.py:1686-1735`). It cannot be taken back.
+  confirmFiatReceived,
+
   /// « Payment failed? »: the buyer takes back « fiat sent », 10 → 9 (`Logics.undo_confirm_fiat_sent`, `api/logics.py:1737-1756`: the buyer only, 1030, at 10 only, 1031, with no time limit).
   undoFiatSent,
 
   /// « Open Dispute »: either side opens a dispute at 9 or 10, not earlier than 18 hours before the chat's end (`Logics.open_dispute`, `api/logics.py:485-533`: 1013 outside 9 and 10, 1054 too early); the escrow and both bonds go to the coordinator at once.
   dispute,
 
-  /// « Rate your trade experience »: the buyer's stars at 14 (`rate_platform`, `TradeBox/Prompts/Successful.tsx`; `Logics.rate_platform`, `api/logics.py:1786-1789`, keeps the robot's latest rating whatever the status). Each tap of a star sends once, as the reference sends each change of its stars.
+  /// « Rate your trade experience »: the stars of « Trade finished! », at 14, and for the seller at 13 and 15 too (`rate_platform`, `TradeBox/Prompts/Successful.tsx`; `Logics.rate_platform`, `api/logics.py:1786-1789`, keeps the robot's latest rating whatever the status). Each tap of a star sends once, as the reference sends each change of its stars.
   rate;
 
   /// When « Open Dispute » becomes possible at [status]: the chat's end less `CoordinatorClient.disputeWindow` (18 hours, a constant of the reference's code), as the reference's prompt computes it (`Prompts/Chat.tsx:100-104`).
   static DateTime disputeOpensAt(Chatting status) =>
       status.deadline.subtract(CoordinatorClient.disputeWindow);
 
-  /// Whether [seen] offers this action, as the reference's prompt offers its button (`Prompts/Chat.tsx:98-149`), and only from a status marked stored (`TradeSeen.stored`) that comes from an order read: « fiat sent » to the buyer at 9, « Payment failed? » to the buyer at 10, exactly where the coordinator takes each.
+  /// Whether [seen] offers this action, as the reference's prompt offers its button (`Prompts/Chat.tsx:98-149`), and only from a status marked stored (`TradeSeen.stored`) that comes from an order read: « fiat sent » to the buyer at 9, « Payment failed? » to the buyer at 10, « … received » to the seller at 10 with `is_fiat_sent` (the reference shows its button at 9 too, disabled, `:237-247`), exactly where the coordinator takes each.
   bool offeredAt(TradeSeen seen) => switch (this) {
     ChatStepAction.confirmFiatSent =>
       seen.stored &&
           seen.order?.status == CoordinatorOrderStatus.sendingFiat &&
           switch (seen.status) {
             Chatting(role: TradeRole.buyer, fiatSent: false) => true,
+            _ => false,
+          },
+    ChatStepAction.confirmFiatReceived =>
+      seen.stored &&
+          seen.order?.status == CoordinatorOrderStatus.fiatSent &&
+          seen.order?.isFiatSent == true &&
+          switch (seen.status) {
+            Chatting(role: TradeRole.seller, fiatSent: true) => true,
             _ => false,
           },
     ChatStepAction.undoFiatSent =>
@@ -49,22 +60,41 @@ enum ChatStepAction {
           (seen.order?.status == CoordinatorOrderStatus.sendingFiat ||
               seen.order?.status == CoordinatorOrderStatus.fiatSent) &&
           seen.status is Chatting,
-    // The buyer at 14, where the reference shows its stars to a buyer (`TradeBox/index.tsx:631-650`), from an order read; not necessarily marked stored: a rating moves nothing, and an end the trail holds is never left nor written again (`TradeReader.advance`), so a later read of it is never marked stored.
-    ChatStepAction.rate =>
-      seen.order?.status == CoordinatorOrderStatus.successful &&
-          switch (seen.status) {
-            Succeeded(role: TradeRole.buyer) => true,
-            _ => false,
-          },
+    // Where the reference shows « Trade finished! » with its stars (`TradeBox/index.tsx:602-690`): 14 for both sides, and 13 and 15 for the seller, from an order read at that very status; not necessarily marked stored: a rating moves nothing, and an end the trail holds is never left nor written again (`TradeReader.advance`), so a later read of it is never marked stored.
+    ChatStepAction.rate => switch ((seen.order?.status, seen.status)) {
+      (CoordinatorOrderStatus.successful, Succeeded()) ||
+      (
+        CoordinatorOrderStatus.sendingSats,
+        SendingSats(role: TradeRole.seller),
+      ) ||
+      (
+        CoordinatorOrderStatus.routingFailed,
+        RoutingFailed(role: TradeRole.seller),
+      ) => true,
+      _ => false,
+    },
   };
 
-  /// Whether [seen] shows this action as recorded already: « fiat sent » at 10, or past it once the seller confirmed (13, 14, 15). A request that landed late, after the read that followed it, is found this way by the next tap's fresh read: nothing is sent again, and the action is done.
+  /// Whether the reference shows its stars to [role] at the order's [status] (`TradeBox/index.tsx:602-690`): 14, and 13 and 15 for the seller, for whom the trade is finished once it confirmed.
+  static bool ratedAt(TradeRole role, CoordinatorOrderStatus status) =>
+      status == CoordinatorOrderStatus.successful ||
+      (role == TradeRole.seller &&
+          (status == CoordinatorOrderStatus.sendingSats ||
+              status == CoordinatorOrderStatus.routingFailed));
+
+  /// Whether [seen] shows this action as recorded already: « fiat sent » at 10, or past it once the seller confirmed (13, 14, 15); the seller's « received » at 13, 14 or 15, which only that confirmation leads to from 10. A request that landed late, after the read that followed it, is found this way by the next tap's fresh read: nothing is sent again, and the action is done.
   bool doneAt(TradeSeen seen) => switch (this) {
     ChatStepAction.confirmFiatSent => switch (seen.status) {
       Chatting(role: TradeRole.buyer, fiatSent: true) ||
       SendingSats(role: TradeRole.buyer) ||
       Succeeded(role: TradeRole.buyer) ||
       RoutingFailed(role: TradeRole.buyer) => true,
+      _ => false,
+    },
+    ChatStepAction.confirmFiatReceived => switch (seen.status) {
+      SendingSats(role: TradeRole.seller) ||
+      Succeeded(role: TradeRole.seller) ||
+      RoutingFailed(role: TradeRole.seller) => true,
       _ => false,
     },
     // Back at 9: only the buyer moves 10 to 9, so an earlier request of this robot landed.

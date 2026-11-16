@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../domain/p2p_failure.dart';
@@ -20,6 +21,11 @@ enum TradeTitle {
   lockBond,
   payout,
   infoGood,
+
+  /// The seller's (#96): « Lock {{amountSats}} Sats as collateral » at 6 and 7, « The trade collateral is locked! » at 8, « Chat with the buyer » at 9 and 10.
+  lockEscrow,
+  collateralLocked,
+  chatWithBuyer,
   expired,
   chat,
   dispute,
@@ -38,6 +44,10 @@ enum TradePrompt {
   lockInvoice,
   payout,
   escrowWait,
+
+  /// The seller's (#96): the escrow to lock (`Prompts/LockInvoice.tsx`, concept `escrow`) at 6 and 7, the wait for the buyer's payout (`Prompts/PayoutWait.tsx`) at 8.
+  lockEscrow,
+  payoutWait,
   expired,
   routingFailed,
   chat,
@@ -180,6 +190,22 @@ final class TradeContract extends TradeView {
 
   TradeCancelOffer get cancel => cancelOf(status);
 
+  /// The sats the title states: the bond at 3 (`bond_satoshis`), the escrow at 6 and 7 for a seller (`escrow_satoshis`, `TradeBox/index.tsx:482`, `:500`; before the coordinator gives the invoice, the seller's `trade_satoshis`, which is the same `Logics.escrow_amount`, `api/views.py:362-365`); `null` elsewhere.
+  Sats? get titleSats => switch (status) {
+    WaitingForTakerBond(:final bond) => bond.orderAmount,
+    WaitingForBoth(
+      role: TradeRole.seller,
+      :final escrow,
+      :final tradeSatoshis,
+    ) ||
+    WaitingForEscrow(
+      role: TradeRole.seller,
+      :final escrow,
+      :final tradeSatoshis,
+    ) => escrow?.orderAmount ?? tradeSatoshis,
+    _ => null,
+  };
+
   /// The step and the steps of a taker (`TradeBox/stepXofY.ts`): 3 → 1 of 4, 6 to 8 → 2, 9 → 3, 10 → 4; none elsewhere.
   (int, int)? get step => switch (status.position) {
     TradePosition.bondStep => (1, 4),
@@ -191,13 +217,17 @@ final class TradeContract extends TradeView {
     _ => null,
   };
 
-  /// The title the official client gives a taker of the buyer's side at [status] (`statusToContract`); a seller's step, which a take never makes here, has the reference's default.
+  /// The title the official client gives a taker at [status], of either side (`statusToContract`, `TradeBox/index.tsx:359-724`): a seller locks the escrow at 6 and 7, waits at 8, and sees « Trade finished! » from 13 on, 15 included, where the buyer is still being paid.
   static TradeTitle titleOf(TradeStatus status) => switch (status) {
     WaitingForTakerBond() => TradeTitle.lockBond,
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradeTitle.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradeTitle.infoGood,
+    WaitingForBoth(role: TradeRole.seller) ||
+    WaitingForEscrow(role: TradeRole.seller) => TradeTitle.lockEscrow,
+    WaitingForPayout(role: TradeRole.seller) => TradeTitle.collateralLocked,
     Chatting(role: TradeRole.buyer) => TradeTitle.chat,
+    Chatting(role: TradeRole.seller) => TradeTitle.chatWithBuyer,
     InDispute(statementSubmitted: true) => TradeTitle.statementReceived,
     InDispute() => TradeTitle.dispute,
     SendingSats(role: TradeRole.buyer) => TradeTitle.sendingSats,
@@ -215,10 +245,15 @@ final class TradeContract extends TradeView {
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradePrompt.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradePrompt.escrowWait,
+    WaitingForBoth(role: TradeRole.seller) ||
+    WaitingForEscrow(role: TradeRole.seller) => TradePrompt.lockEscrow,
+    WaitingForPayout(role: TradeRole.seller) => TradePrompt.payoutWait,
     RoutingFailed(role: TradeRole.buyer) => TradePrompt.routingFailed,
-    Chatting(role: TradeRole.buyer) => TradePrompt.chat,
+    Chatting() => TradePrompt.chat,
     SendingSats(role: TradeRole.buyer) => TradePrompt.sendingSats,
-    Succeeded() => TradePrompt.finished,
+    Succeeded() ||
+    SendingSats(role: TradeRole.seller) ||
+    RoutingFailed(role: TradeRole.seller) => TradePrompt.finished,
     InDispute(statementSubmitted: true) => TradePrompt.disputeWaitPeer,
     InDispute() => TradePrompt.disputeOpen,
     WaitingDisputeResolution() => TradePrompt.disputeWaitResolution,
@@ -228,7 +263,7 @@ final class TradeContract extends TradeView {
     _ => TradePrompt.later,
   };
 
-  /// The bond line of `statusToContract`: locked from the bond's lock to the chat, settled in a dispute and after losing one, unlocked once the buyer is being paid, hidden elsewhere.
+  /// The bond line of `statusToContract`: locked from the bond's lock to the chat, settled in a dispute and after losing one, unlocked once the buyer is being paid (for the buyer only: the reference hides it from the seller at 13 and 15), hidden elsewhere.
   static TradeBondLine bondLineOf(TradeStatus status) => switch (status) {
     WaitingForBoth() ||
     WaitingForEscrow() ||

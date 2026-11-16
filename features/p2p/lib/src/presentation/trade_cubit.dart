@@ -33,7 +33,7 @@ typedef TradeCanceller =
 /// [WatchTradeUsecase.lastStored], which the locator gives the cubit (#152).
 typedef TradeLastStored = TradeSeen? Function(TradeRecord record);
 
-/// [ChatStepActionUsecase.confirmFiatSent] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
+/// [ChatStepActionUsecase.confirmFiatSent], [ChatStepActionUsecase.confirmFiatReceived] or [ChatStepActionUsecase.undoFiatSent], which the locator gives the cubit.
 typedef TradeFiatSender =
     Future<Result<ChatStepOutcome, ChatStepRefusal>> Function(
       TradeRecord record,
@@ -197,6 +197,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
   final TradeWatcher _watch;
   final TradeCanceller _cancel;
   final TradeFiatSender? _confirmFiatSent;
+  final TradeFiatSender? _confirmFiatReceived;
   final TradeLastStored? _lastStored;
   final TradeFiatSender? _undoFiatSent;
   final TradeFiatSender? _startDispute;
@@ -215,6 +216,7 @@ class TradeCubit extends Cubit<TradeScreenState> {
     this._watch,
     this._cancel, {
     this._confirmFiatSent,
+    this._confirmFiatReceived,
     this._undoFiatSent,
     this._startDispute,
     this._rate,
@@ -223,6 +225,9 @@ class TradeCubit extends Cubit<TradeScreenState> {
 
   /// Whether the screen may offer « Confirm {{amount}} {{currencyCode}} sent ».
   bool get offersFiatSent => _confirmFiatSent != null;
+
+  /// Whether the screen may offer the seller's « Confirm {{amount}} {{currencyCode}} received » (#96).
+  bool get offersFiatReceived => _confirmFiatReceived != null;
 
   /// Whether the screen may offer « Payment failed? ».
   bool get offersUndoFiatSent => _undoFiatSent != null;
@@ -419,6 +424,10 @@ class TradeCubit extends Cubit<TradeScreenState> {
   /// Sends the buyer's « fiat sent » at [seen], the status the screen showed when the user confirmed the reference's dialog: once, never again by itself; nothing while another action of the trade runs.
   Future<void> confirmFiatSent(TradeSeen seen) =>
       _chatStep(ChatStepAction.confirmFiatSent, _confirmFiatSent, seen);
+
+  /// Sends the seller's « Confirm {{amount}} {{currencyCode}} received » at [seen], the status the screen showed when the user confirmed the reference's dialog (#96): it releases the escrow to the buyer; as [confirmFiatSent], once, never again by itself, nothing while another action of the trade runs.
+  Future<void> confirmFiatReceived(TradeSeen seen) =>
+      _chatStep(ChatStepAction.confirmFiatReceived, _confirmFiatReceived, seen);
 
   /// Sends the buyer's « Payment failed? » at [seen], the status the screen showed when the user confirmed the reference's dialog: as [confirmFiatSent].
   Future<void> undoFiatSent(TradeSeen seen) =>

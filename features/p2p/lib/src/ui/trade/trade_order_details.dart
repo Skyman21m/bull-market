@@ -11,7 +11,7 @@ import '../widgets/reversible_payments_dialog.dart';
 
 /// The « Order » tab of the trade screen: the order as its coordinator describes it to the trade's robot, as the official client's order details on the order page (`components/OrderDetails/index.tsx` at commit ff1998c), read from the last read of the trade, nothing asked for it.
 ///
-/// Host and number, the coordinator's fees, then « Order Details »: the amount (the amount taken once there is one), what the taker sends and receives (the sats once the coordinator gives them, `invoice_amount` or `trade_satoshis`, and until then the reference's estimate with the coordinator's taker fee, `TakerEstimate.ofTrade`), the payment methods, the price and premium, then, while the order's status expires (`:494`: not 4, 5, 12 to 18), « Expires in » with the countdown (orange under a quarter of the time, red under a tenth, bold under a quarter), « Deposit » and the bar of the time left; then the maker with how recently its coordinator saw it, as the order details of the book show them (`OrderFeeRow`, `OrderMakerRow`).
+/// Host and number, the coordinator's fees, then « Order Details »: the amount (the amount taken once there is one), what the taker sends and receives (the sats once the coordinator gives them, `invoice_amount` or `trade_satoshis` for a buyer, `trade_satoshis` or `escrow_satoshis` for a seller, and until then the reference's estimate with the coordinator's taker fee, `TakerEstimate.ofTrade` or `ofTradeAsSeller`), the payment methods, the price and premium, then, while the order's status expires (`:494`: not 4, 5, 12 to 18), « Expires in » with the countdown (orange under a quarter of the time, red under a tenth, bold under a quarter), « Deposit » and the bar of the time left; then the maker with how recently its coordinator saw it, as the order details of the book show them (`OrderFeeRow`, `OrderMakerRow`).
 class TradeOrderDetails extends StatelessWidget {
   final CoordinatorOrder order;
   final DateTime now;
@@ -48,26 +48,39 @@ class TradeOrderDetails extends StatelessWidget {
                 : formats.sats((taken.value * 100000000).round()),
           )
         : '${taken == null ? formats.orderAmount(order.amount) : formats.amount(taken)} $code';
-    final given = order.payoutInvoiceAmount ?? order.tradeSatoshis;
-    final estimate = given == null
-        ? TakerEstimate.ofTrade(order, takerFee: info?.takerFee ?? 0)
-        : null;
+    // The taker of a buy order sells (#96): it sends the sats and receives the fiat (`components/OrderDetails/index.tsx:237-265`).
+    final seller = order.type == OrderType.buy;
+    final given = seller
+        ? order.tradeSatoshis ?? order.escrowInvoice?.satoshis
+        : order.payoutInvoiceAmount ?? order.tradeSatoshis;
+    final takerFee = info?.takerFee ?? 0;
+    final estimate = given != null
+        ? null
+        : seller
+        ? TakerEstimate.ofTradeAsSeller(order, takerFee: takerFee)
+        : TakerEstimate.ofTrade(order, takerFee: takerFee);
     final sats = given != null
         ? formats.sats(given.value.toInt())
         : estimate != null
         ? formats.estimate(estimate)
         : null;
     final methods = order.paymentMethods.text;
-    final send = OrderSentence.split(
-      l10n.p2pOrderYouSendVia(methods, OrderSentence.mark),
+    final fiat = OrderSentence.split(
+      seller
+          ? l10n.p2pOrderYouReceiveVia(methods, OrderSentence.mark)
+          : l10n.p2pOrderYouSendVia(methods, OrderSentence.mark),
       amount,
     );
-    final receive = sats == null
+    final bitcoin = sats == null
         ? null
         : OrderSentence.split(
-            l10n.p2pOrderYouReceiveSats(OrderSentence.mark),
+            seller
+                ? l10n.p2pOrderYouSendLightning(OrderSentence.mark)
+                : l10n.p2pOrderYouReceiveSats(OrderSentence.mark),
             sats,
           );
+    // What is sent first, then what is received, as the reference lists them.
+    final (send, receive) = seller ? (bitcoin, fiat) : (fiat, bitcoin);
     final price = order.priceNow;
     final premium = order.premiumNow ?? order.premium;
     final explicit = order.explicitSatoshis;
@@ -115,7 +128,7 @@ class TradeOrderDetails extends StatelessWidget {
                   : l10n.p2pBookColumnAmount,
               amount,
             ),
-            OrderDetailRow(send.label, send.value),
+            if (send != null) OrderDetailRow(send.label, send.value),
             if (receive != null) OrderDetailRow(receive.label, receive.value),
             OrderDetailRow(
               order.currency.isBitcoin

@@ -733,6 +733,8 @@ sealed class TradeStatus {
           payoutAmount: order.payoutInvoiceAmount,
           tradeSatoshis: order.tradeSatoshis,
           deadline: deadline,
+          currency: terms.currency,
+          escrowDuration: terms.escrowDuration,
         );
       case TradePosition.waitingForEscrow:
         final escrow = escrowForSeller();
@@ -744,6 +746,8 @@ sealed class TradeStatus {
           escrow: escrow,
           tradeSatoshis: order.tradeSatoshis,
           deadline: deadline,
+          currency: terms.currency,
+          escrowDuration: terms.escrowDuration,
         );
       case TradePosition.waitingForPayout:
         return WaitingForPayout._(
@@ -899,6 +903,10 @@ final class WaitingForBoth extends TradeStatus {
   final Sats? tradeSatoshis;
   final DateTime deadline;
 
+  /// The trade's currency and the escrow's time as its terms fixed them at the take, what the user accepted: the seller's escrow panel is worded from these, never from a read (#96, as `Chatting.currency`).
+  final RobosatsCurrency currency;
+  final Duration escrowDuration;
+
   const WaitingForBoth._(
     super.seenAt,
     super.warnings,
@@ -908,6 +916,8 @@ final class WaitingForBoth extends TradeStatus {
     required this.payoutAmount,
     required this.tradeSatoshis,
     required this.deadline,
+    required this.currency,
+    required this.escrowDuration,
   }) : super._();
 
   @override
@@ -927,6 +937,8 @@ final class WaitingForBoth extends TradeStatus {
         payoutAmount: payoutAmount,
         tradeSatoshis: tradeSatoshis,
         deadline: deadline,
+        currency: currency,
+        escrowDuration: escrowDuration,
       );
 }
 
@@ -937,6 +949,10 @@ final class WaitingForEscrow extends TradeStatus {
   final Sats? tradeSatoshis;
   final DateTime deadline;
 
+  /// As [WaitingForBoth.currency] and [WaitingForBoth.escrowDuration].
+  final RobosatsCurrency currency;
+  final Duration escrowDuration;
+
   const WaitingForEscrow._(
     super.seenAt,
     super.warnings,
@@ -945,6 +961,8 @@ final class WaitingForEscrow extends TradeStatus {
     required this.escrow,
     required this.tradeSatoshis,
     required this.deadline,
+    required this.currency,
+    required this.escrowDuration,
   }) : super._();
 
   @override
@@ -963,6 +981,8 @@ final class WaitingForEscrow extends TradeStatus {
         escrow: _optionalInvoiceWith(escrow, more),
         tradeSatoshis: tradeSatoshis,
         deadline: deadline,
+        currency: currency,
+        escrowDuration: escrowDuration,
       );
 }
 

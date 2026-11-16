@@ -18,12 +18,14 @@ import '../widgets/word_fit_text.dart';
 import 'chat_actions.dart';
 import 'confirm_collab_cancel_dialog.dart';
 import 'confirm_dispute_dialog.dart';
+import 'confirm_fiat_received_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
 import 'confirm_undo_fiat_sent_dialog.dart';
 import 'order_options_dialog.dart';
 
-/// The buyer's chat step, 9 and 10 (`TradeBox/Prompts/Chat.tsx`, commit ff1998c; #95): the reference's prompt and « ⚠️ Beware scams », the place of the chat, then the action buttons under it, as the reference lays them out: « … » (« Order options ») and, at 9, « Confirm {{amount}} {{currencyCode}} sent », at 10, « Payment failed? ».
+/// The chat step, 9 and 10 (`TradeBox/Prompts/Chat.tsx`, commit ff1998c; #95, the seller's #96): the reference's prompt for the side and « ⚠️ Beware scams », the place of the chat, then the action buttons under it, as the reference lays them out: « … » (« Order options ») and, for the buyer, « Confirm {{amount}} {{currencyCode}} sent » at 9 and « Payment failed? » at 10; for the seller, « Confirm {{amount}} {{currencyCode}} received », shown off at 9 and on at 10, once « fiat sent » is recorded (`Prompts/Chat.tsx:237-247`).
 ///
+/// « Confirm … received » opens the reference's dialog ([ConfirmFiatReceivedDialog]) and releases the escrow to the buyer on « Confirm »: once, for the status seen when the button was pressed, never again by itself.
 /// « Confirm … sent » opens the reference's dialog ([ConfirmFiatSentDialog]), « Payment failed? » its own ([ConfirmUndoFiatSentDialog]), « Collaborative Cancel » in « Order options » its own ([ConfirmCollabCancelDialog]); each sends once through the trade's cubit, for the status shown when the button was pressed.
 /// While an action of the trade runs (one of these, a cancel, a payout), the buttons are off and a line says what it waits for, step by step; what an action gave is said under them.
 /// The status shown is the status stored: nothing here changes it before a read does.
@@ -50,6 +52,9 @@ class ChatStepPanel extends StatefulWidget {
   final bool offersUndoFiatSent;
   final bool offersCollaborativeCancel;
 
+  /// Whether the seller's « Confirm … received » may be offered: the screen's cubit sends it (#96).
+  final bool offersFiatReceived;
+
   /// Whether « Open Dispute » may be offered in « Order options »: the screen's cubit sends it.
   final bool offersDispute;
 
@@ -73,6 +78,7 @@ class ChatStepPanel extends StatefulWidget {
     required this.offersFiatSent,
     required this.offersUndoFiatSent,
     required this.offersCollaborativeCancel,
+    this.offersFiatReceived = false,
     this.offersDispute = false,
     required this.now,
     this.chat,
@@ -193,6 +199,17 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         }
       });
 
+  Future<void> _confirmFiatReceived(String amount, String currencyCode) =>
+      _once((cubit, seen) async {
+        if (await ConfirmFiatReceivedDialog.show(
+          context,
+          amount: amount,
+          currencyCode: currencyCode,
+        )) {
+          await cubit.confirmFiatReceived(seen);
+        }
+      });
+
   Future<void> _undoFiatSent() => _once((cubit, seen) async {
     if (await ConfirmUndoFiatSentDialog.show(context, left: _undoWait)) {
       await cubit.undoFiatSent(seen);
@@ -257,6 +274,11 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     final undoOffered =
         widget.offersUndoFiatSent &&
         ChatStepAction.undoFiatSent.offeredAt(seen);
+    final seller = status is Chatting && status.role == TradeRole.seller;
+    final receivedOffered =
+        widget.offersFiatReceived &&
+        amount != null &&
+        ChatStepAction.confirmFiatReceived.offeredAt(seen);
     // « Collaborative Cancel » at 9 only, from a status marked stored read from an order (`Prompts/Chat.tsx:108`, `:135`).
     final collaborative =
         widget.offersCollaborativeCancel &&
@@ -276,7 +298,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         action: action,
       ),
       _ when cancelling => l10n.p2pEndStepSendingRequest(widget.coordinator),
-      _ when widget.otherActionRunning && (confirmOffered || undoOffered) =>
+      _
+          when widget.otherActionRunning &&
+              (confirmOffered || undoOffered || receivedOffered) =>
         l10n.p2pPayoutStepWaitingForOrder,
       _ => null,
     };
@@ -292,7 +316,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         status is Chatting &&
         status.role == TradeRole.buyer &&
         !status.fiatSent;
-    final differs = amount == null || !atNine
+    // The seller's button, shown at 9 (off, as the reference's `disabled={order.status < 10}`) and at 10.
+    final sellerButton = widget.offersFiatReceived && seller;
+    final differs = amount == null || !(atNine || sellerButton)
         ? null
         : _amountDiffers(context, amount);
     final chatNotice = switch (chatStep) {
@@ -310,8 +336,12 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       ),
       _ => null,
     };
+    // At 9 the seller's button is off by the reference's own rule, with no line; at 10 it is off only while the status shown cannot be acted on.
     final needsRead =
-        atNine && !confirmOffered && running == null && chatNotice == null;
+        ((atNine && !confirmOffered) ||
+            (sellerButton && fiatSent && !receivedOffered)) &&
+        running == null &&
+        chatNotice == null;
     // An outcome unknown is no failure: the action may well have gone through (the payout's notice of the same kind is in the warning colour too); red only where it was not recorded.
     final chatNoticeColor = switch (chatStep) {
       ChatStepIdle(notice: ChatStepWasUnknown()) => colors.warning,
@@ -327,7 +357,15 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          fiatSent ? l10n.p2pEndWaitSeller : l10n.p2pEndChatBuyerHi,
+          switch ((seller, fiatSent)) {
+            (false, false) => l10n.p2pEndChatBuyerHi,
+            (false, true) => l10n.p2pEndWaitSeller,
+            (true, false) => l10n.p2pEndChatSellerHi(
+              amount?.$1 ?? '',
+              amount?.$2 ?? '',
+            ),
+            (true, true) => l10n.p2pEndBuyerSentFiat,
+          },
           textAlign: TextAlign.center,
           style: body,
         ),
@@ -359,6 +397,19 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
             if (showOptions && (amount != null || undoOffered))
               const Gap(BullSpacing.sm),
             if (amount != null &&
+                (sellerButton || running == ChatStepAction.confirmFiatReceived))
+              Expanded(
+                child: TradeButton(
+                  label: l10n.p2pEndConfirmReceived(amount.$1, amount.$2),
+                  busy: running == ChatStepAction.confirmFiatReceived,
+                  onPressed: !receivedOffered || busy
+                      ? null
+                      : () => unawaited(
+                          _confirmFiatReceived(amount.$1, amount.$2),
+                        ),
+                ),
+              )
+            else if (amount != null &&
                 (atNine || running == ChatStepAction.confirmFiatSent))
               Expanded(
                 child: TradeButton(

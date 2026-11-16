@@ -361,9 +361,10 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.postChat'), {
         '${_tradeUseCases}send_chat_message_usecase.dart',
       });
-      // The chat step's actions and the rating at 14 (#95): one use case, which reads and sends under the order's lock.
+      // The chat step's actions (the seller's « received » too, #96) and the rating at the end (#95): one use case, which reads and sends under the order's lock.
       for (final member in [
         'confirmFiat',
+        'releaseEscrow',
         'undoConfirmFiat',
         'openDispute',
         'ratePlatform',
@@ -393,6 +394,7 @@ void main() {
               'request CoordinatorClient.fetchChat',
               'request CoordinatorClient.postChat',
               'request CoordinatorClient.confirmFiat',
+              'request CoordinatorClient.releaseEscrow',
               'request CoordinatorClient.undoConfirmFiat',
               'request CoordinatorClient.openDispute',
               'request CoordinatorClient.ratePlatform',

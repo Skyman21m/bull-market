@@ -460,6 +460,8 @@ final class P2pLocator {
         locator<WatchTradeUsecase>().execute,
         locator<CancelTradeUsecase>().execute,
         confirmFiatSent: locator<ChatStepActionUsecase>().confirmFiatSent,
+        confirmFiatReceived:
+            locator<ChatStepActionUsecase>().confirmFiatReceived,
         lastStored: locator<WatchTradeUsecase>().lastStored,
         undoFiatSent: locator<ChatStepActionUsecase>().undoFiatSent,
         startDispute: locator<ChatStepActionUsecase>().startDispute,
