@@ -623,6 +623,7 @@
   "p2pChatMarkOutOfOrder": "Ce message est peut-être plus ancien qu’il n’y paraît.",
   "p2pChatAuditChat": "Auditer le chat",
   "p2pChatExport": "Exporter",
+  "p2pChatExportCopyFailed": "Le journal du chat n’a pas pu être copié.",
   "p2pChatAuditTitle": "Ne faites pas confiance, vérifiez",
   "p2pChatAuditText": "Votre communication est chiffrée de bout en bout avec OpenPGP. Vous pouvez vérifier la confidentialité de ce chat en utilisant n’importe quel outil basé sur la norme OpenPGP.",
   "p2pChatYourPublicKey": "Votre clé publique",

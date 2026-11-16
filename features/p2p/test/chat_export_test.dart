@@ -166,11 +166,13 @@ void main() {
       };
       // Neither the chat read again nor the robot read again for its key.
       expect(app.coordinator.received.skip(asked), isEmpty);
-      final messages = exported['messages']! as List<Object?>;
-      expect(
-        (messages.single! as Map<String, Object?>)['plainTextMessage'],
-        'Hello',
-      );
+      expect(exported['messages'], [
+        isA<Map<String, Object?>>().having(
+          (message) => message['plainTextMessage'],
+          'plainTextMessage',
+          'Hello',
+        ),
+      ]);
       hold.release();
       expect(app.keyring.keepsKeyOf(record.robot), isFalse);
     },

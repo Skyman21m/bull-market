@@ -1078,7 +1078,7 @@ void main() {
             body: ListView(
               children: [
                 ChatAuditButton(cubit: cubit, coordinator: coordinatorName),
-                ChatExportButton(cubit: cubit),
+                ChatExportButton(cubit: cubit, coordinator: coordinatorName),
               ],
             ),
           ),
@@ -1101,13 +1101,18 @@ void main() {
               .busy,
           isTrue,
         );
+        // Under « Export », the wait said as « Don't trust, verify » says it (review of #161).
+        const unlocking =
+            'Reading your robot from Temple of Sats and unlocking its key. The first time takes a few seconds.';
+        expect(find.text(unlocking), findsOneWidget);
         await tester.tap(find.text('Audit Chat'));
         await tester.pump();
         await tester.pump();
         expect(find.text("Don't trust, verify"), findsOneWidget);
         expect(
-          find.text(
-            'Reading your robot from Temple of Sats and unlocking its key. The first time takes a few seconds.',
+          find.descendant(
+            of: find.byType(ChatAuditDialog),
+            matching: find.text(unlocking),
           ),
           findsOneWidget,
         );
@@ -1115,6 +1120,49 @@ void main() {
         gate.complete();
         await settle(tester);
         expect(find.text(passphrase), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '« Export » that cannot have the robot\'s key says so, as « Don\'t trust, verify » does; copied nothing, no « Copied! »; a second tap tries again (review of #161)',
+      (tester) async {
+        await showActions(tester);
+        lastChat.exportFails = true;
+        await tester.tap(find.text('Export'));
+        await settle(tester);
+        const failed =
+            'The key of your robot could not be read from Temple of Sats.';
+        expect(find.text(failed), findsOneWidget);
+        expect(find.text('Copied!'), findsNothing);
+        expect(copied, isEmpty);
+        expect(find.textContaining('Reading your robot from'), findsNothing);
+        lastChat.exportFails = false;
+        await tester.tap(find.text('Export'));
+        await settle(tester);
+        expect(find.text(failed), findsNothing);
+        expect(find.text('Copied!'), findsOneWidget);
+        expect(copied, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      '« Export » the clipboard refuses: said, no « Copied! » (review of #161)',
+      (tester) async {
+        await showActions(tester, locale: const Locale('fr'));
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+              if (call.method == 'Clipboard.setData') {
+                throw PlatformException(code: 'refused');
+              }
+              return null;
+            });
+        await tester.tap(find.text('Exporter'));
+        await settle(tester);
+        expect(
+          find.text('Le journal du chat n’a pas pu être copié.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Copié'), findsNothing);
       },
     );
 

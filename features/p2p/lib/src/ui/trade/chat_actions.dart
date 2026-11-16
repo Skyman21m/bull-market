@@ -26,7 +26,7 @@ ChatOptions chatOptionsOf(BuildContext context, ChatPanelRequest request) {
   final cubit = context.read<ChatCubit>();
   return (
     auditChat: ChatAuditButton(cubit: cubit, coordinator: request.coordinator),
-    export: ChatExportButton(cubit: cubit),
+    export: ChatExportButton(cubit: cubit, coordinator: request.coordinator),
   );
 }
 
@@ -88,45 +88,93 @@ class _CopiedLine extends StatelessWidget {
 class ChatExportButton extends StatefulWidget {
   final ChatCubit cubit;
 
-  const ChatExportButton({super.key, required this.cubit});
+  /// The long alias of the trade's coordinator, for the wait and the failure.
+  final String coordinator;
+
+  const ChatExportButton({
+    super.key,
+    required this.cubit,
+    required this.coordinator,
+  });
 
   @override
   State<ChatExportButton> createState() => _ChatExportButtonState();
 }
 
+/// What the last « Export » gave, said under the button.
+enum _ExportOutcome { copied, keyFailed, copyFailed }
+
 class _ChatExportButtonState extends State<ChatExportButton> {
   bool _busy = false;
-  bool _copied = false;
+  _ExportOutcome? _outcome;
 
   Future<void> _export() async {
     setState(() {
       _busy = true;
-      _copied = false;
+      _outcome = null;
     });
     final exported = await widget.cubit.exported();
-    final copied =
-        exported != null && await _copy(ChatCubit.exportText(exported));
+    final outcome = exported == null
+        ? _ExportOutcome.keyFailed
+        : await _copy(ChatCubit.exportText(exported))
+        ? _ExportOutcome.copied
+        : _ExportOutcome.copyFailed;
     if (!mounted) return;
     setState(() {
       _busy = false;
-      _copied = copied;
+      _outcome = outcome;
     });
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      TradeButton(
-        label: P2pLocalizations.of(context).p2pChatExport,
-        icon: Icons.ios_share,
-        busy: _busy,
-        onPressed: _busy ? null : () => unawaited(_export()),
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    // A failure said as « Don't trust, verify » says its own (review of #161): the export was not copied, and the button tries again.
+    final failure = switch (_outcome) {
+      _ExportOutcome.keyFailed => l10n.p2pChatAuditKeyFailed(
+        widget.coordinator,
       ),
-      if (_copied) const _CopiedLine(),
-    ],
-  );
+      _ExportOutcome.copyFailed => l10n.p2pChatExportCopyFailed,
+      _ExportOutcome.copied || null => null,
+    };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TradeButton(
+          label: l10n.p2pChatExport,
+          icon: Icons.ios_share,
+          busy: _busy,
+          onPressed: _busy ? null : () => unawaited(_export()),
+        ),
+        // The wait in the words « Don't trust, verify » gives the same one: the robot's key unlocked for the encrypted private key.
+        if (_busy)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l10n.p2pPayoutStepUnlocking(widget.coordinator),
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+            ),
+          ),
+        if (_outcome == _ExportOutcome.copied) const _CopiedLine(),
+        if (failure != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              failure,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.error),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// « Don't trust, verify » (`components/Dialogs/AuditPGP.tsx`, its PGP tab), as the reference shows it: its text, this robot's public key, the peer's, the encrypted private key and its passphrase, which is the robot's token, each with its tooltip and a copy, then « Keys » and « Messages », which on a phone copy their JSON to the clipboard, as the reference does, and « Go back ».

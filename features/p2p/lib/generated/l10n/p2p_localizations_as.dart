@@ -2416,6 +2416,9 @@ class P2pLocalizationsAs extends P2pLocalizations {
   String get p2pChatExport => 'Export';
 
   @override
+  String get p2pChatExportCopyFailed => 'The chat log could not be copied.';
+
+  @override
   String get p2pChatAuditTitle => 'Don\'t trust, verify';
 
   @override

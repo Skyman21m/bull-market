@@ -2448,6 +2448,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pChatExport => 'Exporter';
 
   @override
+  String get p2pChatExportCopyFailed =>
+      'Le journal du chat n’a pas pu être copié.';
+
+  @override
   String get p2pChatAuditTitle => 'Ne faites pas confiance, vérifiez';
 
   @override

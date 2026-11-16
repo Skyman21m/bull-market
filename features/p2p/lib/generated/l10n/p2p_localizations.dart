@@ -3907,6 +3907,12 @@ abstract class P2pLocalizations {
   /// **'Export'**
   String get p2pChatExport;
 
+  /// « Export » of « Order options » (#157): ours, not in the reference (whose export cannot fail): the clipboard refused the export; the button tries again.
+  ///
+  /// In en, this message translates to:
+  /// **'The chat log could not be copied.'**
+  String get p2pChatExportCopyFailed;
+
   /// « Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French.
   ///
   /// In en, this message translates to:

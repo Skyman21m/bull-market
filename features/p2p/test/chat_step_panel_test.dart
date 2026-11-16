@@ -134,7 +134,10 @@ Future<void> _loadAppFont() async {
 }
 
 TradeWatchStatus _watched(String name) =>
-    TradeScreenStatuses.watched(_seen[name] ?? (throw StateError(name)));
+    TradeScreenStatuses.watched(_seenOf(name));
+
+/// The status [name] of the tests, with no non-null assertion.
+TradeSeen _seenOf(String name) => _seen[name] ?? (throw StateError(name));
 
 Future<TradeCubit> _show(
   WidgetTester tester, {
@@ -1860,7 +1863,7 @@ void main() {
           ),
           (
             'the fresh read shows another status',
-            () => Err(ChatStepStatusMoved(_seen['tenDisputable']!)),
+            () => Err(ChatStepStatusMoved(_seenOf('tenDisputable'))),
             'The trade moved on: the dispute was not opened.',
           ),
           (
@@ -1868,7 +1871,7 @@ void main() {
             () => Ok(
               ChatStepNotDone(
                 _record,
-                _seen['nineDisputable']!,
+                _seenOf('nineDisputable'),
                 cause: const CoordinatorTransportBusy(),
               ),
             ),
@@ -1879,7 +1882,7 @@ void main() {
             () => Ok(
               ChatStepNotDone(
                 _record,
-                _seen['nineDisputable']!,
+                _seenOf('nineDisputable'),
                 cause: const CoordinatorNotOnNetwork(),
               ),
             ),
@@ -1890,7 +1893,7 @@ void main() {
             () => Ok(
               ChatStepNotDone(
                 _record,
-                _seen['nineDisputable']!,
+                _seenOf('nineDisputable'),
                 cause: const OrderNotParticipant(),
               ),
             ),
@@ -2084,7 +2087,7 @@ void main() {
           watch.emit(
             TradeWatchStatus(
               gone,
-              TradeSeen(_seen[name]!.status, order: null),
+              TradeSeen(_seenOf(name).status, order: null),
               takePending: false,
             ),
           );
