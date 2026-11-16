@@ -307,6 +307,25 @@ void main() {
   );
 
   testWidgets(
+    'a broadcast whose outcome is unknown is never said sent: « may have been sent », the QR code not offered',
+    (tester) async {
+      final (_, payments) = await _show(tester, state: 'six');
+      _follow(payments, const P2pWalletPaymentBroadcastUnknown());
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'The payment may have been sent. Its status will update shortly.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Payment sent.'), findsNothing);
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Pay with this wallet'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'a swap failed after its funds left: the escrow\'s words, support named',
     (tester) async {
       final (_, payments) = await _show(tester, state: 'six');

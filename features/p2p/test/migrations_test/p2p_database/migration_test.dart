@@ -1742,6 +1742,69 @@ void main() {
     );
 
     test(
+      'the step from 6 that stopped after any of its statements runs again over the file it left, each row kept once',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await paymentObjectsOf(fresh);
+        final newTable =
+            (await fresh
+                    .customSelect(
+                      "SELECT sql FROM sqlite_master WHERE name = 'trade_payments'",
+                    )
+                    .getSingle())
+                .read<String>('sql');
+        await fresh.close();
+
+        // What the file holds after each statement of the step, in order.
+        const copied = [
+          'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+        ];
+        final stops = <List<String>>[
+          copied,
+          [...copied, 'DROP TABLE trade_payments'],
+          [...copied, 'DROP TABLE trade_payments', newTable],
+          [
+            ...copied,
+            'DROP TABLE trade_payments',
+            newTable,
+            'INSERT INTO trade_payments SELECT * FROM trade_payments_of_schema6 WHERE robot_index = 1',
+          ],
+        ];
+        for (final (turn, statements) in stops.indexed) {
+          final own = await writeSchema6WithPayments();
+          final file = File('${own.path}/${P2pDatabase.fileName}');
+          final half = v6.DatabaseAtV6(NativeDatabase(file));
+          final rows = await paymentsOf(half);
+          for (final statement in statements) {
+            await half.customStatement(statement);
+          }
+          expect(await versionOf(half), 6, reason: '$turn');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => own);
+          expect(await versionOf(database), 7, reason: '$turn');
+          await database.validateDatabaseSchema();
+          expect(await paymentObjectsOf(database), expected, reason: '$turn');
+          expect(await paymentsOf(database), rows, reason: '$turn');
+          expect(
+            await database
+                .customSelect(
+                  "SELECT name FROM sqlite_master WHERE name = 'trade_payments_of_schema6'",
+                )
+                .get(),
+            isEmpty,
+            reason: '$turn',
+          );
+          await database.close();
+        }
+      },
+    );
+
+    test(
       'the step from 6 that stopped after the rebuild, before the version was written, runs again over the file it left',
       () async {
         final own = await writeSchema6WithPayments();
