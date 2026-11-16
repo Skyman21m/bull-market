@@ -12,6 +12,7 @@ import 'package:robosats/src/coordinator/coordinator_transport.dart';
 import 'package:robosats/src/coordinator/currency_limits.dart';
 import 'package:robosats/src/coordinator/dropped_order_reason.dart';
 import 'package:robosats/src/coordinator/host_rating.dart';
+import 'package:robosats/src/coordinator/make_order.dart';
 import 'package:robosats/src/coordinator/order_book.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/payout.dart';
@@ -25,7 +26,7 @@ import 'package:robosats/src/robosats_failure.dart';
 import 'package:robosats/src/robot_identity.dart';
 import 'package:robosats/src/robot_pgp_key.dart';
 
-/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator; and the token to rate the coordinator on Nostr.
+/// Reads the public endpoints of one coordinator at a time, and the robot of this device on it, through a [CoordinatorTransport], and sends that robot's make of an order and its pause, its take and cancel of an order, its payout as buyer, and the actions of the trade's chat step: « fiat sent » and its undo, a dispute, the rating of the coordinator; and the token to rate the coordinator on Nostr.
 ///
 /// Every method returns a failure instead of throwing, whatever the coordinator sends and even if the transport breaks its contract by throwing an [Exception]: a [CoordinatorFailure], or an [OrderActionFailure] for an action on an order.
 /// For a read, only exceptions are caught: an `Error` thrown by the transport is a programming error and propagates, as rule 11 of `AGENTS.md` requires.
@@ -246,6 +247,88 @@ final class CoordinatorClient {
     };
   }
 
+  /// `POST /api/make/`: asks [coordinator] to make the order of [request] with the robot [identity] as its maker (`MakerView.post`, `api/views.py:90-216`, commit ff1998c).
+  ///
+  /// The body is the reference client's, its keys in the same order (`Order.make`, `frontend/src/models/Order.model.ts:196-215`): see [MakeOrderRequest]; it is sent with the robot's short header and session, where the reference sends the first-contact header with the robot's keys (`frontend/src/models/Robot.model.ts:72-86`), which a coordinator that already knows the robot ignores (`robosats/middleware.py:62-178`): put the robot on the coordinator first.
+  ///
+  /// A `201` answer is the order as `ListOrderSerializer` writes it, read as a [MadeOrder] only when it is at status 0 with every term of [request] (see there); it holds no bond invoice and does not say that this robot is the maker: the first [fetchOrder] by the robot does.
+  /// A `201` that differs, any other `2xx` included, is an [OrderActionOutcomeUnknown]: an order may exist.
+  ///
+  /// The coordinator's refusals that come before it makes anything (`api/views.py:99-209`) are an [OrderActionRefused]: the empty `400` of its form check ([OrderRequestRefused] without a code), the authentication's (`401`, `403`, 1036, 7000, 7003: [RobotCredentialsRejected]; 7001: [RobotUnknown]), its book full ([OrderBookFull], 1037), no amount (1038, 1039, unreachable with a [MakeOrderRequest]: [OrderRequestRefused] with the code), this robot already in an order ([RobotHasActiveOrder], 1000 to 1003, `409`), the size of the order ([OrderSizeRefused], 1004 to 1009), its meeting point ([OrderLocationRefused], 1010); and the transport's [CoordinatorTransportBusy], before sending.
+  /// Every other failure is an [OrderActionOutcomeUnknown]: an order may exist, made with this robot, waiting at 0 for a bond that nobody was shown, which the coordinator expires 300 seconds after its creation with nothing paid (`api/logics.py:329-338`). Reading the robot (`fetchKnownRobot`, its active or last order) tells whether it made one.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<MadeOrder, OrderActionFailure>> makeOrder(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required MakeOrderRequest request,
+  }) async {
+    final response = await _postAsRobot(
+      coordinator,
+      network,
+      identity: identity,
+      path: '/api/make/',
+      body: request.body,
+    );
+    return switch (response) {
+      Err(:final failure) => Err(_afterMake(failure)),
+      Ok(value: CoordinatorResponse(statusCode: 201)) => switch (_decode(
+        response,
+      )) {
+        Err(:final failure) => Err(_afterMake(failure)),
+        Ok(:final value) => parseMakeAnswer(
+          value,
+          coordinator,
+          network,
+          request: request,
+        ).mapErr(_afterMake),
+      },
+      Ok(value: final answer) => Err(_afterMake(_makeRefusal(answer))),
+    };
+  }
+
+  /// Why a coordinator answered a make with a status other than `201`: the codes of `MakerView.post` (`api/views.py:99-209`) and of the checks it calls (`api/logics.py:138-188`), then the rule of every request about an order ([_orderRefusal]).
+  ///
+  /// A code is read on a `4xx` answer only; a `2xx` other than `201` is the HTTP status alone.
+  static CoordinatorFailure _makeRefusal(CoordinatorResponse answer) {
+    final status = answer.statusCode;
+    if (status < 400 || status > 499) return CoordinatorUnexpectedStatus(status);
+    final code = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(
+        object,
+      ).optionalInt('error_code', min: 0, max: 99999),
+      _ => null,
+    };
+    for (final reason in OrderSizeRefusal.values) {
+      if (reason.code == code) return OrderSizeRefused(reason);
+    }
+    return switch (code) {
+      1010 => const OrderLocationRefused(),
+      1036 => const RobotCredentialsRejected(),
+      1037 => const OrderBookFull(),
+      _ => _orderRefusal(answer),
+    };
+  }
+
+  /// Whether [failure] of a make comes before the coordinator made an order, so that none was made.
+  ///
+  /// Refused: the refusals listed in [makeOrder], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy] (nothing sent).
+  /// Everything else is an outcome unknown: a code the reference does not answer to a make, a `5xx` (the reference logs the order after it saved it, `api/views.py:213-215`), a malformed or unexpected answer, a lost connection, a timeout.
+  static OrderActionFailure _afterMake(CoordinatorFailure failure) =>
+      switch (failure) {
+        RobotHasActiveOrder() ||
+        OrderSizeRefused() ||
+        OrderLocationRefused() ||
+        OrderBookFull() ||
+        OrderRequestRefused(errorCode: null || 1038 || 1039) ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
+
   /// `POST /api/order/?order_id=` with the action `take`: asks [coordinator] for the order [orderId] for the robot [identity], which then has a while to lock its bond.
   ///
   /// The body is the reference client's (`frontend/src/models/Order.model.ts:233-243`, commit ff1998c): `{"action":"take","amount":…}`, with `"password"` before `"amount"` when there is one.
@@ -277,7 +360,7 @@ final class CoordinatorClient {
         'action': 'take',
         if (password != null && password.isNotEmpty)
           'password': hex.encode(sha256.convert(utf8.encode(password)).bytes),
-        'amount': amount == null ? 0 : _jsonNumber(amount.value),
+        'amount': amount == null ? 0 : jsonNumber(amount.value),
       },
     );
     return switch (_orderAnswer(response)) {
@@ -334,6 +417,97 @@ final class CoordinatorClient {
       ).mapErr(_afterAction),
     };
   }
+
+  /// `POST /api/order/?order_id=` with the action `pause`: pauses the public order of [lastRead], or makes its paused order public again, for the robot [identity], its maker (`Logics.pause_unpause_public_order`, `api/logics.py:1758-1782`, commit ff1998c).
+  ///
+  /// **The request has no direction**: the coordinator turns 1 into 2 and 2 into 1, whatever status the maker saw, so the same request pauses and resumes, and a request sent twice undoes itself.
+  /// Never send it again to retry, nor because an answer was lost: read the order first, and send it only when the fresh read shows the status the user saw (design note `docs/design/phase-3-making-an-order.md` § 3.4).
+  /// The body is the reference client's (`frontend/src/components/TradeBox/index.tsx:310-313`): `{"action":"pause"}`, for both buttons.
+  ///
+  /// Nothing is sent, and the failure is an [OrderActionRefused], when [lastRead] was read by another robot ([OrderReadElsewhere]), does not show this robot as the maker ([TradeActionNotMaker]), or is not at 1 or 2 ([TradeActionNotNow]), each decided from [lastRead]: read the order again before telling the user.
+  /// The answer is [TradeActionAccepted] with the order as it then is, at a status the toggle can lead to ([pauseFollows]: 1 or 2, or what a timer or a taker made of it before the read); any other is an outcome unknown.
+  /// The coordinator's refusals, 1032 ([TradeActionNotMaker]), 1033 ([TradeActionNotNow]), 1047 ([OrderNotParticipant], `api/views.py:617-619`), the empty `400` of its form check and the authentication's, come before it changes anything and are an [OrderActionRefused]; every other failure is an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
+  ///
+  /// Sent once and never again by this client, whatever the outcome, a timeout included.
+  Future<Result<TradeActionOutcome, OrderActionFailure>> pauseOrder({
+    required RobotIdentity identity,
+    required CoordinatorOrder lastRead,
+  }) async {
+    if (!lastRead.wasReadBy(identity)) {
+      return const Err(OrderActionRefused(OrderReadElsewhere()));
+    }
+    if (!lastRead.isMaker) {
+      return const Err(
+        OrderActionRefused(TradeActionNotMaker(fromLastRead: true)),
+      );
+    }
+    if (lastRead.status != CoordinatorOrderStatus.public &&
+        lastRead.status != CoordinatorOrderStatus.paused) {
+      return const Err(
+        OrderActionRefused(TradeActionNotNow(fromLastRead: true)),
+      );
+    }
+    final response = await _postOrderAction(
+      lastRead.coordinator,
+      lastRead.network,
+      identity: identity,
+      orderId: lastRead.id,
+      body: const {'action': 'pause'},
+    );
+    return switch (response) {
+      Err(:final failure) => Err(_afterPause(failure)),
+      Ok(value: CoordinatorResponse(statusCode: 200)) => switch (_decode(
+        response,
+      )) {
+        Err(:final failure) => Err(_afterPause(failure)),
+        Ok(:final value) => parseTradeActionAnswer(
+          value,
+          identity: identity,
+          lastRead: lastRead,
+          follows: pauseFollows,
+        ).mapErr(_afterPause),
+      },
+      Ok(value: final answer) => Err(_afterPause(_pauseRefusal(answer))),
+    };
+  }
+
+  /// Why a coordinator answered a pause with a status other than `200`: 1032, 1033 and 1047, then the rule of every request about an order ([_orderRefusal]).
+  ///
+  /// A code is read on a `4xx` answer only; the codes of the other actions are not a pause's refusals.
+  static CoordinatorFailure _pauseRefusal(CoordinatorResponse answer) {
+    final status = answer.statusCode;
+    if (status < 400 || status > 499) return _orderRefusal(answer);
+    final code = switch (_decode(Ok(answer))) {
+      Ok(value: final Map<String, Object?> object) => JsonFields(
+        object,
+      ).optionalInt('error_code', min: 0, max: 99999),
+      _ => null,
+    };
+    return switch (code) {
+      1032 => const TradeActionNotMaker(fromLastRead: false),
+      1033 => const TradeActionNotNow(fromLastRead: false),
+      1047 => const OrderNotParticipant(),
+      _ => _orderRefusal(answer),
+    };
+  }
+
+  /// Whether [failure] of a pause comes before the coordinator changed anything, so that the order is as it was.
+  ///
+  /// Refused: [TradeActionNotMaker], [TradeActionNotNow] and [OrderNotParticipant] (each answered before the toggle, `api/views.py:617-619`, `api/logics.py:1759-1781`), the empty `400` of the form check, the authentication's refusals, [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy].
+  /// Everything else is an outcome unknown: a code of another action, a `5xx`, an error of the read that follows the toggle, a malformed answer, a lost connection.
+  static OrderActionFailure _afterPause(CoordinatorFailure failure) =>
+      switch (failure) {
+        TradeActionNotMaker() ||
+        TradeActionNotNow() ||
+        OrderNotParticipant() ||
+        OrderRequestRefused(errorCode: null) ||
+        RobotCredentialsRejected() ||
+        RobotUnknown() ||
+        OrderReadElsewhere() ||
+        CoordinatorNotOnNetwork() ||
+        CoordinatorTransportBusy() => OrderActionRefused(failure),
+        _ => OrderActionOutcomeUnknown(failure),
+      };
 
   /// `POST /api/order/?order_id=` with the action `confirm`, as the buyer: tells the coordinator of [lastRead] that the robot [identity] sent the fiat (« Confirm {{amount}} {{currencyCode}} sent »), which moves the order from 9 to 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`, commit ff1998c).
   ///
@@ -878,32 +1052,40 @@ final class CoordinatorClient {
         _ => OrderActionOutcomeUnknown(failure),
       };
 
-  /// [value] as JavaScript writes a number: an integral value without a fractional part, as the reference client sends `Number(...)`.
-  static num _jsonNumber(double value) =>
-      value == value.truncateToDouble() && value.abs() < 1e15
-      ? value.toInt()
-      : value;
-
   /// One `POST /api/order/?order_id=` with a JSON [body], for the robot [identity] only: an action on an order is never sent without the robot's credential and session.
-  ///
-  /// Sent once: this client never sends it again, and the transport never retries a request that is not a `GET`.
-  /// Whatever the transport throws, an `Error` included, becomes [CoordinatorTransportFailed], since the request may have left: a deviation from rule 11 of `AGENTS.md` for this one call, so that a caller always learns that the outcome is unknown.
   Future<Result<CoordinatorResponse, CoordinatorFailure>> _postOrderAction(
     Coordinator coordinator,
     RobosatsNetwork network, {
     required RobotIdentity identity,
     required int orderId,
     required Map<String, Object> body,
+  }) => _postAsRobot(
+    coordinator,
+    network,
+    identity: identity,
+    path: '/api/order/',
+    query: {'order_id': '$orderId'},
+    body: body,
+  );
+
+  /// One `POST` of a JSON [body] to [path] of [coordinator], for the robot [identity] only, with its short header and its session: an action of a robot is never sent without them.
+  ///
+  /// Sent once: this client never sends it again, and the transport never retries a request that is not a `GET`.
+  /// Whatever the transport throws, an `Error` included, becomes [CoordinatorTransportFailed], since the request may have left: a deviation from rule 11 of `AGENTS.md` for this one call, so that a caller always learns that the outcome is unknown.
+  Future<Result<CoordinatorResponse, CoordinatorFailure>> _postAsRobot(
+    Coordinator coordinator,
+    RobosatsNetwork network, {
+    required RobotIdentity identity,
+    required String path,
+    Map<String, String>? query,
+    required Map<String, Object?> body,
   }) async {
     final onion = coordinator.origins(network).onion;
     if (onion == null) return const Err(CoordinatorNotOnNetwork());
     return _send(
       CoordinatorRequest(
         method: CoordinatorHttpMethod.post,
-        url: Uri.parse(onion).replace(
-          path: '/api/order/',
-          queryParameters: {'order_id': '$orderId'},
-        ),
+        url: Uri.parse(onion).replace(path: path, queryParameters: query),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -916,6 +1098,7 @@ final class CoordinatorClient {
       catchErrors: true,
     );
   }
+
 
   /// The decoded JSON of a `200` answer about an order, or why the coordinator refused.
   static Result<Object?, CoordinatorFailure> _orderAnswer(
@@ -966,6 +1149,7 @@ final class CoordinatorClient {
       ),
       1020 => const OrderStatusChanged(),
       1021 => const OrderNotCancellable(),
+      1022 => const OrderMakerBondExpired(),
       1023 || 1024 => const CoordinatorNodeUnavailable(),
       1025 => const OrderTakeExpired(),
       1026 => const OrderEscrowExpired(),

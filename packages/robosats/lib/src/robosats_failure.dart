@@ -373,6 +373,58 @@ final class OrderNotPublic extends CoordinatorOrderFailure {
   const OrderNotPublic();
 }
 
+/// The maker's read of its order at 0 came after the time to lock the maker bond (error 1022, `Logics.gen_maker_hold_invoice`, `api/logics.py:1254-1256`, commit ff1998c): the coordinator expired the order and gave no bond invoice, and the next read shows it expired (`CoordinatorOrderStatus.expired` with `OrderExpiryReason.makerBondNotLocked`); nothing was paid.
+///
+/// The coordinator answers so once, to the maker's read of an order still at 0 past its `expires_at`; the order then has to be made again, as a new order.
+final class OrderMakerBondExpired extends CoordinatorOrderFailure {
+  const OrderMakerBondExpired();
+}
+
+/// The coordinator's book holds as many public orders as it accepts (error 1037, `MAX_PUBLIC_ORDERS`, `api/views.py:105-120`, commit ff1998c): it made no order.
+final class OrderBookFull extends CoordinatorOrderFailure {
+  const OrderBookFull();
+}
+
+/// Why a coordinator refused the size of an order it was asked to make, in sats at its price at that moment (`Logics.validate_order_size`, `api/logics.py:138-177`, commit ff1998c).
+enum OrderSizeRefusal {
+  /// A fixed amount worth more than the coordinator's maximum (1004).
+  tooBig(1004),
+
+  /// A fixed amount worth less than the coordinator's minimum (1005).
+  tooSmall(1005),
+
+  /// A range whose minimum is above two thirds of its maximum: the maximum must be at least 1.5 times the minimum (1006).
+  rangeTooNarrow(1006),
+
+  /// A range whose maximum is worth more than the coordinator's maximum (1007).
+  rangeMaximumTooBig(1007),
+
+  /// A range whose minimum is worth less than the coordinator's minimum (1008).
+  rangeMinimumTooSmall(1008),
+
+  /// A range whose maximum is more than 15 times its minimum (1009).
+  rangeTooWide(1009);
+
+  /// The coordinator's error code.
+  final int code;
+
+  const OrderSizeRefusal(this.code);
+}
+
+/// The coordinator refused to make the order because of its size, for [reason]: it made no order.
+///
+/// Only the code is read: the coordinator's message, which gives the sizes in sats, is never kept.
+final class OrderSizeRefused extends CoordinatorOrderFailure {
+  final OrderSizeRefusal reason;
+
+  const OrderSizeRefused(this.reason);
+}
+
+/// The coordinator does not take orders whose meeting point is in a country it blocks (error 1010, `Logics.validate_location`, `api/logics.py:180-188`, commit ff1998c): it made no order.
+final class OrderLocationRefused extends CoordinatorOrderFailure {
+  const OrderLocationRefused();
+}
+
 /// The order given to a cancel as its last read was read by another robot: nothing was sent.
 final class OrderReadElsewhere extends CoordinatorOrderFailure {
   const OrderReadElsewhere();
@@ -391,7 +443,7 @@ final class OrderNotParticipant extends CoordinatorOrderFailure {
   const OrderNotParticipant();
 }
 
-/// The coordinator refused an action of the trade's chat step, « fiat sent », its undo or a dispute, or this package refused to send it (`Logics.confirm_fiat`, `undo_confirm_fiat_sent` and `open_dispute`, `api/logics.py:485-533`, `:1686-1756`, commit ff1998c).
+/// The coordinator refused an action of the trade's chat step, « fiat sent », its undo or a dispute, or the maker's pause or resume, or this package refused to send it (`Logics.confirm_fiat`, `undo_confirm_fiat_sent`, `open_dispute` and `pause_unpause_public_order`, `api/logics.py:485-533`, `:1686-1781`, commit ff1998c).
 ///
 /// Every one of them comes before the coordinator changes anything, so after a refusal the order is as it was.
 /// Some are decided by this package from the last read of the order, sending nothing: [fromLastRead] says which; a last read may be stale, so read the order again and decide from the fresh read before telling the user anything.
@@ -407,9 +459,14 @@ final class TradeActionNotBuyer extends TradeActionRefused {
   const TradeActionNotBuyer({required super.fromLastRead});
 }
 
-/// The order is not at a step that takes this action: « fiat sent » outside 9 and 10 (1029), its undo outside 10 (1031), a dispute outside 9 and 10 (1013), the seller's confirmation before « fiat sent » (1027); or the last read already shows so ([fromLastRead]).
+/// The order is not at a step that takes this action: « fiat sent » outside 9 and 10 (1029), its undo outside 10 (1031), a dispute outside 9 and 10 (1013), the seller's confirmation before « fiat sent » (1027), a pause or a resume outside 1 and 2 (1033, `api/logics.py:1775-1781`); or the last read already shows so ([fromLastRead]).
 final class TradeActionNotNow extends TradeActionRefused {
   const TradeActionNotNow({required super.fromLastRead});
+}
+
+/// Only the maker may pause or resume its order (error 1032, `api/logics.py:1759-1760`), or the last read does not show this robot as the maker ([fromLastRead]).
+final class TradeActionNotMaker extends TradeActionRefused {
+  const TradeActionNotMaker({required super.fromLastRead});
 }
 
 /// Only the seller may confirm the fiat received: the last read does not show this robot as the seller ([fromLastRead] is always true: the coordinator has no code for it, a buyer's `confirm` being its « fiat sent »).

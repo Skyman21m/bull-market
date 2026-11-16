@@ -30,7 +30,7 @@ final class PlatformRating {
   String toString() => 'PlatformRating($stars)';
 }
 
-/// What a coordinator answered to an action of the trade that it accepted: « fiat sent », its undo, a dispute, a rating of the coordinator.
+/// What a coordinator answered to an action of the trade that it accepted: « fiat sent », its undo, a dispute, a rating of the coordinator, the maker's pause or resume.
 ///
 /// The reference coordinator answers each of them with the order as this robot then sees it (`api/views.py:651-695`, commit ff1998c), and every refusal with an error: a `200` is never an action that did not happen, so there is one outcome.
 sealed class TradeActionOutcome {
@@ -95,7 +95,18 @@ const disputeFollows = {
   CoordinatorOrderStatus.takerLostDispute,
 };
 
-/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller), at a status the action can lead to when [follows] says which ([fiatSentFollows], [fiatReceivedFollows], [fiatSentUndoneFollows], [disputeFollows]; a rating changes no status).
+/// After the maker's pause or resume (`Logics.pause_unpause_public_order`, `api/logics.py:1758-1782`), which toggles the status the coordinator has, whatever the last read said: paused (2) or public again (1); then the moves of the backend that a timer or a taker can make before the read: the order expired at its public deadline (5, `:340-358`), or, once public, taken by a robot whose bond locks (6, `Logics.finalize_contract`, `:1321-1380`) and that taker's own step done at once (7 or 8); never 3, which a maker is never shown (`api/views.py:381-396`), nor 9 or later, which need the maker's own step.
+@internal
+const pauseFollows = {
+  CoordinatorOrderStatus.public,
+  CoordinatorOrderStatus.paused,
+  CoordinatorOrderStatus.expired,
+  CoordinatorOrderStatus.waitingForCollateralAndInvoice,
+  CoordinatorOrderStatus.waitingForCollateral,
+  CoordinatorOrderStatus.waitingForInvoice,
+};
+
+/// Reads the decoded body of a `200` answer to an action of the robot [identity], whose last read of the order was [lastRead]: the order, with this robot in the same role (maker or taker, buyer or seller), at a status the action can lead to when [follows] says which ([fiatSentFollows], [fiatReceivedFollows], [fiatSentUndoneFollows], [disputeFollows], [pauseFollows]; a rating changes no status).
 ///
 /// A status the action cannot lead to is malformed (`status`): only a coordinator that answers `200` without acting gives one, and the outcome is then unknown, never done.
 @internal
