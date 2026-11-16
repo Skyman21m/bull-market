@@ -82,6 +82,12 @@ void main() {
       app.coordinator.moveDeadline(later);
       await cubit.startDispute(before);
       expect(refusalOf(cubit), isA<ChatStepTooEarly>());
+      // Shown at once with the fresh read the refusal carries, before the watch reads again.
+      expect(failedReads(cubit), 0);
+      expect(
+        deadlineOf(shown(cubit))?.difference(later).abs(),
+        lessThan(const Duration(seconds: 1)),
+      );
       await app.settle();
       await app.elapse(const Duration(seconds: 1));
       // The watch's read failed: the status is the fresh read's, never the one from before the action.
