@@ -8,7 +8,7 @@ import 'package:test/test.dart';
 /// Where the wallet's port may be reached in `features/p2p/lib`, and that the feature depends on neither the app nor the wallet's core (#100, design note § 3.9).
 ///
 /// The port is the shell's Instant Payments wallet, lent to the feature: its balance, the swap service's quote, and the payment (`payInvoice`, which moves money and triggers a signature, with `watchPayment` and `findPayment`), reviewed as money code.
-/// Only the trade use cases, files `lib/src/domain/usecases/trade/<name>_usecase.dart` that are not a `part`, may name one of its members, as only they may name the coordinator's money members (`trade_money_calls_architecture_test.dart`), so that what reads the wallet and what pays from it sit in one reviewed place. Only `pay_bond_from_wallet_usecase.dart`, the bond's panel (#100, W4), names the payment's members.
+/// Only the trade use cases, files `lib/src/domain/usecases/trade/<name>_usecase.dart` that are not a `part`, may name one of its members, as only they may name the coordinator's money members (`trade_money_calls_architecture_test.dart`), so that what reads the wallet and what pays from it sit in one reviewed place. Only `pay_bond_from_wallet_usecase.dart`, the bond's panel (#100, W4) and the escrow's (#97, the same use case for the escrow's step), names the payment's members.
 /// The port's type may be named there too, and where the feature declares, exports, receives and registers it, and in its testing seam; nowhere else, so that no cubit or screen takes it from the locator.
 /// The only invoice the port takes, `CheckedBolt11Invoice`, is built by `CheckedBolt11Invoice.of`, which only its own file, the trade's `wallet_payment.dart` (where `walletPaymentFor` builds it when it offers « Pay with this wallet », the one source of the type) and the testing seam's helper may call. No file may declare an alias of the type, through which `of` could be reached under another name.
 /// The sources are read as text and parsed without resolution, as in `trade_money_calls_architecture_test.dart`: a name is a use wherever it stands in code, comments and strings are not code, and a declaration of a member with a watched name is no use (the fake of `testing.dart` declares them).
@@ -63,7 +63,7 @@ void main() {
   );
 
   test('only the bond\'s use case names a member of the payment', () {
-    // The bond's panel (#100, W4): `PayBondFromWalletUsecase` is the one trade use case that pays, follows and finds a payment; the escrow's (#97) adds its own here.
+    // The bond's panel (#100, W4) and the escrow's (#97): `PayBondFromWalletUsecase`, one instance per step, is the one trade use case that pays, follows and finds a payment.
     expect(
       [
         for (final MapEntry(key: path, value: source) in sources.entries)

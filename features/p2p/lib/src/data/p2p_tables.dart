@@ -285,7 +285,7 @@ class StoredTradeTrails extends Table {
 
 /// The payments of a trade's invoices this device asked the wallet's port for (schema 5, #100): one row per trade and step, written before the port is called, so that a restart knows a payment was asked and finds it again by its hash (`P2pWalletPort.findPayment`), and so that nothing pays an invoice twice.
 ///
-/// `step IN ('bond')` and the trigger that refuses any delete mean that the escrow's panel (#97) rebuilds the table in its schema step (a new table, the rows copied, the old one dropped), the one step allowed to drop it.
+/// Schema 7 (#97) widened its step to `('bond', 'escrow')`: the trigger that refuses any delete does not fire on a drop, so its step rebuilt the table (the rows copied aside, the table dropped and made again, the rows copied back, then the triggers), the one step allowed to drop it (`P2pDatabase`, from 6 to 7).
 ///
 /// It holds the invoice's payment hash (public, part of the invoice, and pinned already by the trail as `bond_hash`), when the last attempt started, and the wallet's local id of the swap that pays it once the port gives one; never the invoice, a preimage, an amount, an address or a transaction id.
 /// The triggers of `trade_payments.drift` keep it: a row is never deleted, its trade, step and payment hash never change, its start never goes back, and a row is written only for an open trade whose trail is recorded.
@@ -299,7 +299,7 @@ class StoredTradePayments extends Table {
   TextColumn get keyFingerprint => text()();
   IntColumn get robotIndex => integer()();
 
-  /// `InvoiceStep.name` of the invoice paid: `bond` (the taker's bond) until the escrow's panel adds `escrow`.
+  /// `InvoiceStep.name` of the invoice paid: `bond` (the taker's bond) or, since schema 7 (#97), `escrow` (the seller's escrow).
   TextColumn get step => text()();
 
   /// The payment hash of the invoice, 64 lowercase hexadecimal characters.
@@ -320,8 +320,8 @@ class StoredTradePayments extends Table {
   List<String> get customConstraints => const [
     "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
-    // `InvoiceStep` written out: the escrow's panel adds it with its own schema step.
-    "CHECK (step IN ('bond'))",
+    // `InvoiceStep` written out: the escrow joined the bond in schema 7 (#97).
+    "CHECK (step IN ('bond', 'escrow'))",
     "CHECK (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*')",
     'CHECK (started_at BETWEEN 0 AND 253402300799999999)',
     'CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)',

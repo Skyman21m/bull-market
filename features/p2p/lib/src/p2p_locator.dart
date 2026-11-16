@@ -34,6 +34,7 @@ import 'domain/network_garage_key.dart';
 import 'domain/robot_key_compute_port.dart';
 import 'domain/robot_request_limiter.dart';
 import 'domain/trade/bolt11.dart';
+import 'domain/trade/trade_status.dart';
 import 'domain/trade_record.dart';
 import 'domain/trade_robots.dart';
 import 'domain/usecases/acknowledge_garage_key_history_usecase.dart';
@@ -503,7 +504,7 @@ final class P2pLocator {
       final rate = locator<RateHostUsecase>();
       return HostRatingCubit(record, rate.fetchToken, rate.publish);
     });
-    // The bond paid from the wallet (#100): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.
+    // The bond paid from the wallet (#100), the escrow's below (#97): resolved only where the wallet's port was lent (`P2pFeature.setup(wallet:)`), which the route checks before it builds the panel.
     locator.registerFactory<PayBondFromWalletUsecase>(
       () => PayBondFromWalletUsecase(
         locator(),
@@ -514,7 +515,20 @@ final class P2pLocator {
         locator(),
       ),
     );
-    // One for the feature: a screen opened again while a payment runs knows of it.
+    // The seller's escrow paid from the wallet (#97): the same use case for the escrow's step.
+    locator.registerFactory<PayBondFromWalletUsecase>(
+      () => PayBondFromWalletUsecase(
+        locator(),
+        locator(),
+        locator(),
+        locator<P2pWalletPort>(),
+        locator(),
+        locator(),
+        step: InvoiceStep.escrow,
+      ),
+      instanceName: InvoiceStep.escrow.name,
+    );
+    // One for the feature, each step apart: a screen opened again while a payment runs knows of it.
     locator.registerLazySingleton<BondPaymentsInFlight>(
       BondPaymentsInFlight.new,
     );
@@ -531,6 +545,25 @@ final class P2pLocator {
         payments.payBond,
         payments.followBond,
         payments.bondPaymentRunning,
+        step: payments.step,
+      );
+    });
+    locator.registerFactoryParam<EscrowPaymentCubit, TradeRecord, void>((
+      record,
+      _,
+    ) {
+      final payments = locator<PayBondFromWalletUsecase>(
+        instanceName: InvoiceStep.escrow.name,
+      );
+      return EscrowPaymentCubit(
+        record,
+        payments.watchBalance,
+        payments.checkBond,
+        payments.quoteBond,
+        payments.payBond,
+        payments.followBond,
+        payments.bondPaymentRunning,
+        step: payments.step,
       );
     });
     // The buyer's payout from the wallet (#90): the wallet's invoice and address in the payout panel, resolved only where the wallet's port was lent, as the bond's payment; one use case for the run, which remembers at which step it gave each invoice.

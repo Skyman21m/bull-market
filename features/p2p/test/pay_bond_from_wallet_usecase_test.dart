@@ -604,14 +604,13 @@ void main() {
     },
   );
 
-  test('the ceiling of the bond is what walletPaymentFor is asked with', () {
-    // A guard against a later change: the payment is offered within the take's terms, never a figure of the coordinator.
-    expect(
-      File(
-        'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
-      ).readAsStringSync(),
-      contains('accepted: terms.bondCeiling,'),
-    );
+  test('the ceiling of each step is what walletPaymentFor is asked with', () {
+    // A guard against a later change: the payment is offered within the take's terms, never a figure of the coordinator; the escrow's (#97) within its own ceiling.
+    final source = File(
+      'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
+    ).readAsStringSync();
+    expect(source, contains('InvoiceStep.bond => terms.bondCeiling,'));
+    expect(source, contains('InvoiceStep.escrow => terms.escrowCeiling,'));
   });
 
   group('followBond', () {

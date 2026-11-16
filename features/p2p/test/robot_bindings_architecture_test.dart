@@ -1101,6 +1101,11 @@ class RobotCoordinatorCubit {
             _driftTriggers.contains(_squeezed(text))) {
           continue;
         }
+        // The step to schema 7 rebuilds the payments of the trades (#97), never a binding: its two drops, pinned as written below.
+        if (identical(facts, database) &&
+            _paymentsRebuildDrops.contains(text)) {
+          continue;
+        }
         expect(
           RegExp(
             r'\b(delete|update|drop|replace|alter)\b',
@@ -1167,15 +1172,60 @@ class RobotCoordinatorCubit {
       'm.createTrigger(schema.tradeChatNostrPinsNeverChanged)',
       'm.createTrigger(schema.tradeChatNostrPinsInsertedOnce)',
       'm.createTrigger(schema.tradeChatNostrPinsOfTheirTrade)',
+      // Schema 7 (#97): the payments rebuilt with the escrow's step, and their triggers made again.
+      'm.createTable(schema.tradePayments)',
+      'm.createTrigger(schema.tradePaymentsNeverDeleted)',
+      'm.createTrigger(schema.tradePaymentsInsertedOnce)',
+      'm.createTrigger(schema.tradePaymentsOfTheirTrade)',
+      'm.createTrigger(schema.tradePaymentsForward)',
     ]);
-    // The one `customStatement` the database runs itself: the foreign keys of the trades, on, at each opening.
+    // The `customStatement`s the database runs itself: the rebuild of the payments in the step to schema 7 (#97), which names the payments' table and its copy only, and the foreign keys of the trades, on, at each opening.
     expect(
       database.calls.where((call) => call.startsWith('customStatement(')),
-      ['customStatement(_foreignKeysOn)'],
+      [
+        'customStatement(_dropPaymentsCopy)',
+        'customStatement(_copyPayments)',
+        'customStatement(_dropPayments)',
+        'customStatement(_restorePayments)',
+        'customStatement(_dropPaymentsCopy)',
+        'customStatement(_foreignKeysOn)',
+      ],
     );
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
-    // Its one `customSelect`, the step's look at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
+    expect(
+      database.constants['_dropPaymentsCopy'],
+      'DROP TABLE IF EXISTS trade_payments_of_schema6',
+    );
+    expect(
+      database.constants['_copyPayments'],
+      'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+    );
+    expect(database.constants['_dropPayments'], 'DROP TABLE trade_payments');
+    // Every string constant of the database, each value as written: the rebuild's statement that writes rows (`_restorePayments`) copies the payments' own columns from their copy back into `trade_payments`, and nowhere else; a new constant, or another value, fails here (security review of #172).
+    expect(database.constants, {
+      '_foreignKeysOn': 'PRAGMA foreign_keys = ON',
+      'fileName': 'p2p.sqlite',
+      '_payments': 'trade_payments',
+      '_paymentsCopy': 'trade_payments_of_schema6',
+      '_dropPaymentsCopy': 'DROP TABLE IF EXISTS trade_payments_of_schema6',
+      '_copyPayments':
+          'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+      '_dropPayments': 'DROP TABLE trade_payments',
+      '_restorePayments':
+          'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
+          'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6 AS copy '
+          'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step)',
+    });
+    expect(_paymentsRebuildDrops, {
+      database.constants['_dropPaymentsCopy'],
+      database.constants['_dropPayments'],
+    });
+    // Its two `customSelect`s, the steps' looks at a table and at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
     expect(database.calls.where((call) => call.startsWith('customSelect(')), [
+      // The step to schema 7's look at a table's text (#97).
+      startsWith(
+        "customSelect(\"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?\",",
+      ),
       startsWith(
         "customSelect('SELECT 1 FROM pragma_table_info(?) WHERE name = ?',",
       ),
@@ -2347,4 +2397,10 @@ final _driftTriggers = {
   ..._trailTriggers,
   ..._paymentTriggers,
   ..._pinTriggers,
+};
+
+/// The two drops of the step to schema 7 (#97): the payments' table and its copy, never a binding.
+const _paymentsRebuildDrops = {
+  'DROP TABLE IF EXISTS trade_payments_of_schema6',
+  'DROP TABLE trade_payments',
 };

@@ -80,6 +80,10 @@ class TradeScreen extends StatefulWidget {
   /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
   final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
+  /// The line that says, after the seller's escrow step (6 and 7), where the payment of an escrow paid by this wallet stands, given whether the reference's title says the escrow locked: `null` without the wallet's port (#97).
+  final Widget Function(BuildContext context, bool escrowHeld)?
+  walletEscrowLine;
+
   /// Builds the cubit that takes the order once it is public again, with a fresh robot, as from the book; `null` when the feature holds no robots, and the order is then shown without « Take Order ».
   final TakeOrderCubit Function(PublicOrder order)? takeCubitFor;
 
@@ -101,6 +105,7 @@ class TradeScreen extends StatefulWidget {
     this.hostRating,
     this.walletBond,
     this.walletBondLine,
+    this.walletEscrowLine,
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
@@ -248,6 +253,20 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         // Locked only while the bond is (the reference's bond line « locked »).
                         view is TradeContract &&
                             view.bondLine == TradeBondLine.locked,
+                      ),
+                      const Gap(BullSpacing.sm),
+                    ],
+                    // After the escrow's step, where an escrow paid by this wallet stands (refunded, under review, support), whatever the view, as the bond's: a cancelled trade (`TradeMessage`) and an order back in the book (`TradeOrderOnly`) are where an escrow returned is said; at 6 and 7 the escrow panel itself says it.
+                    if (widget.walletEscrowLine case final escrowLine?
+                        when view is! TradeWaiting &&
+                            !(view is TradeContract &&
+                                view.prompt == TradePrompt.lockEscrow)) ...[
+                      escrowLine(
+                        context,
+                        // Locked while the reference's title says so: « The trade collateral is locked! », « Chat with the buyer ».
+                        view is TradeContract &&
+                            (view.title == TradeTitle.collateralLocked ||
+                                view.title == TradeTitle.chatWithBuyer),
                       ),
                       const Gap(BullSpacing.sm),
                     ],
@@ -639,7 +658,7 @@ class _Contract extends StatelessWidget {
         seller: record.role == TradeRole.seller,
         payable: contract.payable,
       ),
-      // The seller's escrow (#96), from another wallet in this version.
+      // The seller's escrow (#96), from this wallet (#97) or another.
       (
         TradePrompt.lockEscrow,
         WaitingForBoth(:final escrow, :final currency, :final escrowDuration) ||
@@ -655,6 +674,9 @@ class _Contract extends StatelessWidget {
           escrowDuration: escrowDuration,
           now: now,
           payable: contract.payable,
+          record: record,
+          seen: contract.seen,
+          walletPayment: walletPayment,
         ),
       (TradePrompt.lockEscrow, _) => const SizedBox.shrink(),
       (TradePrompt.payoutWait, _) => Column(
@@ -874,7 +896,7 @@ class _CancelRow extends StatefulWidget {
   /// Whether an action that moves money runs: « Cancel » is off meanwhile.
   final bool moneyActionRunning;
 
-  /// Where a payment of the bond from this wallet stands: « Cancel » waits while it is sent, and its dialog says when one is on its way.
+  /// Where a payment of the bond, or of the escrow, from this wallet stands: « Cancel » waits while one is sent, and its dialog says when one is on its way.
   final WalletBondState bond;
 
   const _CancelRow({
@@ -903,9 +925,15 @@ class _CancelRowState extends State<_CancelRow> {
     final seen = widget.seen;
     // The project's line under the reference's text, when a payment of the bond is on its way from this wallet: informed, not stopped.
     // Only at 3, where the cancel is free: from 6 on the bond is locked and the reference's text says it is lost.
-    final note = widget.bond.sent && widget.offer == TradeCancelOffer.free
-        ? P2pLocalizations.of(context).p2pPayCancelNote
-        : null;
+    // At 6 and 7, where the cancel costs the bond, the escrow's payment on its way is said the same way (#97).
+    final note = switch (widget.offer) {
+      TradeCancelOffer.free when widget.bond.sent => P2pLocalizations.of(
+        context,
+      ).p2pPayCancelNote,
+      TradeCancelOffer.losesBond when widget.bond.escrowSent =>
+        P2pLocalizations.of(context).p2pPayEscrowCancelNote,
+      _ => null,
+    };
     try {
       // A status that comes from no order read (an answer refused as a whole keeps the last status without its order) cannot be cancelled until the order is read again: no dialog, the cancel is asked and refused with « Wait until the order is read again before cancelling. » (`CancelNeedsARead`), nothing sent.
       // A status kept while the trade is opened anew (#152) is cancelled as the reference cancels from the order it holds (`TradeBox/index.tsx:244-253`): the request carries that status's guard, which the coordinator refuses for another status (1020).

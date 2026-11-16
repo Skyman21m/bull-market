@@ -32,12 +32,25 @@ part 'p2p_database.g.dart';
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 6;
+  static const int schema = 7;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
   /// It runs at each opening, after any migration step, outside a transaction, where SQLite takes it.
   static const String _foreignKeysOn = 'PRAGMA foreign_keys = ON';
+
+  /// The tables and the four statements of the rebuild of the payments in the step to schema 7 (#97), pinned as written by `robot_bindings_architecture_test.dart`: none names a binding.
+  static const String _payments = 'trade_payments';
+  static const String _paymentsCopy = 'trade_payments_of_schema6';
+  static const String _dropPaymentsCopy =
+      'DROP TABLE IF EXISTS trade_payments_of_schema6';
+  static const String _copyPayments =
+      'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments';
+  static const String _dropPayments = 'DROP TABLE trade_payments';
+  static const String _restorePayments =
+      'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
+      'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step)';
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -137,10 +150,40 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradeChatNostrPinsInsertedOnce);
         await m.createTrigger(schema.tradeChatNostrPinsOfTheirTrade);
       },
+      from6To7: (m, schema) async {
+        // The payments gain the seller's escrow (#97): `escrow` widens the CHECK of their step, which SQLite cannot change in place. The table is rebuilt: its rows copied aside, the table dropped (its four triggers with it; a drop fires no trigger), made again with the new CHECK, its rows copied back before its triggers exist (a payment of a trade closed since is kept, which the insert trigger would refuse), the copy dropped, then the triggers made again.
+        // No transaction (the feature opens none, `robot_bindings_architecture_test.dart`): each part is one statement, and each is done only when the file needs it, so that a step that stopped after any of them runs again over the file it left; a row is copied back only when it is not there already.
+        final payments = await _tableText(_payments);
+        if (payments != null && !payments.contains("'escrow'")) {
+          await customStatement(_dropPaymentsCopy);
+          await customStatement(_copyPayments);
+          await customStatement(_dropPayments);
+        }
+        if (await _tableText(_payments) == null) {
+          await m.createTable(schema.tradePayments);
+        }
+        if (await _tableText(_paymentsCopy) != null) {
+          await customStatement(_restorePayments);
+          await customStatement(_dropPaymentsCopy);
+        }
+        await m.createTrigger(schema.tradePaymentsNeverDeleted);
+        await m.createTrigger(schema.tradePaymentsInsertedOnce);
+        await m.createTrigger(schema.tradePaymentsOfTheirTrade);
+        await m.createTrigger(schema.tradePaymentsForward);
+      },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.
     beforeOpen: (details) => customStatement(_foreignKeysOn),
   );
+
+  /// SQLite's own text of the table [table], `null` when the file has no such table.
+  Future<String?> _tableText(String table) async {
+    final row = await customSelect(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+      variables: [Variable.withString(table)],
+    ).getSingleOrNull();
+    return row?.read<String>('sql');
+  }
 
   /// Whether [table] has a column named [column], read from SQLite's own description of the table.
   Future<bool> _hasColumn(String table, String column) async =>

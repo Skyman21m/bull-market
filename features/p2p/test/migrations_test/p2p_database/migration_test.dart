@@ -24,6 +24,7 @@ import 'generated/schema_v2.dart' as v2;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
+import 'generated/schema_v6.dart' as v6;
 
 /// The schema of `p2p.sqlite` against its snapshots (`lib/src/data/schemas/`, written by `make drift-migrations`), and the step from each version to the next over a file that holds rows.
 ///
@@ -1368,7 +1369,7 @@ void main() {
         await old.close();
 
         final migrated = P2pDatabase.open(() async => own);
-        expect(await versionOf(migrated), 6);
+        expect(await versionOf(migrated), P2pDatabase.schema);
         await migrated.validateDatabaseSchema();
         expect(await pinObjectsOf(migrated), expected);
         expect(
@@ -1420,7 +1421,11 @@ void main() {
           await half.close();
 
           final database = P2pDatabase.open(() async => own);
-          expect(await versionOf(database), 6, reason: '$parts');
+          expect(
+            await versionOf(database),
+            P2pDatabase.schema,
+            reason: '$parts',
+          );
           await database.validateDatabaseSchema();
           expect(
             (await pinObjectsOf(database)).keys,
@@ -1610,6 +1615,232 @@ void main() {
       },
     );
   });
+
+  group('a file of schema 6 with payments', () {
+    /// The schema 7 objects of the payments in [database], by name, compared without quotes and white space, as the earlier groups compare theirs.
+    Future<Map<String, String>> paymentObjectsOf(
+      GeneratedDatabase database,
+    ) async => {
+      for (final row
+          in await database
+              .customSelect(
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_payments'",
+              )
+              .get())
+        row.read<String>('name'): row
+            .read<String>('sql')
+            .replaceAll('"', '')
+            .replaceAll(RegExp(r'\s+'), ''),
+    };
+
+    // Schema 7 (#97): the payments of the trades gain the seller's escrow, the table rebuilt with its rows and its triggers.
+
+    /// A file of schema 6, made by the generated schema 6 itself, with two payments of the bond (not tied to any trade: the foreign keys are off outside the app's connection, and the trigger that asks for an open trade is set aside while they are written, then made again from its own text).
+    Future<Directory> writeSchema6WithPayments() async {
+      final own = await Directory.systemTemp.createTemp('p2p-schema6-');
+      addTearDown(() async {
+        if (own.existsSync()) await own.delete(recursive: true);
+      });
+      final old = v6.DatabaseAtV6(
+        NativeDatabase(File('${own.path}/${P2pDatabase.fileName}')),
+      );
+      expect(await versionOf(old), 6);
+      final trigger = await old
+          .customSelect(
+            "SELECT sql FROM sqlite_master WHERE name = 'trade_payments_of_their_trade'",
+          )
+          .getSingle();
+      await old.customStatement('DROP TRIGGER trade_payments_of_their_trade');
+      for (final (index, hash, id) in [
+        (1, 'ab${'0' * 62}', 'swap-1'),
+        (2, 'cd${'0' * 62}', null),
+      ]) {
+        await old.customStatement(
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) VALUES (?, ?, 'bond', ?, ?, ?)",
+          [_payer, index, hash, 1000 + index, id],
+        );
+      }
+      await old.customStatement(trigger.read<String>('sql'));
+      await expectLater(
+        old.customStatement(
+          "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 3, 'escrow', ?, 0)",
+          [_payer, 'ef${'0' * 62}'],
+        ),
+        throwsA(anything),
+        reason: 'schema 6 has no escrow',
+      );
+      await old.close();
+      return own;
+    }
+
+    Future<List<Map<String, Object?>>> paymentsOf(
+      GeneratedDatabase database,
+    ) async => [
+      for (final row
+          in await database
+              .customSelect('SELECT * FROM trade_payments ORDER BY robot_index')
+              .get())
+        row.data,
+    ];
+
+    test(
+      'a file of schema 6 keeps its payments as they are, and its table of payments becomes a new file\'s, the escrow allowed',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await paymentObjectsOf(fresh);
+        await fresh.close();
+        expect(
+          expected['trade_payments'],
+          contains("step IN ('bond', 'escrow')".replaceAll(' ', '')),
+        );
+
+        final own = await writeSchema6WithPayments();
+        final old = v6.DatabaseAtV6(
+          NativeDatabase(File('${own.path}/${P2pDatabase.fileName}')),
+        );
+        final before = await paymentsOf(old);
+        await old.close();
+        expect(before, hasLength(2));
+
+        final migrated = P2pDatabase.open(() async => own);
+        expect(await versionOf(migrated), 7);
+        await migrated.validateDatabaseSchema();
+        expect(await paymentObjectsOf(migrated), expected);
+        expect(await paymentsOf(migrated), before);
+        expect(
+          await migrated
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE name = 'trade_payments_of_schema6'",
+              )
+              .get(),
+          isEmpty,
+        );
+        // Its triggers are back: a payment is never deleted, nor its hash changed, nor written for no open trade.
+        await expectLater(
+          migrated.customStatement('DELETE FROM trade_payments'),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('the payment of a trade is kept'),
+            ),
+          ),
+        );
+        await expectLater(
+          migrated.customStatement(
+            "UPDATE trade_payments SET payment_hash = ? WHERE robot_index = 1",
+            ['ef${'0' * 62}'],
+          ),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('a payment only moves forward'),
+            ),
+          ),
+        );
+        await expectLater(
+          migrated.customStatement(
+            "INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at) VALUES (?, 3, 'escrow', ?, 0)",
+            [_payer, 'ef${'0' * 62}'],
+          ),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('a payment of no open trade'),
+            ),
+          ),
+        );
+        await migrated.close();
+
+        // Opened again: nothing is rebuilt, nothing moves.
+        final again = P2pDatabase.open(() async => own);
+        expect(await paymentsOf(again), before);
+        await again.close();
+      },
+    );
+
+    test(
+      'the step from 6 that stopped after any of its statements runs again over the file it left, each row kept once',
+      () async {
+        final freshDirectory = await Directory.systemTemp.createTemp(
+          'p2p-fresh-',
+        );
+        addTearDown(() => freshDirectory.delete(recursive: true));
+        final fresh = P2pDatabase.open(() async => freshDirectory);
+        final expected = await paymentObjectsOf(fresh);
+        final newTable =
+            (await fresh
+                    .customSelect(
+                      "SELECT sql FROM sqlite_master WHERE name = 'trade_payments'",
+                    )
+                    .getSingle())
+                .read<String>('sql');
+        await fresh.close();
+
+        // What the file holds after each statement of the step, in order.
+        const copied = [
+          'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+        ];
+        final stops = <List<String>>[
+          copied,
+          [...copied, 'DROP TABLE trade_payments'],
+          [...copied, 'DROP TABLE trade_payments', newTable],
+          [
+            ...copied,
+            'DROP TABLE trade_payments',
+            newTable,
+            'INSERT INTO trade_payments SELECT * FROM trade_payments_of_schema6 WHERE robot_index = 1',
+          ],
+        ];
+        for (final (turn, statements) in stops.indexed) {
+          final own = await writeSchema6WithPayments();
+          final file = File('${own.path}/${P2pDatabase.fileName}');
+          final half = v6.DatabaseAtV6(NativeDatabase(file));
+          final rows = await paymentsOf(half);
+          for (final statement in statements) {
+            await half.customStatement(statement);
+          }
+          expect(await versionOf(half), 6, reason: '$turn');
+          await half.close();
+
+          final database = P2pDatabase.open(() async => own);
+          expect(await versionOf(database), 7, reason: '$turn');
+          await database.validateDatabaseSchema();
+          expect(await paymentObjectsOf(database), expected, reason: '$turn');
+          expect(await paymentsOf(database), rows, reason: '$turn');
+          expect(
+            await database
+                .customSelect(
+                  "SELECT name FROM sqlite_master WHERE name = 'trade_payments_of_schema6'",
+                )
+                .get(),
+            isEmpty,
+            reason: '$turn',
+          );
+          await database.close();
+        }
+      },
+    );
+
+    test(
+      'the step from 6 that stopped after the rebuild, before the version was written, runs again over the file it left',
+      () async {
+        final own = await writeSchema6WithPayments();
+        final migrated = P2pDatabase.open(() async => own);
+        final rows = await paymentsOf(migrated);
+        final objects = await paymentObjectsOf(migrated);
+        await migrated.customStatement('PRAGMA user_version = 6');
+        await migrated.close();
+
+        final database = P2pDatabase.open(() async => own);
+        expect(await versionOf(database), 7);
+        await database.validateDatabaseSchema();
+        expect(await paymentObjectsOf(database), objects);
+        expect(await paymentsOf(database), rows);
+        await database.close();
+      },
+    );
+  });
 }
 
 /// The `user_version` of [database], the schema version drift wrote.
@@ -1665,3 +1896,6 @@ const _schema4Objects = [
   'trade_trails_closed',
   'trade_trails_forward',
 ];
+
+/// A key fingerprint of the payments written in a file of schema 6: fixed test text, not a key anyone uses.
+final _payer = 'ab' * 32;

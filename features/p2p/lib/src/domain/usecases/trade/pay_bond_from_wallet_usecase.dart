@@ -18,11 +18,13 @@ import 'bond_payments_in_flight.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Pays a trade's bond from the wallet's Instant Payments wallet, inside the trade screen (#100, W4): the only caller of [P2pWalletPort.payInvoice] (`wallet_port_architecture_test.dart`).
+/// Pays a trade's bond (#100, W4), or a seller's escrow (#97), from the wallet's Instant Payments wallet, inside the trade screen: the only caller of [P2pWalletPort.payInvoice] (`wallet_port_architecture_test.dart`).
+///
+/// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], the escrow from a stored `WaitingForBoth` or `WaitingForEscrow` within [TradeTerms.escrowCeiling]; the methods keep the bond's names, the step it was written for first.
 ///
 /// - [watchBalance]: what the Instant Payments wallet can spend, as the wallet reads it.
 /// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
-/// - [payBond]: on the user's confirmation of that quote only, one action of the order at a time ([TradeTakeLocks], shared with the take and the payout). It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is the bond step and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
+/// - [payBond]: on the user's confirmation of that quote only, one action of the order at a time ([TradeTakeLocks], shared with the take and the payout). It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is [step]'s and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
 /// - [followBond]: where the payment recorded for the trade stands, from the wallet's records ([P2pWalletPort.findPayment], then [P2pWalletPort.watchPayment]); it pays nothing.
 ///
 /// Nothing here retries a payment or pays by itself: a poll, a reopen or a follow never reaches [payBond]. Every refusal of the wallet but [P2pWalletBroadcastUnknown] means nothing left the wallet.
@@ -34,18 +36,22 @@ final class PayBondFromWalletUsecase {
   final TradeTakeLocks _locks;
   final BondPaymentsInFlight _inFlight;
 
+  /// The invoice this instance pays: the taker's bond, or the seller's escrow.
+  final InvoiceStep step;
+
   const PayBondFromWalletUsecase(
     this._reader,
     this._limiter,
     this._payments,
     this._wallet,
     this._locks,
-    this._inFlight,
-  );
+    this._inFlight, {
+    this.step = InvoiceStep.bond,
+  });
 
-  /// When the payment of [record]'s bond this process is making now ends, `null` when none runs: a screen opened meanwhile says the payment is being sent.
+  /// When the payment of [record]'s [step] this process is making now ends, `null` when none runs: a screen opened meanwhile says the payment is being sent.
   Future<void>? bondPaymentRunning(TradeRecord record) =>
-      _inFlight.running(record);
+      _inFlight.running(record, step);
 
   /// What the Instant Payments wallet on [network] can spend, at once and after each sync of it; a refusal ends the stream.
   Stream<Result<Sats, P2pWalletRefusal>> watchBalance(
@@ -57,7 +63,7 @@ final class PayBondFromWalletUsecase {
     TradeRecord record,
     TradeSeen seen,
   ) async {
-    if (!seen.stored || seen.status is! WaitingForTakerBond) {
+    if (!seen.stored || !_atStep(seen.status)) {
       return const Err(BondPayNotAtBondStep());
     }
     final TradeTerms terms;
@@ -90,14 +96,14 @@ final class PayBondFromWalletUsecase {
     };
   }
 
-  /// Pays the bond of [record] within [accepted], the quote the user confirmed.
+  /// Pays the [step] of [record] within [accepted], the quote the user confirmed.
   ///
-  /// The order is read again first, with the trade's robot through its places in [RobotRequestLimiter], and kept as every read is; the payment goes on only when the status now stored is the bond step and `walletPaymentFor` offers the invoice of [accepted] (same text and payment hash): a status that moved on, an invoice replaced or too little time left refuse it, with nothing paid.
+  /// The order is read again first, with the trade's robot through its places in [RobotRequestLimiter], and kept as every read is; the payment goes on only when the status now stored is [step]'s and `walletPaymentFor` offers the invoice of [accepted] (same text and payment hash): a status that moved on, an invoice replaced or too little time left refuse it, with nothing paid.
   /// Then the payment's start is written; only once it is written is the wallet asked. The wallet's id of the payment is written as soon as the wallet gives one (paid, or a refusal that carries a payment: broadcast unknown, interrupted, or a payment that already exists).
   Future<Result<P2pWalletPayment, BondPayRefusal>> payBond(
     TradeRecord record, {
     required P2pWalletQuote accepted,
-  }) => _inFlight.run(record, () => _payBond(record, accepted: accepted));
+  }) => _inFlight.run(record, step, () => _payBond(record, accepted: accepted));
 
   Future<Result<P2pWalletPayment, BondPayRefusal>> _payBond(
     TradeRecord record, {
@@ -115,7 +121,7 @@ final class PayBondFromWalletUsecase {
     // One action of an order at a time in the process: its take, its payout and this payment (`TradeTakeLocks`, shared with the take and the payout); a second payment of the bond waits, reads the order again and finds the first.
     return _locks.run(record.network, trade.coordinator, record.orderId, () async {
       final requests = _limiter.open(trade.robot.identity.sessionKey);
-      TradeStep step;
+      TradeStep advanced;
       try {
         // Its read is this action's only request to the coordinator: the watch sends no read while it runs, and a read superseded (one of the watch's, which left before, answered after it left) is read once more (#141).
         final read = await _reader.duringAction(record, () async {
@@ -164,18 +170,18 @@ final class PayBondFromWalletUsecase {
           case Err(:final failure):
             return Err(failure);
           case Ok(:final value):
-            step = value;
+            advanced = value;
         }
       } finally {
         requests.close();
       }
-      if (step.superseded) return const Err(BondPayReadSuperseded());
-      final status = step.trade.seen.status;
-      if (!step.stored || status is! WaitingForTakerBond) {
+      if (advanced.superseded) return const Err(BondPayReadSuperseded());
+      final status = advanced.trade.seen.status;
+      if (!advanced.stored || !_atStep(status)) {
         return const Err(BondPayNotAtBondStep());
       }
       final WalletPaymentOffered offered;
-      switch (_offered(step.trade.terms, status)) {
+      switch (_offered(advanced.trade.terms, status)) {
         case Ok(:final value):
           offered = value;
         case Err(:final failure):
@@ -188,7 +194,7 @@ final class PayBondFromWalletUsecase {
       }
       switch (await _payments.recordStart(
         record,
-        InvoiceStep.bond,
+        step,
         paymentHash: invoice.paymentHash,
         at: _reader.now(),
       )) {
@@ -209,7 +215,7 @@ final class PayBondFromWalletUsecase {
         // A failed write here loses nothing: the start is recorded, and [followBond] finds the payment by its hash and writes its id then.
         final _ = await _payments.recordWalletPayment(
           record,
-          InvoiceStep.bond,
+          step,
           paymentHash: payment.paymentHash,
           walletPaymentId: payment.id,
         );
@@ -223,7 +229,7 @@ final class PayBondFromWalletUsecase {
 
   /// Where the payment of [record]'s bond stands: none when none was recorded from this device or the wallet has none for its invoice, then the wallet's progress of it at once and at each change it records.
   Stream<BondPaymentWatch> followBond(TradeRecord record) async* {
-    final recorded = await _payments.paymentOf(record, InvoiceStep.bond);
+    final recorded = await _payments.paymentOf(record, step);
     final String hash;
     final String? id;
     switch (recorded) {
@@ -251,7 +257,7 @@ final class PayBondFromWalletUsecase {
     if (found.payment.id != id) {
       final _ = await _payments.recordWalletPayment(
         record,
-        InvoiceStep.bond,
+        step,
         paymentHash: hash,
         walletPaymentId: found.payment.id,
       );
@@ -268,13 +274,23 @@ final class PayBondFromWalletUsecase {
     }
   }
 
+  /// Whether [status] is the step of [step]: the bond's pre-take, or the statuses that await the seller's escrow (`walletPaymentFor` then offers only an escrow invoice, which a buyer's status never holds).
+  bool _atStep(TradeStatus status) => switch (step) {
+    InvoiceStep.bond => status is WaitingForTakerBond,
+    InvoiceStep.escrow =>
+      status is WaitingForBoth || status is WaitingForEscrow,
+  };
+
   Result<WalletPaymentOffered, BondPayRefusal> _offered(
     TradeTerms terms,
     TradeStatus status,
   ) => switch (walletPaymentFor(
-    accepted: terms.bondCeiling,
+    accepted: switch (step) {
+      InvoiceStep.bond => terms.bondCeiling,
+      InvoiceStep.escrow => terms.escrowCeiling,
+    },
     status: status,
-    step: InvoiceStep.bond,
+    step: step,
     now: _reader.now(),
   )) {
     final WalletPaymentOffered offered => Ok(offered),

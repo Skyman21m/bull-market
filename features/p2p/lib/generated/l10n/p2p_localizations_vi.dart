@@ -1962,6 +1962,15 @@ class P2pLocalizationsVi extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowConfirmTitle(String amount) {
+    return 'Pay $amount sats to lock the collateral?';
+  }
+
+  @override
+  String get p2pPayEscrowHeld =>
+      'Until the trade ends, these sats are with the swap service, not in this wallet. If the trade is cancelled, the swap is refunded to Instant payments without the swap fees and the network fee, and the refund may take time.';
+
+  @override
   String p2pPayServiceFee(String serviceFee) {
     return 'Swap fees: $serviceFee sats';
   }
@@ -1990,6 +1999,11 @@ class P2pLocalizationsVi extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowSent(String coordinator) {
+    return 'Payment sent. Waiting for $coordinator to see the collateral locked.';
+  }
+
+  @override
   String get p2pPayRefundPending =>
       'Swap will be refunded shortly. The swap fees are not refunded.';
 
@@ -2000,6 +2014,11 @@ class P2pLocalizationsVi extends P2pLocalizations {
   @override
   String p2pPaySettled(String coordinator) {
     return 'Your bond was kept by $coordinator.';
+  }
+
+  @override
+  String p2pPayEscrowSettled(String coordinator) {
+    return '$coordinator received the collateral.';
   }
 
   @override
@@ -2017,6 +2036,10 @@ class P2pLocalizationsVi extends P2pLocalizations {
   @override
   String get p2pPayAskSupport =>
       'Swap failed. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String get p2pPayEscrowAskSupport =>
+      'Swap failed. The sats of this collateral may have left this wallet. Contact Bull Bitcoin support.';
 
   @override
   String p2pPayUnderMinimum(String min) {
@@ -2069,6 +2092,10 @@ class P2pLocalizationsVi extends P2pLocalizations {
   String get p2pPayWalletUnavailable => 'This wallet cannot pay this bond now.';
 
   @override
+  String get p2pPayEscrowWalletUnavailable =>
+      'This wallet cannot pay this collateral now.';
+
+  @override
   String get p2pPayServiceCouldNotPay =>
       'Swap failed. Swap will be refunded shortly. The swap fees are not refunded.';
 
@@ -2094,12 +2121,30 @@ class P2pLocalizationsVi extends P2pLocalizations {
       'Swap failed. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
 
   @override
+  String get p2pPayEscrowAskSupportSent =>
+      'Swap failed. The sats of this collateral left this wallet. Contact Bull Bitcoin support.';
+
+  @override
   String get p2pPayUnreadable =>
       'Bull Market cannot read where this payment stands.';
 
   @override
   String get p2pPayCancelNote =>
       'A payment of this bond is on its way from this wallet. Cancelling now costs the swap fees, and the refund may take time.';
+
+  @override
+  String get p2pPayEscrowCancelNote =>
+      'A payment of this collateral is on its way from this wallet. Cancelling does not stop it: if it reaches the coordinator, the coordinator returns it, then the swap service refunds it to Instant payments without the swap fees and the network fee. The refund may take time.';
+
+  @override
+  String p2pPayLineBond(String line) {
+    return 'Bond: $line';
+  }
+
+  @override
+  String p2pPayLineEscrow(String line) {
+    return 'Collateral: $line';
+  }
 
   @override
   String get p2pPayServiceRefunded =>
@@ -2110,8 +2155,16 @@ class P2pLocalizationsVi extends P2pLocalizations {
       'Swap expired. The sats of this bond may have left this wallet. Contact Bull Bitcoin support.';
 
   @override
+  String get p2pPayEscrowAskSupportExpired =>
+      'Swap expired. The sats of this collateral may have left this wallet. Contact Bull Bitcoin support.';
+
+  @override
   String get p2pPayAskSupportExpiredSent =>
       'Swap expired. The sats of this bond left this wallet. Contact Bull Bitcoin support.';
+
+  @override
+  String get p2pPayEscrowAskSupportExpiredSent =>
+      'Swap expired. The sats of this collateral left this wallet. Contact Bull Bitcoin support.';
 
   @override
   String get p2pEndChatBuyerHi =>
