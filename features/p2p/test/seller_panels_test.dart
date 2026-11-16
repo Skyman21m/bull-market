@@ -239,6 +239,21 @@ void main() {
   );
 
   testWidgets(
+    'an escrow from a status not marked stored: no QR code, no copy',
+    (tester) async {
+      seen['sixUnstored'] = TradeSeen(at('six').status, order: at('six').order);
+      await show(tester, 'sixUnstored');
+      expect(find.textContaining('Sats as collateral'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('QR code of the escrow invoice'),
+        findsNothing,
+      );
+      expect(find.text('Copy to clipboard'), findsNothing);
+      expect(find.text('Show anyway'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'Cancel at 6 is the reference\'s loss of the bond, never a free cancel',
     (tester) async {
       final (_, _, cancels) = await show(tester, 'six');
