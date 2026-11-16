@@ -8,7 +8,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_clock.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
@@ -17,6 +19,7 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/chat_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
@@ -2102,6 +2105,7 @@ void main() {
       WidgetTester tester, {
       required List<TradeRecord> exports,
       required List<TradeSeen> reads,
+      bool closedByTest = true,
     }) {
       final cubit = ChatCubit(
         _record,
@@ -2126,7 +2130,7 @@ void main() {
         },
         (record) => () {},
       );
-      addTearDown(cubit.close);
+      if (closedByTest) addTearDown(cubit.close);
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
@@ -2278,6 +2282,81 @@ void main() {
         expect(find.byType(ChatAuditDialog), findsOneWidget);
         expect(find.text('Don\'t trust, verify'), findsOneWidget);
         expect(exports, [_record]);
+      },
+    );
+
+    testWidgets(
+      'as the route builds the trade page (`P2pRouter.tradePage`): both shown, over the one chat cubit it provides to the panel',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(390, 1200) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final watch = _Watch();
+        final made = <ChatCubit>[];
+        final locator = GetIt.asNewInstance();
+        addTearDown(locator.reset);
+        final reads = FakeTransport();
+        locator
+          ..registerSingleton<P2pClock>(P2pClock(() => tradeNow))
+          ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+            (record, _) => TradeCubit(
+              record,
+              watch.call,
+              (record, seen, {bondLoss}) async =>
+                  Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
+            ),
+          )
+          ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+            (record, _) => TradeOrderPageCubit(
+              coordinator('temple'),
+              RobosatsNetwork.mainnet,
+              FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+              FindPublicOrderUsecase(
+                CoordinatorClient(reads, clock: () => testNow),
+              ).execute,
+            ),
+          )
+          ..registerFactoryParam<ChatCubit, TradeRecord, void>((record, _) {
+            // Closed by the route's provider with the page, as in the app.
+            final cubit = chatCubit(
+              tester,
+              exports: [],
+              reads: [],
+              closedByTest: false,
+            );
+            made.add(cubit);
+            return cubit;
+          });
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+            ),
+          ),
+        );
+        await tester.pump();
+        watch.emit(_watched('nine'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(ChatPanel), findsOneWidget);
+        await openOptions(tester);
+        expect(made, hasLength(1));
+        expect(
+          tester.widget<ChatAuditButton>(find.byType(ChatAuditButton)).cubit,
+          same(made.single),
+        );
+        expect(
+          tester.widget<ChatExportButton>(find.byType(ChatExportButton)).cubit,
+          same(made.single),
+        );
+        expect(
+          tester.element(find.byType(ChatPanel)).read<ChatCubit>(),
+          same(made.single),
+        );
       },
     );
 
