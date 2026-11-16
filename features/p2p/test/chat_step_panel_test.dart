@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_ui/testing.dart';
@@ -21,6 +22,7 @@ import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart'
     show CoordinatorContacts;
+import 'package:p2p/src/ui/trade/chat_actions.dart';
 import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -142,6 +144,7 @@ Future<TradeCubit> _show(
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
   ChatPanelBuilder? chat,
+  ChatCubit? chatCubit,
   TradeWatchState? state,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -189,12 +192,20 @@ Future<TradeCubit> _show(
           providers: [
             BlocProvider.value(value: cubit),
             BlocProvider.value(value: page),
+            // The chat's cubit above the screen, as the route provides it (`P2pRouter.tradePage`).
+            if (chatCubit != null) BlocProvider.value(value: chatCubit),
           ],
           child: TradeScreen(
             now: now ?? () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             moneyActionRunning: (_) => moneyActionRunning,
-            chat: chat,
+            chat:
+                chat ??
+                (chatCubit == null
+                    ? null
+                    : (context, request) => ChatPanel(request: request)),
+            // As the route gives them.
+            chatOptions: chatCubit == null ? null : chatOptionsOf,
           ),
         ),
       ),
@@ -2083,6 +2094,177 @@ void main() {
         },
       );
     }
+  });
+
+  group('« Audit Chat » and « Export » in « Order options » (#157)', () {
+    /// The chat's cubit as the route provides it, whose reads answer an empty chat, and whose export gives test values (never a robot's token or key), counted.
+    ChatCubit chatCubit(
+      WidgetTester tester, {
+      required List<TradeRecord> exports,
+      required List<TradeSeen> reads,
+    }) {
+      final cubit = ChatCubit(
+        _record,
+        (record, seen) async {
+          reads.add(seen);
+          return const Ok(ChatView(connected: true));
+        },
+        (record, seen, text) async => const Err(ChatPeerKeyNotKnown()),
+        (record, seen, id) async => const Err(ChatPeerKeyNotKnown()),
+        (record, seen) => const Err(ChatSkipNeedsOrderRead()),
+        (record) => const ChatView(),
+        (record) async {
+          exports.add(record);
+          return const Ok({
+            'credentials': {
+              'own_public_key': 'test-own-key',
+              'encrypted_private_key': 'test-encrypted-key',
+              'passphrase': 'test-value-not-a-token',
+            },
+            'messages': <Object?>[],
+          });
+        },
+        (record) => () {},
+      );
+      addTearDown(cubit.close);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+      messenger.setMockMethodCallHandler(privacy, (call) async => true);
+      addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
+      return cubit;
+    }
+
+    Future<void> openOptions(WidgetTester tester) async {
+      await _reveal(tester, find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await _settleDialog(tester);
+    }
+
+    testWidgets(
+      'first, in the reference\'s order and words: « Audit Chat », « Export », then « Open Dispute » and « Collaborative Cancel »',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: _FiatSent(),
+          chatCubit: chatCubit(tester, exports: [], reads: []),
+          state: _watched('nineDisputable'),
+        );
+        await openOptions(tester);
+        final labels = [
+          'Order options',
+          'Audit Chat',
+          'Export',
+          'Open Dispute',
+          'Collaborative Cancel',
+        ];
+        final tops = [
+          for (final label in labels) tester.getTopLeft(find.text(label)).dy,
+        ];
+        for (var i = 1; i < tops.length; i++) {
+          expect(tops[i], greaterThan(tops[i - 1]), reason: labels[i]);
+        }
+        expect(find.byType(ChatAuditButton), findsOneWidget);
+        expect(find.byType(ChatExportButton), findsOneWidget);
+      },
+    );
+
+    testWidgets('in French, the texts of the reference\'s place', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        watch: _Watch(),
+        chatCubit: chatCubit(tester, exports: [], reads: []),
+        locale: const Locale('fr'),
+        state: _watched('nine'),
+      );
+      await openOptions(tester);
+      expect(find.text('Auditer le chat'), findsOneWidget);
+      expect(find.text('Exporter'), findsOneWidget);
+    });
+
+    testWidgets(
+      '« Export » copies the export of the chat panel\'s own cubit, once, on the tap: no second watch of the chat',
+      (tester) async {
+        final exports = <TradeRecord>[];
+        final reads = <TradeSeen>[];
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String?;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await _show(
+          tester,
+          watch: _Watch(),
+          chatCubit: chatCubit(tester, exports: exports, reads: reads),
+          state: _watched('nine'),
+        );
+        expect(find.byType(ChatPanel), findsOneWidget);
+        await openOptions(tester);
+        final readsBefore = reads.length;
+        expect(exports, isEmpty);
+        await tester.tap(find.text('Export'));
+        await _settleDialog(tester);
+        expect(exports, [_record]);
+        expect(
+          copied,
+          const JsonEncoder.withIndent('  ').convert({
+            'credentials': {
+              'own_public_key': 'test-own-key',
+              'encrypted_private_key': 'test-encrypted-key',
+              'passphrase': 'test-value-not-a-token',
+            },
+            'messages': <Object?>[],
+          }),
+        );
+        expect(find.text('Copied!'), findsOneWidget);
+        // The export reads nothing: the panel's watch alone reads, every 5 s.
+        expect(reads.length, readsBefore);
+      },
+    );
+
+    testWidgets(
+      '« Audit Chat » opens « Don\'t trust, verify » over the same cubit\'s export',
+      (tester) async {
+        final exports = <TradeRecord>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          chatCubit: chatCubit(tester, exports: exports, reads: []),
+          state: _watched('nine'),
+        );
+        await openOptions(tester);
+        await tester.tap(find.text('Audit Chat'));
+        await _settleDialog(tester);
+        expect(find.byType(ChatAuditDialog), findsOneWidget);
+        expect(find.text('Don\'t trust, verify'), findsOneWidget);
+        expect(exports, [_record]);
+      },
+    );
+
+    testWidgets(
+      'without the chat (the feature holds no robot): « Order options » without them',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('nine'));
+        await openOptions(tester);
+        expect(find.text('Order options'), findsOneWidget);
+        expect(find.text('Audit Chat'), findsNothing);
+        expect(find.text('Export'), findsNothing);
+      },
+    );
   });
 
   group('on a phone of 320 points, the text larger', () {
