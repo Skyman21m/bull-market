@@ -459,7 +459,7 @@ final class TradeActionNotBuyer extends TradeActionRefused {
   const TradeActionNotBuyer({required super.fromLastRead});
 }
 
-/// The order is not at a step that takes this action: « fiat sent » outside 9 and 10 (1029), its undo outside 10 (1031), a dispute outside 9 and 10 (1013), the seller's confirmation before « fiat sent » (1027), a pause or a resume outside 1 and 2 (1033, `api/logics.py:1775-1781`); or the last read already shows so ([fromLastRead]).
+/// The order is not at a step that takes this action: « fiat sent » outside 9 and 10 (1029), its undo outside 10 (1031), a dispute outside 9 and 10 (1013), the seller's confirmation before « fiat sent » (1027), a pause or a resume outside 1 and 2 (1033, `api/logics.py:1776-1781`); or the last read already shows so ([fromLastRead]).
 final class TradeActionNotNow extends TradeActionRefused {
   const TradeActionNotNow({required super.fromLastRead});
 }

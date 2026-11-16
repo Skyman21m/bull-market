@@ -29,7 +29,7 @@ final class MakeOrderRequest {
   /// The most code points of a description (`max_length=240`, `api/models/order.py:178-184`).
   static const maxDescriptionCodePoints = 240;
 
-  /// The ratio a range's maximum must keep to its minimum: at least [minRangeRatio] (error 1006) and at most [maxRangeRatio] times (error 1009), as the coordinator compares them (`api/logics.py:159-175`); the reference client keeps 1.6 and 14.8 in its form (`AmountRange.tsx:54-55`).
+  /// The ratio a range's maximum must keep to its minimum: at least [minRangeRatio] (error 1006) and at most [maxRangeRatio] times (error 1009), as the coordinator compares them (`api/logics.py:164-175`); the reference client keeps 1.6 and 14.8 in its form (`AmountRange.tsx:54-55`).
   static const minRangeRatio = 1.5;
   static const maxRangeRatio = 15.0;
 
