@@ -1090,6 +1090,20 @@ void main() {
             );
             _expectNothingCut(tester, 'taker');
             _expectNoWordBroken(tester, 'taker');
+            // A row's two figures stacked, each with the row's whole width, rather than shrunk side by side.
+            final en = locale.languageCode == 'en';
+            expect(
+              tester
+                  .getTopLeft(
+                    find.text(en ? 'Trade fee' : 'Frais de transaction'),
+                  )
+                  .dy,
+              greaterThan(
+                tester
+                    .getTopLeft(find.text(en ? 'BTC received' : 'BTC reçus'))
+                    .dy,
+              ),
+            );
             for (final view in ['maker', 'platform']) {
               final tile = find.byKey(ValueKey('trade-summary-$view'));
               await _reveal(tester, tile);

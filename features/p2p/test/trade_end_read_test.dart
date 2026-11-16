@@ -84,7 +84,16 @@ void main() {
       final storesBefore = app.trails.stores;
       final signals = StreamController<TradeWatchSignal>();
       addTearDown(signals.close);
+      // The read held on its way: the screen asks for a read meanwhile, which sends nothing.
+      final held = Completer<void>();
+      app.coordinator.hold = held.future;
       final run = app.watchOf(record, signals: signals.stream);
+      await app.settle();
+      expect(readsOf(app), 1);
+      signals.add(TradeWatchSignal.readNow);
+      await app.settle();
+      app.coordinator.hold = null;
+      held.complete();
       await app.settle();
       // The end from the records first, then what the read shows.
       expect(
