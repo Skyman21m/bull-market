@@ -293,7 +293,8 @@ final class CoordinatorClient {
   /// A code is read on a `4xx` answer only; a `2xx` other than `201` is the HTTP status alone.
   static CoordinatorFailure _makeRefusal(CoordinatorResponse answer) {
     final status = answer.statusCode;
-    if (status < 400 || status > 499) return CoordinatorUnexpectedStatus(status);
+    if (status < 400 || status > 499)
+      return CoordinatorUnexpectedStatus(status);
     final code = switch (_decode(Ok(answer))) {
       Ok(value: final Map<String, Object?> object) => JsonFields(
         object,
@@ -1098,7 +1099,6 @@ final class CoordinatorClient {
       catchErrors: true,
     );
   }
-
 
   /// The decoded JSON of a `200` answer about an order, or why the coordinator refused.
   static Result<Object?, CoordinatorFailure> _orderAnswer(

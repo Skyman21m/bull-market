@@ -106,8 +106,9 @@ final class MakeOrderRequest {
       RangeOrderAmount(:final min, :final max) =>
         _isAmount(min) &&
             _isAmount(max) &&
-            max.value >= min.value * minRangeRatio &&
-            max.value <= min.value * maxRangeRatio,
+            // The coordinator's own comparisons, `min_sats > max_sats / 1.5` and `min_sats < max_sats / 15`, made here on the amounts, whose ratio is the sats' (`Logics.calc_sats`, `api/logics.py:256-259`).
+            !(min.value > max.value / minRangeRatio) &&
+            !(min.value < max.value / maxRangeRatio),
     };
     final valid =
         !currency.isBitcoin &&
