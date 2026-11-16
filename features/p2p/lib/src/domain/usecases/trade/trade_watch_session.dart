@@ -271,10 +271,13 @@ final class TradeWatchSession {
     if (next.seen.status.isTerminal) await _finish();
   }
 
+  /// A read that said nothing of the trade: the last status stays, or the newer one an action of the trade stored meanwhile (its fresh read before sending, its read after), which this subscription never read itself; never a status older than that (review of #161).
   void _failed(OpenTrade trade, Failure? failure) {
     _failedReads++;
     _lastReadFailure = failure;
-    _emitStatus(trade, null);
+    final newest = _reader.newestStored(trade);
+    _trade = newest;
+    _emitStatus(newest, null);
   }
 
   /// The next read, the cadence's delay after the last one ended; none at a terminal position.

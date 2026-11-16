@@ -169,6 +169,24 @@ final class TradeReader {
     return same ? last.seen : null;
   }
 
+  /// [trade] at the newest status stored for its trade in this process ([TradeReadOrder.lastStored]) when another step stored one since [trade]'s own, such as an action's fresh read before sending or its read after (review of #161); [trade] itself otherwise.
+  ///
+  /// Every status stored in this process comes from an answer whose request left after the answer of the status stored before it arrived ([TradeReadOrder.claim]), so a status stored since [trade]'s is never older than it; and while an answer newer than it is not stored, none is given ([TradeReadOrder.lastStored]). What a watch whose read failed stands at: never a status older than one an action already read.
+  OpenTrade newestStored(OpenTrade trade) {
+    final last = _requestOrder.lastStored(trade.record.robot);
+    if (last == null ||
+        identical(last.seen, trade.seen) ||
+        lastStored(trade.record) == null) {
+      return trade;
+    }
+    return trade._with(
+      record: _furtherOn(last.record, than: trade.record)
+          ? last.record
+          : trade.record,
+      seen: last.seen,
+    );
+  }
+
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
   Future<TradeOpening> open(TradeRecord record) async {
     final StoredTradeHistory history;
