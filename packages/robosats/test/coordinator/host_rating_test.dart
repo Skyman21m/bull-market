@@ -93,7 +93,19 @@ void main() {
       () {
         final rating = compose(4);
         final message = rating.relayMessages.single;
-        expect(message, startsWith('["EVENT",{"kind":31986,"content":"",'));
+        // The fields in the order of the reference's template, which `finalizeEvent` fills in place.
+        expect(
+          message,
+          startsWith(
+            '["EVENT",{"kind":31986,"created_at":1794830400,"tags":[["sig",',
+          ),
+        );
+        expect(
+          message,
+          contains(
+            '"]],"content":"","pubkey":"${us.nostrKeyPair().publicKeyHex}","id":"',
+          ),
+        );
         final json = message.substring('["EVENT",'.length, message.length - 1);
         final event = readEvent(json, signed: true);
         expect(event['kind'], 31986);

@@ -53,7 +53,7 @@ final class NostrKeyPair {
   Uint8List conversationKeyWith(String publicKeyHex) =>
       Nip44.conversationKey(_secretKey, publicKeyHex);
 
-  /// The event of these fields, signed by this key: its id ([NostrEvent.idOf]) signed with BIP-340, [aux] being 32 bytes of a secure source.
+  /// The event of these fields, signed by this key: its id ([NostrEvent.idOf]) signed with BIP-340, [aux] being 32 bytes of a secure source; [fullTemplate] writes its JSON in [NostrEvent.fullTemplateOrder].
   @internal
   NostrEvent sign({
     required int kind,
@@ -61,6 +61,7 @@ final class NostrKeyPair {
     required int createdAt,
     required List<List<String>> tags,
     required List<int> aux,
+    bool fullTemplate = false,
   }) {
     final id = NostrEvent.idOf(publicKeyHex, createdAt, kind, tags, content);
     final signature = Bip340.sign(_secretKey, hex.decode(id), aux);
@@ -72,6 +73,7 @@ final class NostrKeyPair {
       pubkey: publicKeyHex,
       id: id,
       signature: hex.encode(signature),
+      fieldOrder: fullTemplate ? NostrEvent.fullTemplateOrder : null,
     );
   }
 

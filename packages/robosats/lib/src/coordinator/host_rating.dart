@@ -65,7 +65,7 @@ final class HostRating {
 
 /// The rating of a coordinator by a robot, ready to publish on Nostr, as the official client publishes it at the end of a trade (`rateHostPlatform`, `frontend/src/components/TradeBox/Prompts/Successful.tsx:54-89`, commit ff1998c).
 ///
-/// One event of kind [kind], field for field the reference's: `created_at` the current second rounded down (`Math.floor(Date.now() / 1000)`), an empty content, and the tags `['sig', <token>]`, `['d', '<shortAlias>:<orderId>']`, `['p', <coordinator's Nostr key>]`, `['rating', <stars / 5>]` in that order, signed by the robot's Nostr key.
+/// One event of kind [kind], field for field the reference's, its JSON in the order of the reference's template (`kind`, `created_at`, `tags`, `content`, `pubkey`, `id`, `sig`): `created_at` the current second rounded down (`Math.floor(Date.now() / 1000)`), an empty content, and the tags `['sig', <token>]`, `['d', '<shortAlias>:<orderId>']`, `['p', <coordinator's Nostr key>]`, `['rating', <stars / 5>]` in that order, signed by the robot's Nostr key.
 /// The kind is in the range NIP-01 makes addressable (30000 to 39999): a relay keeps the latest event of a robot's key for one `d`, so a new rating of the same order replaces the earlier one.
 /// It is public: anyone reading the relays learns that this robot's Nostr key rated this coordinator for this order, with these stars.
 @immutable
@@ -100,6 +100,7 @@ final class OutgoingHostRating implements NostrRelayPublication {
         ['rating', rating.tagValue],
       ],
       aux: List<int>.generate(32, (_) => random.nextInt(256)),
+      fullTemplate: true,
     ),
   );
 

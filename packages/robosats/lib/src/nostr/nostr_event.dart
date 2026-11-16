@@ -51,7 +51,20 @@ final class NostrEvent {
     const ['created_at', 'content', 'tags', 'kind', 'pubkey', 'id'],
   );
 
+  /// The order of the fields of a signed event whose template lists them all, `pubkey`, `id` and `sig` included, which `finalizeEvent` fills in place: the rating of a coordinator (`rateHostPlatform`, `TradeBox/Prompts/Successful.tsx:71-83`, commit ff1998c).
+  static const fullTemplateOrder = [
+    'kind',
+    'created_at',
+    'tags',
+    'content',
+    'pubkey',
+    'id',
+    'sig',
+  ];
+
   /// A signed event: [signature] signs [id], which the caller computed with [idOf] for these very fields.
+  ///
+  /// [fieldOrder] is the order of the fields in [toJson]: by default, `finalizeEvent` completing a template of `kind`, `content`, `created_at` and `tags` (the seal and the wrap of NIP-59); [fullTemplateOrder] for a template that lists every field.
   @internal
   factory NostrEvent.signed({
     required int kind,
@@ -61,6 +74,7 @@ final class NostrEvent {
     required String pubkey,
     required String id,
     required String signature,
+    List<String>? fieldOrder,
   }) => NostrEvent._(
     kind,
     content,
@@ -69,7 +83,8 @@ final class NostrEvent {
     pubkey,
     id,
     signature,
-    const ['kind', 'content', 'created_at', 'tags', 'pubkey', 'id', 'sig'],
+    fieldOrder ??
+        const ['kind', 'content', 'created_at', 'tags', 'pubkey', 'id', 'sig'],
   );
 
   /// The id of an event with these fields: lowercase hexadecimal SHA-256 of its NIP-01 serialization.
