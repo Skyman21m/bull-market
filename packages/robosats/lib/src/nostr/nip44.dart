@@ -10,7 +10,7 @@ import 'package:pointycastle/macs/hmac.dart';
 import 'package:pointycastle/stream/chacha7539.dart';
 import 'package:robosats/src/secp256k1.dart';
 
-/// NIP-44 version 2, the encryption of the seals and gift wraps of NIP-59, as `nip44.ts` of `nostr-tools` 2.25.2 (the version the official client locks) and the text of NIP-44 describe it.
+/// NIP-44 version 2, the encryption of the seals and gift wraps of NIP-59, as `nip44.ts` of `nostr-tools` 2.25.2 (the version the official client locks at RoboSats commit ff1998c; the same file in 2.26.0, which it locks at commit babf62e) and the text of NIP-44 describe it.
 ///
 /// Checked against every section of the official vector file of NIP-44 (`test/fixtures/nostr/nip44.vectors.json`).
 /// Nothing here draws randomness: the caller passes the 32-byte nonce, drawn from a secure source.

@@ -32,7 +32,7 @@ abstract interface class NostrRelayTransport {
   });
 }
 
-/// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client neither waits nor tells anything (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:622-626`, commit babf62e).
+/// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client awaits no `OK` and tells nothing (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:622-626`, commit babf62e; it only tries a socket not yet connected again every 500 ms, `sendMessage`, `:387-403`).
 sealed class NostrRelayOutcome {
   const NostrRelayOutcome();
 
