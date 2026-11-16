@@ -47,10 +47,7 @@ void main() {
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> received([
     CoordinatorOrder? lastRead,
-  ]) => client.confirmFiatReceived(
-    identity: _us,
-    lastRead: lastRead ?? sellerAt(10),
-  );
+  ]) => client.releaseEscrow(identity: _us, lastRead: lastRead ?? sellerAt(10));
 
   Future<Result<TradeActionOutcome, OrderActionFailure>> undo([
     CoordinatorOrder? lastRead,

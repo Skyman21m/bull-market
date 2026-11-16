@@ -39,7 +39,7 @@ void main() {
       'submitPayoutInvoice',
       'submitPayoutAddress',
       'confirmFiat',
-      'confirmFiatReceived',
+      'releaseEscrow',
       'undoConfirmFiat',
       'openDispute',
     });
@@ -97,7 +97,7 @@ void main() {
         'submitPayoutInvoice',
         'submitPayoutAddress',
         'confirmFiat',
-        'confirmFiatReceived',
+        'releaseEscrow',
         'undoConfirmFiat',
         'openDispute',
       ]) {
@@ -244,7 +244,7 @@ const _moneyMembers = {
   'submitPayoutInvoice',
   'submitPayoutAddress',
   'confirmFiat',
-  'confirmFiatReceived',
+  'releaseEscrow',
   'undoConfirmFiat',
   'openDispute',
 };

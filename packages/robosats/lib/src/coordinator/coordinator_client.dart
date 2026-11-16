@@ -370,7 +370,7 @@ final class CoordinatorClient {
   /// The answer is [TradeActionAccepted] with the order as it then is, at 13, 14 or 15 (`fiatReceivedFollows`); a `200` at any other status, 10 included, is an outcome unknown (the reference answers `200` at 10 when it could not settle the escrow). The coordinator's refusals, 1027 and 1029 ([TradeActionNotNow]), 1028 ([EscrowBelowPayout]), 1047 ([OrderNotParticipant]) and the authentication's, come before it settles anything and are an [OrderActionRefused]; every other failure is an [OrderActionOutcomeUnknown]: read the order again, and never send again blindly.
   ///
   /// Sent once and never again by this client, whatever the outcome, a timeout included.
-  Future<Result<TradeActionOutcome, OrderActionFailure>> confirmFiatReceived({
+  Future<Result<TradeActionOutcome, OrderActionFailure>> releaseEscrow({
     required RobotIdentity identity,
     required CoordinatorOrder lastRead,
   }) => _tradeAction(
