@@ -408,12 +408,16 @@ void main() {
     test(
       'a key kept that does not parse, or whose fingerprints are not the ones kept, is an unreadable pin: the read fails and pins nothing',
       () async {
-        for (final (primary, armored) in [
+        final peer = makerKey.key.publicKey;
+        for (final (primary, subkey, armored) in [
           // Another key under the fingerprints of the peer's key.
-          (makerKey.key.publicKey.fingerprint, forgedKey(938)),
+          (peer.fingerprint, peer.subkeyFingerprint, forgedKey(938)),
+          // The peer's key under another subkey fingerprint.
+          (peer.fingerprint, 'C' * 40, peer.armored),
           // Not a key.
           (
-            makerKey.key.publicKey.fingerprint,
+            peer.fingerprint,
+            peer.subkeyFingerprint,
             '-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nnot a key',
           ),
         ]) {
@@ -424,7 +428,7 @@ void main() {
               record.robot.keyFingerprint.hex,
               record.robot.accountIndex,
               primary,
-              makerKey.key.publicKey.subkeyFingerprint,
+              subkey,
               armored,
             ],
           );
@@ -647,6 +651,7 @@ void main() {
           isA<ChatPeerKeyPinned>(),
         );
         final before = posts(app);
+        final unlocks = app.keys.unlocked.length;
         expect(
           await app.chatSend.send(record, seen, 'Hello'),
           isA<Err<ChatSent, ChatSendRefusal>>().having(
@@ -660,6 +665,8 @@ void main() {
           ),
         );
         expect(posts(app), before);
+        // Refused before the robot's key is leased: nothing unlocked for it.
+        expect(app.keys.unlocked, hasLength(unlocks));
         await pumpEventQueue();
         expect(app.relays.published, isEmpty);
         // Not kept, a restart would trust whatever key is served: so nothing went. The send tried to write it.
