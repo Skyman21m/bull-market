@@ -2,7 +2,7 @@
 
 **Status: design**, written on 2026-11-16, before the code of phase 3 ([#13](https://github.com/Skyman21m/bull-market/issues/13)), without any code, commit or request to a coordinator. Where the code later differs, the code and its pull requests are right, and this note is updated. It follows the design note of phase 2 (`docs/design/phase-2-taking-an-order.md`, « the phase 2 note » below), whose rules and vocabulary it keeps: everything a maker shares with a taker from status 6 on is the phase 2 code, and this note says only what changes.
 
-Every proposal of this note is a proposal: the decisions taken by the owner that it relies on are named with their date, and everything else is listed in § 7 with its default answer.
+It starts from a preliminary study in French (the project archive's `phase3/etude-creation-ordre.md`, « the study » below), every fact of which was checked again against the sources; where they differ, this note is right. Every proposal of this note is a proposal: the decisions taken by the owner that it relies on are named with their date, and everything else is listed in § 7 with its default answer.
 
 ## 1. The reference flow, as maker
 
@@ -244,7 +244,7 @@ Everything stays inside `features/p2p` and `packages/robosats`, under the rules 
   - invoices: the phase 2 note § 4.4, with the maker bond at 0 (§ 4.3 below).
 - **Cancel**: `cancel_status` always sent, the stored status shown, which for a maker is the status shown at 0, 1, 2, 6 and 7 (a maker never sees an injected 3); the collaborative cancel at 8 and 9 as phase 2. What the cancel costs, by status, is § 1.7's table, and the screen says it with the reference's dialogs only.
 
-### 3.3 The trade's sats, fixed at the take: what the app checks (the study's E4)
+### 3.3 The trade's sats, fixed at the take: what the app checks (the study's « E4 »)
 
 **The question.** For a taker, the sats of the trade are checked within 2 % of the sats of the amount at the book's price read just before the take (`trade_status.dart:571-578`, `TradeTolerances.price`), because the coordinator fixes them seconds or minutes later (`api/logics.py:1332-1335`). For a maker, they are fixed at the take, at the coordinator's price then, up to 24 hours after the creation, often while the app is closed (§ 1.9). Reusing the taker's rule against the price at the creation would warn after any normal move of the market, and a warning forbids « Pay with this wallet » and hides the QR code behind « Show anyway »: a maker seller would be pushed to pay its escrow blind, from another wallet.
 
