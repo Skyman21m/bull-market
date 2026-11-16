@@ -5,7 +5,6 @@ import '../../robot_key_compute_port.dart';
 import '../../repositories/trade_chat_pin_repository.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/trade_chat.dart';
-import '../../trade/trade_chat_pin.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import 'trade_chats.dart';

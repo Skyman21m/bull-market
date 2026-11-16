@@ -1,5 +1,4 @@
 import 'package:meta/meta.dart';
-import 'package:robosats/robosats.dart';
 
 /// The Nostr keys of a trade pinned at its first Nostr copy (#94, review of #158), the peer's and this robot's, as the order gives them: kept with the trade's record with its PGP pin (#139, part of #159), so that after a restart a key the order changes is caught as within one run.
 ///
