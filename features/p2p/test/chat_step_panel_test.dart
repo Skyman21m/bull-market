@@ -1287,6 +1287,75 @@ void main() {
       );
 
       testWidgets(
+        'as the route builds the trade page (`P2pRouter.tradePage`): one cubit per page, closed with it',
+        (tester) async {
+          tester.view
+            ..physicalSize = const Size(390, 1200) * 3
+            ..devicePixelRatio = 3;
+          addTearDown(tester.view.reset);
+          final watch = _Watch();
+          final made = <_HostRates>[];
+          final locator = GetIt.asNewInstance();
+          addTearDown(locator.reset);
+          final reads = FakeTransport();
+          locator
+            ..registerSingleton<P2pClock>(P2pClock(() => tradeNow))
+            ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+              (record, _) => TradeCubit(
+                record,
+                watch.call,
+                (record, seen, {bondLoss}) async =>
+                    Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
+                rate: _Rates().call,
+              ),
+            )
+            ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+              (record, _) => TradeOrderPageCubit(
+                coordinator('temple'),
+                RobosatsNetwork.mainnet,
+                FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+                FindPublicOrderUsecase(
+                  CoordinatorClient(reads, clock: () => testNow),
+                ).execute,
+              ),
+            )
+            ..registerFactoryParam<HostRatingCubit, TradeRecord, void>((
+              record,
+              _,
+            ) {
+              final host = _HostRates();
+              made.add(host);
+              return host.cubit;
+            });
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: testTheme,
+              localizationsDelegates: P2pLocalizations.localizationsDelegates,
+              supportedLocales: P2pLocalizations.supportedLocales,
+              home: Scaffold(
+                body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+              ),
+            ),
+          );
+          await tester.pump();
+          watch.emit(_watched('fourteenSummary'));
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(HostRatingSection), findsOneWidget);
+          expect(made, hasLength(1));
+          expect(made.single.asked, hasLength(1));
+          expect(
+            tester
+                .element(find.byType(HostRatingSection))
+                .read<HostRatingCubit>(),
+            same(made.single.cubit),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          expect(made.single.cubit.isClosed, isTrue);
+        },
+      );
+
+      testWidgets(
         'not asked, and not shown, where the screen offers no rating',
         (tester) async {
           final host = _HostRates();
