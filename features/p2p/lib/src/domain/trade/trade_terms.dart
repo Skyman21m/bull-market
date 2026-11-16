@@ -298,6 +298,17 @@ final class TradeTerms {
         .floor(),
   );
 
+  /// The most an escrow invoice of this trade may ask (#97): the most the state machine lets the seller's escrow be without a warning, rounded down to the sat.
+  ///
+  /// The trade's sats fixed at the bond's lock (`last_satoshis`) are within [TradeTolerances.price] and [TradeTolerances.roundingSats] of [expectedSatoshis] (`TradePriceOutsideOrder`), and the escrow adds at most the announced [takerFee] of them and [TradeTolerances.feeSats] (`TakerFeeAboveAnnounced`, `api/logics.py:650-669`). It is what the seller accepts by taking the order, as [bondCeiling] for the bond: the wallet pays the invoice's own decoded amount, never more than this.
+  Sats get escrowCeiling => Sats.fromInt(
+    ((expectedSatoshis * (1 + TradeTolerances.price) +
+                    TradeTolerances.roundingSats) *
+                (1 + takerFee) +
+            TradeTolerances.feeSats)
+        .floor(),
+  );
+
   /// The Lightning node keys the federation list gives [coordinator] on [network]: an invoice of the trade must be one of theirs.
   List<String> get nodeKeys => coordinator.nodesPubkeys(network);
 

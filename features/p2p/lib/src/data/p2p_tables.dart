@@ -299,7 +299,7 @@ class StoredTradePayments extends Table {
   TextColumn get keyFingerprint => text()();
   IntColumn get robotIndex => integer()();
 
-  /// `InvoiceStep.name` of the invoice paid: `bond` (the taker's bond) until the escrow's panel adds `escrow`.
+  /// `InvoiceStep.name` of the invoice paid: `bond` (the taker's bond) or, since schema 7 (#97), `escrow` (the seller's escrow).
   TextColumn get step => text()();
 
   /// The payment hash of the invoice, 64 lowercase hexadecimal characters.
@@ -320,8 +320,8 @@ class StoredTradePayments extends Table {
   List<String> get customConstraints => const [
     "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
-    // `InvoiceStep` written out: the escrow's panel adds it with its own schema step.
-    "CHECK (step IN ('bond'))",
+    // `InvoiceStep` written out: the escrow joined the bond in schema 7 (#97).
+    "CHECK (step IN ('bond', 'escrow'))",
     "CHECK (length(payment_hash) = 64 AND payment_hash NOT GLOB '*[^0-9a-f]*')",
     'CHECK (started_at BETWEEN 0 AND 253402300799999999)',
     'CHECK (wallet_payment_id IS NULL OR length(wallet_payment_id) BETWEEN 1 AND 256)',

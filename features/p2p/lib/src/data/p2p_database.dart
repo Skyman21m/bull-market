@@ -32,7 +32,7 @@ part 'p2p_database.g.dart';
   },
 )
 final class P2pDatabase extends _$P2pDatabase {
-  static const int schema = 6;
+  static const int schema = 7;
 
   /// Turns on SQLite's foreign keys for the connection, which are off by default: a trade's robot must be bound.
   ///
@@ -137,10 +137,40 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradeChatNostrPinsInsertedOnce);
         await m.createTrigger(schema.tradeChatNostrPinsOfTheirTrade);
       },
+      from6To7: (m, schema) async {
+        // The payments gain the seller's escrow (#97): `escrow` widens the CHECK of their step, which SQLite cannot change in place. The table is rebuilt in one transaction: its rows are copied aside, the table dropped (its four triggers with it; a drop fires no trigger), made again with the new CHECK, its rows copied back as they are before its triggers exist (a payment of a trade closed since is kept, which the insert trigger would refuse), then its triggers made again.
+        // A file whose table already allows the escrow (a step that stopped after the rebuild, before the version was written) is left as it is; one that stopped inside the transaction was rolled back to schema 6.
+        if (await _paymentsAllowEscrow()) return;
+        await transaction(() async {
+          await customStatement('DROP TABLE IF EXISTS trade_payments_of_schema6');
+          await customStatement(
+            'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+          );
+          await customStatement('DROP TABLE trade_payments');
+          await m.createTable(schema.tradePayments);
+          await customStatement(
+            'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
+            'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6',
+          );
+          await customStatement('DROP TABLE trade_payments_of_schema6');
+          await m.createTrigger(schema.tradePaymentsNeverDeleted);
+          await m.createTrigger(schema.tradePaymentsInsertedOnce);
+          await m.createTrigger(schema.tradePaymentsOfTheirTrade);
+          await m.createTrigger(schema.tradePaymentsForward);
+        });
+      },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.
     beforeOpen: (details) => customStatement(_foreignKeysOn),
   );
+
+  /// Whether the payments' table already allows the escrow's step, read from SQLite's own text of the table.
+  Future<bool> _paymentsAllowEscrow() async {
+    final row = await customSelect(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'trade_payments'",
+    ).getSingleOrNull();
+    return row?.read<String>('sql').contains("'escrow'") ?? false;
+  }
 
   /// Whether [table] has a column named [column], read from SQLite's own description of the table.
   Future<bool> _hasColumn(String table, String column) async =>
