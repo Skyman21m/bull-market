@@ -87,10 +87,33 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     ConfirmUndoFiatSentDialog.firstWait,
   );
 
+  /// Rebuilds the panel when « Open Dispute »'s time comes, so that a « too early » notice goes then (review of #156).
+  Timer? _disputeOpens;
+
   @override
   void dispose() {
+    _disputeOpens?.cancel();
     _undoWait.dispose();
     super.dispose();
+  }
+
+  /// Whether [chatStep]'s notice is not « Open Dispute » refused as too early by its fresh read, or is still true: that refusal goes once the dispute's time has come by the status shown, which a new read may move, as « Open Dispute » turns on in « Order options » at that very time (review of #156); the panel is rebuilt then. The coordinator's own 1054 is not judged by this device's clock, which already said the time had come when it was sent: it goes as the other notices go.
+  bool _tooEarlyStillTrue(ChatStepState chatStep) {
+    _disputeOpens?.cancel();
+    _disputeOpens = null;
+    final tooEarly = switch (chatStep) {
+      ChatStepIdle(notice: ChatStepWasRefused(refusal: ChatStepTooEarly())) =>
+        true,
+      _ => false,
+    };
+    final status = widget.seen.status;
+    if (!tooEarly || status is! Chatting) return true;
+    final left = ChatStepAction.disputeOpensAt(status).difference(widget.now());
+    if (left <= Duration.zero) return false;
+    _disputeOpens = Timer(left, () {
+      if (mounted) setState(() {});
+    });
+    return true;
   }
 
   /// The trade's amount and currency as the button and the dialog write them, from the trade's terms (`Chatting.amount`, `Chatting.currency`), never from a read: an amount in bitcoin in sats, as the payout's prompt.
@@ -263,7 +286,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
         ? null
         : _amountDiffers(context, amount);
     final chatNotice = switch (chatStep) {
-      ChatStepIdle(:final notice?, :final action) => notice.toText(
+      ChatStepIdle(:final notice?, :final action)
+          when _tooEarlyStillTrue(chatStep) =>
+        notice.toText(
         context,
         coordinator: widget.coordinator,
         action: action,

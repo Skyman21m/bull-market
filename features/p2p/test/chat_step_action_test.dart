@@ -647,6 +647,82 @@ void main() {
       },
     );
 
+    for (final status in [16, 17, 18]) {
+      test(
+        'the fresh read shows the dispute further on ($status): done, nothing sent (review of #156)',
+        () async {
+          final (app, record, _) = await at();
+          final seen = await readWithEnd(
+            app,
+            record,
+            const Duration(hours: 1),
+          );
+          app.coordinator
+            ..moveTo(11)
+            ..moveTo(status);
+          final outcome = switch (await app.chat.startDispute(record, seen)) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          expect(outcome, isA<ChatStepDone>());
+          expect(sent(app, ScriptedRequest.dispute), 0);
+        },
+      );
+    }
+
+    test(
+      'refused by the coordinator as not now (1013, the trade moved on after the fresh read): not done, nothing sent again (review of #156)',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.onRequest = (request) {
+          if (request.method == CoordinatorHttpMethod.post) {
+            app.coordinator.moveTo(13);
+          }
+        };
+        final outcome = switch (await app.chat.startDispute(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        app.coordinator.onRequest = null;
+        expect(
+          outcome,
+          isA<ChatStepNotDone>().having(
+            (n) => n.cause,
+            'cause',
+            isA<TradeActionNotNow>().having(
+              (r) => r.fromLastRead,
+              'from the last read',
+              isFalse,
+            ),
+          ),
+        );
+        expect(outcome.seen.status, isA<SendingSats>());
+        expect(sent(app, ScriptedRequest.dispute), 1);
+      },
+    );
+
+    test(
+      'the fresh read fails (Tor, the coordinator): refused, nothing sent (review of #156)',
+      () async {
+        final (app, record, _) = await at();
+        final seen = await readWithEnd(app, record, const Duration(hours: 1));
+        app.coordinator.failNext(
+          ScriptedRequest.order,
+          ScriptedFault.unreachable,
+        );
+        expect(
+          await app.chat.startDispute(record, seen),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepReadFailed>(),
+          ),
+        );
+        expect(sent(app, ScriptedRequest.dispute), 0);
+      },
+    );
+
     test(
       'not offered from a status not marked stored: nothing read or sent',
       () async {

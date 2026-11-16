@@ -3627,5 +3627,62 @@
   "p2pEndDisputeTooEarly": "Cannot open a dispute yet. You need to wait until 18 hours before expiry.",
   "@p2pEndDisputeTooEarly": {
     "description": "The reference coordinator's own text of its error 1054 (`api/errors.py:62` at commit ff1998c), which the official client shows as the answer's `bad_request`: « Open Dispute » refused as too early by the coordinator, its clock the judge (#95). Not in `en.json` nor `fr.json`: the French is ours."
+  },
+  "p2pEndDisputeNeedsRead": "Wait until the order is read again. The dispute was not opened.",
+  "@p2pEndDisputeNeedsRead": {
+    "description": "Not in the RoboSats texts: the project's own: « Open Dispute » from a status not marked stored, nothing sent (#95)."
+  },
+  "p2pEndDisputeReadFailed": "The order could not be read again from {coordinator}: the dispute was not opened.",
+  "@p2pEndDisputeReadFailed": {
+    "description": "Not in the RoboSats texts: the project's own: the read before « Open Dispute » failed (Tor, the coordinator), nothing sent (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeMovedOn": "The trade moved on: the dispute was not opened.",
+  "@p2pEndDisputeMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: the trade moved on before « Open Dispute » was sent, nothing sent (#95)."
+  },
+  "p2pEndDisputeNotSentAfter": "{reason} The dispute was not opened.",
+  "@p2pEndDisputeNotSentAfter": {
+    "description": "Not in the RoboSats texts: the project's own: « Open Dispute » never left (a busy robot, an error before sending); {reason} is a full sentence of the app (#95).",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeNotRecordedMovedOn": "The trade moved on: {coordinator} did not open the dispute.",
+  "@p2pEndDisputeNotRecordedMovedOn": {
+    "description": "Not in the RoboSats texts: the project's own: « Open Dispute » left and the coordinator refused it, the trade having moved on (1013) (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeOffline": "{coordinator} is offline: the dispute was not opened.",
+  "@p2pEndDisputeOffline": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Open Dispute » never left (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeRefusedBy": "{coordinator} did not open the dispute.",
+  "@p2pEndDisputeRefusedBy": {
+    "description": "Not in the RoboSats texts: the project's own: any other refusal of « Open Dispute » by the coordinator (#95).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndDisputeUnknown": "Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.",
+  "@p2pEndDisputeUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: the answer to « Open Dispute » was lost and the read after does not show it yet; never sent again by itself (#95)."
   }
 }

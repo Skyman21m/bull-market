@@ -102,6 +102,9 @@ final class _FiatSent {
 }
 
 late TradeScreenStatuses _statuses;
+
+/// The watch of the trade screen last shown by « Open Dispute »'s tests, to give it a new read.
+_Watch? _lastWatch;
 late Map<String, TradeSeen> _seen;
 
 /// 9 for terms of a long amount, 1,234,567.1234 EUR.
@@ -286,6 +289,11 @@ void main() {
       'tenDisputable': await _statuses.read(
         await _statuses.chatting(),
         orderJson(10, expiresAt: tradeNow.add(const Duration(hours: 1))),
+      ),
+      // The chat's end moved later by the coordinator: « Open Dispute » in 12 hours.
+      'nineLater': await _statuses.read(
+        await _statuses.waitingForPayout(),
+        orderJson(9, expiresAt: tradeNow.add(const Duration(hours: 30))),
       ),
     };
     final eleven = _seen['eleven']!;
@@ -1716,36 +1724,158 @@ void main() {
       expect(find.text('Open Dispute'), findsNothing);
     });
 
+    /// « Open Dispute » pressed and agreed to, at 9 with its time come; the use case's answer awaited.
+    Future<_FiatSent> agreed(WidgetTester tester, {DateTime Function()? now}) async {
+      final dispute = _FiatSent();
+      final watch = _Watch();
+      _lastWatch = watch;
+      await _show(
+        tester,
+        watch: watch,
+        dispute: dispute,
+        now: now,
+        state: _watched('nineDisputable'),
+      );
+      await openOptions(tester);
+      await tester.tap(find.text('Open Dispute'));
+      await _settleDialog(tester);
+      await tester.ensureVisible(find.text('Agree and open dispute'));
+      await tester.pump();
+      await tester.tap(find.text('Agree and open dispute'));
+      await _settleDialog(tester);
+      return dispute;
+    }
+
     testWidgets(
-      'refused as too early after its fresh read: the reference\'s wait said',
+      'refused as too early after its fresh read (the chat\'s end moved later): the reference coordinator\'s words, no countdown that stands still, gone at the very second « Open Dispute » turns on (review of #156)',
       (tester) async {
-        final dispute = _FiatSent();
+        var clock = tradeNow;
+        final dispute = await agreed(tester, now: () => clock);
+        final opensAt = tradeNow.add(const Duration(hours: 12));
+        dispute.gate?.complete(
+          Err(ChatStepTooEarly(opensAt, const Duration(hours: 12))),
+        );
+        await _settleDialog(tester);
+        // The fresh read the use case kept, as the watch then shows it.
+        _lastWatch!.emit(_watched('nineLater'));
+        await tester.pump();
+        await tester.pump();
+        const tooEarly =
+            'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
+        expect(find.textContaining(tooEarly), findsOneWidget);
+        expect(find.textContaining('To open a dispute you need'), findsNothing);
+        clock = opensAt.subtract(const Duration(seconds: 1));
+        await tester.pump(const Duration(hours: 12) - const Duration(seconds: 2));
+        expect(find.textContaining(tooEarly), findsOneWidget);
+        clock = opensAt;
+        await tester.pump(const Duration(seconds: 2));
+        expect(find.textContaining(tooEarly), findsNothing);
+        // « Open Dispute » on at that same time.
+        await openOptions(tester);
+        expect(disputeButton(tester).onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'a new read that moves the chat\'s end earlier ends the refusal at once (review of #156)',
+      (tester) async {
+        final dispute = await agreed(tester);
+        dispute.gate?.complete(
+          Err(
+            ChatStepTooEarly(
+              tradeNow.add(const Duration(hours: 12)),
+              const Duration(hours: 12),
+            ),
+          ),
+        );
+        await _settleDialog(tester);
+        _lastWatch!.emit(_watched('nineLater'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.textContaining('Cannot open a dispute yet.'), findsOneWidget);
+        _lastWatch!.emit(_watched('nineDisputable'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.textContaining('Cannot open a dispute yet.'), findsNothing);
+      },
+    );
+
+    for (final (what, outcome, text) in <(String, Result<ChatStepOutcome, ChatStepRefusal>, String)>[
+      (
+        'the fresh read failed (Tor)',
+        const Err(ChatStepReadFailed(cause: CoordinatorUnreachable())),
+        'The order could not be read again from Temple of Sats: the dispute was not opened.',
+      ),
+      (
+        'refused as not now (1013)',
+        Ok(
+          ChatStepNotDone(
+            _record,
+            _seen['thirteen']!,
+            cause: const TradeActionNotNow(fromLastRead: false),
+          ),
+        ),
+        'The trade moved on: Temple of Sats did not open the dispute.',
+      ),
+      (
+        'its answer lost',
+        Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
+        'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
+      ),
+    ]) {
+      testWidgets(
+        '$what: the dispute named, open, not open or not known (review of #156)',
+        (tester) async {
+          final dispute = await agreed(tester);
+          dispute.gate?.complete(outcome);
+          await _settleDialog(tester);
+          expect(find.text(text), findsOneWidget);
+          expect(find.textContaining('confirmation'), findsNothing);
+          expect(find.textContaining('your request'), findsNothing);
+        },
+      );
+    }
+
+    testWidgets(
+      '« Open Dispute » turns on at the very second its time comes (review of #156)',
+      (tester) async {
+        // The chat's 24 hours from the read: open at 6 hours from now.
+        final opensAt = (_seen['nine']!.status as Chatting).deadline.subtract(
+          const Duration(hours: 18),
+        );
+        var clock = opensAt.subtract(const Duration(seconds: 1));
         await _show(
           tester,
           watch: _Watch(),
-          dispute: dispute,
+          dispute: _FiatSent(),
+          now: () => clock,
+          state: _watched('nine'),
+        );
+        await openOptions(tester);
+        expect(disputeButton(tester).onPressed, isNull);
+        clock = opensAt;
+        await tester.pump(const Duration(seconds: 1));
+        expect(disputeButton(tester).onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'the dialog emphasizes « Disagree », the button with the reference\'s focus (review of #156)',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: _FiatSent(),
           state: _watched('nineDisputable'),
         );
         await openOptions(tester);
         await tester.tap(find.text('Open Dispute'));
         await _settleDialog(tester);
-        await tester.ensureVisible(find.text('Agree and open dispute'));
-        await tester.pump();
-        await tester.tap(find.text('Agree and open dispute'));
-        await _settleDialog(tester);
-        dispute.gate?.complete(
-          Err(
-            ChatStepTooEarly(
-              tradeNow.add(const Duration(hours: 1, minutes: 5)),
-              const Duration(hours: 1, minutes: 5),
-            ),
-          ),
+        TradeButton button(String label) => tester.widget(
+          find.ancestor(of: find.text(label), matching: find.byType(TradeButton)),
         );
-        await _settleDialog(tester);
-        expect(
-          find.textContaining('To open a dispute you need to wait 1h 05m'),
-          findsOneWidget,
-        );
+        expect(button('Disagree').outlined, isFalse);
+        expect(button('Agree and open dispute').outlined, isTrue);
       },
     );
 
@@ -1800,6 +1930,7 @@ void main() {
         'elevenSubmitted',
         [
           'We are waiting for your trade counterpart statement. If you are hesitant about the state of the dispute or want to add more information, contact your order trade coordinator (the host) via one of their contact methods.',
+          'Please, save the information needed to identify your order and your payments: order ID; payment hashes of the bonds or escrow (check on your lightning wallet); exact amount of satoshis; and robot nickname. You will have to identify yourself using that information if you contact your trade coordinator.',
           'Order ID: 42',
         ],
       ),
