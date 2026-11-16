@@ -262,7 +262,7 @@ Everything stays inside `features/p2p` and `packages/robosats`, under the rules 
 
 ### 3.4 Creating, and a make whose answer was lost
 
-`MakeOrderUsecase`, on the model of `TakeOrderUsecase` (`take_order_usecase.dart:1-14`), each step only once the one before it succeeded:
+`MakeOrderUsecase`, on the model of `TakeOrderUsecase` (`take_order_usecase.dart:22-32`), each step only once the one before it succeeded:
 
 1. Without a robot: the coordinator is in the federation list on the network; its `/api/info/` (the maker fee, under its ceiling) and `/api/limits/` (the price and the limits of the currency) are read anonymously; the amount is within the form's limits (§ 1.3); the `MakerTerms` are built. A make refused here costs no robot.
 2. A fresh robot is reserved and bound to that coordinator (`TradeRobots.robotForNewTrade`), then put on it (`PutRobotOnCoordinatorUsecase`); never a pasted key's robot (#79), never a robot that holds or held an order.
@@ -299,7 +299,7 @@ Phase 2's tables are taker-shaped in their CHECKs, which SQLite cannot change in
 - The money members, ten (`trade_money_calls_architecture_test.dart:34-45`, `:240-249`), named only in `lib/src/domain/usecases/trade/<name>_usecase.dart` (`make_order_usecase.dart`, `pause_order_usecase.dart`).
 - Who pays: still only `PayBondFromWalletUsecase` names `payInvoice` (`wallet_port_architecture_test.dart:76-77`).
 - Who starts a trade: only `TakeOrderSection` prepares, confirms or abandons a take (`trade_screen_architecture_test.dart:86`); a sister rule for the make: only the create screen's section starts a make.
-- Who writes an origin: `madeHere` only through `TradeRecordRepository.recordPendingMake`, called only by the make use case (as `takenHere`, `trade_record.dart:12-14`); `TradeTrail.forPendingMake` named only by the make use case and the resolution (as `forPendingTake`, `robot_bindings_architecture_test.dart:508`, `:1915`).
+- Who writes an origin: `madeHere` only through `TradeRecordRepository.recordPendingMake`, called only by the make use case (as `takenHere`, `trade_record.dart:11-15`); `TradeTrail.forPendingMake` named only by the make use case and the resolution (as `forPendingTake`, `robot_bindings_architecture_test.dart:508`, `:1915`).
 - The schema 8 statements, pinned as written (§ 3.5).
 
 ### 3.7 The book recognizes this device's orders
@@ -317,3 +317,152 @@ The reference's `federationLottery` (§ 1.11) ported as a pure function of the d
 ### 3.10 Texts
 
 As in phase 2 (the phase 2 note § 3.10): the reference's English and its French where it has one, the app's own French where it has none, and the app's own texts for its deviations, marked as such in the feature's ARB files: « Selling as maker is coming in a later version. », « Coming in a later version. » (slice 1), the escrow confirmation's rate line (§ 3.3), the texts of a pending make (« Creating your order… », « Bull Market does not know yet whether {coordinator} made your order. It keeps checking. »), and the rest each listed in the pull request that adds it.
+
+### 3.11 What of phase 2 assumes the taker, file by file
+
+Found by searching `features/p2p/lib` and `packages/robosats/lib` for the names that carry a side (`isMaker`, `isTaker`, `takerFee`, `TakerEstimate`, `takenHere`, `tradeRoleTaking`, `WaitingForTakerBond`, `showsTaker`, `isPendingTake`), then reading each hit: a search, not a line-by-line reading of every file, so each pull request reads its own files again. Paths under `features/p2p/lib/src/`.
+
+| File | What assumes the taker | Changes in |
+|---|---|---|
+| `domain/trade/trade_terms.dart` | the role by the taker's rule (`:12-15`, `:180`, `:241`), the taker fee and the book's price (`:63-66`), the expected sats and the ceilings from the price before the take (`:285-310`) | the terms PR (§ 3.2) |
+| `domain/trade/trade_status.dart` | refuses an answer where this robot is the maker (`:492-496`); no position for 0, 1, 2 (`:470-474`); the price check against the terms (`:571-578`) and the taker fee (`:599`); 17 won and 18 lost (`:815-818`); `public` again read as the end of a pre-take or a lost bond (`:826-839`); `_bondMayHaveBeenLost` (`:515-537`); the start from a take only (`:277-298`) | the state machine PR |
+| `domain/trade/trade_edges.dart` | the positions and edges of a taker; `publicAgain` terminal (`:63-72`) | the state machine PR |
+| `domain/trade/trade_cadence.dart` | no delay for 0, 1, 2 (`:18-38`) | the state machine PR |
+| `domain/trade_record.dart` | the origins (`:10-21`), the pending take (`:76`) | the schema PR |
+| `domain/usecases/trade/trade_reader.dart` | confirms a record only when the answer shows the robot as the taker (`showsTaker`, `:578-582`, `:539`), the take not made (`:383-388`), the pending take (`:208-210`) | the make use case PR |
+| `domain/usecases/trade/list_active_trades_usecase.dart` | a pending take only (`:93-95`) | the make use case PR |
+| `domain/usecases/trade/pay_bond_from_wallet_usecase.dart` | the bond only at `WaitingForTakerBond`, the ceilings from the taker's terms (`:278-291`) | the maker bond PR |
+| `domain/usecases/trade/cancel_trade_usecase.dart`, `domain/trade/trade_cancel.dart` | the offers of a taker: free at 3, the bond at 6 and 7, the collaborative cancel (`cancel_trade_usecase.dart:15-19`) | the make use case PR |
+| `presentation/trade_panel.dart` | the steps of four (`:209-218`), titles and prompts with no 0, 1, 2 (`:221-264`), the bond line « taker » (`:13`, `:267-278`), the cancel offers (`:281-285`), the views of a pre-take's end (`:125-134`) | the maker panels PR |
+| `ui/trade/trade_screen.dart`, `ui/trade/trade_order_details.dart` | the taker's estimate and fee in the « Order » tab (`trade_screen.dart:1164-1176`, `trade_order_details.dart:56-61`) | the maker panels PR |
+| `ui/p2p_tab_screen.dart` | « Create » disabled (`:16-21`, `:137-143`) | the create screen PR |
+| `data/p2p_tables.dart` and the `.drift` files | § 3.5 | the schema PR |
+| `testing/scripted_coordinator.dart` | plays a taker only (`'is_maker': false`, `:1191`) | every PR, § 5 |
+
+Already independent of the side, as read for this note: the buyer's payout and its wallet (`submit_payout_usecase.dart`, `payout_from_wallet_usecase.dart`), the chat step and its actions (`chat_step_action_usecase.dart`, `rate_host_usecase.dart`, which compare the terms' order, coordinator, network and role only), the chat (`trade_chats.dart`, `watch_chat_usecase.dart`, `export_chat_usecase.dart`; `send_chat_message_usecase.dart:160-165` and `ui/trade/chat_panel.dart:210-218` already place the maker), the end and its summary (`ui/trade/successful_panel.dart:337-344`, `presentation/trade_summary_export.dart:21` read `isMaker`), and the package's parser, which already checks a maker's roles (`coordinator_order.dart:845-884`).
+
+## 4. Security and privacy
+
+### 4.1 Threat model for a maker
+
+| Who | Can | The app's answer |
+|---|---|---|
+| The order's coordinator | fix the trade's sats at a false price at the take (§ 3.3) | not detected, as in the reference; the order's terms, the escrow's and the payout's agreement with `trade_satoshis` and the implied fee are checked; the escrow confirmation states the sats, the amount and the rate they imply before this wallet pays |
+| | ask a maker bond of the wrong amount | checked within 2 % of the bond at the price read just before the make; outside, a warning, the QR code behind « Show anyway », never paid from this wallet; the wallet pays at most the confirmed amount, within that ceiling |
+| | give the invoice of another order or another node | the amount, the network and the expiry checked, the payment hash pinned for the order's life (the bond) or for the take (the escrow); the payee is in practice not verifiable (the phase 2 note § 4.4); the description (« Publishing 'Order {id}: …' - Maker bond », `api/logics.py:1273`) is shown cleaned, not checked |
+| | answer the make with someone else's order | the 201 proves nothing; the first read proves `is_maker` against this robot's hash id (§ 3.1) before an invoice is shown |
+| | keep the maker bond, settle it unfairly, decide a dispute against the maker | custodian by design, as for a taker; one robot per order limits it to that order |
+| | swallow an answer so that the app sends again | a make, a pause and a cancel are each sent once and never again; a lost make is resolved by reading the robot (§ 3.4) |
+| A taker | take and never act: the maker bond stays locked and the order goes back to the book, the taker's bond settled and half of it credited to the maker robot (§ 1.10) | the reference's answer; for a maker seller every such round asks a new escrow, so a new swap's fees and a refund that takes time, possibly two escrows out at once: said in the trial script of slice 3 |
+| | lie in the chat, not pay, open a dispute | phase 2's warnings and dialogs, unchanged |
+| The swap service (when this wallet pays) | hold the maker bond for the order's life: up to about 51 hours with the defaults, 58 at the maximums (§ 1.4), and if the coordinator never releases it, until its CLTV, about 650 to 740 blocks, 4.5 to 5.1 days; hold a maker seller's escrow as a taker seller's (#97); refund late (32 hours the one time observed) | « Pay with another wallet » always offered; these figures in the trial scripts; one maker bond was held by the service once, cancelled before any take (§ 2.0) |
+| The app killed between the make and its answer | leave an order this app does not know | the pending make, written before the request and resolved by the robot's read (§ 3.4) |
+| Nobody, while the app is closed | the order is taken while the app is closed; the maker's step runs out (3 hours by default) and the maker bond is lost | nothing in code before the end of the project (the owner's decision of 2026-11-16); said in every trial script; the 10-hour escrow timer from slice 2; the question put again at the end of the phase (§ 7, proposal 1) |
+| A stolen, unlocked phone | as in the phase 2 note § 4.1; and make orders, pay their bonds from this wallet, take them from elsewhere and cancel as maker at 6 to have half of each bond credited to its own taker robot | the same class of threat as phase 2's, with the same open question of a PIN before « Pay with this wallet » (the phase 2 note § 7, decision 9) |
+| A network observer | see Tor traffic | everything over the embedded Tor to `.onion` addresses; nothing published to Nostr by the app for a make (no account-recovery event, § 7, proposal 16); a meeting point is published by the coordinator itself with the order (slice 4) |
+
+### 4.2 Never logged or stored
+
+- Never logged, printed or put in a fixture, as in phase 2 (the phase 2 note § 4.3): the token and its hash, the header, the invoices, the payment hashes, coordinator text; and, new, the make's body: the amount, the premium, the payment methods, the description, the coordinates, the password and its hash.
+- Never stored: the order's password, in clear or hashed (only whether there is one).
+- Stored, in `maker_terms` only, never logged: what the maker asked (§ 3.5), the description and the coordinates included, which the coordinator holds and shows anyway; they are the user's own order, kept for the renewal and the terms' checks.
+
+### 4.3 The rule for showing or paying an invoice
+
+The phase 2 rule (the phase 2 note § 4.4) applies unchanged, with two cases more:
+
+- **The maker bond at 0**: shown and offered to this wallet only from a stored status of a confirmed make (its order id read and this robot shown as its maker); its amount equal to `bond_satoshis` and within 2 % of the bond at the creation's price (§ 3.2); its payment hash pinned for the whole life of the order; payable until the earlier of its expiry and the order's deadline (creation + 300 s), less `TradeTolerances.walletPaymentMargin`; paid within what the user confirmed, under the step `bond`.
+- **A maker seller's escrow**: pinned and recorded per take (§ 3.5): a new escrow is shown and paid only after the trail has moved through `public` with one more take; « Pay with this wallet » pays within what the user confirms in the escrow confirmation, which states the sats, the amount and the rate they imply (§ 3.3); an escrow that changes within one take is a breach, as in phase 2.
+
+### 4.4 What the independent security reviewer checks in each pull request
+
+- Package: every field of the make bounded before it is sent and the 201 checked against it; no coordinator text in failures; a POST never retried; the password never sent, only its hash, and never logged; `pauseOrder` refused before sending unless the last read shows this robot as the maker at 1 or 2.
+- Schema 8: every rebuilt table keeps every row and value (tests with rows of each table, a step stopped after each statement and run again); the statements pinned and naming no binding; the triggers: an order id set once and only with `confirmed_at`, `takes` monotonic and moving by one, an escrow hash released only with it, a bond hash never released, a payment's take never changed; no update or delete of the terms.
+- Domain: the maker's edges and only them, the start from a make only, 17 and 18 by side, the bond check and its tolerance, no automatic action on a surprising answer, the robot never reused, bound before its first contact.
+- Use cases: the make written before it is sent and sent once; the order id written only from a read that shows this robot as the maker; a pending make closed only on a refusal known to come first or on a robot read sent after the request ended; the pause sent once, after a read that shows the status the user saw; the money members named only in the trade use cases.
+- Wallet: the maker bond paid only from a stored `WaitingForMakerBond` and the confirmation's amount; the second escrow under its own record; nothing paid twice.
+- UI: what the QR code encodes and what « Pay with this wallet » pays is what was decoded, checked and shown; the escrow confirmation's figures are the status's own; no log.
+
+Each such pull request carries the label `money` and gets two reviews, functional and security, by independent agents with no prior context, as in phase 2.
+
+## 5. Testing without money
+
+- **The coordinator played by the tests.** `ScriptedCoordinator` (`features/p2p/lib/src/testing/scripted_coordinator.dart:70-79`) plays a taker's coordinator today; it learns the maker's side of the reference: `POST /api/make/` (the 201 of `ListOrderSerializer`, the empty 400, 1004 to 1010, 1037 to 1039, 409 with 1000), `GET /api/limits/`, the maker's read at 0 with the bond invoice made at the first read and the same afterwards, 1022 past the deadline then 5, the bond's lock publishing the order (deadline creation + public duration), the pause toggle and its refusals, a scripted taker that locks its bond (6, the sats at the script's price then), the maker's cancel at every status with the reference's outcome, the taker's default or cancel sending the order back to the book with its first deadline (and expiring it at once when passed), a second escrow invoice after the book, the robot's `active_order_id` and `last_order_id`, a make that lands late (`ScriptedFault.landsLate`), the rewards credited, and for a range the amount taken.
+- **What each slice proves with no network**: slice 1, a make from the form to every panel of a buyer's trade, the cancel at 0, 1, 6 and 7, the expiry at 0 and 1, the back-in-the-book of a maker buyer, a make whose answer was lost resolved both ways, the app killed after each write and reopened; slice 2, the range's bond on the maximum and the amount taken, the pause sent once, a renewal with a fresh robot from the stored terms; slice 3, a maker seller's escrow, its second escrow after the book with its own payment record, and the first escrow's refund line; slice 4, the password's hash and its absence from the records and the logs. Property tests of the maker's edges as phase 2's (`TradeStatus.from`): random answers never leave the maker's edges without a warning, never trigger an action, and an end is never left.
+- **Migration tests**: every schema to 8 with rows, as the phase 2 schemas were (`features/p2p/test/migrations_test`), and the step 7 → 8 stopped after each statement.
+- **The live integration test** stays read-only and on testnet: it may read `/api/limits/`; it never makes an order.
+- **What only the owner's real trials can establish**, each with its step-by-step script given with its APK, the amounts at stake and the moment to cancel:
+  1. the maker bond from this wallet: the time from « Pay » to « Your order is public », the swap's fees, and the bond held by the service for a whole public duration and then a trade (never tried beyond a cancel before any take);
+  2. the refund of a maker bond after a cancel at 1 and after an expiry at 1 (the delay, the fees kept by the service);
+  3. the order's appearance in this app's book and in the official app's (its Nostr publication by the coordinator, § 1.5), and how long each takes;
+  4. a take by the owner's official app as seller of the owner's buy order: the move to 6 seen by this app, the payout, the chat both ways (the official app on Nostr, this app on both), « fiat sent », the end, the maker bond returned;
+  5. the app closed when the order is taken: how long until the take is seen at the next open (the risk of fact 3, measured with the owner as the taker);
+  6. a maker seller's escrow from this wallet held through a trade, and a second escrow after the buyer's default (slice 3: the most expensive trial, at the coordinator's minimum);
+  7. the pause seen by the official app's book; a renewal; a protected order taken by the official app with its password.
+
+## 6. Cut into issues and pull requests
+
+Sizes as in phase 2: S ≈ up to 300 lines of code and tests, M ≈ 300 to 800, L ≈ 800 to 1,500. Lanes: **P** = `packages/robosats`; **D** = `features/p2p/lib/src/domain` and `data`; **U** = `features/p2p/lib/src/ui`, `presentation`, the ARB files. Every issue carries the label `p2p` and the phase 3 milestone; `money` marks the pull requests that need the separate security review of § 4.4; none of them touches `lib/src/pgp/` or derives a key, so none carries `key-material` unless its review finds otherwise. The issues are to be created from this table; none exists yet.
+
+| # | Issue title | Scope | Lane | Size | Labels | Needs |
+|---|---|---|---|---|---|---|
+| 0 | Refresh the RoboSats reference before phase 3 | the check `AGENTS.md` asks before each phase (« Refreshing the RoboSats reference »), its result in the PR; this note's citations moved if the reference moves | docs, fixtures | S | `p2p` | — |
+| 1 | P2P: make an order and pause it in the protocol package | `makeOrder`, `MakeOrderRequest`, `MadeOrder`, `pauseOrder`, the failures, maker fixtures of `CoordinatorOrder`, error 1022, the money members' list | P | M | `p2p`, `money` | 0 |
+| 2 | P2P: schema 8 of the trade records for a maker | `trades`, `trade_trails`, `trade_payments` rebuilt, `maker_terms`, the triggers, the repositories (`recordPendingMake`, the order id set once, `takes`, the payment's take), the migration and its tests, the pinned statements | D | L | `p2p`, `money` | 0 |
+| 3 | P2P: a maker's terms and state machine | `MakerTerms`, `TradeTerms`' side, the positions 0, 1, 2, the maker's edges by role, 17 and 18 by side, the bond's check, § 3.3's rule, back in the book with the take count, the cadence, property tests | D | L | `p2p`, `money` | 1 (types), 2 (records) |
+| 4 | P2P: the make use case, a lost make, and the maker's cancel | `MakeOrderUsecase` and its lock, the resolution of a pending make, the reader confirming a maker, the active trades listing a pending make, `CancelTradeUsecase` at 0, 1, 2, 6, 7, the lottery of the default coordinator | D | M | `p2p`, `money` | 1, 2, 3 |
+| 5 | P2P: pay the maker bond with this wallet | `PayBondFromWalletUsecase` at `WaitingForMakerBond`, the bond block at 0 | D + U | S | `p2p`, `money`, `ui` | 4 |
+| 6 | P2P: the create screen, basic form | « Create » enabled, the basic form and its rules and texts, « Sell » and the advanced options disabled with their lines, « Store your garage key », the summary, the estimate and the rate, captures | U | M | `p2p`, `money`, `ui` | 4 (can start on fakes after 3) |
+| 7 | P2P: the maker's trade panels and the book's own orders | panels 0, 1, 5, « (x/5) », « Your maker bond is … », « Copy URL » and « Cancel » at 0, 1, 6, 7 with the reference's dialogs, the maker's « Order » tab, 17 and 18 by side, back in the book, the pending make's texts, the book opening an order of this device as its trade | U | L | `p2p`, `money`, `ui` | 4, 5 |
+| — | **APK 1: make a buy order, bond from this wallet or another, cancel, or trade as buyer if taken** (owner trial with its script) | | | | | 0-7 |
+| 8 | P2P: advanced options and range in the create form | « Enable advanced options », range (bond on the maximum, amount taken checked), « Description », both timers, « Fidelity Bond Size »; « Password » and the location still disabled | U + D | M | `p2p`, `money`, `ui` | 7 |
+| 9 | P2P: pause and resume a public order | `PauseOrderUsecase`, the pause button, « Your order is paused », « Unpause Order » | D + U | S | `p2p`, `money`, `ui` | 7 |
+| 10 | P2P: renew an expired order | « Renew Order » at 5 and « Renew » at 13 to 15, a fresh robot, the stored terms | D + U | S | `p2p`, `money`, `ui` | 8 |
+| 11 | P2P: « Existing orders match yours! » before creating | « Submit », the matching orders of the book as the reference filters them, « Edit order » | U | S | `p2p`, `ui` | 7 |
+| — | **APK 2: advanced options, range, pause, renewal** | | | | | 8-11 |
+| 12 | P2P: make a sell order | « Sell » enabled, the maker seller's escrow from this wallet or another, a second escrow after the book, its texts | D + U | M | `p2p`, `money`, `ui` | 7 |
+| — | **APK 3: make a sell order** | | | | | 12 |
+| 13 | P2P: order password and face-to-face location | « Password » (hashed, asked again at a renewal), « Face to Face Location » with the reference's randomization | P + U | M | `p2p`, `ui` (and a short privacy review) | 10 |
+| — | **APK 4: protected orders and meeting points** | | | | | 13 |
+| 14 | P2P: ask again about the background service and notifications for makers | a decision with the trials' findings, no code | — | — | `p2p` | 12 |
+
+Parallel work: 1 and 2 start together (lanes P and D, different files); 3 needs the types of 1 and the records of 2; 6 starts on fakes once 3's types exist; 8, 9, 11 and 12 can run in parallel after APK 1, each in its files. Each pull request updates `AGENTS.md` (Troc section), `FEATURES.md` and the README where its behaviour lands, as phase 2's did.
+
+## 7. Open decisions
+
+Proposals 1 to 10 are put to the owner in plain words, with the default this note proposes; 11 to 18 are technical, with the recommendation first. None of them is decided by this note.
+
+**For the owner:**
+
+1. **Being taken while the app is closed.** Example: you publish a buy order in the evening; someone takes it at 2 a.m.; with the default settings you have until 5 a.m. to give your invoice, otherwise you lose your bond. The official app rings; this one does not, since the background service and the notifications are kept for the end (your decision of 2026-11-16). Default: keep that decision; say the risk in this note and in every trial script; for the trials, be the taker yourself with the official app, or keep the app open, or choose the 10-hour timer once slice 2 offers it; ask the question again before phase 3 is called done.
+2. **One new robot for every order, the renewal included.** Example: your order expires untaken; « Renew Order » makes it again, under another robot name and picture, and asks the bond again. The official app keeps the same robot when it can. Default: a new robot each time, since the app already never uses a robot twice and RoboSats itself advises one robot per trade; « Renew » then also works after a trade, where the official app asks you to switch robot.
+3. **The order password.** Example: you want to sell to a friend; you set a password, the order stays out of the book, and you send your friend the link and the password; your friend uses the official app, since this one cannot take a protected order yet. Default: offer it as RoboSats does, in the last slice; taking a protected order with this app stays for later.
+4. **The « Swap? » mode** (Lightning sats against on-chain bitcoin instead of a currency). Default: not in phase 3, said as a deviation; the wallet already swaps.
+5. **« Pay with this wallet » for the maker bond from the first slice.** Example: for an order of 50,000 sats, a bond of 1,500 sats goes to the swap service and can stay there about two days if the order is taken, plus the refund's delay (32 hours once). Default: yes, as for the taker bond (your decision of 2026-11-13 for « Pay with this wallet »), with these figures in the trial script and small amounts.
+6. **The sentence « This box will ring 🔊 once a robot takes your order »**, which this app cannot keep. Default: the reference's sentence word for word, as for the hold-invoice sentence (#135), the limit said in the trial scripts; the other way is a line of ours under it, « Bull Market does not ring yet: open it to see whether your order was taken. ».
+7. **Checking the amount fixed at the take.** The sats of your trade are fixed by the coordinator when someone takes your order, at its price at that moment, maybe a day after you made it. Default: as RoboSats, the app does not compare that price with anything (the market moves, and a false alarm would stop « Pay with this wallet »); before you pay a sell order's collateral, the confirmation shows the sats, the amount and the rate they make, so you see a price far from the market; everything else is checked as for a taker (§ 3.3).
+8. **Cancelling a public order paid from this wallet.** RoboSats cancels a public or paused order at once, with no question. Default: the same, no dialog; after the cancel, the line under the trade says that the refund is on its way through the swap service (it exists since #100). The other way, a dialog with one line of ours on the swap's fees and the refund's delay, changes nothing of what happens, since the fees are spent and the delay the same whether you cancel or the order expires.
+9. **Making a second order while one is active.** Today the middle entry of the P2P tab is « Order » while a trade is active, as the official app's button shows the current robot's order. In the official app you switch robot in the Garage to make another; here every order has its own robot. Default: keep « Order », and add « Create order » at the top of the « Active trades » sheet it opens (a button of ours).
+10. **The order of the slices.** Default: buy orders first, with the basic form (APK 1); the advanced options with the range, pause, renewal and similar orders next (APK 2); sell orders (APK 3); password and meeting point (APK 4).
+
+**Technical (for the coordinator of the work):**
+
+11. Schema 8 in one step, in its own pull request, the maker seller's second escrow included (§ 3.5); the other way, keeping `trade_payments` as it is and letting the second escrow be paid from another wallet only, saves one rebuild but leaves the maker seller's main risk without the wallet.
+12. `TradeTerms` keeps one type with a sealed side, and a maker's terms are stored in `maker_terms` (§ 3.2).
+13. The pending make written before the request, resolved by the robot's read; the order id written only with `confirmed_at`, from a read that shows this robot as the maker (§ 3.4).
+14. The pause sent once, only after a fresh read shows the status the user saw (§ 3.4).
+15. The reference's lottery ported for the default coordinator (§ 3.9), rather than a default of ours.
+16. No Nostr account-recovery event after a make (the reference publishes one, § 1.2): the app publishes nothing to Nostr but the chat's copies (phase 1's rule, #94); a robot of this app is found again from its Garage Key by reading the coordinators.
+17. The description and the coordinates stored in `maker_terms` for the renewal; the password never (§ 3.5, § 4.2).
+18. The payment method text limited to 50 characters in the form, as the reference's client (whose message says 65, sic), and to 70 in the package, as the coordinator.
+
+## 8. What could not be established from the sources on disk
+
+- Each coordinator's real settings: `EXP_MAKER_BOND_INVOICE`, `MAX_PUBLIC_ORDERS`, `FEE` and `MAKER_FEE_SPLIT`, `MIN_ORDER_SIZE` and `MAX_ORDER_SIZE`, `GEOBLOCKED_COUNTRIES`, `SLASHED_BOND_REWARD_SPLIT`, and whether it has a Nostr key configured (without one it publishes no order event, `api/nostr.py:32-33`, and the official app's live book would not show the order): only the defaults are on disk; `/api/info/` and `/api/limits/` give some of them.
+- The backend version each coordinator runs, and whether the reference moved since commit ff1998c: the refresh needs the network (§ 6, issue 0).
+- That status 3 never reaches a maker, and the two defects of the reference's renewal (§ 1.8): read in the code, not observed.
+- The swap service: how long it keeps a payment pending, the longest CLTV it accepts (a maker bond of about 650 blocks was accepted once), what it does with a payment held a day or more, its refund delays (one observation, 32 hours), and how it handles two payments of one user held at once.
+- Whether the official Android app behaves as the web frontend for a maker: read from `frontend/src`, which the Android app wraps, not observed.
+- The matching of « Existing orders match yours! » (`utils/filterOrders.ts`): located, not read line by line; slice 2 reads it.
+- How long a new order takes to appear in a coordinator's REST book (a 10-second cache, § 1.5) and in the official app's: not measured.
+- The reward claim (`POST /api/reward/`, `api/logics.py:1886-2022`): not read line by line, as in phase 2; it is phase 4.
