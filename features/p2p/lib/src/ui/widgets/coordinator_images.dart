@@ -6,8 +6,8 @@ typedef CoordinatorImage = ({
   String blob,
 });
 
-/// The commit of the RoboSats protocol reference, where five of the images were taken.
-const _reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
+/// The commit where five of the images were taken: ff1998c, the RoboSats protocol reference until #174 (the six images have the same blobs at the reference since, babf62e).
+const _ff1998c = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
 
 /// The commit the embedded federation list comes from, which adds Gumpellite and its image.
 const _federation = 'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6';
@@ -22,31 +22,31 @@ const coordinatorImages = <String, CoordinatorImage>{
   'temple': (
     asset: 'assets/coordinators/temple.webp',
     path: 'frontend/static/federation/avatars/temple.webp',
-    commit: _reference,
+    commit: _ff1998c,
     blob: '01172a3738529ee58d554d92f57fd0e9085a22ee',
   ),
   'lake': (
     asset: 'assets/coordinators/lake.webp',
     path: 'frontend/static/federation/avatars/lake.webp',
-    commit: _reference,
+    commit: _ff1998c,
     blob: '8936c1cd93d8b0599c47522d5a83133c83cc0415',
   ),
   'bazaar': (
     asset: 'assets/coordinators/bazaar.webp',
     path: 'frontend/static/federation/avatars/bazaar.webp',
-    commit: _reference,
+    commit: _ff1998c,
     blob: '816a7c8478bcb72908f5bda2f104d468c222bb7f',
   ),
   'freeport': (
     asset: 'assets/coordinators/freeport.webp',
     path: 'frontend/static/federation/avatars/freeport.webp',
-    commit: _reference,
+    commit: _ff1998c,
     blob: '56b583ac77d992df27300cf0851d8e6d70439158',
   ),
   'ammanaya': (
     asset: 'assets/coordinators/ammanaya.webp',
     path: 'frontend/static/federation/avatars/ammanaya.webp',
-    commit: _reference,
+    commit: _ff1998c,
     blob: 'ebaa03a3cd2b923c07efc78a3dad4453afe51a3f',
   ),
   'gumpellite': (

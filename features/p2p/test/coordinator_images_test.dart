@@ -69,7 +69,7 @@ Future<(int, int)?> decodedSize(WidgetTester tester, Uint8List bytes) =>
     });
 
 void main() {
-  const reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
+  const ff1998c = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
   const federation = 'e56f9cf7cd4e6b01aa78589922f7c648f262b6b6';
 
   group('the bundled images', () {
@@ -81,16 +81,16 @@ void main() {
     });
 
     test('each image is the avatar of its coordinator, at a pinned source', () {
-      // Five come from the protocol reference, Gumpellite's from the commit of the federation list, which added it.
+      // Five come from ff1998c, the protocol reference until #174, Gumpellite's from the commit of the federation list, which added it; all six have the same blobs at babf62e, the reference since.
       // Each blob was checked against RoboSats when it was added: `git rev-parse ff1998c:<path>` in the reference clone, and the `sha` of `gh api 'repos/RoboSats/robosats/contents/<path>?ref=e56f9cf7c…'` for Gumpellite.
       // The files are checked against these blobs below, and `test/features/p2p/p2p_coordinator_images_test.dart` checks the bytes the app's bundle serves.
       expect(coordinatorImages, {
         for (final (alias, commit, blob) in [
-          ('temple', reference, '01172a3738529ee58d554d92f57fd0e9085a22ee'),
-          ('lake', reference, '8936c1cd93d8b0599c47522d5a83133c83cc0415'),
-          ('bazaar', reference, '816a7c8478bcb72908f5bda2f104d468c222bb7f'),
-          ('freeport', reference, '56b583ac77d992df27300cf0851d8e6d70439158'),
-          ('ammanaya', reference, 'ebaa03a3cd2b923c07efc78a3dad4453afe51a3f'),
+          ('temple', ff1998c, '01172a3738529ee58d554d92f57fd0e9085a22ee'),
+          ('lake', ff1998c, '8936c1cd93d8b0599c47522d5a83133c83cc0415'),
+          ('bazaar', ff1998c, '816a7c8478bcb72908f5bda2f104d468c222bb7f'),
+          ('freeport', ff1998c, '56b583ac77d992df27300cf0851d8e6d70439158'),
+          ('ammanaya', ff1998c, 'ebaa03a3cd2b923c07efc78a3dad4453afe51a3f'),
           (
             'gumpellite',
             federation,
