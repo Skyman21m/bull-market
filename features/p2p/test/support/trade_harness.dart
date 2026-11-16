@@ -313,6 +313,27 @@ final class _KillingRecords implements TradeRecordRepository {
   );
 
   @override
+  Future<Result<PendingMake, P2pFailure>> recordPendingMake(
+    TradeReservation reservation, {
+    required TradeRole role,
+  }) => _inner.recordPendingMake(reservation, role: role);
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> confirmMake(
+    PendingMake make, {
+    required int orderId,
+  }) => _inner.confirmMake(make, orderId: orderId);
+
+  @override
+  Future<Result<PendingMake, P2pFailure>> closePendingMake(PendingMake make) =>
+      _inner.closePendingMake(make);
+
+  @override
+  Stream<Result<List<PendingMake>, P2pFailure>> watchPendingMakes(
+    RobosatsNetwork network,
+  ) => _inner.watchPendingMakes(network);
+
+  @override
   Future<Result<TradeRecord, P2pFailure>> confirmTake(TradeRecord record) =>
       _inner.confirmTake(record);
 
@@ -369,6 +390,16 @@ final class TestTrails implements TradeTrailRepository {
     }
     return _inner.storeTrail(trade, trail);
   }
+
+  @override
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  ) => _inner.recordMakerTerms(make, terms);
+
+  @override
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(RobotSlot robot) =>
+      _inner.makerTermsOf(robot);
 
   @override
   Future<Result<StoredTradeHistory, P2pFailure>> historyOf(TradeRecord trade) =>

@@ -80,8 +80,9 @@ final class _Unwritable implements TradePaymentRepository {
   @override
   Future<Result<TradePaymentRecord?, P2pFailure>> paymentOf(
     trade,
-    step,
-  ) async => const Ok(null);
+    step, {
+    int take = 0,
+  }) async => const Ok(null);
 
   @override
   Future<Result<bool, P2pFailure>> recordStart(
@@ -89,6 +90,7 @@ final class _Unwritable implements TradePaymentRepository {
     step, {
     required String paymentHash,
     required DateTime at,
+    int take = 0,
   }) async => const Err(P2pStorageFailure());
 
   @override
@@ -97,6 +99,7 @@ final class _Unwritable implements TradePaymentRepository {
     step, {
     required String paymentHash,
     required String walletPaymentId,
+    int take = 0,
   }) async => const Err(P2pStorageFailure());
 }
 

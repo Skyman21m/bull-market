@@ -18,11 +18,15 @@ final class TradePaymentRecord {
   /// The wallet's local id of the swap that pays the invoice, `null` until the wallet gave one (an attempt killed before, or one the wallet refused with nothing sent).
   final String? walletPaymentId;
 
+  /// The contract of the invoice (schema 8): 0 for a bond and for every payment of a taker.
+  final int take;
+
   const TradePaymentRecord({
     required this.step,
     required this.paymentHash,
     required this.startedAt,
     this.walletPaymentId,
+    this.take = 0,
   });
 
   @override
@@ -31,11 +35,12 @@ final class TradePaymentRecord {
       other.step == step &&
       other.paymentHash == paymentHash &&
       other.startedAt == startedAt &&
-      other.walletPaymentId == walletPaymentId;
+      other.walletPaymentId == walletPaymentId &&
+      other.take == take;
 
   @override
   int get hashCode =>
-      Object.hash(step, paymentHash, startedAt, walletPaymentId);
+      Object.hash(step, paymentHash, startedAt, walletPaymentId, take);
 
   /// The step only: no hash and no id.
   @override

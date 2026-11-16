@@ -1084,6 +1084,16 @@ final class _UnreadableTrails implements TradeTrailRepository {
       _inner.historyOf(trade);
 
   @override
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  ) => _inner.recordMakerTerms(make, terms);
+
+  @override
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(RobotSlot robot) =>
+      _inner.makerTermsOf(robot);
+
+  @override
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
     RobosatsNetwork network,
   ) => _inner
@@ -1136,6 +1146,16 @@ final class _KeptOnce implements TradeTrailRepository {
   @override
   Future<Result<StoredTradeHistory, P2pFailure>> historyOf(TradeRecord trade) =>
       _inner.historyOf(trade);
+
+  @override
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  ) => _inner.recordMakerTerms(make, terms);
+
+  @override
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(RobotSlot robot) =>
+      _inner.makerTermsOf(robot);
 
   @override
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(

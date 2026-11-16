@@ -13,6 +13,7 @@ part 'p2p_database.g.dart';
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
 /// Every schema version a release ships stays a supported upgrade source; a change adds a version, an idempotent migration step and a schema snapshot (`make drift-migrations`).
+/// From schema 8 on, a file is not opened by a version of the app older than its schema: drift refuses a file newer than the code it runs.
 @DriftDatabase(
   tables: [
     GarageKeyHistories,
@@ -53,6 +54,61 @@ final class P2pDatabase extends _$P2pDatabase {
       'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
       'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6 AS copy '
       'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step)';
+
+  /// The tables, their copies and the statements of the step to schema 8 (#176), pinned as written by `robot_bindings_architecture_test.dart`: none names a binding.
+  ///
+  /// The trades, their trails and their payments are rebuilt, each as the payments were in the step to schema 7: its rows copied aside, the table dropped (its triggers with it; a drop fires no trigger), made again, its rows copied back, each once, before any trigger of the step exists.
+  /// Each copy keeps every column of its table at schema 7 and is dropped only at the very end, once the foreign keys of the file were checked.
+  static const String _trades = 'trades';
+  static const String _tradesCopy = 'trades_of_schema7';
+  static const String _dropTradesCopy = 'DROP TABLE IF EXISTS trades_of_schema7';
+  static const String _copyTrades =
+      'CREATE TABLE trades_of_schema7 AS SELECT * FROM trades';
+  static const String _dropTrades = 'DROP TABLE trades';
+  static const String _restoreTrades =
+      'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) '
+      'SELECT network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at FROM trades_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = copy.key_fingerprint AND trades.robot_index = copy.robot_index)';
+  static const String _trails = 'trade_trails';
+  static const String _trailsCopy = 'trade_trails_of_schema7';
+  static const String _dropTrailsCopy =
+      'DROP TABLE IF EXISTS trade_trails_of_schema7';
+  static const String _copyTrails =
+      'CREATE TABLE trade_trails_of_schema7 AS SELECT * FROM trade_trails';
+  static const String _dropTrails = 'DROP TABLE trade_trails';
+  static const String _restoreTrails =
+      'INSERT INTO trade_trails (key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown) '
+      'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)';
+  static const String _paymentsOfSchema7 = 'trade_payments_of_schema7';
+  static const String _dropPaymentsOfSchema7 =
+      'DROP TABLE IF EXISTS trade_payments_of_schema7';
+  static const String _copyPaymentsOfSchema7 =
+      'CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments';
+  static const String _restorePaymentsOfSchema7 =
+      'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) '
+      'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy '
+      'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)';
+
+  /// The triggers schema 8 replaces, each dropped before it is made again: drift makes a trigger only when none of its name exists (`CREATE TRIGGER IF NOT EXISTS`), which would keep the old one on a table the step does not rebuild (`trade_terms`), and these drops keep the step right however a file was left.
+  static const String _dropTradesSetOnce =
+      'DROP TRIGGER IF EXISTS trades_set_once';
+  static const String _dropTermsOfTheirTrade =
+      'DROP TRIGGER IF EXISTS trade_terms_of_their_trade';
+  static const String _dropTrailsOfTheirTrade =
+      'DROP TRIGGER IF EXISTS trade_trails_of_their_trade';
+  static const String _dropTrailsForward =
+      'DROP TRIGGER IF EXISTS trade_trails_forward';
+  static const String _dropPaymentsInsertedOnce =
+      'DROP TRIGGER IF EXISTS trade_payments_inserted_once';
+  static const String _dropPaymentsOfTheirTrade =
+      'DROP TRIGGER IF EXISTS trade_payments_of_their_trade';
+  static const String _dropPaymentsForward =
+      'DROP TRIGGER IF EXISTS trade_payments_forward';
+
+  /// Whether the connection enforces foreign keys, which the step to schema 8 needs off to drop `trades`, and the rows that break a foreign key anywhere in the file, which it needs none of before it drops its copies.
+  static const String _foreignKeys = 'PRAGMA foreign_keys';
+  static const String _foreignKeyCheck = 'PRAGMA foreign_key_check';
 
   /// The name of the database file in the directory the shell gives.
   static const String fileName = 'p2p.sqlite';
@@ -173,6 +229,86 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradePaymentsOfTheirTrade);
         await m.createTrigger(schema.tradePaymentsForward);
       },
+      from7To8: (m, schema) async {
+        // The maker (#176; design note `docs/design/phase-3-making-an-order.md` § 3.5): a pending make with no order id, the maker's positions and contracts in the trails, a payment per contract, and the maker's terms in a table of their own. SQLite cannot change a CHECK in place, so `trades`, `trade_trails` and `trade_payments` are rebuilt, as the payments were in the step to schema 7, `trades` first, since the others name it.
+        // No transaction (the feature opens none): each part is one statement, done only when the file needs it, so that a step that stopped after any of them runs again over the file it left; a row is copied back only when it is not there already, and every copy is kept until the foreign keys of the file are checked.
+        // `trades` is the parent of five tables: with the foreign keys on, its drop would run an implicit delete that their rows make fail. They are on only from `beforeOpen`, after every step; a connection that has them on here changes nothing.
+        if (await _foreignKeysAreOn()) {
+          throw const P2pSchemaStepRefused('foreign keys on');
+        }
+        final trades = await _tableText(_trades);
+        if (trades != null && !trades.contains("'madeHere'")) {
+          await customStatement(_dropTradesCopy);
+          await customStatement(_copyTrades);
+          await customStatement(_dropTrades);
+        }
+        if (await _tableText(_trades) == null) {
+          await m.createTable(schema.trades);
+        }
+        if (await _tableText(_tradesCopy) != null) {
+          await customStatement(_restoreTrades);
+        }
+        if (await _tableText(_trails) != null &&
+            !await _hasColumn(_trails, 'take')) {
+          await customStatement(_dropTrailsCopy);
+          await customStatement(_copyTrails);
+          await customStatement(_dropTrails);
+        }
+        if (await _tableText(_trails) == null) {
+          await m.createTable(schema.tradeTrails);
+        }
+        if (await _tableText(_trailsCopy) != null) {
+          await customStatement(_restoreTrails);
+        }
+        if (await _tableText(_payments) != null &&
+            !await _hasColumn(_payments, 'take')) {
+          await customStatement(_dropPaymentsOfSchema7);
+          await customStatement(_copyPaymentsOfSchema7);
+          await customStatement(_dropPayments);
+        }
+        if (await _tableText(_payments) == null) {
+          await m.createTable(schema.tradePayments);
+        }
+        if (await _tableText(_paymentsOfSchema7) != null) {
+          await customStatement(_restorePaymentsOfSchema7);
+        }
+        await m.createTable(schema.makerTerms);
+        // Every row is back: the triggers, the new ones and those the drops took, made again, each replaced one dropped first.
+        await m.createTrigger(schema.tradesNeverDeleted);
+        await customStatement(_dropTradesSetOnce);
+        await m.createTrigger(schema.tradesSetOnce);
+        await m.createTrigger(schema.tradesInsertedOnce);
+        await m.createTrigger(schema.tradesOneOpenPerOrder);
+        await m.createTrigger(schema.tradesOneOpenPerOrderUpdate);
+        await m.createTrigger(schema.makerTermsNeverDeleted);
+        await m.createTrigger(schema.makerTermsSetOnce);
+        await m.createTrigger(schema.makerTermsInsertedOnce);
+        await m.createTrigger(schema.makerTermsOfTheirMake);
+        await customStatement(_dropTermsOfTheirTrade);
+        await m.createTrigger(schema.tradeTermsOfTheirTrade);
+        await m.createTrigger(schema.tradeTrailsNeverDeleted);
+        await m.createTrigger(schema.tradeTrailsInsertedOnce);
+        await customStatement(_dropTrailsOfTheirTrade);
+        await m.createTrigger(schema.tradeTrailsOfTheirTrade);
+        await m.createTrigger(schema.tradeTrailsClosed);
+        await customStatement(_dropTrailsForward);
+        await m.createTrigger(schema.tradeTrailsForward);
+        await m.createTrigger(schema.tradePaymentsNeverDeleted);
+        await customStatement(_dropPaymentsInsertedOnce);
+        await m.createTrigger(schema.tradePaymentsInsertedOnce);
+        await customStatement(_dropPaymentsOfTheirTrade);
+        await m.createTrigger(schema.tradePaymentsOfTheirTrade);
+        await customStatement(_dropPaymentsForward);
+        await m.createTrigger(schema.tradePaymentsForward);
+        await m.createTrigger(schema.tradePaymentsHashOnce);
+        // A row whose parent is missing stops the step here, at every opening, its copies kept: the version stays 7 and the P2P records unreadable, rather than a file of schema 8 with orphan rows.
+        if (await _breaksAForeignKey()) {
+          throw const P2pSchemaStepRefused('foreign key check');
+        }
+        await customStatement(_dropTradesCopy);
+        await customStatement(_dropTrailsCopy);
+        await customStatement(_dropPaymentsOfSchema7);
+      },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.
     beforeOpen: (details) => customStatement(_foreignKeysOn),
@@ -193,4 +329,26 @@ final class P2pDatabase extends _$P2pDatabase {
         'SELECT 1 FROM pragma_table_info(?) WHERE name = ?',
         variables: [Variable.withString(table), Variable.withString(column)],
       ).get()).isNotEmpty;
+
+  /// Whether the connection enforces foreign keys: anything but SQLite's `0` counts as on.
+  Future<bool> _foreignKeysAreOn() async =>
+      (await customSelect(_foreignKeys).getSingle()).data.values.single != 0;
+
+  /// Whether a row of the file breaks a foreign key: SQLite gives one row per such row, of any table.
+  Future<bool> _breaksAForeignKey() async =>
+      (await customSelect(_foreignKeyCheck).get()).isNotEmpty;
+}
+
+/// A step of the schema that would have left the file wrong and stopped before (schema 8, #176): the foreign keys on before `trades` is dropped, or a row that breaks a foreign key once every row is back.
+///
+/// Thrown by the step, so drift does not write the new version and the next opening runs the step again; an [Exception] of the data layer, which the repositories turn into a `P2pStorageFailure`, as for any database that cannot be opened.
+/// It holds no row and no value of the file, only which check stopped the step.
+final class P2pSchemaStepRefused implements Exception {
+  /// Which check stopped the step.
+  final String check;
+
+  const P2pSchemaStepRefused(this.check);
+
+  @override
+  String toString() => 'P2pSchemaStepRefused($check)';
 }

@@ -13,11 +13,11 @@ import 'p2p_database.dart';
 
 /// The trade records of the robots, and the binding that reserves a robot for a new trade, in the feature's database.
 ///
-/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the key's history and the robot's binding and record for [reserveForNewTrade], the robot's binding, record and key's history for a pending take, the robot's binding and record for a recovered trade, the record's state for its two changes.
+/// Each write is one statement, which SQLite runs atomically, and reads in the same statement everything that decides it: the key's history and the robot's binding and record for [reserveForNewTrade], the robot's binding, record and key's history for a pending take or a pending make, the robot's binding and record for a recovered trade, the record's state for its changes.
 /// So two connections, or two calls on one connection, never reserve one robot twice, record two trades of one robot, or move a closed record.
 /// A pending take needs the [TradeReservation] that only [reserveForNewTrade] gives, when it wrote the robot's binding.
 /// The primary key of `trades` (key fingerprint, robot index) refuses a second record of a robot, its foreign key a record of a robot without a binding on the record's network, and the triggers of `trades.drift` any update but the two times set once, any delete and a second insert of a robot (`INSERT OR REPLACE` included), whatever the code that writes.
-/// The only SQL that changes a row is [_confirmSql] and [_closeSql], on `trades`; nothing deletes a row, and nothing changes a binding (`robot_bindings_architecture_test.dart`).
+/// The only SQL that changes a row is [_confirmSql], [_closeSql], [_confirmMakeSql] and [_closePendingMakeSql], on `trades`; nothing deletes a row, and nothing changes a binding (`robot_bindings_architecture_test.dart`).
 /// No write may run inside a transaction, since a rollback would undo it after it answered success: nothing in the feature opens one (`robot_bindings_architecture_test.dart`).
 /// It returns no row of the database: the domain types only, and a [P2pStorageFailure] for any [Exception] the database or the directory the shell gave throws, and for a row this code never writes.
 /// An [Error] is a bug (AGENTS.md, rule 11) and is not caught.
@@ -80,6 +80,34 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
       'RETURNING *';
 
+  /// Records a pending make, with no order id (schema 8, #176), of a robot bound to that very coordinator on the reservation's network under a key drawn here and still recorded as nothing else, copying the network and the coordinator from the binding; it returns the row only when it wrote it.
+  static const String _recordPendingMakeSql =
+      'INSERT INTO trades (network, key_fingerprint, robot_index, '
+      'coordinator_alias, coordinator_onion, order_id, role, origin, '
+      'taken_at, confirmed_at, closed_at) '
+      "SELECT network, key_fingerprint, robot_index, coordinator_alias, "
+      "coordinator_onion, NULL, ?, 'madeHere', ?, NULL, NULL "
+      'FROM robot_bindings WHERE key_fingerprint = ? AND robot_index = ? '
+      'AND network = ? AND provenance = ? AND coordinator_alias = ? '
+      'AND coordinator_onion = ? AND coordinator_node_keys = ? '
+      'AND coordinator_nostr_key = ? '
+      'AND NOT EXISTS (SELECT 1 FROM garage_key_histories '
+      'WHERE key_fingerprint = ? AND origin <> ?) '
+      'ON CONFLICT (key_fingerprint, robot_index) DO NOTHING '
+      'RETURNING *';
+
+  /// Confirms a pending make with its order id: only the record of that robot and network, of origin `madeHere`, with no order id, neither confirmed nor closed, changes; the triggers refuse it unless the maker's terms are recorded and no other open trade of the coordinator holds the order.
+  static const String _confirmMakeSql =
+      'UPDATE trades SET order_id = ?, confirmed_at = ? WHERE key_fingerprint = ? '
+      "AND robot_index = ? AND network = ? AND origin = 'madeHere' "
+      'AND order_id IS NULL AND confirmed_at IS NULL AND closed_at IS NULL';
+
+  /// Closes a pending make that did not happen: only the record of that robot and network, of origin `madeHere`, with no order id, not closed yet, changes.
+  static const String _closePendingMakeSql =
+      'UPDATE trades SET closed_at = ? WHERE key_fingerprint = ? '
+      "AND robot_index = ? AND network = ? AND origin = 'madeHere' "
+      'AND order_id IS NULL AND closed_at IS NULL';
+
   /// Confirms a pending take: only the record of that robot, network, order and origin, neither confirmed nor closed, changes.
   static const String _confirmSql =
       'UPDATE trades SET confirmed_at = ? WHERE key_fingerprint = ? '
@@ -108,9 +136,16 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
       'ON robot_bindings.key_fingerprint = ? '
       'AND robot_bindings.robot_index = ?';
 
-  /// The active records of one network, oldest first.
+  /// The active records of one network, oldest first: a pending make, which has no order id yet, is not one (schema 8).
   static const String _activeSql =
       'SELECT * FROM trades WHERE network = ? AND closed_at IS NULL '
+      'AND order_id IS NOT NULL '
+      'ORDER BY taken_at, key_fingerprint, robot_index';
+
+  /// The pending makes of one network, oldest first.
+  static const String _pendingMakesSql =
+      "SELECT * FROM trades WHERE network = ? AND origin = 'madeHere' "
+      'AND order_id IS NULL AND closed_at IS NULL '
       'ORDER BY taken_at, key_fingerprint, robot_index';
 
   final P2pDatabase _database;
@@ -279,6 +314,170 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
     }
     return _writtenOrWhyNot(written, robot, coordinator, newTrade: false);
   }
+
+  @override
+  Future<Result<PendingMake, P2pFailure>> recordPendingMake(
+    TradeReservation reservation, {
+    required TradeRole role,
+  }) async {
+    final robot = reservation.robot;
+    final coordinator = reservation.coordinator;
+    // The robot and the coordinator name one network, which the binding must have too.
+    if (coordinator.network != robot.network) {
+      return const Err(RobotNotForNewTradeFailure());
+    }
+    final fingerprint = robot.keyFingerprint.hex;
+    final List<QueryRow> written;
+    try {
+      written = await _database.customWriteReturning(
+        _recordPendingMakeSql,
+        variables: [
+          Variable.withString(_roleValue(role)),
+          Variable.withInt(_clock().millisecondsSinceEpoch),
+          Variable.withString(fingerprint),
+          Variable.withInt(robot.accountIndex),
+          Variable.withString(_networkValue(reservation.network)),
+          Variable.withString(_generated),
+          ..._coordinatorVariables(coordinator),
+          Variable.withString(fingerprint),
+          Variable.withString(_generated),
+        ],
+        updates: {_database.trades},
+        updateKind: UpdateKind.insert,
+      );
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    if (written case [final row]) {
+      return switch (_pendingMakeFrom(row.data, prefix: '')) {
+        final make? => Ok(make),
+        null => const Err(P2pStorageFailure()),
+      };
+    }
+    // Nothing written: why is the pending take's why, which gives a failure whenever no row was written.
+    return switch (await _writtenOrWhyNot(
+      const [],
+      robot,
+      coordinator,
+      newTrade: true,
+    )) {
+      Ok() => const Err(P2pStorageFailure()),
+      Err(:final failure) => Err(failure),
+    };
+  }
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> confirmMake(
+    PendingMake make, {
+    required int orderId,
+  }) async {
+    final fingerprint = make.robot.keyFingerprint.hex;
+    final QueryRow row;
+    try {
+      await _database.customUpdate(
+        _confirmMakeSql,
+        variables: [
+          Variable.withInt(orderId),
+          Variable.withInt(_clock().millisecondsSinceEpoch),
+          Variable.withString(fingerprint),
+          Variable.withInt(make.robot.accountIndex),
+          Variable.withString(_networkValue(make.network)),
+        ],
+        updates: {_database.trades},
+        updateKind: UpdateKind.update,
+      );
+      row = await _robotRow(make.robot);
+    } on Exception {
+      // The triggers refuse an order id without the maker's terms, and one that another open trade of the coordinator holds.
+      return const Err(P2pStorageFailure());
+    }
+    switch (_recordFrom(row.data, prefix: 'trade_')) {
+      case final stored?
+          when stored.robot == make.robot &&
+              stored.origin == TradeOrigin.madeHere:
+        // A make closed since its confirmation is a closed trade; one confirmed with another order is not the make asked.
+        if (stored.closedAt != null) return const Err(TradeClosedFailure());
+        if (stored.orderId != orderId) return const Err(P2pStorageFailure());
+        return Ok(stored);
+      case _:
+        // Still without an order: closed as not made, or a make the database does not hold as given.
+        return switch (_pendingMakeFrom(row.data, prefix: 'trade_')) {
+          PendingMake(:final robot, closedAt: _?) when robot == make.robot =>
+            const Err(TradeClosedFailure()),
+          _ => const Err(P2pStorageFailure()),
+        };
+    }
+  }
+
+  @override
+  Future<Result<PendingMake, P2pFailure>> closePendingMake(
+    PendingMake make,
+  ) async {
+    final fingerprint = make.robot.keyFingerprint.hex;
+    final QueryRow row;
+    try {
+      await _database.customUpdate(
+        _closePendingMakeSql,
+        variables: [
+          Variable.withInt(_clock().millisecondsSinceEpoch),
+          Variable.withString(fingerprint),
+          Variable.withInt(make.robot.accountIndex),
+          Variable.withString(_networkValue(make.network)),
+        ],
+        updates: {_database.trades},
+        updateKind: UpdateKind.update,
+      );
+      row = await _robotRow(make.robot);
+    } on Exception {
+      return const Err(P2pStorageFailure());
+    }
+    return switch (_pendingMakeFrom(row.data, prefix: 'trade_')) {
+      final stored?
+          when stored.robot == make.robot &&
+              stored.coordinatorAlias == make.coordinatorAlias =>
+        Ok(stored),
+      // Confirmed meanwhile, which a close never undoes, or a make the database does not hold as given.
+      _ => const Err(P2pStorageFailure()),
+    };
+  }
+
+  @override
+  Stream<Result<List<PendingMake>, P2pFailure>> watchPendingMakes(
+    RobosatsNetwork network,
+  ) => _database
+      .customSelect(
+        _pendingMakesSql,
+        variables: [Variable.withString(_networkValue(network))],
+        readsFrom: {_database.trades},
+      )
+      .watch()
+      .transform(
+        StreamTransformer<
+          List<QueryRow>,
+          Result<List<PendingMake>, P2pFailure>
+        >.fromHandlers(
+          handleData: (rows, sink) {
+            final makes = <PendingMake>[];
+            for (final row in rows) {
+              switch (_pendingMakeFrom(row.data, prefix: '')) {
+                case final make?:
+                  makes.add(make);
+                case null:
+                  sink.add(const Err(P2pStorageFailure()));
+                  return;
+              }
+            }
+            sink.add(Ok(List.unmodifiable(makes)));
+          },
+          handleError: (error, stackTrace, sink) {
+            if (error is Exception) {
+              sink.add(const Err(P2pStorageFailure()));
+            } else {
+              sink.addError(error, stackTrace);
+            }
+          },
+        ),
+      );
 
   @override
   Future<Result<TradeRecord, P2pFailure>> confirmTake(
@@ -512,11 +711,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         'seller' => TradeRole.seller,
         _ => null,
       };
-      final tradeOrigin = switch (origin) {
-        'takenHere' => TradeOrigin.takenHere,
-        'recovered' => TradeOrigin.recovered,
-        _ => null,
-      };
+      final tradeOrigin = _originFrom(origin);
       final (takenValid, taken) = _timeFrom(takenAt);
       final (confirmedValid, confirmed) = _timeFrom(column('confirmed_at'));
       final (closedValid, closed) = _timeFrom(column('closed_at'));
@@ -531,7 +726,7 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
           index < 0 ||
           index > 2147483647 ||
           orderId <= 0 ||
-          (tradeOrigin == TradeOrigin.recovered && confirmed == null)) {
+          (tradeOrigin != TradeOrigin.takenHere && confirmed == null)) {
         return null;
       }
       return TradeRecord(
@@ -543,6 +738,66 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
         origin: tradeOrigin,
         takenAt: taken,
         confirmedAt: confirmed,
+        closedAt: closed,
+      );
+    }
+    return null;
+  }
+
+  /// The pending make the columns of a row of `trades` make, each named [prefix] then its column, or `null` for any other row: a trade with an order id, one not made here, a confirmed one, or a row this code never writes.
+  static PendingMake? _pendingMakeFrom(
+    Map<String, Object?> data, {
+    required String prefix,
+  }) {
+    Object? column(String name) => data['$prefix$name'];
+    if ((
+          column('network'),
+          column('key_fingerprint'),
+          column('robot_index'),
+          column('coordinator_alias'),
+          column('coordinator_onion'),
+          column('order_id'),
+          column('role'),
+          column('origin'),
+          column('taken_at'),
+          column('confirmed_at'),
+        )
+        case (
+          final String network,
+          final String fingerprint,
+          final int index,
+          final String alias,
+          final String onion,
+          null,
+          final String role,
+          'madeHere',
+          final int takenAt,
+          null,
+        )) {
+      final makeNetwork = _networkFrom(network);
+      final key = GarageKeyFingerprint.stored(fingerprint);
+      final makeRole = switch (role) {
+        'buyer' => TradeRole.buyer,
+        'seller' => TradeRole.seller,
+        _ => null,
+      };
+      final (_, written) = _timeFrom(takenAt);
+      final (closedValid, closed) = _timeFrom(column('closed_at'));
+      if (makeNetwork == null ||
+          key == null ||
+          makeRole == null ||
+          written == null ||
+          !closedValid ||
+          index < 0 ||
+          index > 2147483647) {
+        return null;
+      }
+      return PendingMake(
+        robot: RobotSlot(makeNetwork, key, index),
+        coordinatorAlias: alias,
+        coordinatorOnion: onion,
+        role: makeRole,
+        writtenAt: written,
         closedAt: closed,
       );
     }
@@ -605,8 +860,17 @@ final class TradeRecordRepositoryImpl implements TradeRecordRepository {
   /// The origin as the database stores it.
   static String _originValue(TradeOrigin origin) => switch (origin) {
     TradeOrigin.takenHere => 'takenHere',
+    TradeOrigin.madeHere => 'madeHere',
     TradeOrigin.recovered => 'recovered',
   };
+
+  /// The origin a row stores, or `null` for a value this code never writes.
+  static TradeOrigin? _originFrom(String value) {
+    for (final origin in TradeOrigin.values) {
+      if (_originValue(origin) == value) return origin;
+    }
+    return null;
+  }
 
   /// The side as the database stores it.
   static String _roleValue(TradeRole role) => switch (role) {
