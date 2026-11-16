@@ -689,6 +689,7 @@ sealed class OrderActionFailure extends RobosatsFailure {
 ///
 /// That is [RobotHasActiveOrder] (1000 to 1003), [OrderAmountOutOfRange] (1011), [OrderTakePenalty] (1012), [OrderStatusChanged] (1020), [OrderNotFound] for an order number out of range, which is never sent (a 1042 received after a `POST` comes from the read that follows the action, `api/views.py:542`, and is an [OrderActionOutcomeUnknown]), [OrderWrongPassword] (1045), [OrderRequestRefused] without a code (the empty `400` of the form check), [RobotCredentialsRejected] (7000, 7003, `401`, `403`), [RobotUnknown] (7001), [OrderReadElsewhere], [CoordinatorNotOnNetwork] and [CoordinatorTransportBusy], which a transport gives only before it sends a request that is not a `GET`.
 /// For a payout, also every [PayoutRefused] and [OrderNotParticipant] (1047).
+/// For a make, also [OrderBookFull] (1037), [OrderSizeRefused] (1004 to 1009), [OrderLocationRefused] (1010), and [OrderRequestRefused] with 1038 or 1039; for a pause, also [TradeActionNotMaker] (1032), [TradeActionNotNow] (1033) and [OrderNotParticipant] (1047): see `CoordinatorClient.makeOrder` and `pauseOrder`.
 final class OrderActionRefused extends OrderActionFailure {
   @override
   final CoordinatorFailure cause;

@@ -177,17 +177,17 @@ void main() {
         '🐂' * 71,
         ' SEPA',
         'SEPA ',
-        ' SEPA',
-        'SEPA　',
+        '\u00a0SEPA',
+        'SEPA\u3000',
         'SEPA\tRevolut',
         'SEPA\nRevolut',
         'SEPA\u0000',
         'SEPA\u007f',
         'SEPA\u0085',
-        'SEPA ',
-        'SEPA ‮Revolut',
-        'SEPA ⁦Revolut',
-        'SEPA‏',
+        'SEPA\u2028',
+        'SEPA \u202eRevolut',
+        'SEPA \u2066Revolut',
+        'SEPA\u200f',
         'SEPA\ud800',
       ]) {
         expect(request(paymentMethod: text), isNull, reason: jsonEncode(text));
@@ -262,7 +262,7 @@ void main() {
         'line\nbreak',
         'tab\there',
         'nul\u0000',
-        'bidi‮',
+        'bidi\u202e',
         'lone\udc00',
       ]) {
         expect(request(description: text), isNull, reason: jsonEncode(text));
