@@ -15,6 +15,7 @@ import '../../presentation/trade_cubit.dart';
 import '../../presentation/trade_l10n.dart';
 import '../widgets/trade_button.dart';
 import '../widgets/word_fit_text.dart';
+import 'chat_actions.dart';
 import 'confirm_collab_cancel_dialog.dart';
 import 'confirm_dispute_dialog.dart';
 import 'confirm_fiat_sent_dialog.dart';
@@ -58,6 +59,9 @@ class ChatStepPanel extends StatefulWidget {
   /// The chat of the trade (#93, `ChatPanel`), where the reference puts it: between the prompt's text and the action buttons; `null` where the feature holds no robot, and the step is shown without it.
   final Widget? chat;
 
+  /// « Audit Chat » and « Export » of « Order options » (#157), built when « … » is pressed, over the cubit of [chat]; `null` with it, and « Order options » is shown without them.
+  final ChatOptions Function()? chatOptions;
+
   const ChatStepPanel({
     super.key,
     required this.seen,
@@ -72,6 +76,7 @@ class ChatStepPanel extends StatefulWidget {
     this.offersDispute = false,
     required this.now,
     this.chat,
+    this.chatOptions,
   });
 
   @override
@@ -201,8 +206,12 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     seen,
   ) async {
     final status = seen.status;
+    final chatOptions = widget.chatOptions?.call();
     final chosen = await OrderOptionsDialog.show(
       context,
+      // First, as the reference places them: the chat's « Audit Chat » and « Export ».
+      auditChat: chatOptions?.auditChat,
+      export: chatOptions?.export,
       collaborativeCancel: collaborativeCancel,
       // « Open Dispute » where the status shown offers it, with its time; not drawn otherwise.
       disputeOpensAt:

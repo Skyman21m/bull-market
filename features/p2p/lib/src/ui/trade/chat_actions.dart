@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show PgpPublicKey;
 import 'package:screen_privacy/screen_privacy.dart';
@@ -11,6 +12,23 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../presentation/chat_cubit.dart';
 import '../coordinator_details_dialog.dart';
 import '../widgets/trade_button.dart';
+import 'chat_panel.dart';
+
+/// « Audit Chat » and « Export » of « Order options » (#157), for the chat of a shown trade.
+typedef ChatOptions = ({Widget auditChat, Widget export});
+
+/// Builds [ChatOptions] for the chat of [request], from a context under the trade page's [ChatCubit]: the route gives it, as it gives the chat panel.
+typedef ChatOptionsBuilder =
+    ChatOptions Function(BuildContext context, ChatPanelRequest request);
+
+/// [ChatOptions] over the trade page's [ChatCubit], the very one the chat panel shows: no second watch of the chat, no second decryption; « Export » and « Don't trust, verify » give what that cubit's chat holds.
+ChatOptions chatOptionsOf(BuildContext context, ChatPanelRequest request) {
+  final cubit = context.read<ChatCubit>();
+  return (
+    auditChat: ChatAuditButton(cubit: cubit, coordinator: request.coordinator),
+    export: ChatExportButton(cubit: cubit),
+  );
+}
 
 /// Copies [text] to the clipboard, as the official client does on a phone; whether it was written.
 Future<bool> _copy(String text) async {
@@ -22,7 +40,7 @@ Future<bool> _copy(String text) async {
   }
 }
 
-/// « Audit Chat » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx`, commit ff1998c): opens « Don't trust, verify ». The dialog of the chat step's options (#95) places it; the chat panel does not show it.
+/// « Audit Chat » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx`, commit ff1998c): opens « Don't trust, verify ». « Order options » of the chat step (#95) places it first ([chatOptionsOf], #157); the chat panel does not show it.
 class ChatAuditButton extends StatelessWidget {
   final ChatCubit cubit;
 
@@ -66,7 +84,7 @@ class _CopiedLine extends StatelessWidget {
   );
 }
 
-/// « Export » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx:288`): on a phone the reference copies `complete_log_chat_<order id>.json` to the clipboard (`utils/saveFile.ts`), and so does this button: the keys, the encrypted private key, its passphrase, which is the robot's token, and the messages (the owner's choice, as the reference). The dialog of the chat step's options (#95) places it.
+/// « Export » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx:288`): on a phone the reference copies `complete_log_chat_<order id>.json` to the clipboard (`utils/saveFile.ts`), and so does this button: the keys, the encrypted private key, its passphrase, which is the robot's token, and the messages (the owner's choice, as the reference). « Order options » of the chat step (#95) places it second ([chatOptionsOf], #157).
 class ChatExportButton extends StatefulWidget {
   final ChatCubit cubit;
 
