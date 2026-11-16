@@ -129,39 +129,42 @@ void main() {
       }
     });
 
-    test('a range from 1.5 to 15 times its minimum, the coordinator\'s nominal bounds, each bound a valid amount', () {
-      for (final (min, max) in [
-        (100.0, 150.0),
-        (100.0, 1500.0),
-        (100.0, 300.0),
-        (0.1, 0.16),
-        (0.1, 1.5),
-      ]) {
-        expect(
-          request(amount: testRange(min, max)),
-          isNotNull,
-          reason: '$min-$max',
-        );
-      }
-      for (final (min, max) in [
-        (100.0, 149.99),
-        (100.0, 100.0),
-        (100.0, 1500.01),
-        (100.0, 3000.0),
-        (100.0, 1e10),
-        (0.000000001, 0.000000002),
-        // A bound that is no amount the coordinator stores, the ratio valid: the minimum, then the maximum.
-        (100.000000001, 200.0),
-        (100.0, 200.000000001),
-        (1e9, 1e10),
-      ]) {
-        expect(
-          request(amount: testRange(min, max)),
-          isNull,
-          reason: '$min-$max',
-        );
-      }
-    });
+    test(
+      'a range from 1.5 to 15 times its minimum, the coordinator\'s nominal bounds, each bound a valid amount',
+      () {
+        for (final (min, max) in [
+          (100.0, 150.0),
+          (100.0, 1500.0),
+          (100.0, 300.0),
+          (0.1, 0.16),
+          (0.1, 1.5),
+        ]) {
+          expect(
+            request(amount: testRange(min, max)),
+            isNotNull,
+            reason: '$min-$max',
+          );
+        }
+        for (final (min, max) in [
+          (100.0, 149.99),
+          (100.0, 100.0),
+          (100.0, 1500.01),
+          (100.0, 3000.0),
+          (100.0, 1e10),
+          (0.000000001, 0.000000002),
+          // A bound that is no amount the coordinator stores, the ratio valid: the minimum, then the maximum.
+          (100.000000001, 200.0),
+          (100.0, 200.000000001),
+          (1e9, 1e10),
+        ]) {
+          expect(
+            request(amount: testRange(min, max)),
+            isNull,
+            reason: '$min-$max',
+          );
+        }
+      },
+    );
 
     test('a payment method of 1 to 70 code points of clean text', () {
       for (final text in [
