@@ -1201,6 +1201,21 @@ class RobotCoordinatorCubit {
       'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
     );
     expect(database.constants['_dropPayments'], 'DROP TABLE trade_payments');
+    // Every string constant of the database, each value as written: the rebuild's statement that writes rows (`_restorePayments`) copies the payments' own columns from their copy back into `trade_payments`, and nowhere else; a new constant, or another value, fails here (security review of #172).
+    expect(database.constants, {
+      '_foreignKeysOn': 'PRAGMA foreign_keys = ON',
+      'fileName': 'p2p.sqlite',
+      '_payments': 'trade_payments',
+      '_paymentsCopy': 'trade_payments_of_schema6',
+      '_dropPaymentsCopy': 'DROP TABLE IF EXISTS trade_payments_of_schema6',
+      '_copyPayments':
+          'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
+      '_dropPayments': 'DROP TABLE trade_payments',
+      '_restorePayments':
+          'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id) '
+          'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments_of_schema6 AS copy '
+          'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step)',
+    });
     expect(_paymentsRebuildDrops, {
       database.constants['_dropPaymentsCopy'],
       database.constants['_dropPayments'],
