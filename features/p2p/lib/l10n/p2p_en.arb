@@ -3615,6 +3615,24 @@
       }
     }
   },
+  "p2pEndStatementLaterNoContacts": "Bull Market cannot send a dispute statement yet. Contact {coordinator} with the information to identify your order.",
+  "@p2pEndStatementLaterNoContacts": {
+    "description": "Not in the RoboSats texts: the project's own: « p2pEndStatementLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRewardsLaterNoContacts": "Bull Market cannot claim rewards yet: contact {coordinator}.",
+  "@p2pEndRewardsLaterNoContacts": {
+    "description": "Not in the RoboSats texts: the project's own: « p2pEndRewardsLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
   "p2pEndOrderId": "Order ID: {id}",
   "@p2pEndOrderId": {
     "description": "Not in the RoboSats texts: the project's own: at 11 and 16, the order's number to give the coordinator, which the reference asks to save (#95).",

@@ -1158,9 +1158,13 @@ class _DisputePrompt extends StatelessWidget {
       ),
       _ => coordinatorName,
     };
+    // The project's lines point to the contacts below only when there are some: a coordinator missing from the app's list has none (review of #156).
     final lines = switch (prompt) {
       TradePrompt.disputeOpen => [
-        l10n.p2pEndStatementLater(coordinatorName),
+        if (contact != null)
+          l10n.p2pEndStatementLater(coordinatorName)
+        else
+          l10n.p2pEndStatementLaterNoContacts(coordinatorName),
         l10n.p2pEndDisputeSaveInfoPeer,
       ],
       TradePrompt.disputeWaitPeer => [
@@ -1173,7 +1177,10 @@ class _DisputePrompt extends StatelessWidget {
       ],
       TradePrompt.disputeWon => [
         l10n.p2pEndDisputeWinner(email),
-        l10n.p2pEndRewardsLater(coordinatorName),
+        if (contact != null)
+          l10n.p2pEndRewardsLater(coordinatorName)
+        else
+          l10n.p2pEndRewardsLaterNoContacts(coordinatorName),
       ],
       _ => [l10n.p2pEndDisputeLoser(email)],
     };

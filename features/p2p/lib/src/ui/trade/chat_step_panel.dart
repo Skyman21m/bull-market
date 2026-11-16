@@ -104,8 +104,6 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
 
   /// Whether [chatStep]'s notice is not « Open Dispute » refused as too early by its fresh read, or is still true: that refusal goes once the dispute's time has come by the status shown, which a new read may move, as « Open Dispute » turns on in « Order options » at that very time (review of #156); the panel is rebuilt then. The coordinator's own 1054 is not judged by this device's clock, which already said the time had come when it was sent: it goes as the other notices go.
   bool _tooEarlyStillTrue(ChatStepState chatStep) {
-    _disputeOpens?.cancel();
-    _disputeOpens = null;
     final tooEarly = switch (chatStep) {
       ChatStepIdle(notice: ChatStepWasRefused(refusal: ChatStepTooEarly())) =>
         true,
@@ -238,6 +236,9 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
 
   @override
   Widget build(BuildContext context) {
+    // The timer of a « too early » notice lives no longer than the build that shows it: armed again below while that notice is still shown (review of #156).
+    _disputeOpens?.cancel();
+    _disputeOpens = null;
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);

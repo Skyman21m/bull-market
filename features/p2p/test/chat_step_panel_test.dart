@@ -1756,13 +1756,17 @@ void main() {
         final dispute = await agreed(tester, now: () => clock);
         final opensAt = tradeNow.add(const Duration(hours: 12));
         dispute.gate?.complete(
-          Err(ChatStepTooEarly(opensAt, const Duration(hours: 12))),
+          Err(
+            ChatStepTooEarly(
+              opensAt,
+              const Duration(hours: 12),
+              seen: _seen['nineLater'],
+              record: _record,
+            ),
+          ),
         );
         await _settleDialog(tester);
-        // The fresh read the use case kept, as the watch then shows it.
-        _lastWatch!.emit(_watched('nineLater'));
-        await tester.pump();
-        await tester.pump();
+        // Shown with the fresh read the refusal carries, before the watch reads again, which may fail (review of #156).
         const tooEarly =
             'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
         expect(find.textContaining(tooEarly), findsOneWidget);
@@ -1833,6 +1837,50 @@ void main() {
             'its answer lost',
             () => Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
             'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
+          ),
+          // The five others (review of #156).
+          (
+            'not offered by the status seen',
+            () => const Err(ChatStepNotOffered()),
+            'Wait until the order is read again. The dispute was not opened.',
+          ),
+          (
+            'the fresh read shows another status',
+            () => Err(ChatStepStatusMoved(_seen['tenDisputable']!)),
+            'The trade moved on: the dispute was not opened.',
+          ),
+          (
+            'never sent, the transport busy',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seen['nineDisputable']!,
+                cause: const CoordinatorTransportBusy(),
+              ),
+            ),
+            'Too many requests are waiting for this coordinator. Try again in a moment. The dispute was not opened.',
+          ),
+          (
+            'never sent, the coordinator off the network',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seen['nineDisputable']!,
+                cause: const CoordinatorNotOnNetwork(),
+              ),
+            ),
+            'Temple of Sats is offline: the dispute was not opened.',
+          ),
+          (
+            'refused by the coordinator (1047)',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seen['nineDisputable']!,
+                cause: const OrderNotParticipant(),
+              ),
+            ),
+            'Temple of Sats did not open the dispute.',
           ),
         ]) {
       testWidgets(
@@ -1991,6 +2039,47 @@ void main() {
           // Nothing to press: no action of the chat step, no « … ».
           expect(find.byIcon(Icons.more_horiz), findsNothing);
           expect(find.byType(TradeButton), findsNothing);
+        },
+      );
+    }
+
+    // A coordinator missing from the app's list, a status kept from no order: no contact to show, so none is said to be below (review of #156).
+    for (final (name, text) in [
+      (
+        'eleven',
+        'Bull Market cannot send a dispute statement yet. Contact gone with the information to identify your order.',
+      ),
+      ('seventeen', 'Bull Market cannot claim rewards yet: contact gone.'),
+    ]) {
+      testWidgets(
+        '$name, the coordinator not in the app\'s list: no « contacts below » (review of #156)',
+        (tester) async {
+          final watch = _Watch();
+          await _show(tester, watch: watch);
+          final gone = TradeRecord(
+            robot: _record.robot,
+            coordinatorAlias: 'gone',
+            coordinatorOnion: _record.coordinatorOnion,
+            orderId: _record.orderId,
+            role: _record.role,
+            origin: _record.origin,
+            takenAt: _record.takenAt,
+            confirmedAt: _record.confirmedAt,
+            closedAt: null,
+          );
+          watch.emit(
+            TradeWatchStatus(
+              gone,
+              TradeSeen(_seen[name]!.status, order: null),
+              takePending: false,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          await _reveal(tester, find.text(text));
+          expect(find.text(text), findsOneWidget);
+          expect(find.textContaining('contacts below'), findsNothing);
+          expect(find.byType(CoordinatorContacts), findsNothing);
         },
       );
     }

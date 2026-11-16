@@ -103,7 +103,13 @@ final class ChatStepTooEarly extends ChatStepRefusal {
   /// How long was left then, by this device's clock.
   final Duration left;
 
-  const ChatStepTooEarly(this.opensAt, this.left);
+  /// The fresh read that refused it, when it is that read's (the chat's end moved later since the status shown): the screen shows it with the refusal, as for [ChatStepStatusMoved] (review of #156); `null` for a refusal from the status shown, before any read.
+  final TradeSeen? seen;
+
+  /// The trade's record as that read left it.
+  final TradeRecord? record;
+
+  const ChatStepTooEarly(this.opensAt, this.left, {this.seen, this.record});
 }
 
 /// The status seen does not offer the action ([ChatStepAction.offeredAt]): it comes from no order read, is not marked stored, or is another status or role.

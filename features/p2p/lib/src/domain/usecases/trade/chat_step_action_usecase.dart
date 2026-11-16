@@ -229,7 +229,15 @@ final class ChatStepActionUsecase {
       return Err(ChatStepStatusMoved(fresh, record: current.record));
     }
     if (_tooEarly(action, fresh) case final opensAt?) {
-      return Err(ChatStepTooEarly(opensAt, opensAt.difference(_reader.now())));
+      // With the fresh read, which the screen shows with the refusal (review of #156).
+      return Err(
+        ChatStepTooEarly(
+          opensAt,
+          opensAt.difference(_reader.now()),
+          seen: fresh,
+          record: current.record,
+        ),
+      );
     }
 
     // Sent once: never again by this use case, whatever the outcome.
