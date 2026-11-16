@@ -1809,15 +1809,18 @@ void main() {
     );
 
     for (final (what, outcome, text)
-        in <(String, Result<ChatStepOutcome, ChatStepRefusal>, String)>[
+        in <
+          (String, Result<ChatStepOutcome, ChatStepRefusal> Function(), String)
+        >[
           (
             'the fresh read failed (Tor)',
-            const Err(ChatStepReadFailed(cause: CoordinatorUnreachable())),
+            () =>
+                const Err(ChatStepReadFailed(cause: CoordinatorUnreachable())),
             'The order could not be read again from Temple of Sats: the dispute was not opened.',
           ),
           (
             'refused as not now (1013)',
-            Ok(
+            () => Ok(
               ChatStepNotDone(
                 _record,
                 _seen['thirteen']!,
@@ -1828,7 +1831,7 @@ void main() {
           ),
           (
             'its answer lost',
-            Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
+            () => Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
             'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
           ),
         ]) {
@@ -1836,7 +1839,7 @@ void main() {
         '$what: the dispute named, open, not open or not known (review of #156)',
         (tester) async {
           final dispute = await agreed(tester);
-          dispute.gate?.complete(outcome);
+          dispute.gate?.complete(outcome());
           await _settleDialog(tester);
           expect(find.text(text), findsOneWidget);
           expect(find.textContaining('confirmation'), findsNothing);
