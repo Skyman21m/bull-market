@@ -2636,4 +2636,85 @@ class P2pLocalizationsHy extends P2pLocalizations {
   @override
   String get p2pEndDisputeUnknown =>
       'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.';
+
+  @override
+  String get p2pEndRateTrade => 'Rate your trade experience';
+
+  @override
+  String p2pEndRateStar(String stars) {
+    return '$stars of 5';
+  }
+
+  @override
+  String get p2pEndYourTxid => 'Your TXID';
+
+  @override
+  String get p2pEndCopyTxid => 'Copy the TXID';
+
+  @override
+  String get p2pEndSendingCoins => 'Sending coins';
+
+  @override
+  String get p2pEndCopyAddress => 'Copy the address';
+
+  @override
+  String get p2pSummaryTitle => 'Trade Summary';
+
+  @override
+  String get p2pSummaryExport => 'Export trade summary';
+
+  @override
+  String get p2pSummaryExportCopyFailed =>
+      'The trade summary could not be copied.';
+
+  @override
+  String get p2pSummaryUserRole => 'User role';
+
+  @override
+  String get p2pSummarySent => 'Sent';
+
+  @override
+  String get p2pSummaryReceived => 'Received';
+
+  @override
+  String get p2pSummaryBtcReceived => 'BTC received';
+
+  @override
+  String get p2pSummaryBtcSent => 'BTC sent';
+
+  @override
+  String get p2pSummaryTradeFee => 'Trade fee';
+
+  @override
+  String p2pSummarySats(String sats) {
+    return '$sats Sats';
+  }
+
+  @override
+  String p2pSummarySatsPercent(String sats, String percent) {
+    return '$sats Sats ($percent%)';
+  }
+
+  @override
+  String get p2pSummaryOnchainSwapFee => 'Onchain swap fee';
+
+  @override
+  String get p2pSummaryMakerBond => 'Maker bond';
+
+  @override
+  String get p2pSummaryUnlocked => 'Unlocked';
+
+  @override
+  String get p2pSummaryRevenue => 'Coordinator trade revenue';
+
+  @override
+  String get p2pSummaryRoutingBudget => 'Routing budget';
+
+  @override
+  String p2pSummaryRate(String rate, String currencyCode) {
+    return '$rate $currencyCode/BTC';
+  }
+
+  @override
+  String get p2pSummaryContractRate => 'Contract exchange rate';
 }

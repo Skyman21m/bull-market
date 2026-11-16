@@ -138,6 +138,27 @@ final class P2pFormats {
     _locale,
   )..maximumFractionDigits = 8).format(sats);
 
+  /// A number of the trade summary as the official client writes it with `pn` (`utils/prettyNumbers.ts`): every decimal the coordinator gave, no rounding, with the separators of the language where `pn` always writes « 1,234.5 ».
+  String summaryNumber(double value) => (NumberFormat.decimalPattern(
+    _locale,
+  )..maximumFractionDigits = 8).format(value);
+
+  /// The trade fee's percent of the trade summary, from the fraction the coordinator gives: `parseFloat((fraction * 100).toPrecision(3))` (`TradeBox/TradeSummary.tsx`), so `0.00175` is `0.175`.
+  String summaryFeePercent(double fraction) =>
+      summaryNumber(double.parse((fraction * 100).toStringAsPrecision(3)));
+
+  /// The contract's price of the trade summary: `pn(rate.toPrecision(7))` (`TradeBox/TradeSummary.tsx`), 7 significant digits with their trailing zeros, `91234.50` for 91234.5.
+  String summaryRate(double rate) {
+    final precise = rate.toStringAsPrecision(7);
+    if (precise.contains('e')) return summaryNumber(double.parse(precise));
+    final dot = precise.indexOf('.');
+    final decimals = dot < 0 ? 0 : precise.length - dot - 1;
+    return (NumberFormat.decimalPattern(_locale)
+          ..minimumFractionDigits = decimals
+          ..maximumFractionDigits = decimals)
+        .format(double.parse(precise));
+  }
+
   /// A count, such as the number of public orders of a coordinator.
   String count(int count) => NumberFormat.decimalPattern(_locale).format(count);
 

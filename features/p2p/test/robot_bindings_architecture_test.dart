@@ -361,18 +361,16 @@ void main() {
       expect(referring((r) => r == 'request CoordinatorClient.postChat'), {
         '${_tradeUseCases}send_chat_message_usecase.dart',
       });
-      // The chat step's actions (#95): one use case, which reads and sends under the order's lock.
-      for (final member in ['confirmFiat', 'undoConfirmFiat', 'openDispute']) {
+      // The chat step's actions and the rating at 14 (#95): one use case, which reads and sends under the order's lock.
+      for (final member in [
+        'confirmFiat',
+        'undoConfirmFiat',
+        'openDispute',
+        'ratePlatform',
+      ]) {
         expect(referring((r) => r == 'request CoordinatorClient.$member'), {
           '${_tradeUseCases}chat_step_action_usecase.dart',
         }, reason: member);
-      }
-      for (final member in ['ratePlatform']) {
-        expect(
-          referring((r) => r == 'request CoordinatorClient.$member'),
-          isEmpty,
-          reason: member,
-        );
       }
       for (final path in referring((r) => r.startsWith('request '))) {
         if (!path.startsWith(_tradeUseCases)) continue;
@@ -392,6 +390,7 @@ void main() {
               'request CoordinatorClient.confirmFiat',
               'request CoordinatorClient.undoConfirmFiat',
               'request CoordinatorClient.openDispute',
+              'request CoordinatorClient.ratePlatform',
             }),
           ),
           reason: path,

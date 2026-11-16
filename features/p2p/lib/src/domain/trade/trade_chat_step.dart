@@ -9,7 +9,7 @@ import 'trade_status.dart';
 import 'trade_storable.dart';
 import 'trade_watch.dart';
 
-/// An action of the chat step (9 and 10) that `ChatStepActionUsecase` sends, one per button of the reference's `TradeBox/Prompts/Chat.tsx` this slice brings (#95).
+/// An action of the trade that `ChatStepActionUsecase` sends: one per button of the reference's `TradeBox/Prompts/Chat.tsx` at the chat step (9 and 10), and the rating of `Prompts/Successful.tsx` once the trade is finished (14) (#95).
 enum ChatStepAction {
   /// « Confirm {{amount}} {{currencyCode}} sent »: the buyer's « fiat sent », 9 → 10 (`Logics.confirm_fiat`, `api/logics.py:1686-1735`).
   confirmFiatSent,
@@ -18,7 +18,10 @@ enum ChatStepAction {
   undoFiatSent,
 
   /// « Open Dispute »: either side opens a dispute at 9 or 10, not earlier than 18 hours before the chat's end (`Logics.open_dispute`, `api/logics.py:485-533`: 1013 outside 9 and 10, 1054 too early); the escrow and both bonds go to the coordinator at once.
-  dispute;
+  dispute,
+
+  /// « Rate your trade experience »: the buyer's stars at 14 (`rate_platform`, `TradeBox/Prompts/Successful.tsx`; `Logics.rate_platform`, `api/logics.py:1786-1789`, keeps the robot's latest rating whatever the status). Each tap of a star sends once, as the reference sends each change of its stars.
+  rate;
 
   /// When « Open Dispute » becomes possible at [status]: the chat's end less `CoordinatorClient.disputeWindow` (18 hours, a constant of the reference's code), as the reference's prompt computes it (`Prompts/Chat.tsx:100-104`).
   static DateTime disputeOpensAt(Chatting status) =>
@@ -46,6 +49,14 @@ enum ChatStepAction {
           (seen.order?.status == CoordinatorOrderStatus.sendingFiat ||
               seen.order?.status == CoordinatorOrderStatus.fiatSent) &&
           seen.status is Chatting,
+    // The buyer at 14, where the reference shows its stars to a buyer (`TradeBox/index.tsx:631-650`).
+    ChatStepAction.rate =>
+      seen.stored &&
+          seen.order?.status == CoordinatorOrderStatus.successful &&
+          switch (seen.status) {
+            Succeeded(role: TradeRole.buyer) => true,
+            _ => false,
+          },
   };
 
   /// Whether [seen] shows this action as recorded already: « fiat sent » at 10, or past it once the seller confirmed (13, 14, 15). A request that landed late, after the read that followed it, is found this way by the next tap's fresh read: nothing is sent again, and the action is done.
@@ -70,6 +81,8 @@ enum ChatStepAction {
       DisputeLost() => true,
       _ => false,
     },
+    // The order says nothing of a rating: never found recorded by a read, so each tap sends once.
+    ChatStepAction.rate => false,
   };
 }
 

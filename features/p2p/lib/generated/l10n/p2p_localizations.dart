@@ -4242,6 +4242,150 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.'**
   String get p2pEndDisputeUnknown;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): above the buyer's five stars at 14, which send `rate_platform` (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Rate your trade experience'**
+  String get p2pEndRateTrade;
+
+  /// Not in the RoboSats texts: the project's own: what a screen reader says of each star of « Rate your trade experience », whose reference (MUI `Rating`) reads its own label (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{stars} of 5'**
+  String p2pEndRateStar(String stars);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): the buyer paid on chain, its transaction in the mempool or confirmed; the button beside it copies the transaction id (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Your TXID'**
+  String get p2pEndYourTxid;
+
+  /// Not in the RoboSats texts: the project's own: the spoken name of the copy button beside « Your TXID », an icon only in the reference (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the TXID'**
+  String get p2pEndCopyTxid;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): the buyer's on-chain payout waits in the coordinator's queue. Its French is ours: `fr.json` leaves it in English (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sending coins'**
+  String get p2pEndSendingCoins;
+
+  /// Not in the RoboSats texts: the project's own: the spoken name of the copy button beside « Sending coins », which copies the payout's address, an icon only in the reference (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the address'**
+  String get p2pEndCopyAddress;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Trade Summary'**
+  String get p2pSummaryTitle;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): the tooltip, and the spoken name, of the button that copies the summary as JSON, as the reference does on a phone (`utils/saveFile.ts`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Export trade summary'**
+  String get p2pSummaryExport;
+
+  /// Not in the RoboSats texts: the project's own: the clipboard refused the export of the trade summary (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade summary could not be copied.'**
+  String get p2pSummaryExportCopyFailed;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'User role'**
+  String get p2pSummaryUserRole;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): under the fiat the buyer sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get p2pSummarySent;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): under the fiat the seller received (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Received'**
+  String get p2pSummaryReceived;
+
+  /// The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'BTC received'**
+  String get p2pSummaryBtcReceived;
+
+  /// The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'BTC sent'**
+  String get p2pSummaryBtcSent;
+
+  /// The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Trade fee'**
+  String get p2pSummaryTradeFee;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`{{miningFeeSats}} Sats`, `{{revenueSats}} Sats`, `{{routingFeeSats}} Sats`, and the received or sent sats, `TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{sats} Sats'**
+  String p2pSummarySats(String sats);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`{{tradeFeeSats}} Sats ({{tradeFeePercent}}%)`, `{{swapFeeSats}} Sats ({{swapFeePercent}}%)`, `{{bondSats}} Sats ({{bondPercent}}%)`, `TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{sats} Sats ({percent}%)'**
+  String p2pSummarySatsPercent(String sats, String percent);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Onchain swap fee'**
+  String get p2pSummaryOnchainSwapFee;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Maker bond'**
+  String get p2pSummaryMakerBond;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): beside each side's bond (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked'**
+  String get p2pSummaryUnlocked;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Coordinator trade revenue'**
+  String get p2pSummaryRevenue;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Routing budget'**
+  String get p2pSummaryRoutingBudget;
+
+  /// The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c): the contract's price, written in its code (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{rate} {currencyCode}/BTC'**
+  String p2pSummaryRate(String rate, String currencyCode);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Contract exchange rate'**
+  String get p2pSummaryContractRate;
 }
 
 class _P2pLocalizationsDelegate

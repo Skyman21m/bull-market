@@ -3706,5 +3706,127 @@
   "p2pEndDisputeUnknown": "Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.",
   "@p2pEndDisputeUnknown": {
     "description": "Not in the RoboSats texts: the project's own: the answer to « Open Dispute » was lost and the read after does not show it yet; never sent again by itself (#95)."
+  },
+  "p2pEndRateTrade": "Rate your trade experience",
+  "@p2pEndRateTrade": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): above the buyer's five stars at 14, which send `rate_platform` (#95)."
+  },
+  "p2pEndRateStar": "{stars} of 5",
+  "@p2pEndRateStar": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of each star of « Rate your trade experience », whose reference (MUI `Rating`) reads its own label (#95).",
+    "placeholders": {
+      "stars": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndYourTxid": "Your TXID",
+  "@p2pEndYourTxid": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): the buyer paid on chain, its transaction in the mempool or confirmed; the button beside it copies the transaction id (#95)."
+  },
+  "p2pEndCopyTxid": "Copy the TXID",
+  "@p2pEndCopyTxid": {
+    "description": "Not in the RoboSats texts: the project's own: the spoken name of the copy button beside « Your TXID », an icon only in the reference (#95)."
+  },
+  "p2pEndSendingCoins": "Sending coins",
+  "@p2pEndSendingCoins": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`Prompts/Successful.tsx`): the buyer's on-chain payout waits in the coordinator's queue. Its French is ours: `fr.json` leaves it in English (#95)."
+  },
+  "p2pEndCopyAddress": "Copy the address",
+  "@p2pEndCopyAddress": {
+    "description": "Not in the RoboSats texts: the project's own: the spoken name of the copy button beside « Sending coins », which copies the payout's address, an icon only in the reference (#95)."
+  },
+  "p2pSummaryTitle": "Trade Summary",
+  "@p2pSummaryTitle": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummaryExport": "Export trade summary",
+  "@p2pSummaryExport": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): the tooltip, and the spoken name, of the button that copies the summary as JSON, as the reference does on a phone (`utils/saveFile.ts`) (#95)."
+  },
+  "p2pSummaryExportCopyFailed": "The trade summary could not be copied.",
+  "@p2pSummaryExportCopyFailed": {
+    "description": "Not in the RoboSats texts: the project's own: the clipboard refused the export of the trade summary (#95)."
+  },
+  "p2pSummaryUserRole": "User role",
+  "@p2pSummaryUserRole": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummarySent": "Sent",
+  "@p2pSummarySent": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): under the fiat the buyer sent (#95)."
+  },
+  "p2pSummaryReceived": "Received",
+  "@p2pSummaryReceived": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): under the fiat the seller received (#95)."
+  },
+  "p2pSummaryBtcReceived": "BTC received",
+  "@p2pSummaryBtcReceived": {
+    "description": "The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95)."
+  },
+  "p2pSummaryBtcSent": "BTC sent",
+  "@p2pSummaryBtcSent": {
+    "description": "The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95)."
+  },
+  "p2pSummaryTradeFee": "Trade fee",
+  "@p2pSummaryTradeFee": {
+    "description": "The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c), written in English in its code with no entry in `en.json`; its French is ours (#95)."
+  },
+  "p2pSummarySats": "{sats} Sats",
+  "@p2pSummarySats": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`{{miningFeeSats}} Sats`, `{{revenueSats}} Sats`, `{{routingFeeSats}} Sats`, and the received or sent sats, `TradeBox/TradeSummary.tsx`) (#95).",
+    "placeholders": {
+      "sats": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSummarySatsPercent": "{sats} Sats ({percent}%)",
+  "@p2pSummarySatsPercent": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`{{tradeFeeSats}} Sats ({{tradeFeePercent}}%)`, `{{swapFeeSats}} Sats ({{swapFeePercent}}%)`, `{{bondSats}} Sats ({{bondPercent}}%)`, `TradeBox/TradeSummary.tsx`) (#95).",
+    "placeholders": {
+      "sats": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSummaryOnchainSwapFee": "Onchain swap fee",
+  "@p2pSummaryOnchainSwapFee": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummaryMakerBond": "Maker bond",
+  "@p2pSummaryMakerBond": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummaryUnlocked": "Unlocked",
+  "@p2pSummaryUnlocked": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`): beside each side's bond (#95)."
+  },
+  "p2pSummaryRevenue": "Coordinator trade revenue",
+  "@p2pSummaryRevenue": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummaryRoutingBudget": "Routing budget",
+  "@p2pSummaryRoutingBudget": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
+  },
+  "p2pSummaryRate": "{rate} {currencyCode}/BTC",
+  "@p2pSummaryRate": {
+    "description": "The official client's text (`TradeBox/TradeSummary.tsx` at commit ff1998c): the contract's price, written in its code (#95).",
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pSummaryContractRate": "Contract exchange rate",
+  "@p2pSummaryContractRate": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c), with its French (`fr.json`) (`TradeBox/TradeSummary.tsx`) (#95)."
   }
 }

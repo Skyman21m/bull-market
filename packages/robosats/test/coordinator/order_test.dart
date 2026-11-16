@@ -685,35 +685,41 @@ void main() {
       expect(pending.peerAskedToCancel, isTrue);
     });
 
-    test('the summary of a successful buyer: its side, the peer\'s and the contract', () async {
-      final order = await read(_answer(14));
-      final summary = order.summary ?? fail('no summary');
-      final own = summary.own;
-      expect(summary.isMaker, isFalse);
-      expect(summary.taker, same(own));
-      expect(own.isBuyer, isTrue);
-      expect(own.fiatAmount, 150);
-      expect(own.receivedSats, Sats.fromInt(164126));
-      expect(own.sentSats, isNull);
-      expect(own.tradeFeeSats, 288);
-      expect(own.tradeFeeFraction, 0.00175);
-      expect(own.bondSats, Sats.fromInt(4932));
-      expect(own.bondPercent, 3);
-      expect(own.paymentHash, 'f' * 64);
-      expect(own.preimage, 'processing');
-      expect(own.isSwap, isFalse);
-      final peer = summary.maker ?? fail('no peer');
-      expect(peer, same(summary.peer));
-      expect(peer.isBuyer, isFalse);
-      expect(peer.sentSats, Sats.fromInt(164702));
-      expect(peer.fiatAmount, 150);
-      expect(peer.tradeFeeFraction, 0.00025);
-      expect(summary.contractExchangeRate, 91234.56);
-      expect(summary.contractTimestamp, DateTime.utc(2026, 11, 13, 8, 3));
-      expect(summary.contractTotalTime, const Duration(milliseconds: 1234500));
-      expect(summary.routingBudgetSats, 0.0);
-      expect(summary.tradeRevenueSats, 576);
-    });
+    test(
+      'the summary of a successful buyer: its side, the peer\'s and the contract',
+      () async {
+        final order = await read(_answer(14));
+        final summary = order.summary ?? fail('no summary');
+        final own = summary.own;
+        expect(summary.isMaker, isFalse);
+        expect(summary.taker, same(own));
+        expect(own.isBuyer, isTrue);
+        expect(own.fiatAmount, 150);
+        expect(own.receivedSats, Sats.fromInt(164126));
+        expect(own.sentSats, isNull);
+        expect(own.tradeFeeSats, 288);
+        expect(own.tradeFeeFraction, 0.00175);
+        expect(own.bondSats, Sats.fromInt(4932));
+        expect(own.bondPercent, 3);
+        expect(own.paymentHash, 'f' * 64);
+        expect(own.preimage, 'processing');
+        expect(own.isSwap, isFalse);
+        final peer = summary.maker ?? fail('no peer');
+        expect(peer, same(summary.peer));
+        expect(peer.isBuyer, isFalse);
+        expect(peer.sentSats, Sats.fromInt(164702));
+        expect(peer.fiatAmount, 150);
+        expect(peer.tradeFeeFraction, 0.00025);
+        expect(summary.contractExchangeRate, 91234.56);
+        expect(summary.contractTimestamp, DateTime.utc(2026, 11, 13, 8, 3));
+        expect(
+          summary.contractTotalTime,
+          const Duration(milliseconds: 1234500),
+        );
+        expect(summary.routingBudgetSats, 0.0);
+        expect(summary.tradeRevenueSats, 576);
+      },
+    );
 
     test('the summary of a successful seller', () async {
       final summary = (await read(_answer(14, buyer: false))).summary;

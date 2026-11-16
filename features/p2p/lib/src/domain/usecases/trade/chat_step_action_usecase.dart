@@ -14,7 +14,7 @@ import 'trade_read_order.dart';
 import 'trade_reader.dart';
 import 'trade_take_locks.dart';
 
-/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]).
+/// Sends the actions of the chat step of a trade (9 and 10) that the user tapped, as the reference's `TradeBox/Prompts/Chat.tsx` offers them (#95, design note § 2.4): « Confirm {{amount}} {{currencyCode}} sent » ([confirmFiatSent]), « Payment failed? » ([undoFiatSent]) and « Open Dispute » ([startDispute]); and, once the trade is finished, « Rate your trade experience » ([rate], `Prompts/Successful.tsx`).
 ///
 /// Each action, in this order, each step only once the one before it succeeded:
 /// 1. the status the user saw offers the action ([ChatStepAction.offeredAt]: marked stored, from an order read, the right role and status) and is this trade's; the trade is opened from its records ([TradeReader.open]);
@@ -80,6 +80,24 @@ final class ChatStepActionUsecase {
     onProgress: onProgress,
     send: (identity, lastRead) =>
         _client.openDispute(identity: identity, lastRead: lastRead),
+  );
+
+  /// « Rate your trade experience » for the trade of [record] at [seen] (14, the buyer), the status the screen showed when the user tapped the [rating]'s star: the same steps and outcomes as [confirmFiatSent]; the order never shows a rating, so a tap is never found done before it is sent.
+  Future<Result<ChatStepOutcome, ChatStepRefusal>> rate(
+    TradeRecord record,
+    TradeSeen seen,
+    PlatformRating rating, {
+    void Function(ChatStepProgress step)? onProgress,
+  }) => _run(
+    ChatStepAction.rate,
+    record,
+    seen,
+    onProgress: onProgress,
+    send: (identity, lastRead) => _client.ratePlatform(
+      identity: identity,
+      lastRead: lastRead,
+      rating: rating,
+    ),
   );
 
   Future<Result<ChatStepOutcome, ChatStepRefusal>> _run(

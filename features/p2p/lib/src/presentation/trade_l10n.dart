@@ -246,7 +246,8 @@ extension ChatStepNoticeL10n on ChatStepNotice {
       required String dispute,
     }) => switch (action) {
       ChatStepAction.confirmFiatSent => confirmation,
-      ChatStepAction.undoFiatSent => request,
+      // A rating is a request too: « Rate your trade experience » says nothing when it is done, as the reference.
+      ChatStepAction.undoFiatSent || ChatStepAction.rate => request,
       ChatStepAction.dispute => dispute,
     };
     final movedOn = said(
@@ -345,9 +346,8 @@ extension ChatStepProgressL10n on ChatStepProgress? {
       ChatStepProgress.readingOrder => l10n.p2pPayoutStepReading(coordinator),
       ChatStepProgress.sending => switch (action) {
         ChatStepAction.confirmFiatSent => l10n.p2pEndStepSending(coordinator),
-        ChatStepAction.undoFiatSent => l10n.p2pEndStepSendingRequest(
-          coordinator,
-        ),
+        ChatStepAction.undoFiatSent ||
+        ChatStepAction.rate => l10n.p2pEndStepSendingRequest(coordinator),
         ChatStepAction.dispute => l10n.p2pEndStepSendingDispute(coordinator),
       },
       ChatStepProgress.readingAfter => l10n.p2pPayoutStepReadingAfter(
