@@ -397,6 +397,135 @@
     },
     {
       "id": 7,
+      "references": [
+        1
+      ],
+      "type": "table",
+      "data": {
+        "name": "trade_chat_nostr_pins",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key_fingerprint",
+            "getter_name": "keyFingerprint",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "robot_index",
+            "getter_name": "robotIndex",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "peer_key",
+            "getter_name": "peerKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "own_key",
+            "getter_name": "ownKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (robot_index BETWEEN 0 AND 2147483647)",
+          "CHECK (length(peer_key) = 64 AND peer_key NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*')",
+          "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text')",
+          "FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)"
+        ],
+        "explicit_pk": [
+          "key_fingerprint",
+          "robot_index"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_chat_nostr_pins_never_deleted",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the Nostr keys of a trade are kept');\nEND;"
+      }
+    },
+    {
+      "id": 9,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_chat_nostr_pins_never_changed",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins\nBEGIN\n  SELECT RAISE(ABORT, 'the Nostr keys of a trade never change');\nEND;"
+      }
+    },
+    {
+      "id": 10,
+      "references": [
+        7
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7
+        ],
+        "name": "trade_chat_nostr_pins_inserted_once",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins\nWHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
+      }
+    },
+    {
+      "id": 11,
+      "references": [
+        7,
+        1
+      ],
+      "type": "trigger",
+      "data": {
+        "on": 7,
+        "references_in_body": [
+          7,
+          1
+        ],
+        "name": "trade_chat_nostr_pins_of_their_trade",
+        "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins\nWHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a Nostr pin of no open trade');\nEND;"
+      }
+    },
+    {
+      "id": 12,
       "references": [],
       "type": "table",
       "data": {
@@ -458,7 +587,7 @@
       }
     },
     {
-      "id": 8,
+      "id": 13,
       "references": [
         1
       ],
@@ -671,7 +800,7 @@
       }
     },
     {
-      "id": 9,
+      "id": 14,
       "references": [
         1
       ],
@@ -876,7 +1005,7 @@
       }
     },
     {
-      "id": 10,
+      "id": 15,
       "references": [
         1
       ],
@@ -966,71 +1095,71 @@
       }
     },
     {
-      "id": 11,
+      "id": 16,
       "references": [
-        10
+        15
       ],
       "type": "trigger",
       "data": {
-        "on": 10,
+        "on": 15,
         "references_in_body": [
-          10
+          15
         ],
         "name": "trade_payments_never_deleted",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_never_deleted BEFORE DELETE ON trade_payments\nBEGIN\n  SELECT RAISE(ABORT, 'the payment of a trade is kept');\nEND;"
       }
     },
     {
-      "id": 12,
+      "id": 17,
       "references": [
-        10
+        15
       ],
       "type": "trigger",
       "data": {
-        "on": 10,
+        "on": 15,
         "references_in_body": [
-          10
+          15
         ],
         "name": "trade_payments_inserted_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_inserted_once BEFORE INSERT ON trade_payments\nWHEN EXISTS (SELECT 1 FROM trade_payments WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND step = NEW.step)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
       }
     },
     {
-      "id": 13,
+      "id": 18,
       "references": [
-        10,
+        15,
         1,
-        9
+        14
       ],
       "type": "trigger",
       "data": {
-        "on": 10,
+        "on": 15,
         "references_in_body": [
-          10,
+          15,
           1,
-          9
+          14
         ],
         "name": "trade_payments_of_their_trade",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_of_their_trade BEFORE INSERT ON trade_payments\nWHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_trails ON trade_trails.key_fingerprint = trades.key_fingerprint AND trade_trails.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a payment of no open trade');\nEND;"
       }
     },
     {
-      "id": 14,
+      "id": 19,
       "references": [
-        10
+        15
       ],
       "type": "trigger",
       "data": {
-        "on": 10,
+        "on": 15,
         "references_in_body": [
-          10
+          15
         ],
         "name": "trade_payments_forward",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.step IS NOT OLD.step\n  OR NEW.payment_hash IS NOT OLD.payment_hash\n  OR NEW.started_at < OLD.started_at\nBEGIN\n  SELECT RAISE(ABORT, 'a payment only moves forward');\nEND;"
       }
     },
     {
-      "id": 15,
+      "id": 20,
       "references": [
         1
       ],
@@ -1045,61 +1174,61 @@
       }
     },
     {
-      "id": 16,
+      "id": 21,
       "references": [
-        8
+        13
       ],
       "type": "trigger",
       "data": {
-        "on": 8,
+        "on": 13,
         "references_in_body": [
-          8
+          13
         ],
         "name": "trade_terms_never_deleted",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_never_deleted BEFORE DELETE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are kept');\nEND;"
       }
     },
     {
-      "id": 17,
+      "id": 22,
       "references": [
-        8
+        13
       ],
       "type": "trigger",
       "data": {
-        "on": 8,
+        "on": 13,
         "references_in_body": [
-          8
+          13
         ],
         "name": "trade_terms_set_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_set_once BEFORE UPDATE ON trade_terms\nBEGIN\n  SELECT RAISE(ABORT, 'the terms of a trade are set once');\nEND;"
       }
     },
     {
-      "id": 18,
+      "id": 23,
       "references": [
-        8
+        13
       ],
       "type": "trigger",
       "data": {
-        "on": 8,
+        "on": 13,
         "references_in_body": [
-          8
+          13
         ],
         "name": "trade_terms_inserted_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_terms_inserted_once BEFORE INSERT ON trade_terms\nWHEN EXISTS (SELECT 1 FROM trade_terms WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
       }
     },
     {
-      "id": 19,
+      "id": 24,
       "references": [
-        8,
+        13,
         1
       ],
       "type": "trigger",
       "data": {
-        "on": 8,
+        "on": 13,
         "references_in_body": [
-          8,
+          13,
           1
         ],
         "name": "trade_terms_of_their_trade",
@@ -1107,65 +1236,65 @@
       }
     },
     {
-      "id": 20,
+      "id": 25,
       "references": [
-        9
+        14
       ],
       "type": "trigger",
       "data": {
-        "on": 9,
+        "on": 14,
         "references_in_body": [
-          9
+          14
         ],
         "name": "trade_trails_never_deleted",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_never_deleted BEFORE DELETE ON trade_trails\nBEGIN\n  SELECT RAISE(ABORT, 'the trail of a trade is kept');\nEND;"
       }
     },
     {
-      "id": 21,
+      "id": 26,
       "references": [
-        9
+        14
       ],
       "type": "trigger",
       "data": {
-        "on": 9,
+        "on": 14,
         "references_in_body": [
-          9
+          14
         ],
         "name": "trade_trails_inserted_once",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_inserted_once BEFORE INSERT ON trade_trails\nWHEN EXISTS (SELECT 1 FROM trade_trails WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)\nBEGIN\n  SELECT RAISE(IGNORE);\nEND;"
       }
     },
     {
-      "id": 22,
+      "id": 27,
       "references": [
-        9,
+        14,
         1,
-        8
+        13
       ],
       "type": "trigger",
       "data": {
-        "on": 9,
+        "on": 14,
         "references_in_body": [
-          9,
+          14,
           1,
-          8
+          13
         ],
         "name": "trade_trails_of_their_trade",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_of_their_trade BEFORE INSERT ON trade_trails\nWHEN NOT EXISTS (SELECT 1 FROM trades JOIN trade_terms ON trade_terms.key_fingerprint = trades.key_fingerprint AND trade_terms.robot_index = trades.robot_index WHERE trades.key_fingerprint = NEW.key_fingerprint AND trades.robot_index = NEW.robot_index AND trades.network = NEW.network AND trades.coordinator_alias = NEW.coordinator_alias AND trades.order_id = NEW.order_id AND trades.role = NEW.role AND trades.closed_at IS NULL)\nBEGIN\n  SELECT RAISE(ABORT, 'a trail of no open trade');\nEND;"
       }
     },
     {
-      "id": 23,
+      "id": 28,
       "references": [
-        9,
+        14,
         1
       ],
       "type": "trigger",
       "data": {
-        "on": 9,
+        "on": 14,
         "references_in_body": [
-          9,
+          14,
           1
         ],
         "name": "trade_trails_closed",
@@ -1173,22 +1302,22 @@
       }
     },
     {
-      "id": 24,
+      "id": 29,
       "references": [
-        9
+        14
       ],
       "type": "trigger",
       "data": {
-        "on": 9,
+        "on": 14,
         "references_in_body": [
-          9
+          14
         ],
         "name": "trade_trails_forward",
         "sql": "CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails\nWHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint\n  OR NEW.robot_index IS NOT OLD.robot_index\n  OR NEW.network IS NOT OLD.network\n  OR NEW.coordinator_alias IS NOT OLD.coordinator_alias\n  OR NEW.order_id IS NOT OLD.order_id\n  OR NEW.role IS NOT OLD.role\n  OR NEW.version < OLD.version\n  OR NEW.read_at < OLD.read_at\n  OR NEW.breached < OLD.breached\n  OR NEW.history_unknown IS NOT OLD.history_unknown\n  OR (OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)\n  OR (OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash)\n  OR (OLD.bond_step_seen_at IS NOT NULL AND (NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))\n  OR (OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)\n  OR (OLD.position IN ('succeeded', 'makerLostDispute', 'takerLostDispute', 'expired', 'cancelled', 'publicAgain', 'notAvailable') AND NEW.position IS NOT OLD.position)\nBEGIN\n  SELECT RAISE(ABORT, 'a trail only moves forward');\nEND;"
       }
     },
     {
-      "id": 25,
+      "id": 30,
       "references": [
         0
       ],
@@ -1202,7 +1331,7 @@
       }
     },
     {
-      "id": 26,
+      "id": 31,
       "references": [
         1
       ],
@@ -1217,7 +1346,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 32,
       "references": [
         1
       ],
@@ -1232,7 +1361,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 33,
       "references": [
         1
       ],
@@ -1308,6 +1437,51 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'a pin of no open trade');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"trade_chat_nostr_pins\" (\"key_fingerprint\" TEXT NOT NULL, \"robot_index\" INTEGER NOT NULL, \"peer_key\" TEXT NOT NULL, \"own_key\" TEXT NOT NULL, PRIMARY KEY (\"key_fingerprint\", \"robot_index\"), CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*'), CHECK (robot_index BETWEEN 0 AND 2147483647), CHECK (length(peer_key) = 64 AND peer_key NOT GLOB '*[^0-9a-f]*'), CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*'), CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text'), FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index));"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_never_deleted",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, 'the Nostr keys of a trade are kept');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_never_changed",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, 'the Nostr keys of a trade never change');END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_inserted_once",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END"
+        }
+      ]
+    },
+    {
+      "name": "trade_chat_nostr_pins_of_their_trade",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, 'a Nostr pin of no open trade');END"
         }
       ]
     },

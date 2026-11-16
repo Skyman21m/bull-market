@@ -1,4 +1,4 @@
--- The rules of the peer's keys pinned for the trades' chats that the database keeps itself (schema 6, #139): see `StoredTradeChatPins` in `p2p_tables.dart`.
+-- The rules of the peer's keys pinned for the trades' chats, PGP and Nostr, that the database keeps itself (schema 6, #139, part of #159): see `StoredTradeChatPins` and `StoredTradeChatNostrPins` in `p2p_tables.dart`.
 import 'p2p_tables.dart';
 
 -- A pin is never deleted: it is how a restart knows the key it pinned.
@@ -25,4 +25,27 @@ CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON tra
 WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'a pin of no open trade');
+END;
+
+-- The Nostr pins, kept as the PGP pins are.
+CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins
+BEGIN
+  SELECT RAISE(ABORT, 'the Nostr keys of a trade are kept');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins
+BEGIN
+  SELECT RAISE(ABORT, 'the Nostr keys of a trade never change');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins
+WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins
+WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a Nostr pin of no open trade');
 END;

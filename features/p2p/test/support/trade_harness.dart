@@ -432,6 +432,7 @@ final class TradeHarness {
         relays,
         Federation.robosats,
         Random(7),
+        pins,
       ),
     );
   }
@@ -534,6 +535,7 @@ final class TradeHarness {
       relays,
       Federation.robosats,
       Random(7),
+      pins,
     );
     watch = WatchTradeUsecase(
       reader,
@@ -733,8 +735,15 @@ final class TestPins implements TradeChatPinRepository {
   bool refuseReads = false;
   bool refuseWrites = false;
 
+  /// Refuses the reads or the writes of the Nostr pins only (part of #159).
+  bool refuseNostrReads = false;
+  bool refuseNostrWrites = false;
+
   /// How many pins were asked to be kept.
   int keeps = 0;
+
+  /// How many Nostr pins were asked to be kept.
+  int nostrKeeps = 0;
 
   /// Runs before each pin is kept, when set: another write meanwhile.
   Future<void> Function()? beforeKeep;
@@ -756,6 +765,22 @@ final class TestPins implements TradeChatPinRepository {
     await beforeKeep?.call();
     if (refuseWrites) return const Err(P2pStorageFailure());
     return _pins.keep(trade, pin);
+  }
+
+  @override
+  Future<Result<ChatNostrPin?, P2pFailure>> nostrPinOf(TradeRecord trade) =>
+      refuseNostrReads
+      ? Future.value(const Err(P2pStorageFailure()))
+      : _pins.nostrPinOf(trade);
+
+  @override
+  Future<Result<bool, P2pFailure>> keepNostr(
+    TradeRecord trade,
+    ChatNostrPin pin,
+  ) async {
+    nostrKeeps++;
+    if (refuseNostrWrites) return const Err(P2pStorageFailure());
+    return _pins.keepNostr(trade, pin);
   }
 }
 

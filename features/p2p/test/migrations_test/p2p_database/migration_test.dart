@@ -1204,6 +1204,9 @@ void main() {
       final database = P2pDatabase.open(() async => directory);
       expect(await versionOf(database), P2pDatabase.schema);
       await database.customStatement('DROP TABLE IF EXISTS trade_chat_pins');
+      await database.customStatement(
+        'DROP TABLE IF EXISTS trade_chat_nostr_pins',
+      );
       await database.customStatement('DROP TABLE IF EXISTS trade_payments');
       await database.customStatement('PRAGMA user_version = 4');
       await database.close();
@@ -1305,7 +1308,7 @@ void main() {
       await database.close();
     });
 
-    // Schema 6 (#139): the fingerprints of the peer's key each trade's chat pinned.
+    // Schema 6 (#139, part of #159): the fingerprints of the peer's key each trade's chat pinned, and the Nostr keys of its first Nostr copy.
 
     /// The schema 6 objects of [database], by name, compared as [objectsOf] compares them.
     Future<Map<String, String>> pinObjectsOf(
@@ -1314,7 +1317,7 @@ void main() {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name = 'trade_chat_pins'",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND tbl_name IN ('trade_chat_pins', 'trade_chat_nostr_pins')",
               )
               .get())
         row.read<String>('name'): row
@@ -1323,7 +1326,7 @@ void main() {
             .replaceAll(RegExp(r'\s+'), ''),
     };
 
-    /// A file of schema 5 with rows, in a directory of its own that the test deletes: the file of schema 3 migrated, then brought back to schema 5 by dropping what schema 6 adds (the table of the pins takes its triggers with it).
+    /// A file of schema 5 with rows, in a directory of its own that the test deletes: the file of schema 3 migrated, then brought back to schema 5 by dropping what schema 6 adds (the tables of the pins take their triggers with them).
     ///
     /// Each call writes a new directory, so that no turn of a loop rewrites a file that a connection of the turn before may still hold (#144).
     Future<Directory> writeSchema5() async {
@@ -1339,13 +1342,16 @@ void main() {
       final database = P2pDatabase.open(() async => own);
       expect(await versionOf(database), P2pDatabase.schema);
       await database.customStatement('DROP TABLE IF EXISTS trade_chat_pins');
+      await database.customStatement(
+        'DROP TABLE IF EXISTS trade_chat_nostr_pins',
+      );
       await database.customStatement('PRAGMA user_version = 5');
       await database.close();
       return own;
     }
 
     test(
-      'a file of schema 5 keeps every row and gains the empty table of the pins, as a new file has it',
+      'a file of schema 5 keeps every row and gains the empty tables of the pins, as a new file has it',
       () async {
         final freshDirectory = await Directory.systemTemp.createTemp(
           'p2p-fresh-',
@@ -1371,6 +1377,12 @@ void main() {
         );
         expect(
           await migrated.customSelect('SELECT * FROM trade_chat_pins').get(),
+          isEmpty,
+        );
+        expect(
+          await migrated
+              .customSelect('SELECT * FROM trade_chat_nostr_pins')
+              .get(),
           isEmpty,
         );
         await migrated.close();
@@ -1434,6 +1446,32 @@ void main() {
             "INSERT INTO trade_chat_pins (key_fingerprint, robot_index, primary_fingerprint, subkey_fingerprint) VALUES (?, ?, ?, ?)";
         final first = 'A' * 40;
         final other = 'B' * 40;
+        // Only fingerprints, as text: 40 uppercase hexadecimal characters each. Robot 1's trade is open and has no pin yet, so that the CHECK refuses these and not a trigger.
+        for (final bad in [
+          ['a' * 40, other],
+          ['A' * 39, other],
+          ['A' * 41, other],
+          ['G' * 40, other],
+          [first, 'b' * 40],
+          [first, 'B' * 39],
+        ]) {
+          await expectLater(
+            database.customStatement(pin, [drawn.hex, 1, bad[0], bad[1]]),
+            throwsA(
+              predicate((error) => '$error'.contains('CHECK constraint failed')),
+            ),
+            reason: '$bad',
+          );
+        }
+        await expectLater(
+          database.customStatement(
+            "INSERT INTO trade_chat_pins VALUES (?, 1, CAST('$first' AS BLOB), ?)",
+            [drawn.hex, other],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('CHECK constraint failed')),
+          ),
+        );
         // Robot 1's trade is open, robot 2's closed (schema 3's rows).
         await database.customStatement(pin, [drawn.hex, 1, first, other]);
         await database.customStatement(pin, [drawn.hex, 1, other, other]);
@@ -1467,10 +1505,77 @@ void main() {
             predicate((error) => '$error'.contains('a pin of no open trade')),
           ),
         );
-        // Only fingerprints: 40 uppercase hexadecimal characters.
+        await database.close();
+      },
+    );
+
+    test(
+      'a Nostr pin is written once, never changed nor deleted, only for an open trade, and holds two Nostr public keys only',
+      () async {
+        final own = await writeSchema5();
+        final database = P2pDatabase.open(() async => own);
+        const pin =
+            'INSERT INTO trade_chat_nostr_pins (key_fingerprint, robot_index, peer_key, own_key) VALUES (?, ?, ?, ?)';
+        final first = 'a' * 64;
+        final other = 'b' * 64;
+        for (final bad in [
+          ['A' * 64, other],
+          ['a' * 63, other],
+          ['a' * 65, other],
+          ['g' * 64, other],
+          [first, 'B' * 64],
+          [first, 'b' * 63],
+        ]) {
+          await expectLater(
+            database.customStatement(pin, [drawn.hex, 1, bad[0], bad[1]]),
+            throwsA(
+              predicate((error) => '$error'.contains('CHECK constraint failed')),
+            ),
+            reason: '$bad',
+          );
+        }
         await expectLater(
-          database.customStatement(pin, [drawn.hex, 0, 'a' * 40, other]),
-          throwsA(anything),
+          database.customStatement(
+            "INSERT INTO trade_chat_nostr_pins VALUES (?, 1, CAST('$first' AS BLOB), ?)",
+            [drawn.hex, other],
+          ),
+          throwsA(
+            predicate((error) => '$error'.contains('CHECK constraint failed')),
+          ),
+        );
+        await database.customStatement(pin, [drawn.hex, 1, first, other]);
+        await database.customStatement(pin, [drawn.hex, 1, other, other]);
+        final rows = await database
+            .customSelect('SELECT peer_key FROM trade_chat_nostr_pins')
+            .get();
+        expect(rows.single.read<String>('peer_key'), first);
+        await expectLater(
+          database.customStatement(
+            'UPDATE trade_chat_nostr_pins SET peer_key = ?',
+            [other],
+          ),
+          throwsA(
+            predicate(
+              (error) =>
+                  '$error'.contains('the Nostr keys of a trade never change'),
+            ),
+          ),
+        );
+        await expectLater(
+          database.customStatement('DELETE FROM trade_chat_nostr_pins'),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('the Nostr keys of a trade are kept'),
+            ),
+          ),
+        );
+        await expectLater(
+          database.customStatement(pin, [drawn.hex, 2, first, other]),
+          throwsA(
+            predicate(
+              (error) => '$error'.contains('a Nostr pin of no open trade'),
+            ),
+          ),
         );
         await database.close();
       },
@@ -1493,13 +1598,18 @@ const _schema3Objects = [
   'trades_inserted_once',
 ];
 
-/// The objects schema 6 adds, in the order of its step from 5: the pins of the trades' chats and their four triggers.
+/// The objects schema 6 adds, in the order of its step from 5: the PGP pins of the trades' chats and their four triggers, then the Nostr pins and theirs.
 const _schema6Objects = [
   'trade_chat_pins',
   'trade_chat_pins_never_deleted',
   'trade_chat_pins_never_changed',
   'trade_chat_pins_inserted_once',
   'trade_chat_pins_of_their_trade',
+  'trade_chat_nostr_pins',
+  'trade_chat_nostr_pins_never_deleted',
+  'trade_chat_nostr_pins_never_changed',
+  'trade_chat_nostr_pins_inserted_once',
+  'trade_chat_nostr_pins_of_their_trade',
 ];
 
 /// The objects schema 5 adds, in the order of its step from 4: the payments of the trades' invoices and their four triggers.

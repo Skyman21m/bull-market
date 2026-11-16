@@ -407,6 +407,7 @@ final class P2pLocator {
         relays(),
         Federation.robosats,
         Random.secure(),
+        locator(),
       ),
     );
     // The screens of the trades (#88), their only callers: the take of an order of the book, in two steps (#119), one trade shown, and the list of the active trades of a network.

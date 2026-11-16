@@ -1363,6 +1363,291 @@ class TradeChatPinsCompanion extends UpdateCompanion<TradeChatPinsData> {
   }
 }
 
+class TradeChatNostrPins extends Table
+    with TableInfo<TradeChatNostrPins, TradeChatNostrPinsData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TradeChatNostrPins(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> keyFingerprint = GeneratedColumn<String>(
+    'key_fingerprint',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> robotIndex = GeneratedColumn<int>(
+    'robot_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> peerKey = GeneratedColumn<String>(
+    'peer_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> ownKey = GeneratedColumn<String>(
+    'own_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    keyFingerprint,
+    robotIndex,
+    peerKey,
+    ownKey,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'trade_chat_nostr_pins';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {keyFingerprint, robotIndex};
+  @override
+  TradeChatNostrPinsData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TradeChatNostrPinsData(
+      keyFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key_fingerprint'],
+      )!,
+      robotIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}robot_index'],
+      )!,
+      peerKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_key'],
+      )!,
+      ownKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}own_key'],
+      )!,
+    );
+  }
+
+  @override
+  TradeChatNostrPins createAlias(String alias) {
+    return TradeChatNostrPins(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(key_fingerprint, robot_index)',
+    'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+    'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+    'CHECK(length(peer_key) = 64 AND peer_key NOT GLOB \'*[^0-9a-f]*\')',
+    'CHECK(length(own_key) = 64 AND own_key NOT GLOB \'*[^0-9a-f]*\')',
+    'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(peer_key) = \'text\' AND typeof(own_key) = \'text\')',
+    'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class TradeChatNostrPinsData extends DataClass
+    implements Insertable<TradeChatNostrPinsData> {
+  final String keyFingerprint;
+  final int robotIndex;
+  final String peerKey;
+  final String ownKey;
+  const TradeChatNostrPinsData({
+    required this.keyFingerprint,
+    required this.robotIndex,
+    required this.peerKey,
+    required this.ownKey,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key_fingerprint'] = Variable<String>(keyFingerprint);
+    map['robot_index'] = Variable<int>(robotIndex);
+    map['peer_key'] = Variable<String>(peerKey);
+    map['own_key'] = Variable<String>(ownKey);
+    return map;
+  }
+
+  TradeChatNostrPinsCompanion toCompanion(bool nullToAbsent) {
+    return TradeChatNostrPinsCompanion(
+      keyFingerprint: Value(keyFingerprint),
+      robotIndex: Value(robotIndex),
+      peerKey: Value(peerKey),
+      ownKey: Value(ownKey),
+    );
+  }
+
+  factory TradeChatNostrPinsData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TradeChatNostrPinsData(
+      keyFingerprint: serializer.fromJson<String>(json['keyFingerprint']),
+      robotIndex: serializer.fromJson<int>(json['robotIndex']),
+      peerKey: serializer.fromJson<String>(json['peerKey']),
+      ownKey: serializer.fromJson<String>(json['ownKey']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'keyFingerprint': serializer.toJson<String>(keyFingerprint),
+      'robotIndex': serializer.toJson<int>(robotIndex),
+      'peerKey': serializer.toJson<String>(peerKey),
+      'ownKey': serializer.toJson<String>(ownKey),
+    };
+  }
+
+  TradeChatNostrPinsData copyWith({
+    String? keyFingerprint,
+    int? robotIndex,
+    String? peerKey,
+    String? ownKey,
+  }) => TradeChatNostrPinsData(
+    keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+    robotIndex: robotIndex ?? this.robotIndex,
+    peerKey: peerKey ?? this.peerKey,
+    ownKey: ownKey ?? this.ownKey,
+  );
+  TradeChatNostrPinsData copyWithCompanion(TradeChatNostrPinsCompanion data) {
+    return TradeChatNostrPinsData(
+      keyFingerprint: data.keyFingerprint.present
+          ? data.keyFingerprint.value
+          : this.keyFingerprint,
+      robotIndex: data.robotIndex.present
+          ? data.robotIndex.value
+          : this.robotIndex,
+      peerKey: data.peerKey.present ? data.peerKey.value : this.peerKey,
+      ownKey: data.ownKey.present ? data.ownKey.value : this.ownKey,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TradeChatNostrPinsData(')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('robotIndex: $robotIndex, ')
+          ..write('peerKey: $peerKey, ')
+          ..write('ownKey: $ownKey')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(keyFingerprint, robotIndex, peerKey, ownKey);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TradeChatNostrPinsData &&
+          other.keyFingerprint == this.keyFingerprint &&
+          other.robotIndex == this.robotIndex &&
+          other.peerKey == this.peerKey &&
+          other.ownKey == this.ownKey);
+}
+
+class TradeChatNostrPinsCompanion
+    extends UpdateCompanion<TradeChatNostrPinsData> {
+  final Value<String> keyFingerprint;
+  final Value<int> robotIndex;
+  final Value<String> peerKey;
+  final Value<String> ownKey;
+  final Value<int> rowid;
+  const TradeChatNostrPinsCompanion({
+    this.keyFingerprint = const Value.absent(),
+    this.robotIndex = const Value.absent(),
+    this.peerKey = const Value.absent(),
+    this.ownKey = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TradeChatNostrPinsCompanion.insert({
+    required String keyFingerprint,
+    required int robotIndex,
+    required String peerKey,
+    required String ownKey,
+    this.rowid = const Value.absent(),
+  }) : keyFingerprint = Value(keyFingerprint),
+       robotIndex = Value(robotIndex),
+       peerKey = Value(peerKey),
+       ownKey = Value(ownKey);
+  static Insertable<TradeChatNostrPinsData> custom({
+    Expression<String>? keyFingerprint,
+    Expression<int>? robotIndex,
+    Expression<String>? peerKey,
+    Expression<String>? ownKey,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (keyFingerprint != null) 'key_fingerprint': keyFingerprint,
+      if (robotIndex != null) 'robot_index': robotIndex,
+      if (peerKey != null) 'peer_key': peerKey,
+      if (ownKey != null) 'own_key': ownKey,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TradeChatNostrPinsCompanion copyWith({
+    Value<String>? keyFingerprint,
+    Value<int>? robotIndex,
+    Value<String>? peerKey,
+    Value<String>? ownKey,
+    Value<int>? rowid,
+  }) {
+    return TradeChatNostrPinsCompanion(
+      keyFingerprint: keyFingerprint ?? this.keyFingerprint,
+      robotIndex: robotIndex ?? this.robotIndex,
+      peerKey: peerKey ?? this.peerKey,
+      ownKey: ownKey ?? this.ownKey,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (keyFingerprint.present) {
+      map['key_fingerprint'] = Variable<String>(keyFingerprint.value);
+    }
+    if (robotIndex.present) {
+      map['robot_index'] = Variable<int>(robotIndex.value);
+    }
+    if (peerKey.present) {
+      map['peer_key'] = Variable<String>(peerKey.value);
+    }
+    if (ownKey.present) {
+      map['own_key'] = Variable<String>(ownKey.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TradeChatNostrPinsCompanion(')
+          ..write('keyFingerprint: $keyFingerprint, ')
+          ..write('robotIndex: $robotIndex, ')
+          ..write('peerKey: $peerKey, ')
+          ..write('ownKey: $ownKey, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class GarageKeyHistories extends Table
     with TableInfo<GarageKeyHistories, GarageKeyHistoriesData> {
   @override
@@ -3607,6 +3892,23 @@ class DatabaseAtV6 extends GeneratedDatabase {
     'CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a pin of no open trade\');END',
     'trade_chat_pins_of_their_trade',
   );
+  late final TradeChatNostrPins tradeChatNostrPins = TradeChatNostrPins(this);
+  late final Trigger tradeChatNostrPinsNeverDeleted = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, \'the Nostr keys of a trade are kept\');END',
+    'trade_chat_nostr_pins_never_deleted',
+  );
+  late final Trigger tradeChatNostrPinsNeverChanged = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, \'the Nostr keys of a trade never change\');END',
+    'trade_chat_nostr_pins_never_changed',
+  );
+  late final Trigger tradeChatNostrPinsInsertedOnce = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_chat_nostr_pins_inserted_once',
+  );
+  late final Trigger tradeChatNostrPinsOfTheirTrade = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a Nostr pin of no open trade\');END',
+    'trade_chat_nostr_pins_of_their_trade',
+  );
   late final GarageKeyHistories garageKeyHistories = GarageKeyHistories(this);
   late final TradeTerms tradeTerms = TradeTerms(this);
   late final TradeTrails tradeTrails = TradeTrails(this);
@@ -3695,6 +3997,11 @@ class DatabaseAtV6 extends GeneratedDatabase {
     tradeChatPinsNeverChanged,
     tradeChatPinsInsertedOnce,
     tradeChatPinsOfTheirTrade,
+    tradeChatNostrPins,
+    tradeChatNostrPinsNeverDeleted,
+    tradeChatNostrPinsNeverChanged,
+    tradeChatNostrPinsInsertedOnce,
+    tradeChatNostrPinsOfTheirTrade,
     garageKeyHistories,
     tradeTerms,
     tradeTrails,
@@ -3744,6 +4051,34 @@ class DatabaseAtV6 extends GeneratedDatabase {
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'trade_chat_pins',
+        limitUpdateKind: UpdateKind.insert,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'trade_chat_nostr_pins',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'trade_chat_nostr_pins',
+        limitUpdateKind: UpdateKind.update,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'trade_chat_nostr_pins',
+        limitUpdateKind: UpdateKind.insert,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'trade_chat_nostr_pins',
         limitUpdateKind: UpdateKind.insert,
       ),
       result: [],

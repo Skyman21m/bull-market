@@ -55,13 +55,20 @@ final class WatchChatUsecase {
         return const Err(ChatNotOpen());
     }
     final chat = _chats.of(record);
-    // The pin kept with the trade's record, read once a run before any page is taken: a key is never pinned without knowing whether one was kept (#139).
+    // The pins kept with the trade's record, read once a run before any page is taken: a key is never pinned without knowing whether one was kept (#139, part of #159).
     if (!chat.pinRead) {
+      final ChatPinFingerprints? kept;
       switch (await _pins.pinOf(record)) {
         case Err(:final failure):
           return Err(ChatReadFailed(failure));
         case Ok(:final value):
-          chat.restorePin(value);
+          kept = value;
+      }
+      switch (await _pins.nostrPinOf(record)) {
+        case Err(:final failure):
+          return Err(ChatReadFailed(failure));
+        case Ok(:final value):
+          chat.restorePin(kept, nostr: value);
       }
     }
     final requests = _limiter.open(trade.robot.identity.sessionKey);

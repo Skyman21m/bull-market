@@ -8,7 +8,7 @@ import 'p2p_tables.dart';
 
 part 'p2p_database.g.dart';
 
-/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade, the payments of its invoices asked of the wallet, and the fingerprints of the peer's key its chat pinned.
+/// The P2P feature's own database, `p2p.sqlite`, apart from the wallet's: the bindings of the robots, the history of the Garage Keys, the trades of the robots, the terms and trail of each trade, the payments of its invoices asked of the wallet, and the keys of the peer its chat pinned (PGP by their fingerprints, and Nostr).
 ///
 /// It holds no secret, and lives where the shell says, which keeps it out of cloud backups.
 /// Only the foreground composition of the app opens it: the WorkManager isolate is given no directory, so no background task opens or migrates it.
@@ -22,6 +22,7 @@ part 'p2p_database.g.dart';
     StoredTradeTrails,
     StoredTradePayments,
     StoredTradeChatPins,
+    StoredTradeChatNostrPins,
   ],
   include: {
     'trades.drift',
@@ -123,13 +124,18 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradePaymentsForward);
       },
       from5To6: (m, schema) async {
-        // A new table, the fingerprints of the peer's key each trade's chat pinned (#139), and the triggers that keep its rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
-        // No row of an older table is copied, changed or dropped; a trade of an older file has no pin, and its chat pins at its first read as before.
+        // Two new tables, the fingerprints of the peer's PGP key each trade's chat pinned (#139) and the Nostr keys of its first Nostr copy (part of #159), and the triggers that keep their rows: each is created only when it is missing, so a step that stopped before the version was written runs again over the file it left.
+        // No row of an older table is copied, changed or dropped; a trade of an older file has no pin, and its chat pins at its first read and its first Nostr copy as before.
         await m.createTable(schema.tradeChatPins);
         await m.createTrigger(schema.tradeChatPinsNeverDeleted);
         await m.createTrigger(schema.tradeChatPinsNeverChanged);
         await m.createTrigger(schema.tradeChatPinsInsertedOnce);
         await m.createTrigger(schema.tradeChatPinsOfTheirTrade);
+        await m.createTable(schema.tradeChatNostrPins);
+        await m.createTrigger(schema.tradeChatNostrPinsNeverDeleted);
+        await m.createTrigger(schema.tradeChatNostrPinsNeverChanged);
+        await m.createTrigger(schema.tradeChatNostrPinsInsertedOnce);
+        await m.createTrigger(schema.tradeChatNostrPinsOfTheirTrade);
       },
     ),
     // Every connection, the app's and the tests', enforces the foreign key of the trades.

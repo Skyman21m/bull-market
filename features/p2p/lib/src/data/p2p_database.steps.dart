@@ -1231,6 +1231,11 @@ final class Schema6 extends i0.VersionedSchema {
     tradeChatPinsNeverChanged,
     tradeChatPinsInsertedOnce,
     tradeChatPinsOfTheirTrade,
+    tradeChatNostrPins,
+    tradeChatNostrPinsNeverDeleted,
+    tradeChatNostrPinsNeverChanged,
+    tradeChatNostrPinsInsertedOnce,
+    tradeChatNostrPinsOfTheirTrade,
     garageKeyHistories,
     tradeTerms,
     tradeTrails,
@@ -1355,6 +1360,41 @@ final class Schema6 extends i0.VersionedSchema {
   final i1.Trigger tradeChatPinsOfTheirTrade = i1.Trigger(
     'CREATE TRIGGER IF NOT EXISTS trade_chat_pins_of_their_trade BEFORE INSERT ON trade_chat_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a pin of no open trade\');END',
     'trade_chat_pins_of_their_trade',
+  );
+  late final Shape7 tradeChatNostrPins = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'trade_chat_nostr_pins',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(key_fingerprint, robot_index)',
+        'CHECK(length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(robot_index BETWEEN 0 AND 2147483647)',
+        'CHECK(length(peer_key) = 64 AND peer_key NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(length(own_key) = 64 AND own_key NOT GLOB \'*[^0-9a-f]*\')',
+        'CHECK(typeof(key_fingerprint) = \'text\' AND typeof(robot_index) = \'integer\' AND typeof(peer_key) = \'text\' AND typeof(own_key) = \'text\')',
+        'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
+      ],
+      columns: [_column_1, _column_4, _column_42, _column_43],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Trigger tradeChatNostrPinsNeverDeleted = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_deleted BEFORE DELETE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, \'the Nostr keys of a trade are kept\');END',
+    'trade_chat_nostr_pins_never_deleted',
+  );
+  final i1.Trigger tradeChatNostrPinsNeverChanged = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_never_changed BEFORE UPDATE ON trade_chat_nostr_pins BEGIN SELECT RAISE (ABORT, \'the Nostr keys of a trade never change\');END',
+    'trade_chat_nostr_pins_never_changed',
+  );
+  final i1.Trigger tradeChatNostrPinsInsertedOnce = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_inserted_once BEFORE INSERT ON trade_chat_nostr_pins WHEN EXISTS (SELECT 1 FROM trade_chat_nostr_pins WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
+    'trade_chat_nostr_pins_inserted_once',
+  );
+  final i1.Trigger tradeChatNostrPinsOfTheirTrade = i1.Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trade_chat_nostr_pins_of_their_trade BEFORE INSERT ON trade_chat_nostr_pins WHEN NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index AND closed_at IS NULL) BEGIN SELECT RAISE (ABORT, \'a Nostr pin of no open trade\');END',
+    'trade_chat_nostr_pins_of_their_trade',
   );
   late final Shape0 garageKeyHistories = Shape0(
     source: i0.VersionedTable(
@@ -1592,6 +1632,35 @@ i1.GeneratedColumn<String> _column_40(String aliasedName) =>
 i1.GeneratedColumn<String> _column_41(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'subkey_fingerprint',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+
+class Shape7 extends i0.VersionedTable {
+  Shape7({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get keyFingerprint =>
+      columnsByName['key_fingerprint']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get robotIndex =>
+      columnsByName['robot_index']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get peerKey =>
+      columnsByName['peer_key']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get ownKey =>
+      columnsByName['own_key']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_42(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'peer_key',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_43(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'own_key',
       aliasedName,
       false,
       type: i1.DriftSqlType.string,

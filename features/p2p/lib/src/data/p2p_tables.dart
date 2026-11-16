@@ -333,7 +333,7 @@ class StoredTradePayments extends Table {
 
 /// The peer's key pinned for a trade's chat, by its two fingerprints (schema 6, #139): one row per trade, written when the chat pins the peer's key, so that after a restart of the app the key the coordinator serves is compared with it instead of being trusted again.
 ///
-/// It holds the two fingerprints that `PgpPublicKey` equality compares, its primary key's and its encryption subkey's: public data, which the peer's key itself publishes; never the key, a message, or anything decrypted. The chat's messages stay in memory only: this is the one thing of the chat that is stored.
+/// It holds the two fingerprints that `PgpPublicKey` equality compares, its primary key's and its encryption subkey's: not secret (they name a public key, which the coordinator and the peer already hold, and which the export hands out), never the key, a message, or anything decrypted. The chat's messages stay in memory only: this and the Nostr pin below are the only things of the chat that are stored.
 /// The triggers of `trade_chat_pins.drift` keep it: a row is never deleted nor changed, a second one for a trade writes nothing, and a row is written only for an open trade.
 /// Read and written only by `TradeChatPinRepositoryImpl`.
 @DataClassName('TradeChatPinRow')
@@ -362,6 +362,40 @@ class StoredTradeChatPins extends Table {
     "CHECK (length(subkey_fingerprint) = 40 AND subkey_fingerprint NOT GLOB '*[^0-9A-F]*')",
     // The storage class of each column this code writes, as for the payments.
     "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(primary_fingerprint) = 'text' AND typeof(subkey_fingerprint) = 'text')",
+    'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
+  ];
+}
+
+/// The Nostr keys of a trade pinned at its first Nostr copy (schema 6, part of #159): one row per trade, written before that copy is published, so that after a restart of the app a key the order changes stops the Nostr copies as within one run.
+///
+/// It holds the peer's and this robot's Nostr public keys as the order gives them: not secret, public keys the coordinator publishes to both parties; never a message or anything decrypted.
+/// The triggers of `trade_chat_pins.drift` keep it as they keep the PGP pins: never deleted nor changed, a second one for a trade writes nothing, written only for an open trade.
+/// Read and written only by `TradeChatPinRepositoryImpl`.
+@DataClassName('TradeChatNostrPinRow')
+class StoredTradeChatNostrPins extends Table {
+  @override
+  String get tableName => 'trade_chat_nostr_pins';
+
+  /// The trade's robot, as `trades` keys it.
+  TextColumn get keyFingerprint => text()();
+  IntColumn get robotIndex => integer()();
+
+  /// The peer's Nostr public key: 64 lowercase hexadecimal characters.
+  TextColumn get peerKey => text()();
+
+  /// This robot's Nostr public key as the order gives it: 64 lowercase hexadecimal characters.
+  TextColumn get ownKey => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
+
+  @override
+  List<String> get customConstraints => const [
+    "CHECK (length(key_fingerprint) = 64 AND key_fingerprint NOT GLOB '*[^0-9a-f]*')",
+    'CHECK (robot_index BETWEEN 0 AND 2147483647)',
+    "CHECK (length(peer_key) = 64 AND peer_key NOT GLOB '*[^0-9a-f]*')",
+    "CHECK (length(own_key) = 64 AND own_key NOT GLOB '*[^0-9a-f]*')",
+    "CHECK (typeof(key_fingerprint) = 'text' AND typeof(robot_index) = 'integer' AND typeof(peer_key) = 'text' AND typeof(own_key) = 'text')",
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }
