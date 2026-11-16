@@ -81,7 +81,7 @@ void main() {
     });
 
     test('each image is the avatar of its coordinator, at a pinned source', () {
-      // Five come from the protocol reference, Gumpellite's from the commit of the federation list, which added it.
+      // Five come from ff1998c, the protocol reference until #174, Gumpellite's from the commit of the federation list, which added it; all six have the same blobs at babf62e, the reference since.
       // Each blob was checked against RoboSats when it was added: `git rev-parse ff1998c:<path>` in the reference clone, and the `sha` of `gh api 'repos/RoboSats/robosats/contents/<path>?ref=e56f9cf7c…'` for Gumpellite.
       // The files are checked against these blobs below, and `test/features/p2p/p2p_coordinator_images_test.dart` checks the bytes the app's bundle serves.
       expect(coordinatorImages, {

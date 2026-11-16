@@ -138,9 +138,9 @@ void main() {
       });
     }
 
-    test('are the protocol reference, with a later federation list', () {
+    test('are pinned at the commits they were taken at', () {
       // See the RoboSats refresh procedure in AGENTS.md, section "Troc (fork)".
-      // The protocol reference is ff1998c (2026-11-06); only the federation list was taken from e56f9cf7c (2026-11-08), which adds gumpellite.
+      // The currencies and the payment methods were taken at ff1998c (2026-11-06), the protocol reference until #174, and the federation list at e56f9cf7c (2026-11-08), which adds gumpellite; the three sources have the same blobs at the protocol reference since #174, babf62e (2026-11-15).
       // Each blob was checked against RoboSats when it was generated (`gh api 'repos/RoboSats/robosats/contents/<path>?ref=<commit>' --jq .sha`): pinning the pair makes a list regenerated from files of another commit, under the old commit id, fail here.
       const reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
       expect(robosatsFederationSource, (

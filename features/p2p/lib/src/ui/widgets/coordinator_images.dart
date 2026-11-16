@@ -6,7 +6,7 @@ typedef CoordinatorImage = ({
   String blob,
 });
 
-/// The commit of the RoboSats protocol reference, where five of the images were taken.
+/// The commit where five of the images were taken: ff1998c, the RoboSats protocol reference until #174 (the six images have the same blobs at the reference since, babf62e).
 const _reference = 'ff1998caed30888b2fb60e15022c29063a60f1ba';
 
 /// The commit the embedded federation list comes from, which adds Gumpellite and its image.

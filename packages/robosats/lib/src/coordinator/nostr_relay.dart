@@ -32,7 +32,7 @@ abstract interface class NostrRelayTransport {
   });
 }
 
-/// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client neither waits nor tells anything (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:360-364`).
+/// What one relay did with the events of a publication: a value for a log line, nothing else, since the official client neither waits nor tells anything (`RoboPool.sendEvent`, `frontend/src/services/RoboPool/index.ts:622-626`, commit babf62e).
 sealed class NostrRelayOutcome {
   const NostrRelayOutcome();
 
@@ -109,7 +109,7 @@ final class NostrRelayOk {
   }
 }
 
-/// The relays a message is published to, as the official client builds its pool (`RoboPool.updateRelays`, `frontend/src/services/RoboPool/index.ts:65-85`): the relay of the order's coordinator first, in the place the reference gives to the relay of the coordinator that serves its page, then relays drawn at random among the federation's until there are `min(3, n)`, `n` being the number of coordinators with a relay on [network].
+/// The relays a message is published to, as the official client builds its pool (`RoboPool.updateRelays`, `frontend/src/services/RoboPool/index.ts:116-137`, commit babf62e; its later replacement of a relay down for 10 minutes does not apply to a publication, which is not kept open): the relay of the order's coordinator first, in the place the reference gives to the relay of the coordinator that serves its page, then relays drawn at random among the federation's until there are `min(3, n)`, `n` being the number of coordinators with a relay on [network].
 ///
 /// Empty when the order's coordinator has no relay on [network].
 List<Uri> nostrRelaysFor(
