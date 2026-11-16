@@ -234,7 +234,7 @@ final class TradeCubit {
 
 /// The members of `CoordinatorClient` that lock, move or release funds, or that act on a trade whose bond or escrow is locked (design note § 3.1).
 ///
-/// `fetchOrder`, `ratePlatform`, `fetchChat` and `postChat` move no money and are not listed.
+/// `fetchOrder`, `ratePlatform`, `fetchReviewToken`, `fetchChat` and `postChat` move no money and are not listed.
 /// A money member added to the package under another name, a reward claim (`POST /api/reward/`, a payout) included, must be added here in the pull request that adds it.
 const _moneyMembers = {
   'takeOrder',
