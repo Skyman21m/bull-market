@@ -408,6 +408,13 @@ void main() {
           ),
           throwsA(anything),
         );
+        expect(
+          await repository.keepNostr(
+            record,
+            ChatNostrPin(peer: 'a' * 64, own: 'b' * 64),
+          ),
+          isA<Ok<bool, P2pFailure>>().having((ok) => ok.value, 'kept', isTrue),
+        );
         // Another robot of the same Garage Key, or the same index of another Garage Key: no pin, and none can be written, for they have no open trade.
         for (final stranger in [
           withRobot(
