@@ -452,7 +452,7 @@ Proposals 1 to 10 are put to the owner in plain words, with the default this not
 13. The pending make written before the request, resolved by the robot's read; the order id written only with `confirmed_at`, from a read that shows this robot as the maker (§ 3.4).
 14. The pause sent once, only after a fresh read shows the status the user saw (§ 3.4).
 15. The reference's lottery ported for the default coordinator (§ 3.9), rather than a default of ours.
-16. No Nostr account-recovery event after a make (the reference publishes one, § 1.2): the app publishes nothing to Nostr but the chat's copies (phase 1's rule, #94); a robot of this app is found again from its Garage Key by reading the coordinators.
+16. No Nostr account-recovery event after a make (the reference publishes one, § 1.2): the app publishes nothing to Nostr but the chat's copies (phase 1's rule, widened for the chat by #94); a robot of this app is found again from its Garage Key by reading the coordinators.
 17. The description and the coordinates stored in `maker_terms` for the renewal; the password never (§ 3.5, § 4.2).
 18. The payment method text limited to 50 characters in the form, as the reference's client (whose message says 65, sic), and to 70 in the package, as the coordinator.
 
