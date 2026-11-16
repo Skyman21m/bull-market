@@ -711,12 +711,12 @@ void main() {
       await database.close();
     });
 
-    /// The schema 3 objects of [database] as SQLite stores them, by name: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
+    /// The schema 3 objects of [database] as SQLite stores them, by name, the triggers later schemas add to the trades left out: drift writes the table's names in quotes when it creates a file and as declared when it migrates one, so the text is compared without quotes and white space.
     Future<Map<String, String>> objectsOf(GeneratedDatabase database) async => {
       for (final row
           in await database
               .customSelect(
-                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name NOT IN ('trades_one_open_per_order', 'trades_one_open_per_order_update')",
+                "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND (tbl_name = 'trades' OR name = 'robot_bindings_network') AND name NOT IN ('trades_one_open_per_order', 'trades_one_open_per_order_update', 'trades_made_pending')",
               )
               .get())
         row.read<String>('name'): row
