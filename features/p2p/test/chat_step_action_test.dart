@@ -508,7 +508,9 @@ void main() {
                     greaterThan(const Duration(hours: 5, minutes: 59)),
                     lessThanOrEqualTo(const Duration(hours: 6)),
                   ),
-                ),
+                )
+                // From the status shown, before any read: no read to show.
+                .having((t) => t.seen, 'seen', isNull),
           ),
         );
         expect(app.coordinator.requests, isEmpty);
@@ -551,17 +553,29 @@ void main() {
     }
 
     test(
-      'the fresh read shows a later end: refused as too early, nothing sent',
+      'the fresh read shows a later end: refused as too early with that read, for the screen to show it, nothing sent (review of #156)',
       () async {
         final (app, record, _) = await at();
         final seen = await readWithEnd(app, record, const Duration(hours: 1));
-        app.coordinator.moveDeadline(app.now.add(const Duration(hours: 30)));
+        final later = app.now.add(const Duration(hours: 30));
+        app.coordinator.moveDeadline(later);
         expect(
           await app.chat.startDispute(record, seen),
           isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
             (err) => err.failure,
             'refusal',
-            isA<ChatStepTooEarly>(),
+            isA<ChatStepTooEarly>()
+                .having(
+                  (t) => switch (t.seen?.status) {
+                    Chatting(:final deadline) =>
+                      deadline.difference(later).abs(),
+                    _ => null,
+                  },
+                  'the fresh read\'s end, to the second',
+                  lessThan(const Duration(seconds: 1)),
+                )
+                .having((t) => t.seen?.stored, 'stored', isTrue)
+                .having((t) => t.record?.orderId, 'record', record.orderId),
           ),
         );
         expect(sent(app, ScriptedRequest.dispute), 0);

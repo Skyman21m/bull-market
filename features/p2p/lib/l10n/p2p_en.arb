@@ -3395,6 +3395,10 @@
   "@p2pChatExport": {
     "description": "« Don't trust, verify » and the chat's actions (#93): the reference's button of « Order options » (`Prompts/Chat.tsx`)."
   },
+  "p2pChatExportCopyFailed": "The chat log could not be copied.",
+  "@p2pChatExportCopyFailed": {
+    "description": "« Export » of « Order options » (#157): ours, not in the reference (whose export cannot fail): the clipboard refused the export; the button tries again."
+  },
   "p2pChatAuditTitle": "Don't trust, verify",
   "@p2pChatAuditTitle": {
     "description": "« Don't trust, verify » and the chat's actions (#93): the reference's title (`Dialogs/AuditPGP.tsx`), untranslated by the reference: ours in French."
@@ -3609,6 +3613,24 @@
   "p2pEndRewardsLater": "Bull Market cannot claim rewards yet: contact {coordinator} through one of its contacts below.",
   "@p2pEndRewardsLater": {
     "description": "Not in the RoboSats texts: the project's own: at 17, the reference's « claim from your profile rewards » not being in Bull Market yet (#95, design note § 2.7).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndStatementLaterNoContacts": "Bull Market cannot send a dispute statement yet. Contact {coordinator} with the information to identify your order.",
+  "@p2pEndStatementLaterNoContacts": {
+    "description": "Not in the RoboSats texts: the project's own: « p2pEndStatementLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pEndRewardsLaterNoContacts": "Bull Market cannot claim rewards yet: contact {coordinator}.",
+  "@p2pEndRewardsLaterNoContacts": {
+    "description": "Not in the RoboSats texts: the project's own: « p2pEndRewardsLater » when the app's list of coordinators has no contact for the trade's coordinator, so that no contact is said to be below (#160).",
     "placeholders": {
       "coordinator": {
         "type": "String"

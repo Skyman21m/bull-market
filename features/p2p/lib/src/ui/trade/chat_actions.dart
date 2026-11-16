@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart' show PgpPublicKey;
 import 'package:screen_privacy/screen_privacy.dart';
@@ -11,6 +12,23 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../presentation/chat_cubit.dart';
 import '../coordinator_details_dialog.dart';
 import '../widgets/trade_button.dart';
+import 'chat_panel.dart';
+
+/// « Audit Chat » and « Export » of « Order options » (#157), for the chat of a shown trade.
+typedef ChatOptions = ({Widget auditChat, Widget export});
+
+/// Builds [ChatOptions] for the chat of [request], from a context under the trade page's [ChatCubit]: the route gives it, as it gives the chat panel.
+typedef ChatOptionsBuilder =
+    ChatOptions Function(BuildContext context, ChatPanelRequest request);
+
+/// [ChatOptions] over the trade page's [ChatCubit], the very one the chat panel shows: no second watch of the chat, no second decryption; « Export » and « Don't trust, verify » give what that cubit's chat holds.
+ChatOptions chatOptionsOf(BuildContext context, ChatPanelRequest request) {
+  final cubit = context.read<ChatCubit>();
+  return (
+    auditChat: ChatAuditButton(cubit: cubit, coordinator: request.coordinator),
+    export: ChatExportButton(cubit: cubit, coordinator: request.coordinator),
+  );
+}
 
 /// Copies [text] to the clipboard, as the official client does on a phone; whether it was written.
 Future<bool> _copy(String text) async {
@@ -22,7 +40,7 @@ Future<bool> _copy(String text) async {
   }
 }
 
-/// « Audit Chat » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx`, commit ff1998c): opens « Don't trust, verify ». The dialog of the chat step's options (#95) places it; the chat panel does not show it.
+/// « Audit Chat » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx`, commit ff1998c): opens « Don't trust, verify ». « Order options » of the chat step (#95) places it first ([chatOptionsOf], #157); the chat panel does not show it.
 class ChatAuditButton extends StatelessWidget {
   final ChatCubit cubit;
 
@@ -66,49 +84,99 @@ class _CopiedLine extends StatelessWidget {
   );
 }
 
-/// « Export » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx:288`): on a phone the reference copies `complete_log_chat_<order id>.json` to the clipboard (`utils/saveFile.ts`), and so does this button: the keys, the encrypted private key, its passphrase, which is the robot's token, and the messages (the owner's choice, as the reference). The dialog of the chat step's options (#95) places it.
+/// « Export » of the reference's « Order options » (`TradeBox/Prompts/Chat.tsx:288`): on a phone the reference copies `complete_log_chat_<order id>.json` to the clipboard (`utils/saveFile.ts`), and so does this button: the keys, the encrypted private key, its passphrase, which is the robot's token, and the messages (the owner's choice, as the reference). « Order options » of the chat step (#95) places it second ([chatOptionsOf], #157).
 class ChatExportButton extends StatefulWidget {
   final ChatCubit cubit;
 
-  const ChatExportButton({super.key, required this.cubit});
+  /// The long alias of the trade's coordinator, for the wait and the failure.
+  final String coordinator;
+
+  const ChatExportButton({
+    super.key,
+    required this.cubit,
+    required this.coordinator,
+  });
 
   @override
   State<ChatExportButton> createState() => _ChatExportButtonState();
 }
 
+/// What the last « Export » gave, said under the button.
+enum _ExportOutcome { copied, keyFailed, copyFailed }
+
 class _ChatExportButtonState extends State<ChatExportButton> {
   bool _busy = false;
-  bool _copied = false;
+  _ExportOutcome? _outcome;
 
   Future<void> _export() async {
     setState(() {
       _busy = true;
-      _copied = false;
+      _outcome = null;
     });
     final exported = await widget.cubit.exported();
-    final copied =
-        exported != null && await _copy(ChatCubit.exportText(exported));
+    // Left while the key was being had (« Order options » closed): nothing is copied, so that the robot's token never replaces, later and unseen, what the user copied meanwhile (security review of #161).
+    if (!mounted) return;
+    final outcome = exported == null
+        ? _ExportOutcome.keyFailed
+        : await _copy(ChatCubit.exportText(exported))
+        ? _ExportOutcome.copied
+        : _ExportOutcome.copyFailed;
     if (!mounted) return;
     setState(() {
       _busy = false;
-      _copied = copied;
+      _outcome = outcome;
     });
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      TradeButton(
-        label: P2pLocalizations.of(context).p2pChatExport,
-        icon: Icons.ios_share,
-        busy: _busy,
-        onPressed: _busy ? null : () => unawaited(_export()),
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    // A failure said as « Don't trust, verify » says its own (review of #161): the export was not copied, and the button tries again.
+    final failure = switch (_outcome) {
+      _ExportOutcome.keyFailed => l10n.p2pChatAuditKeyFailed(
+        widget.coordinator,
       ),
-      if (_copied) const _CopiedLine(),
-    ],
-  );
+      _ExportOutcome.copyFailed => l10n.p2pChatExportCopyFailed,
+      _ExportOutcome.copied || null => null,
+    };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TradeButton(
+          label: l10n.p2pChatExport,
+          icon: Icons.ios_share,
+          busy: _busy,
+          onPressed: _busy ? null : () => unawaited(_export()),
+        ),
+        // The wait in the words « Don't trust, verify » gives the same one: the robot's key unlocked for the encrypted private key.
+        if (_busy)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l10n.p2pPayoutStepUnlocking(widget.coordinator),
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+            ),
+          ),
+        if (_outcome == _ExportOutcome.copied) const _CopiedLine(),
+        if (failure != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              failure,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.error),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// « Don't trust, verify » (`components/Dialogs/AuditPGP.tsx`, its PGP tab), as the reference shows it: its text, this robot's public key, the peer's, the encrypted private key and its passphrase, which is the robot's token, each with its tooltip and a copy, then « Keys » and « Messages », which on a phone copy their JSON to the clipboard, as the reference does, and « Go back ».

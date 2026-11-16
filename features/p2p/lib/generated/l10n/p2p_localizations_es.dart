@@ -2416,6 +2416,9 @@ class P2pLocalizationsEs extends P2pLocalizations {
   String get p2pChatExport => 'Export';
 
   @override
+  String get p2pChatExportCopyFailed => 'The chat log could not be copied.';
+
+  @override
   String get p2pChatAuditTitle => 'Don\'t trust, verify';
 
   @override
@@ -2576,6 +2579,16 @@ class P2pLocalizationsEs extends P2pLocalizations {
   @override
   String p2pEndRewardsLater(String coordinator) {
     return 'Bull Market cannot claim rewards yet: contact $coordinator through one of its contacts below.';
+  }
+
+  @override
+  String p2pEndStatementLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot send a dispute statement yet. Contact $coordinator with the information to identify your order.';
+  }
+
+  @override
+  String p2pEndRewardsLaterNoContacts(String coordinator) {
+    return 'Bull Market cannot claim rewards yet: contact $coordinator.';
   }
 
   @override

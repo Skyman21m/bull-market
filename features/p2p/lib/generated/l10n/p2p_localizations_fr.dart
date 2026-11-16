@@ -2448,6 +2448,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pChatExport => 'Exporter';
 
   @override
+  String get p2pChatExportCopyFailed =>
+      'Le journal du chat n’a pas pu être copié.';
+
+  @override
   String get p2pChatAuditTitle => 'Ne faites pas confiance, vérifiez';
 
   @override
@@ -2612,6 +2616,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pEndRewardsLater(String coordinator) {
     return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator par l’un de ses contacts ci-dessous.';
+  }
+
+  @override
+  String p2pEndStatementLaterNoContacts(String coordinator) {
+    return 'Bull Market ne peut pas encore envoyer de déclaration de litige. Contactez $coordinator avec les informations qui identifient votre ordre.';
+  }
+
+  @override
+  String p2pEndRewardsLaterNoContacts(String coordinator) {
+    return 'Bull Market ne peut pas encore réclamer de récompenses : contactez $coordinator.';
   }
 
   @override

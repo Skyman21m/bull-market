@@ -151,6 +151,33 @@ void main() {
     },
   );
 
+  test(
+    'with the key held as the shown chat panel holds it: the export asks the coordinator nothing and gives the messages the watch already decrypted (#157)',
+    () async {
+      final (app, record, seen) = await atNine();
+      // The chat panel's cubit holds the key while it is shown, and its reads lease it.
+      final hold = app.holdKey.execute(record);
+      app.coordinator.peerSays(written(app, 'Hello'));
+      await read(app, record, seen);
+      final asked = app.coordinator.received.length;
+      final exported = switch (await app.chatExport.execute(record)) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+      // Neither the chat read again nor the robot read again for its key.
+      expect(app.coordinator.received.skip(asked), isEmpty);
+      expect(exported['messages'], [
+        isA<Map<String, Object?>>().having(
+          (message) => message['plainTextMessage'],
+          'plainTextMessage',
+          'Hello',
+        ),
+      ]);
+      hold.release();
+      expect(app.keyring.keepsKeyOf(record.robot), isFalse);
+    },
+  );
+
   test('a robot\'s key that cannot be had: no export', () async {
     final (app, record, seen) = await atNine();
     await read(app, record, seen);

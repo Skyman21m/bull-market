@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bull_ui/testing.dart';
@@ -7,7 +8,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:p2p/p2p.dart';
+import 'package:p2p/src/domain/p2p_clock.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_chat.dart';
 import 'package:p2p/src/domain/trade/trade_chat_step.dart';
@@ -16,11 +19,13 @@ import 'package:p2p/src/domain/trade/trade_watch.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/fetch_coordinator_info_usecase.dart';
 import 'package:p2p/src/domain/usecases/find_public_order_usecase.dart';
+import 'package:p2p/src/p2p_router.dart';
 import 'package:p2p/src/presentation/chat_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
 import 'package:p2p/src/presentation/trade_order_page_cubit.dart';
 import 'package:p2p/src/ui/coordinator_details_dialog.dart'
     show CoordinatorContacts;
+import 'package:p2p/src/ui/trade/chat_actions.dart';
 import 'package:p2p/src/ui/trade/chat_panel.dart';
 import 'package:p2p/src/ui/trade/chat_step_panel.dart';
 import 'package:p2p/src/ui/trade/trade_screen.dart';
@@ -129,7 +134,10 @@ Future<void> _loadAppFont() async {
 }
 
 TradeWatchStatus _watched(String name) =>
-    TradeScreenStatuses.watched(_seen[name] ?? (throw StateError(name)));
+    TradeScreenStatuses.watched(_seenOf(name));
+
+/// The status [name] of the tests, with no non-null assertion.
+TradeSeen _seenOf(String name) => _seen[name] ?? (throw StateError(name));
 
 Future<TradeCubit> _show(
   WidgetTester tester, {
@@ -142,6 +150,7 @@ Future<TradeCubit> _show(
   bool offersFiatSent = true,
   bool moneyActionRunning = false,
   ChatPanelBuilder? chat,
+  ChatCubit? chatCubit,
   TradeWatchState? state,
   Locale locale = const Locale('en'),
   Size size = const Size(390, 844),
@@ -189,12 +198,20 @@ Future<TradeCubit> _show(
           providers: [
             BlocProvider.value(value: cubit),
             BlocProvider.value(value: page),
+            // The chat's cubit above the screen, as the route provides it (`P2pRouter.tradePage`).
+            if (chatCubit != null) BlocProvider.value(value: chatCubit),
           ],
           child: TradeScreen(
             now: now ?? () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             moneyActionRunning: (_) => moneyActionRunning,
-            chat: chat,
+            chat:
+                chat ??
+                (chatCubit == null
+                    ? null
+                    : (context, request) => ChatPanel(request: request)),
+            // As the route gives them.
+            chatOptions: chatCubit == null ? null : chatOptionsOf,
           ),
         ),
       ),
@@ -1756,13 +1773,17 @@ void main() {
         final dispute = await agreed(tester, now: () => clock);
         final opensAt = tradeNow.add(const Duration(hours: 12));
         dispute.gate?.complete(
-          Err(ChatStepTooEarly(opensAt, const Duration(hours: 12))),
+          Err(
+            ChatStepTooEarly(
+              opensAt,
+              const Duration(hours: 12),
+              seen: _seen['nineLater'],
+              record: _record,
+            ),
+          ),
         );
         await _settleDialog(tester);
-        // The fresh read the use case kept, as the watch then shows it.
-        _lastWatch!.emit(_watched('nineLater'));
-        await tester.pump();
-        await tester.pump();
+        // Shown with the fresh read the refusal carries, before the watch reads again, which may fail (review of #156).
         const tooEarly =
             'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
         expect(find.textContaining(tooEarly), findsOneWidget);
@@ -1833,6 +1854,50 @@ void main() {
             'its answer lost',
             () => Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
             'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
+          ),
+          // The five others (review of #156).
+          (
+            'not offered by the status seen',
+            () => const Err(ChatStepNotOffered()),
+            'Wait until the order is read again. The dispute was not opened.',
+          ),
+          (
+            'the fresh read shows another status',
+            () => Err(ChatStepStatusMoved(_seenOf('tenDisputable'))),
+            'The trade moved on: the dispute was not opened.',
+          ),
+          (
+            'never sent, the transport busy',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seenOf('nineDisputable'),
+                cause: const CoordinatorTransportBusy(),
+              ),
+            ),
+            'Too many requests are waiting for this coordinator. Try again in a moment. The dispute was not opened.',
+          ),
+          (
+            'never sent, the coordinator off the network',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seenOf('nineDisputable'),
+                cause: const CoordinatorNotOnNetwork(),
+              ),
+            ),
+            'Temple of Sats is offline: the dispute was not opened.',
+          ),
+          (
+            'refused by the coordinator (1047)',
+            () => Ok(
+              ChatStepNotDone(
+                _record,
+                _seenOf('nineDisputable'),
+                cause: const OrderNotParticipant(),
+              ),
+            ),
+            'Temple of Sats did not open the dispute.',
           ),
         ]) {
       testWidgets(
@@ -1994,6 +2059,338 @@ void main() {
         },
       );
     }
+
+    // A coordinator missing from the app's list, a status kept from no order: no contact to show, so none is said to be below (review of #156).
+    for (final (name, text) in [
+      (
+        'eleven',
+        'Bull Market cannot send a dispute statement yet. Contact gone with the information to identify your order.',
+      ),
+      ('seventeen', 'Bull Market cannot claim rewards yet: contact gone.'),
+    ]) {
+      testWidgets(
+        '$name, the coordinator not in the app\'s list: no « contacts below » (review of #156)',
+        (tester) async {
+          final watch = _Watch();
+          await _show(tester, watch: watch);
+          final gone = TradeRecord(
+            robot: _record.robot,
+            coordinatorAlias: 'gone',
+            coordinatorOnion: _record.coordinatorOnion,
+            orderId: _record.orderId,
+            role: _record.role,
+            origin: _record.origin,
+            takenAt: _record.takenAt,
+            confirmedAt: _record.confirmedAt,
+            closedAt: null,
+          );
+          watch.emit(
+            TradeWatchStatus(
+              gone,
+              TradeSeen(_seenOf(name).status, order: null),
+              takePending: false,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          await _reveal(tester, find.text(text));
+          expect(find.text(text), findsOneWidget);
+          expect(find.textContaining('contacts below'), findsNothing);
+          expect(find.byType(CoordinatorContacts), findsNothing);
+        },
+      );
+    }
+  });
+
+  group('« Audit Chat » and « Export » in « Order options » (#157)', () {
+    /// The chat's cubit as the route provides it, whose reads answer an empty chat, and whose export gives test values (never a robot's token or key), counted.
+    ChatCubit chatCubit(
+      WidgetTester tester, {
+      required List<TradeRecord> exports,
+      required List<TradeSeen> reads,
+      bool closedByTest = true,
+    }) {
+      final cubit = ChatCubit(
+        _record,
+        (record, seen) async {
+          reads.add(seen);
+          return const Ok(ChatView(connected: true));
+        },
+        (record, seen, text) async => const Err(ChatPeerKeyNotKnown()),
+        (record, seen, id) async => const Err(ChatPeerKeyNotKnown()),
+        (record, seen) => const Err(ChatSkipNeedsOrderRead()),
+        (record) => const ChatView(),
+        (record) async {
+          exports.add(record);
+          return const Ok({
+            'credentials': {
+              'own_public_key': 'test-own-key',
+              'encrypted_private_key': 'test-encrypted-key',
+              'passphrase': 'test-value-not-a-token',
+            },
+            'messages': <Object?>[],
+          });
+        },
+        (record) => () {},
+      );
+      if (closedByTest) addTearDown(cubit.close);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const privacy = MethodChannel('com.flutterplaza.no_screenshot_methods');
+      messenger.setMockMethodCallHandler(privacy, (call) async => true);
+      addTearDown(() => messenger.setMockMethodCallHandler(privacy, null));
+      return cubit;
+    }
+
+    Future<void> openOptions(WidgetTester tester) async {
+      await _reveal(tester, find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await _settleDialog(tester);
+    }
+
+    testWidgets(
+      'first, in the reference\'s order and words: « Audit Chat », « Export », then « Open Dispute » and « Collaborative Cancel »',
+      (tester) async {
+        await _show(
+          tester,
+          watch: _Watch(),
+          dispute: _FiatSent(),
+          chatCubit: chatCubit(tester, exports: [], reads: []),
+          state: _watched('nineDisputable'),
+        );
+        await openOptions(tester);
+        final labels = [
+          'Order options',
+          'Audit Chat',
+          'Export',
+          'Open Dispute',
+          'Collaborative Cancel',
+        ];
+        final tops = [
+          for (final label in labels) tester.getTopLeft(find.text(label)).dy,
+        ];
+        for (var i = 1; i < tops.length; i++) {
+          expect(tops[i], greaterThan(tops[i - 1]), reason: labels[i]);
+        }
+        expect(find.byType(ChatAuditButton), findsOneWidget);
+        expect(find.byType(ChatExportButton), findsOneWidget);
+      },
+    );
+
+    testWidgets('in French, the texts of the reference\'s place', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        watch: _Watch(),
+        chatCubit: chatCubit(tester, exports: [], reads: []),
+        locale: const Locale('fr'),
+        state: _watched('nine'),
+      );
+      await openOptions(tester);
+      expect(find.text('Auditer le chat'), findsOneWidget);
+      expect(find.text('Exporter'), findsOneWidget);
+    });
+
+    testWidgets(
+      '« Export » copies the export of the chat panel\'s own cubit, once, on the tap: no second watch of the chat',
+      (tester) async {
+        final exports = <TradeRecord>[];
+        final reads = <TradeSeen>[];
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String?;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        final cubit = chatCubit(tester, exports: exports, reads: reads);
+        await _show(
+          tester,
+          watch: _Watch(),
+          chatCubit: cubit,
+          state: _watched('nine'),
+        );
+        expect(find.byType(ChatPanel), findsOneWidget);
+        await openOptions(tester);
+        // The very cubit the panel shows, provided once above the screen as the route provides it: no second one, so no second watch and no second decryption.
+        expect(
+          identical(
+            tester
+                .widget<ChatExportButton>(find.byType(ChatExportButton))
+                .cubit,
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(
+          identical(
+            tester.widget<ChatAuditButton>(find.byType(ChatAuditButton)).cubit,
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(
+          identical(
+            tester.element(find.byType(ChatPanel)).read<ChatCubit>(),
+            cubit,
+          ),
+          isTrue,
+        );
+        expect(cubit.polling, isTrue);
+        final readsBefore = reads.length;
+        expect(exports, isEmpty);
+        await tester.tap(find.text('Export'));
+        await _settleDialog(tester);
+        expect(exports, [_record]);
+        expect(
+          copied,
+          const JsonEncoder.withIndent('  ').convert({
+            'credentials': {
+              'own_public_key': 'test-own-key',
+              'encrypted_private_key': 'test-encrypted-key',
+              'passphrase': 'test-value-not-a-token',
+            },
+            'messages': <Object?>[],
+          }),
+        );
+        expect(find.text('Copied!'), findsOneWidget);
+        // The export reads nothing: the panel's watch alone reads, every 5 s.
+        expect(reads.length, readsBefore);
+      },
+    );
+
+    testWidgets(
+      '« Audit Chat » opens « Don\'t trust, verify » over the same cubit\'s export',
+      (tester) async {
+        final exports = <TradeRecord>[];
+        await _show(
+          tester,
+          watch: _Watch(),
+          chatCubit: chatCubit(tester, exports: exports, reads: []),
+          state: _watched('nine'),
+        );
+        await openOptions(tester);
+        await tester.tap(find.text('Audit Chat'));
+        await _settleDialog(tester);
+        expect(find.byType(ChatAuditDialog), findsOneWidget);
+        expect(find.text('Don\'t trust, verify'), findsOneWidget);
+        expect(exports, [_record]);
+      },
+    );
+
+    testWidgets(
+      'as the route builds the trade page (`P2pRouter.tradePage`): both shown, over the one chat cubit it provides to the panel',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(390, 1200) * 3
+          ..devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final watch = _Watch();
+        final made = <ChatCubit>[];
+        final locator = GetIt.asNewInstance();
+        addTearDown(locator.reset);
+        final reads = FakeTransport();
+        locator
+          ..registerSingleton<P2pClock>(P2pClock(() => tradeNow))
+          ..registerFactoryParam<TradeCubit, TradeRecord, void>(
+            (record, _) => TradeCubit(
+              record,
+              watch.call,
+              (record, seen, {bondLoss}) async =>
+                  Ok<CancelOutcome, CancelRefusal>(CancelDone(record, seen)),
+            ),
+          )
+          ..registerFactoryParam<TradeOrderPageCubit, TradeRecord, void>(
+            (record, _) => TradeOrderPageCubit(
+              coordinator('temple'),
+              RobosatsNetwork.mainnet,
+              FetchCoordinatorInfoUsecase(CoordinatorClient(reads)).execute,
+              FindPublicOrderUsecase(
+                CoordinatorClient(reads, clock: () => testNow),
+              ).execute,
+            ),
+          )
+          ..registerFactoryParam<ChatCubit, TradeRecord, void>((record, _) {
+            // Closed by the route's provider with the page, as in the app.
+            final cubit = chatCubit(
+              tester,
+              exports: [],
+              reads: [],
+              closedByTest: false,
+            );
+            made.add(cubit);
+            return cubit;
+          });
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: testTheme,
+            localizationsDelegates: P2pLocalizations.localizationsDelegates,
+            supportedLocales: P2pLocalizations.supportedLocales,
+            home: Scaffold(
+              body: P2pRouter.tradePage(locator, P2pTradeRouteArgs(_record)),
+            ),
+          ),
+        );
+        await tester.pump();
+        watch.emit(_watched('nine'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(ChatPanel), findsOneWidget);
+        await openOptions(tester);
+        expect(made, hasLength(1));
+        expect(
+          tester.widget<ChatAuditButton>(find.byType(ChatAuditButton)).cubit,
+          same(made.single),
+        );
+        expect(
+          tester.widget<ChatExportButton>(find.byType(ChatExportButton)).cubit,
+          same(made.single),
+        );
+        expect(
+          tester.element(find.byType(ChatPanel)).read<ChatCubit>(),
+          same(made.single),
+        );
+      },
+    );
+
+    // The reference has « Order options » only in its chat prompt, at 9 and 10 (`TradeBox/index.tsx:538-545`, `Prompts/Chat.tsx`): elsewhere neither « … » nor the chat's buttons.
+    for (final name in ['eleven', 'thirteen', 'fourteen', 'sixteen']) {
+      testWidgets(
+        'at $name, past the chat step: no « Order options », so neither button',
+        (tester) async {
+          await _show(
+            tester,
+            watch: _Watch(),
+            chatCubit: chatCubit(tester, exports: [], reads: []),
+            state: _watched(name),
+          );
+          expect(find.byIcon(Icons.more_horiz), findsNothing);
+          expect(find.byType(ChatAuditButton), findsNothing);
+          expect(find.byType(ChatExportButton), findsNothing);
+        },
+      );
+    }
+
+    testWidgets(
+      'without the chat (the feature holds no robot): « Order options » without them',
+      (tester) async {
+        await _show(tester, watch: _Watch(), state: _watched('nine'));
+        await openOptions(tester);
+        expect(find.text('Order options'), findsOneWidget);
+        expect(find.text('Audit Chat'), findsNothing);
+        expect(find.text('Export'), findsNothing);
+      },
+    );
   });
 
   group('on a phone of 320 points, the text larger', () {

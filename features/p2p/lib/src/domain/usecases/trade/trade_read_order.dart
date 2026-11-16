@@ -93,13 +93,22 @@ final class TradeReadOrder {
   ///
   /// Memory only, as everything here: a restart of the app forgets it. It is the very status the trade's screen showed, no copy of a key or a token (an order keeps the hash id of the robot that read it, never its token).
   ({TradeRecord record, TradeSeen seen})? lastStored(RobotSlot robot) {
+    final last = newestStored(robot);
+    if (last == null) return null;
+    if (last.record.closedAt != null || last.seen.status.isTerminal) {
+      return null;
+    }
+    return last;
+  }
+
+  /// The newest status stored for [robot]'s trade in this process, with its record, an end and a closed record included: what a watch whose read failed stands at when an action stored it (`TradeReader.newestStored`, review of #161); `null` when none was stored in this run, or when a newer answer was claimed and its trail not stored.
+  ({TradeRecord record, TradeSeen seen})? newestStored(RobotSlot robot) {
     final newest = _newest[robot];
     final record = newest?.record;
     final seen = newest?.seen;
     if (newest == null || record == null || seen == null) return null;
     // A newer answer was claimed and its trail not stored (a write that failed, a trail kept over it): [seen] is older than what the trade was read at, and is given no more until a later answer is stored (review of #152).
     if (newest.storedArrived != newest.arrived) return null;
-    if (record.closedAt != null || seen.status.isTerminal) return null;
     return (record: record, seen: seen);
   }
 

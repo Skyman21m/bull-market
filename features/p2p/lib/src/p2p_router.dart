@@ -30,6 +30,7 @@ import 'ui/order_details_screen.dart';
 import 'ui/p2p_tab_screen.dart';
 import 'ui/trade/active_trades_sheet.dart';
 import 'ui/trade/bond_payment_panel.dart';
+import 'ui/trade/chat_actions.dart';
 import 'ui/trade/chat_panel.dart';
 import 'ui/trade/payout_panel.dart';
 import 'ui/trade/payout_wallet_section.dart';
@@ -167,6 +168,8 @@ final class P2pRouter {
             chat: chats
                 ? (context, request) => ChatPanel(request: request)
                 : null,
+            // « Audit Chat » and « Export » in « Order options » (#157), over the same chat cubit as the panel.
+            chatOptions: chats ? chatOptionsOf : null,
             moneyActionRunning: payouts
                 ? (context) =>
                       context.watch<PayoutCubit>().state.phase is PayoutSending
