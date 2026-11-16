@@ -316,6 +316,26 @@ final class _Keys implements RobotKeyComputePort {
   );
 
   @override
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
+    required DateTime now,
+  }) async => Ok(
+    OutgoingHostRating.compose(
+      sender,
+      token: token,
+      coordinator: coordinator,
+      orderId: orderId,
+      rating: rating,
+      now: now,
+      random: Random.secure(),
+    ),
+  );
+
+  @override
   Future<
     Result<
       List<Result<DecryptedChatMessage, PgpFailure>>,

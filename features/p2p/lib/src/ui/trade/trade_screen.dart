@@ -35,6 +35,7 @@ import 'chat_actions.dart';
 import 'chat_panel.dart';
 import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
+import 'host_rating_section.dart';
 import 'payout_panel.dart';
 import 'successful_panel.dart';
 import 'trade_order_details.dart';
@@ -73,6 +74,9 @@ class TradeScreen extends StatefulWidget {
   /// « Audit Chat » and « Export » of « Order options » (#157), over the cubit of [chat]: given with it, `null` with it.
   final ChatOptionsBuilder? chatOptions;
 
+  /// « Rate your host » at the end of a successful trade (#95): `null`, and the end shows no such rating, where the feature holds no robot (see [HostRatingSection]).
+  final HostRatingBuilder? hostRating;
+
   /// The line that says, after status 3, where the payment of a bond paid by this wallet stands, given whether the trade goes on after the bond's lock: `null` without the wallet's port (#100).
   final Widget Function(BuildContext context, bool bondHeld)? walletBondLine;
 
@@ -94,6 +98,7 @@ class TradeScreen extends StatefulWidget {
     this.moneyActionRunning,
     this.chat,
     this.chatOptions,
+    this.hostRating,
     this.walletBond,
     this.walletBondLine,
     this.takeCubitFor,
@@ -314,6 +319,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         payout: widget.payout,
                         chat: widget.chat,
                         chatOptions: widget.chatOptions,
+                        hostRating: widget.hostRating,
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
@@ -459,6 +465,7 @@ class _Contract extends StatelessWidget {
   final PayoutPanelBuilder? payout;
   final ChatPanelBuilder? chat;
   final ChatOptionsBuilder? chatOptions;
+  final HostRatingBuilder? hostRating;
   final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
@@ -479,6 +486,7 @@ class _Contract extends StatelessWidget {
     required this.payout,
     required this.chat,
     required this.chatOptions,
+    required this.hostRating,
     required this.moneyActionRunning,
     required this.walletBond,
   });
@@ -718,6 +726,7 @@ class _Contract extends StatelessWidget {
         chatStep: chatStep,
         otherActionRunning: moneyActionRunning || cancel is CancelRunning,
         offersRating: offersRating,
+        hostRating: hostRating?.call(context, contract.seen, coordinator),
       ),
       (TradePrompt.finished, _) => const SizedBox.shrink(),
       (

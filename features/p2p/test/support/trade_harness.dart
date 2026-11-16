@@ -115,6 +115,12 @@ final class HarnessKeys implements RobotKeyComputePort {
   /// When set, the next unlocks throw it: a bug of the work, an `Error` no use case catches.
   Error? unlockError;
 
+  /// What the next compositions of a coordinator's rating give instead, when set: the work could not start.
+  RobotKeyComputeFailure? rateFailure;
+
+  /// The ratings of a coordinator composed, in order.
+  final List<OutgoingHostRating> rated = [];
+
   @override
   Future<Result<RobotPgpKey, RobotKeyComputeFailure>> generate(
     RobotIdentity identity,
@@ -131,6 +137,29 @@ final class HarnessKeys implements RobotKeyComputePort {
 
   /// How many chat messages were decrypted, in how many works.
   int chatDecrypts = 0;
+
+  @override
+  Future<Result<OutgoingHostRating, RobotKeyComputeFailure>> composeHostRating(
+    NostrKeyPair sender, {
+    required HostReviewToken token,
+    required Coordinator coordinator,
+    required int orderId,
+    required HostRating rating,
+    required DateTime now,
+  }) async {
+    if (rateFailure case final failure?) return Err(failure);
+    final composed = OutgoingHostRating.compose(
+      sender,
+      token: token,
+      coordinator: coordinator,
+      orderId: orderId,
+      rating: rating,
+      now: now,
+      random: Random.secure(),
+    );
+    rated.add(composed);
+    return Ok(composed);
+  }
 
   @override
   Future<
@@ -788,7 +817,7 @@ final class TestPins implements TradeChatPinRepository {
 final class RecordingRelays implements NostrRelayTransport {
   /// Every publication, in order: the relay, the events and the robot.
   final List<
-    ({Uri relay, OutgoingNostrChatMessage message, RobotSessionKey robot})
+    ({Uri relay, NostrRelayPublication message, RobotSessionKey robot})
   >
   published = [];
 
@@ -806,7 +835,7 @@ final class RecordingRelays implements NostrRelayTransport {
   @override
   Future<NostrRelayOutcome> publish(
     Uri relay,
-    OutgoingNostrChatMessage message, {
+    NostrRelayPublication message, {
     required RobotSessionKey robot,
   }) async {
     published.add((relay: relay, message: message, robot: robot));
@@ -815,12 +844,25 @@ final class RecordingRelays implements NostrRelayTransport {
     return answerFor?.call(relay) ?? answer;
   }
 
-  /// The distinct messages published, in order.
+  /// The distinct chat messages published, in order.
   List<OutgoingNostrChatMessage> get messages {
     final distinct = <OutgoingNostrChatMessage>[];
     for (final p in published) {
-      if (!distinct.any((m) => identical(m, p.message))) {
-        distinct.add(p.message);
+      if (p.message case final OutgoingNostrChatMessage message
+          when !distinct.any((m) => identical(m, message))) {
+        distinct.add(message);
+      }
+    }
+    return distinct;
+  }
+
+  /// The distinct ratings of a coordinator published, in order.
+  List<OutgoingHostRating> get hostRatings {
+    final distinct = <OutgoingHostRating>[];
+    for (final p in published) {
+      if (p.message case final OutgoingHostRating rating
+          when !distinct.any((r) => identical(r, rating))) {
+        distinct.add(rating);
       }
     }
     return distinct;

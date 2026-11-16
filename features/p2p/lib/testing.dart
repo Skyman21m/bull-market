@@ -431,7 +431,7 @@ final class _NoRelays implements NostrRelayTransport {
   @override
   Future<NostrRelayOutcome> publish(
     Uri relay,
-    OutgoingNostrChatMessage message, {
+    NostrRelayPublication message, {
     required RobotSessionKey robot,
   }) async => const NostrRelayFailed();
 }

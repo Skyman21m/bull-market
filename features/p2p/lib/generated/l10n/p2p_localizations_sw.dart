@@ -2729,4 +2729,41 @@ class P2pLocalizationsSw extends P2pLocalizations {
   String p2pEndRateReadFailed(String coordinator) {
     return 'The order could not be read again from $coordinator: your rating was not sent.';
   }
+
+  @override
+  String get p2pEndRateHost => 'Rate your host';
+
+  @override
+  String p2pEndRateHostAsking(String coordinator) {
+    return 'Asking $coordinator for permission to publish your rating…';
+  }
+
+  @override
+  String p2pEndRateHostUnavailable(String coordinator) {
+    return 'Your rating cannot be published: $coordinator gave no permission for it.';
+  }
+
+  @override
+  String p2pEndHostLovesYou(String coordinator) {
+    return 'Thank you! $coordinator loves you too';
+  }
+
+  @override
+  String get p2pEndTellAFriend =>
+      'RoboSats gets better with more liquidity and users. Tell a bitcoiner friend about Robosats!';
+
+  @override
+  String get p2pEndThanksForUsing => 'Thank you for using Robosats!';
+
+  @override
+  String get p2pEndImproveIntro => 'Let us know how the platform could improve';
+
+  @override
+  String get p2pEndImproveSimplex => 'SimpleX';
+
+  @override
+  String get p2pEndImproveMatrix => 'Matrix';
+
+  @override
+  String get p2pEndImproveGithub => 'Github';
 }

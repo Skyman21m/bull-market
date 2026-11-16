@@ -2814,6 +2814,23 @@ final class _DatedRobotKeys implements RobotKeyComputePort {
     text: text,
     now: now,
   );
+
+  @override
+  composeHostRating(
+    sender, {
+    required token,
+    required coordinator,
+    required orderId,
+    required rating,
+    required now,
+  }) => _keys.composeHostRating(
+    sender,
+    token: token,
+    coordinator: coordinator,
+    orderId: orderId,
+    rating: rating,
+    now: now,
+  );
 }
 
 /// The coordinators of the trade captures: Temple of Sats is [temple], the scripted coordinator of the test seam once the test knows the robots of the key it drew, Lake answers a book of one range order of the test, the others an empty book; every invoice is read by [temple]'s decoder.

@@ -17,6 +17,7 @@ import 'presentation/book_cubit.dart';
 import 'presentation/chat_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
+import 'presentation/host_rating_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
@@ -32,6 +33,7 @@ import 'ui/trade/active_trades_sheet.dart';
 import 'ui/trade/bond_payment_panel.dart';
 import 'ui/trade/chat_actions.dart';
 import 'ui/trade/chat_panel.dart';
+import 'ui/trade/host_rating_section.dart';
 import 'ui/trade/payout_panel.dart';
 import 'ui/trade/payout_wallet_section.dart';
 import 'ui/trade/trade_screen.dart';
@@ -113,6 +115,7 @@ final class P2pRouter {
   static Widget tradePage(GetIt locator, P2pTradeRouteArgs args) {
     final payouts = locator.isRegistered<PayoutCubit>();
     final chats = locator.isRegistered<ChatCubit>();
+    final hostRatings = locator.isRegistered<HostRatingCubit>();
     return MultiBlocProvider(
       providers: [
         // The wallet's payment of the bond (#100), only where the wallet's port was lent: without it the screen is as before, « Pay with another wallet » alone.
@@ -139,6 +142,11 @@ final class P2pRouter {
         // One chat panel per shown trade, closed with its page, which stops its reads and lets the robot's key go.
         if (chats)
           BlocProvider(create: (_) => locator<ChatCubit>(param1: args.record)),
+        // « Rate your host » of the shown trade (#95), closed with its page: the token is asked again when the page is opened again.
+        if (hostRatings)
+          BlocProvider(
+            create: (_) => locator<HostRatingCubit>(param1: args.record),
+          ),
       ],
       child: Builder(
         builder: (context) => _toldReads(
@@ -170,6 +178,10 @@ final class P2pRouter {
                 : null,
             // « Audit Chat » and « Export » in « Order options » (#157), over the same chat cubit as the panel.
             chatOptions: chats ? chatOptionsOf : null,
+            hostRating: hostRatings
+                ? (context, seen, coordinator) =>
+                      HostRatingSection(seen: seen, coordinator: coordinator)
+                : null,
             moneyActionRunning: payouts
                 ? (context) =>
                       context.watch<PayoutCubit>().state.phase is PayoutSending

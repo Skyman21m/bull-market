@@ -2766,4 +2766,42 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String p2pEndRateReadFailed(String coordinator) {
     return 'L’ordre n’a pas pu être relu chez $coordinator : votre note n’a pas été envoyée.';
   }
+
+  @override
+  String get p2pEndRateHost => 'Évaluez votre hôte';
+
+  @override
+  String p2pEndRateHostAsking(String coordinator) {
+    return 'Demande à $coordinator l’autorisation de publier votre note…';
+  }
+
+  @override
+  String p2pEndRateHostUnavailable(String coordinator) {
+    return 'Votre note ne peut pas être publiée : $coordinator n’en a pas donné l’autorisation.';
+  }
+
+  @override
+  String p2pEndHostLovesYou(String coordinator) {
+    return 'Merci ! $coordinator vous aime aussi';
+  }
+
+  @override
+  String get p2pEndTellAFriend =>
+      'RoboSats s\'améliore avec plus de liquidité et d\'utilisateurs. Parlez de Robosats à un ami bitcoiner!';
+
+  @override
+  String get p2pEndThanksForUsing => 'Merci d\'utiliser Robosats!';
+
+  @override
+  String get p2pEndImproveIntro =>
+      'Faites-nous savoir comment la plateforme pourrait être améliorée';
+
+  @override
+  String get p2pEndImproveSimplex => 'SimpleX';
+
+  @override
+  String get p2pEndImproveMatrix => 'Matrix';
+
+  @override
+  String get p2pEndImproveGithub => 'Github';
 }
