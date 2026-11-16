@@ -200,6 +200,58 @@ void main() {
     );
 
     test(
+      'the roles hold: the buyer at 10 is not offered « … received » and nothing is sent; the seller at 9 is not offered « … sent » and nothing is sent',
+      () async {
+        // The buyer of a sell order, at 10 with « fiat sent » recorded.
+        final app = await TradeHarness.start();
+        final taken = await app.takeShown();
+        final record = TradeHarness.recordOf(taken);
+        final run = app.watchOf(record);
+        await app.settle();
+        app.coordinator
+          ..lockBond(app.robot(0))
+          ..moveTo(10);
+        await app.elapse(const Duration(seconds: 10));
+        final buyerTen = run.lastStatus;
+        await run.subscription.cancel();
+        expect(buyerTen.seen.stored, isTrue);
+        expect(buyerTen.seen.order?.isFiatSent, isTrue);
+        expect(
+          ChatStepAction.confirmFiatReceived.offeredAt(buyerTen.seen),
+          isFalse,
+        );
+        app.coordinator.requests.clear();
+        expect(
+          await app.chat.confirmFiatReceived(buyerTen.record, buyerTen.seen),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        expect(app.coordinator.requests, isEmpty);
+
+        // The seller at 9.
+        final (sellerApp, sellerRecord, nine) = await seller(
+          move: (app) => app.coordinator
+            ..lockEscrow()
+            ..moveTo(9),
+        );
+        expect(ChatStepAction.confirmFiatSent.offeredAt(nine), isFalse);
+        sellerApp.coordinator.requests.clear();
+        expect(
+          await sellerApp.chat.confirmFiatSent(sellerRecord, nine),
+          isA<Err<ChatStepOutcome, ChatStepRefusal>>().having(
+            (err) => err.failure,
+            'refusal',
+            isA<ChatStepNotOffered>(),
+          ),
+        );
+        expect(sellerApp.coordinator.requests, isEmpty);
+      },
+    );
+
+    test(
       'sent once, after a fresh read; 13 shown once the escrow is released',
       () async {
         final (app, record, seen) = await atTen();
