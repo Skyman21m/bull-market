@@ -1725,7 +1725,10 @@ void main() {
     });
 
     /// « Open Dispute » pressed and agreed to, at 9 with its time come; the use case's answer awaited.
-    Future<_FiatSent> agreed(WidgetTester tester, {DateTime Function()? now}) async {
+    Future<_FiatSent> agreed(
+      WidgetTester tester, {
+      DateTime Function()? now,
+    }) async {
       final dispute = _FiatSent();
       final watch = _Watch();
       _lastWatch = watch;
@@ -1765,7 +1768,9 @@ void main() {
         expect(find.textContaining(tooEarly), findsOneWidget);
         expect(find.textContaining('To open a dispute you need'), findsNothing);
         clock = opensAt.subtract(const Duration(seconds: 1));
-        await tester.pump(const Duration(hours: 12) - const Duration(seconds: 2));
+        await tester.pump(
+          const Duration(hours: 12) - const Duration(seconds: 2),
+        );
         expect(find.textContaining(tooEarly), findsOneWidget);
         clock = opensAt;
         await tester.pump(const Duration(seconds: 2));
@@ -1792,7 +1797,10 @@ void main() {
         _lastWatch!.emit(_watched('nineLater'));
         await tester.pump();
         await tester.pump();
-        expect(find.textContaining('Cannot open a dispute yet.'), findsOneWidget);
+        expect(
+          find.textContaining('Cannot open a dispute yet.'),
+          findsOneWidget,
+        );
         _lastWatch!.emit(_watched('nineDisputable'));
         await tester.pump();
         await tester.pump();
@@ -1800,29 +1808,30 @@ void main() {
       },
     );
 
-    for (final (what, outcome, text) in <(String, Result<ChatStepOutcome, ChatStepRefusal>, String)>[
-      (
-        'the fresh read failed (Tor)',
-        const Err(ChatStepReadFailed(cause: CoordinatorUnreachable())),
-        'The order could not be read again from Temple of Sats: the dispute was not opened.',
-      ),
-      (
-        'refused as not now (1013)',
-        Ok(
-          ChatStepNotDone(
-            _record,
-            _seen['thirteen']!,
-            cause: const TradeActionNotNow(fromLastRead: false),
+    for (final (what, outcome, text)
+        in <(String, Result<ChatStepOutcome, ChatStepRefusal>, String)>[
+          (
+            'the fresh read failed (Tor)',
+            const Err(ChatStepReadFailed(cause: CoordinatorUnreachable())),
+            'The order could not be read again from Temple of Sats: the dispute was not opened.',
           ),
-        ),
-        'The trade moved on: Temple of Sats did not open the dispute.',
-      ),
-      (
-        'its answer lost',
-        Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
-        'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
-      ),
-    ]) {
+          (
+            'refused as not now (1013)',
+            Ok(
+              ChatStepNotDone(
+                _record,
+                _seen['thirteen']!,
+                cause: const TradeActionNotNow(fromLastRead: false),
+              ),
+            ),
+            'The trade moved on: Temple of Sats did not open the dispute.',
+          ),
+          (
+            'its answer lost',
+            Ok(ChatStepOutcomeUnknown(_record, _seen['nineDisputable']!)),
+            'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.',
+          ),
+        ]) {
       testWidgets(
         '$what: the dispute named, open, not open or not known (review of #156)',
         (tester) async {
@@ -1872,7 +1881,10 @@ void main() {
         await tester.tap(find.text('Open Dispute'));
         await _settleDialog(tester);
         TradeButton button(String label) => tester.widget(
-          find.ancestor(of: find.text(label), matching: find.byType(TradeButton)),
+          find.ancestor(
+            of: find.text(label),
+            matching: find.byType(TradeButton),
+          ),
         );
         expect(button('Disagree').outlined, isFalse);
         expect(button('Agree and open dispute').outlined, isTrue);

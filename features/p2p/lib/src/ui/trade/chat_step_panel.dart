@@ -288,11 +288,7 @@ class _ChatStepPanelState extends State<ChatStepPanel> {
     final chatNotice = switch (chatStep) {
       ChatStepIdle(:final notice?, :final action)
           when _tooEarlyStillTrue(chatStep) =>
-        notice.toText(
-        context,
-        coordinator: widget.coordinator,
-        action: action,
-      ),
+        notice.toText(context, coordinator: widget.coordinator, action: action),
       _ => null,
     };
     final cancelNotice = switch (widget.cancel) {

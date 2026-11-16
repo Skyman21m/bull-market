@@ -2622,4 +2622,41 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pEndDisputeTooEarly =>
       'Impossible d’ouvrir un litige pour l’instant. Vous devez attendre jusqu’à 18 heures avant l’expiration.';
+
+  @override
+  String get p2pEndDisputeNeedsRead =>
+      'Attendez que l’ordre soit relu. Le litige n’a pas été ouvert.';
+
+  @override
+  String p2pEndDisputeReadFailed(String coordinator) {
+    return 'L’ordre n’a pas pu être relu chez $coordinator : le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String get p2pEndDisputeMovedOn =>
+      'L’échange a changé : le litige n’a pas été ouvert.';
+
+  @override
+  String p2pEndDisputeNotSentAfter(String reason) {
+    return '$reason Le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator) {
+    return 'L’échange a changé : $coordinator n’a pas ouvert le litige.';
+  }
+
+  @override
+  String p2pEndDisputeOffline(String coordinator) {
+    return '$coordinator est hors ligne : le litige n’a pas été ouvert.';
+  }
+
+  @override
+  String p2pEndDisputeRefusedBy(String coordinator) {
+    return '$coordinator n’a pas ouvert le litige.';
+  }
+
+  @override
+  String get p2pEndDisputeUnknown =>
+      'Bull Market ne sait pas encore si le litige a été ouvert et continue de vérifier : le litige s’affichera ici une fois ouvert.';
 }

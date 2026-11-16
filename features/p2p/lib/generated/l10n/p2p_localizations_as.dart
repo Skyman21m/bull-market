@@ -2586,4 +2586,41 @@ class P2pLocalizationsAs extends P2pLocalizations {
   @override
   String get p2pEndDisputeTooEarly =>
       'Cannot open a dispute yet. You need to wait until 18 hours before expiry.';
+
+  @override
+  String get p2pEndDisputeNeedsRead =>
+      'Wait until the order is read again. The dispute was not opened.';
+
+  @override
+  String p2pEndDisputeReadFailed(String coordinator) {
+    return 'The order could not be read again from $coordinator: the dispute was not opened.';
+  }
+
+  @override
+  String get p2pEndDisputeMovedOn =>
+      'The trade moved on: the dispute was not opened.';
+
+  @override
+  String p2pEndDisputeNotSentAfter(String reason) {
+    return '$reason The dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator) {
+    return 'The trade moved on: $coordinator did not open the dispute.';
+  }
+
+  @override
+  String p2pEndDisputeOffline(String coordinator) {
+    return '$coordinator is offline: the dispute was not opened.';
+  }
+
+  @override
+  String p2pEndDisputeRefusedBy(String coordinator) {
+    return '$coordinator did not open the dispute.';
+  }
+
+  @override
+  String get p2pEndDisputeUnknown =>
+      'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.';
 }

@@ -652,11 +652,7 @@ void main() {
         'the fresh read shows the dispute further on ($status): done, nothing sent (review of #156)',
         () async {
           final (app, record, _) = await at();
-          final seen = await readWithEnd(
-            app,
-            record,
-            const Duration(hours: 1),
-          );
+          final seen = await readWithEnd(app, record, const Duration(hours: 1));
           app.coordinator
             ..moveTo(11)
             ..moveTo(status);

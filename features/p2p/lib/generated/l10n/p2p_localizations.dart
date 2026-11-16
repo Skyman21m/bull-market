@@ -4176,6 +4176,54 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Cannot open a dispute yet. You need to wait until 18 hours before expiry.'**
   String get p2pEndDisputeTooEarly;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » from a status not marked stored, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the order is read again. The dispute was not opened.'**
+  String get p2pEndDisputeNeedsRead;
+
+  /// Not in the RoboSats texts: the project's own: the read before « Open Dispute » failed (Tor, the coordinator), nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be read again from {coordinator}: the dispute was not opened.'**
+  String p2pEndDisputeReadFailed(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the trade moved on before « Open Dispute » was sent, nothing sent (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: the dispute was not opened.'**
+  String get p2pEndDisputeMovedOn;
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » never left (a busy robot, an error before sending); {reason} is a full sentence of the app (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{reason} The dispute was not opened.'**
+  String p2pEndDisputeNotSentAfter(String reason);
+
+  /// Not in the RoboSats texts: the project's own: « Open Dispute » left and the coordinator refused it, the trade having moved on (1013) (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'The trade moved on: {coordinator} did not open the dispute.'**
+  String p2pEndDisputeNotRecordedMovedOn(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the coordinator is not on the trade's network, « Open Dispute » never left (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} is offline: the dispute was not opened.'**
+  String p2pEndDisputeOffline(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: any other refusal of « Open Dispute » by the coordinator (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} did not open the dispute.'**
+  String p2pEndDisputeRefusedBy(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the answer to « Open Dispute » was lost and the read after does not show it yet; never sent again by itself (#95).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market does not know yet whether the dispute was opened. It keeps checking: the dispute shows here once it is open.'**
+  String get p2pEndDisputeUnknown;
 }
 
 class _P2pLocalizationsDelegate
