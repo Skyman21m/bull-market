@@ -1636,7 +1636,7 @@ void main() {
 
     // Schema 7 (#97): the payments of the trades gain the seller's escrow, the table rebuilt with its rows and its triggers.
 
-    /// A file of schema 6, made by the generated schema 6 itself, with two payments of the bond (not tied to any trade: the foreign keys are off outside the app's connection, and the trigger that asks for an open trade is set aside while they are written, then made again from its own text).
+    /// A file of schema 6, made by the generated schema 6 itself, with two payments of the bond, of an open trade and of a closed one (whose trails are not written: the trigger that asks for an open trade whose trail is recorded is set aside while they are written, then made again from its own text). Since schema 8 checks the foreign keys of the file before it ends, the payments' trades and their robots' bindings are written too.
     Future<Directory> writeSchema6WithPayments() async {
       final own = await Directory.systemTemp.createTemp('p2p-schema6-');
       addTearDown(() async {
@@ -1646,6 +1646,16 @@ void main() {
         NativeDatabase(File('${own.path}/${P2pDatabase.fileName}')),
       );
       expect(await versionOf(old), 6);
+      for (final (index, closed) in [(1, null), (2, 30)]) {
+        await old.customStatement(
+          "INSERT INTO robot_bindings (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, coordinator_node_keys, coordinator_nostr_key, bound_at, provenance) VALUES ('testnet', ?, ?, 'temple', 'http://temple.onion', '', 'nostr', 10, 'generated')",
+          [_payer, index],
+        );
+        await old.customStatement(
+          "INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) VALUES ('testnet', ?, ?, 'temple', 'http://temple.onion', ?, 'buyer', 'takenHere', 15, 20, ?)",
+          [_payer, index, 40 + index, closed],
+        );
+      }
       final trigger = await old
           .customSelect(
             "SELECT sql FROM sqlite_master WHERE name = 'trade_payments_of_their_trade'",
@@ -1674,12 +1684,15 @@ void main() {
       return own;
     }
 
+    /// The payments of [database], the columns of schema 6 only: the contract schema 8 adds, 0 for every payment of an older file, is the schema 8 tests' (`schema8_migration_test.dart`).
     Future<List<Map<String, Object?>>> paymentsOf(
       GeneratedDatabase database,
     ) async => [
       for (final row
           in await database
-              .customSelect('SELECT * FROM trade_payments ORDER BY robot_index')
+              .customSelect(
+                'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id FROM trade_payments ORDER BY robot_index',
+              )
               .get())
         row.data,
     ];

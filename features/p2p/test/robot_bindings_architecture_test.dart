@@ -1057,7 +1057,7 @@ class RobotCoordinatorCubit {
                 caseSensitive: false,
               ).hasMatch(text) &&
               !_driftTriggers.contains(_squeezed(text)) &&
-              !_schema8Rebuild.contains(text),
+              !_schema8Rebuild.any((statement) => statement.contains(text)),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -1313,14 +1313,14 @@ class RobotCoordinatorCubit {
       'customStatement(_dropPaymentsOfSchema7)',
       'customStatement(_foreignKeysOn)',
     ]);
-    // What the two checks read, and that they refuse by throwing, before the first drop and before the copies are dropped.
+    // What the two checks read (an invocation is listed before the one it is made on).
     expect(database.callsByMethod['_foreignKeysAreOn'], [
-      'customSelect(_foreignKeys)',
       'getSingle()',
+      'customSelect(_foreignKeys)',
     ]);
     expect(database.callsByMethod['_breaksAForeignKey'], [
-      'customSelect(_foreignKeyCheck)',
       'get()',
+      'customSelect(_foreignKeyCheck)',
     ]);
     expect(database.constants['_foreignKeysOn'], 'PRAGMA foreign_keys = ON');
     expect(
@@ -1366,7 +1366,8 @@ class RobotCoordinatorCubit {
           'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy '
           'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)',
       '_paymentsOfSchema7': 'trade_payments_of_schema7',
-      '_dropPaymentsOfSchema7': 'DROP TABLE IF EXISTS trade_payments_of_schema7',
+      '_dropPaymentsOfSchema7':
+          'DROP TABLE IF EXISTS trade_payments_of_schema7',
       '_copyPaymentsOfSchema7':
           'CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments',
       '_restorePaymentsOfSchema7':
@@ -1483,7 +1484,7 @@ class RobotCoordinatorCubit {
                   caseSensitive: false,
                 ).hasMatch(text) &&
                 !_driftTriggers.contains(_squeezed(text)) &&
-                !_schema8Rebuild.contains(text),
+                !_schema8Rebuild.any((statement) => statement.contains(text)),
           ),
         ),
         {'lib/src/data/trade_trail_repository_impl.dart'},
@@ -1925,16 +1926,21 @@ class RobotCoordinatorCubit {
       );
       expect(
         makes.skip(1),
-        everyElement(isNot(matches(RegExp(r'\binsert\b', caseSensitive: false)))),
+        everyElement(
+          isNot(matches(RegExp(r'\binsert\b', caseSensitive: false))),
+        ),
       );
-      // And no other file of the feature inserts into the bindings or the trades but the two repositories.
+      // And no other file of the feature inserts into the bindings or the trades but the two repositories, and the step to schema 8's copy of the trades back.
       expect(
         where(
           (facts) => facts.strings.any(
-            (text) => RegExp(
-              r'\binsert\s+into\s+(robot_bindings|trades)\b',
-              caseSensitive: false,
-            ).hasMatch(text),
+            (text) =>
+                RegExp(
+                  r'\binsert\s+into\s+(robot_bindings|trades)\b',
+                  caseSensitive: false,
+                ).hasMatch(text) &&
+                // The step to schema 8 copies the trades back from their copy, as pinned in the database (#176).
+                !_schema8Rebuild.any((statement) => statement.contains(text)),
           ),
         ),
         {
