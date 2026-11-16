@@ -142,7 +142,9 @@ final class P2pDatabase extends _$P2pDatabase {
         // A file whose table already allows the escrow (a step that stopped after the rebuild, before the version was written) is left as it is; one that stopped inside the transaction was rolled back to schema 6.
         if (await _paymentsAllowEscrow()) return;
         await transaction(() async {
-          await customStatement('DROP TABLE IF EXISTS trade_payments_of_schema6');
+          await customStatement(
+            'DROP TABLE IF EXISTS trade_payments_of_schema6',
+          );
           await customStatement(
             'CREATE TABLE trade_payments_of_schema6 AS SELECT * FROM trade_payments',
           );

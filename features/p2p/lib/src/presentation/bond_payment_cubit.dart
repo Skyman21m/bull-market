@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart';
 
 import '../../public/p2p_wallet_port.dart';
 import '../domain/trade/bond_payment.dart';
+import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade/wallet_payment.dart';
 import '../domain/trade_record.dart';
@@ -164,6 +165,9 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     this._running, {
     this._stillWaitingAfter = BondPaymentCubit.stillWaitingAfter,
   }) : super(const BondPaymentState());
+
+  /// The invoice this cubit pays: the taker's bond here, the seller's escrow in [EscrowPaymentCubit].
+  InvoiceStep get step => InvoiceStep.bond;
 
   /// Reads the balance and looks for a payment of the bond made earlier: once.
   void start() {
@@ -343,4 +347,21 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     await _follow?.cancel();
     return super.close();
   }
+}
+
+/// The wallet's payment of a seller's escrow (#97): the same cubit, over the functions of the escrow's [PayBondFromWalletUsecase], of a type of its own so that one trade page provides both.
+final class EscrowPaymentCubit extends BondPaymentCubit {
+  EscrowPaymentCubit(
+    super.record,
+    super.balance,
+    super.check,
+    super.quoter,
+    super.payer,
+    super.follower,
+    super.running, {
+    super.stillWaitingAfter,
+  });
+
+  @override
+  InvoiceStep get step => InvoiceStep.escrow;
 }

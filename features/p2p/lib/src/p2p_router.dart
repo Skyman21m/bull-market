@@ -124,6 +124,12 @@ final class P2pRouter {
             create: (_) =>
                 locator<BondPaymentCubit>(param1: args.record)..start(),
           ),
+        // The wallet's payment of a seller's escrow (#97), on the same condition.
+        if (P2pLocator.paysBondFromWallet(locator))
+          BlocProvider(
+            create: (_) =>
+                locator<EscrowPaymentCubit>(param1: args.record)..start(),
+          ),
         BlocProvider(
           create: (_) => locator<TradeCubit>(param1: args.record)..start(),
         ),
@@ -162,6 +168,10 @@ final class P2pRouter {
                 : null,
             walletBondLine: P2pLocator.paysBondFromWallet(locator)
                 ? (_, bondHeld) => BondPaymentLine(bondHeld: bondHeld)
+                : null,
+            walletEscrowLine: P2pLocator.paysBondFromWallet(locator)
+                ? (_, escrowHeld) =>
+                      BondPaymentLine(bondHeld: escrowHeld, escrow: true)
                 : null,
             coordinatorDetails: (request) =>
                 locator<CoordinatorDetailsCubit>(param1: request),

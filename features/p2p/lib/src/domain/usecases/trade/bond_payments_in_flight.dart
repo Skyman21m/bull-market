@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import '../../robot_binding.dart';
-import '../../trade/checked_invoice.dart';
+import '../../trade/trade_status.dart';
 import '../../trade_record.dart';
 
 /// The payments of a bond or an escrow this process is making now (#100, #97), one for the feature: a trade screen opened again while a payment runs (its earlier screen closed, the payment going on) says « Sending the payment… » instead of offering to pay again, and follows the payment once it ends.

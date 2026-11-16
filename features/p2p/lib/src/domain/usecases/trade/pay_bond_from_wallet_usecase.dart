@@ -103,11 +103,7 @@ final class PayBondFromWalletUsecase {
   Future<Result<P2pWalletPayment, BondPayRefusal>> payBond(
     TradeRecord record, {
     required P2pWalletQuote accepted,
-  }) => _inFlight.run(
-    record,
-    step,
-    () => _payBond(record, accepted: accepted),
-  );
+  }) => _inFlight.run(record, step, () => _payBond(record, accepted: accepted));
 
   Future<Result<P2pWalletPayment, BondPayRefusal>> _payBond(
     TradeRecord record, {
@@ -281,7 +277,8 @@ final class PayBondFromWalletUsecase {
   /// Whether [status] is the step of [step]: the bond's pre-take, or the statuses that await the seller's escrow (`walletPaymentFor` then offers only an escrow invoice, which a buyer's status never holds).
   bool _atStep(TradeStatus status) => switch (step) {
     InvoiceStep.bond => status is WaitingForTakerBond,
-    InvoiceStep.escrow => status is WaitingForBoth || status is WaitingForEscrow,
+    InvoiceStep.escrow =>
+      status is WaitingForBoth || status is WaitingForEscrow,
   };
 
   Result<WalletPaymentOffered, BondPayRefusal> _offered(

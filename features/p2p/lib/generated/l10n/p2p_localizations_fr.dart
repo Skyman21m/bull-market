@@ -1988,6 +1988,15 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowConfirmTitle(String amount) {
+    return 'Payer $amount sats pour bloquer la garantie ?';
+  }
+
+  @override
+  String get p2pPayEscrowHeld =>
+      'Jusqu’à la fin de l’échange, ces sats sont chez le service de swap, pas dans ce portefeuille. Si l’échange est annulé, le swap est remboursé vers Paiements instantanés sans les frais de swap, et le remboursement peut tarder.';
+
+  @override
   String p2pPayServiceFee(String serviceFee) {
     return 'Frais de swap : $serviceFee sats';
   }
@@ -2016,6 +2025,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pPayEscrowSent(String coordinator) {
+    return 'Paiement envoyé. En attente du blocage de la garantie chez $coordinator.';
+  }
+
+  @override
   String get p2pPayRefundPending =>
       'Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.';
 
@@ -2026,6 +2040,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pPaySettled(String coordinator) {
     return 'Votre caution a été conservée par $coordinator.';
+  }
+
+  @override
+  String p2pPayEscrowSettled(String coordinator) {
+    return '$coordinator a reçu la garantie.';
   }
 
   @override
@@ -2043,6 +2062,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pPayAskSupport =>
       'Swap échoué. Les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
+  String get p2pPayEscrowAskSupport =>
+      'Swap échoué. Les sats de cette garantie sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
   String p2pPayUnderMinimum(String min) {
@@ -2097,6 +2120,10 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Ce portefeuille ne peut pas payer cette caution maintenant.';
 
   @override
+  String get p2pPayEscrowWalletUnavailable =>
+      'Ce portefeuille ne peut pas payer cette garantie maintenant.';
+
+  @override
   String get p2pPayServiceCouldNotPay =>
       'Swap échoué. Le swap sera remboursé sous peu. Les frais de swap ne sont pas remboursés.';
 
@@ -2122,12 +2149,20 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Swap échoué. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
+  String get p2pPayEscrowAskSupportSent =>
+      'Swap échoué. Les sats de cette garantie sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
   String get p2pPayUnreadable =>
       'Bull Market ne peut pas lire où en est ce paiement.';
 
   @override
   String get p2pPayCancelNote =>
       'Un paiement de cette caution est en route depuis ce portefeuille. Annuler maintenant coûte les frais de swap, et le remboursement peut tarder.';
+
+  @override
+  String get p2pPayEscrowCancelNote =>
+      'Un paiement de cette garantie est en route depuis ce portefeuille. Annuler maintenant coûte les frais de swap, et le remboursement peut tarder.';
 
   @override
   String get p2pPayServiceRefunded =>
@@ -2138,8 +2173,16 @@ class P2pLocalizationsFr extends P2pLocalizations {
       'Swap expiré. Les sats de cette caution sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
+  String get p2pPayEscrowAskSupportExpired =>
+      'Swap expiré. Les sats de cette garantie sont peut-être sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
   String get p2pPayAskSupportExpiredSent =>
       'Swap expiré. Les sats de cette caution sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
+
+  @override
+  String get p2pPayEscrowAskSupportExpiredSent =>
+      'Swap expiré. Les sats de cette garantie sont sortis de ce portefeuille. Contactez le support de Bull Bitcoin.';
 
   @override
   String get p2pEndChatBuyerHi =>
