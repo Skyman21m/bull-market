@@ -1301,6 +1301,55 @@ void main() {
   );
 
   testWidgets(
+    'a buy order: the same « You send via Lightning » figure before and after its robot reads it, the seller\'s (#96)',
+    (tester) async {
+      final read = await preparedTake(changes: {'type': 0});
+      expect(read.terms.role, TradeRole.seller);
+      await _show(
+        tester,
+        await _order(type: 0),
+        take: _Take(prepared: [Ok(read)]),
+        withFees: true,
+      );
+      // The reference's seller estimate: 106,900 sats with the taker fee (0.175 %) off, no routing budget (`OrderDetails/index.tsx:237-258`).
+      await _reveal(tester, find.textContaining('106,713'));
+      expect(find.textContaining('106,713'), findsOneWidget);
+      await _prepare(tester);
+      await _revealAbove(tester, find.textContaining('You send via Lightning'));
+      expect(find.textContaining('106,713'), findsOneWidget);
+      // The buyer's formula (the fee counted against the coordinator, the routing budget off) would give 106,980.
+      expect(find.textContaining('106,980'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a range buy order read by its robot: the line under the amount and the read\'s figures both the seller\'s (#96)',
+    (tester) async {
+      final read = await preparedTake(
+        range: true,
+        amount: TakeAmount.tryCreate(120.5),
+        changes: {'satoshis_now': 100000, 'type': 0},
+      );
+      await _show(
+        tester,
+        await _order(type: 0, range: true),
+        take: _Take(prepared: [Ok(read)]),
+        withFees: true,
+      );
+      await _reveal(tester, _takeButton);
+      await tester.enterText(find.byType(TextField), '120,5');
+      await tester.pump();
+      await _prepare(tester);
+      await _reveal(tester, find.text('You will send 60,145 Sats (Approx)'));
+      expect(find.text('You will send 60,145 Sats (Approx)'), findsOneWidget);
+      // The read's range at the seller's formula: 24,956 to 99,825; the buyer's would end at 100,074.
+      await _revealAbove(tester, find.textContaining('99,825'));
+      expect(find.textContaining('99,825'), findsOneWidget);
+      expect(find.textContaining('100,074'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'a range buy order: « You will send … Sats (Approx) », the same figure (#96)',
     (tester) async {
       await _show(tester, await _order(type: 0, range: true));
