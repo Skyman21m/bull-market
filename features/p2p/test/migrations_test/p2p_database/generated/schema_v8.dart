@@ -5268,6 +5268,10 @@ class DatabaseAtV8 extends GeneratedDatabase {
     'CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR(OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at)OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR(NEW.order_id IS NOT OLD.order_id AND NOT(OLD.origin IS \'madeHere\' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index)))OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE (ABORT, \'a trade record only gains its times\');END',
     'trades_set_once',
   );
+  late final Trigger tradesMadePending = Trigger(
+    'CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades WHEN NEW.origin IS \'madeHere\' AND(NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL)BEGIN SELECT RAISE (ABORT, \'a make is recorded pending\');END',
+    'trades_made_pending',
+  );
   late final Trigger tradesInsertedOnce = Trigger(
     'CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE (IGNORE);END',
     'trades_inserted_once',
@@ -5317,6 +5321,7 @@ class DatabaseAtV8 extends GeneratedDatabase {
     robotBindingsNetwork,
     tradesNeverDeleted,
     tradesSetOnce,
+    tradesMadePending,
     tradesInsertedOnce,
   ];
   @override
@@ -5528,6 +5533,13 @@ class DatabaseAtV8 extends GeneratedDatabase {
       on: TableUpdateQuery.onTableName(
         'trades',
         limitUpdateKind: UpdateKind.update,
+      ),
+      result: [],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'trades',
+        limitUpdateKind: UpdateKind.insert,
       ),
       result: [],
     ),

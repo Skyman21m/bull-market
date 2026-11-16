@@ -30,6 +30,13 @@ BEGIN
   SELECT RAISE(ABORT, 'a trade record only gains its times');
 END;
 
+-- A make is recorded pending (schema 8): with no order id, which only its confirmation writes, once its terms are recorded, and open.
+CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades
+WHEN NEW.origin IS 'madeHere' AND (NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'a make is recorded pending');
+END;
+
 -- A trade record is written once: a second insert of the same robot, `INSERT OR REPLACE` included (whose delete fires no trigger while recursive triggers are off), writes nothing.
 CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades
 WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index)

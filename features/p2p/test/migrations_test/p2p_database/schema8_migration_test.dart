@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:drift_dev/api/migrations_native.dart';
 import 'package:p2p/src/data/p2p_database.dart';
 import 'package:test/test.dart';
 
@@ -56,16 +57,19 @@ void main() {
       final old = v7.DatabaseAtV7(NativeDatabase(file));
       final rows = await _rowsOf(old, _schema7Columns);
       await old.close();
-      expect({for (final MapEntry(:key, :value) in rows.entries) key: value.length}, {
-        'garage_key_histories': 3,
-        'robot_bindings': 10,
-        'trades': 8,
-        'trade_terms': 6,
-        'trade_trails': 6,
-        'trade_payments': 6,
-        'trade_chat_pins': 2,
-        'trade_chat_nostr_pins': 2,
-      });
+      expect(
+        {for (final MapEntry(:key, :value) in rows.entries) key: value.length},
+        {
+          'garage_key_histories': 3,
+          'robot_bindings': 10,
+          'trades': 8,
+          'trade_terms': 6,
+          'trade_trails': 6,
+          'trade_payments': 6,
+          'trade_chat_pins': 2,
+          'trade_chat_nostr_pins': 2,
+        },
+      );
     },
   );
 
@@ -111,7 +115,10 @@ void main() {
         isEmpty,
       );
       // The copies are gone, the foreign keys hold and are on.
-      expect(await _namesOf(migrated), isNot(contains(endsWith('_of_schema7'))));
+      expect(
+        await _namesOf(migrated),
+        isNot(contains(endsWith('_of_schema7'))),
+      );
       expect(
         await migrated.customSelect('PRAGMA foreign_key_check').get(),
         isEmpty,
@@ -174,7 +181,9 @@ void main() {
           "INSERT INTO trades VALUES ('testnet', '$_key', 8, 'temple', 'http://temple.onion', 101, 'buyer', 'takenHere', 1800, NULL, NULL)",
         ),
         throwsA(
-          predicate((error) => '$error'.contains('an order has one open trade')),
+          predicate(
+            (error) => '$error'.contains('an order has one open trade'),
+          ),
         ),
       );
       // The hash of robot 1's bond, paid again as robot 2's escrow of its open trade.
@@ -362,7 +371,10 @@ void main() {
       final migrated = P2pDatabase.forTesting(NativeDatabase(file));
       expect(await _versionOf(migrated), P2pDatabase.schema);
       expect(await _rowsOf(migrated, _schema7Columns), withBinding);
-      expect(await _namesOf(migrated), isNot(contains(endsWith('_of_schema7'))));
+      expect(
+        await _namesOf(migrated),
+        isNot(contains(endsWith('_of_schema7'))),
+      );
       await migrated.close();
     },
   );
@@ -382,6 +394,11 @@ final class _StopAfter extends QueryInterceptor {
 
   _StopAfter(this.stopAfter);
 
+  /// The steps run on the executor drift gives the database while it opens, beneath this one: it is intercepted too.
+  @override
+  Future<bool> ensureOpen(QueryExecutor executor, QueryExecutorUser user) =>
+      executor.ensureOpen(_OpenedThrough(user, this));
+
   @override
   Future<void> runCustom(
     QueryExecutor executor,
@@ -398,6 +415,21 @@ final class _StopAfter extends QueryInterceptor {
     }
     return super.runCustom(executor, statement, args);
   }
+}
+
+/// The database opening, its steps run through [_interceptor].
+final class _OpenedThrough implements QueryExecutorUser {
+  final QueryExecutorUser _user;
+  final QueryInterceptor _interceptor;
+
+  _OpenedThrough(this._user, this._interceptor);
+
+  @override
+  int get schemaVersion => _user.schemaVersion;
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      _user.beforeOpen(executor.interceptWith(_interceptor), details);
 }
 
 /// The kind of a statement of the step: what it does, and to what.
@@ -442,6 +474,7 @@ const _stepKinds = [
   'trigger trades_never_deleted',
   'drop trigger trades_set_once',
   'trigger trades_set_once',
+  'trigger trades_made_pending',
   'trigger trades_inserted_once',
   'trigger trades_one_open_per_order',
   'trigger trades_one_open_per_order_update',

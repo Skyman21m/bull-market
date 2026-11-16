@@ -1194,6 +1194,7 @@ class RobotCoordinatorCubit {
       'm.createTable(schema.makerTerms)',
       'm.createTrigger(schema.tradesNeverDeleted)',
       'm.createTrigger(schema.tradesSetOnce)',
+      'm.createTrigger(schema.tradesMadePending)',
       'm.createTrigger(schema.tradesInsertedOnce)',
       'm.createTrigger(schema.tradesOneOpenPerOrder)',
       'm.createTrigger(schema.tradesOneOpenPerOrderUpdate)',
@@ -1283,6 +1284,7 @@ class RobotCoordinatorCubit {
       'createTrigger(schema.tradesNeverDeleted)',
       'customStatement(_dropTradesSetOnce)',
       'createTrigger(schema.tradesSetOnce)',
+      'createTrigger(schema.tradesMadePending)',
       'createTrigger(schema.tradesInsertedOnce)',
       'createTrigger(schema.tradesOneOpenPerOrder)',
       'createTrigger(schema.tradesOneOpenPerOrderUpdate)',
@@ -2631,15 +2633,16 @@ String _drifted(String source) => _squeezed(
       .join('\n'),
 );
 
-/// The three triggers of the trades, as `trades.drift` writes them.
+/// The four triggers of the trades, as `trades.drift` writes them.
 final _tradeTriggers = {
   for (final trigger in _tradeTriggersAsWritten) _squeezed(trigger),
 };
 
-/// The three triggers, as `trades.drift` writes them: since schema 8 (#176), `trades_set_once` lets a pending make gain its order id once, with its confirmation, once its terms are recorded.
+/// The four triggers, as `trades.drift` writes them: since schema 8 (#176), `trades_set_once` lets a pending make gain its order id once, with its confirmation, once its terms are recorded, and `trades_made_pending` records a make pending only.
 const _tradeTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trades_never_deleted BEFORE DELETE ON trades BEGIN SELECT RAISE(ABORT, 'a trade record is kept'); END",
   "CREATE TRIGGER IF NOT EXISTS trades_set_once BEFORE UPDATE ON trades WHEN OLD.closed_at IS NOT NULL OR (OLD.confirmed_at IS NOT NULL AND NEW.confirmed_at IS NOT OLD.confirmed_at) OR NEW.network IS NOT OLD.network OR NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.coordinator_onion IS NOT OLD.coordinator_onion OR (NEW.order_id IS NOT OLD.order_id AND NOT (OLD.origin IS 'madeHere' AND OLD.order_id IS NULL AND OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL AND EXISTS (SELECT 1 FROM maker_terms WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index))) OR NEW.role IS NOT OLD.role OR NEW.origin IS NOT OLD.origin OR NEW.taken_at IS NOT OLD.taken_at BEGIN SELECT RAISE(ABORT, 'a trade record only gains its times'); END",
+  "CREATE TRIGGER IF NOT EXISTS trades_made_pending BEFORE INSERT ON trades WHEN NEW.origin IS 'madeHere' AND (NEW.order_id IS NOT NULL OR NEW.closed_at IS NOT NULL) BEGIN SELECT RAISE(ABORT, 'a make is recorded pending'); END",
   "CREATE TRIGGER IF NOT EXISTS trades_inserted_once BEFORE INSERT ON trades WHEN EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = NEW.key_fingerprint AND robot_index = NEW.robot_index) BEGIN SELECT RAISE(IGNORE); END",
 ];
 

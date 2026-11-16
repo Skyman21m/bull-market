@@ -278,6 +278,7 @@ final class P2pDatabase extends _$P2pDatabase {
         await m.createTrigger(schema.tradesNeverDeleted);
         await customStatement(_dropTradesSetOnce);
         await m.createTrigger(schema.tradesSetOnce);
+        await m.createTrigger(schema.tradesMadePending);
         await m.createTrigger(schema.tradesInsertedOnce);
         await m.createTrigger(schema.tradesOneOpenPerOrder);
         await m.createTrigger(schema.tradesOneOpenPerOrderUpdate);
