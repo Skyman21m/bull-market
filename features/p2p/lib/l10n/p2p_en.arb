@@ -4182,5 +4182,393 @@
   "p2pEndImproveGithub": "Github",
   "@p2pEndImproveGithub": {
     "description": "The name of the issues of the RoboSats repository in the reference's code (`Prompts/Successful.tsx`), a link shown for copy after « Let us know how the platform could improve » (#95)."
+  },
+  "p2pMakeEnableAdvanced": "Enable advanced options",
+  "@p2pMakeEnableAdvanced": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 486), with its French (`fr.json`, line 486). The switch of the create form's advanced options (`MakerForm.tsx:700-722`), shown disabled in this version (#181)."
+  },
+  "p2pMakeComingLater": "Coming in a later version.",
+  "@p2pMakeComingLater": {
+    "description": "Not in the RoboSats texts: the project's own: under « Enable advanced options », shown disabled in this version so that the reference's defaults apply (23:59 public, 3 hours for each step, a bond of 3 %, a fixed amount) (design note § 2.1, #181)."
+  },
+  "p2pMakeBuyOrSell": "Buy or Sell Bitcoin?",
+  "@p2pMakeBuyOrSell": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 482), with its French (`fr.json`, line 482). The label over « Buy » and « Sell » in the create form (`MakerForm.tsx:752`), followed by « * » as the reference writes it; the French adds the space before « ? » of French typography."
+  },
+  "p2pMakeBuy": "Buy",
+  "@p2pMakeBuy": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 123), with its French (`fr.json`, line 123). The button « Buy » of the create form (`MakerForm.tsx:787`)."
+  },
+  "p2pMakeSell": "Sell",
+  "@p2pMakeSell": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 131), with its French (`fr.json`, line 131). The button « Sell » of the create form (`MakerForm.tsx:821`), shown disabled in this version."
+  },
+  "p2pMakeSellComingLater": "Selling as maker is coming in a later version.",
+  "@p2pMakeSellComingLater": {
+    "description": "Not in the RoboSats texts: the project's own: under « Sell », disabled, so that no maker locks a bond for an escrow the app cannot pay yet (design note § 2.1, § 3.10, #181)."
+  },
+  "p2pMakeAmount": "Amount",
+  "@p2pMakeAmount": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 139), with its French (`fr.json`, line 139). The label of the amount field of the create form (`MakerForm.tsx:894`), followed by « * » as the reference marks a required field."
+  },
+  "p2pMakeAmountHint": "Amount of fiat to exchange for bitcoin",
+  "@p2pMakeAmountHint": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 480), with its French (`fr.json`, line 480). The tooltip of the amount field of the create form (`MakerForm.tsx:869-873`)."
+  },
+  "p2pMakeMoreThan": "Must be more than {minAmount}",
+  "@p2pMakeMoreThan": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 500), with its French (`fr.json`, line 500). Under the amount field when it is below the form's minimum (`MakerForm.tsx:884-887`); {minAmount} is that minimum to 2 significant digits, as the reference writes it.",
+    "placeholders": {
+      "minAmount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeLessThan": "Must be less than {maxAmount}",
+  "@p2pMakeLessThan": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 498), with its French (`fr.json`, line 498). Under the amount field when it is above the form's maximum (`MakerForm.tsx:888-891`); {maxAmount} is that maximum to 2 significant digits.",
+    "placeholders": {
+      "maxAmount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePaymentMethods": "Fiat Payment Method(s)",
+  "@p2pMakePaymentMethods": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 493), with its French (`fr.json`, line 493). The label of the payment methods of the create form (`MakerForm.tsx:951`), followed by « * »; the French writes « fiat » in lower case, as the catalogue does."
+  },
+  "p2pMakePaymentMethodsHint": "Enter your preferred fiat payment methods. Fast methods are highly recommended.",
+  "@p2pMakePaymentMethodsHint": {
+    "description": "The official client's text, not passed to its translation (`MakerForm.tsx:955`), so absent from `en.json` and `fr.json`; the French is the project's. The tooltip of the payment methods of the create form."
+  },
+  "p2pMakeAddCustomMethod": "Add custom payment method",
+  "@p2pMakeAddCustomMethod": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 255), with its French (`fr.json`, line 255). The button beside the payment methods of the create form (`MakerForm.tsx:962-993`) and the title of its dialog (`Dialogs/AddNewPaymentMethodDialog.tsx`)."
+  },
+  "p2pMakeCustomMethodQuestion": "Can't find your favorite payment method in the list?",
+  "@p2pMakeCustomMethodQuestion": {
+    "description": "The official client's text (`Dialogs/AddNewPaymentMethodDialog.tsx`), whose key has no entry in `en.json` nor `fr.json` at commit ff1998c; the French is the project's."
+  },
+  "p2pMakeCustomMethodText": "Use this free input to add any payment method you would like to offer.",
+  "@p2pMakeCustomMethodText": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 260), with its French (`fr.json`, line 260). In the dialog « Add custom payment method » (`Dialogs/AddNewPaymentMethodDialog.tsx`)."
+  },
+  "p2pMakeCustomMethodLabel": "Payment method",
+  "@p2pMakeCustomMethodLabel": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 259), with its French (`fr.json`, line 259). The field of the dialog « Add custom payment method »."
+  },
+  "p2pMakeCustomMethodEmpty": "Can't be empty",
+  "@p2pMakeCustomMethodEmpty": {
+    "description": "The official client's text (`Dialogs/AddNewPaymentMethodDialog.tsx`), whose key has no entry in `en.json` nor `fr.json` at commit ff1998c; the French is the project's. Under the field of « Add custom payment method » when nothing is typed but spaces."
+  },
+  "p2pMakeCustomMethodNotShown": "Others would not see this text as you typed it. Use visible characters only.",
+  "@p2pMakeCustomMethodNotShown": {
+    "description": "Not in the RoboSats texts: the project's own: under the field of « Add custom payment method » when the text has an invisible character, a space other than an ordinary one, or a mark out of place, which the coordinator would show to every robot (#181, from the security review of #194; `isShownAsWritten`)."
+  },
+  "p2pMakeAddPaymentMethod": "Add payment method",
+  "@p2pMakeAddPaymentMethod": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 256), with its French (`fr.json`, line 256). The button that adds the text typed in « Add custom payment method »."
+  },
+  "p2pMakeMustBeShorter": "Must be shorter than 65 characters",
+  "@p2pMakeMustBeShorter": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 502), with its French (`fr.json`, line 502). Under the payment methods when their text is longer than 50 characters, the reference's bound, although its text says 65 (`MakerForm.tsx:227`, `:995-999`, sic)."
+  },
+  "p2pMakeRemoveMethod": "Remove {method}",
+  "@p2pMakeRemoveMethod": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the cross of a payment method chosen in the create form, which takes it off as the reference's chip does (`AutocompletePayments.tsx`, `onDelete`). {method} is the method's name.",
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePremium": "Premium over Market (%)",
+  "@p2pMakePremium": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 511), with its French (`fr.json`, line 511). The label of the premium field of the create form (`MakerForm.tsx:1034`), followed by « * »."
+  },
+  "p2pMakePremiumTooHigh": "Must be less than {max}%",
+  "@p2pMakePremiumTooHigh": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 499), with its French (`fr.json`, line 499). Under the premium field above 999 (`MakerForm.tsx:241-243`); {max} is 999. The French adds the space before « % » of French typography.",
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePremiumTooLow": "Must be more than {min}%",
+  "@p2pMakePremiumTooLow": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 501), with its French (`fr.json`, line 501). Under the premium field at -100 or below (`MakerForm.tsx:244-246`); {min} is -100.",
+    "placeholders": {
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeOrderFor": "Order for ",
+  "@p2pMakeOrderFor": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 506), with its French (`fr.json`, line 506). The start of the create form's summary while neither « Buy » nor « Sell » is chosen (`MakerForm.tsx:585-588`), followed by the amount and the currency: the trailing space is the reference's."
+  },
+  "p2pMakeBuyBtcFor": "Buy BTC for ",
+  "@p2pMakeBuyBtcFor": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 481), with its French (`fr.json`, line 481). The start of the create form's summary for « Buy » (`MakerForm.tsx:589-592`), followed by the amount and the currency."
+  },
+  "p2pMakeAtMarketPrice": " at market price",
+  "@p2pMakeAtMarketPrice": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 475), with its French (`fr.json`, line 475). The end of the create form's summary at a premium of 0 (`MakerForm.tsx:610-613`): the leading space is the reference's."
+  },
+  "p2pMakeAtPremium": " at a {premium}% premium",
+  "@p2pMakeAtPremium": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 474), with its French (`fr.json`, line 474). The end of the create form's summary at a positive premium (`MakerForm.tsx:614-615`); {premium} is the premium.",
+    "placeholders": {
+      "premium": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeAtDiscount": " at a {discount}% discount",
+  "@p2pMakeAtDiscount": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 473), with its French (`fr.json`, line 473). The end of the create form's summary at a negative premium (`MakerForm.tsx:616`); {discount} is the premium without its sign.",
+    "placeholders": {
+      "discount": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeEstimatedBond": "Estimated Bond: {sats} Sats",
+  "@p2pMakeEstimatedBond": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 490), with its French (`fr.json`, line 490). Under the create form's summary (`MakerForm.tsx:618-622`, `Estimated Bond` then « : » and « Sats »); {sats} is the bond in sats as the reference estimates it (`utils/bondCalculator.ts`).",
+    "placeholders": {
+      "sats": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeCurrentRate": "Order current rate: {rate} {currencyCode}/BTC",
+  "@p2pMakeCurrentRate": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 505); its `fr.json` says « commande », the French is the project's, in the vocabulary of its catalogue (« ordre »). At the foot of the create form (`MakerForm.tsx:1347-1350`): the coordinator's price with the premium, to 5 significant digits.",
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeCurrentRateHint": "Your order's current exchange rate. Rate will move with the market.",
+  "@p2pMakeCurrentRateHint": {
+    "description": "The official client's text (`MakerForm.tsx:1345`), whose key has no entry in `en.json` nor `fr.json` at commit ff1998c; the French is the project's. The tooltip of « Order current rate »."
+  },
+  "p2pMakeCreateOrder": "Create order",
+  "@p2pMakeCreateOrder": {
+    "description": "The official client's label (`basic/MakerPage/index.tsx`, `submitButtonLabel`), whose key has no entry in `en.json` nor `fr.json` at commit ff1998c; the French is the project's. The button of the create form."
+  },
+  "p2pMakeLoading": "Loading...",
+  "@p2pMakeLoading": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 537); its `fr.json` leaves it in English, the French is the project's. The coordinator choice of the create form while the coordinators are drawn (`SelectCoordinator.tsx`)."
+  },
+  "p2pMakeChooseHost": "Choose the coordinator of the order",
+  "@p2pMakeChooseHost": {
+    "description": "Not in the RoboSats texts: the project's own: what a screen reader says of the coordinator of the create form, whose tap opens « Select Host » as the reference's select opens its list (`SelectCoordinator.tsx`)."
+  },
+  "p2pMakeWhyLoadingCoordinators": "Loading coordinator list...",
+  "@p2pMakeWhyLoadingCoordinators": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 496); its `fr.json` leaves it in English, the French is the project's. Why « Create order » is disabled (`MakerForm.tsx:518-520`)."
+  },
+  "p2pMakeWhyPriceNotSynchronized": "The Bitcoin price is not synchronized.",
+  "@p2pMakeWhyPriceNotSynchronized": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 521), with its French (`fr.json`, line 521). Why « Create order » is disabled (`MakerForm.tsx:524-526`): the coordinator's limits are being read, or give no price for the currency."
+  },
+  "p2pMakeWhyNoSide": "Please select if you want to buy or sell.",
+  "@p2pMakeWhyNoSide": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 510), with its French (`fr.json`, line 510). Why « Create order » is disabled (`MakerForm.tsx:527-529`)."
+  },
+  "p2pMakeWhyOutsideLimits": "The amount is outside the allowed limits.",
+  "@p2pMakeWhyOutsideLimits": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 522), with its French (`fr.json`, line 522). Why « Create order » is disabled (`MakerForm.tsx:530-536`)."
+  },
+  "p2pMakeWhyBadPaymentMethod": "The payment method is not valid.",
+  "@p2pMakeWhyBadPaymentMethod": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 527); its `fr.json` says « méthode », the French is the project's, in the vocabulary of the catalogue (« mode de paiement »). Why « Create order » is disabled (`MakerForm.tsx:537-539`)."
+  },
+  "p2pMakeWhyNoAmount": "Please enter an amount.",
+  "@p2pMakeWhyNoAmount": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 508), with its French (`fr.json`, line 508). Why « Create order » is disabled (`MakerForm.tsx:540-542`): nothing typed, or no number."
+  },
+  "p2pMakeWhyAmountNotPositive": "The amount must be greater than 0.",
+  "@p2pMakeWhyAmountNotPositive": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 523), with its French (`fr.json`, line 523). Why « Create order » is disabled (`MakerForm.tsx:546-548`)."
+  },
+  "p2pMakeWhyPremiumInvalid": "The premium is not valid.",
+  "@p2pMakeWhyPremiumInvalid": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 528), with its French (`fr.json`, line 528). Why « Create order » is disabled (`MakerForm.tsx:549-551`)."
+  },
+  "p2pMakeWhyLimitsUnavailable": "The coordinator limits are not available.",
+  "@p2pMakeWhyLimitsUnavailable": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 525); its `fr.json` leaves it in English, the French is the project's. Why « Create order » is disabled (`MakerForm.tsx:552-554`): the coordinator's limits could not be read; said at once here, since without them nothing else can be judged."
+  },
+  "p2pMakeWhyPremiumNotANumber": "The premium must be a number.",
+  "@p2pMakeWhyPremiumNotANumber": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 529), with its French (`fr.json`, line 529). Why « Create order » is disabled (`MakerForm.tsx:555-557`): something typed in the premium that is no number."
+  },
+  "p2pMakeWhyNoPaymentMethod": "Please select a payment method.",
+  "@p2pMakeWhyNoPaymentMethod": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 509); its `fr.json` says « méthode », the French is the project's, in the vocabulary of the catalogue. Why « Create order » is disabled (`MakerForm.tsx:558-560`)."
+  },
+  "p2pMakeWhyFormIncorrect": "You must fill the form correctly",
+  "@p2pMakeWhyFormIncorrect": {
+    "description": "The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 533), with its French (`fr.json`, line 533). Why « Create order » is disabled when no other reason applies (`MakerForm.tsx:564`)."
+  },
+  "p2pMakeRateCompare": "For comparison, the Bull wallet's indicative price: {walletPrice} {currency}/BTC ({coordinator}'s: {coordinatorPrice}, gap {gap}).",
+  "@p2pMakeRateCompare": {
+    "description": "Not in the RoboSats texts: the project's own, the owner's words of 2026-11-17: under « Order current rate » in the create form (#181), the Bull wallet's price of a bitcoin beside the chosen coordinator's, both without the premium, and how far the coordinator's is from the wallet's. {walletPrice} and {coordinatorPrice} are the prices, {currency} the currency code, {coordinator} the coordinator's name, {gap} the gap with its sign and percent sign.",
+    "placeholders": {
+      "walletPrice": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      },
+      "coordinatorPrice": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRateBelow": "{coordinator}'s price is more than {threshold} below the Bull wallet's: your bond and your trade would be counted in too many sats. Check it before you create the order.",
+  "@p2pMakeRateBelow": {
+    "description": "Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold below the Bull wallet's; « Create order » stays offered. {threshold} is the threshold, such as « 10% ».",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "threshold": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRateAbove": "{coordinator}'s price is more than {threshold} above the Bull wallet's: you would receive fewer sats when your order is taken. Check it before you create the order.",
+  "@p2pMakeRateAbove": {
+    "description": "Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold above the Bull wallet's, for a buy order (the only side this version makes); « Create order » stays offered.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "threshold": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRateNotPriced": "The Bull wallet has no price for {currency}: rate not checked. You are trusting {coordinator}'s price: check it yourself before creating the order.",
+  "@p2pMakeRateNotPriced": {
+    "description": "Not in the RoboSats texts: the project's own: in the create form (#181), the order's currency is one the Bull wallet does not price: no figure, no « Retry » (the owner's decision of 2026-11-17 in the evening, his words of the maker bond's line, written for the creation).",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRateUnverified": "The Bull wallet's price of a bitcoin in {currency} could not be read: rate not checked.",
+  "@p2pMakeRateUnverified": {
+    "description": "Not in the RoboSats texts: the project's own: in the create form (#181), the Bull wallet prices the currency but its price could not be read; shown in the warning colour with « Retry »; « Create order » stays offered.",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeRateReading": "Reading the Bull wallet's price for comparison…",
+  "@p2pMakeRateReading": {
+    "description": "Not in the RoboSats texts: the project's own: in the create form (#181), while the Bull wallet's price is read."
+  },
+  "p2pMakeCreating": "Creating your order…",
+  "@p2pMakeCreating": {
+    "description": "Not in the RoboSats texts: the project's own (design note § 3.10): under « Create order » while the make runs, and for a make whose outcome is not known yet."
+  },
+  "p2pMakePending": "Bull Market does not know yet whether {coordinator} made your order. It keeps checking.",
+  "@p2pMakePending": {
+    "description": "Not in the RoboSats texts: the project's own (design note § 3.10): a make whose answer was lost, which stays pending and is resolved from its line of « Active trades » (#182); the form makes nothing more meanwhile.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeNotMade": "The order was not created.",
+  "@p2pMakeNotMade": {
+    "description": "Not in the RoboSats texts: the project's own: a make the coordinator certainly did not make, or that never left."
+  },
+  "p2pMakeNotMadeAfter": "{reason} The order was not created.",
+  "@p2pMakeNotMadeAfter": {
+    "description": "Not in the RoboSats texts: the project's own: after the text of why a make did not happen. {reason} is that text, a sentence of the app.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeCoordinatorUnreadable": "Could not reach {coordinator}. The order was not created.",
+  "@p2pMakeCoordinatorUnreadable": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator's fees or limits could not be read just before the make, so nothing was sent with a robot. {coordinator} is its long alias.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeFeeTooHigh": "{coordinator} asks for a maker fee above 1 %. The order was not created.",
+  "@p2pMakeFeeTooHigh": {
+    "description": "Not in the RoboSats texts: the project's own: the coordinator announces a maker fee above the app's ceiling (`TradeTolerances.makerFeeCeiling`).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeTermsUnusable": "The terms of this order could not be checked. It was not created.",
+  "@p2pMakeTermsUnusable": {
+    "description": "Not in the RoboSats texts: the project's own: the terms of the make cannot be built from what the coordinator gave (`MakerTermsUnusable`)."
+  },
+  "p2pMakeNotRecorded": "Bull Market could not write its records on this device. The order was not created.",
+  "@p2pMakeNotRecorded": {
+    "description": "Not in the RoboSats texts: the project's own: the records of the make could not be written before it was sent, so it was not sent."
+  },
+  "p2pMakeRobotNotNew": "The robot chosen for this order already existed on {coordinator}. The order was not created: try again.",
+  "@p2pMakeRobotNotNew": {
+    "description": "Not in the RoboSats texts: the project's own: the fresh robot of the make was already known to the coordinator; the next make uses another robot.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakeKeyNotForTrades": "The robots of a pasted Garage Key cannot create orders here. Generate a new Garage Key in the Garage.",
+  "@p2pMakeKeyNotForTrades": {
+    "description": "Not in the RoboSats texts: the project's own: a key pasted or acknowledged gives no robot for a new trade (#79)."
+  },
+  "p2pMakeTooBig": "Your order is too big.",
+  "@p2pMakeTooBig": {
+    "description": "The start of the coordinator's message of error 1004 (`api/errors.py:7`, commit ff1998c), which the official client shows; the sizes it gives are not kept. The French is the project's."
+  },
+  "p2pMakeTooSmall": "Your order is too small.",
+  "@p2pMakeTooSmall": {
+    "description": "The start of the coordinator's message of error 1005 (`api/errors.py:8`, commit ff1998c), which the official client shows; the sizes it gives are not kept. The French is the project's."
+  },
+  "p2pMakeBookFull": "The book of {coordinator} is at full capacity.",
+  "@p2pMakeBookFull": {
+    "description": "After the coordinator's message of error 1037 (`api/errors.py:44`, commit ff1998c), which the official client shows, without its limit. The French is the project's.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   }
 }

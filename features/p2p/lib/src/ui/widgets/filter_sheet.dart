@@ -12,8 +12,8 @@ import 'package:flutter/material.dart';
 class FilterSheet<T extends Object> extends StatefulWidget {
   final String title;
 
-  /// The entry at the top that clears the choice, checked while nothing is chosen.
-  final String anyLabel;
+  /// The entry at the top that clears the choice, checked while nothing is chosen; `null` for none, as in the create form's payment methods (#181), where « any » is no choice.
+  final String? anyLabel;
 
   final List<T> options;
 
@@ -55,7 +55,7 @@ class FilterSheet<T extends Object> extends StatefulWidget {
   static Future<void> show<T extends Object>(
     BuildContext context, {
     required String title,
-    required String anyLabel,
+    required String? anyLabel,
     required List<T> options,
     required Iterable<T> selected,
     required String Function(T) label,
@@ -111,10 +111,11 @@ class _FilterSheetState<T extends Object> extends State<FilterSheet<T>> {
     final groups =
         widget.groups ?? [FilterSheetGroup<T>(options: widget.options)];
     // The rows as the sheet lists them: « Any » while nothing is typed, then each group with rows left, its heading first.
+    final anyLabel = widget.anyLabel;
     final rows = <Widget>[
-      if (!searching)
+      if (!searching && anyLabel != null)
         _FilterRow(
-          label: widget.anyLabel,
+          label: anyLabel,
           checked: _chosen.isEmpty,
           onTap: _clear,
         ),

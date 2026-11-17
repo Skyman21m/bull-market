@@ -38,6 +38,11 @@ final class P2pFormats {
       '${this.amount(min)}-${this.amount(max)}',
   };
 
+  /// A number typed in the create form (#181), exactly as it is read and sent: every decimal it has, up to the 8 an amount keeps, with the separators of the locale, never rounded to significant digits as the reference's summary rounds it (`amountToString`, 4 digits), so that the summary shows what the request sends.
+  String typedNumber(double value) => (NumberFormat.decimalPattern(
+    _locale,
+  )..maximumFractionDigits = 8).format(value);
+
   /// A number of sats, with the thousands separator of the locale.
   String sats(int sats) => NumberFormat.decimalPattern(_locale).format(sats);
 
