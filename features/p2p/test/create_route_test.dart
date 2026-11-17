@@ -15,10 +15,7 @@ import 'support/harness.dart';
 
 /// What opens the create form since the maker's panels exist (#182, design note § 2.1, « Order of the pull requests »): « Create » of the tab, enabled where the feature holds robots and the network has no active trade nor pending make, and the route `create`, which needs what the tab hands it; « Create order » of « Active trades » is in `pending_makes_test.dart`.
 void main() {
-  Future<GoRouter> open(
-    WidgetTester tester, {
-    required bool withGarage,
-  }) async {
+  Future<GoRouter> open(WidgetTester tester, {required bool withGarage}) async {
     usePhoneScreen(tester);
     FakeSecureStoragePlatform().install();
     final locator = GetIt.asNewInstance();
@@ -58,10 +55,7 @@ void main() {
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
     // One page pushed, not two.
-    expect(
-      find.byType(CreateOrderScreen, skipOffstage: false),
-      findsOneWidget,
-    );
+    expect(find.byType(CreateOrderScreen, skipOffstage: false), findsOneWidget);
     // The top bar's back.
     await tester.tap(
       find

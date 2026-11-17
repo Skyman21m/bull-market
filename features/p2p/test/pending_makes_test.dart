@@ -30,12 +30,14 @@ import 'support/trade_orders.dart';
 
 /// The pending makes on the screens (#182, design note § 3.4, « The screens of a pending make »): their line « Creating your order… » in « Active trades », resolved when the sheet opens and on « Retry », never in a loop; « Set aside » for a make that does not resolve, which closes it in the records and sends nothing, never making it again (reviews of #179); « Create order » at the top of the sheet (design note § 7, proposal 9); and the book opening an order this device made as its trade (§ 3.7).
 
-final _slot = RobotSlot(RobosatsNetwork.mainnet, switch (GarageKeyFingerprint.of(
-  tradeKey,
-)) {
-  Ok(:final value) => value,
-  Err(:final failure) => throw StateError('$failure'),
-}, 3);
+final _slot = RobotSlot(
+  RobosatsNetwork.mainnet,
+  switch (GarageKeyFingerprint.of(tradeKey)) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  },
+  3,
+);
 
 final _onion =
     Federation.robosats.byAlias('temple')?.mainnet.onion ??
@@ -123,31 +125,31 @@ Future<(List<TradeRecord>, List<void>, PendingMakesCubit)> _sheet(
     RepaintBoundary(
       key: captureFrame,
       child: MaterialApp(
-      theme: testTheme,
-      locale: locale,
-      localizationsDelegates: P2pLocalizations.localizationsDelegates,
-      supportedLocales: P2pLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => unawaited(
-              ActiveTradesSheet.show(
-                context,
-                active: active,
-                onOpen: opened.add,
-                onCreate: () => created.add(null),
-                pending: cubit,
+        theme: testTheme,
+        locale: locale,
+        localizationsDelegates: P2pLocalizations.localizationsDelegates,
+        supportedLocales: P2pLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child ?? const SizedBox.shrink(),
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => unawaited(
+                ActiveTradesSheet.show(
+                  context,
+                  active: active,
+                  onOpen: opened.add,
+                  onCreate: () => created.add(null),
+                  pending: cubit,
+                ),
               ),
+              child: const Text('open'),
             ),
-            child: const Text('open'),
           ),
         ),
       ),
-    ),
     ),
   );
   await tester.pump();
@@ -201,10 +203,7 @@ void main() {
         expect(await harness.make.resolve(pending), isA<MakeNoLongerPending>());
         expect(requests, sent);
         // Its row is closed, never deleted.
-        expect(
-          (await harness.allTrades()).single['closed_at'],
-          isNotNull,
-        );
+        expect((await harness.allTrades()).single['closed_at'], isNotNull);
       },
     );
 

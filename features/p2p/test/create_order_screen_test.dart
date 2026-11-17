@@ -169,28 +169,28 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
     RepaintBoundary(
       key: captureFrame,
       child: MaterialApp(
-      theme: testTheme,
-      locale: locale,
-      localizationsDelegates: P2pLocalizations.localizationsDelegates,
-      supportedLocales: P2pLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: Scaffold(
-        body: MultiBlocProvider(
-          providers: [
-            BlocProvider.value(value: cubit),
-            BlocProvider.value(value: pending),
-          ],
-          child: CreateOrderScreen(
-            initialType: initialType,
-            coordinatorDetails: (_) => throw StateError('not opened'),
-            onMade: opened.add,
+        theme: testTheme,
+        locale: locale,
+        localizationsDelegates: P2pLocalizations.localizationsDelegates,
+        supportedLocales: P2pLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child ?? const SizedBox.shrink(),
+        ),
+        home: Scaffold(
+          body: MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: cubit),
+              BlocProvider.value(value: pending),
+            ],
+            child: CreateOrderScreen(
+              initialType: initialType,
+              coordinatorDetails: (_) => throw StateError('not opened'),
+              onMade: opened.add,
+            ),
           ),
         ),
       ),
-    ),
     ),
   );
   unawaited(cubit.start());
@@ -904,7 +904,11 @@ void main() {
     );
 
     for (final (name, wallet, verdict) in [
-      ('not priced', const P2pWalletRateNotPriced(), MakePriceVerdict.notPriced),
+      (
+        'not priced',
+        const P2pWalletRateNotPriced(),
+        MakePriceVerdict.notPriced,
+      ),
       (
         'not read',
         const P2pWalletRateUnavailable(),
@@ -1247,7 +1251,9 @@ void main() {
       'the make written pending shows above the form, resolved there; a resolution that confirms it opens its trade',
       (tester) async {
         final form = _Form()
-          ..answer = Ok(MakePending(_pending, MakePendingReason.outcomeUnknown));
+          ..answer = Ok(
+            MakePending(_pending, MakePendingReason.outcomeUnknown),
+          );
         final (opened, _) = await _show(tester, form);
         await _fill(tester);
         await tester.tap(_create);

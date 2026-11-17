@@ -109,8 +109,7 @@ void main() {
     'expired at 1 untaken: « The order has expired », no step, no cancel',
     () async {
       final harness = await MakeHarness.start();
-      final record =
-          (valueOf(await harness.makeOrder()) as MakeStarted).record;
+      final record = (valueOf(await harness.makeOrder()) as MakeStarted).record;
       harness.coordinator
         ..lockMakerBond(record.orderId)
         ..expire(record.orderId);

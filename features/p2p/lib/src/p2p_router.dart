@@ -292,41 +292,42 @@ final class P2pRouter {
   /// The create page (#181): the form over its cubit, with the network's pending makes above it (#182), a made order, or a pending make a resolution confirms, replacing the page by its trade as a take does.
   ///
   /// Built by the route `create` (#182), which « Create » of the tab and « Create order » of « Active trades » open, and by the testing seam (`createOrderPageForTesting`) for the app's captures, as `trade_screen_architecture_test.dart` pins.
-  static Widget createPage(GetIt locator, P2pCreateRouteArgs args) =>
-      MultiBlocProvider(
-        providers: [
-          BlocProvider(
-            create: (_) => locator<MakeOrderCubit>(
-              param1: args.network,
-              param2: args.currency,
-            )..start(),
-          ),
-          // The pending makes resolved once when the form opens: the form makes nothing while one is listed (security review of #181, S2).
-          BlocProvider(
-            create: (_) {
-              final pending = locator<PendingMakesCubit>(param1: args.network)
-                ..start();
-              unawaited(pending.resolveAll());
-              return pending;
-            },
-          ),
-        ],
-        child: Builder(
-          builder: (context) => CreateOrderScreen(
-            initialType: args.initialType,
-            offline: args.offline,
-            coordinatorDetails: (request) =>
-                locator<CoordinatorDetailsCubit>(param1: request),
-            onOpenGarage: locator.isRegistered<GarageCubit>()
-                ? () => context.pop(P2pOrderExit.garage)
-                : null,
-            onMade: (record) => context.pushReplacementNamed(
-              tradeName,
-              extra: P2pTradeRouteArgs(record, book: args.book),
-            ),
-          ),
+  static Widget createPage(
+    GetIt locator,
+    P2pCreateRouteArgs args,
+  ) => MultiBlocProvider(
+    providers: [
+      BlocProvider(
+        create: (_) =>
+            locator<MakeOrderCubit>(param1: args.network, param2: args.currency)
+              ..start(),
+      ),
+      // The pending makes resolved once when the form opens: the form makes nothing while one is listed (security review of #181, S2).
+      BlocProvider(
+        create: (_) {
+          final pending = locator<PendingMakesCubit>(param1: args.network)
+            ..start();
+          unawaited(pending.resolveAll());
+          return pending;
+        },
+      ),
+    ],
+    child: Builder(
+      builder: (context) => CreateOrderScreen(
+        initialType: args.initialType,
+        offline: args.offline,
+        coordinatorDetails: (request) =>
+            locator<CoordinatorDetailsCubit>(param1: request),
+        onOpenGarage: locator.isRegistered<GarageCubit>()
+            ? () => context.pop(P2pOrderExit.garage)
+            : null,
+        onMade: (record) => context.pushReplacementNamed(
+          tradeName,
+          extra: P2pTradeRouteArgs(record, book: args.book),
         ),
-      );
+      ),
+    ),
+  );
 
   /// [screen], under the payout panel's listener when there is one: once a payout given told something, the trade's watch reads at once, whichever tab is shown.
   static Widget _toldReads(bool payouts, BuildContext context, Widget screen) =>

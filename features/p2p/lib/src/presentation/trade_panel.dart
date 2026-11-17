@@ -225,8 +225,7 @@ final class TradeContract extends TradeView {
   (int, int)? get step => stepOf(status, maker: maker);
 
   /// The step of [status] for a maker or a taker ([maker]), as `stepXofY.ts` counts it from the status the order shows.
-  static (int, int)? stepOf(TradeStatus status, {required bool maker}) =>
-      maker
+  static (int, int)? stepOf(TradeStatus status, {required bool maker}) => maker
       ? switch (status.position) {
           TradePosition.makerBondStep => (1, 5),
           TradePosition.public || TradePosition.paused => (2, 5),

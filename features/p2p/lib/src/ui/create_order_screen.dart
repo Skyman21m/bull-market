@@ -320,109 +320,109 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           if (!didPop && sending) setState(() => _leaveTried = true);
         },
         child: Material(
-        color: colors.background,
-        child: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              if (state.network == RobosatsNetwork.testnet)
-                const TestnetBanner(),
-              const Gap(BullSpacing.xs),
-              BullTopBar(
-                title: l10n.p2pNavCreate,
-                onBack: () {
-                  if (sending) {
-                    setState(() => _leaveTried = true);
-                  } else if (context.canPop()) {
-                    context.pop();
-                  }
-                },
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(BullSpacing.md),
-                  children: [
-                    if (sending && _leaveTried) ...[
-                      _Line(
-                        l10n.p2pMakeSendingStay(coordinatorName),
-                        color: colors.warning,
-                        live: true,
+          color: colors.background,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                if (state.network == RobosatsNetwork.testnet)
+                  const TestnetBanner(),
+                const Gap(BullSpacing.xs),
+                BullTopBar(
+                  title: l10n.p2pNavCreate,
+                  onBack: () {
+                    if (sending) {
+                      setState(() => _leaveTried = true);
+                    } else if (context.canPop()) {
+                      context.pop();
+                    }
+                  },
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(BullSpacing.md),
+                    children: [
+                      if (sending && _leaveTried) ...[
+                        _Line(
+                          l10n.p2pMakeSendingStay(coordinatorName),
+                          color: colors.warning,
+                          live: true,
+                        ),
+                        const Gap(BullSpacing.md),
+                      ],
+                      // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
+                      if (pending.blocksMaking &&
+                          (pending.unreadable ||
+                              (pending.makes?.isNotEmpty ?? false))) ...[
+                        _Line(l10n.p2pMakePendingFirst, color: colors.warning),
+                        const PendingMakeLines(),
+                        const Gap(BullSpacing.md),
+                      ],
+                      _AdvancedOptions(onClear: locked ? null : _clear),
+                      const Gap(BullSpacing.md),
+                      _Side(
+                        type: _type,
+                        enabled: !locked,
+                        // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
+                        onBuy: () => setState(() => _type = OrderType.buy),
                       ),
                       const Gap(BullSpacing.md),
-                    ],
-                    // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
-                    if (pending.blocksMaking &&
-                        (pending.unreadable ||
-                            (pending.makes?.isNotEmpty ?? false))) ...[
-                      _Line(l10n.p2pMakePendingFirst, color: colors.warning),
-                      const PendingMakeLines(),
+                      _Amount(
+                        controller: _amount,
+                        currency: state.currency,
+                        problem: check.amountProblem,
+                        enabled: !locked,
+                        onChanged: _amountChanged,
+                        onCurrency: () => unawaited(_chooseCurrency(state)),
+                      ),
                       const Gap(BullSpacing.md),
+                      _Methods(
+                        methods: _methods,
+                        tooLong: check.badPaymentMethod,
+                        enabled: !locked,
+                        onChoose: () => unawaited(_chooseMethods()),
+                        onAdd: () => unawaited(_addMethod()),
+                        onRemove: (method) =>
+                            setState(() => _methods.remove(method)),
+                      ),
+                      const Gap(BullSpacing.md),
+                      _PremiumField(
+                        controller: _premium,
+                        problem: check.premiumProblem,
+                        enabled: !locked,
+                        onChanged: () => setState(() {}),
+                      ),
+                      const Gap(BullSpacing.md),
+                      _Coordinator(
+                        state: state,
+                        name: coordinatorName,
+                        enabled: !locked && state.coordinatorsLoaded,
+                        onTap: () => unawaited(_chooseHost(state)),
+                      ),
+                      const Gap(BullSpacing.md),
+                      _Summary(type: _type, check: check, state: state),
+                      const Gap(BullSpacing.md),
+                      _CreateButton(
+                        check: check,
+                        state: state,
+                        pendingFirst: pending.blocksMaking,
+                        asking: _asking,
+                        stopped: _stopped,
+                        coordinator: coordinatorName,
+                        onPressed: () => unawaited(_press()),
+                      ),
+                      const Gap(BullSpacing.md),
+                      _Rate(
+                        check: check,
+                        state: state,
+                        coordinator: coordinatorName,
+                      ),
                     ],
-                    _AdvancedOptions(onClear: locked ? null : _clear),
-                    const Gap(BullSpacing.md),
-                    _Side(
-                      type: _type,
-                      enabled: !locked,
-                      // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
-                      onBuy: () => setState(() => _type = OrderType.buy),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _Amount(
-                      controller: _amount,
-                      currency: state.currency,
-                      problem: check.amountProblem,
-                      enabled: !locked,
-                      onChanged: _amountChanged,
-                      onCurrency: () => unawaited(_chooseCurrency(state)),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _Methods(
-                      methods: _methods,
-                      tooLong: check.badPaymentMethod,
-                      enabled: !locked,
-                      onChoose: () => unawaited(_chooseMethods()),
-                      onAdd: () => unawaited(_addMethod()),
-                      onRemove: (method) =>
-                          setState(() => _methods.remove(method)),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _PremiumField(
-                      controller: _premium,
-                      problem: check.premiumProblem,
-                      enabled: !locked,
-                      onChanged: () => setState(() {}),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _Coordinator(
-                      state: state,
-                      name: coordinatorName,
-                      enabled: !locked && state.coordinatorsLoaded,
-                      onTap: () => unawaited(_chooseHost(state)),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _Summary(type: _type, check: check, state: state),
-                    const Gap(BullSpacing.md),
-                    _CreateButton(
-                      check: check,
-                      state: state,
-                      pendingFirst: pending.blocksMaking,
-                      asking: _asking,
-                      stopped: _stopped,
-                      coordinator: coordinatorName,
-                      onPressed: () => unawaited(_press()),
-                    ),
-                    const Gap(BullSpacing.md),
-                    _Rate(
-                      check: check,
-                      state: state,
-                      coordinator: coordinatorName,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );

@@ -7,7 +7,6 @@ import 'package:p2p/generated/l10n/p2p_localizations.dart';
 import 'package:p2p/src/domain/garage_key_fingerprint.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
-import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_answer.dart';
 import 'package:p2p/src/domain/trade/trade_cancel.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
@@ -153,30 +152,30 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
     RepaintBoundary(
       key: captureFrame,
       child: MaterialApp(
-      theme: testTheme,
-      locale: locale,
-      localizationsDelegates: P2pLocalizations.localizationsDelegates,
-      supportedLocales: P2pLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: Scaffold(
-        body: MultiBlocProvider(
-          providers: [
-            BlocProvider.value(value: trade),
-            BlocProvider.value(value: page),
-          ],
-          // A screen of its own at each show, so that a tab chosen in a show before is not kept.
-          child: TradeScreen(
-            key: UniqueKey(),
-            now: () => tradeNow,
-            coordinatorDetails: (_) => throw StateError('not opened'),
-            book: book,
+        theme: testTheme,
+        locale: locale,
+        localizationsDelegates: P2pLocalizations.localizationsDelegates,
+        supportedLocales: P2pLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child ?? const SizedBox.shrink(),
+        ),
+        home: Scaffold(
+          body: MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: trade),
+              BlocProvider.value(value: page),
+            ],
+            // A screen of its own at each show, so that a tab chosen in a show before is not kept.
+            child: TradeScreen(
+              key: UniqueKey(),
+              now: () => tradeNow,
+              coordinatorDetails: (_) => throw StateError('not opened'),
+              book: book,
+            ),
           ),
         ),
       ),
-    ),
     ),
   );
   await tester.pump();
@@ -215,17 +214,20 @@ void main() {
           makerOrderJson(10),
           makerOrderJson(13),
         ]);
-        expect([for (final s in seen) TradeContract(s, order: s.order).step], [
-          (1, 5),
-          (2, 5),
-          (2, 5),
-          (2, 5),
-          (3, 5),
-          (3, 5),
-          (4, 5),
-          (5, 5),
-          null,
-        ]);
+        expect(
+          [for (final s in seen) TradeContract(s, order: s.order).step],
+          [
+            (1, 5),
+            (2, 5),
+            (2, 5),
+            (2, 5),
+            (3, 5),
+            (3, 5),
+            (4, 5),
+            (5, 5),
+            null,
+          ],
+        );
         final expired = await _at([makerOrderJson(0), makerOrderJson(5)]);
         expect(TradeContract(expired, order: expired.order).step, isNull);
       },
@@ -258,10 +260,7 @@ void main() {
     test(
       '« Public orders for … » counts every order of the currency, « Premium rank » the share of the same side below the premium (`Prompts/PublicWait.tsx:52-78`)',
       () async {
-        final order = (await _at([
-          makerOrderJson(0),
-          makerOrderJson(1),
-        ])).order;
+        final order = (await _at([makerOrderJson(0), makerOrderJson(1)])).order;
         if (order == null) throw StateError('no order');
         final book = await parseOrders([
           // The maker's own order, in the book: a buy order at 2 %.
@@ -398,9 +397,8 @@ void main() {
         final (_, watch) = await _show(
           tester,
           seen,
-          cancel: (seen) async => Ok(
-            CancelDone(_record, seen, makerBondReturned: true),
-          ),
+          cancel: (seen) async =>
+              Ok(CancelDone(_record, seen, makerBondReturned: true)),
         );
         await _reveal(tester, find.text('Cancel'));
         await tester.tap(find.text('Cancel'));
@@ -470,24 +468,23 @@ void main() {
       },
     );
 
-    testWidgets(
-      'status 5 from 0: the reason « Maker bond not locked »',
-      (tester) async {
-        final seen = await _at([
-          makerOrderJson(0),
-          makerOrderJson(
-            5,
-            changes: {
-              'expiry_reason': 1,
-              'expiry_message': 'Maker bond not locked',
-            },
-          ),
-        ]);
-        await _show(tester, seen);
-        expect(find.text('The order has expired'), findsOneWidget);
-        expect(find.text('Maker bond not locked'), findsOneWidget);
-      },
-    );
+    testWidgets('status 5 from 0: the reason « Maker bond not locked »', (
+      tester,
+    ) async {
+      final seen = await _at([
+        makerOrderJson(0),
+        makerOrderJson(
+          5,
+          changes: {
+            'expiry_reason': 1,
+            'expiry_message': 'Maker bond not locked',
+          },
+        ),
+      ]);
+      await _show(tester, seen);
+      expect(find.text('The order has expired'), findsOneWidget);
+      expect(find.text('Maker bond not locked'), findsOneWidget);
+    });
 
     testWidgets(
       'status 6, taken: « Submit payout info (3/5) », the maker\'s bond line, the gap before « Submit » in the warning colour, « Cancel » with the bond at risk',
@@ -540,21 +537,22 @@ void main() {
       },
     );
 
-    testWidgets('status 7: « Your info looks good! (3/5) », « Cancel » at risk', (
-      tester,
-    ) async {
-      final seen = await _at([
-        makerOrderJson(0),
-        makerOrderJson(1),
-        makerOrderJson(6),
-        makerOrderJson(7),
-      ]);
-      await _show(tester, seen);
-      expect(find.textContaining('(3/5)'), findsOneWidget);
-      await _reveal(tester, find.text('Cancel'));
-      expect(find.text('Cancel'), findsOneWidget);
-      expect(find.text('Your maker bond is locked'), findsOneWidget);
-    });
+    testWidgets(
+      'status 7: « Your info looks good! (3/5) », « Cancel » at risk',
+      (tester) async {
+        final seen = await _at([
+          makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6),
+          makerOrderJson(7),
+        ]);
+        await _show(tester, seen);
+        expect(find.textContaining('(3/5)'), findsOneWidget);
+        await _reveal(tester, find.text('Cancel'));
+        expect(find.text('Cancel'), findsOneWidget);
+        expect(find.text('Your maker bond is locked'), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'status 9: « (4/5) », and « Confirm … sent » says the gap in its dialog before « Confirm »',
@@ -630,12 +628,7 @@ void main() {
           makerOrderJson(1),
           makerOrderJson(6),
           makerOrderJson(1),
-          makerOrderJson(
-            6,
-            taker: third,
-            deadline: deadline1,
-            last: _lowSats,
-          ),
+          makerOrderJson(6, taker: third, deadline: deadline1, last: _lowSats),
         ]);
         final back = chain[3];
         expect(back.status, isA<MakerOrderPublic>());
@@ -691,10 +684,7 @@ void main() {
         await _show(tester, seen);
         await tester.tap(find.text('Order').last);
         await tester.pump();
-        expect(
-          find.text('You send via Revolut Instant SEPA'),
-          findsOneWidget,
-        );
+        expect(find.text('You send via Revolut Instant SEPA'), findsOneWidget);
         expect(find.text('You receive Lightning'), findsNothing);
         expect(find.textContaining('You receive'), findsOneWidget);
         // The payout the coordinator gives (`invoice_amount`): the sats less the maker fee.
@@ -723,22 +713,24 @@ void main() {
       );
       expect(find.text('Ordres publics pour EUR'), findsOneWidget);
       expect(find.text('Classement de prime 0,5 %'), findsOneWidget);
-      expect(find.text('Votre caution de créateur est bloquée'), findsOneWidget);
+      expect(
+        find.text('Votre caution de créateur est bloquée'),
+        findsOneWidget,
+      );
       final taken = await _at([
         makerOrderJson(0),
         makerOrderJson(1),
         makerOrderJson(6, last: _lowSats),
       ]);
       await _show(tester, taken, locale: const Locale('fr'));
+      expect(find.textContaining('a fixé 101'), findsOneWidget);
       expect(
-        find.textContaining('a fixé 101'),
+        find.textContaining('par rapport au taux à sa création'),
         findsOneWidget,
       );
-      expect(find.textContaining('par rapport au taux à sa création'), findsOneWidget);
       _noInternalNames(tester);
     });
   });
-
 
   group('captures (with P2P_CAPTURE_DIR)', () {
     setUpAll(loadCaptureFonts);
@@ -832,7 +824,12 @@ void main() {
             makerOrderJson(1),
             makerOrderJson(6),
             makerOrderJson(1),
-            makerOrderJson(6, taker: third, deadline: deadline1, last: _lowSats),
+            makerOrderJson(
+              6,
+              taker: third,
+              deadline: deadline1,
+              last: _lowSats,
+            ),
           ]);
           await shoot('contrat-vu-tard', [
             makerOrderJson(0),
@@ -848,9 +845,7 @@ void main() {
             makerOrderJson(8, last: _lowSats),
             makerOrderJson(9, last: _lowSats),
           ]);
-          final confirm = find.textContaining(
-            code == 'fr' ? 'envoyé' : 'sent',
-          );
+          final confirm = find.textContaining(code == 'fr' ? 'envoyé' : 'sent');
           if (confirm.evaluate().isNotEmpty) {
             await tester.ensureVisible(confirm.last);
             await tester.pump();
