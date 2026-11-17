@@ -185,8 +185,12 @@ void main() {
         ),
       };
       for (final MapEntry(key: reason, value: record) in cases.entries) {
-        expect(record.whyNotReplace(stored), reason, reason: '$reason');
-        expect(record.mayReplace(stored), isFalse);
+        expect(
+          record.whyNotReplace(stored, madeHere: false),
+          reason,
+          reason: '$reason',
+        );
+        expect(record.mayReplace(stored, madeHere: false), isFalse);
       }
       // A cleared hash and a forgotten pre-take deadline are refused too.
       expect(
@@ -194,7 +198,7 @@ void main() {
           stored,
           clearBondHash: true,
           readAtMicros: at,
-        ).whyNotReplace(stored),
+        ).whyNotReplace(stored, madeHere: false),
         TrailReplacementRefusal.hashChanged,
       );
       expect(
@@ -202,7 +206,7 @@ void main() {
           stored,
           clearBondStepDeadline: true,
           readAtMicros: at,
-        ).whyNotReplace(stored),
+        ).whyNotReplace(stored, madeHere: false),
         TrailReplacementRefusal.preTakeForgotten,
       );
       // The pre-take's last read moved back.
@@ -211,7 +215,7 @@ void main() {
           stored,
           bondStepSeenAtMicros: (stored.bondStepSeenAtMicros ?? 0) - 1,
           readAtMicros: at,
-        ).whyNotReplace(stored),
+        ).whyNotReplace(stored, madeHere: false),
         TrailReplacementRefusal.preTakeForgotten,
       );
       // An escrow hash set stays set.
@@ -230,7 +234,7 @@ void main() {
           six.trail.record,
           clearEscrowHash: true,
           readAtMicros: six.trail.record.readAtMicros + 1,
-        ).whyNotReplace(six.trail.record),
+        ).whyNotReplace(six.trail.record, madeHere: false),
         TrailReplacementRefusal.hashChanged,
       );
     });
@@ -242,7 +246,7 @@ void main() {
         final later = tradeNow.add(const Duration(seconds: 30));
         final six = next(pre, await answer(orderJson(6)), now: later);
         final record = six.trail.record;
-        expect(record.whyNotReplace(pre.trail.record), isNull);
+        expect(record.whyNotReplace(pre.trail.record, madeHere: false), isNull);
         // Back from 6 to the start, the pins dropped (the reviewer's GAP-P6): refused.
         expect(
           edited(
@@ -250,7 +254,7 @@ void main() {
             position: 'start',
             clearBondHash: true,
             readAtMicros: record.readAtMicros + 1,
-          ).whyNotReplace(record),
+          ).whyNotReplace(record, madeHere: false),
           TrailReplacementRefusal.hashChanged,
         );
         expect(
@@ -258,7 +262,7 @@ void main() {
             record,
             position: 'start',
             readAtMicros: record.readAtMicros + 1,
-          ).whyNotReplace(record),
+          ).whyNotReplace(record, madeHere: false),
           TrailReplacementRefusal.positionMoved,
         );
         // From 6 back to the pre-take: no edge, refused; with a breach recorded, the trail may say so.
@@ -267,7 +271,7 @@ void main() {
             record,
             position: 'bondStep',
             readAtMicros: record.readAtMicros + 1,
-          ).whyNotReplace(record),
+          ).whyNotReplace(record, madeHere: false),
           TrailReplacementRefusal.positionMoved,
         );
         // A breached trail may stand anywhere but out of an end: an unexpected edge is a breach the trail remembers, and a breached trail is never paid on.
@@ -277,7 +281,7 @@ void main() {
             position: 'bondStep',
             breached: true,
             readAtMicros: record.readAtMicros + 1,
-          ).whyNotReplace(record),
+          ).whyNotReplace(record, madeHere: false),
           isNull,
         );
         // An end is never left, even with a breach.
@@ -288,7 +292,7 @@ void main() {
             position: 'chatting',
             breached: true,
             readAtMicros: ended.trail.record.readAtMicros + 1,
-          ).whyNotReplace(ended.trail.record),
+          ).whyNotReplace(ended.trail.record, madeHere: false),
           TrailReplacementRefusal.positionMoved,
         );
         // The pre-take back after a pause is an edge.
@@ -298,15 +302,24 @@ void main() {
           await answer(orderJson(3)),
           now: later.add(const Duration(seconds: 5)),
         );
-        expect(back.trail.record.whyNotReplace(paused.trail.record), isNull);
+        expect(
+          back.trail.record.whyNotReplace(paused.trail.record, madeHere: false),
+          isNull,
+        );
         // A recovered trade's first answer may be anywhere.
         final found = TradeStatus.beforeFirstRead(
           TradeTrail.recovered(buyer, tradeNow),
         );
         final foundAt9 = next(found, await answer(orderJson(9)), now: later);
-        expect(foundAt9.trail.record.whyNotReplace(found.trail.record), isNull);
+        expect(
+          foundAt9.trail.record.whyNotReplace(
+            found.trail.record,
+            madeHere: false,
+          ),
+          isNull,
+        );
         // The same record written twice may replace itself.
-        expect(record.mayReplace(record), isTrue);
+        expect(record.mayReplace(record, madeHere: false), isTrue);
       },
     );
   });
@@ -323,7 +336,10 @@ void main() {
       );
       expect(refused.has<TradeRoleMismatch>(), isTrue);
       expect(refused.trail.readAt, later);
-      expect(refused.trail.record.whyNotReplace(pre.trail.record), isNull);
+      expect(
+        refused.trail.record.whyNotReplace(pre.trail.record, madeHere: false),
+        isNull,
+      );
     },
   );
 
@@ -466,7 +482,7 @@ void main() {
     'only the trade\'s own domain and use cases name the fresh trails and the take\'s start',
     () {
       final names = RegExp(
-        r'\b(forPendingTake|afterTake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
+        r'\b(forPendingTake|afterTake|afterMake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
       );
       for (final file in Directory('lib').listSync(recursive: true)) {
         if (file is! File || !file.path.endsWith('.dart')) continue;

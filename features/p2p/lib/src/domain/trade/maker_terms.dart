@@ -31,6 +31,18 @@ final class MakerTermsUnusable extends MakerTermsRefusal {
   const MakerTermsUnusable();
 }
 
+/// What a gap from the rate of the creation means for the maker's side ([TradeRateGap.effectFor]).
+enum RateGapEffect {
+  /// More for the maker: more sats to receive as a buyer, fewer to lock as a seller.
+  favourable,
+
+  /// Less for the maker: fewer sats to receive as a buyer, more to lock as a seller.
+  unfavourable,
+
+  /// The very rate of the creation.
+  none,
+}
+
 /// The rate the coordinator fixed for a contract of a maker's order, against the rate of the order when it was made (design note `docs/design/phase-3-making-an-order.md` § 3.3): information shown before the steps that commit money, never a warning and never a ceiling.
 ///
 /// Doubles, since nothing compares them nor pays on them: the screen rounds them to show them.
@@ -50,6 +62,14 @@ final class TradeRateGap {
     required this.createdRate,
     required this.percent,
   });
+
+  /// What the gap means for a maker of [role] (#178): a positive gap is fewer sats for the same amount, so less for a buyer to receive and less for a seller to lock; a negative one the reverse; none at exactly 0. A screen never shows a gap as neutral when it is not.
+  RateGapEffect effectFor(TradeRole role) => switch ((percent, role)) {
+    (0, _) => RateGapEffect.none,
+    (> 0, TradeRole.buyer) ||
+    (< 0, TradeRole.seller) => RateGapEffect.unfavourable,
+    _ => RateGapEffect.favourable,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -346,6 +366,7 @@ final class MakerTerms {
   /// How far the rate the coordinator fixed for the contract of [rangeAmount] ([contractAmount]) is from [createdRate], when the take fixed [tradeSatoshis] sats (`last_satoshis`): `null` when the contract's amount is not one of these terms or [tradeSatoshis] is 0.
   ///
   /// Shown before the escrow of a maker seller and before the payout and « Confirm … sent » of a maker buyer (design note § 3.3); information only.
+  /// Call it only with sats `package:robosats` has already bounded (an order's `satoshis_now`, at most `CoordinatorReadBounds.maxSats`): its exact arithmetic grows with the size of the figures, and a huge number makes it very slow (security review of #177). The state machine calls it so, from the order it reads (`TradeStatus`, #178), and nothing else in the feature calls it.
   TradeRateGap? rateGap({
     required FiatAmount? rangeAmount,
     required Sats tradeSatoshis,

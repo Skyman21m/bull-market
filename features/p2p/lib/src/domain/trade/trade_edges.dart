@@ -1,9 +1,20 @@
 import 'trade_terms.dart';
 
-/// Where a taker's trade stands, as the edges of the state machine see it: one position per status a taker is shown, and the three answers that are not an order of the trade.
+/// Where a trade stands, as the edges of the state machine see it: one position per status a taker or a maker is shown, and the three answers that are not an order of the trade.
+///
+/// A maker's trade (design note `docs/design/phase-3-making-an-order.md` § 3.2) has three positions of its own, [makerBondStep], [public] and [paused], and is never at [bondStep], [preTakeUnavailable], [publicAgain] or [notAvailable]; from 6 on both share the others.
 enum TradePosition {
-  /// No answer read yet since the take (or, for a trade found by recovery, since it was found): only the take's own answers may come first.
+  /// No answer read yet since the take or the make (or, for a trade found by recovery, since it was found): only the take's own answers may come first, or for a maker the first read of its order.
   start,
+
+  /// 0, for a maker: the order waits for the maker bond.
+  makerBondStep,
+
+  /// 1, for a maker: the order is public, this robot its maker with its bond locked; reached again from 6, 7 or 8 when the order goes back to the book, which is not an end for a maker.
+  public,
+
+  /// 2, for a maker: the public order is paused.
+  paused,
 
   /// 3: the pre-take, waiting for the taker bond.
   bondStep,
@@ -72,9 +83,9 @@ enum TradePosition {
   };
 }
 
-/// The edges a taker's trade may take between two reads, from the reference backend at commit ff1998c (design note § 1.1-1.5, § 3.2, as corrected by #86).
+/// The edges a trade may take between two reads, from the reference backend at commit ff1998c: a taker's (design note § 1.1-1.5, § 3.2, as corrected by #86), and a maker's (`docs/design/phase-3-making-an-order.md` § 3.2, #178).
 ///
-/// [steps] lists each single move the backend makes, with the roles it happens to and where; [allows] admits any path of them, since several moves can happen between two reads (a poll every 3 to 300 s, nothing while the app is closed).
+/// [steps] lists each single move the backend makes for a taker, with the roles it happens to and where; [allows] admits any path of them, since several moves can happen between two reads (a poll every 3 to 300 s, nothing while the app is closed). [makerSteps] and [allowsMade] are the same for a maker.
 abstract final class TradeEdges {
   static const _both = {TradeRole.buyer, TradeRole.seller};
   static const _buyer = {TradeRole.buyer};
@@ -198,8 +209,122 @@ abstract final class TradeEdges {
     },
   };
 
+  /// Each single move of the backend for a maker, by origin, from the reference backend at commit ff1998c (design note `docs/design/phase-3-making-an-order.md` § 1.1, § 1.6, § 1.7, § 1.10, § 3.2): the destination and the roles of this robot, the maker, it happens to. From 9 on, a maker's moves are a taker's ([steps]), written again here so that each table reads alone.
+  static const Map<TradePosition, Map<TradePosition, Set<TradeRole>>>
+  makerSteps = {
+    // The first read of the order, after the make's answer or at the resolution of a make whose answer was lost (design note § 3.4): the maker bond, made at that very read (`api/views.py:373-379`, `api/logics.py:1252-1318`); the order expired at 0 when the read comes after its 300 s (`api/logics.py:1252-1255`, `:329-338`; the read that expires it answers 1022, which is no answer, and the next one 5); or error 1043, when it was cancelled at 0 (`api/logics.py:1037-1046`, `api/views.py:258-260`). Nothing else can come first: no bond invoice exists before that read, so none can have been paid.
+    TradePosition.start: {
+      TradePosition.makerBondStep: _both,
+      TradePosition.expired: _both,
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.makerBondStep: {
+      // The maker bond locks: the invoice follower publishes the order (`follow_invoices.py:233-240`, `Logics.publish_order`, `api/logics.py:1205-1227`).
+      TradePosition.public: _both,
+      // The 300 s of the bond ran out (`api/logics.py:329-338`), or the cleaner could not find the hold invoice while expiring it (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
+      // This maker cancelled before its bond locked (`api/logics.py:1037-1046`).
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.public: {
+      // This maker paused it (`Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`).
+      TradePosition.paused: _both,
+      // A taker's bond locked: the contract (`follow_invoices.py:243-251`, `Logics.finalize_contract`, `api/logics.py:1321-1380`), only from a public order.
+      TradePosition.waitingForBoth: _both,
+      // Not taken by its deadline: the maker bond returned (`api/logics.py:340-358`).
+      TradePosition.expired: _both,
+      // This maker cancelled: its bond returned (`api/logics.py:1048-1060`, `close_public_order`, `:961-1003`).
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.paused: {
+      // This maker resumed it (`api/logics.py:1769-1773`). A taker's bond that locks while it is paused is returned (`follow_invoices.py:243-261`), so no contract starts from here.
+      TradePosition.public: _both,
+      // A paused order expires as a public one (`api/logics.py:340-358`).
+      TradePosition.expired: _both,
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.waitingForBoth: {
+      // The buyer's payout is in, the escrow not locked (`api/logics.py:920-924`).
+      TradePosition.waitingForEscrow: _both,
+      // The seller's escrow locked (`Logics.trade_escrow_received`, `api/logics.py:1469-1474`).
+      TradePosition.waitingForPayout: _both,
+      // The payout came while the escrow was already locked (`api/logics.py:926-933`).
+      TradePosition.chatting: _both,
+      // Neither came in time: both bonds settled (`api/logics.py:360-379`).
+      TradePosition.expired: _both,
+      // The taker cancelled: its bond settled, the order public again with this maker's bond still locked (`api/logics.py:1108-1130`).
+      TradePosition.public: _both,
+      // This maker cancelled: its bond settled (`api/logics.py:1083-1106`).
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.waitingForEscrow: {
+      // The escrow locked (`api/logics.py:1475-1481`).
+      TradePosition.chatting: _both,
+      // This maker, the seller, did not lock it: its bond settled (`api/logics.py:381-402`); or, for both roles, the cleaner could not find a hold invoice (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
+      // The taker cancelled (`api/logics.py:1108-1130`), or as the seller of a maker buyer did not lock the escrow (`api/logics.py:404-421`): the order public again.
+      TradePosition.public: _both,
+      // This maker cancelled (`api/logics.py:1083-1106`).
+      TradePosition.cancelled: _both,
+    },
+    TradePosition.waitingForPayout: {
+      // The payout came (`api/logics.py:912-918`).
+      TradePosition.chatting: _both,
+      // This maker, the buyer, gave no payout: its bond settled (`api/logics.py:423-443`); or, for both roles, a hold invoice the cleaner could not find (`clean_orders.py:72-81`).
+      TradePosition.expired: _both,
+      // The taker, the buyer of a maker seller, gave no payout: its bond settled, the escrow returned, the order public again (`api/logics.py:445-458`).
+      TradePosition.public: _seller,
+      // Both asked to cancel (`api/logics.py:1138-1159`).
+      TradePosition.cancelled: _both,
+    },
+    // From 9 on, as a taker's: no move leads back to the book.
+    TradePosition.chatting: {
+      TradePosition.fiatSent: _both,
+      TradePosition.inDispute: _both,
+      TradePosition.cancelled: _both,
+      TradePosition.expired: _both,
+    },
+    TradePosition.fiatSent: {
+      TradePosition.chatting: _both,
+      TradePosition.inDispute: _both,
+      TradePosition.sendingSats: _both,
+      TradePosition.succeeded: _both,
+      TradePosition.expired: _both,
+    },
+    TradePosition.inDispute: {
+      TradePosition.waitingDisputeResolution: _both,
+      TradePosition.takerLostDispute: _both,
+      TradePosition.makerLostDispute: _both,
+      TradePosition.cancelled: _both,
+      TradePosition.sendingSats: _both,
+    },
+    TradePosition.waitingDisputeResolution: {
+      TradePosition.takerLostDispute: _both,
+      TradePosition.makerLostDispute: _both,
+      TradePosition.cancelled: _both,
+      TradePosition.sendingSats: _both,
+    },
+    TradePosition.sendingSats: {
+      TradePosition.succeeded: _both,
+      TradePosition.routingFailed: _both,
+    },
+    TradePosition.routingFailed: {
+      TradePosition.sendingSats: _both,
+      TradePosition.succeeded: _both,
+    },
+  };
+
+  static const _seller = {TradeRole.seller};
+
   static final Map<TradeRole, Map<TradePosition, Set<TradePosition>>>
-  _reachable = {for (final role in TradeRole.values) role: _closure(role)};
+  _reachable = {
+    for (final role in TradeRole.values) role: _closure(role, steps),
+  };
+
+  static final Map<TradeRole, Map<TradePosition, Set<TradePosition>>>
+  _reachableMade = {
+    for (final role in TradeRole.values) role: _closure(role, makerSteps),
+  };
 
   /// Whether a trade of a taker of [role] may be at [to] at a read after a read at [from]: the same position, or one reachable through [steps].
   ///
@@ -212,7 +337,21 @@ abstract final class TradeEdges {
     return _reachable[role]?[from]?.contains(to) ?? false;
   }
 
-  static Map<TradePosition, Set<TradePosition>> _closure(TradeRole role) {
+  /// Whether a trade of a maker of [role] may be at [to] at a read after a read at [from]: the same position, or one reachable through [makerSteps], the order going back to the book and being taken again included.
+  ///
+  /// From [TradePosition.start], only the single steps listed: the first read of the order after the make is the one that makes its bond.
+  static bool allowsMade(TradeRole role, TradePosition from, TradePosition to) {
+    if (from == to) return true;
+    if (from == TradePosition.start) {
+      return makerSteps[from]?[to]?.contains(role) ?? false;
+    }
+    return _reachableMade[role]?[from]?.contains(to) ?? false;
+  }
+
+  static Map<TradePosition, Set<TradePosition>> _closure(
+    TradeRole role,
+    Map<TradePosition, Map<TradePosition, Set<TradeRole>>> table,
+  ) {
     final reachable = <TradePosition, Set<TradePosition>>{};
     for (final origin in TradePosition.values) {
       final seen = <TradePosition>{};
@@ -220,7 +359,7 @@ abstract final class TradeEdges {
       while (pending.isNotEmpty) {
         final current = pending.removeLast();
         for (final MapEntry(key: next, value: roles)
-            in (steps[current] ?? const {}).entries) {
+            in (table[current] ?? const {}).entries) {
           if (roles.contains(role) && seen.add(next)) pending.add(next);
         }
       }

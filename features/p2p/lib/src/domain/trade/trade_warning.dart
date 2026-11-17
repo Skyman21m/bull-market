@@ -29,7 +29,7 @@ sealed class TradeWarning {
   String toString() => runtimeType.toString();
 }
 
-/// The coordinator says this robot is the maker, or the buyer when it took as seller (or the reverse): « Do not pay anything. » (`TradeRoleMismatch` in the design note).
+/// The coordinator says this robot is the maker of an order it took, or not the maker of an order it made, or the buyer when it is the seller (or the reverse): « Do not pay anything. » (`TradeRoleMismatch` in the design notes).
 final class TradeRoleMismatch extends TradeWarning {
   const TradeRoleMismatch();
 
@@ -60,7 +60,7 @@ final class TradeTermsChanged extends TradeWarning {
       TradeWarningEffect.hidesInvoiceUntilShownAnyway;
 }
 
-/// The status moved along an edge that the reference never takes for a taker, even through steps between two reads: « Unexpected change on the coordinator's side. », and the polling goes on.
+/// The status moved along an edge that the reference never takes for a taker, or for a maker, even through steps between two reads, or error 1044 came for a maker, who is always a participant of its order (`api/views.py:269-275`): « Unexpected change on the coordinator's side. », and the polling goes on.
 final class TradeStatusUnexpected extends TradeWarning {
   const TradeStatusUnexpected();
 
@@ -71,7 +71,7 @@ final class TradeStatusUnexpected extends TradeWarning {
   bool get isBreachOfTrust => true;
 }
 
-/// The answer goes back to the bond step after the bond step ended, or shows a status a taker is never shown (0, 2, 4 or 12 in an order, or public with this robot as its taker): refused as an answer, the status stays the last one.
+/// The answer goes back to the bond step after the bond step ended, or shows a status a taker is never shown (0, 2, 4 or 12 in an order, or public with this robot as its taker), or a maker (3, 4 or 12 in an order), or for a maker the bond step after its bond locked: refused as an answer, the status stays the last one.
 final class TradeStatusRegressed extends TradeWarning {
   const TradeStatusRegressed();
 
@@ -143,7 +143,46 @@ final class TakerFeeAboveAnnounced extends TradeWarning {
       TradeWarningEffect.hidesInvoiceUntilShownAnyway;
 }
 
-/// The coordinator moved the deadline of the current status earlier than it said before: shown as it is, since the coordinator decides (design note § 3.2).
+/// The fee a maker's contract implies (its escrow over the trade's sats `last_satoshis`, or those sats over its payout) is negative or above the maker fee `/api/info/` announced at the make, by more than [TradeTolerances.feeSats] (`MakerTerms.feeAgrees`), or cannot be computed because the order gives a participant at 6 or later no `satoshis_now`, which the reference always gives (`api/views.py:324`) (design note `docs/design/phase-3-making-an-order.md` § 3.3).
+final class MakerFeeAboveAnnounced extends TradeWarning {
+  const MakerFeeAboveAnnounced();
+
+  @override
+  TradeWarningEffect get effect =>
+      TradeWarningEffect.hidesInvoiceUntilShownAnyway;
+}
+
+/// The coordinator names another taker for a maker's contract than the one it named before, under the same contract: the same deadline at 6, 7 or 8 (a new take always sets a later one, `api/logics.py:1338-1340`), an earlier one, or any read from 9 on, where no new contract can come (design note `docs/design/phase-3-making-an-order.md` § 3.2). A breach of trust, refused as an answer.
+final class TradeTakerChanged extends TradeWarning {
+  const TradeTakerChanged();
+
+  @override
+  TradeWarningEffect get effect => TradeWarningEffect.hidesInvoice;
+
+  @override
+  bool get isBreachOfTrust => true;
+}
+
+/// An escrow invoice of an earlier contract of a maker's order served again in a later one, whatever came in between (the coordinator makes a new escrow at each contract, `Logics.publish_order` clearing `trade_escrow`, `api/logics.py:1218`, and `gen_escrow_hold_invoice` making one when none is attached, `:1491-1495`): the trail keeps every escrow hash its earlier contracts pinned (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5; security review of #178). A breach of trust; never shown, never pinned.
+final class EscrowNotOfThisContract extends TradeWarning {
+  const EscrowNotOfThisContract();
+
+  @override
+  TradeWarningEffect get effect => TradeWarningEffect.hidesInvoice;
+
+  @override
+  bool get isBreachOfTrust => true;
+}
+
+/// A maker's current contract was first read from 9 on: the order went back to the book, was taken again and went through its steps while the app did not read, the maker's own step done from another client with the same Garage Key (design note `docs/design/phase-3-making-an-order.md` § 3.2). Information, not a breach, said at every status while that contract lasts, after a restart too (the trail keeps it): « the trade moved on from another app », which a screen says so that a maker who did not act elsewhere does not send or confirm anything for it.
+final class ContractSeenLate extends TradeWarning {
+  const ContractSeenLate();
+
+  @override
+  TradeWarningEffect get effect => TradeWarningEffect.shown;
+}
+
+/// The coordinator moved the deadline of the current status earlier than it said before, or for a maker the deadline of its contract at 6, 7 or 8, which the coordinator sets once at the take (`api/logics.py:1338-1340`): shown as it is, since the coordinator decides (design note § 3.2).
 final class DeadlineMovedBack extends TradeWarning {
   const DeadlineMovedBack();
 

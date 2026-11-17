@@ -3320,6 +3320,24 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> earlierEscrows = GeneratedColumn<String>(
+    'earlier_escrows',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'\'',
+    defaultValue: const CustomExpression('\'\''),
+  );
+  late final GeneratedColumn<int> seenLate = GeneratedColumn<int>(
+    'seen_late',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (seen_late IN (0, 1))',
+    defaultValue: const CustomExpression('0'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     keyFingerprint,
@@ -3342,6 +3360,8 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
     takeDeadline,
     takerHashId,
     takenAmount,
+    earlierEscrows,
+    seenLate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3434,6 +3454,14 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
         DriftSqlType.double,
         data['${effectivePrefix}taken_amount'],
       ),
+      earlierEscrows: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}earlier_escrows'],
+      )!,
+      seenLate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}seen_late'],
+      )!,
     );
   }
 
@@ -3466,6 +3494,8 @@ class TradeTrails extends Table with TableInfo<TradeTrails, TradeTrailsData> {
     'CHECK(taker_hash_id IS NULL OR(length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB \'*[^0-9a-f]*\'))',
     'CHECK(taken_amount IS NULL OR(taken_amount > 0 AND taken_amount < 10000000000))',
     'CHECK(take = 0 OR take_deadline IS NOT NULL)',
+    'CHECK(typeof(earlier_escrows) = \'text\' AND length(earlier_escrows) % 65 = 0 AND earlier_escrows NOT GLOB \'*[^0-9a-f;]*\' AND typeof(seen_late) = \'integer\' AND seen_late IN (0, 1))',
+    'CHECK(take > 0 OR(earlier_escrows = \'\' AND seen_late = 0))',
     'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
   ];
   @override
@@ -3493,6 +3523,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
   final int? takeDeadline;
   final String? takerHashId;
   final double? takenAmount;
+  final String earlierEscrows;
+  final int seenLate;
   const TradeTrailsData({
     required this.keyFingerprint,
     required this.robotIndex,
@@ -3514,6 +3546,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     this.takeDeadline,
     this.takerHashId,
     this.takenAmount,
+    required this.earlierEscrows,
+    required this.seenLate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3554,6 +3588,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     if (!nullToAbsent || takenAmount != null) {
       map['taken_amount'] = Variable<double>(takenAmount);
     }
+    map['earlier_escrows'] = Variable<String>(earlierEscrows);
+    map['seen_late'] = Variable<int>(seenLate);
     return map;
   }
 
@@ -3595,6 +3631,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       takenAmount: takenAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(takenAmount),
+      earlierEscrows: Value(earlierEscrows),
+      seenLate: Value(seenLate),
     );
   }
 
@@ -3624,6 +3662,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       takeDeadline: serializer.fromJson<int?>(json['takeDeadline']),
       takerHashId: serializer.fromJson<String?>(json['takerHashId']),
       takenAmount: serializer.fromJson<double?>(json['takenAmount']),
+      earlierEscrows: serializer.fromJson<String>(json['earlierEscrows']),
+      seenLate: serializer.fromJson<int>(json['seenLate']),
     );
   }
   @override
@@ -3650,6 +3690,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       'takeDeadline': serializer.toJson<int?>(takeDeadline),
       'takerHashId': serializer.toJson<String?>(takerHashId),
       'takenAmount': serializer.toJson<double?>(takenAmount),
+      'earlierEscrows': serializer.toJson<String>(earlierEscrows),
+      'seenLate': serializer.toJson<int>(seenLate),
     };
   }
 
@@ -3674,6 +3716,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     Value<int?> takeDeadline = const Value.absent(),
     Value<String?> takerHashId = const Value.absent(),
     Value<double?> takenAmount = const Value.absent(),
+    String? earlierEscrows,
+    int? seenLate,
   }) => TradeTrailsData(
     keyFingerprint: keyFingerprint ?? this.keyFingerprint,
     robotIndex: robotIndex ?? this.robotIndex,
@@ -3699,6 +3743,8 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     takeDeadline: takeDeadline.present ? takeDeadline.value : this.takeDeadline,
     takerHashId: takerHashId.present ? takerHashId.value : this.takerHashId,
     takenAmount: takenAmount.present ? takenAmount.value : this.takenAmount,
+    earlierEscrows: earlierEscrows ?? this.earlierEscrows,
+    seenLate: seenLate ?? this.seenLate,
   );
   TradeTrailsData copyWithCompanion(TradeTrailsCompanion data) {
     return TradeTrailsData(
@@ -3742,6 +3788,10 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
       takenAmount: data.takenAmount.present
           ? data.takenAmount.value
           : this.takenAmount,
+      earlierEscrows: data.earlierEscrows.present
+          ? data.earlierEscrows.value
+          : this.earlierEscrows,
+      seenLate: data.seenLate.present ? data.seenLate.value : this.seenLate,
     );
   }
 
@@ -3767,13 +3817,15 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
           ..write('take: $take, ')
           ..write('takeDeadline: $takeDeadline, ')
           ..write('takerHashId: $takerHashId, ')
-          ..write('takenAmount: $takenAmount')
+          ..write('takenAmount: $takenAmount, ')
+          ..write('earlierEscrows: $earlierEscrows, ')
+          ..write('seenLate: $seenLate')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     keyFingerprint,
     robotIndex,
     version,
@@ -3794,7 +3846,9 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
     takeDeadline,
     takerHashId,
     takenAmount,
-  );
+    earlierEscrows,
+    seenLate,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3818,7 +3872,9 @@ class TradeTrailsData extends DataClass implements Insertable<TradeTrailsData> {
           other.take == this.take &&
           other.takeDeadline == this.takeDeadline &&
           other.takerHashId == this.takerHashId &&
-          other.takenAmount == this.takenAmount);
+          other.takenAmount == this.takenAmount &&
+          other.earlierEscrows == this.earlierEscrows &&
+          other.seenLate == this.seenLate);
 }
 
 class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
@@ -3842,6 +3898,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
   final Value<int?> takeDeadline;
   final Value<String?> takerHashId;
   final Value<double?> takenAmount;
+  final Value<String> earlierEscrows;
+  final Value<int> seenLate;
   final Value<int> rowid;
   const TradeTrailsCompanion({
     this.keyFingerprint = const Value.absent(),
@@ -3864,6 +3922,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     this.takeDeadline = const Value.absent(),
     this.takerHashId = const Value.absent(),
     this.takenAmount = const Value.absent(),
+    this.earlierEscrows = const Value.absent(),
+    this.seenLate = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TradeTrailsCompanion.insert({
@@ -3887,6 +3947,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     this.takeDeadline = const Value.absent(),
     this.takerHashId = const Value.absent(),
     this.takenAmount = const Value.absent(),
+    this.earlierEscrows = const Value.absent(),
+    this.seenLate = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : keyFingerprint = Value(keyFingerprint),
        robotIndex = Value(robotIndex),
@@ -3920,6 +3982,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     Expression<int>? takeDeadline,
     Expression<String>? takerHashId,
     Expression<double>? takenAmount,
+    Expression<String>? earlierEscrows,
+    Expression<int>? seenLate,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3943,6 +4007,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
       if (takeDeadline != null) 'take_deadline': takeDeadline,
       if (takerHashId != null) 'taker_hash_id': takerHashId,
       if (takenAmount != null) 'taken_amount': takenAmount,
+      if (earlierEscrows != null) 'earlier_escrows': earlierEscrows,
+      if (seenLate != null) 'seen_late': seenLate,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3968,6 +4034,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     Value<int?>? takeDeadline,
     Value<String?>? takerHashId,
     Value<double?>? takenAmount,
+    Value<String>? earlierEscrows,
+    Value<int>? seenLate,
     Value<int>? rowid,
   }) {
     return TradeTrailsCompanion(
@@ -3991,6 +4059,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
       takeDeadline: takeDeadline ?? this.takeDeadline,
       takerHashId: takerHashId ?? this.takerHashId,
       takenAmount: takenAmount ?? this.takenAmount,
+      earlierEscrows: earlierEscrows ?? this.earlierEscrows,
+      seenLate: seenLate ?? this.seenLate,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4058,6 +4128,12 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
     if (takenAmount.present) {
       map['taken_amount'] = Variable<double>(takenAmount.value);
     }
+    if (earlierEscrows.present) {
+      map['earlier_escrows'] = Variable<String>(earlierEscrows.value);
+    }
+    if (seenLate.present) {
+      map['seen_late'] = Variable<int>(seenLate.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4087,6 +4163,8 @@ class TradeTrailsCompanion extends UpdateCompanion<TradeTrailsData> {
           ..write('takeDeadline: $takeDeadline, ')
           ..write('takerHashId: $takerHashId, ')
           ..write('takenAmount: $takenAmount, ')
+          ..write('earlierEscrows: $earlierEscrows, ')
+          ..write('seenLate: $seenLate, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5253,7 +5331,7 @@ class DatabaseAtV8 extends GeneratedDatabase {
     'trade_trails_closed',
   );
   late final Trigger tradeTrailsForward = Trigger(
-    'CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN (\'succeeded\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\') AND NEW.position IS NOT OLD.position)OR(NEW.take IS NOT OLD.take AND NOT(NEW.take IS OLD.take + 1 AND OLD.position IN (\'public\', \'paused\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NEW.position IN (\'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\')))OR(OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)OR(OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)OR(OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)OR(NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)OR(NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)OR(NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)OR(NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)OR(NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)OR((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL)AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\'))BEGIN SELECT RAISE (ABORT, \'a trail only moves forward\');END',
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN (\'succeeded\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\') AND NEW.position IS NOT OLD.position)OR(NEW.take IS NOT OLD.take AND NOT(NEW.take IS OLD.take + 1 AND OLD.position IN (\'public\', \'paused\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NOT(OLD.position = \'waitingForPayout\' AND OLD.role = \'buyer\')AND OLD.take_deadline IS NOT NULL AND((NEW.position IN (\'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0)OR(NEW.position IN (\'chatting\', \'fiatSent\', \'inDispute\', \'sendingSats\', \'succeeded\', \'routingFailed\', \'waitingDisputeResolution\', \'makerLostDispute\', \'takerLostDispute\') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND(OLD.position IN (\'public\', \'paused\') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id)AND NEW.seen_late = 1))AND NEW.earlier_escrows IS(OLD.earlier_escrows || coalesce(OLD.escrow_hash || \';\', \'\'))AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\')))OR(NEW.take IS OLD.take AND(NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late))OR(NEW.escrow_hash IS NOT NULL AND instr(\';\' || NEW.earlier_escrows, \';\' || NEW.escrow_hash || \';\') > 0)OR(OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)OR(OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)OR(OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)OR(NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)OR(NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)OR(NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)OR(NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)OR(NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)OR((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL)AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\'))BEGIN SELECT RAISE (ABORT, \'a trail only moves forward\');END',
     'trade_trails_forward',
   );
   late final Index robotBindingsNetwork = Index(

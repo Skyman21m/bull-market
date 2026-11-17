@@ -192,7 +192,11 @@ final class TradeReader {
   }
 
   /// [record] opened from what is stored: its terms restored ([TradeTerms.restore]) and its trail restored ([TradeTrail.restore]); a pending take without its terms or its first trail never sent its request ([TradeTakeNeverSent]); a recovered trade without a trail starts on [TradeTrail.recovered]; any other trade without a trail is refused, never restarted on a fresh trail.
+  /// A trade made here is refused before anything is read ([TradeRecordMalformed]): its terms are a maker's, which the make use case opens (#179); until then no use case of a take reads it, confirms it, closes it or acts on it as a take (#178).
   Future<TradeOpening> open(TradeRecord record) async {
+    if (record.origin == TradeOrigin.madeHere) {
+      return const TradeNotRestorable(TradeRecordMalformed());
+    }
     final StoredTradeHistory history;
     switch (await _trails.historyOf(record)) {
       case Ok(:final value):

@@ -275,6 +275,12 @@ class StoredTradeTrails extends Table {
   /// The fiat amount the current contract took of a range, in the order's currency; absent for a fixed amount, until a read gives it, and always for a trade not made here.
   RealColumn get takenAmount => real().nullable()();
 
+  /// The escrow hashes a maker's earlier contracts pinned, oldest first, each 64 lowercase hexadecimal characters followed by `;` (schema 8 as amended by #178 before any release): only grown, by the escrow hash held when `take` moves, so that an escrow of an earlier contract is never pinned again; empty at contract 0, and always for a trade not made here.
+  TextColumn get earlierEscrows => text().withDefault(const Constant(''))();
+
+  /// Whether a maker's current contract was first read from the chat on (a next contract seen late, #178), set only in the write that opens that contract; false at contract 0, and always for a trade not made here.
+  BoolColumn get seenLate => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column<Object>> get primaryKey => {keyFingerprint, robotIndex};
 
@@ -305,6 +311,9 @@ class StoredTradeTrails extends Table {
     "CHECK (taker_hash_id IS NULL OR (length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB '*[^0-9a-f]*'))",
     'CHECK (taken_amount IS NULL OR (taken_amount > 0 AND taken_amount < 10000000000))',
     'CHECK (take = 0 OR take_deadline IS NOT NULL)',
+    // The escrows of earlier contracts, and whether the contract was seen late (amended by #178 before any release): text of hashes each followed by `;`, a flag, both empty at contract 0, so on every first trail and every trail of a trade not made here.
+    "CHECK (typeof(earlier_escrows) = 'text' AND length(earlier_escrows) % 65 = 0 AND earlier_escrows NOT GLOB '*[^0-9a-f;]*' AND typeof(seen_late) = 'integer' AND seen_late IN (0, 1))",
+    "CHECK (take > 0 OR (earlier_escrows = '' AND seen_late = 0))",
     'FOREIGN KEY (key_fingerprint, robot_index) REFERENCES trades (key_fingerprint, robot_index)',
   ];
 }

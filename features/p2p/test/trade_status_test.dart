@@ -1637,13 +1637,13 @@ void main() {
               // Every trail a run writes may replace the one before it; a trail of an earlier read never replaces a later one.
               final record = after.trail.record;
               expect(
-                record.whyNotReplace(records.last),
+                record.whyNotReplace(records.last, madeHere: false),
                 isNull,
                 reason: 'seed $seed step $step',
               );
               for (final earlier in records) {
                 if (earlier.readAtMicros < record.readAtMicros) {
-                  expect(earlier.mayReplace(record), isFalse);
+                  expect(earlier.mayReplace(record, madeHere: false), isFalse);
                 }
               }
               records.add(record);
@@ -1993,7 +1993,11 @@ int? _wireOrNull(TradePosition position) => switch (position) {
   TradePosition.cancelled ||
   TradePosition.notAvailable ||
   TradePosition.preTakeUnavailable ||
-  TradePosition.publicAgain => null,
+  TradePosition.publicAgain ||
+  // A maker's positions (#178): never a taker's.
+  TradePosition.makerBondStep ||
+  TradePosition.public ||
+  TradePosition.paused => null,
   _ => _wireOf(position),
 };
 
@@ -2016,7 +2020,10 @@ int _wireOf(TradePosition position) => switch (position) {
   TradePosition.start ||
   TradePosition.cancelled ||
   TradePosition.notAvailable ||
-  TradePosition.preTakeUnavailable => throw StateError('$position'),
+  TradePosition.preTakeUnavailable ||
+  TradePosition.makerBondStep ||
+  TradePosition.public ||
+  TradePosition.paused => throw StateError('$position'),
 };
 
 final class _Answering implements Bolt11Decoder {

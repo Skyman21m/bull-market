@@ -21,7 +21,15 @@ final class WalletPaymentOffered extends WalletPaymentDecision {
   /// The invoice as the wallet's port takes it: [invoice], for the current status and step, within [accepted].
   final CheckedBolt11Invoice walletInvoice;
 
-  const WalletPaymentOffered._(this.invoice, this.accepted, this.walletInvoice);
+  /// The contract of the status the invoice was offered at (`TradeTrail.take`): 0 for a taker and for a maker bond, a maker seller's contract for its escrow, under which a payment is recorded (`trade_payments`, schema 8). A status never offers an escrow of an earlier contract: the trail keeps every escrow hash its earlier contracts pinned and refuses each one again (`EscrowNotOfThisContract`, whatever came in between, after a restart too), and an escrow shown but not pinned was a breach, after which nothing is offered (`CoordinatorInconsistent`); so an attempt recorded under this contract is of an escrow no earlier contract of this trail held (design note `docs/design/phase-3-making-an-order.md` § 3.5). A next contract the coordinator only pretends is not told from a real one: what bounds its escrow is #187's rule of one escrow held at a time.
+  final int take;
+
+  const WalletPaymentOffered._(
+    this.invoice,
+    this.accepted,
+    this.walletInvoice,
+    this.take,
+  );
 
   @override
   String toString() => 'WalletPaymentOffered';
@@ -91,5 +99,10 @@ WalletPaymentDecision walletPaymentFor({
   if (walletInvoice == null) {
     return const WalletPaymentRefused._(WalletPaymentRefusal.walletRefused);
   }
-  return WalletPaymentOffered._(invoice, accepted, walletInvoice);
+  return WalletPaymentOffered._(
+    invoice,
+    accepted,
+    walletInvoice,
+    status.trail.take,
+  );
 }

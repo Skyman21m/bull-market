@@ -43,6 +43,9 @@ RobotIdentity _identityAt(int index) => switch (NetworkGarageKey(
 final RobotIdentity us = _identityAt(0);
 final RobotIdentity peer = _identityAt(1);
 
+/// The robot of the tests' Garage Key at [index]: 0 is [us], 1 [peer].
+RobotIdentity robotOfTests(int index) => _identityAt(index);
+
 /// The terms of taking the book's order [tradeOrderId] on temple, as a buyer (a sell order) or a seller (a buy order).
 Future<TradeTerms<TakenSide>> tradeTerms({
   TradeRole role = TradeRole.buyer,
