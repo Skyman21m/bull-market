@@ -502,7 +502,14 @@ void main() {
           findsOneWidget,
         );
         // A huge figure is said outside the limits.
+        // A figure a double cannot hold as typed is not taken: the field keeps what it had (security review of #181).
         await tester.enterText(_amountField, '9' * 20);
+        await settle(tester);
+        expect(
+          tester.widget<TextField>(_amountField).controller?.text,
+          chars([0x0661, 0x0662, 0x0660]),
+        );
+        await tester.enterText(_amountField, '1${'0' * 18}');
         await settle(tester);
         expect(
           find.text('The amount is outside the allowed limits.'),

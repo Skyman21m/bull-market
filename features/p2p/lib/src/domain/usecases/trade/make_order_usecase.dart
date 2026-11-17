@@ -175,24 +175,13 @@ final class MakeOrderUsecase {
         return Err(MakeCoordinatorUnreadable(failure));
     }
     final CurrencyLimit limit;
+    final CurrencyLimits read;
     switch (limits) {
       case Ok(:final value):
         final found = value[request.currency];
         if (found == null) return const Err(MakePriceUnknown());
         limit = found;
-        // The price check the user saw, at the price this make keeps: another line than the one seen stops here, before any robot (#181).
-        if (seen.currency != request.currency || !seen.holdsAt(found.price)) {
-          return Err(
-            MakePriceCheckChanged(
-              value,
-              MakePriceSeen.of(
-                currency: request.currency,
-                coordinatorPrice: found.price,
-                check: seen.checkAt(found.price),
-              ),
-            ),
-          );
-        }
+        read = value;
       case Err(:final failure):
         return Err(MakeCoordinatorUnreadable(failure));
     }
@@ -208,6 +197,19 @@ final class MakeOrderUsecase {
         maker = value;
       case Err(:final failure):
         return Err(MakeTermsRefused(failure));
+    }
+    // The price check the user saw, at the price this make keeps (`createdPrice`): another line than the one seen stops here, before any robot (#181, security review C1).
+    if (seen.currency != request.currency || !seen.holdsAt(limit.price)) {
+      return Err(
+        MakePriceCheckChanged(
+          read,
+          MakePriceSeen.of(
+            currency: request.currency,
+            coordinatorPrice: limit.price,
+            check: seen.checkAt(limit.price),
+          ),
+        ),
+      );
     }
     final amountLimits = MakerAmountLimits.of(
       limit,

@@ -29,7 +29,8 @@ void main() {
         ('5.', 5.0),
         ('-5', -5.0),
         ('0012', 12.0),
-        ('99999999999999999999', 1e20),
+        ('10000000000000000000', 1e19),
+        ('123456789.12345678', 123456789.12345678),
       ]) {
         expect(amount(text).value, value, reason: text);
       }
@@ -87,6 +88,41 @@ void main() {
         expect(amount(chars([0x06F1, 0x06F0, 0x06F9])).value, 109.0);
         expect(amount(chars([0x0967, 0x0966, 0x096F])).value, 109.0);
         expect(amount(chars([0xFF11, 0xFF10, 0xFF19])).value, 109.0);
+      },
+    );
+
+    test(
+      'no number a double cannot hold as it is typed (security review of #181): what the field shows is what is read and sent',
+      () {
+        for (final text in [
+          '100000000.00000002',
+          '99999999999999999999',
+          '12345678901234567.5',
+        ]) {
+          expect(amount(text), isA<FormNumberInvalid>(), reason: text);
+          expect(
+            FormNumber.beyondPrecision(
+              text,
+              maxDecimals: MakerFormCheck.amountDecimals,
+            ),
+            isTrue,
+            reason: text,
+          );
+        }
+        for (final text in ['100000000.00000001', '0.1', '12.50', '5.', '.5']) {
+          expect(amount(text), isA<FormNumberValue>(), reason: text);
+          expect(
+            FormNumber.beyondPrecision(
+              text,
+              maxDecimals: MakerFormCheck.amountDecimals,
+            ),
+            isFalse,
+            reason: text,
+          );
+        }
+        // Not a number at all, or too many decimals: not « beyond precision », the field's other rules say it.
+        expect(FormNumber.beyondPrecision('abc', maxDecimals: 8), isFalse);
+        expect(FormNumber.beyondPrecision('1.123456789', maxDecimals: 8), isFalse);
       },
     );
 
@@ -265,7 +301,7 @@ void main() {
         expect(checkOf(amount: '0').estimatedBond, isNull);
         expect(checkOf(amount: '-5').estimatedBond, isNull);
         expect(checkOf(amount: 'NaN').estimatedBond, isNull);
-        final huge = checkOf(amount: '99999999999999999999');
+        final huge = checkOf(amount: '10000000000000000000');
         expect(huge.estimatedBond, isNull);
         expect(huge.block, MakerFormBlock.amountOutsideLimits);
       },
