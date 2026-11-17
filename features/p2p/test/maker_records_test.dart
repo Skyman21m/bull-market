@@ -1099,6 +1099,64 @@ void main() {
     );
 
     test(
+      'a next contract seen late: by one, from where a new take is read, to the chat or later, with the same deadline and a taker (amended by #178 before any release)',
+      () async {
+        const lateAt = [
+          'chatting',
+          'fiatSent',
+          'inDispute',
+          'sendingSats',
+          'succeeded',
+          'routingFailed',
+          'waitingDisputeResolution',
+          'makerLostDispute',
+          'takerLostDispute',
+        ];
+        String lateTo(String position) =>
+            "take = take + 1, position = '$position', taker_hash_id = '$takerTwo', escrow_hash = NULL";
+        var index = 0;
+        for (final from in [
+          'public',
+          'paused',
+          'waitingForBoth',
+          'waitingForEscrow',
+          'waitingForPayout',
+        ]) {
+          for (final to in lateAt) {
+            await makeAt(index, from);
+            await update(index, lateTo(to));
+            index++;
+          }
+        }
+        for (final (label, from, change) in [
+          ('from the chat', 'chatting', lateTo('succeeded')),
+          ('before any take', 'makerBondStep', lateTo('chatting')),
+          ('to an end with no taker', 'public', lateTo('expired')),
+          ('to a cancel', 'public', lateTo('cancelled')),
+          (
+            'with another deadline',
+            'public',
+            '${lateTo('chatting')}, take_deadline = take_deadline + 10',
+          ),
+          ('by two', 'public', "take = take + 2, position = 'chatting'"),
+          (
+            'keeping the escrow',
+            'waitingForEscrow',
+            "take = take + 1, position = 'chatting', taker_hash_id = '$takerTwo'",
+          ),
+        ]) {
+          await makeAt(index, from);
+          await expectLater(
+            update(index, change),
+            refusedBy(forward),
+            reason: label,
+          );
+          index++;
+        }
+      },
+    );
+
+    test(
       'never back, by more than one, nor with the same or an earlier deadline',
       () async {
         await makeAt(0, 'waitingForBoth');
@@ -1814,6 +1872,56 @@ void main() {
         TrailReplacementRefusal.contractMoved,
       );
     });
+
+    test(
+      'a next contract seen late: the same deadline, a taker, from the chat on',
+      () {
+        final kept = trailOf(
+          readAt: 1000,
+          position: 'public',
+          takeDeadline: deadline,
+          takerHashId: takerOne,
+        );
+        TradeTrailRecord late({
+          String position = 'succeeded',
+          int? takeDeadline,
+          String? takerHashId,
+        }) => trailOf(
+          readAt: 2000,
+          position: position,
+          take: 1,
+          takeDeadline: takeDeadline ?? deadline,
+          takerHashId: takerHashId ?? takerTwo,
+        );
+        expect(late().whyNotReplace(kept, madeHere: true), isNull);
+        expect(
+          late(position: 'chatting').whyNotReplace(kept, madeHere: true),
+          isNull,
+        );
+        for (final (label, trail) in [
+          ('another deadline', late(takeDeadline: deadline + 1)),
+          ('to an end with no contract', late(position: 'expired')),
+        ]) {
+          expect(
+            trail.whyNotReplace(kept, madeHere: true),
+            isNotNull,
+            reason: label,
+          );
+        }
+        expect(
+          late().whyNotReplace(
+            trailOf(
+              readAt: 1000,
+              position: 'chatting',
+              takeDeadline: deadline,
+              takerHashId: takerOne,
+            ),
+            madeHere: true,
+          ),
+          TrailReplacementRefusal.contractMoved,
+        );
+      },
+    );
 
     test(
       'the escrow at a next contract: cleared or replaced by another, never kept; within a contract, kept',
