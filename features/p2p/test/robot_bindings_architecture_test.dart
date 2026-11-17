@@ -1701,7 +1701,7 @@ class RobotCoordinatorCubit {
   );
 
   test(
-    'only the database runs a pragma or a statement of its own, the pragmas it runs pinned above',
+    'only the database runs a pragma, a statement of its own or a CREATE, the pragmas it runs pinned above',
     () {
       // A pragma turns a protection of the whole connection on or off (`PRAGMA foreign_keys = OFF` in a repository would let every write that needs a trade through until the next start): only `P2pDatabase` holds one, each pinned by value in « nothing changes or deletes a binding » (security review of #176).
       expect(
@@ -1719,6 +1719,23 @@ class RobotCoordinatorCubit {
       expect(where((facts) => facts.names.contains('customStatement')), {
         'lib/src/data/p2p_database.dart',
       });
+      // Nor makes a table, a trigger, an index or a view: the database's copies of the step to schema 8 and drift's code only (a repository could otherwise copy a table aside unseen).
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) => RegExp(
+              r'\bcreate\s+(unique\s+|temp\s+|temporary\s+)?(table|trigger|index|view)\b',
+              caseSensitive: false,
+            ).hasMatch(text),
+          ),
+        ),
+        {
+          'lib/src/data/p2p_database.dart',
+          'lib/src/data/p2p_database.steps.dart',
+          if (File('lib/src/data/p2p_database.g.dart').existsSync())
+            'lib/src/data/p2p_database.g.dart',
+        },
+      );
       // The check sees a pragma in an adjacent string and a torn-off `customStatement`.
       final mutant = _Facts.of(
         "Future<void> f(dynamic d) async { final run = d.customStatement; await run('PRAGMA ' 'foreign_keys = OFF'); }",
