@@ -2011,6 +2011,127 @@ void main() {
     );
 
     test(
+      'whyNotReplace says the trigger\'s rule exactly: role, escrow, taker, mark and earlier escrows (security review of #178)',
+      () {
+        TradeTrailRecord at(
+          String position, {
+          String role = 'seller',
+          int readAt = 1000,
+          int take = 0,
+          int? takeDeadline,
+          String? taker,
+          String? escrow,
+          String earlier = '',
+          bool late = false,
+        }) => trailOf(
+          role: role,
+          readAt: readAt,
+          position: position,
+          take: take,
+          takeDeadline: takeDeadline ?? deadline,
+          takerHashId: taker ?? takerOne,
+          escrowHash: escrow,
+          earlierEscrows: earlier,
+          seenLate: late,
+        );
+        final fromSeven = at('waitingForEscrow');
+        TradeTrailRecord late({
+          String? taker,
+          String? escrow,
+          bool mark = true,
+        }) => at(
+          'chatting',
+          readAt: 2000,
+          take: 1,
+          taker: taker ?? takerTwo,
+          escrow: escrow,
+          late: mark,
+        );
+        expect(late().whyNotReplace(fromSeven, madeHere: true), isNull);
+        for (final (label, trail) in [
+          ('a contract seen late with an escrow', late(escrow: hashC)),
+          (
+            'a contract seen late from 7 with the same taker',
+            late(taker: takerOne),
+          ),
+          ('a contract seen late not marked', late(mark: false)),
+          (
+            'a next contract at a step marked late',
+            at(
+              'waitingForBoth',
+              readAt: 2000,
+              take: 1,
+              takeDeadline: deadline + 1,
+              taker: takerTwo,
+              late: true,
+            ),
+          ),
+        ]) {
+          expect(
+            trail.whyNotReplace(fromSeven, madeHere: true),
+            TrailReplacementRefusal.contractMoved,
+            reason: label,
+          );
+        }
+        // No next contract from a maker buyer's 8, where the order never goes back to the book; from a maker seller's, one.
+        for (final (role, refused) in [('buyer', true), ('seller', false)]) {
+          final eight = at('waitingForPayout', role: role);
+          final next = at(
+            'waitingForBoth',
+            role: role,
+            readAt: 2000,
+            take: 1,
+            takeDeadline: deadline + 1,
+            taker: takerTwo,
+          );
+          expect(
+            next.whyNotReplace(eight, madeHere: true),
+            refused ? TrailReplacementRefusal.contractMoved : isNull,
+            reason: role,
+          );
+        }
+        // Within a contract, neither the earlier escrows nor the mark change.
+        final later = at('chatting', take: 1, earlier: '$hashA;', late: true);
+        for (final (label, trail) in [
+          (
+            'earlier escrows grown',
+            at(
+              'fiatSent',
+              readAt: 2000,
+              take: 1,
+              earlier: '$hashA;$hashB;',
+              late: true,
+            ),
+          ),
+          (
+            'earlier escrows cleared',
+            at('fiatSent', readAt: 2000, take: 1, late: true),
+          ),
+          (
+            'the mark cleared',
+            at('fiatSent', readAt: 2000, take: 1, earlier: '$hashA;'),
+          ),
+        ]) {
+          expect(
+            trail.whyNotReplace(later, madeHere: true),
+            TrailReplacementRefusal.contractMoved,
+            reason: label,
+          );
+        }
+        expect(
+          at(
+            'fiatSent',
+            readAt: 2000,
+            take: 1,
+            earlier: '$hashA;',
+            late: true,
+          ).whyNotReplace(later, madeHere: true),
+          isNull,
+        );
+      },
+    );
+
+    test(
       'the escrow at a next contract: cleared or replaced by another, never kept; within a contract, kept',
       () {
         final pinned = trailOf(
