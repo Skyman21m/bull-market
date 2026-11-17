@@ -97,6 +97,7 @@ import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
+import 'presentation/pending_makes_cubit.dart';
 import 'presentation/robot_coordinator_cubit.dart';
 import 'presentation/take_order_cubit.dart';
 import 'presentation/trade_cubit.dart';
@@ -392,6 +393,15 @@ final class P2pLocator {
         checkPrice: paysBondFromWallet(locator)
             ? locator<CheckMakePriceUsecase>().execute
             : null,
+      ),
+    );
+    // The pending makes of a network (#182): their lines in « Active trades » and above the create form, one cubit per screen that shows them.
+    locator.registerFactoryParam<PendingMakesCubit, RobosatsNetwork, void>(
+      (network, _) => PendingMakesCubit(
+        network,
+        locator<MakeOrderUsecase>().pendingMakes,
+        locator<MakeOrderUsecase>().resolve,
+        locator<MakeOrderUsecase>().dismiss,
       ),
     );
     // One for the feature: one subscription per trade, whichever use case object makes it.

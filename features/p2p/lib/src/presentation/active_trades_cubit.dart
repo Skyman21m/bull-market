@@ -7,6 +7,7 @@ import 'package:robosats/robosats.dart';
 
 import '../domain/p2p_failure.dart';
 import '../domain/trade/active_trade.dart';
+import '../domain/trade_record.dart';
 import '../domain/usecases/trade/list_active_trades_usecase.dart';
 
 /// [ListActiveTradesUsecase.execute], which the locator gives the cubit.
@@ -31,6 +32,21 @@ final class ActiveTradesListed extends ActiveTradesState {
   final List<ActiveTrade> active;
 
   const ActiveTradesListed(this.active);
+
+  /// The record of the open trade this device made for [order] of the book of [network] (its network, coordinator and number those of an open record of origin `madeHere`), which the book opens as its trade, never « Take Order » (design note § 3.7, #182); `null` for any other order.
+  TradeRecord? madeHere(PublicOrder order, RobosatsNetwork network) {
+    for (final trade in active) {
+      final record = trade.record;
+      if (record.origin == TradeOrigin.madeHere &&
+          record.isActive &&
+          record.network == network &&
+          record.coordinatorAlias == order.coordinator.shortAlias &&
+          record.orderId == order.id) {
+        return record;
+      }
+    }
+    return null;
+  }
 }
 
 /// The records cannot be read: never shown as « no trade », since a trade may be running (`ListActiveTradesUsecase`).

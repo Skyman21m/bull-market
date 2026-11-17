@@ -13,11 +13,13 @@ import '../../domain/p2p_failure.dart';
 import '../../domain/taker_estimate.dart';
 import '../../domain/trade/trade_chat_step.dart';
 import '../../domain/trade/trade_status.dart';
+import '../../domain/trade/trade_warning.dart';
 import '../../domain/trade/trade_watch.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/coordinator_details_cubit.dart';
 import '../../presentation/coordinator_text.dart';
 import '../../presentation/p2p_formats.dart';
+import '../../presentation/public_wait.dart';
 import '../../presentation/trade_cubit.dart';
 import '../../presentation/take_order_cubit.dart';
 import '../../presentation/trade_l10n.dart';
@@ -37,6 +39,7 @@ import 'chat_step_panel.dart';
 import 'confirm_cancel_dialog.dart';
 import 'host_rating_section.dart';
 import 'payout_panel.dart';
+import 'rate_gap_line.dart';
 import 'successful_panel.dart';
 import 'trade_order_details.dart';
 import 'wallet_payment_section.dart';
@@ -93,6 +96,9 @@ class TradeScreen extends StatefulWidget {
   /// Opens the trade a new take of the order started.
   final ValueChanged<TradeRecord>? onTaken;
 
+  /// Every order the book of the tab received when the trade was opened (`BookState.receivedOrders`), for the figures of a maker's public order (« Public orders for … », « Premium rank », `Prompts/PublicWait.tsx:52-78`, #182); `null` when no book was received, and those figures are not shown.
+  final List<PublicOrder>? book;
+
   const TradeScreen({
     super.key,
     required this.now,
@@ -109,6 +115,7 @@ class TradeScreen extends StatefulWidget {
     this.takeCubitFor,
     this.onOpenGarage,
     this.onTaken,
+    this.book,
   });
 
   @override
@@ -345,6 +352,7 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                         moneyActionRunning:
                             widget.moneyActionRunning?.call(context) ?? false,
                         walletBond: widget.walletBond,
+                        book: widget.book,
                       ),
                     },
                   ],
@@ -492,6 +500,9 @@ class _Contract extends StatelessWidget {
   final bool moneyActionRunning;
   final WalletBondState Function(BuildContext context)? walletBond;
 
+  /// The book of the tab, for a maker's public order ([TradeScreen.book]).
+  final List<PublicOrder>? book;
+
   const _Contract({
     super.key,
     required this.contract,
@@ -513,6 +524,7 @@ class _Contract extends StatelessWidget {
     required this.hostRating,
     required this.moneyActionRunning,
     required this.walletBond,
+    required this.book,
   });
 
   @override
@@ -596,11 +608,18 @@ class _Contract extends StatelessWidget {
         ),
         Divider(height: BullSpacing.lg, color: colors.outlineVariant),
         for (final warning in warnings) ...[
-          _Line(
-            warning.toText(context, coordinator: coordinator),
-            color: colors.warning,
-            icon: Icons.warning_amber_rounded,
-          ),
+          // A next contract seen late is information, not an alert (#178, #182): its own words, in the text colour.
+          if (warning is ContractSeenLate)
+            _Line(
+              warning.toText(context, coordinator: coordinator),
+              icon: Icons.info_outline,
+            )
+          else
+            _Line(
+              warning.toText(context, coordinator: coordinator),
+              color: colors.warning,
+              icon: Icons.warning_amber_rounded,
+            ),
           const Gap(BullSpacing.sm),
         ],
         _prompt(context, status),
@@ -617,7 +636,7 @@ class _Contract extends StatelessWidget {
           ],
         if (contract.bondLine != TradeBondLine.hide) ...[
           const Gap(BullSpacing.md),
-          _BondLine(line: contract.bondLine),
+          _BondLine(line: contract.bondLine, maker: contract.maker),
         ],
         if (contract.cancel != TradeCancelOffer.none) ...[
           const Gap(BullSpacing.md),
@@ -684,6 +703,21 @@ class _Contract extends StatelessWidget {
           walletPayment: walletPayment,
         ),
       (TradePrompt.lockEscrow, _) => const SizedBox.shrink(),
+      // A maker's public order (#182): `Prompts/PublicWait.tsx`, without the pause button (#184).
+      (TradePrompt.publicWait, _) => _PublicWait(
+        order: order,
+        book: book,
+        escrowDuration: order?.escrowDuration,
+      ),
+      // A maker's order paused from another app (#182): `Prompts/Paused.tsx`'s text; « Unpause Order » comes with the pause (#184).
+      (TradePrompt.paused, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pTradePausedText),
+          const Gap(BullSpacing.sm),
+          _Line(l10n.p2pTradeUnpauseLater, color: colors.textMuted),
+        ],
+      ),
       (TradePrompt.payoutWait, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -707,6 +741,11 @@ class _Contract extends StatelessWidget {
                     : order.currency.code,
               ),
             ),
+            const Gap(BullSpacing.sm),
+          ],
+          // A maker buyer's line of the gap, before « Submit » (design note § 3.3, #182).
+          if (_gapLine(context, status) case final gap?) ...[
+            gap,
             const Gap(BullSpacing.sm),
           ],
           ?_payoutPanel(context),
@@ -807,6 +846,30 @@ class _Contract extends StatelessWidget {
     };
   }
 
+  /// The line of the gap of a maker's contract at 6 and 8 ([RateGapLine]), from the status's own figure and the order it was read from; `null` for a taker, whose statuses carry no gap.
+  Widget? _gapLine(BuildContext context, TradeStatus status) {
+    final order = contract.order;
+    final (gap, role) = switch (status) {
+      WaitingForBoth(:final rateGap, :final role) ||
+      WaitingForPayout(:final rateGap, :final role) => (rateGap, role),
+      _ => (null, record.role),
+    };
+    if (order == null) return null;
+    return RateGapLine.of(
+      context,
+      gap: gap,
+      role: role,
+      coordinator: coordinator,
+      sats: order.satoshisNow,
+      amount: switch ((order.takenAmount, order.amount)) {
+        (final taken?, _) => taken,
+        (null, FixedOrderAmount(:final amount)) => amount,
+        _ => null,
+      },
+      currency: order.currency,
+    );
+  }
+
   /// « Trade finished! »: the rating, the on-chain payment's lines and the trade summary (#95).
   Widget _successful(
     BuildContext context,
@@ -844,11 +907,12 @@ class _Contract extends StatelessWidget {
   };
 }
 
-/// « Your taker bond is locked / unlocked / settled » with the reference's icons (`TradeBox/BondStatus.tsx`).
+/// « Your taker bond is locked / unlocked / settled », « Your maker bond is … » for a maker (`BondStatus.tsx:39`, #182), with the reference's icons (`TradeBox/BondStatus.tsx`).
 class _BondLine extends StatelessWidget {
   final TradeBondLine line;
+  final bool maker;
 
-  const _BondLine({required this.line});
+  const _BondLine({required this.line, required this.maker});
 
   @override
   Widget build(BuildContext context) {
@@ -858,17 +922,17 @@ class _BondLine extends StatelessWidget {
       TradeBondLine.unlocked => (
         Icons.lock_open,
         colors.success,
-        l10n.p2pTradeBondUnlocked,
+        maker ? l10n.p2pTradeMakerBondUnlocked : l10n.p2pTradeBondUnlocked,
       ),
       TradeBondLine.settled => (
         Icons.balance,
         colors.error,
-        l10n.p2pTradeBondSettled,
+        maker ? l10n.p2pTradeMakerBondSettled : l10n.p2pTradeBondSettled,
       ),
       TradeBondLine.locked || TradeBondLine.hide => (
         Icons.lock,
         colors.primary,
-        l10n.p2pTradeBondLocked,
+        maker ? l10n.p2pTradeMakerBondLocked : l10n.p2pTradeBondLocked,
       ),
     };
     return Row(
@@ -951,6 +1015,9 @@ class _CancelRowState extends State<_CancelRow> {
           if (await CancelOrderDialog.show(context, note: note)) {
             await cubit.cancel(seen);
           }
+        // A maker's public or paused order: cancelled at once, with no dialog, as the reference (`CancelButton.tsx:30`, `:79-80`): its bond is returned by the coordinator (#182).
+        case TradeCancelOffer.immediate:
+          await cubit.cancel(seen);
         case TradeCancelOffer.losesBond:
           final acknowledged = await ConfirmCancelDialog.show(
             context,
@@ -995,7 +1062,8 @@ class _CancelRowState extends State<_CancelRow> {
           // While a payout is given, why « Cancel » is off, for a screen reader and a long press.
           message: widget.moneyActionRunning
               ? l10n.p2pTradeCancelWhilePayout
-              : offer == TradeCancelOffer.free
+              : offer == TradeCancelOffer.free ||
+                    offer == TradeCancelOffer.immediate
               ? l10n.p2pTradeCancelOrder
               : l10n.p2pTradeCancelUnilateral,
           child: TradeButton(
@@ -1308,6 +1376,86 @@ class _DisputePrompt extends StatelessWidget {
         if (contact != null) ...[
           const Gap(BullSpacing.sm),
           CoordinatorContacts(contact: contact),
+        ],
+      ],
+    );
+  }
+}
+
+/// « Your order is public » (`TradeBox/Prompts/PublicWait.tsx:80-147`, #182): the reference's two lines, then « Public orders for {{currencyCode}} » with its count and « Premium rank » with its share, computed from the book of the tab ([PublicWaitStanding]); without the pause button, which comes with the pause (#184). Without an order read, the lines alone; without a book received, no figure.
+class _PublicWait extends StatelessWidget {
+  final CoordinatorOrder? order;
+  final List<PublicOrder>? book;
+  final Duration? escrowDuration;
+
+  const _PublicWait({
+    required this.order,
+    required this.book,
+    required this.escrowDuration,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = P2pLocalizations.of(context);
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final formats = P2pFormats.of(context);
+    final seconds = escrowDuration?.inSeconds;
+    final order = this.order;
+    final book = this.book;
+    final standing = order == null || book == null
+        ? null
+        : PublicWaitStanding.of(order, book: book);
+    Widget figure(IconData icon, String primary, String secondary) => Semantics(
+      container: true,
+      child: Row(
+        children: [
+          ExcludeSemantics(child: Icon(icon, color: colors.textMuted)),
+          const Gap(BullSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  primary,
+                  style: text.bodyLarge?.copyWith(color: colors.text),
+                ),
+                Text(
+                  secondary,
+                  style: text.labelMedium?.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (seconds != null) ...[
+          _Line(
+            l10n.p2pTradePublicWait(
+              '${seconds ~/ 3600}',
+              '${(seconds - seconds ~/ 3600 * 3600) ~/ 60}',
+            ),
+          ),
+          const Gap(BullSpacing.sm),
+        ],
+        _Line(l10n.p2pTradePublicExpiresUntaken),
+        if (order != null && standing != null) ...[
+          Divider(height: BullSpacing.lg, color: colors.outlineVariant),
+          figure(
+            Icons.storefront,
+            formats.count(standing.similarOrders),
+            l10n.p2pTradePublicOrdersFor(order.currency.code),
+          ),
+          Divider(height: BullSpacing.lg, color: colors.outlineVariant),
+          figure(
+            Icons.percent,
+            l10n.p2pTradePremiumRank(formats.number(standing.premiumRank)),
+            l10n.p2pTradePremiumRankAmong(order.currency.code),
+          ),
         ],
       ],
     );

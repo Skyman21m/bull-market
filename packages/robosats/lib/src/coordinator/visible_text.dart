@@ -10,7 +10,7 @@ import 'package:robosats/src/coordinator/json_fields.dart';
 /// - the private use areas (U+E000 to U+F8FF, U+F0000 to U+10FFFF), the noncharacters (U+FDD0 to U+FDEF and the last two code points of every plane), and the planes 4 to 13 (U+40000 to U+DFFFF), which Unicode 16 leaves wholly unassigned; other unassigned code points, scattered between assigned ones, are not known without the whole Unicode table, which this package does not carry, and are kept;
 /// - a zero width joiner or non-joiner (U+200C, U+200D) that is not alone right after a character seen (or after the variation selector or the combining marks that follow one) and right before a character seen, or, inside a cluster of an Indic script (Devanagari to Sinhala, U+0900 to U+0DFF), right after a letter or a mark of that script and right before its virama ([_virama], as in the Bengali ra-phala « র‍্য »: letter, joiner, virama, letter); and one whose character seen before and character seen after are both letters or digits of Latin, Greek or Cyrillic, scripts in which a joiner joins nothing ([_noJoining]);
 /// - a variation selector (U+FE00 to U+FE0F, U+E0100 to U+E01EF) that is not right after a character seen;
-/// - a combining mark ([_combining]: the general diacritical blocks and the marks, spacing or not, of the Cyrillic, Hebrew, Arabic, Syriac, Thaana, N'Ko, Indic, Sinhala, Thai, Lao, Tibetan, Myanmar and Khmer blocks and of Japanese kana) at the start, after a space or a joiner, or more than [maxCombiningMarks] after one character seen.
+/// - a combining mark ([_combining]: the general diacritical blocks and the marks, spacing or not, of the Cyrillic, Hebrew, Arabic, Syriac, Thaana, N'Ko, Indic, Sinhala, Thai, Lao, Tibetan, Myanmar and Khmer blocks and of Japanese kana) at the start, after a space or a joiner, or more than [maxCombiningMarks] after one character seen, the viramas a joiner lets through counted with them.
 ///
 /// Letters of every script are kept, right-to-left ones included: their order on screen is the Unicode bidirectional algorithm's, which no control of the text can steer once the controls are refused. Look-alike letters of other scripts and full-width or mathematical letters are kept too: they are seen as they are written.
 /// Refused on purpose although legitimate somewhere: the flags of England, Scotland and Wales (sequences of the tag block), Mongolian free variation selectors, and a joiner that ends a word (as in an old encoding of Malayalam chillu letters).
@@ -62,7 +62,12 @@ bool isShownAsWritten(String text) {
       case _Kind.start:
         break;
     }
-    if (kind != _Kind.combining && kind != _Kind.selector) combining = 0;
+    // A joiner does not start a new count: inside an Indic cluster it comes before the virama of the same letter, so a pile of joiners and viramas is counted as the marks of one character (third security pass of #181, #182).
+    if (kind != _Kind.combining &&
+        kind != _Kind.selector &&
+        kind != _Kind.joiner) {
+      combining = 0;
+    }
     previous = kind;
   }
   return seen && previous != _Kind.joiner;

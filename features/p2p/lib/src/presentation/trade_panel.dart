@@ -10,11 +10,11 @@ import '../domain/trade/trade_warning.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade_record.dart';
 
-/// The bond line of a contract (`TradeBox/BondStatus.tsx`): hidden, or « Your taker bond is locked / unlocked / settled ».
+/// The bond line of a contract (`TradeBox/BondStatus.tsx`): hidden, or « Your taker bond is locked / unlocked / settled », « Your maker bond is … » for a maker (`BondStatus.tsx:39`, #182).
 enum TradeBondLine { hide, locked, unlocked, settled }
 
-/// What « Cancel » does at a status (`TradeBox/CancelButton.tsx`): absent, free (« Cancel order », the dialog of `Dialogs/CancelOrder.tsx`), or losing the bond (« Unilateral cancelation (bond at risk!) », `TradeBox/Dialogs/ConfirmCancel.tsx`).
-enum TradeCancelOffer { none, free, losesBond }
+/// What « Cancel » does at a status (`TradeBox/CancelButton.tsx`): absent, free (« Cancel order », the dialog of `Dialogs/CancelOrder.tsx`), free at once with no dialog (a maker's public or paused order, whose bond is returned, `CancelButton.tsx:30`, `:79-80`, #182), or losing the bond (« Unilateral cancelation (bond at risk!) », `TradeBox/Dialogs/ConfirmCancel.tsx`).
+enum TradeCancelOffer { none, free, immediate, losesBond }
 
 /// The title of a contract (`TradeBox/index.tsx`, `statusToContract`).
 enum TradeTitle {
@@ -22,6 +22,10 @@ enum TradeTitle {
 
   /// The maker's at 0 (#180): « Lock {{amountSats}} Sats to PUBLISH order » (`TradeBox/index.tsx:379-389`).
   lockBondToPublish,
+
+  /// The maker's at 1 and 2 (#182): « Your order is public », « Your order is paused » (`TradeBox/index.tsx:390-420`).
+  orderPublic,
+  orderPaused,
   payout,
   infoGood,
 
@@ -45,6 +49,10 @@ enum TradeTitle {
 /// The prompt under a title: the bond's invoice, the payout's (`Prompts/Payout.tsx`), the wait for the escrow, the expiry's reason, a failed payout's (`Prompts/RoutingFailed.tsx`, #91), the buyer's chat step (`Prompts/Chat.tsx`, #95), the buyer being paid (`Prompts/SendingSats.tsx`, #95), the trade finished (`Prompts/Successful.tsx`, #95), or a step a later version shows.
 enum TradePrompt {
   lockInvoice,
+
+  /// The maker's at 1 (`Prompts/PublicWait.tsx`) and at 2 (`Prompts/Paused.tsx`, its text without « Unpause Order », which comes with the pause, #184), #182.
+  publicWait,
+  paused,
   payout,
   escrowWait,
 
@@ -210,22 +218,41 @@ final class TradeContract extends TradeView {
     _ => null,
   };
 
-  /// The step and the steps of a taker (`TradeBox/stepXofY.ts`): 3 → 1 of 4, 6 to 8 → 2, 9 → 3, 10 → 4; none elsewhere. A maker's at 0 is 1 of 5 (`stepXofY.ts:8-26`, #180); its others come with its panels (#182).
-  (int, int)? get step => switch (status.position) {
-    TradePosition.makerBondStep => (1, 5),
-    TradePosition.bondStep => (1, 4),
-    TradePosition.waitingForBoth ||
-    TradePosition.waitingForEscrow ||
-    TradePosition.waitingForPayout => (2, 4),
-    TradePosition.chatting => (3, 4),
-    TradePosition.fiatSent => (4, 4),
-    _ => null,
-  };
+  /// Whether the trade is a maker's (`TradeTrail.made`, which follows from its terms): the reference's `is_maker` for the step and the bond line.
+  bool get maker => status.trail.made;
+
+  /// The step and the steps (`TradeBox/stepXofY.ts`): for a taker 3 → 1 of 4, 6 to 8 → 2, 9 → 3, 10 → 4; for a maker 0 → 1 of 5, 1 and 2 → 2, 6 to 8 → 3, 9 → 4, 10 → 5 (`stepXofY.ts:15-26`, #180, #182); none elsewhere.
+  (int, int)? get step => stepOf(status, maker: maker);
+
+  /// The step of [status] for a maker or a taker ([maker]), as `stepXofY.ts` counts it from the status the order shows.
+  static (int, int)? stepOf(TradeStatus status, {required bool maker}) =>
+      maker
+      ? switch (status.position) {
+          TradePosition.makerBondStep => (1, 5),
+          TradePosition.public || TradePosition.paused => (2, 5),
+          TradePosition.waitingForBoth ||
+          TradePosition.waitingForEscrow ||
+          TradePosition.waitingForPayout => (3, 5),
+          TradePosition.chatting => (4, 5),
+          TradePosition.fiatSent => (5, 5),
+          _ => null,
+        }
+      : switch (status.position) {
+          TradePosition.bondStep => (1, 4),
+          TradePosition.waitingForBoth ||
+          TradePosition.waitingForEscrow ||
+          TradePosition.waitingForPayout => (2, 4),
+          TradePosition.chatting => (3, 4),
+          TradePosition.fiatSent => (4, 4),
+          _ => null,
+        };
 
   /// The title the official client gives a taker at [status], of either side (`statusToContract`, `TradeBox/index.tsx:359-724`): a seller locks the escrow at 6 and 7, waits at 8, and sees « Trade finished! » from 13 on, 15 included, where the buyer is still being paid.
   static TradeTitle titleOf(TradeStatus status) => switch (status) {
     WaitingForTakerBond() => TradeTitle.lockBond,
     WaitingForMakerBond() => TradeTitle.lockBondToPublish,
+    MakerOrderPublic(paused: false) => TradeTitle.orderPublic,
+    MakerOrderPublic(paused: true) => TradeTitle.orderPaused,
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradeTitle.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradeTitle.infoGood,
@@ -249,6 +276,8 @@ final class TradeContract extends TradeView {
   static TradePrompt promptOf(TradeStatus status) => switch (status) {
     // The maker bond at 0 is the same prompt (`Prompts/LockInvoice.tsx`, concept `bond`, `TradeBox/index.tsx:384-386`, #180).
     WaitingForTakerBond() || WaitingForMakerBond() => TradePrompt.lockInvoice,
+    MakerOrderPublic(paused: false) => TradePrompt.publicWait,
+    MakerOrderPublic(paused: true) => TradePrompt.paused,
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradePrompt.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradePrompt.escrowWait,
@@ -270,8 +299,9 @@ final class TradeContract extends TradeView {
     _ => TradePrompt.later,
   };
 
-  /// The bond line of `statusToContract`: locked from the bond's lock to the chat, settled in a dispute and after losing one, unlocked once the buyer is being paid (for the buyer only: the reference hides it from the seller at 13 and 15), hidden elsewhere.
+  /// The bond line of `statusToContract`: locked from the bond's lock to the chat (a maker's public or paused order included, `TradeBox/index.tsx:403`, `:418`), settled in a dispute and after losing one, unlocked once the buyer is being paid (for the buyer only: the reference hides it from the seller at 13 and 15), hidden elsewhere.
   static TradeBondLine bondLineOf(TradeStatus status) => switch (status) {
+    MakerOrderPublic() ||
     WaitingForBoth() ||
     WaitingForEscrow() ||
     WaitingForPayout() ||
@@ -284,9 +314,10 @@ final class TradeContract extends TradeView {
     _ => TradeBondLine.hide,
   };
 
-  /// « Cancel » at 3, 6 and 7 only (`CancelButton.tsx:27-29`), and for a maker at 0 (`:27-29`, `:74-82`, #180, the reference's `Dialogs/CancelOrder.tsx`, its bond not locked yet): free while the bond is not locked, losing it after. A maker's at 1 and 2 come with its panels (#182).
+  /// « Cancel » at 3, 6 and 7 (`CancelButton.tsx:27-29`), and for a maker at 0, 1 and 2 (`:27-29`): free with the reference's `Dialogs/CancelOrder.tsx` while no bond is locked (a taker's 3, a maker's 0, `:34-36`, `:74-78`, #180), free at once with no dialog for a maker's public or paused order, whose bond the coordinator returns (`:30`, `:79-80`, #182), losing the bond at 6 and 7 for either side (`:81`).
   static TradeCancelOffer cancelOf(TradeStatus status) => switch (status) {
     WaitingForTakerBond() || WaitingForMakerBond() => TradeCancelOffer.free,
+    MakerOrderPublic() => TradeCancelOffer.immediate,
     WaitingForBoth() || WaitingForEscrow() => TradeCancelOffer.losesBond,
     _ => TradeCancelOffer.none,
   };

@@ -18,7 +18,9 @@ import '../presentation/coordinator_text.dart';
 import '../presentation/make_order_cubit.dart';
 import '../presentation/make_order_l10n.dart';
 import '../presentation/p2p_formats.dart';
+import '../presentation/pending_makes_cubit.dart';
 import 'garage/select_host_sheet.dart';
+import 'trade/pending_make_lines.dart';
 import 'widgets/add_payment_method_dialog.dart';
 import 'widgets/coordinator_avatar.dart';
 import 'widgets/filter_choice.dart';
@@ -78,6 +80,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   /// Why the last press stopped before its dialogs, the form showing something else than at the press: a line says so until the next press.
   _PressStopped? _stopped;
 
+  /// Whether going back was tried while the make is sent: a line says to wait (#182).
+  bool _leaveTried = false;
+
   /// Completes when the screen goes away: « Select Host » and the coordinator dialog it opened close then.
   final _gone = Completer<void>();
 
@@ -115,7 +120,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (request == null ||
         coordinator == null ||
         seen == null ||
-        cubit.state.locked) {
+        cubit.state.locked ||
+        context.read<PendingMakesCubit>().state.blocksMaking) {
       return;
     }
     setState(() {
@@ -123,14 +129,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _stopped = null;
     });
     try {
-      // A press while the Bull wallet's price is being read: its end awaited, the button busy (the shell bounds a read to 15 s), then the line it shows is the one the press is for (second security review of #181, R8).
+      // A press while the Bull wallet's price is being read: its end awaited, the button busy (the shell bounds a read to 15 s), then the line it shows is the one the press is for (second security review of #181, R8). The press goes on when that line shows no warning, and stops only when it warns, is not priced or could not be read, and was not on screen at the press (third functional pass of #181, #182).
       if (cubit.state.price is MakeFormPriceReading) {
         await cubit.priceSettled();
         if (!mounted) return;
         final settled = cubit.seen();
         if (_check(cubit.state).request != request ||
             settled == null ||
-            !settled.sameLineAs(seen)) {
+            (!settled.sameLineAs(seen) &&
+                settled.verdict != MakePriceVerdict.within)) {
           setState(() => _stopped = _PressStopped.priceRead);
           return;
         }
@@ -275,8 +282,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final colors = context.bull;
     final l10n = P2pLocalizations.of(context);
     final state = context.watch<MakeOrderCubit>().state;
+    final pending = context.watch<PendingMakesCubit>().state;
     final check = _check(state);
     final locked = state.locked || _asking;
+    final sending = state.progress is MakeSending;
     final coordinator = state.coordinator;
     final coordinatorName = coordinator == null
         ? ''
@@ -284,15 +293,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             coordinator.longAlias,
             maxCodePoints: CoordinatorText.name,
           );
-    return BlocListener<MakeOrderCubit, MakeOrderState>(
-      listenWhen: (previous, current) =>
-          current.progress is MakeMade && previous.progress is! MakeMade,
-      listener: (_, current) {
-        if (current.progress case MakeMade(:final record)) {
-          widget.onMade(record);
-        }
-      },
-      child: Material(
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<MakeOrderCubit, MakeOrderState>(
+          listenWhen: (previous, current) =>
+              current.progress is MakeMade && previous.progress is! MakeMade,
+          listener: (_, current) {
+            if (current.progress case MakeMade(:final record)) {
+              widget.onMade(record);
+            }
+          },
+        ),
+        // A pending make a resolution confirmed: its trade, as an order made (#182).
+        BlocListener<PendingMakesCubit, PendingMakesState>(
+          listenWhen: (previous, current) =>
+              current.started != null && previous.started != current.started,
+          listener: (_, current) {
+            if (current.started case final record?) widget.onMade(record);
+          },
+        ),
+      ],
+      // While the make is sent, the page stays: going back would leave the order made without the user being taken to it (security review of #181, S1; #182); a line says why.
+      child: PopScope(
+        canPop: !sending,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && sending) setState(() => _leaveTried = true);
+        },
+        child: Material(
         color: colors.background,
         child: SafeArea(
           bottom: false,
@@ -304,13 +331,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               BullTopBar(
                 title: l10n.p2pNavCreate,
                 onBack: () {
-                  if (context.canPop()) context.pop();
+                  if (sending) {
+                    setState(() => _leaveTried = true);
+                  } else if (context.canPop()) {
+                    context.pop();
+                  }
                 },
               ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.all(BullSpacing.md),
                   children: [
+                    if (sending && _leaveTried) ...[
+                      _Line(
+                        l10n.p2pMakeSendingStay(coordinatorName),
+                        color: colors.warning,
+                        live: true,
+                      ),
+                      const Gap(BullSpacing.md),
+                    ],
+                    // The network's pending makes, resolved when the form opens: the form makes nothing while one is listed (#182).
+                    if (pending.blocksMaking &&
+                        (pending.unreadable ||
+                            (pending.makes?.isNotEmpty ?? false))) ...[
+                      _Line(l10n.p2pMakePendingFirst, color: colors.warning),
+                      const PendingMakeLines(),
+                      const Gap(BullSpacing.md),
+                    ],
                     _AdvancedOptions(onClear: locked ? null : _clear),
                     const Gap(BullSpacing.md),
                     _Side(
@@ -358,6 +405,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     _CreateButton(
                       check: check,
                       state: state,
+                      pendingFirst: pending.blocksMaking,
                       asking: _asking,
                       stopped: _stopped,
                       coordinator: coordinatorName,
@@ -374,6 +422,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -970,6 +1019,9 @@ class _CreateButton extends StatelessWidget {
   final MakeOrderState state;
   final bool asking;
 
+  /// Whether a pending make of the network is listed, or the records cannot tell (#182): nothing is made beside it.
+  final bool pendingFirst;
+
   /// Why the last press stopped, the form showing something else.
   final _PressStopped? stopped;
   final String coordinator;
@@ -978,6 +1030,7 @@ class _CreateButton extends StatelessWidget {
   const _CreateButton({
     required this.check,
     required this.state,
+    required this.pendingFirst,
     required this.asking,
     required this.stopped,
     required this.coordinator,
@@ -990,7 +1043,7 @@ class _CreateButton extends StatelessWidget {
     final l10n = P2pLocalizations.of(context);
     final progress = state.progress;
     final block = check.block;
-    final ready = block == null && progress is MakeIdle;
+    final ready = block == null && progress is MakeIdle && !pendingFirst;
     final button = TradeButton(
       label: l10n.p2pMakeCreateOrder,
       busy: asking || progress is MakeSending,

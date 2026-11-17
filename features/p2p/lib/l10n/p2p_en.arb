@@ -4498,7 +4498,7 @@
   "@p2pMakeCreating": {
     "description": "Not in the RoboSats texts: the project's own (design note § 3.10): under « Create order » while the make runs, and for a make whose outcome is not known yet."
   },
-  "p2pMakePending": "Bull Market does not know yet whether {coordinator} made your order. It keeps checking.",
+  "p2pMakePending": "Bull Market does not know yet whether {coordinator} made your order. Check it again below, or set it aside.",
   "@p2pMakePending": {
     "description": "Not in the RoboSats texts: the project's own (design note § 3.10): a make whose answer was lost, which stays pending and is resolved from its line of « Active trades » (#182); the form makes nothing more meanwhile.",
     "placeholders": {
@@ -4597,7 +4597,7 @@
   "@p2pMakeNoHost": {
     "description": "Not in the RoboSats texts: the project's own: the create form (#181) when no coordinator of the network takes a new robot (each refused too many robots in this run of the app, or none is listed), with « Retry », which lists them again."
   },
-  "p2pMakePriceCheckChanged": "{coordinator}'s price changed since it was shown. Check the comparison, then press « Create order » again.",
+  "p2pMakePriceCheckChanged": "{coordinator}'s price changed since it was shown. Check the comparison, then press \"Create order\" again.",
   "@p2pMakePriceCheckChanged": {
     "description": "Not in the RoboSats texts: the project's own: the make read the coordinator's price again just before it would reserve a robot, and the price check under the form would not be the one the user saw (`MakePriceCheckChanged`, security review of #181, C1); nothing was sent with a robot, the form shows the new check. « Create order » is the button's label.",
     "placeholders": {
@@ -4606,12 +4606,162 @@
       }
     }
   },
-  "p2pMakePricesReadAgain": "The limits and prices were read again and changed. Check the form, then press « Create order » again.",
+  "p2pMakePricesReadAgain": "The limits and prices were read again and changed. Check the form, then press \"Create order\" again.",
   "@p2pMakePricesReadAgain": {
     "description": "Not in the RoboSats texts: the project's own: « Create order » read the coordinator's limits and the Bull wallet's price again, more than 3 minutes old, and the form now shows another request or another price check: the press went no further (security review of #181, C2)."
   },
-  "p2pMakePriceReadAtPress": "The Bull wallet's price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.",
+  "p2pMakePriceReadAtPress": "The price comparison has just been updated. Check it, then press \"Create order\" again.",
   "@p2pMakePriceReadAtPress": {
     "description": "Not in the RoboSats texts: the project's own: « Create order » was pressed while the Bull wallet's price was being read; once read, the form shows another price check than at the press, so the press went no further (second security review of #181, R8)."
+  },
+  "p2pTradeTitleOrderPublic": "Your order is public",
+  "@p2pTradeTitleOrderPublic": {
+    "description": "The official client's text: the maker's title at status 1 (`TradeBox/index.tsx:390-405`, #182), the English of its code, which neither `en.json` nor `fr.json` lists (design note § 1.11); the French is the project's."
+  },
+  "p2pTradeTitleOrderPaused": "Your order is paused",
+  "@p2pTradeTitleOrderPaused": {
+    "description": "The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Shown only when the order was paused from another app: pausing comes with #184."
+  },
+  "p2pTradePublicWait": "Be patient while robots check the book. This box will ring 🔊 once a robot takes your order, then you will have {hours}h {minutes}m to reply. If you do not reply, you risk losing your bond.",
+  "@p2pTradePublicWait": {
+    "description": "The official client's text, word for word (`TradeBox/Prompts/PublicWait.tsx:86-89`, #182, design note § 7, proposal 6), which `en.json` and `fr.json` do not list; the French is the project's. Bull Market does not ring yet (no notification before the end of the project): said in the trial script. {hours} and {minutes} are the order's escrow duration, whole hours then the minutes left (`depositHoursMinutes`, `:42-50`).",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePublicExpiresUntaken": "If the order expires untaken, your bond will return to you (no action needed).",
+  "@p2pTradePublicExpiresUntaken": {
+    "description": "The official client's text (`frontend/static/locales/en.json:774`, `TradeBox/Prompts/PublicWait.tsx:95`, #182) and its French (`fr.json:774`)."
+  },
+  "p2pTradePublicOrdersFor": "Public orders for {currencyCode}",
+  "@p2pTradePublicOrdersFor": {
+    "description": "The official client's text (`frontend/static/locales/en.json:777`, `TradeBox/Prompts/PublicWait.tsx:109-111`, #182); the French is `fr.json:777`'s with « ordres » for « commandes », the app's word. Under the count of the book's orders in {currencyCode}, the order's currency code.",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePremiumRank": "Premium rank {rank}%",
+  "@p2pTradePremiumRank": {
+    "description": "The official client's text « Premium rank » (`frontend/static/locales/en.json:776`, `fr.json:776`) followed by the rank, as `TradeBox/Prompts/PublicWait.tsx:141` writes them (#182). {rank} is a whole number, or 0.5 when the book holds at most one order of the same currency and side (the reference's own value).",
+    "placeholders": {
+      "rank": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePremiumRankAmong": "Among public {currencyCode} orders (higher is cheaper)",
+  "@p2pTradePremiumRankAmong": {
+    "description": "The official client's text (`frontend/static/locales/en.json:773`, `TradeBox/Prompts/PublicWait.tsx:142-144`, #182); the French is `fr.json:773`'s with « ordres » for « commandes ».",
+    "placeholders": {
+      "currencyCode": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradePausedText": "Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.",
+  "@p2pTradePausedText": {
+    "description": "The official client's text (`frontend/static/locales/en.json:764`, `TradeBox/Prompts/Paused.tsx:23-33`, #182); the French is `fr.json:764`'s with « ordre » for « commande »."
+  },
+  "p2pTradeUnpauseLater": "\"Unpause Order\" is coming in a later version.",
+  "@p2pTradeUnpauseLater": {
+    "description": "Not in the RoboSats texts: the project's own: in place of the reference's « Unpause Order » button (`Prompts/Paused.tsx`), which comes with the pause (#184); a paused order is seen only when it was paused from another app (#182)."
+  },
+  "p2pTradeMakerBondLocked": "Your maker bond is locked",
+  "@p2pTradeMakerBondLocked": {
+    "description": "The official client's text, built as `Your ${isMaker ? 'maker' : 'taker'} bond is ${status}` (`TradeBox/BondStatus.tsx:39`, #182), which `en.json` and `fr.json` do not list for a maker; the French is the project's, in the words of `p2pTradeBondLocked`."
+  },
+  "p2pTradeMakerBondUnlocked": "Your maker bond is unlocked",
+  "@p2pTradeMakerBondUnlocked": {
+    "description": "The official client's text (`TradeBox/BondStatus.tsx:39`, #182); the French is the project's, in the words of `p2pTradeBondUnlocked`."
+  },
+  "p2pTradeMakerBondSettled": "Your maker bond is settled",
+  "@p2pTradeMakerBondSettled": {
+    "description": "The official client's text (`TradeBox/BondStatus.tsx:39`, #182); the French is the project's, in the words of `p2pTradeBondSettled`."
+  },
+  "p2pTradeRateGap": "{coordinator} fixed {sats} sats for {amount} {currencyCode} when your order was taken: a rate of {rate} {currencyCode}/BTC, {gap} from the rate when you made it ({createdRate}).",
+  "@p2pTradeRateGap": {
+    "description": "Not in the RoboSats texts: the project's own (design note § 3.3, « The gap », #182): before « Submit » of the payout and in « Confirm … sent » of a maker buyer, information only. {sats} is the order's sats fixed at the take (`satoshis_now`), {amount} the contract's amount, {rate} and {createdRate} rates of a bitcoin written as « Order current rate », {gap} the gap in percent with its sign, such as « +2.50% ».",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      },
+      "sats": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "currencyCode": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "createdRate": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pTradeWarnContractSeenLate": "Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.",
+  "@p2pTradeWarnContractSeenLate": {
+    "description": "Not in the RoboSats texts: the project's own: a next contract seen late (`ContractSeenLate`, design note § 3.2, #178), information and not a breach, said for as long as that contract lasts (#182); it replaces « Unexpected change on the coordinator's side », which read as an alert."
+  },
+  "p2pPendingMakeChecking": "Checking with {coordinator}…",
+  "@p2pPendingMakeChecking": {
+    "description": "Not in the RoboSats texts: the project's own: a pending make being resolved (`MakeOrderUsecase.resolve`, design note § 3.4, #182).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPendingMakeUnknown": "Not known yet whether {coordinator} made this order. No bond is asked until it is known.",
+  "@p2pPendingMakeUnknown": {
+    "description": "Not in the RoboSats texts: the project's own: a pending make that a resolution left pending (design note § 3.4, #182).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pPendingMakeSetAside": "Set aside",
+  "@p2pPendingMakeSetAside": {
+    "description": "Not in the RoboSats texts: the project's own: the way out of a pending make that does not resolve (reviews of #179, #182): the app stops checking it, never makes it again."
+  },
+  "p2pPendingMakeSetAsideTitle": "Set this order aside?",
+  "@p2pPendingMakeSetAsideTitle": {
+    "description": "Not in the RoboSats texts: the project's own: the title of the dialog of « Set aside » (#182)."
+  },
+  "p2pPendingMakeSetAsideText": "Bull Market will stop checking it. An order may still exist at {coordinator}: no bond was paid for it from this app, and it expires on its own a few minutes after it was made.",
+  "@p2pPendingMakeSetAsideText": {
+    "description": "Not in the RoboSats texts: the project's own: what « Set aside » does (#182, functional review of #179): an order made but never shown waits at 0 for a bond nobody sees and expires 300 s after its creation by default (`api/logics.py:329-338`).",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
+  },
+  "p2pMakePendingFirst": "An order of yours is still being created. Check it again or set it aside before creating another.",
+  "@p2pMakePendingFirst": {
+    "description": "Not in the RoboSats texts: the project's own: why « Create order » is disabled while a pending make of the network exists (security review of #181, S2; #182)."
+  },
+  "p2pMakeSendingStay": "Wait for the answer of {coordinator} before leaving: your order is being created.",
+  "@p2pMakeSendingStay": {
+    "description": "Not in the RoboSats texts: the project's own: going back while the make is sent (security review of #181, S1; #182): the page stays, so that the user is taken to the order or to its pending make.",
+    "placeholders": {
+      "coordinator": {
+        "type": "String"
+      }
+    }
   }
 }
