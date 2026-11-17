@@ -31,6 +31,7 @@ import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart'
     show FakeTransport, bookOrder, coordinator, parseOrders, testNow;
+import 'support/captures.dart';
 import 'support/harness.dart';
 import 'support/maker_orders.dart';
 import 'support/trade_harness.dart' show tradeKey;
@@ -149,7 +150,9 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
   );
   addTearDown(page.close);
   await tester.pumpWidget(
-    MaterialApp(
+    RepaintBoundary(
+      key: captureFrame,
+      child: MaterialApp(
       theme: testTheme,
       locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
@@ -171,6 +174,7 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
           ),
         ),
       ),
+    ),
     ),
   );
   await tester.pump();
@@ -733,4 +737,136 @@ void main() {
     });
   });
 
+
+  group('captures (with P2P_CAPTURE_DIR)', () {
+    setUpAll(loadCaptureFonts);
+    for (final locale in const [Locale('fr'), Locale('en')]) {
+      testWidgets(
+        'the maker\'s panels in ${locale.languageCode}',
+        skip: captureDirectory == null,
+        (tester) async {
+          final code = locale.languageCode;
+          final book = await tester.runAsync(
+            () => parseOrders([
+              bookOrder(id: tradeOrderId, type: 0),
+              bookOrder(id: 1, type: 0, premium: 1),
+              bookOrder(id: 2, type: 0, premium: 3),
+              bookOrder(id: 4, type: 1),
+            ]),
+          );
+          Future<void> shoot(
+            String name,
+            List<Object> answers, {
+            List<PublicOrder>? withBook,
+          }) async {
+            final seen = await tester.runAsync(() => _at(answers));
+            if (seen == null) throw StateError(name);
+            await _show(tester, seen, locale: locale, book: withBook);
+            await capture(tester, '$code-createur-$name');
+          }
+
+          await shoot('public', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+          ], withBook: book);
+          await shoot('public-sans-carnet', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+          ]);
+          await shoot('pause', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(2),
+          ]);
+          await shoot('expire-0', [
+            makerOrderJson(0),
+            makerOrderJson(
+              5,
+              changes: {
+                'expiry_reason': 1,
+                'expiry_message': 'Maker bond not locked',
+              },
+            ),
+          ]);
+          await shoot('expire-1', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(5),
+          ]);
+          await shoot('annule', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            const TradeOrderCancelled(),
+          ]);
+          await shoot('6-ecart', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: _lowSats),
+          ]);
+          await tester.tap(find.text('Order').last);
+          await tester.pump();
+          await capture(tester, '$code-createur-6-onglet-ordre');
+          await shoot('6-ecart-favorable', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: 110000),
+          ]);
+          await shoot('7', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(7),
+          ]);
+          await shoot('retour-carnet', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(1),
+          ]);
+          await shoot('nouveau-contrat', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(1),
+            makerOrderJson(6, taker: third, deadline: deadline1, last: _lowSats),
+          ]);
+          await shoot('contrat-vu-tard', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(1),
+            makerOrderJson(9, taker: third),
+          ]);
+          await shoot('9', [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6, last: _lowSats),
+            makerOrderJson(8, last: _lowSats),
+            makerOrderJson(9, last: _lowSats),
+          ]);
+          final confirm = find.textContaining(
+            code == 'fr' ? 'envoyé' : 'sent',
+          );
+          if (confirm.evaluate().isNotEmpty) {
+            await tester.ensureVisible(confirm.last);
+            await tester.pump();
+            await tester.tap(confirm.last);
+            await tester.pumpAndSettle();
+            await capture(tester, '$code-createur-9-dialogue-ecart');
+          }
+          final before = [
+            makerOrderJson(0),
+            makerOrderJson(1),
+            makerOrderJson(6),
+            makerOrderJson(8),
+            makerOrderJson(9),
+            makerOrderJson(11),
+            makerOrderJson(16),
+          ];
+          await shoot('17', [...before, makerOrderJson(17)]);
+          await shoot('18', [...before, makerOrderJson(18)]);
+        },
+      );
+    }
+  });
 }

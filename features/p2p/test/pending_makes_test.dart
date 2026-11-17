@@ -21,6 +21,7 @@ import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import 'support/fakes.dart' show bookOrder, parseOrders;
+import 'support/captures.dart';
 import 'support/harness.dart';
 import 'support/make_harness.dart';
 import 'support/maker_orders.dart';
@@ -119,7 +120,9 @@ Future<(List<TradeRecord>, List<void>, PendingMakesCubit)> _sheet(
   final opened = <TradeRecord>[];
   final created = <void>[];
   await tester.pumpWidget(
-    MaterialApp(
+    RepaintBoundary(
+      key: captureFrame,
+      child: MaterialApp(
       theme: testTheme,
       locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
@@ -144,6 +147,7 @@ Future<(List<TradeRecord>, List<void>, PendingMakesCubit)> _sheet(
           ),
         ),
       ),
+    ),
     ),
   );
   await tester.pump();
@@ -422,5 +426,24 @@ void main() {
         );
       },
     );
+  });
+
+  group('captures (with P2P_CAPTURE_DIR)', () {
+    setUpAll(loadCaptureFonts);
+    for (final locale in const [Locale('fr'), Locale('en')]) {
+      testWidgets(
+        '« Active trades » with a pending make in ${locale.languageCode}',
+        skip: captureDirectory == null,
+        (tester) async {
+          final code = locale.languageCode;
+          final makes = _Makes();
+          await _sheet(tester, makes, locale: locale);
+          await capture(tester, '$code-creation-en-attente');
+          await tester.tap(find.text(code == 'fr' ? 'Écarter' : 'Set aside'));
+          await settle(tester);
+          await capture(tester, '$code-creation-en-attente-ecarter');
+        },
+      );
+    }
   });
 }

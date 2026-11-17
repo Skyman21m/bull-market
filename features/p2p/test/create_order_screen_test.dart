@@ -22,6 +22,7 @@ import 'package:p2p/src/ui/widgets/trade_button.dart';
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
+import 'support/captures.dart';
 import 'support/harness.dart';
 import 'support/make_form.dart';
 import 'support/trade_screens.dart';
@@ -165,7 +166,9 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
   addTearDown(pending.close);
   final opened = <TradeRecord>[];
   await tester.pumpWidget(
-    MaterialApp(
+    RepaintBoundary(
+      key: captureFrame,
+      child: MaterialApp(
       theme: testTheme,
       locale: locale,
       localizationsDelegates: P2pLocalizations.localizationsDelegates,
@@ -187,6 +190,7 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
           ),
         ),
       ),
+    ),
     ),
   );
   unawaited(cubit.start());
@@ -1026,7 +1030,7 @@ void main() {
         await settle(tester);
         expect(
           find.text(
-            'Temple of Sats\'s price changed since it was shown. Check the comparison, then press « Create order » again.',
+            'Temple of Sats\'s price changed since it was shown. Check the comparison, then press "Create order" again.',
           ),
           findsOneWidget,
         );
@@ -1349,6 +1353,90 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  group('captures (with P2P_CAPTURE_DIR)', () {
+    setUpAll(loadCaptureFonts);
+    for (final locale in const [Locale('fr'), Locale('en')]) {
+      testWidgets(
+        'the stop lines, the pending make and the wait of the form in ${locale.languageCode}',
+        skip: captureDirectory == null,
+        (tester) async {
+          final code = locale.languageCode;
+          Future<void> bottom() async {
+            await tester.drag(
+              find.byType(Scrollable).first,
+              const Offset(0, -3000),
+            );
+            await settle(tester);
+          }
+
+          // The Bull wallet's price read at the press, a line that warns.
+          var form = _Form()..holdPrices = true;
+          await _show(tester, form, locale: locale);
+          await _fill(tester);
+          await tester.tap(_create);
+          await settle(tester);
+          form.heldPrices.single.complete(
+            MakePriceCheck.of(
+              currency: eur,
+              coordinatorPrice: 91711.15,
+              wallet: P2pWalletRateRead(110000),
+            ),
+          );
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-prix-lu');
+          // Limits read again and changed.
+          form = _Form();
+          await _show(tester, form, locale: locale);
+          await _fill(tester);
+          form
+            ..now = form.now.add(const Duration(minutes: 4))
+            ..rate = const P2pWalletRateUnavailable();
+          await tester.tap(_create);
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-relu');
+          // The price changed at the make.
+          form = _Form()
+            ..answer = Err(
+              MakePriceCheckChanged(
+                await tester.runAsync(() => limitsAt({2: 9171.115})) ??
+                    (throw StateError('no limits')),
+                MakePriceSeen.of(currency: eur, coordinatorPrice: 9171.115),
+              ),
+            );
+          await _show(tester, form, locale: locale);
+          await _fill(tester);
+          await tester.tap(_create);
+          await settle(tester);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pCommonDone),
+          );
+          await settle(tester);
+          await capture(tester, '$code-creer-arret-prix-change');
+          // A pending make of the network above the form.
+          form = _Form()
+            ..listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+          await _show(tester, form, locale: locale);
+          await capture(tester, '$code-creer-creation-en-attente');
+          // Going back while the make is sent.
+          form = _Form();
+          await _show(tester, form, locale: locale);
+          await _fill(tester);
+          await tester.tap(_create);
+          await settle(tester);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pCommonDone),
+          );
+          await settle(tester);
+          await tester.state<NavigatorState>(find.byType(Navigator)).maybePop();
+          await settle(tester);
+          await capture(tester, '$code-creer-envoi-attendre');
+          await bottom();
+          await capture(tester, '$code-creer-envoi-attendre-bas');
+        },
+      );
+    }
   });
 }
 

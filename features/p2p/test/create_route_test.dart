@@ -52,12 +52,20 @@ void main() {
   testWidgets('« Create » opens the form, and going back leaves it', (
     tester,
   ) async {
-    final router = await open(tester, withGarage: true);
+    await open(tester, withGarage: true);
     expect(find.text('Create'), findsOneWidget);
     await tester.tap(find.text('Create'));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    router.pop();
+    // The top bar's back.
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(CreateOrderScreen),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsNothing);
     expect(find.text('Create'), findsOneWidget);
