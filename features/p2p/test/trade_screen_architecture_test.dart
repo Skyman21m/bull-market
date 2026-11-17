@@ -12,7 +12,7 @@ import 'package:test/test.dart';
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message), the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) and the end's panel (the transaction id, the payout's address, the trade summary) use the clipboard.
-/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; and nothing the user can reach builds that screen: it is named only in its own file and in `P2pRouter.createPage`, which no file of `lib` calls but the testing seam (for the app's captures), so that « Create » stays disabled until #182.
+/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; that screen is named only in its own file and in `P2pRouter.createPage`, which only the route `create` of the router and the testing seam (for the app's captures) call; the route is opened by name only from the router's own tab, by « Create » and « Create order » of « Active trades » (#182), with the `P2pCreateRouteArgs` only the router and the seam build.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -113,27 +113,50 @@ void main() {
     },
   );
 
-  test('nothing the user can reach opens the create screen yet (#181)', () {
-    expect(_whereNamed(sources, 'CreateOrderScreen'), {
-      'lib/src/ui/create_order_screen.dart',
-      'lib/src/p2p_router.dart',
-    });
-    // `createPage` is declared in the router and called by no file of `lib` but the testing seam, which the app never imports (`test/features/p2p/p2p_testing_seam_test.dart`), for the captures.
-    expect(sources['lib/src/p2p_router.dart'], contains('createPage('));
-    expect(
-      {
-        for (final MapEntry(key: path, value: source) in sources.entries)
-          if (_callsMethod(source, 'createPage') ||
-              _namesIn(source).contains('createPage'))
-            path,
-      },
-      {'lib/testing.dart'},
-    );
-    expect(_whereNamed(sources, 'P2pCreateRouteArgs'), {
-      'lib/src/p2p_router.dart',
-      'lib/testing.dart',
-    });
-  });
+  test(
+    'only the route of the router and the testing seam build the create screen (#182)',
+    () {
+      expect(_whereNamed(sources, 'CreateOrderScreen'), {
+        'lib/src/ui/create_order_screen.dart',
+        'lib/src/p2p_router.dart',
+      });
+      // `createPage` is declared in the router, called by its route `create` and by the testing seam, which the app never imports (`test/features/p2p/p2p_testing_seam_test.dart`), for the captures.
+      expect(
+        {
+          for (final MapEntry(key: path, value: source) in sources.entries)
+            if (_callsMethod(source, 'createPage') ||
+                _namesIn(source).contains('createPage'))
+              path,
+        },
+        {'lib/src/p2p_router.dart', 'lib/testing.dart'},
+      );
+      expect(_whereNamed(sources, 'P2pCreateRouteArgs'), {
+        'lib/src/p2p_router.dart',
+        'lib/testing.dart',
+      });
+      // The route is named by the router alone: « Create » of the tab and « Create order » of « Active trades » reach it through the callbacks the router gives them.
+      expect(_whereNamed(sources, 'createName'), {'lib/src/p2p_router.dart'});
+    },
+  );
+
+  test(
+    'only the pending makes\' cubit lists, resolves or sets aside a pending make, and only its lines and the screens that hold it ask it (#182)',
+    () {
+      expect(_whereNamed(sources, 'PendingMakesCubit'), {
+        'lib/src/presentation/pending_makes_cubit.dart',
+        'lib/src/p2p_locator.dart',
+        'lib/src/p2p_router.dart',
+        'lib/src/ui/create_order_screen.dart',
+        'lib/src/ui/trade/active_trades_sheet.dart',
+        'lib/src/ui/trade/pending_make_lines.dart',
+      });
+      for (final method in ['resolve', 'dismiss']) {
+        expect(_callersOf(sources, method, cubit: 'PendingMakesCubit'), {
+          'lib/src/ui/trade/pending_make_lines.dart',
+        }, reason: method);
+      }
+    },
+  );
 
   test('only TakeOrderSection prepares, confirms or abandons a take', () {
     for (final method in _takeSteps) {

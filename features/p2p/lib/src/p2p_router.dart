@@ -521,7 +521,7 @@ class _P2pPageState extends State<_P2pPage> {
           : null,
     );
     // The middle entry: « Order » while the network has an active trade or a pending make, which opens them; else « Create », which opens the form where an order can be made (#182).
-    Widget trades(BuildContext context, PendingMakesCubit? pending) =>
+    Widget middleEntry(BuildContext context, PendingMakesCubit? pending) =>
         BlocBuilder<ActiveTradesCubit, ActiveTradesState>(
           builder: (context, active) {
             final pendingState = pending == null
@@ -564,13 +564,13 @@ class _P2pPageState extends State<_P2pPage> {
                       create: (_) =>
                           locator<PendingMakesCubit>(param1: current)..start(),
                       child: Builder(
-                        builder: (context) => trades(
+                        builder: (context) => middleEntry(
                           context,
                           context.read<PendingMakesCubit>(),
                         ),
                       ),
                     )
-                  : Builder(builder: (context) => trades(context, null)),
+                  : Builder(builder: (context) => middleEntry(context, null)),
             )
           : Builder(builder: tab),
     );

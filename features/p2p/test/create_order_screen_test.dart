@@ -14,6 +14,7 @@ import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
+import 'package:p2p/src/presentation/pending_makes_cubit.dart';
 import 'package:p2p/src/ui/create_order_screen.dart';
 import 'package:p2p/src/ui/widgets/no_robot_dialog.dart';
 import 'package:p2p/src/ui/widgets/store_token_dialog.dart';
@@ -66,6 +67,39 @@ final class _Form {
   /// How many times the vault was asked, and its answer held until the test completes it, when set.
   int keysAsked = 0;
   Completer<Result<bool, P2pFailure>>? vault;
+
+  /// The network's pending makes as the records list them (#182): none by default; a test adds to [pendingMakes] and the list follows.
+  final pendingMakes = StreamController<
+    Result<List<ActivePendingMake>, P2pFailure>
+  >.broadcast();
+  List<ActivePendingMake> listedMakes = const [];
+
+  /// What a resolution of a pending make gives, and the makes resolved and set aside.
+  MakeOutcome Function(PendingMake make)? resolution;
+  final List<PendingMake> resolved = [];
+  final List<PendingMake> setAside = [];
+
+  PendingMakesCubit pendingCubit() => PendingMakesCubit(
+    RobosatsNetwork.mainnet,
+    (network) async* {
+      yield Ok(listedMakes);
+      yield* pendingMakes.stream;
+    },
+    (make) async {
+      resolved.add(make);
+      return resolution?.call(make) ??
+          MakePending(make, MakePendingReason.unread);
+    },
+    (make) async {
+      setAside.add(make);
+      listedMakes = [
+        for (final listed in listedMakes)
+          if (listed.make.robot != make.robot) listed,
+      ];
+      pendingMakes.add(Ok(listedMakes));
+      return const Ok(true);
+    },
+  );
 
   MakeOrderCubit cubit() => MakeOrderCubit(
     RobosatsNetwork.mainnet,
@@ -130,6 +164,9 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
   addTearDown(tester.view.reset);
   final cubit = form.cubit();
   addTearDown(cubit.close);
+  final pending = form.pendingCubit()..start();
+  addTearDown(pending.close);
+  addTearDown(form.pendingMakes.close);
   final opened = <TradeRecord>[];
   await tester.pumpWidget(
     MaterialApp(
@@ -142,8 +179,11 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
         child: child ?? const SizedBox.shrink(),
       ),
       home: Scaffold(
-        body: BlocProvider.value(
-          value: cubit,
+        body: MultiBlocProvider(
+          providers: [
+            BlocProvider.value(value: cubit),
+            BlocProvider.value(value: pending),
+          ],
           child: CreateOrderScreen(
             initialType: initialType,
             coordinatorDetails: (_) => throw StateError('not opened'),
@@ -154,6 +194,7 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
     ),
   );
   unawaited(cubit.start());
+  unawaited(pending.resolveAll());
   await settle(tester);
   return (opened, cubit);
 }
