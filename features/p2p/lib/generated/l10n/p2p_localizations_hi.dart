@@ -3217,6 +3217,10 @@ class P2pLocalizationsHi extends P2pLocalizations {
   @override
   String get p2pMakePricesReadAgain =>
       'The limits and prices were read again and changed. Check the form, then press « Create order » again.';
+
+  @override
+  String get p2pMakePriceReadAtPress =>
+      'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.';
 }
 
 /// The translations for Hindi, using the Latin script (`hi_Latn`).

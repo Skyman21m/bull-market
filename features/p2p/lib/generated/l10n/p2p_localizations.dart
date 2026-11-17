@@ -5129,6 +5129,12 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'The limits and prices were read again and changed. Check the form, then press « Create order » again.'**
   String get p2pMakePricesReadAgain;
+
+  /// Not in the RoboSats texts: the project's own: « Create order » was pressed while the Bull wallet's price was being read; once read, the form shows another price check than at the press, so the press went no further (second security review of #181, R8).
+  ///
+  /// In en, this message translates to:
+  /// **'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.'**
+  String get p2pMakePriceReadAtPress;
 }
 
 class _P2pLocalizationsDelegate

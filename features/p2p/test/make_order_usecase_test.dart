@@ -5,6 +5,7 @@ import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
 import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/trade/active_trade.dart';
+import 'package:p2p/src/domain/trade/make_price_check.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
@@ -149,8 +150,9 @@ void main() {
       MakeHarness harness,
       Matcher refusal, {
       MakeOrderRequest? request,
+      MakePriceSeen? seen,
     }) async {
-      final made = await harness.makeOrder(request);
+      final made = await harness.makeOrder(request, seen);
       expect(made, isA<Err<MakeOutcome, MakeRefusal>>());
       expect((made as Err<MakeOutcome, MakeRefusal>).failure, refusal);
       // No robot was reserved or contacted, no record written, no make sent.
@@ -216,6 +218,32 @@ void main() {
         );
       }
     });
+
+    test(
+      'when the price check seen was of another currency, even at the same price (second security review of #181, R11)',
+      () async {
+        final harness = await MakeHarness.start();
+        await refusedWithoutRobot(
+          harness,
+          isA<MakePriceCheckChanged>(),
+          seen: MakePriceSeen.of(
+            currency: RobosatsCurrency.fromId(1) ?? (throw StateError('USD')),
+            coordinatorPrice: harness.coordinator.prices[2] ?? 0,
+          ),
+        );
+        // The same seen of the request's currency: made.
+        expect(
+          await harness.makeOrder(
+            null,
+            MakePriceSeen.of(
+              currency: MakeHarness.request().currency,
+              coordinatorPrice: harness.coordinator.prices[2] ?? 0,
+            ),
+          ),
+          isA<Ok<MakeOutcome, MakeRefusal>>(),
+        );
+      },
+    );
 
     test('when the amount is outside the limits of the form', () async {
       for (final amount in [19, 5000]) {

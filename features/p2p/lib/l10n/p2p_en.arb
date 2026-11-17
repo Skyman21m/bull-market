@@ -4609,5 +4609,9 @@
   "p2pMakePricesReadAgain": "The limits and prices were read again and changed. Check the form, then press « Create order » again.",
   "@p2pMakePricesReadAgain": {
     "description": "Not in the RoboSats texts: the project's own: « Create order » read the coordinator's limits and the Bull wallet's price again, more than 3 minutes old, and the form now shows another request or another price check: the press went no further (security review of #181, C2)."
+  },
+  "p2pMakePriceReadAtPress": "The Bull wallet's price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.",
+  "@p2pMakePriceReadAtPress": {
+    "description": "Not in the RoboSats texts: the project's own: « Create order » was pressed while the Bull wallet's price was being read; once read, the form shows another price check than at the press, so the press went no further (second security review of #181, R8)."
   }
 }

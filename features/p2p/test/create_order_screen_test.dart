@@ -821,6 +821,48 @@ void main() {
     );
 
     testWidgets(
+      'pressed while the Bull wallet\'s price is being read: the read awaited, the fields locked, then the line it shows and no dialog; a second press goes on (second security review of #181, R8)',
+      (tester) async {
+        final form = _Form()..holdPrices = true;
+        await _show(tester, form);
+        await _fill(tester);
+        expect(
+          find.text('Reading the Bull wallet\'s price for comparison…'),
+          findsOneWidget,
+        );
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+        expect(form.keysAsked, 0);
+        form.heldPrices.single.complete(
+          MakePriceCheck.of(
+            currency: eur,
+            coordinatorPrice: 91711.15,
+            wallet: P2pWalletRateRead(110000),
+          ),
+        );
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(
+          find.text(
+            'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('more than 10% below'), findsOneWidget);
+        expect(tester.widget<TextField>(_amountField).enabled, isTrue);
+        expect(form.made, isEmpty);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.seenSent.single.verdict, MakePriceVerdict.below);
+      },
+    );
+
+    testWidgets(
       'read again at the press, limits that now refuse the amount: no dialog, the reason shown (functional review of #181, R14)',
       (tester) async {
         final form = _Form();

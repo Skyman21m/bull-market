@@ -118,6 +118,39 @@ void main() {
     );
 
     test(
+      'a press for a coordinator the form no longer shows: nothing sent, nothing said (second security review of #181, R11)',
+      () async {
+        final harness = await MakeHarness.start();
+        final cubit = cubitOver(harness);
+        addTearDown(cubit.close);
+        await cubit.start();
+        await harness.settle();
+        final request = requestOf(cubit.state);
+        await cubit.make(
+          request,
+          coordinator: coordinatorOf('lake'),
+          seen:
+              cubit.seen() ??
+              MakePriceSeen.of(currency: eur, coordinatorPrice: 91711.15),
+        );
+        await harness.settle();
+        expect(makes(harness), 0);
+        expect(
+          harness.coordinator.received,
+          isNot(contains(ScriptedMakerRequest.make)),
+        );
+        expect(await harness.allTrades(), isEmpty);
+        expect(
+          cubit.state.progress,
+          isA<MakeIdle>().having((idle) => idle.problem, 'problem', isNull),
+        );
+        await _makeVia(cubit, request);
+        await harness.settle();
+        expect(cubit.state.progress, isA<MakeMade>());
+      },
+    );
+
+    test(
       'refused before any robot: the price unknown, nothing reserved, and a make may be tried again',
       () async {
         final harness = await MakeHarness.start();
@@ -312,6 +345,49 @@ void main() {
           await harness.settle();
           expect(cubit.state.progress, isA<MakeMade>());
         });
+
+        for (final (side, verdict, seenAt, worse) in [
+          ('below', MakePriceVerdict.below, 0.88, 0.10),
+          ('above', MakePriceVerdict.above, 1.12, 1.90),
+        ]) {
+          test(
+            'a red check seen $side (12 %): refused before any robot at a price far beyond it, made a little further (second security review of #181, C3)',
+            () async {
+              final wallet = 91711.15 / seenAt;
+              final harness = await MakeHarness.start();
+              final cubit = await shown(harness, P2pWalletRateRead(wallet));
+              expect(cubit.seen()?.verdict, verdict);
+              harness.coordinator.prices[2] = wallet * worse;
+              await _makeVia(cubit, requestOf(cubit.state));
+              await harness.settle();
+              expect(
+                cubit.state.progress,
+                isA<MakeIdle>().having(
+                  (idle) => idle.problem,
+                  'problem',
+                  isA<MakeWasRefused>().having(
+                    (refused) => refused.refusal,
+                    'refusal',
+                    isA<MakePriceCheckChanged>(),
+                  ),
+                ),
+              );
+              expect(makes(harness), 0);
+              expect(await harness.allTrades(), isEmpty);
+              expect(await harness.pendingMakes(), isEmpty);
+              expect(cubit.seen()?.verdict, verdict);
+              expect(cubit.seen()?.coordinatorPrice, wallet * worse);
+              // Shown at 12 %, read again at 13 %: the same line, made.
+              final again = await MakeHarness.start();
+              final other = await shown(again, P2pWalletRateRead(wallet));
+              again.coordinator.prices[2] = wallet * (seenAt < 1 ? 0.87 : 1.13);
+              await _makeVia(other, requestOf(other.state));
+              await again.settle();
+              expect(other.state.progress, isA<MakeMade>());
+              expect(makes(again), 1);
+            },
+          );
+        }
 
         for (final (name, wallet, verdict) in [
           (
@@ -620,6 +696,69 @@ void main() {
         calls.now = calls.now.add(const Duration(minutes: 4));
         await cubit.choose(coordinatorOf('temple'));
         expect(calls.priceAsked, hasLength(2));
+      },
+    );
+
+    test(
+      'the last read kept for each currency: USD, EUR, then USD again within 3 minutes reads nothing anew, a read 3 minutes old is read again (second security review of #181, R10)',
+      () async {
+        final calls = _Calls();
+        final cubit = cubitOf(calls);
+        addTearDown(cubit.close);
+        await cubit.start();
+        await cubit.showCurrency(usd);
+        await cubit.wantPrice(true);
+        expect(calls.priceAsked, [(usd, 100000.0)]);
+        calls.now = calls.now.add(const Duration(minutes: 1));
+        await cubit.showCurrency(eur);
+        expect(calls.priceAsked, hasLength(2));
+        calls.now = calls.now.add(const Duration(minutes: 1));
+        await cubit.showCurrency(usd);
+        expect(calls.priceAsked, hasLength(2));
+        expect(cubit.state.price, isA<MakeFormPriceChecked>());
+        await cubit.showCurrency(eur);
+        expect(calls.priceAsked, hasLength(2));
+        // USD read 3 minutes ago, EUR 2: USD is read again, EUR not yet.
+        calls.now = calls.now.add(const Duration(minutes: 1));
+        await cubit.showCurrency(usd);
+        expect(calls.priceAsked, hasLength(3));
+        expect(calls.priceAsked.last, (usd, 100000.0));
+        await cubit.showCurrency(eur);
+        expect(calls.priceAsked, hasLength(3));
+        calls.now = calls.now.add(const Duration(minutes: 1));
+        await cubit.showCurrency(usd);
+        await cubit.showCurrency(eur);
+        expect(calls.priceAsked, hasLength(4));
+        expect(calls.priceAsked.last, (eur, 91711.15));
+      },
+    );
+
+    test(
+      'the end of a running read of the Bull wallet\'s price awaited, at once when none runs (second security review of #181, R8)',
+      () async {
+        final calls = _Calls()..holdPrices = true;
+        final cubit = cubitOf(calls);
+        addTearDown(cubit.close);
+        await cubit.start();
+        await cubit.priceSettled();
+        unawaited(cubit.wantPrice(true));
+        await pumpEventQueue();
+        expect(cubit.state.price, isA<MakeFormPriceReading>());
+        expect(cubit.seen()?.verdict, MakePriceVerdict.notRead);
+        var settled = false;
+        unawaited(cubit.priceSettled().then((_) => settled = true));
+        await pumpEventQueue();
+        expect(settled, isFalse);
+        calls.heldPrices.single.complete(
+          MakePriceCheck.of(
+            currency: eur,
+            coordinatorPrice: 91711.15,
+            wallet: P2pWalletRateRead(110000),
+          ),
+        );
+        await pumpEventQueue();
+        expect(settled, isTrue);
+        expect(cubit.seen()?.verdict, MakePriceVerdict.below);
       },
     );
 

@@ -162,7 +162,7 @@ enum MakePriceVerdict {
 
 /// The price check as the user saw it at the press, handed to the make so that an order is never made on a coordinator's price whose comparison the user did not see (security review of #181, C1).
 ///
-/// The make reads `/api/limits/` again just before it reserves a robot, and keeps that price as the terms' `createdPrice`; [holdsAt] tells whether the user would see the same thing at that price: the same verdict against the same Bull wallet's price when one was compared, or, without one, a price within [TradeTolerances.walletRateGap] of the one shown (the estimated bond shown is then still the order's). It never refuses for a price itself: a red verdict seen is kept.
+/// The make reads `/api/limits/` again just before it reserves a robot, and keeps that price as the terms' `createdPrice`; [holdsAt] tells whether the user would see the same thing at that price: a price within [TradeTolerances.walletRateGap] of the one shown, whatever the line (the estimated bond shown is then still the order's), and, when a Bull wallet's price was compared, the same verdict against it. It never refuses for a price itself: a red verdict seen is kept, but only for a price close to the one it was seen at (a red line seen at 12 % below never covers a price 90 % below; second security review of #181, C3).
 @immutable
 final class MakePriceSeen {
   final RobosatsCurrency currency;
@@ -246,7 +246,9 @@ final class MakePriceSeen {
   /// Whether the user would see the same at [price], a coordinator's price of [currency] read again just before the make (see the class).
   bool holdsAt(double price) {
     final now = MakePriceCheck._price(price);
-    if (now == null) return false;
+    final shown = MakePriceCheck._price(coordinatorPrice);
+    if (now == null || shown == null) return false;
+    if ((now - shown).abs() > shown * MakePriceCompared._gap) return false;
     switch (verdict) {
       case MakePriceVerdict.within ||
           MakePriceVerdict.below ||
@@ -262,9 +264,7 @@ final class MakePriceSeen {
       case MakePriceVerdict.notRead ||
           MakePriceVerdict.notPriced ||
           MakePriceVerdict.unverified:
-        final shown = MakePriceCheck._price(coordinatorPrice);
-        if (shown == null) return false;
-        return (now - shown).abs() <= shown * MakePriceCompared._gap;
+        return true;
     }
   }
 

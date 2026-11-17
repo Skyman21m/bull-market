@@ -824,5 +824,6 @@
   "p2pMakeCurrentRateUnit": "{currencyCode}/BTC",
   "p2pMakeNoHost": "Aucun coordinateur ne peut être choisi pour l’instant.",
   "p2pMakePriceCheckChanged": "Le prix annoncé par {coordinator} a changé depuis son affichage. Vérifiez la comparaison, puis appuyez de nouveau sur « Créer l’ordre ».",
-  "p2pMakePricesReadAgain": "Les limites et les prix ont été relus et ont changé. Vérifiez le formulaire, puis appuyez de nouveau sur « Créer l’ordre »."
+  "p2pMakePricesReadAgain": "Les limites et les prix ont été relus et ont changé. Vérifiez le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».",
+  "p2pMakePriceReadAtPress": "Le prix du portefeuille Bull était en cours de lecture quand vous avez appuyé sur « Créer l’ordre ». Vérifiez la comparaison des prix sous le formulaire, puis appuyez de nouveau sur « Créer l’ordre »."
 }

@@ -3262,4 +3262,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pMakePricesReadAgain =>
       'Les limites et les prix ont été relus et ont changé. Vérifiez le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».';
+
+  @override
+  String get p2pMakePriceReadAtPress =>
+      'Le prix du portefeuille Bull était en cours de lecture quand vous avez appuyé sur « Créer l’ordre ». Vérifiez la comparaison des prix sous le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».';
 }

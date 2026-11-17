@@ -75,8 +75,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   /// Whether a dialog of the press is open, or the make is being handed to the cubit: a second press opens nothing more and the fields stay locked.
   bool _asking = false;
 
-  /// Whether the last press read the limits and the price again and stopped there, the form showing something else: a line says so until the next press.
-  bool _readAgain = false;
+  /// Why the last press stopped before its dialogs, the form showing something else than at the press: a line says so until the next press.
+  _PressStopped? _stopped;
 
   /// Completes when the screen goes away: « Select Host » and the coordinator dialog it opened close then.
   final _gone = Completer<void>();
@@ -120,16 +120,29 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
     setState(() {
       _asking = true;
-      _readAgain = false;
+      _stopped = null;
     });
     try {
+      // A press while the Bull wallet's price is being read: its end awaited, the button busy (the shell bounds a read to 15 s), then the line it shows is the one the press is for (second security review of #181, R8).
+      if (cubit.state.price is MakeFormPriceReading) {
+        await cubit.priceSettled();
+        if (!mounted) return;
+        final settled = cubit.seen();
+        if (_check(cubit.state).request != request ||
+            settled == null ||
+            !settled.sameLineAs(seen)) {
+          setState(() => _stopped = _PressStopped.priceRead);
+          return;
+        }
+        seen = settled;
+      }
       if (await cubit.refreshIfStale()) {
         if (!mounted) return;
         final fresh = cubit.seen();
         if (_check(cubit.state).request != request ||
             fresh == null ||
             !fresh.sameLineAs(seen)) {
-          setState(() => _readAgain = true);
+          setState(() => _stopped = _PressStopped.readAgain);
           return;
         }
         seen = fresh;
@@ -170,7 +183,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _amount.clear();
       _premium.clear();
       _methods.clear();
-      _readAgain = false;
+      _stopped = null;
     });
     final cubit = context.read<MakeOrderCubit>();
     unawaited(cubit.wantPrice(false));
@@ -346,7 +359,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       check: check,
                       state: state,
                       asking: _asking,
-                      readAgain: _readAgain,
+                      stopped: _stopped,
                       coordinator: coordinatorName,
                       onPressed: () => unawaited(_press()),
                     ),
@@ -942,14 +955,23 @@ class _Summary extends StatelessWidget {
   }
 }
 
+/// Why a press of « Create order » stopped before its dialogs.
+enum _PressStopped {
+  /// The limits and the price, more than 3 minutes old, were read again and the form shows another request or another price check (security review of #181, C2).
+  readAgain,
+
+  /// The Bull wallet's price was being read at the press; read, it shows another line than at the press (second security review of #181, R8).
+  priceRead,
+}
+
 /// « Create order », disabled with the reference's reason (a tooltip opened by a tap, as the reference opens it on touch, and the same line under it), then what the make is doing or why it did not happen.
 class _CreateButton extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
   final bool asking;
 
-  /// Whether the last press read the limits and the price again and stopped, the form showing something else.
-  final bool readAgain;
+  /// Why the last press stopped, the form showing something else.
+  final _PressStopped? stopped;
   final String coordinator;
   final VoidCallback onPressed;
 
@@ -957,7 +979,7 @@ class _CreateButton extends StatelessWidget {
     required this.check,
     required this.state,
     required this.asking,
-    required this.readAgain,
+    required this.stopped,
     required this.coordinator,
     required this.onPressed,
   });
@@ -977,8 +999,15 @@ class _CreateButton extends StatelessWidget {
     final lines = <Widget>[
       if (block != null && progress is MakeIdle)
         _Line(block.toText(context), live: true),
-      if (readAgain && progress is MakeIdle)
-        _Line(l10n.p2pMakePricesReadAgain, color: colors.warning, live: true),
+      if (stopped case final stopped? when progress is MakeIdle)
+        _Line(
+          switch (stopped) {
+            _PressStopped.readAgain => l10n.p2pMakePricesReadAgain,
+            _PressStopped.priceRead => l10n.p2pMakePriceReadAtPress,
+          },
+          color: colors.warning,
+          live: true,
+        ),
       if (progress is MakeSending) _Line(l10n.p2pMakeCreating, live: true),
       if (progress is MakeUncertain) ...[
         _Line(l10n.p2pMakeCreating, live: true),

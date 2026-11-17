@@ -231,8 +231,11 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// Whether an amount is typed ([wantPrice]): only then is the Bull wallet's price read.
   bool _wanted = false;
 
-  /// The last read of the Bull wallet's price: its currency, when it came, and the check it gave.
-  ({RobosatsCurrency currency, DateTime at, MakePriceCheck check})? _lastPrice;
+  /// The last read of the Bull wallet's price of each currency (by its RoboSats id): when it came, and the check it gave; a read [staleAfter] old or more is forgotten at the next read (second security review of #181, R10).
+  final Map<int, ({DateTime at, MakePriceCheck check})> _lastPrices = {};
+
+  /// The read of the Bull wallet's price that runs, if one does ([priceSettled]).
+  Future<MakePriceCheck>? _priceReading;
 
   /// How old the limits and the Bull wallet's price may be when « Create order » is pressed: older, they are read again first ([refreshIfStale]). The reference reads them once when the form opens or the coordinator changes, never again while it stays open (`MakerForm.tsx:102-131`; `Federation.loadCoordinatorData`, `models/Federation.model.ts:763-792`, at a change of connection only).
   static const Duration staleAfter = Duration(minutes: 3);
@@ -371,11 +374,10 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     final coordinatorPrice = _usablePrice();
     if (check == null || coordinatorPrice == null || !_wanted) return;
     final currency = state.currency;
-    final last = _lastPrice;
-    if (!again &&
-        last != null &&
-        last.currency == currency &&
-        _now().difference(last.at) < staleAfter) {
+    final now = _now();
+    _lastPrices.removeWhere((_, last) => now.difference(last.at) >= staleAfter);
+    final last = _lastPrices[currency.id];
+    if (!again && last != null) {
       _priceRead++;
       final seen = MakePriceSeen.of(
         currency: currency,
@@ -388,10 +390,23 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     }
     final read = ++_priceRead;
     emit(state._with(price: const MakeFormPriceReading()));
-    final result = await check(state.network, currency, coordinatorPrice);
+    final reading = check(state.network, currency, coordinatorPrice);
+    _priceReading = reading;
+    final result = await reading;
+    if (identical(_priceReading, reading)) _priceReading = null;
     if (isClosed || read != _priceRead) return;
-    _lastPrice = (currency: currency, at: _now(), check: result);
+    _lastPrices[currency.id] = (at: _now(), check: result);
     emit(state._with(price: MakeFormPriceChecked(result)));
+  }
+
+  /// When the form shows the Bull wallet's price being read: the end of that read, for « Create order » pressed meanwhile (second security review of #181, R8); at once otherwise. Bounded by the read itself, which the shell stops after 15 s (`ReadWalletRateUsecase.readBound`).
+  Future<void> priceSettled() async {
+    while (!isClosed && state.price is MakeFormPriceReading) {
+      final reading = _priceReading;
+      if (reading == null) return;
+      // The read's own continuation, registered first, shows its answer before this one runs.
+      await reading;
+    }
   }
 
   /// The price check as the form shows it now ([MakePriceSeen]), for the press of « Create order »: `null` when the coordinator gives no usable price for the currency, when no order can be made anyway.
