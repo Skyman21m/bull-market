@@ -285,21 +285,24 @@ void main() {
       expect(checkOf(amount: '0').amountProblem, isNull);
     });
 
-    test('the bounds themselves are allowed (functional review of #181, R12)', () {
-      final market = MakerFormLimitsRead(limitsExact);
-      expect(checkOf(market: market).limits?.min, 103);
-      expect(checkOf(market: market).limits?.max, 980);
-      for (final (amount, allowed) in [
-        ('103', true),
-        ('102.99999999', false),
-        ('980', true),
-        ('980.00000001', false),
-      ]) {
-        final check = checkOf(market: market, amount: amount);
-        expect(check.amountProblem == null, allowed, reason: amount);
-        expect(check.block == null, allowed, reason: amount);
-      }
-    });
+    test(
+      'the bounds themselves are allowed (functional review of #181, R12)',
+      () {
+        final market = MakerFormLimitsRead(limitsExact);
+        expect(checkOf(market: market).limits?.min, 103);
+        expect(checkOf(market: market).limits?.max, 980);
+        for (final (amount, allowed) in [
+          ('103', true),
+          ('102.99999999', false),
+          ('980', true),
+          ('980.00000001', false),
+        ]) {
+          final check = checkOf(market: market, amount: amount);
+          expect(check.amountProblem == null, allowed, reason: amount);
+          expect(check.block == null, allowed, reason: amount);
+        }
+      },
+    );
 
     test('the size limit caps the maximum, without the premium', () {
       final capped = checkOf(sizeLimitSats: 250000, premium: '2');

@@ -150,7 +150,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _methods.clear();
     });
     final usd = RobosatsCurrency.fromCode('USD');
-    if (usd != null) unawaited(context.read<MakeOrderCubit>().showCurrency(usd));
+    if (usd != null)
+      unawaited(context.read<MakeOrderCubit>().showCurrency(usd));
   }
 
   Future<void> _chooseCurrency(MakeOrderState state) async {

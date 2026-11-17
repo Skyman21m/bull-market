@@ -253,7 +253,10 @@ void main() {
         final form = _Form();
         await _show(tester, form);
         await _fill(tester);
-        expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+        expect(
+          find.text('Buy BTC for 100 EUR at a 2% premium'),
+          findsOneWidget,
+        );
         await tester.tap(find.byTooltip('Clear form'));
         await settle(tester);
         expect(find.text('Order for 0 USD at market price'), findsOneWidget);
@@ -268,7 +271,10 @@ void main() {
         );
         // USD's price compared once more.
         expect(form.pricesAsked, [eur, usd]);
-        expect(find.text('Order current rate: 100,000 USD/BTC'), findsOneWidget);
+        expect(
+          find.text('Order current rate: 100,000 USD/BTC'),
+          findsOneWidget,
+        );
       },
     );
 

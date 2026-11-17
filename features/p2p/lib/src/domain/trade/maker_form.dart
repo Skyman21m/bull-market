@@ -102,10 +102,8 @@ final class CustomPaymentMethod {
   }
 
   /// [typed] as the form would keep it: the ideographic space (U+3000, which a Japanese or Chinese keyboard types in full width) made an ordinary one, its ends' spaces taken off, each run of spaces inside made one.
-  static String keptOf(String typed) => typed
-      .replaceAll('\u3000', ' ')
-      .trim()
-      .replaceAll(RegExp(' {2,}'), ' ');
+  static String keptOf(String typed) =>
+      typed.replaceAll('\u3000', ' ').trim().replaceAll(RegExp(' {2,}'), ' ');
 
   /// Whether nothing is left of [typed] once its spaces are taken off: the reference's « Can't be empty ».
   static bool isEmpty(String typed) => keptOf(typed).isEmpty;

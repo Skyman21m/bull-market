@@ -65,7 +65,9 @@ Future<CoordinatorInfo> infoAt(
 }
 
 /// The `/api/limits/` of [entries], each currency id with its `price`, `min_amount` and `max_amount` as given, read by the package as from a coordinator: for bounds that are exact decimals.
-Future<CurrencyLimits> limitsOf(Map<int, (double, double, double)> entries) async {
+Future<CurrencyLimits> limitsOf(
+  Map<int, (double, double, double)> entries,
+) async {
   final body = {
     for (final MapEntry(key: id, value: (price, min, max)) in entries.entries)
       '$id': {
