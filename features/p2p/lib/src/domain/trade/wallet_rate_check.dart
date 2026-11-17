@@ -11,10 +11,10 @@ import 'trade_tolerances.dart';
 ///
 /// Three cases:
 /// - [WalletRateAtWallet]: the wallet gave its own price of a bitcoin at the moment of paying, the reference, a price that does not come from the coordinator;
-/// - [WalletRateAtCreation]: the wallet does not price the order's currency, so the coordinator's price read just before the make (`MakerTerms.createdPrice`) is the reference, a weaker one, said as such (the owner's rule);
+/// - [WalletRateNotPriced]: the wallet does not price the order's currency: **nothing is compared and no figure is shown**, one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price (the owner's decision of 2026-11-17 in the evening, which replaces the comparison with the coordinator's price of the creation: at status 0 that comparison could never warn, the bond payable being already within 2 % of the coordinator's own estimate at that price, and it read « −0.01 % » for a bond ten times too large when the coordinator lied about its price, security review of #180); there is nothing to read again;
 /// - [WalletRateUnverified]: the wallet prices the currency but its price could not be read now (or is no price a coordinator could give): **nothing is compared, and the creation's price is never cited**, since a coordinator that announced a price ten times too low would have a bond ten times too large look right against it (functional review of #180, C1; decided by the owner on 2026-11-17). The screen says « rate not checked » (the owner's words: the rate is not checked, not the amount) and offers to read the price again.
 ///
-/// The two comparisons compute the sats expected exactly (`MakerTerms.bondAtPrice`); the one rounding is the display's.
+/// The comparison computes the sats expected exactly (`MakerTerms.bondAtPrice`); the one rounding is the display's. No case cites the coordinator's price of the creation (`MakerTerms.createdPrice`) as the reference of a payment.
 @immutable
 sealed class WalletRateCheck {
   /// What the invoice asks: the amount the wallet pays (the quote's invoice).
@@ -25,7 +25,7 @@ sealed class WalletRateCheck {
 
   const WalletRateCheck._(this.asked, this.currency);
 
-  /// The check of a maker bond of [asked] sats for the order of [terms], as the wallet's price [wallet] allows: at that price when it gave one within the bounds of a price (`MakerTerms.bondAtPrice`), at the price of the creation for a currency the wallet does not price, and nothing compared otherwise.
+  /// The check of a maker bond of [asked] sats for the order of [terms], as the wallet's price [wallet] allows: at that price when it gave one within the bounds of a price (`MakerTerms.bondAtPrice`), and nothing compared otherwise ([WalletRateNotPriced] for a currency the wallet does not price, [WalletRateUnverified] for a price that could not be read).
   static WalletRateCheck ofMakerBond(
     MakerTerms terms, {
     required Sats asked,
@@ -39,16 +39,7 @@ sealed class WalletRateCheck {
           null => WalletRateUnverified._(asked, currency),
         };
       case P2pWalletRateNotPriced():
-        return switch (terms.bondAtPrice(terms.createdPrice)) {
-          final bond? => WalletRateAtCreation._of(
-            asked,
-            bond,
-            terms.createdPrice,
-            currency,
-          ),
-          // `MakerTerms.create` bounds the price of the creation as `bondAtPrice` asks: never here, and nothing compared if it were.
-          null => WalletRateUnverified._(asked, currency),
-        };
+        return WalletRateNotPriced._(asked, currency);
       case P2pWalletRateUnavailable():
         return WalletRateUnverified._(asked, currency);
     }
@@ -58,12 +49,12 @@ sealed class WalletRateCheck {
   bool get warns => false;
 }
 
-/// The amount compared with the sats expected at a reference price: the wallet's ([WalletRateAtWallet]) or the creation's ([WalletRateAtCreation]).
+/// The amount compared with the sats expected at the wallet's own price ([WalletRateAtWallet], the only comparison since the owner's decision of 2026-11-17 in the evening).
 sealed class WalletRateCompared extends WalletRateCheck {
   /// The sats expected at [price], rounded down.
   final Sats expected;
 
-  /// The reference's price of one bitcoin in [currency], without the premium.
+  /// The wallet's price of one bitcoin in [currency], without the premium.
   final double price;
 
   /// How far [asked] is from the exact sats expected, in hundredths of a percent of them, rounded away from zero: positive when more is asked than expected. Rounded so, a gap shown as more than 10.00 % is always one that warns ([warns]), and one shown as 10.00 % or less never is.
@@ -114,20 +105,12 @@ final class WalletRateAtWallet extends WalletRateCompared {
   String toString() => 'WalletRateAtWallet${warns ? '(warns)' : ''}';
 }
 
-/// Compared at the coordinator's price of the creation, the wallet having no price for the order's currency: a weaker reference, said as such.
-///
-/// What it is worth for the maker bond, honestly (security review of #180, R1, R2): the bond this wallet can pay is already within 2 % and 1 sat of the coordinator's own estimate at that same price (`MakerTerms.bondAgrees`; otherwise a warning, and nothing paid), so the 10 % warning can in practice never show at status 0 (only for an expected bond under about 12.5 sats), and a price of the creation that lies passes without red: the line compares the coordinator with itself. `MakerTerms.bondCeiling`, computed from that same price, bounds nothing against such a lie. The behaviour is the owner's rule; how it is shown for a currency the wallet does not price is put to him.
-final class WalletRateAtCreation extends WalletRateCompared {
-  WalletRateAtCreation._of(
-    super.asked,
-    super.exact,
-    super.price,
-    super.currency,
-  ) : super._();
+/// Not compared: the wallet has no price for the order's currency (the owner's decision of 2026-11-17 in the evening, design note § 3.3). The screen shows no figure and no « Retry »: one line in the warning colour says that the rate is not checked, that the user trusts the coordinator's price and should check it before paying; « Pay » stays offered.
+final class WalletRateNotPriced extends WalletRateCheck {
+  const WalletRateNotPriced._(super.asked, super.currency) : super._();
 
-  /// Never an amount nor a price.
   @override
-  String toString() => 'WalletRateAtCreation${warns ? '(warns)' : ''}';
+  String toString() => 'WalletRateNotPriced';
 }
 
 /// Not compared: the wallet prices the currency but its price could not be read now; the screen says « rate not checked » and offers to read the price again (the owner's decision of 2026-11-17).

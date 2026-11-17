@@ -19,6 +19,7 @@ import 'data/trade_payment_repository_impl.dart';
 import 'data/trade_record_repository_impl.dart';
 import 'data/trade_trail_repository_impl.dart';
 import 'domain/book_requests_in_flight.dart';
+import 'domain/coordinator_lottery.dart';
 import 'domain/coordinator_sessions_port.dart';
 import 'domain/p2p_clock.dart';
 import 'domain/p2p_shuffle.dart';
@@ -43,6 +44,7 @@ import 'domain/usecases/close_robot_sessions_usecase.dart';
 import 'domain/usecases/delete_garage_key_usecase.dart';
 import 'domain/usecases/derive_first_robot_usecase.dart';
 import 'domain/usecases/fetch_coordinator_info_usecase.dart';
+import 'domain/usecases/fetch_coordinator_limits_usecase.dart';
 import 'domain/usecases/fetch_robot_usecase.dart';
 import 'domain/usecases/find_public_order_usecase.dart';
 import 'domain/usecases/generate_garage_key_usecase.dart';
@@ -62,6 +64,7 @@ import 'domain/usecases/start_p2p_tor_usecase.dart';
 import 'domain/usecases/trade/bond_payments_in_flight.dart';
 import 'domain/usecases/trade/cancel_trade_usecase.dart';
 import 'domain/usecases/trade/chat_step_action_usecase.dart';
+import 'domain/usecases/trade/check_make_price_usecase.dart';
 import 'domain/usecases/trade/hold_trade_key_usecase.dart';
 import 'domain/usecases/trade/list_active_trades_usecase.dart';
 import 'domain/usecases/trade/make_order_usecase.dart';
@@ -90,6 +93,7 @@ import 'presentation/chat_cubit.dart';
 import 'presentation/host_rating_cubit.dart';
 import 'presentation/coordinator_details_cubit.dart';
 import 'presentation/garage_cubit.dart';
+import 'presentation/make_order_cubit.dart';
 import 'presentation/order_details_cubit.dart';
 import 'presentation/payout_cubit.dart';
 import 'presentation/payout_wallet_cubit.dart';
@@ -127,6 +131,8 @@ final class P2pLocator {
       clock: DateTime.now,
       // The book's waits before it asks a coordinator again: real timers, spread by a random draw that nothing secret depends on.
       waits: P2pWaits(start: Timer.new, random: Random().nextDouble),
+      // The draws of the reference's lottery of the create form's default coordinator (#181), `Math.random()`'s: nothing secret depends on them.
+      lotteryDraws: Random().nextDouble,
     );
     if (garageKeys != null && databaseDirectory != null) {
       registerGarageKeys(
@@ -357,6 +363,35 @@ final class P2pLocator {
         invoices(),
         locator(),
         Federation.robosats,
+      ),
+    );
+    // The create form (#181): the chosen coordinator's limits, read anonymously as the book; the Bull wallet's price for comparison, only where the wallet's port was lent; and the form's cubit, the only caller of the make. No route opens the form yet: « Create » is enabled by #182.
+    locator.registerFactory<FetchCoordinatorLimitsUsecase>(
+      () => FetchCoordinatorLimitsUsecase(
+        CoordinatorClient(transport(), clock: clock),
+      ),
+    );
+    locator.registerFactory<CheckMakePriceUsecase>(
+      () => CheckMakePriceUsecase(locator<P2pWalletPort>()),
+    );
+    locator.registerFactoryParam<
+      MakeOrderCubit,
+      RobosatsNetwork,
+      RobosatsCurrency
+    >(
+      (network, currency) => MakeOrderCubit(
+        network,
+        currency: currency,
+        listHosts: locator<ListRobotHostsUsecase>().execute,
+        fetchInfo: locator<FetchCoordinatorInfoUsecase>().execute,
+        fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
+        make: locator<MakeOrderUsecase>().execute,
+        hasGarageKey: locator<HasGarageKeyUsecase>().execute,
+        lottery: locator<CoordinatorLottery>(),
+        now: clock,
+        checkPrice: paysBondFromWallet(locator)
+            ? locator<CheckMakePriceUsecase>().execute
+            : null,
       ),
     );
     // One for the feature: one subscription per trade, whichever use case object makes it.
@@ -610,9 +645,13 @@ final class P2pLocator {
     required Tor Function() tor,
     required DateTime Function() clock,
     required P2pWaits waits,
+    required double Function() lotteryDraws,
     P2pShuffle shuffle = P2pShuffle.random,
   }) {
     locator.registerSingleton<P2pClock>(P2pClock(clock));
+    locator.registerSingleton<CoordinatorLottery>(
+      CoordinatorLottery(lotteryDraws),
+    );
     locator.registerSingleton<P2pShuffle>(shuffle);
     locator.registerSingleton<P2pWaits>(waits);
     locator.registerFactory<RequestFederationBooksUsecase>(

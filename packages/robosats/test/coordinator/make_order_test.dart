@@ -196,6 +196,14 @@ void main() {
         'SEPA \u2066Revolut',
         'SEPA\u200f',
         'SEPA\ud800',
+        // Since #181 (security review of #194): a text that shows as empty, or with an invisible character or a space other than U+0020.
+        '\u200b',
+        '\u200b\u200b',
+        'SEPA\u200bRevolut',
+        'SEPA\u00a0Revolut',
+        'SEPA\u{e0041}',
+        '\u0301',
+        'SEPA\ue000',
       ]) {
         expect(request(paymentMethod: text), isNull, reason: jsonEncode(text));
       }
@@ -258,7 +266,12 @@ void main() {
     });
 
     test('a description: none, or 1 to 240 code points of clean text', () {
-      for (final text in ['Revolut only, € please.', 'x' * 240, '🐂' * 240]) {
+      for (final text in [
+        'Revolut only, € please.',
+        'x' * 240,
+        '🐂' * 240,
+        'کارت\u200cبه\u200cکارت',
+      ]) {
         expect(request(description: text), isNotNull, reason: text);
       }
       for (final text in [
@@ -271,6 +284,10 @@ void main() {
         'nul\u0000',
         'bidi\u202e',
         'lone\udc00',
+        // Since #181: a text that shows as empty, or with an invisible character.
+        '\u200b',
+        'hidden\u{e0041}\u{e0042}',
+        'soft\u00adhyphen',
       ]) {
         expect(request(description: text), isNull, reason: jsonEncode(text));
       }

@@ -368,7 +368,7 @@ void main() {
         expect(find.text('Pay 3,207 sats to lock your bond?'), findsOneWidget);
         expect(
           find.text(
-            'At this wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, this bond is worth 3,206 sats. Gap of the invoice: +0.01%.',
+            'At the Bull wallet\'s price, 91,711 EUR/BTC, with the order\'s premium, this bond is worth 3,206 sats. Gap of the invoice: +0.01%.',
           ),
           findsOneWidget,
         );
@@ -396,7 +396,7 @@ void main() {
         await _confirming(tester, payments);
         expect(
           find.text(
-            'At this wallet\'s price, 110,000 EUR/BTC, with the order\'s premium, this bond is worth 2,673 sats. Gap of the invoice: +19.95%.',
+            'At the Bull wallet\'s price, 110,000 EUR/BTC, with the order\'s premium, this bond is worth 2,673 sats. Gap of the invoice: +19.95%.',
           ),
           findsOneWidget,
         );
@@ -441,19 +441,45 @@ void main() {
     });
 
     testWidgets(
-      'a currency the wallet does not price: « rate not checked by the wallet », the price of the creation said weaker',
+      'a currency the wallet does not price, the price of the creation ten times too low: one line in the warning colour, no figure, no « Retry », and « Pay » still pays',
       (tester) async {
+        final lied = switch (madeTerms(price: makerPrice / 10).side) {
+          MadeSide(:final maker) => maker,
+        };
         final (_, payments, _) = await _show(
           tester,
-          rate: Ok(_rateAt(const P2pWalletRateNotPriced())),
+          rate: Ok(
+            WalletRateCheck.ofMakerBond(
+              lied,
+              asked: Sats.fromInt(3207),
+              wallet: const P2pWalletRateNotPriced(),
+            ),
+          ),
         );
         await _confirming(tester, payments);
-        expect(
-          find.text(
-            'This wallet has no price for EUR: rate not checked by the wallet. At the price Temple of Sats gave when you made the order, a weaker check, 91,711 EUR/BTC, with the order\'s premium, this bond is worth 3,206 sats. Gap of the invoice: +0.01%.',
-          ),
-          findsOneWidget,
+        final line = find.text(
+          'The Bull wallet has no price for EUR: rate not checked. You are trusting Temple of Sats\'s price: check it yourself before paying.',
         );
+        expect(line, findsOneWidget);
+        expect(
+          tester.widget<Text>(line).style?.color,
+          tester.element(line).bull.warning,
+        );
+        // Nothing reassuring: no price, no expected bond, no gap.
+        expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(find.textContaining('9,171'), findsNothing);
+        expect(find.textContaining('EUR/BTC'), findsNothing);
+        expect(find.textContaining('more than 10%'), findsNothing);
+        expect(find.text('Retry'), findsNothing);
+        await _reveal(tester, find.text('Pay 3,357 sats'));
+        await tester.tap(find.text('Pay 3,357 sats'));
+        await tester.pump();
+        expect(payments.pays, hasLength(1));
+        payments.pays.single.complete(
+          const Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
+        );
+        await tester.pump();
+        await tester.pump();
       },
     );
 
@@ -475,7 +501,7 @@ void main() {
         );
         await _confirming(tester, payments);
         final line = find.text(
-          'This wallet\'s price of a bitcoin in EUR could not be read: rate not checked. You can try again, or pay without the check.',
+          'The Bull wallet\'s price of a bitcoin in EUR could not be read: rate not checked. You can try again, or pay without the check.',
         );
         expect(line, findsOneWidget);
         expect(

@@ -9,6 +9,7 @@ import 'dart:io' show FileSystemException;
 import 'package:bull_tor/tor.dart';
 import 'package:drift/drift.dart' show DatabaseConnection;
 import 'package:drift/native.dart';
+import 'package:flutter/widgets.dart' show Widget;
 import 'package:get_it/get_it.dart';
 import 'package:meta/meta.dart';
 import 'package:primitives/primitives.dart';
@@ -29,6 +30,7 @@ import 'src/domain/robot_key_compute_port.dart';
 import 'src/domain/trade/bolt11.dart';
 import 'src/testing/bolt11_test_invoice.dart';
 import 'src/p2p_locator.dart';
+import 'src/p2p_router.dart';
 
 // What a fake transport needs, so that a test of the app builds one without depending on `robosats` itself.
 // And what a live integration test needs to make a throwaway robot and drive the coordinator client itself over [liveCoordinatorTransportForTesting].
@@ -126,6 +128,8 @@ void setUpP2pForTesting(
     tor: () => tor,
     clock: clock,
     waits: const P2pWaits(start: Timer.new, random: _middle),
+    // The lottery of the create form's default coordinator with every draw at the middle: the order of the chances, the same at each run.
+    lotteryDraws: _middle,
     shuffle: shuffle,
   );
   if (garageKeys != null) {
@@ -159,6 +163,18 @@ void setUpP2pForTesting(
       ..registerSingleton<RobotKeyComputePort>(robotKeys);
   }
 }
+
+/// The create page of #181 over [locator], as `P2pRouter.createPage` builds it, for the app's captures: no route of the tab opens it before #182, and the app never imports this file.
+@visibleForTesting
+Widget createOrderPageForTesting(
+  GetIt locator, {
+  required RobosatsNetwork network,
+  required RobosatsCurrency currency,
+  OrderType? initialType,
+}) => P2pRouter.createPage(
+  locator,
+  P2pCreateRouteArgs(network, currency: currency, initialType: initialType),
+);
 
 /// The draw in the middle of the range, which spreads no wait.
 double _middle() => 0.5;

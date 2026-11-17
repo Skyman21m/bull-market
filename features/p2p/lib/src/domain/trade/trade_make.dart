@@ -4,6 +4,7 @@ import 'package:robosats/robosats.dart';
 
 import '../p2p_failure.dart';
 import '../trade_record.dart';
+import 'make_price_check.dart';
 import 'maker_terms.dart';
 import 'trade_status.dart';
 
@@ -35,6 +36,20 @@ final class MakeCoordinatorUnreadable extends MakeRefusal {
 /// The coordinator's `/api/limits/` gives no price for the order's currency: the terms cannot be checked, and nothing was sent with a robot.
 final class MakePriceUnknown extends MakeRefusal {
   const MakePriceUnknown();
+}
+
+/// The coordinator's price read just before the make would show the user another price check than the one seen at the press ([MakePriceSeen.holdsAt]): nothing was sent with a robot, and the form shows the check at [limits] before the user presses again (security review of #181, C1). It refuses nothing for a price itself: a red check seen and still red goes on.
+final class MakePriceCheckChanged extends MakeRefusal {
+  /// The coordinator's limits read just before the make.
+  final CurrencyLimits limits;
+
+  /// What the user would see now.
+  final MakePriceSeen now;
+
+  const MakePriceCheckChanged(this.limits, this.now);
+
+  @override
+  String toString() => 'MakePriceCheckChanged(${now.verdict.name})';
 }
 
 /// The terms of the make are refused ([MakerTerms.create]): a maker fee above its ceiling, a price or a fee that is no usable figure.

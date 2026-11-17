@@ -344,7 +344,7 @@ class _Confirmation extends StatelessWidget {
   /// For an order made here, the bond quoted against the wallet's own price (the owner's payment rule of 2026-11-17): a line, and a red warning beyond the owner's threshold; `null` for a take, which shows none.
   final WalletRateCheck? rate;
 
-  /// The trade's coordinator, named when the price of the creation is the reference.
+  /// The trade's coordinator, named when the wallet has no price for the order's currency and the user trusts the coordinator's.
   final String coordinator;
   final WalletPaymentRequest request;
   final GlobalKey payKey;
@@ -460,7 +460,7 @@ class _Confirmation extends StatelessWidget {
   }
 }
 
-/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the reference's price and the bond it gives with the gap of the invoice, said weaker when the price is the coordinator's of the creation for a currency the wallet does not price, and beyond the owner's threshold a red warning with both amounts. When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
+/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the wallet's price and the bond it gives with the gap of the invoice, and beyond the owner's threshold a red warning with both amounts. For a currency the wallet does not price, no figure at all: one line in the warning colour says that the rate is not checked and that the user trusts the coordinator's price, with no « Retry », since there is nothing to read again (the owner's decision of 2026-11-17 in the evening). When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
 class _RateLines extends StatelessWidget {
   final WalletRateCheck rate;
   final String coordinator;
@@ -504,6 +504,11 @@ class _RateLines extends StatelessWidget {
       ),
     );
     switch (rate) {
+      case WalletRateNotPriced(:final currency):
+        return alert(
+          l10n.p2pPayRateNotPriced(currency.code, coordinator),
+          colors.warning,
+        );
       case WalletRateUnverified(:final currency):
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -528,21 +533,7 @@ class _RateLines extends StatelessWidget {
         final code = currency.code;
         final expectedText = formats.bigSats(expected.value);
         final gap = formats.gap(gapHundredths);
-        final line = switch (rate) {
-          WalletRateAtWallet() => l10n.p2pPayRateWallet(
-            price,
-            code,
-            expectedText,
-            gap,
-          ),
-          WalletRateAtCreation() => l10n.p2pPayRateNotPriced(
-            code,
-            coordinator,
-            price,
-            expectedText,
-            gap,
-          ),
-        };
+        final line = l10n.p2pPayRateWallet(price, code, expectedText, gap);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

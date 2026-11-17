@@ -1,6 +1,6 @@
-import 'package:bb_mobile/features/p2p_wallet/domain/usecases/read_wallet_rate_usecase.dart';
 import 'dart:async';
 
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/read_wallet_rate_usecase.dart';
 import 'package:bull_pricer/bull_pricer.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';

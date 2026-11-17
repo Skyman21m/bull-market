@@ -57,6 +57,8 @@ export 'src/coordinator/federation_book.dart'
     show CoordinatorBookOutcome, FederationBook, FederationBookReader;
 export 'src/coordinator/json_fields.dart' show displayText;
 export 'src/coordinator/make_order.dart' show MadeOrder, MakeOrderRequest;
+export 'src/coordinator/visible_text.dart'
+    show isShownAsWritten, maxCombiningMarks;
 export 'src/coordinator/order_book.dart' show OrderBook;
 export 'src/coordinator/order_values.dart'
     show
