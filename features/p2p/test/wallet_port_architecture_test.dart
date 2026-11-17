@@ -45,17 +45,25 @@ void main() {
     });
   });
 
-  test('only the bond\'s use case asks the wallet\'s price of a bitcoin', () {
-    // The owner's payment rule of an order made here (#180): the maker bond compared with the wallet's own price before its confirmation, in the one use case that pays.
-    expect(
-      [
-        for (final MapEntry(key: path, value: source) in sources.entries)
-          if ((_Names({'bitcoinRate'})..visit(_parse(source))).named.isNotEmpty)
-            path,
-      ],
-      ['lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart'],
-    );
-  });
+  test(
+    'only the bond\'s use case and the create form\'s price check ask the wallet\'s price of a bitcoin',
+    () {
+      // The owner's payment rule of an order made here (#180): the maker bond compared with the wallet's own price before its confirmation, in the one use case that pays; and the create form's comparison of the coordinator's price before the make (#181, the owner's decision of 2026-11-17), which pays nothing.
+      expect(
+        {
+          for (final MapEntry(key: path, value: source) in sources.entries)
+            if ((_Names({
+              'bitcoinRate',
+            })..visit(_parse(source))).named.isNotEmpty)
+              path,
+        },
+        {
+          'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
+          'lib/src/domain/usecases/trade/check_make_price_usecase.dart',
+        },
+      );
+    },
+  );
 
   test(
     'only the payout\'s use case names a member of the payout\'s receiving',

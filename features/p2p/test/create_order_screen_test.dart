@@ -266,7 +266,11 @@ void main() {
       expect(find.text('Must be less than 999%'), findsOneWidget);
       await typed(_premiumField, '-100');
       expect(find.text('Must be more than -100%'), findsOneWidget);
+      // At the premium kept, -99.99 %, 100 EUR is far above the largest order: the amount is said first, as the reference orders its reasons.
+      expect(find.text('The amount is outside the allowed limits.'), findsOneWidget);
+      await typed(_amountField, '0.1');
       expect(find.text('The premium is not valid.'), findsOneWidget);
+      await typed(_amountField, '100');
       await typed(_premiumField, '-');
       expect(find.text('The premium must be a number.'), findsOneWidget);
       await typed(_premiumField, '');

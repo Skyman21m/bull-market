@@ -12,6 +12,7 @@ import 'package:test/test.dart';
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message), the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) and the end's panel (the transaction id, the payout's address, the trade summary) use the clipboard.
+/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; and nothing the user can reach builds that screen: it is named only in its own file and in `P2pRouter.createPage`, which no file of `lib` calls (the tests and the captures do), so that « Create » stays disabled until #182.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -61,6 +62,16 @@ void main() {
         ('WatchChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
         ('SendChatMessageUsecase', 'lib/src/presentation/chat_cubit.dart'),
         ('ExportChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
+        // The create form's cubit (#181), the only caller of the make and of the form's price check.
+        ('MakeOrderUsecase', 'lib/src/presentation/make_order_cubit.dart'),
+        (
+          'CheckMakePriceUsecase',
+          'lib/src/presentation/make_order_cubit.dart',
+        ),
+        (
+          'FetchCoordinatorLimitsUsecase',
+          'lib/src/presentation/make_order_cubit.dart',
+        ),
       ]) {
         final outside = {
           for (final path in _whereNamed(sources, useCase))
@@ -81,6 +92,30 @@ void main() {
           if (path.startsWith('lib/src/ui/')) '$path: $name',
     };
     expect(offences, isEmpty);
+  });
+
+  test('only the create screen makes an order', () {
+    expect(_callersOf(sources, 'make', cubit: 'MakeOrderCubit'), {
+      'lib/src/ui/create_order_screen.dart',
+    });
+  });
+
+  test('nothing the user can reach opens the create screen yet (#181)', () {
+    expect(_whereNamed(sources, 'CreateOrderScreen'), {
+      'lib/src/ui/create_order_screen.dart',
+      'lib/src/p2p_router.dart',
+    });
+    // `createPage` is declared in the router and called by no file of `lib`, nor torn off.
+    expect(sources['lib/src/p2p_router.dart'], contains('createPage('));
+    expect({
+      for (final MapEntry(key: path, value: source) in sources.entries)
+        if (_callsMethod(source, 'createPage') ||
+            _namesIn(source).contains('createPage'))
+          path,
+    }, isEmpty);
+    expect(_whereNamed(sources, 'P2pCreateRouteArgs'), {
+      'lib/src/p2p_router.dart',
+    });
   });
 
   test('only TakeOrderSection prepares, confirms or abandons a take', () {
@@ -144,6 +179,26 @@ void main() {
       },
     );
 
+    test('a second caller of the make is seen', () {
+      expect(
+        _callersOf(
+          {
+            'lib/src/ui/create_order_screen.dart':
+                'void f(MakeOrderCubit c) => c.make(r);',
+            'lib/src/ui/trade/active_trades_sheet.dart':
+                'void g(MakeOrderCubit c) { c.make(r); }',
+            'lib/src/ui/other.dart': 'void h(Other o) => o.make(r);',
+          },
+          'make',
+          cubit: 'MakeOrderCubit',
+        ),
+        {
+          'lib/src/ui/create_order_screen.dart',
+          'lib/src/ui/trade/active_trades_sheet.dart',
+        },
+      );
+    });
+
     test('an acknowledgement built elsewhere is seen', () {
       expect(
         _whereNamed({
@@ -184,14 +239,23 @@ const _tradeScreens = [
 /// The steps of a take that only its section calls (#119).
 const _takeSteps = ['take', 'confirm', 'back'];
 
-/// The files of [sources] that name `TakeOrderCubit` and call a method [method], the cubit's own file aside.
-Set<String> _callersOf(Map<String, String> sources, String method) => {
+/// The files of [sources] that name [cubit] (`TakeOrderCubit` by default) and call a method [method], the cubit's own file aside.
+Set<String> _callersOf(
+  Map<String, String> sources,
+  String method, {
+  String cubit = 'TakeOrderCubit',
+}) => {
   for (final MapEntry(key: path, value: source) in sources.entries)
-    if (path != 'lib/src/presentation/take_order_cubit.dart' &&
-        _namesIn(source).contains('TakeOrderCubit') &&
+    if (path != 'lib/src/presentation/${_fileOf(cubit)}.dart' &&
+        _namesIn(source).contains(cubit) &&
         _callsMethod(source, method))
       path,
 };
+
+/// The file name of a class: `TakeOrderCubit` is `take_order_cubit`.
+String _fileOf(String type) => type
+    .replaceAllMapped(RegExp('[A-Z]'), (m) => '_${m[0]?.toLowerCase()}')
+    .substring(1);
 
 bool _callsMethod(String source, String method) {
   final unit = parseString(content: source, throwIfDiagnostics: false).unit;
@@ -235,6 +299,9 @@ const _notForScreens = {
   'P2pWalletPort',
   'walletPaymentFor',
   'TradeReader',
+  'MakeOrderUsecase',
+  'CheckMakePriceUsecase',
+  'FetchCoordinatorLimitsUsecase',
 };
 
 /// The files of [sources] whose code names [name].
