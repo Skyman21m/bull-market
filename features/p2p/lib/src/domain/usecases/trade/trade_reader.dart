@@ -15,7 +15,6 @@ import '../../trade/trade_edges.dart';
 import '../../trade/trade_status.dart';
 import '../../trade/trade_storable.dart';
 import '../../trade/trade_terms.dart';
-import '../../trade/trade_tolerances.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade_record.dart';
 import '../../trade_robots.dart';
@@ -661,26 +660,22 @@ final class TradeReader {
         _ => false,
       };
 
-  /// Whether [answer] shows this robot as the maker of an order of [coordinator] on [network] numbered [orderId], made after [writtenAt] (#179): the only proof that a make made it, the make's own answer naming no robot (`api/serializers.py:83-107`).
+  /// Whether [answer] shows this robot as the maker of an order of [coordinator] on [network] numbered [orderId] (#179): the only proof that a make made it, the make's own answer naming no robot (`api/serializers.py:83-107`).
   ///
-  /// The package has checked that `is_maker` names the robot that asked (`coordinator_order.dart`, the maker's hash id against the robot's); the order must not show this robot as its taker too, and must be created no earlier than [writtenAt] less [TradeTolerances.clockStep]: the robot was fresh when put on the coordinator (no order, active or last), so an order of it created before the make was written is one a coordinator invents.
+  /// The package has checked that `is_maker` names the robot that asked (`coordinator_order.dart`, the maker's hash id against the robot's); the order must not show this robot as its taker too. Nothing else of the order is compared here: the robot was fresh when put on the coordinator (no order, active or last), which is what makes an order it names its own, and the state machine compares the order with what was asked from its first read on (`TradeTermsChanged`). Its creation time is the coordinator's word, so it is not compared with this device's clock: a coordinator that lies sets it as it likes, and a device whose clock runs ahead would leave an honest make pending for good (functional review of #179).
   /// Any status is taken: the state machine judges it from the make's first read (`TradeStatus.afterMake`), where anything but 0, 5 or 1043 is an edge the reference never takes (an order whose bond was paid from another client with the same Garage Key, while this app's make was pending, is followed rather than lost, with that warning).
   static bool showsMaker(
     TradeAnswer answer, {
     required Coordinator coordinator,
     required RobosatsNetwork network,
     required int orderId,
-    required DateTime writtenAt,
   }) => switch (answer) {
     TradeOrderRead(:final order) =>
       order.isMaker &&
           !order.isTaker &&
           order.coordinator == coordinator &&
           order.network == network &&
-          order.id == orderId &&
-          !order.createdAt.isBefore(
-            writtenAt.toUtc().subtract(TradeTolerances.clockStep),
-          ),
+          order.id == orderId,
     _ => false,
   };
 

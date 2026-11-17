@@ -424,7 +424,6 @@ final class MakeOrderUsecase {
     coordinator: coordinator,
     network: make.network,
     orderId: orderId,
-    writtenAt: make.writtenAt,
   );
 
   /// [make] confirmed with [order], which shows its robot as the maker, and its trade started from `TradeStatus.afterMake` of that read, on the terms read back from the records.

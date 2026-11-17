@@ -183,6 +183,20 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// The next make is refused before anything is made: an empty `400` (the serializer's) when [code] is `null`, otherwise that error code with the reference's HTTP status.
   void refuseNextMake(int? code) => _makeRefusals.add(code);
 
+  /// The robot [robot] already exists on this coordinator with the key pair [publicKey] and [encryptedPrivateKey] (another device, or the official app with the same Garage Key, made it first): a read back before its first contact is error 7001 as for any robot this device never sent, and its first contact is answered with that pair, not the one it sent (`robosats/middleware.py:62-178`).
+  void existsWithPair(
+    RobotIdentity robot, {
+    required String publicKey,
+    required String encryptedPrivateKey,
+    required String nostrPublicKey,
+  }) => _presetPairs[robot.sessionKey] = {
+    'public_key': publicKey,
+    'encrypted_private_key': encryptedPrivateKey,
+    'nostr_pubkey': nostrPublicKey,
+  };
+
+  final Map<RobotSessionKey, Map<String, Object?>> _presetPairs = {};
+
   /// A hostile coordinator: what every answer about [robot] also says, or says otherwise.
   void robotAnswerHas(RobotIdentity robot, Map<String, Object?> fields) =>
       _robotChanges[robot.sessionKey] = fields;
@@ -663,13 +677,17 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     if (parts.length == 4) {
       _kept.putIfAbsent(
         robot.sessionKey,
-        () => {
-          'public_key': pgpArmorFromWire(parts[1].substring('Public '.length)),
-          'encrypted_private_key': pgpArmorFromWire(
-            parts[2].substring('Private '.length),
-          ),
-          'nostr_pubkey': parts[3].substring('Nostr '.length),
-        },
+        () =>
+            _presetPairs[robot.sessionKey] ??
+            {
+              'public_key': pgpArmorFromWire(
+                parts[1].substring('Public '.length),
+              ),
+              'encrypted_private_key': pgpArmorFromWire(
+                parts[2].substring('Private '.length),
+              ),
+              'nostr_pubkey': parts[3].substring('Nostr '.length),
+            },
       );
     }
     final kept = _kept[robot.sessionKey];

@@ -44,12 +44,14 @@ final class CancelTradeUsecase {
     // A trade made here is cancelled as its maker (#179, design note `docs/design/phase-3-making-an-order.md` § 1.7): free before any take, at 0, 1 and 2.
     final made = record.origin == TradeOrigin.madeHere;
     switch (lastRead.status) {
+      // The pre-take, a taker's only: a maker never sees 3 (the coordinator shows it only to a robot that holds a live pre-take, `api/views.py:381-396`, which a maker cannot, `api/logics.py:75-100`), so a read of an order made here at 3 is no cancel (functional review of #179).
       case CoordinatorOrderStatus.waitingForTakerBond:
-        break;
+        if (made) return const Err(CancelNotPossible());
       // The maker's own order before any take (`Logics.cancel_order`, `api/logics.py:1037-1060`): at 0 the bond invoice cancelled, at 1 or 2 the maker bond returned and every pre-take expired; the guard sent is the status shown, which a maker always sees as stored, so that a cancel that lands after the bond locked (0 → 1) or after a take (1 → 6) is refused (1020) instead of costing the bond.
       case CoordinatorOrderStatus.waitingForMakerBond ||
           CoordinatorOrderStatus.public ||
           CoordinatorOrderStatus.paused:
+        // Both halves, each for a coordinator that lies: a taker's record whose read says this robot is the maker, and an order made here whose read says it is not.
         if (!made || !lastRead.isMaker) return const Err(CancelNotPossible());
       case CoordinatorOrderStatus.waitingForCollateralAndInvoice ||
           CoordinatorOrderStatus.waitingForCollateral:

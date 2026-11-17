@@ -285,7 +285,7 @@ final class PayBondFromWalletUsecase {
     TradeTerms terms,
     TradeStatus status,
   ) {
-    // A maker's bond and escrow are paid under their own ceilings from #180 and #187 (`MakerTerms.bondCeiling`, `MakerTerms.escrowCeilingFor`); until then a maker's terms are never at a step here, as the state machine refuses every answer about a maker's trade.
+    // A maker's bond and escrow are paid under their own rules from #180 and #187 (the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3); until then nothing is offered on a maker's terms, whatever its status: since #178 the state machine follows a maker's trade, and since #179 the reader opens one, so this refusal is what keeps a maker's bond and escrow from this wallet.
     if (terms is! TradeTerms<TakenSide>) {
       return const Err(BondPayNotAtBondStep());
     }

@@ -24,6 +24,8 @@ import 'package:p2p/src/domain/usecases/read_garage_key_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
 import 'package:p2p/src/domain/usecases/read_robot_standing_usecase.dart';
 import 'package:p2p/src/domain/usecases/release_robot_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_make_locks.dart';
 import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
 import 'package:p2p/src/presentation/robot_coordinator_cubit.dart';
 import 'package:p2p/src/presentation/trade_cubit.dart';
@@ -179,7 +181,11 @@ void main() {
         ..get<PutRobotOnCoordinatorUsecase>()
         ..get<ReadRobotOnCoordinatorUsecase>()
         ..get<ReleaseRobotUsecase>()
-        ..get<ListRobotHostsUsecase>();
+        ..get<ListRobotHostsUsecase>()
+        // The make use case (#179): every one of its parameters registered, none of which touches a key or a file at its making.
+        ..get<MakeOrderUsecase>();
+      // One lock of the makes for the whole feature (#179).
+      expect(locator<TradeMakeLocks>(), same(locator<TradeMakeLocks>()));
       // One limiter for the whole feature.
       expect(
         locator<RobotRequestLimiter>(),

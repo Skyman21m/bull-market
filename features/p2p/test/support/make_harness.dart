@@ -38,7 +38,14 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'trade_harness.dart'
-    show AppKilled, HarnessKeys, HarnessTimer, TradeHarness, WatchRun, tradeKey;
+    show
+        AppKilled,
+        HarnessKeys,
+        HarnessTimer,
+        TradeHarness,
+        WatchRun,
+        otherTradeKey,
+        tradeKey;
 
 /// Where the make tests stop the app (#179): after each write of a make, and between its answer and its confirmation.
 enum MakeKillAt {
@@ -170,7 +177,7 @@ final class MakeHarness {
     final coordinator = ScriptedMakerCoordinator(
       network: network,
       robots: TradeHarness.robotsOf(network),
-      clock: () => clock.now,
+      clock: () => clock.now.add(clock.coordinatorSkew),
     );
     final harness = MakeHarness._(network, database, coordinator, clock);
     final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
@@ -189,6 +196,15 @@ final class MakeHarness {
       MakeHarness._(network, database, coordinator, _clock);
 
   DateTime get now => _clock.now;
+
+  /// The coordinator's clock set [skew] from this device's (ahead when positive, behind when negative).
+  void skewCoordinator(Duration skew) => _clock.coordinatorSkew = skew;
+
+  /// The Garage Key deleted from the vault, as the Garage's delete does.
+  void deleteKey() => _vault.key = null;
+
+  /// Another Garage Key in the vault in place of the one of the tests.
+  void replaceKey() => _vault.key = NetworkGarageKey(network, otherTradeKey);
 
   /// Moves the clock by [by], and fires the timers whose time has come, in order.
   Future<void> elapse(Duration by) async {
@@ -287,19 +303,25 @@ final class MakeHarness {
 final class _Clock {
   DateTime now;
 
+  /// How far the coordinator's clock is from this device's: ahead when positive.
+  Duration coordinatorSkew = Duration.zero;
+
   _Clock(this.now);
 }
 
 final class _MakeVault implements GarageKeyRepository {
-  final NetworkGarageKey key;
+  /// The key the vault holds: `null` once deleted.
+  NetworkGarageKey? key;
 
   _MakeVault(this.key);
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
-  ) async =>
-      key.network == network ? Ok(key) : const Err(GarageKeyMissingFailure());
+  ) async => switch (key) {
+    final held? when held.network == network => Ok(held),
+    _ => const Err(GarageKeyMissingFailure()),
+  };
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> create(

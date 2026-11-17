@@ -16,6 +16,7 @@ import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
 
 import 'support/make_harness.dart';
+import 'support/robot_coordinators.dart' show pairOf;
 import 'support/trade_harness.dart' show AppKilled;
 
 /// The make use case (#179, design note `docs/design/phase-3-making-an-order.md` § 3.4): the order made once, written before it leaves, confirmed only by a read that shows the robot as its maker, and never lost when its answer is.
@@ -500,6 +501,216 @@ void main() {
     );
   });
 
+  group('a robot that is not fresh', () {
+    Future<void> refused(MakeHarness harness) async {
+      final made = await harness.makeOrder();
+      expect(
+        made,
+        isA<Err<MakeOutcome, MakeRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<MakeRobotRefused>().having(
+            (r) => r.failure,
+            'failure',
+            isA<RobotNotForNewTradeFailure>(),
+          ),
+        ),
+      );
+      expect(await harness.pendingMakes(), isEmpty);
+      expect(await harness.allTrades(), isEmpty);
+      expect(makes(harness), 0);
+    }
+
+    test(
+      'one the coordinator already had with another pair is never used for a make',
+      () async {
+        final harness = await MakeHarness.start();
+        final robot = harness.robot(0);
+        final pair = pairOf(robot);
+        harness.coordinator.existsWithPair(
+          robot,
+          publicKey: pair.publicKey.armored,
+          encryptedPrivateKey: pair.encryptedPrivateKeyArmored,
+          nostrPublicKey: robot.nostrKeyPair().publicKeyHex,
+        );
+        await refused(harness);
+      },
+    );
+
+    for (final fields in [
+      {'active_order_id': 7},
+      {'last_order_id': 7},
+    ]) {
+      test(
+        'one that holds an order ($fields) is never used for a make',
+        () async {
+          final harness = await MakeHarness.start();
+          harness.coordinator.robotAnswerHas(harness.robot(0), fields);
+          await refused(harness);
+        },
+      );
+    }
+  });
+
+  group('a write that fails', () {
+    test('the pending make not written: nothing sent', () async {
+      final harness = await MakeHarness.start();
+      harness.records.pendingFailure = const P2pStorageFailure();
+      expect(
+        await harness.makeOrder(),
+        isA<Err<MakeOutcome, MakeRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<MakeNotRecorded>(),
+        ),
+      );
+      expect(await harness.allTrades(), isEmpty);
+      expect(makes(harness), 0);
+    });
+
+    test(
+      'the terms not written: the pending make closed, nothing sent',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.trails.makerTermsFailure = const P2pStorageFailure();
+        expect(
+          await harness.makeOrder(),
+          isA<Err<MakeOutcome, MakeRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<MakeNotRecorded>(),
+          ),
+        );
+        expect(await harness.pendingMakes(), isEmpty);
+        final rows = await harness.allTrades();
+        expect(rows, hasLength(1));
+        expect(rows.single['closed_at'], isNotNull);
+        expect(makes(harness), 0);
+      },
+    );
+
+    test(
+      'the confirmation refused: the make stays pending, never closed, and its resolution confirms it',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.records.confirmFailure = const P2pStorageFailure();
+        final outcome = valueOf(await harness.makeOrder());
+        expect(outcome, isA<MakePending>());
+        expect((outcome as MakePending).reason, MakePendingReason.notConfirmed);
+        expect(await harness.pendingMakes(), hasLength(1));
+        harness.records.confirmFailure = null;
+        final resolved = await harness.make.resolve(
+          (await harness.pendingMakes()).single,
+        );
+        expect(resolved, isA<MakeStarted>());
+        expect((resolved as MakeStarted).record.orderId, 42);
+        expect(makes(harness), 1);
+      },
+    );
+
+    test(
+      'the close refused after a refusal: the make said not made with its problem, kept pending, closed by its resolution',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.coordinator.refuseNextMake(1037);
+        harness.records.closeFailure = const P2pStorageFailure();
+        final outcome = valueOf(await harness.makeOrder());
+        expect(outcome, isA<MakeNotMade>());
+        expect((outcome as MakeNotMade).closeProblem, isA<P2pStorageFailure>());
+        expect(await harness.pendingMakes(), hasLength(1));
+        harness.records.closeFailure = null;
+        expect(
+          await harness.make.resolve((await harness.pendingMakes()).single),
+          isA<MakeNotMade>(),
+        );
+        expect(await harness.pendingMakes(), isEmpty);
+        expect(makes(harness), 1);
+      },
+    );
+
+    test(
+      'the close refused for a make that never left: never sent, not closed, nothing sent',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.kill = MakeKillAt.afterPendingMake;
+        await expectLater(harness.makeOrder(), throwsA(isA<AppKilled>()));
+        final again = harness.restart();
+        again.records.closeFailure = const P2pStorageFailure();
+        final sent = again.coordinator.requests.length;
+        final resolved = await again.make.resolve(
+          (await again.pendingMakes()).single,
+        );
+        expect(resolved, isA<MakeNeverSent>());
+        expect((resolved as MakeNeverSent).closed, isFalse);
+        expect(await again.pendingMakes(), hasLength(1));
+        expect(again.coordinator.requests.length, sent);
+      },
+    );
+
+    test(
+      'the first trail not written: the trade confirmed, its status not stored, no invoice',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.trails.storeFailure = const P2pStorageFailure();
+        final start = started(await harness.makeOrder());
+        expect(start.stored, isFalse);
+        expect(start.status.invoice, isNull);
+        expect(start.recordProblem, isA<P2pStorageFailure>());
+        expect(start.record.confirmedAt, isNotNull);
+        expect(await harness.trailOf(start.record), isNull);
+      },
+    );
+
+    for (final deleted in [true, false]) {
+      test(
+        'the Garage Key ${deleted ? 'deleted' : 'replaced'} once the robot is put: no make written or sent',
+        () async {
+          final harness = await MakeHarness.start();
+          harness.coordinator.onRequest = (request) {
+            // The robot's first contact: its key pair in the header.
+            if (request.url.path == '/api/robot/' &&
+                (request.headers['Authorization'] ?? '').split(' | ').length ==
+                    4) {
+              if (deleted) {
+                harness.deleteKey();
+              } else {
+                harness.replaceKey();
+              }
+            }
+          };
+          expect(
+            await harness.makeOrder(),
+            isA<Err<MakeOutcome, MakeRefusal>>().having(
+              (e) => e.failure,
+              'failure',
+              isA<MakeRobotRefused>(),
+            ),
+          );
+          expect(await harness.allTrades(), isEmpty);
+          expect(makes(harness), 0);
+        },
+      );
+    }
+
+    test(
+      'a busy transport at every attempt: the make never left, closed',
+      () async {
+        final harness = await MakeHarness.start();
+        for (var i = 0; i < 8; i++) {
+          harness.coordinator.failNext(
+            ScriptedMakerRequest.make,
+            ScriptedFault.busy,
+          );
+        }
+        final outcome = valueOf(await harness.makeOrder());
+        expect(outcome, isA<MakeNotMade>());
+        expect((outcome as MakeNotMade).make.closedAt, isNotNull);
+        expect(harness.coordinator.orders, isEmpty);
+        expect(await harness.pendingMakes(), isEmpty);
+      },
+    );
+  });
+
   group('the app killed', () {
     test(
       'after the robot was reserved: no make, no record, the robot never used again',
@@ -745,26 +956,65 @@ void main() {
     );
 
     test(
-      'shows an order of this robot created before the make was written: not recognized',
+      'shows an order of this robot created long before the make: confirmed, then judged by the state machine, as the robot was fresh',
       () async {
+        // Since the functional review of #179 the creation time is not compared with this device's clock: a coordinator that lies sets it as it likes. With the terms asked, the order is the one asked; with other terms, the state machine says so before any bond.
         final harness = await MakeHarness.start();
-        harness.coordinator.orderChanges[42] = {
-          'created_at': harness.now
-              .subtract(const Duration(minutes: 11))
-              .toIso8601String(),
+        final older = harness.now
+            .subtract(const Duration(minutes: 11))
+            .toIso8601String();
+        harness.coordinator.orderChanges[42] = {'created_at': older};
+        final asked = started(await harness.makeOrder());
+        expect(asked.record.orderId, 42);
+        expect(asked.status, isA<WaitingForMakerBond>());
+        expect(asked.status.warnings, isEmpty);
+
+        final other = await MakeHarness.start();
+        other.coordinator.orderChanges[42] = {
+          'created_at': older,
+          'premium': '3.00',
         };
-        final outcome = valueOf(await harness.makeOrder());
-        expect(outcome, isA<MakePending>());
-        expect(
-          (outcome as MakePending).reason,
-          MakePendingReason.notRecognized,
-        );
-        expect(harness.records.confirms, 0);
+        final changed = started(await other.makeOrder());
+        expect(changed.status.has<TradeTermsChanged>(), isTrue);
+        final bond =
+            (changed.status as WaitingForMakerBond).bond as CheckedInvoice;
+        expect(bond.mayShow, isFalse);
+        expect(bond.warnings, isNotEmpty);
       },
     );
 
+    for (final skew in [
+      const Duration(minutes: -15),
+      const Duration(minutes: 15),
+    ]) {
+      test(
+        'a coordinator whose clock is ${skew.inMinutes} min from this device\'s: an honest make is recognized',
+        () async {
+          final harness = await MakeHarness.start();
+          harness.skewCoordinator(skew);
+          final start = started(await harness.makeOrder());
+          expect(start.record.orderId, 42);
+          expect(start.status, isA<WaitingForMakerBond>());
+          expect(harness.records.confirms, 1);
+          // And so is one whose answer was lost, by the resolution.
+          final again = await MakeHarness.start();
+          again
+            ..skewCoordinator(skew)
+            ..coordinator.failNext(
+              ScriptedMakerRequest.make,
+              ScriptedFault.answerLost,
+            );
+          expect(valueOf(await again.makeOrder()), isA<MakePending>());
+          expect(
+            await again.make.resolve((await again.pendingMakes()).single),
+            isA<MakeStarted>(),
+          );
+        },
+      );
+    }
+
     test(
-      'names a second order of this robot once the first is confirmed: the make keeps its first order',
+      'once its order is confirmed, a make is never confirmed with a second order: resolved again it sends nothing, and the database refuses a second order id',
       () async {
         final harness = await MakeHarness.start();
         harness.coordinator.failNext(
@@ -854,6 +1104,31 @@ void main() {
         expect(again.lastStatus.seen.status, isA<MakerOrderPublic>());
         expect(again.lastStatus.seen.status.has<TradeTermsChanged>(), isTrue);
         await again.subscription.cancel();
+      },
+    );
+
+    test(
+      'changes the public duration while the order is paused: said too',
+      () async {
+        final harness = await MakeHarness.start();
+        final start = started(await harness.makeOrder());
+        harness.coordinator
+          ..lockMakerBond(42)
+          ..pause(42);
+        final made = harness.coordinator.order(42);
+        harness.coordinator.orderChanges[42] = {
+          'expires_at': made.createdAt
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+        };
+        final run = harness.watchOf(start.record);
+        await harness.settle();
+        expect(
+          run.lastStatus.seen.status,
+          isA<MakerOrderPublic>().having((s) => s.paused, 'paused', isTrue),
+        );
+        expect(run.lastStatus.seen.status.has<TradeTermsChanged>(), isTrue);
+        await run.subscription.cancel();
       },
     );
 

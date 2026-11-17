@@ -223,7 +223,7 @@ enum MakePendingReason {
   /// The robot, or the order it names, could not be read (no answer, a busy coordinator, an answer that says nothing).
   unread,
 
-  /// The coordinator named an order that a read does not show as this robot's own made after the make (another robot's order, this robot not its maker, another coordinator, network or number than asked, or an order created before the make was written): a coordinator that lies; no bond is shown, and the robot is read again at the next resolution.
+  /// The coordinator named an order that a read does not show as this robot's own (another robot's order, this robot not its maker, another coordinator, network or number than asked): a coordinator that lies; no bond is shown, and the robot is read again at the next resolution.
   notRecognized,
 
   /// A read showed this robot as the maker, and the confirmation of the make could not be written.
