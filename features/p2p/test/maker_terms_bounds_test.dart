@@ -21,7 +21,7 @@ import 'support/robot_bindings.dart';
 
 /// The bounds of a maker's terms, kept in three places (#177): `MakeOrderRequest.tryCreate` (what is sent), `MakerTerms` (what is checked and stored) and the CHECKs of `maker_terms` (schema 8, what the database keeps). Each bound is tried at its value and one step past it, in all three, which must give the same verdict.
 ///
-/// Where the database is wider by design (it counts no decimals, cleans no text, knows no currency, keeps any version from 1, a password and a meeting point), the last groups say so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`. The coordinator is tied by the database to its make's, by the terms to the federation list.
+/// Where the database is wider by design (it counts no decimals, cleans no text, knows no currency, keeps any version from 1, a password, a meeting point and any price above 0), the last groups say so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`. The coordinator is tied by the database to its make's, by the terms to the federation list.
 void main() {
   const testnet = RobosatsNetwork.testnet;
 
@@ -249,7 +249,7 @@ void main() {
       final bounds = <String, (MakerTermsRecord, bool)>{
         'price 0': (base(createdPrice: 0), false),
         'price -1': (base(createdPrice: -1), false),
-        'smallest price': (base(createdPrice: 5e-324), true),
+        'price 0.0001': (base(createdPrice: 0.0001), true),
         'price just below 10^15': (
           base(createdPrice: 999999999999999.875),
           true,
@@ -260,6 +260,7 @@ void main() {
         'fee just above 1 %': (base(makerFee: 0.010000000000000002), false),
         'negative fee': (base(makerFee: -1e-9), false),
       };
+      expect(MakerTerms.minCreatedPrice, 0.0001);
       expect(MakerTerms.maxCreatedPrice, 1e15);
       expect(TradeTolerances.makerFeeCeiling, 0.01);
       for (final MapEntry(key: name, value: (record, verdict))
@@ -305,11 +306,15 @@ void main() {
         expect(termsTake(record), isFalse, reason: 'terms: $name');
         expect(await stored(record), isTrue, reason: 'database: $name');
       }
-      // What the request does not carry: a later version, a password and a meeting point (#189) are kept by the database and refused by the terms.
+      // What the request does not carry: a later version, a password and a meeting point (#189), a price below `MakerTerms.minCreatedPrice` (the database asks only `created_price > 0`), are kept by the database and refused by the terms.
       final notSent = <String, MakerTermsRecord>{
         'a later version': base(version: 2),
         'a password': base(hasPassword: true),
         'a meeting point': base(place: (48.85, 2.35)),
+        'a price below 0.0001, the smallest the reference gives': base(
+          createdPrice: 0.00009999999999999999,
+        ),
+        'the smallest positive double as a price': base(createdPrice: 5e-324),
       };
       for (final MapEntry(key: name, value: record) in notSent.entries) {
         expect(requestTakes(record), isTrue, reason: 'request: $name');

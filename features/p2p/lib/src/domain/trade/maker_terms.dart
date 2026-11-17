@@ -26,7 +26,7 @@ final class MakerFeeTooHigh extends MakerTermsRefusal {
   const MakerFeeTooHigh();
 }
 
-/// The terms cannot be checked so: a maker fee that is no fraction, a price that is no positive figure below [MakerTerms.maxCreatedPrice], or a coordinator that is not on the network.
+/// The terms cannot be checked so: a maker fee that is no fraction, a price outside [MakerTerms.minCreatedPrice] to [MakerTerms.maxCreatedPrice], or a coordinator that is not on the network.
 final class MakerTermsUnusable extends MakerTermsRefusal {
   const MakerTermsUnusable();
 }
@@ -73,10 +73,18 @@ final class TradeRateGap {
 /// Not in it yet: a password and a meeting point, which `MakeOrderRequest` does not send before issue #189; its record writes `has_password` false and no coordinates, and a record with either is refused.
 ///
 /// Its money rules are computed exactly ([ExactRatio]): each figure the coordinator gives is a whole number of sats, each rule a bound on it rounded down once, at its end, so that a sat is let through only when the rule's exact bound reaches it.
+/// Its ceilings are [Sats], a `BigInt`, and nothing in the feature turns one into an `int`: `BigInt.toInt` stops at 2^63 − 1 on the Dart VM, so a screen that showed a ceiling through it could show a false figure; the wallet compares `BigInt`s (`walletPaymentFor`). Within the bounds of [create], every figure for display ([expectedBond], [createdRate], [rateGap]) is finite.
+///
+/// Every protection here rests on [createdPrice], which the coordinator gives: a price k times too low makes the expected bond, both ceilings and the expected sats k times too large, and the gap of a contract whose sats agree with that price reads 0 % (100 USD at 3 %, a price of 5,000 announced for 50,000: a bond ceiling of 61,201 sats instead of 6,121, an escrow ceiling of 4,001,001 instead of 400,101). As the taker trusts the book's price and the reference its own `/api/limits/`; design note `docs/design/phase-3-making-an-order.md` § 3.3 and § 4.1.
 @immutable
 final class MakerTerms {
   /// The highest [createdPrice]: the bound `maker_terms` keeps (`CHECK (created_price < 1000000000000000)`, schema 8), far above any price the coordinator can store (`exchange_rate`, 18 digits with 4 decimals, `api/models/currency.py:17-23`).
   static const double maxCreatedPrice = 1e15;
+
+  /// The lowest [createdPrice]: the smallest positive price the coordinator can give, its `exchange_rate` being a decimal of 4 places (`DecimalField(max_digits=18, decimal_places=4)`, `api/models/currency.py:17-23`), stored so by `update_or_create` (`api/tasks.py:415-423`) and read back from the database by `/api/limits/` (`LimitView`, `api/views.py:1186-1189`).
+  ///
+  /// Below it no coordinator of the reference answers; above it every figure of these terms for display is finite, where a price such as `5e-324` would make the expected bond infinite and the rate of the creation 0. The database keeps only `created_price > 0` (schema 8): it is wider here, and [restore] goes through [create].
+  static const double minCreatedPrice = 0.0001;
 
   final RobosatsNetwork network;
 
@@ -102,7 +110,7 @@ final class MakerTerms {
 
   /// The terms of making [request] on [coordinator] and [network], at the [createdPrice] of `/api/limits/` and with the [makerFee] of `/api/info/`, both read just before the make.
   ///
-  /// Refused with [MakerFeeTooHigh] above [TradeTolerances.makerFeeCeiling], and with [MakerTermsUnusable] for a fee that is not finite or is negative, a price that is not finite, not above 0 or not below [maxCreatedPrice], or a coordinator that is not on [network]. A fee of minus zero is kept as zero.
+  /// Refused with [MakerFeeTooHigh] above [TradeTolerances.makerFeeCeiling], and with [MakerTermsUnusable] for a fee that is not finite or is negative, a price that is not finite, below [minCreatedPrice] or not below [maxCreatedPrice], or a coordinator that is not on [network]. A fee of minus zero is kept as zero.
   static Result<MakerTerms, MakerTermsRefusal> create({
     required RobosatsNetwork network,
     required Coordinator coordinator,
@@ -117,7 +125,7 @@ final class MakerTerms {
       return const Err(MakerFeeTooHigh());
     }
     if (!createdPrice.isFinite ||
-        createdPrice <= 0 ||
+        createdPrice < minCreatedPrice ||
         createdPrice >= maxCreatedPrice ||
         !coordinator.isOn(network)) {
       return const Err(MakerTermsUnusable());

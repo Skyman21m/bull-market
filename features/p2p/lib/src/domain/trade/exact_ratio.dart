@@ -87,7 +87,9 @@ final class ExactRatio implements Comparable<ExactRatio> {
         : quotient;
   }
 
-  /// The nearest double, for display only: never compared, never paid on.
+  /// A double near this number, for display only: never compared, never paid on.
+  ///
+  /// Exact to a double's precision while the numerator and the denominator stay within 1,000 bits, as every figure of `MakerTerms` within its bounds does. Beyond, both are shortened by the same number of bits: a short denominator then loses digits (up to about 0.1 % of the value), a value above the largest double is infinite and one below the smallest is 0.
   double toDouble() {
     // Both shortened by the same number of bits when either is too long for a double, so that neither becomes infinite.
     final bits = math.max(numerator.abs().bitLength, denominator.bitLength);

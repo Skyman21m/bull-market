@@ -187,12 +187,18 @@ void main() {
       },
     );
 
-    test('the price: above 0 and below 10^15, finite', () {
-      expect(create(createdPrice: 5e-324), isA<Ok>());
+    test('the price: from 0.0001 and below 10^15, finite', () {
+      expect(create(createdPrice: 0.0001), isA<Ok>());
       expect(create(createdPrice: 999999999999999.875), isA<Ok>());
+      expect(MakerTerms.minCreatedPrice, 0.0001);
       expect(MakerTerms.maxCreatedPrice, 1e15);
       for (final price in [
+        0.00009999999999999999,
+        0.00005,
+        5e-324,
+        2.2e-308,
         0.0,
+        -0.0,
         -1.0,
         1e15,
         2e15,
@@ -210,6 +216,59 @@ void main() {
         );
       }
     });
+
+    test(
+      'every figure for display is finite, and every ceiling at least 1 sat, for any terms create accepts',
+      () {
+        final random = Random(17703);
+        final prices = [
+          MakerTerms.minCreatedPrice,
+          999999999999999.875,
+          for (var i = 0; i < 400; i++)
+            _price(exp(log(1e-4) + random.nextDouble() * log(9.99e18))),
+        ];
+        final amounts = [1e-8, 9999999999.999998, 0.01, 100.0, 5e9];
+        final premiums = [-99.99, 0.0, 999.0];
+        final lasts = [
+          Sats.fromInt(1),
+          Sats.fromInt(200000),
+          Sats(BigInt.two.pow(62)),
+          Sats(BigInt.two.pow(2000)),
+        ];
+        for (final price in prices) {
+          final amount = amounts[random.nextInt(amounts.length)];
+          final premium = premiums[random.nextInt(premiums.length)];
+          final made = terms(
+            type: OrderType.sell,
+            amount: FixedOrderAmount(fiat(amount)),
+            premium: premium,
+            bond: random.nextBool() ? 2 : 15,
+            createdPrice: price,
+            makerFee: random.nextBool() ? 0 : 0.01,
+          );
+          final reason = '$price $amount $premium';
+          expect(made.expectedBond.isFinite, isTrue, reason: reason);
+          expect(made.expectedBond, greaterThan(0), reason: reason);
+          expect(made.createdRate.isFinite, isTrue, reason: reason);
+          expect(made.createdRate, greaterThan(0), reason: reason);
+          expect(made.bondCeiling.value, greaterThanOrEqualTo(BigInt.one));
+          expect(
+            _some(made.escrowCeilingFor(null)).value,
+            greaterThanOrEqualTo(BigInt.one),
+          );
+          for (final last in lasts) {
+            final gap = _some(
+              made.rateGap(rangeAmount: null, tradeSatoshis: last),
+            );
+            expect(gap.fixedRate.isFinite, isTrue, reason: '$reason $last');
+            expect(gap.createdRate.isFinite, isTrue, reason: '$reason $last');
+            expect(gap.percent.isFinite, isTrue, reason: '$reason $last');
+          }
+          final asTradeTerms = _some(TradeTerms.made(made, orderId: 1));
+          expect(asTradeTerms.expectedBond.isFinite, isTrue, reason: reason);
+        }
+      },
+    );
 
     test('a coordinator not on the network is refused', () {
       final bazaar = coordinator('bazaar');
@@ -1090,3 +1149,9 @@ int _referencePayout(int last, double makerFee) =>
 
 /// [value], which the test knows is there.
 T _some<T>(T? value) => value ?? (throw StateError('missing'));
+
+/// [raw] as the coordinator's price could be: 4 decimals (whole above 10^10, where a double keeps none), at least `MakerTerms.minCreatedPrice`.
+double _price(double raw) => max(
+  MakerTerms.minCreatedPrice,
+  raw < 1e10 ? _round(raw, 4) : raw.floorToDouble(),
+);
