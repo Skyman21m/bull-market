@@ -111,7 +111,11 @@ void main() {
           '\u{1fffe}',
           '\u{10ffff}',
         ]) {
-          for (final text in ['SEPA${hidden}Revolut', '${hidden}SEPA', 'SEPA$hidden']) {
+          for (final text in [
+            'SEPA${hidden}Revolut',
+            '${hidden}SEPA',
+            'SEPA$hidden',
+          ]) {
             expect(isShownAsWritten(text), isFalse, reason: jsonEncode(text));
           }
         }

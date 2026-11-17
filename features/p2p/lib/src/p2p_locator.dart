@@ -374,23 +374,26 @@ final class P2pLocator {
     locator.registerFactory<CheckMakePriceUsecase>(
       () => CheckMakePriceUsecase(locator<P2pWalletPort>()),
     );
-    locator
-        .registerFactoryParam<MakeOrderCubit, RobosatsNetwork, RobosatsCurrency>(
-          (network, currency) => MakeOrderCubit(
-            network,
-            currency: currency,
-            listHosts: locator<ListRobotHostsUsecase>().execute,
-            fetchInfo: locator<FetchCoordinatorInfoUsecase>().execute,
-            fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
-            make: locator<MakeOrderUsecase>().execute,
-            hasGarageKey: locator<HasGarageKeyUsecase>().execute,
-            lottery: locator<CoordinatorLottery>(),
-            now: clock,
-            checkPrice: paysBondFromWallet(locator)
-                ? locator<CheckMakePriceUsecase>().execute
-                : null,
-          ),
-        );
+    locator.registerFactoryParam<
+      MakeOrderCubit,
+      RobosatsNetwork,
+      RobosatsCurrency
+    >(
+      (network, currency) => MakeOrderCubit(
+        network,
+        currency: currency,
+        listHosts: locator<ListRobotHostsUsecase>().execute,
+        fetchInfo: locator<FetchCoordinatorInfoUsecase>().execute,
+        fetchLimits: locator<FetchCoordinatorLimitsUsecase>().execute,
+        make: locator<MakeOrderUsecase>().execute,
+        hasGarageKey: locator<HasGarageKeyUsecase>().execute,
+        lottery: locator<CoordinatorLottery>(),
+        now: clock,
+        checkPrice: paysBondFromWallet(locator)
+            ? locator<CheckMakePriceUsecase>().execute
+            : null,
+      ),
+    );
     // One for the feature: one subscription per trade, whichever use case object makes it.
     locator.registerLazySingleton<TradeWatchRegistry>(TradeWatchRegistry.new);
     locator.registerFactory<WatchTradeUsecase>(

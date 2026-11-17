@@ -242,10 +242,9 @@ final class P2pRouter {
   /// No route builds it yet and nothing in the tab opens it: « Create » stays disabled until the maker's panels exist (#182, design note § 2.1, « Order of the pull requests »); the tests and the app's captures build it here, the latter through the testing seam (`createOrderPageForTesting`), the only caller in `lib`, as `trade_screen_architecture_test.dart` pins.
   static Widget createPage(GetIt locator, P2pCreateRouteArgs args) =>
       BlocProvider(
-        create: (_) => locator<MakeOrderCubit>(
-          param1: args.network,
-          param2: args.currency,
-        )..start(),
+        create: (_) =>
+            locator<MakeOrderCubit>(param1: args.network, param2: args.currency)
+              ..start(),
         child: Builder(
           builder: (context) => CreateOrderScreen(
             initialType: args.initialType,

@@ -64,10 +64,7 @@ void main() {
         ('ExportChatUsecase', 'lib/src/presentation/chat_cubit.dart'),
         // The create form's cubit (#181), the only caller of the make and of the form's price check.
         ('MakeOrderUsecase', 'lib/src/presentation/make_order_cubit.dart'),
-        (
-          'CheckMakePriceUsecase',
-          'lib/src/presentation/make_order_cubit.dart',
-        ),
+        ('CheckMakePriceUsecase', 'lib/src/presentation/make_order_cubit.dart'),
         (
           'FetchCoordinatorLimitsUsecase',
           'lib/src/presentation/make_order_cubit.dart',
@@ -107,12 +104,15 @@ void main() {
     });
     // `createPage` is declared in the router and called by no file of `lib` but the testing seam, which the app never imports (`test/features/p2p/p2p_testing_seam_test.dart`), for the captures.
     expect(sources['lib/src/p2p_router.dart'], contains('createPage('));
-    expect({
-      for (final MapEntry(key: path, value: source) in sources.entries)
-        if (_callsMethod(source, 'createPage') ||
-            _namesIn(source).contains('createPage'))
-          path,
-    }, {'lib/testing.dart'});
+    expect(
+      {
+        for (final MapEntry(key: path, value: source) in sources.entries)
+          if (_callsMethod(source, 'createPage') ||
+              _namesIn(source).contains('createPage'))
+            path,
+      },
+      {'lib/testing.dart'},
+    );
     expect(_whereNamed(sources, 'P2pCreateRouteArgs'), {
       'lib/src/p2p_router.dart',
       'lib/testing.dart',

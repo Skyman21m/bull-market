@@ -90,10 +90,7 @@ void main() {
         maxDecimals: MakerFormCheck.premiumDecimals,
       );
       expect(premium, isA<FormNumberInvalid>());
-      expect(
-        FormNumber.read('-1.23', maxDecimals: 2).value,
-        -1.23,
-      );
+      expect(FormNumber.read('-1.23', maxDecimals: 2).value, -1.23);
     });
   });
 
@@ -266,11 +263,17 @@ void main() {
       expect(checkOf(premium: '999').premiumProblem, isNull);
       // At 999 % the coordinator's smallest order is about 207.6 EUR.
       expect(checkOf(premium: '999', amount: '1000').block, isNull);
-      expect(checkOf(premium: '999.01').premiumProblem, MakerPremiumProblem.tooHigh);
+      expect(
+        checkOf(premium: '999.01').premiumProblem,
+        MakerPremiumProblem.tooHigh,
+      );
       expect(checkOf(premium: '-99.99').premiumProblem, isNull);
       // At -99.99 % its largest is about 0.449 EUR.
       expect(checkOf(premium: '-99.99', amount: '0.1').block, isNull);
-      expect(checkOf(premium: '-100').premiumProblem, MakerPremiumProblem.tooLow);
+      expect(
+        checkOf(premium: '-100').premiumProblem,
+        MakerPremiumProblem.tooLow,
+      );
       // Kept within its bounds for the figures, as the reference keeps it.
       expect(checkOf(premium: '5000').premiumPercent, 999);
       expect(checkOf(premium: '-500').premiumPercent, -99.99);
@@ -284,34 +287,47 @@ void main() {
       );
     });
 
-    test('an empty premium is 0, « at market price »; no number is refused', () {
-      final empty = checkOf();
-      expect(empty.premiumPercent, 0);
-      expect(empty.request?.premium.percent, 0);
-      expect(checkOf(premium: '-').block, MakerFormBlock.premiumNotANumber);
-      expect(checkOf(premium: 'abc').block, MakerFormBlock.premiumNotANumber);
-      expect(checkOf(premium: '-').premiumPercent, 0);
-    });
+    test(
+      'an empty premium is 0, « at market price »; no number is refused',
+      () {
+        final empty = checkOf();
+        expect(empty.premiumPercent, 0);
+        expect(empty.request?.premium.percent, 0);
+        expect(checkOf(premium: '-').block, MakerFormBlock.premiumNotANumber);
+        expect(checkOf(premium: 'abc').block, MakerFormBlock.premiumNotANumber);
+        expect(checkOf(premium: '-').premiumPercent, 0);
+      },
+    );
 
-    test('the payment methods\' text: more than 50 UTF-16 units is refused', () {
-      final fifty = ['x' * 50];
-      expect(checkOf(methods: fifty).badPaymentMethod, isFalse);
-      expect(checkOf(methods: fifty).block, isNull);
-      expect(checkOf(methods: ['x' * 25, 'y' * 25]).badPaymentMethod, isTrue);
-      expect(
-        checkOf(methods: ['x' * 51]).block,
-        MakerFormBlock.badPaymentMethod,
-      );
-      // An emoji counts two units, as the reference's `length`.
-      expect(
-        checkOf(methods: [chars([0x1F402]) * 26]).badPaymentMethod,
-        isTrue,
-      );
-    });
+    test(
+      'the payment methods\' text: more than 50 UTF-16 units is refused',
+      () {
+        final fifty = ['x' * 50];
+        expect(checkOf(methods: fifty).badPaymentMethod, isFalse);
+        expect(checkOf(methods: fifty).block, isNull);
+        expect(checkOf(methods: ['x' * 25, 'y' * 25]).badPaymentMethod, isTrue);
+        expect(
+          checkOf(methods: ['x' * 51]).block,
+          MakerFormBlock.badPaymentMethod,
+        );
+        // An emoji counts two units, as the reference's `length`.
+        expect(
+          checkOf(
+            methods: [
+              chars([0x1F402]) * 26,
+            ],
+          ).badPaymentMethod,
+          isTrue,
+        );
+      },
+    );
 
     group('the reasons, in the reference\'s order', () {
       test('one by one', () {
-        expect(checkOf(loaded: false).block, MakerFormBlock.loadingCoordinators);
+        expect(
+          checkOf(loaded: false).block,
+          MakerFormBlock.loadingCoordinators,
+        );
         expect(
           checkOf(market: const MakerFormLimitsLoading()).block,
           MakerFormBlock.priceNotSynchronized,
@@ -483,13 +499,16 @@ void main() {
       expect(check.gapHundredths, BigInt.from(1001));
     });
 
-    test('a currency the Bull wallet does not price: no figure, no warning', () {
-      final check = checkOf(9171.115, const P2pWalletRateNotPriced());
-      expect(check, isA<MakePriceNotPriced>());
-      expect(check, isNot(isA<MakePriceCompared>()));
-      expect(check.warns, isFalse);
-      expect(check.currency, eur);
-    });
+    test(
+      'a currency the Bull wallet does not price: no figure, no warning',
+      () {
+        final check = checkOf(9171.115, const P2pWalletRateNotPriced());
+        expect(check, isA<MakePriceNotPriced>());
+        expect(check, isNot(isA<MakePriceCompared>()));
+        expect(check.warns, isFalse);
+        expect(check.currency, eur);
+      },
+    );
 
     test('a price that could not be read, or is no price: unverified', () {
       expect(

@@ -224,11 +224,7 @@ void main() {
           final lied = terms(code: 'GBP', createdPrice: 6000);
           expect(lied.bondAgrees(Sats.fromInt(48309)), isTrue);
           for (final asked in [48309, 4830, 1]) {
-            final rate = checkOf(
-              lied,
-              asked,
-              const P2pWalletRateNotPriced(),
-            );
+            final rate = checkOf(lied, asked, const P2pWalletRateNotPriced());
             expect(rate, isA<WalletRateNotPriced>(), reason: '$asked');
             expect(rate, isNot(isA<WalletRateCompared>()));
             expect(rate.asked, Sats.fromInt(asked));

@@ -196,10 +196,7 @@ void main() {
         ]) {
           expect(find.text(text), findsOneWidget, reason: text);
         }
-        expect(
-          tester.widget<Switch>(find.byType(Switch)).onChanged,
-          isNull,
-        );
+        expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
         expect(_createEnabled(tester), isFalse);
         // « Sell » cannot be chosen.
         await tester.tap(find.text('Sell'), warnIfMissed: false);
@@ -254,7 +251,10 @@ void main() {
 
       await typed(_amountField, '5');
       expect(find.text('Must be more than 19'), findsOneWidget);
-      expect(find.text('The amount is outside the allowed limits.'), findsOneWidget);
+      expect(
+        find.text('The amount is outside the allowed limits.'),
+        findsOneWidget,
+      );
       await typed(_amountField, '9000');
       expect(find.text('Must be less than 4,600'), findsOneWidget);
       await typed(_amountField, '');
@@ -267,7 +267,10 @@ void main() {
       await typed(_premiumField, '-100');
       expect(find.text('Must be more than -100%'), findsOneWidget);
       // At the premium kept, -99.99 %, 100 EUR is far above the largest order: the amount is said first, as the reference orders its reasons.
-      expect(find.text('The amount is outside the allowed limits.'), findsOneWidget);
+      expect(
+        find.text('The amount is outside the allowed limits.'),
+        findsOneWidget,
+      );
       await typed(_amountField, '0.1');
       expect(find.text('The premium is not valid.'), findsOneWidget);
       await typed(_amountField, '100');
@@ -301,28 +304,41 @@ void main() {
         ]) {
           await tester.enterText(_amountField, text);
           await settle(tester);
-          expect(find.text('Please enter an amount.'), findsOneWidget, reason: text);
+          expect(
+            find.text('Please enter an amount.'),
+            findsOneWidget,
+            reason: text,
+          );
           expect(_createEnabled(tester), isFalse, reason: text);
         }
         // The comma and the Arabic-Indic digits read as the summary shows them.
         await tester.enterText(_amountField, '150,5');
         await settle(tester);
-        expect(find.text('Buy BTC for 150.5 EUR at a 2% premium'), findsOneWidget);
-        await tester.enterText(
-          _amountField,
-          chars([0x0661, 0x0662, 0x0660]),
+        expect(
+          find.text('Buy BTC for 150.5 EUR at a 2% premium'),
+          findsOneWidget,
         );
+        await tester.enterText(_amountField, chars([0x0661, 0x0662, 0x0660]));
         await settle(tester);
-        expect(find.text('Buy BTC for 120 EUR at a 2% premium'), findsOneWidget);
+        expect(
+          find.text('Buy BTC for 120 EUR at a 2% premium'),
+          findsOneWidget,
+        );
         // A huge figure is said outside the limits.
         await tester.enterText(_amountField, '9' * 20);
         await settle(tester);
-        expect(find.text('The amount is outside the allowed limits.'), findsOneWidget);
+        expect(
+          find.text('The amount is outside the allowed limits.'),
+          findsOneWidget,
+        );
         // More decimals than kept are not taken: the field keeps what it had.
         await tester.enterText(_amountField, '100.5');
         await tester.enterText(_amountField, '100.123456789');
         await settle(tester);
-        expect(tester.widget<TextField>(_amountField).controller?.text, '100.5');
+        expect(
+          tester.widget<TextField>(_amountField).controller?.text,
+          '100.5',
+        );
         await tester.enterText(_premiumField, '1.234');
         await settle(tester);
         expect(tester.widget<TextField>(_premiumField).controller?.text, '2');
@@ -334,9 +350,11 @@ void main() {
       (tester) async {
         await _show(tester, _Form());
         // The list: a tap on the field opens it.
-        await tester.tap(find.byTooltip(
-          'Enter your preferred fiat payment methods. Fast methods are highly recommended.',
-        ));
+        await tester.tap(
+          find.byTooltip(
+            'Enter your preferred fiat payment methods. Fast methods are highly recommended.',
+          ),
+        );
         await settle(tester);
         await tester.enterText(find.byType(TextField).last, 'Revolut');
         await settle(tester);
@@ -383,7 +401,10 @@ void main() {
       (tester) async {
         final form = _Form()..unreadable.add('temple');
         await _show(tester, form);
-        expect(find.text('The coordinator limits are not available.'), findsOneWidget);
+        expect(
+          find.text('The coordinator limits are not available.'),
+          findsOneWidget,
+        );
         expect(find.textContaining('Order current rate'), findsNothing);
         form.unreadable.clear();
         await tester.tap(find.text('Temple of Sats'));
@@ -406,7 +427,10 @@ void main() {
         await settle(tester);
         await tester.tap(find.text('Buy'));
         await settle(tester);
-        expect(find.text('The Bitcoin price is not synchronized.'), findsOneWidget);
+        expect(
+          find.text('The Bitcoin price is not synchronized.'),
+          findsOneWidget,
+        );
         expect(find.textContaining('Order current rate'), findsNothing);
         expect(find.textContaining('For comparison'), findsNothing);
         expect(form.pricesAsked, [eur]);
@@ -598,18 +622,19 @@ void main() {
       expect(form.made, hasLength(1));
     });
 
-    testWidgets('without a Garage Key: « You do not have a Garage Key », nothing sent', (
-      tester,
-    ) async {
-      final form = _Form()..keys = const Ok(false);
-      await _show(tester, form);
-      await _fill(tester);
-      await tester.tap(_create);
-      await settle(tester);
-      expect(find.byType(NoRobotDialog), findsOneWidget);
-      expect(find.byType(StoreTokenDialog), findsNothing);
-      expect(form.made, isEmpty);
-    });
+    testWidgets(
+      'without a Garage Key: « You do not have a Garage Key », nothing sent',
+      (tester) async {
+        final form = _Form()..keys = const Ok(false);
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(NoRobotDialog), findsOneWidget);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(form.made, isEmpty);
+      },
+    );
 
     testWidgets('a made order opens its trade', (tester) async {
       final status = await tester.runAsync(() async {
@@ -637,9 +662,7 @@ void main() {
       'refused before any robot: said in the app\'s words, the form free again',
       (tester) async {
         final form = _Form()
-          ..answer = const Err(
-            MakeTermsRefused(MakerFeeTooHigh()),
-          );
+          ..answer = const Err(MakeTermsRefused(MakerFeeTooHigh()));
         await _show(tester, form);
         await _fill(tester);
         await tester.tap(_create);
@@ -678,30 +701,29 @@ void main() {
       );
     });
 
-    testWidgets(
-      'an outcome unknown: said, the form locked, nothing made again',
-      (tester) async {
-        final form = _Form()
-          ..answer = Ok(MakePending(_pending, MakePendingReason.outcomeUnknown));
-        await _show(tester, form);
-        await _fill(tester);
-        await tester.tap(_create);
-        await settle(tester);
-        await tester.tap(find.text('Done'));
-        await settle(tester);
-        expect(
-          find.text(
-            'Bull Market does not know yet whether Temple of Sats made your order. It keeps checking.',
-          ),
-          findsOneWidget,
-        );
-        expect(_createEnabled(tester), isFalse);
-        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
-        await tester.tap(_create, warnIfMissed: false);
-        await settle(tester);
-        expect(form.made, hasLength(1));
-      },
-    );
+    testWidgets('an outcome unknown: said, the form locked, nothing made again', (
+      tester,
+    ) async {
+      final form = _Form()
+        ..answer = Ok(MakePending(_pending, MakePendingReason.outcomeUnknown));
+      await _show(tester, form);
+      await _fill(tester);
+      await tester.tap(_create);
+      await settle(tester);
+      await tester.tap(find.text('Done'));
+      await settle(tester);
+      expect(
+        find.text(
+          'Bull Market does not know yet whether Temple of Sats made your order. It keeps checking.',
+        ),
+        findsOneWidget,
+      );
+      expect(_createEnabled(tester), isFalse);
+      expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+      await tester.tap(_create, warnIfMissed: false);
+      await settle(tester);
+      expect(form.made, hasLength(1));
+    });
   });
 
   testWidgets('the French texts', (tester) async {
@@ -714,8 +736,16 @@ void main() {
       find.text('Acheter BTC pour 100 EUR au prix du marché'),
       findsOneWidget,
     );
-    expect(find.text('Veuillez sélectionner un mode de paiement.'), findsOneWidget);
-    expect(find.textContaining('Pour comparaison, prix indicatif du portefeuille Bull'), findsOneWidget);
+    expect(
+      find.text('Veuillez sélectionner un mode de paiement.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Pour comparaison, prix indicatif du portefeuille Bull',
+      ),
+      findsOneWidget,
+    );
   });
 }
 

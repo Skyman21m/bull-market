@@ -11,8 +11,7 @@ import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
-import 'package:p2p/testing.dart'
-    show ScriptedFault, ScriptedMakerRequest;
+import 'package:p2p/testing.dart' show ScriptedFault, ScriptedMakerRequest;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 import 'package:test/test.dart';
@@ -234,55 +233,56 @@ void main() {
       };
     });
 
-    MakeOrderCubit cubitOf(_Calls calls, {bool wallet = true}) => MakeOrderCubit(
-      RobosatsNetwork.mainnet,
-      currency: eur,
-      listHosts: (network) => RobotHosts(network, [
-        for (final coordinator in Federation.robosats.on(network))
-          RobotHost(
-            coordinator,
-            refusesFirstContacts: calls.refusing.contains(
-              coordinator.shortAlias,
-            ),
-          ),
-      ]),
-      fetchInfo: (coordinator, network) async {
-        calls.infoAsked.add(coordinator.shortAlias);
-        return switch (infos[coordinator.shortAlias]) {
-          final info? => Ok(info),
-          null => const Err(CoordinatorUnreachable()),
-        };
-      },
-      fetchLimits: (coordinator, network) async {
-        final alias = coordinator.shortAlias;
-        calls.limitsAsked.add(alias);
-        final held = calls.heldLimits.remove(alias);
-        if (held != null) return held.future;
-        if (calls.unreadable.contains(alias)) {
-          return const Err(CoordinatorUnreachable());
-        }
-        return Ok(limits);
-      },
-      make: (request, {required coordinator, required network}) =>
-          throw StateError('no make here'),
-      hasGarageKey: (_) async => const Ok(true),
-      lottery: CoordinatorLottery(() => 0.5),
-      now: () => DateTime.utc(2026, 11, 17),
-      checkPrice: wallet
-          ? (network, currency, price) async {
-              calls.priceAsked.add((currency, price));
-              final check = MakePriceCheck.of(
-                currency: currency,
-                coordinatorPrice: price,
-                wallet: calls.rate,
-              );
-              if (!calls.holdPrices) return check;
-              final held = Completer<MakePriceCheck>();
-              calls.heldPrices.add(held);
-              return held.future;
+    MakeOrderCubit cubitOf(_Calls calls, {bool wallet = true}) =>
+        MakeOrderCubit(
+          RobosatsNetwork.mainnet,
+          currency: eur,
+          listHosts: (network) => RobotHosts(network, [
+            for (final coordinator in Federation.robosats.on(network))
+              RobotHost(
+                coordinator,
+                refusesFirstContacts: calls.refusing.contains(
+                  coordinator.shortAlias,
+                ),
+              ),
+          ]),
+          fetchInfo: (coordinator, network) async {
+            calls.infoAsked.add(coordinator.shortAlias);
+            return switch (infos[coordinator.shortAlias]) {
+              final info? => Ok(info),
+              null => const Err(CoordinatorUnreachable()),
+            };
+          },
+          fetchLimits: (coordinator, network) async {
+            final alias = coordinator.shortAlias;
+            calls.limitsAsked.add(alias);
+            final held = calls.heldLimits.remove(alias);
+            if (held != null) return held.future;
+            if (calls.unreadable.contains(alias)) {
+              return const Err(CoordinatorUnreachable());
             }
-          : null,
-    );
+            return Ok(limits);
+          },
+          make: (request, {required coordinator, required network}) =>
+              throw StateError('no make here'),
+          hasGarageKey: (_) async => const Ok(true),
+          lottery: CoordinatorLottery(() => 0.5),
+          now: () => DateTime.utc(2026, 11, 17),
+          checkPrice: wallet
+              ? (network, currency, price) async {
+                  calls.priceAsked.add((currency, price));
+                  final check = MakePriceCheck.of(
+                    currency: currency,
+                    coordinatorPrice: price,
+                    wallet: calls.rate,
+                  );
+                  if (!calls.holdPrices) return check;
+                  final held = Completer<MakePriceCheck>();
+                  calls.heldPrices.add(held);
+                  return held.future;
+                }
+              : null,
+        );
 
     test(
       'the default: every coordinator\'s information read, the first of the reference\'s lottery, its limits read once',
@@ -293,15 +293,12 @@ void main() {
         expect(cubit.state.coordinatorsLoaded, isFalse);
         await cubit.start();
         await pumpEventQueue();
-        expect(
-          calls.infoAsked.toSet(),
-          {
-            for (final coordinator in Federation.robosats.on(
-              RobosatsNetwork.mainnet,
-            ))
-              coordinator.shortAlias,
-          },
-        );
+        expect(calls.infoAsked.toSet(), {
+          for (final coordinator in Federation.robosats.on(
+            RobosatsNetwork.mainnet,
+          ))
+            coordinator.shortAlias,
+        });
         expect(cubit.state.coordinatorsLoaded, isTrue);
         expect(cubit.state.coordinator?.shortAlias, 'temple');
         expect(cubit.state.hosts.first.coordinator.shortAlias, 'temple');

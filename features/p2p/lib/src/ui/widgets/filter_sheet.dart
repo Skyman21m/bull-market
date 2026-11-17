@@ -114,11 +114,7 @@ class _FilterSheetState<T extends Object> extends State<FilterSheet<T>> {
     final anyLabel = widget.anyLabel;
     final rows = <Widget>[
       if (!searching && anyLabel != null)
-        _FilterRow(
-          label: anyLabel,
-          checked: _chosen.isEmpty,
-          onTap: _clear,
-        ),
+        _FilterRow(label: anyLabel, checked: _chosen.isEmpty, onTap: _clear),
     ];
     var matched = 0;
     for (final group in groups) {

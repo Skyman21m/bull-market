@@ -794,7 +794,11 @@ class _Summary extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
 
-  const _Summary({required this.type, required this.check, required this.state});
+  const _Summary({
+    required this.type,
+    required this.check,
+    required this.state,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -945,9 +949,7 @@ class _Rate extends StatelessWidget {
               formats.gap(check.gapHundredths),
             );
             final threshold = formats.threshold(TradeTolerances.walletRateGap);
-            children.add(
-              _Line(line, color: check.warns ? colors.error : null),
-            );
+            children.add(_Line(line, color: check.warns ? colors.error : null));
             switch (check.side) {
               case MakePriceSide.within:
                 break;
@@ -980,9 +982,8 @@ class _Rate extends StatelessWidget {
                 TradeButton(
                   label: l10n.p2pCommonRetry,
                   outlined: true,
-                  onPressed: () => unawaited(
-                    context.read<MakeOrderCubit>().retryPrice(),
-                  ),
+                  onPressed: () =>
+                      unawaited(context.read<MakeOrderCubit>().retryPrice()),
                 ),
               );
         }

@@ -240,13 +240,13 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     final order = _lottery.order([
       for (final host in hosts) host.coordinator,
     ], infos: infos);
-    final byAlias = {for (final host in hosts) host.coordinator.shortAlias: host};
+    final byAlias = {
+      for (final host in hosts) host.coordinator.shortAlias: host,
+    };
     final drawn = [
       for (final coordinator in order) ?byAlias[coordinator.shortAlias],
     ];
-    final first = drawn
-        .where((host) => !host.refusesFirstContacts)
-        .firstOrNull;
+    final first = drawn.where((host) => !host.refusesFirstContacts).firstOrNull;
     emit(
       state._with(
         coordinatorsLoaded: true,
