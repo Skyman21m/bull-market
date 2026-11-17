@@ -475,6 +475,78 @@ void main() {
   );
 
   test(
+    'stops at schema 7, its copies kept, on an orphan row of every table a trade has: a trail, terms, a payment, a pin, a Nostr pin',
+    () async {
+      // Each written with the trigger that asks for its trade set aside on a file of schema 7, then made again from its own text; robot 8 is bound and has no trade.
+      for (final (trigger, row) in [
+        (
+          'trade_trails_of_their_trade',
+          "INSERT INTO trade_trails VALUES ('$_key', 8, 1, 'testnet', 'temple', 108, 'buyer', 'start', 0, NULL, NULL, NULL, NULL, NULL, 0, 0)",
+        ),
+        (
+          'trade_terms_of_their_trade',
+          "INSERT INTO trade_terms VALUES ('$_key', 8, 1, 'testnet', 'temple', 108, 'buyer', 1, 2, 100.0, 0, 2.0, NULL, 3.0, 10800, 93545.25, 0.00175)",
+        ),
+        (
+          'trade_payments_of_their_trade',
+          "INSERT INTO trade_payments VALUES ('$_key', 8, 'bond', '${'8b' * 32}', 1, NULL)",
+        ),
+        (
+          'trade_chat_pins_of_their_trade',
+          "INSERT INTO trade_chat_pins VALUES ('$_key', 8, '${'E' * 40}', '${'F' * 40}', '$_armored')",
+        ),
+        (
+          'trade_chat_nostr_pins_of_their_trade',
+          "INSERT INTO trade_chat_nostr_pins VALUES ('$_key', 8, '${'e' * 64}', '${'f' * 64}')",
+        ),
+      ]) {
+        final file = await schema7File('orphan-$trigger.sqlite');
+        final old = v7.DatabaseAtV7(NativeDatabase(file));
+        final text = await old
+            .customSelect(
+              'SELECT sql FROM sqlite_master WHERE name = ?',
+              variables: [Variable.withString(trigger)],
+            )
+            .getSingle();
+        await old.customStatement('DROP TRIGGER $trigger');
+        await old.customStatement(row);
+        await old.customStatement(text.read<String>('sql'));
+        final rows = await _rowsOf(old, _schema7Columns);
+        await old.close();
+
+        final stopped = P2pDatabase.forTesting(NativeDatabase(file));
+        await expectLater(
+          _versionOf(stopped),
+          throwsA(
+            isA<P2pSchemaStepRefused>().having(
+              (refusal) => refusal.check,
+              'check',
+              'foreign key check',
+            ),
+          ),
+          reason: trigger,
+        );
+        await stopped.close();
+        final left = v7.DatabaseAtV7(NativeDatabase(file));
+        expect(await _versionOf(left), 7, reason: trigger);
+        expect(
+          await _rowsOf(left, {
+            for (final table in ['trades', 'trade_trails', 'trade_payments'])
+              '${table}_of_schema7': ?_schema7Columns[table],
+          }),
+          {
+            for (final table in ['trades', 'trade_trails', 'trade_payments'])
+              '${table}_of_schema7': rows[table],
+          },
+          reason: trigger,
+        );
+        expect(await _rowsOf(left, _schema7Columns), rows, reason: trigger);
+        await left.close();
+      }
+    },
+  );
+
+  test(
     'stops at schema 7 on a file with an orphan row, its copies kept with every row, at every opening, and ends once the row has its parent',
     () async {
       final file = await schema7File();

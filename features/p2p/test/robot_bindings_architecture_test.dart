@@ -29,6 +29,17 @@ void main() {
       if (test(facts)) path,
   };
 
+  /// Whether [text] of [facts] is a trigger as drift copies it into its code: one the `.drift` files write, or, in the generated migration steps only, one schema 8 replaced.
+  bool isDriftTrigger(_Facts facts, String text) =>
+      _driftTriggers.contains(_squeezed(text)) ||
+      (identical(facts, libraries['lib/src/data/p2p_database.steps.dart']) &&
+          _replacedTriggers.contains(_squeezed(text)));
+
+  /// Whether [text] of [facts] is one of the step to schema 8's copies of the trades, the trails or the payments, exactly, in `p2p_database.dart` only (security review of #176).
+  bool isSchema8Rebuild(_Facts facts, String text) =>
+      identical(facts, libraries['lib/src/data/p2p_database.dart']) &&
+      _schema8RebuildTexts.contains(text);
+
   test('the scan reads every Dart file of lib/, the translations included', () {
     for (final (path, scanned) in [
       // The translations gen-l10n writes are code too: a hand-written file named like one was not seen before (review of #67).
@@ -1056,8 +1067,8 @@ class RobotCoordinatorCubit {
                 r'\b(from|into|update|join)\s+"?trades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_driftTriggers.contains(_squeezed(text)) &&
-              !_schema8Rebuild.any((statement) => statement.contains(text)),
+              !isDriftTrigger(facts, text) &&
+              !isSchema8Rebuild(facts, text),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -1107,8 +1118,7 @@ class RobotCoordinatorCubit {
       expect(facts.names, isNot(contains('InsertMode')));
       for (final text in facts.strings) {
         // The steps hold the triggers of `trades.drift` as written, which name an update and a delete only to refuse them (pinned below).
-        if (identical(facts, steps) &&
-            _driftTriggers.contains(_squeezed(text))) {
+        if (identical(facts, steps) && isDriftTrigger(facts, text)) {
           continue;
         }
         // The steps to schema 7 and 8 rebuild the payments, the trades and their trails (#97, #176), never a binding: their drops, of tables and of triggers, pinned as written below.
@@ -1510,7 +1520,7 @@ class RobotCoordinatorCubit {
                 r'\b(into|update|delete\s+from)\s+"?trade_chat_(nostr_)?pins\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_driftTriggers.contains(_squeezed(text)),
+              !isDriftTrigger(facts, text),
         ),
       ),
       {'lib/src/data/trade_chat_pin_repository_impl.dart'},
@@ -1529,8 +1539,8 @@ class RobotCoordinatorCubit {
                   r'\b(into|update|delete\s+from)\s+"?(trade_(terms|trails)|maker_terms)\b',
                   caseSensitive: false,
                 ).hasMatch(text) &&
-                !_driftTriggers.contains(_squeezed(text)) &&
-                !_schema8Rebuild.any((statement) => statement.contains(text)),
+                !isDriftTrigger(facts, text) &&
+                !isSchema8Rebuild(facts, text),
           ),
         ),
         {'lib/src/data/trade_trail_repository_impl.dart'},
@@ -1690,6 +1700,39 @@ class RobotCoordinatorCubit {
     },
   );
 
+  test(
+    'only the database runs a pragma or a statement of its own, the pragmas it runs pinned above',
+    () {
+      // A pragma turns a protection of the whole connection on or off (`PRAGMA foreign_keys = OFF` in a repository would let every write that needs a trade through until the next start): only `P2pDatabase` holds one, each pinned by value in « nothing changes or deletes a binding » (security review of #176).
+      expect(
+        where(
+          (facts) => facts.strings.any(
+            (text) => RegExp(
+              r'\bpragma\b|foreign_keys',
+              caseSensitive: false,
+            ).hasMatch(text),
+          ),
+        ),
+        {'lib/src/data/p2p_database.dart'},
+      );
+      // And no other file names `customStatement`, called or torn off, through which any statement could run unseen by the pins of the repositories' writes.
+      expect(where((facts) => facts.names.contains('customStatement')), {
+        'lib/src/data/p2p_database.dart',
+      });
+      // The check sees a pragma in an adjacent string and a torn-off `customStatement`.
+      final mutant = _Facts.of(
+        "Future<void> f(dynamic d) async { final run = d.customStatement; await run('PRAGMA ' 'foreign_keys = OFF'); }",
+      );
+      expect(mutant.names, contains('customStatement'));
+      expect(
+        mutant.strings.any(
+          (text) => RegExp(r'\bpragma\b', caseSensitive: false).hasMatch(text),
+        ),
+        isTrue,
+      );
+    },
+  );
+
   test('nothing in the feature opens a database transaction', () {
     // A reservation or a pending take that answered success inside a transaction is undone by its rollback, after its robot may have been sent: it could then go to a second coordinator (review of #102, R1).
     // By name, so that a torn-off `transaction` counts as a call (second review of #102).
@@ -1832,7 +1875,7 @@ class RobotCoordinatorCubit {
                 r'\b(update|delete)\b[^;]*\btrades\b',
                 caseSensitive: false,
               ).hasMatch(text) &&
-              !_driftTriggers.contains(_squeezed(text)),
+              !isDriftTrigger(facts, text),
         ),
       ),
       {'lib/src/data/trade_record_repository_impl.dart'},
@@ -1986,7 +2029,7 @@ class RobotCoordinatorCubit {
                   caseSensitive: false,
                 ).hasMatch(text) &&
                 // The step to schema 8 copies the trades back from their copy, as pinned in the database (#176).
-                !_schema8Rebuild.any((statement) => statement.contains(text)),
+                !isSchema8Rebuild(facts, text),
           ),
         ),
         {
@@ -2773,13 +2816,17 @@ const _replacedTriggersAsWritten = [
   "CREATE TRIGGER IF NOT EXISTS trade_payments_forward BEFORE UPDATE ON trade_payments WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.step IS NOT OLD.step OR NEW.payment_hash IS NOT OLD.payment_hash OR NEW.started_at < OLD.started_at BEGIN SELECT RAISE(ABORT, 'a payment only moves forward'); END",
 ];
 
-/// Every trigger the `.drift` files write, or wrote before schema 8 replaced it, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
+/// Every trigger the `.drift` files write, as drift copies them into its code: the only SQL text there that names an update or a delete, to refuse it.
 final _driftTriggers = {
   ..._tradeTriggers,
   ..._trailTriggers,
   ..._paymentTriggers,
   ..._pinTriggers,
   ..._makerTermsTriggers,
+};
+
+/// The triggers schema 8 replaced, squeezed: an exemption for the generated migration steps only, which keep them in the schemas of their versions.
+final _replacedTriggers = {
   for (final trigger in _replacedTriggersAsWritten) _squeezed(trigger),
 };
 
@@ -2811,18 +2858,35 @@ const _rebuildDrops = {
   'DROP TRIGGER IF EXISTS trade_terms_of_their_trade',
 };
 
-/// The statements of the step to schema 8 (#176) that copy the rows of the trades, their trails and their payments aside and back, as `P2pDatabase` writes them (pinned there by value).
-const _schema8Rebuild = {
-  'CREATE TABLE trades_of_schema7 AS SELECT * FROM trades',
-  'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) '
-      'SELECT network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at FROM trades_of_schema7 AS copy '
-      'WHERE NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = copy.key_fingerprint AND trades.robot_index = copy.robot_index)',
-  'CREATE TABLE trade_trails_of_schema7 AS SELECT * FROM trade_trails',
-  'INSERT INTO trade_trails (key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown) '
-      'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy '
-      'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)',
-  'CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments',
-  'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) '
-      'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy '
-      'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)',
+/// The statements of the step to schema 8 (#176) that copy the rows of the trades, their trails and their payments aside and back, as `P2pDatabase` writes them (pinned there by value), each as the literals its constant is written with.
+const _schema8RebuildParts = [
+  ['CREATE TABLE trades_of_schema7 AS SELECT * FROM trades'],
+  [
+    'INSERT INTO trades (network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at) ',
+    'SELECT network, key_fingerprint, robot_index, coordinator_alias, coordinator_onion, order_id, role, origin, taken_at, confirmed_at, closed_at FROM trades_of_schema7 AS copy ',
+    'WHERE NOT EXISTS (SELECT 1 FROM trades WHERE trades.key_fingerprint = copy.key_fingerprint AND trades.robot_index = copy.robot_index)',
+  ],
+  ['CREATE TABLE trade_trails_of_schema7 AS SELECT * FROM trade_trails'],
+  [
+    'INSERT INTO trade_trails (key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown) ',
+    'SELECT key_fingerprint, robot_index, version, network, coordinator_alias, order_id, role, position, read_at, bond_hash, escrow_hash, deadline, bond_step_seen_at, bond_step_deadline, breached, history_unknown FROM trade_trails_of_schema7 AS copy ',
+    'WHERE NOT EXISTS (SELECT 1 FROM trade_trails WHERE trade_trails.key_fingerprint = copy.key_fingerprint AND trade_trails.robot_index = copy.robot_index)',
+  ],
+  ['CREATE TABLE trade_payments_of_schema7 AS SELECT * FROM trade_payments'],
+  [
+    'INSERT INTO trade_payments (key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, take) ',
+    'SELECT key_fingerprint, robot_index, step, payment_hash, started_at, wallet_payment_id, 0 FROM trade_payments_of_schema7 AS copy ',
+    'WHERE NOT EXISTS (SELECT 1 FROM trade_payments WHERE trade_payments.key_fingerprint = copy.key_fingerprint AND trade_payments.robot_index = copy.robot_index AND trade_payments.step = copy.step AND trade_payments.take = 0)',
+  ],
+];
+
+/// Those statements whole, as the constants of `P2pDatabase` hold them.
+final _schema8Rebuild = {
+  for (final parts in _schema8RebuildParts) parts.join(),
+};
+
+/// The texts the step to schema 8 may hold that name the trades or their trails as SQL: each statement whole and each literal it is written with, exactly; an exemption for `p2p_database.dart` only (security review of #176: a fragment of these, or the same text in another file, is no exemption).
+final _schema8RebuildTexts = {
+  ..._schema8Rebuild,
+  for (final parts in _schema8RebuildParts) ...parts,
 };

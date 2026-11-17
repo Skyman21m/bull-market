@@ -685,6 +685,23 @@ void main() {
           ('an escrow duration above 10 h', {'escrow_seconds': 36001}),
           ('an empty description', {'description': ''}),
           ('a description of 241 characters', {'description': 'x' * 241}),
+          // A NUL would end the text early for `length`, which counts characters up to it (security review of #176).
+          ('a payment method with a NUL', {'payment_method': 'a\u0000b'}),
+          (
+            'a description with a NUL past its bound',
+            {'description': 'a\u0000${'b' * 400}'},
+          ),
+          ('a description with a NUL', {'description': 'a\u0000'}),
+          ('a coordinator with a NUL', {'coordinator_alias': 'temple\u0000'}),
+          // The bounds count code points, not bytes nor UTF-16 units.
+          (
+            'a description of 241 code points of four bytes',
+            {'description': '\u{1F600}' * 241},
+          ),
+          (
+            'a payment method of 71 code points of two bytes',
+            {'payment_method': '\u00e9' * 71},
+          ),
           ('a password flag of 2', {'has_password': 2}),
           ('a latitude alone', {'latitude': 1.0}),
           ('a longitude alone', {'longitude': 1.0}),
@@ -733,6 +750,14 @@ void main() {
           ('an escrow duration of 30 min', {'escrow_seconds': 1800}),
           ('an escrow duration of 10 h', {'escrow_seconds': 36000}),
           ('a description of 240 characters', {'description': 'x' * 240}),
+          (
+            'a description of 240 code points of four bytes',
+            {'description': '\u{1F600}' * 240},
+          ),
+          (
+            'a payment method of 70 code points of two bytes',
+            {'payment_method': '\u00e9' * 70},
+          ),
           ('a password', {'has_password': 1}),
           (
             'a meeting point at a corner of the map',

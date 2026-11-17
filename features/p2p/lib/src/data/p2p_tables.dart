@@ -438,20 +438,21 @@ class StoredMakerTerms extends Table {
     'CHECK (robot_index BETWEEN 0 AND 2147483647)',
     'CHECK (version >= 1)',
     "CHECK (network IN ('mainnet', 'testnet'))",
-    'CHECK (length(coordinator_alias) > 0)',
+    // A text the code writes holds no NUL, which would end it early for `length` (SQLite counts characters up to the first NUL): searched in its bytes, the file being UTF-8, where only U+0000 has a 0 byte (security review of #176). With no NUL, `length` counts code points, as `MakeOrderRequest.tryCreate` does.
+    "CHECK (instr(CAST(coordinator_alias AS BLOB), X'00') = 0 AND length(coordinator_alias) > 0)",
     "CHECK (role IN ('buyer', 'seller'))",
     // Making a buy order makes a buyer, making a sell order a seller: the opposite of a take.
     "CHECK ((order_type = 0 AND role = 'buyer') OR (order_type = 1 AND role = 'seller'))",
     'CHECK (currency_id > 0)',
     // A fixed amount, or a range within the coordinator's nominal ratios, 1.5 to 15, compared as `MakeOrderRequest.tryCreate` compares the same doubles; each amount above 0 and below 10^10 (`MakeOrderRequest.amountLimit`), written out, since drift's snapshot reads an exponent as 0.
     "CHECK ((amount IS NOT NULL AND min_amount IS NULL AND max_amount IS NULL AND typeof(amount) = 'real' AND amount > 0 AND amount < 10000000000) OR (amount IS NULL AND min_amount IS NOT NULL AND max_amount IS NOT NULL AND typeof(min_amount) = 'real' AND typeof(max_amount) = 'real' AND min_amount > 0 AND max_amount < 10000000000 AND min_amount <= max_amount / 1.5 AND min_amount >= max_amount / 15))",
-    // The bounds of `MakeOrderRequest.tryCreate`: a premium above -100 and at most 999, a payment method of 1 to 70 characters, a bond of 2 to 15 %, a public duration of 600 to 86,400 s, an escrow duration of 1,800 to 36,000 s, a description of 1 to 240 characters.
+    // The bounds of `MakeOrderRequest.tryCreate`: a premium above -100 and at most 999, a payment method of 1 to 70 code points, a bond of 2 to 15 %, a public duration of 600 to 86,400 s, an escrow duration of 1,800 to 36,000 s, a description of 1 to 240 code points, neither with a NUL.
     "CHECK (typeof(premium_percent) = 'real' AND premium_percent > -100 AND premium_percent <= 999)",
-    'CHECK (length(payment_method) BETWEEN 1 AND 70)',
+    "CHECK (instr(CAST(payment_method AS BLOB), X'00') = 0 AND length(payment_method) BETWEEN 1 AND 70)",
     "CHECK (typeof(bond_size_percent) = 'real' AND bond_size_percent BETWEEN 2 AND 15)",
     'CHECK (public_seconds BETWEEN 600 AND 86400)',
     'CHECK (escrow_seconds BETWEEN 1800 AND 36000)',
-    'CHECK (description IS NULL OR length(description) BETWEEN 1 AND 240)',
+    "CHECK (description IS NULL OR (instr(CAST(description AS BLOB), X'00') = 0 AND length(description) BETWEEN 1 AND 240))",
     // The meeting point: both coordinates or none, within the coordinator's bounds (`api/models/order.py:148-168`).
     "CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND typeof(latitude) = 'real' AND typeof(longitude) = 'real' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180))",
     "CHECK (typeof(created_price) = 'real' AND created_price > 0 AND created_price < 1000000000000000)",
