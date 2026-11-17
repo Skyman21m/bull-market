@@ -10,6 +10,7 @@ import '../domain/trade/bond_payment.dart';
 import '../domain/trade/trade_status.dart';
 import '../domain/trade/trade_watch.dart';
 import '../domain/trade/wallet_payment.dart';
+import '../domain/trade/wallet_rate_check.dart';
 import '../domain/trade_record.dart';
 import '../domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
 
@@ -29,6 +30,13 @@ typedef BondQuoter =
     Future<Result<P2pWalletQuote, BondPayRefusal>> Function(
       TradeRecord record,
       TradeSeen seen,
+    );
+
+/// [PayBondFromWalletUsecase.rateOfBond].
+typedef BondRateChecker =
+    Future<Result<WalletRateCheck?, BondPayRefusal>> Function(
+      TradeRecord record,
+      P2pWalletQuote quote,
     );
 
 /// [PayBondFromWalletUsecase.payBond].
@@ -99,7 +107,10 @@ final class BondPayQuoting extends BondPayStep {
 final class BondPayConfirming extends BondPayStep {
   final P2pWalletQuote walletQuote;
 
-  const BondPayConfirming(this.walletQuote);
+  /// For an order made here, how the bond quoted compares with the bond at the wallet's own price (#180, the owner's payment rule of 2026-11-17): shown in the confirmation, a red warning beyond the owner's threshold; `null` for a take.
+  final WalletRateCheck? rate;
+
+  const BondPayConfirming(this.walletQuote, {this.rate});
 }
 
 /// The payment is being made, after the user's confirmation, or by this process while the screen was away; [slow] once it has run for [BondPaymentCubit.stillWaitingAfter].
@@ -148,6 +159,9 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
   final BondPaymentRunning _running;
   final Duration _stillWaitingAfter;
 
+  /// The comparison of a quote with the wallet's own price, for an order made here (#180); `null` where the cubit was given none (the escrow's, until #187), and the confirmation then shows the quote alone, as before.
+  final BondRateChecker? _rate;
+
   /// The invoice this cubit pays, the step of the use case whose functions it was given (the locator passes `PayBondFromWalletUsecase.step`): the panel offers the wallet only for a request of that step.
   final InvoiceStep step;
   Timer? _stillWaiting;
@@ -168,7 +182,9 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     this._running, {
     this._stillWaitingAfter = BondPaymentCubit.stillWaitingAfter,
     this.step = InvoiceStep.bond,
-  }) : super(const BondPaymentState());
+    BondRateChecker? rate,
+  }) : _rate = rate,
+       super(const BondPaymentState());
 
   /// Reads the balance and looks for a payment of the bond made earlier: once.
   void start() {
@@ -217,7 +233,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     );
   }
 
-  /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only.
+  /// Asks the swap service for its quote of the bond as [seen] shows it: on the tap of « Pay with this wallet » only; for an order made here, then compares the quote with the wallet's own price (#180) before the confirmation shows both.
   ///
   /// The follow of an earlier payment stops here: from the quote to the end of the payment, no event of the wallet's records moves the panel (a preparation left by an earlier run that expires meanwhile would offer to pay again while this payment runs).
   Future<void> ask(TradeSeen seen) async {
@@ -227,14 +243,26 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     emit(state._with(step: const BondPayQuoting()));
     final quoted = await _quoter(record, seen);
     if (isClosed) return;
-    emit(
-      state._with(
-        step: switch (quoted) {
-          Ok(:final value) => BondPayConfirming(value),
-          Err(:final failure) => BondPayIdle(refused: failure),
-        },
-      ),
-    );
+    final P2pWalletQuote quote;
+    switch (quoted) {
+      case Ok(:final value):
+        quote = value;
+      case Err(:final failure):
+        emit(state._with(step: BondPayIdle(refused: failure)));
+        return;
+    }
+    final WalletRateCheck? rate;
+    switch (await _rate?.call(record, quote)) {
+      case null || Ok(value: null):
+        rate = null;
+      case Ok(:final value?):
+        rate = value;
+      case Err(:final failure):
+        if (!isClosed) emit(state._with(step: BondPayIdle(refused: failure)));
+        return;
+    }
+    if (isClosed) return;
+    emit(state._with(step: BondPayConfirming(quote, rate: rate)));
   }
 
   /// Leaves the confirmation without paying.

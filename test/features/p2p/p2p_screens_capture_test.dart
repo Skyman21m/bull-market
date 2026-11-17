@@ -3074,4 +3074,10 @@ final class _CaptureWallet implements P2pWalletPort {
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
     RobosatsNetwork network,
   ) async => const Err(P2pWalletUnavailable());
+
+  @override
+  Future<P2pWalletBitcoinRate> bitcoinRate(
+    RobosatsNetwork network,
+    RobosatsCurrency currency,
+  ) async => const P2pWalletRateUnavailable();
 }

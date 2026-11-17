@@ -565,6 +565,8 @@ final class P2pLocator {
         payments.followBond,
         payments.bondPaymentRunning,
         step: payments.step,
+        // The maker bond's comparison with the wallet's own price (#180); the escrow's cubit has none until #187.
+        rate: payments.rateOfBond,
       );
     });
     locator.registerFactoryParam<EscrowPaymentCubit, TradeRecord, void>((

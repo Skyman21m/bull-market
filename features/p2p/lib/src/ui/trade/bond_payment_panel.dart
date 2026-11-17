@@ -10,7 +10,9 @@ import '../../../generated/l10n/p2p_localizations.dart';
 import '../../../public/p2p_wallet_port.dart';
 import '../../domain/trade/bond_payment.dart';
 import '../../domain/trade/trade_status.dart';
+import '../../domain/trade/trade_tolerances.dart';
 import '../../domain/trade/wallet_payment.dart';
+import '../../domain/trade/wallet_rate_check.dart';
 import '../../domain/trade_record.dart';
 import '../../presentation/bond_payment_cubit.dart';
 import '../../presentation/coordinator_text.dart';
@@ -270,9 +272,11 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
           ),
           line(l10n.p2pPayQuoting),
         ],
-        BondPayConfirming(:final walletQuote) => [
+        BondPayConfirming(:final walletQuote, :final rate) => [
           _Confirmation(
             walletQuote: walletQuote,
+            rate: rate,
+            coordinator: coordinator,
             request: widget.request,
             payKey: _payKey,
             onCancel: cubit.dismiss,
@@ -331,9 +335,15 @@ class _BondPaymentPanelState extends State<BondPaymentPanel> {
   }
 }
 
-/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
+/// The confirmation: the invoice's amount, the swap fees, the network fee, the total and what stays, for an order made here how the bond compares with the wallet's own price (#180), the reference's sentence on a hold invoice, « Go back » and « Pay {total} sats », the only tap that pays.
 class _Confirmation extends StatelessWidget {
   final P2pWalletQuote walletQuote;
+
+  /// For an order made here, the bond quoted against the wallet's own price (the owner's payment rule of 2026-11-17): a line, and a red warning beyond the owner's threshold; `null` for a take, which shows none.
+  final WalletRateCheck? rate;
+
+  /// The trade's coordinator, named when the price of the creation is the reference.
+  final String coordinator;
   final WalletPaymentRequest request;
   final GlobalKey payKey;
   final VoidCallback onCancel;
@@ -341,6 +351,8 @@ class _Confirmation extends StatelessWidget {
 
   const _Confirmation({
     required this.walletQuote,
+    required this.rate,
+    required this.coordinator,
     required this.request,
     required this.payKey,
     required this.onCancel,
@@ -396,6 +408,11 @@ class _Confirmation extends StatelessWidget {
               style: body,
             ),
             const Gap(BullSpacing.sm),
+            // The owner's payment rule (#180): the bond against the wallet's own price, its gap shown, a red warning beyond the threshold; the user may still pay.
+            if (rate case final rate?) ...[
+              _RateLines(rate: rate, coordinator: coordinator),
+              const Gap(BullSpacing.sm),
+            ],
             // The escrow's facts (#97), the project's line: the whole trade stays with the swap service until it ends, and what a cancelled trade costs. Informed, not stopped.
             if (escrow) ...[
               Text(l10n.p2pPayEscrowHeld, style: body),
@@ -426,6 +443,87 @@ class _Confirmation extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the reference's price and the bond it gives with the gap of the invoice, said weaker when the price is the coordinator's of the creation, and beyond the owner's threshold a red warning with both amounts; it stops nothing.
+class _RateLines extends StatelessWidget {
+  final WalletRateCheck rate;
+  final String coordinator;
+
+  const _RateLines({required this.rate, required this.coordinator});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final text = Theme.of(context).textTheme;
+    final l10n = P2pLocalizations.of(context);
+    final formats = P2pFormats.of(context);
+    final price = formats.price(rate.price);
+    final code = rate.currency.code;
+    final expected = formats.bigSats(rate.expected.value);
+    final gap = formats.gap(rate.gapHundredths);
+    final line = switch (rate.reference) {
+      WalletRateReference.wallet => l10n.p2pPayRateWallet(
+        price,
+        code,
+        expected,
+        gap,
+      ),
+      WalletRateReference.createdNotPriced => l10n.p2pPayRateNotPriced(
+        code,
+        coordinator,
+        price,
+        expected,
+        gap,
+      ),
+      WalletRateReference.createdUnreadable => l10n.p2pPayRateUnreadable(
+        coordinator,
+        price,
+        code,
+        expected,
+        gap,
+      ),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(line, style: text.bodyMedium?.copyWith(color: colors.text)),
+        if (rate.warns) ...[
+          const Gap(BullSpacing.sm),
+          Semantics(
+            container: true,
+            liveRegion: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ExcludeSemantics(
+                  child: Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: colors.error,
+                  ),
+                ),
+                const Gap(BullSpacing.xs),
+                Expanded(
+                  child: Text(
+                    l10n.p2pPayRateWarning(
+                      formats.threshold(TradeTolerances.walletRateGap),
+                      formats.bigSats(rate.asked.value),
+                      expected,
+                    ),
+                    style: text.bodyMedium?.copyWith(
+                      color: colors.error,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

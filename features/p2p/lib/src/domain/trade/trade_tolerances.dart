@@ -41,6 +41,11 @@ abstract final class TradeTolerances {
   /// It bounds only what this wallet pays: the coordinator fixes the trade's sats at its own price at the take (`Logics.finalize_contract`, `api/logics.py:1332-1335`), which nothing compares with a price (§ 3.3).
   static const double makerEscrowFactor = 2;
 
+  /// How far above the sats expected at the wallet's own price a payment for an order made here may be before the confirmation warns, as a fraction: 10 %, the owner's one threshold (decided on 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3).
+  ///
+  /// On the side that costs the user only (a bond or an escrow asked larger than expected): a smaller one is shown without a warning. Beyond it, the confirmation shows a red warning with both amounts, and the user may still pay: it never stops a payment. To measure in the first real trials.
+  static const double walletRateGap = 0.10;
+
   /// How long after a deadline the coordinator's own loops have certainly acted on it: 1 minute.
   ///
   /// The order cleaner runs every 5 s (`api/management/commands/clean_orders.py:114-120`, it expires orders and pre-takes past their `expires_at`), and so does the invoice follower (`follow_invoices.py:27,33-34`, it settles or returns a bond that locked); a minute covers both with room for a slow coordinator.

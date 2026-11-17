@@ -41,6 +41,25 @@ final class P2pFormats {
   /// A number of sats, with the thousands separator of the locale.
   String sats(int sats) => NumberFormat.decimalPattern(_locale).format(sats);
 
+  /// A number of sats held as a `BigInt`, with the thousands separator of the locale: exact while it fits an `int`, the nearest double's digits beyond (a figure computed from a price, never one the wallet pays).
+  String bigSats(BigInt sats) => sats.isValidInt
+      ? this.sats(sats.toInt())
+      : NumberFormat.decimalPattern(_locale).format(sats.toDouble());
+
+  /// How far an amount is from the one expected (#180), from hundredths of a percent already rounded away from zero: with its sign and 2 decimals, such as `+10.01%` or `-2.50%`.
+  String gap(BigInt hundredths) {
+    final text = _percent(
+      hundredths.toDouble() / 100,
+      minDecimals: 2,
+      maxDecimals: 2,
+    );
+    return hundredths > BigInt.zero ? '+$text' : text;
+  }
+
+  /// A threshold given as a fraction, as a whole percentage such as `10%`.
+  String threshold(double fraction) =>
+      _percent(fraction * 100, minDecimals: 0, maxDecimals: 0);
+
   /// The amount of a swap order, given in BTC, as the sats the official client writes for it (`btcToSatsString`): `5,120,000`, or `min-max` for a range.
   String btcAmountInSats(OrderAmount amount) {
     // The package reads at most 1e10 BTC, so the sats fit in an int.

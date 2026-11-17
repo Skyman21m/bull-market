@@ -96,7 +96,12 @@ export 'public/p2p_wallet_port.dart'
         P2pWalletOrderExpiresTooSoon,
         P2pWalletPaymentInterrupted,
         P2pWalletInvoice,
-        P2pWalletAddress;
+        P2pWalletAddress,
+        // The wallet's price of a bitcoin (#180), for the payment rule of an order made here.
+        P2pWalletBitcoinRate,
+        P2pWalletRateNotPriced,
+        P2pWalletRateRead,
+        P2pWalletRateUnavailable;
 export 'src/domain/checked_bolt11_invoice.dart' show CheckedBolt11Invoice;
 export 'src/domain/p2p_tor_state.dart' show P2pTorState;
 // The BOLT11 decoder port, which the shell implements with the app's pinned `bolt11_decoder` (#86, design note § 3.9): the trade's checks read every invoice of a coordinator through it.

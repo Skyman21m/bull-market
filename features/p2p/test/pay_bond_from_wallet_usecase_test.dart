@@ -75,6 +75,12 @@ final class _Wallet implements P2pWalletPort {
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
     RobosatsNetwork network,
   ) => fake.newReceiveAddress(network);
+
+  @override
+  Future<P2pWalletBitcoinRate> bitcoinRate(
+    RobosatsNetwork network,
+    RobosatsCurrency currency,
+  ) => fake.bitcoinRate(network, currency);
 }
 
 /// Payments that cannot be written.

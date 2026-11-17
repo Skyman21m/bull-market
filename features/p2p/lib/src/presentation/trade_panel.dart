@@ -19,6 +19,9 @@ enum TradeCancelOffer { none, free, losesBond }
 /// The title of a contract (`TradeBox/index.tsx`, `statusToContract`).
 enum TradeTitle {
   lockBond,
+
+  /// The maker's at 0 (#180): « Lock {{amountSats}} Sats to PUBLISH order » (`TradeBox/index.tsx:379-389`).
+  lockBondToPublish,
   payout,
   infoGood,
 
@@ -190,9 +193,10 @@ final class TradeContract extends TradeView {
 
   TradeCancelOffer get cancel => cancelOf(status);
 
-  /// The sats the title states: the bond at 3 (`bond_satoshis`), the escrow at 6 and 7 for a seller (`escrow_satoshis`, `TradeBox/index.tsx:482`, `:500`; before the coordinator gives the invoice, the seller's `trade_satoshis`, which is the same `Logics.escrow_amount`, `api/views.py:362-365`); `null` elsewhere.
+  /// The sats the title states: the bond at 3 (`bond_satoshis`), the maker bond at 0 (`bond_satoshis`, `TradeBox/index.tsx:383`, #180), the escrow at 6 and 7 for a seller (`escrow_satoshis`, `TradeBox/index.tsx:482`, `:500`; before the coordinator gives the invoice, the seller's `trade_satoshis`, which is the same `Logics.escrow_amount`, `api/views.py:362-365`); `null` elsewhere.
   Sats? get titleSats => switch (status) {
-    WaitingForTakerBond(:final bond) => bond.orderAmount,
+    WaitingForTakerBond(:final bond) ||
+    WaitingForMakerBond(:final bond) => bond.orderAmount,
     WaitingForBoth(
       role: TradeRole.seller,
       :final escrow,
@@ -206,8 +210,9 @@ final class TradeContract extends TradeView {
     _ => null,
   };
 
-  /// The step and the steps of a taker (`TradeBox/stepXofY.ts`): 3 → 1 of 4, 6 to 8 → 2, 9 → 3, 10 → 4; none elsewhere.
+  /// The step and the steps of a taker (`TradeBox/stepXofY.ts`): 3 → 1 of 4, 6 to 8 → 2, 9 → 3, 10 → 4; none elsewhere. A maker's at 0 is 1 of 5 (`stepXofY.ts:8-26`, #180); its others come with its panels (#182).
   (int, int)? get step => switch (status.position) {
+    TradePosition.makerBondStep => (1, 5),
     TradePosition.bondStep => (1, 4),
     TradePosition.waitingForBoth ||
     TradePosition.waitingForEscrow ||
@@ -220,6 +225,7 @@ final class TradeContract extends TradeView {
   /// The title the official client gives a taker at [status], of either side (`statusToContract`, `TradeBox/index.tsx:359-724`): a seller locks the escrow at 6 and 7, waits at 8, and sees « Trade finished! » from 13 on, 15 included, where the buyer is still being paid.
   static TradeTitle titleOf(TradeStatus status) => switch (status) {
     WaitingForTakerBond() => TradeTitle.lockBond,
+    WaitingForMakerBond() => TradeTitle.lockBondToPublish,
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradeTitle.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradeTitle.infoGood,
@@ -241,7 +247,8 @@ final class TradeContract extends TradeView {
   };
 
   static TradePrompt promptOf(TradeStatus status) => switch (status) {
-    WaitingForTakerBond() => TradePrompt.lockInvoice,
+    // The maker bond at 0 is the same prompt (`Prompts/LockInvoice.tsx`, concept `bond`, `TradeBox/index.tsx:384-386`, #180).
+    WaitingForTakerBond() || WaitingForMakerBond() => TradePrompt.lockInvoice,
     WaitingForBoth(role: TradeRole.buyer) ||
     WaitingForPayout(role: TradeRole.buyer) => TradePrompt.payout,
     WaitingForEscrow(role: TradeRole.buyer) => TradePrompt.escrowWait,
@@ -277,9 +284,9 @@ final class TradeContract extends TradeView {
     _ => TradeBondLine.hide,
   };
 
-  /// « Cancel » at 3, 6 and 7 only (`CancelButton.tsx:27-29`): free while the bond is not locked, losing it after.
+  /// « Cancel » at 3, 6 and 7 only (`CancelButton.tsx:27-29`), and for a maker at 0 (`:27-29`, `:74-82`, #180, the reference's `Dialogs/CancelOrder.tsx`, its bond not locked yet): free while the bond is not locked, losing it after. A maker's at 1 and 2 come with its panels (#182).
   static TradeCancelOffer cancelOf(TradeStatus status) => switch (status) {
-    WaitingForTakerBond() => TradeCancelOffer.free,
+    WaitingForTakerBond() || WaitingForMakerBond() => TradeCancelOffer.free,
     WaitingForBoth() || WaitingForEscrow() => TradeCancelOffer.losesBond,
     _ => TradeCancelOffer.none,
   };

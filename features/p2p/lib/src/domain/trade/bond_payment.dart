@@ -16,7 +16,7 @@ sealed class BondPayRefusal extends Failure {
   String toString() => runtimeType.toString();
 }
 
-/// The status is not the bond step marked stored: a payment is offered only from a stored `WaitingForTakerBond` (`AGENTS.md`, « Rules for the screens (#88) »), and the read just before the payment no longer shows one.
+/// The status is not the bond step marked stored: a payment is offered only from a stored `WaitingForTakerBond`, or for an order made here a stored `WaitingForMakerBond` (#180) (`AGENTS.md`, « Rules for the screens (#88) »), and the read just before the payment no longer shows one; also every step this wallet does not pay for the trade's side (a maker seller's escrow before #187).
 final class BondPayNotAtBondStep extends BondPayRefusal {
   const BondPayNotAtBondStep();
 }
