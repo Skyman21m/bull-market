@@ -239,8 +239,7 @@ final class P2pRouter {
 
   /// The create page (#181): the form over its cubit, a made order replacing the page by its trade as a take does.
   ///
-  /// No route builds it yet and nothing in the tab opens it: « Create » stays disabled until the maker's panels exist (#182, design note § 2.1, « Order of the pull requests »); the tests and the captures build it here.
-  @visibleForTesting
+  /// No route builds it yet and nothing in the tab opens it: « Create » stays disabled until the maker's panels exist (#182, design note § 2.1, « Order of the pull requests »); the tests and the app's captures build it here, the latter through the testing seam (`createOrderPageForTesting`), the only caller in `lib`, as `trade_screen_architecture_test.dart` pins.
   static Widget createPage(GetIt locator, P2pCreateRouteArgs args) =>
       BlocProvider(
         create: (_) => locator<MakeOrderCubit>(

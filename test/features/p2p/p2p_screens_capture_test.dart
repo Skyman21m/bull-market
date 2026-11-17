@@ -2909,7 +2909,8 @@ void main() {
           await toBottom();
         }
 
-        wallet.rate = P2pWalletRateRead(80000);
+        // The recorded price of USD, 73,956.8, more than 10 % below 90,000; that of EUR, 66,227.95, more than 10 % above 55,000.
+        wallet.rate = P2pWalletRateRead(90000);
         await showCurrency('USD');
         await capture('creer-prix-ecart-bas');
         wallet.rate = P2pWalletRateRead(55000);
