@@ -109,7 +109,7 @@ final class MakeOrderUsecase {
                 for (final make in list)
                   ActivePendingMake(
                     make,
-                    neverSent: map[make.robot]?.terms == null,
+                    neverSent: _neverSent(map[make.robot]),
                   ),
               ]),
             ),
@@ -143,6 +143,10 @@ final class MakeOrderUsecase {
     );
     return out.stream;
   }
+
+  /// Whether a pending make whose stored terms and trail are [history] never sent its request: no terms row at all (`watchMadeHistories` lists the makes that have one), never a row it cannot read, which may be of a make that left (security review of #179).
+  static bool _neverSent(StoredMadeHistory? history) =>
+      history == null || (history.terms == null && !history.unreadable);
 
   Future<Result<MakeOutcome, MakeRefusal>> _make(
     MakeOrderRequest request, {

@@ -462,6 +462,12 @@ final class MakeTrails implements TradeTrailRepository {
   /// When set, what [makerTermsOf] gives instead of the record stored: a database that reads back otherwise than it wrote.
   MakerTermsRecord? Function(MakerTermsRecord? stored)? readBack;
 
+  /// When set, what [watchMadeHistories] gives in place of each map stored: a database whose rows read otherwise.
+  Map<RobotSlot, StoredMadeHistory> Function(
+    Map<RobotSlot, StoredMadeHistory> stored,
+  )?
+  madeHistories;
+
   /// How many trails were asked to be stored.
   int stores = 0;
 
@@ -519,6 +525,12 @@ final class MakeTrails implements TradeTrailRepository {
 
   @override
   Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
-  watchMadeHistories(RobosatsNetwork network) =>
-      _inner.watchMadeHistories(network);
+  watchMadeHistories(RobosatsNetwork network) => _inner
+      .watchMadeHistories(network)
+      .map(
+        (result) => switch ((result, madeHistories)) {
+          (Ok(:final value), final change?) => Ok(change(value)),
+          _ => result,
+        },
+      );
 }

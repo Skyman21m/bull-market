@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:p2p/src/domain/trade/trade_status.dart';
 import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
@@ -707,6 +708,39 @@ void main() {
         expect((outcome as MakeNotMade).make.closedAt, isNotNull);
         expect(harness.coordinator.orders, isEmpty);
         expect(await harness.pendingMakes(), isEmpty);
+      },
+    );
+  });
+
+  group('the line of a pending make', () {
+    test(
+      'terms it cannot read are never said « never sent »: the make may have left',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.make,
+          ScriptedFault.answerLost,
+        );
+        expect(valueOf(await harness.makeOrder()), isA<MakePending>());
+        // The terms row read as one this code never writes (a value of another storage class), which the CHECKs of `maker_terms` refuse: played over the stream, not written.
+        harness.trails.madeHistories = (stored) => {
+          for (final key in stored.keys)
+            key: const StoredMadeHistory(
+              terms: null,
+              trail: null,
+              unreadable: true,
+            ),
+        };
+        final listed = valueOf(
+          await harness.make.pendingMakes(harness.network).first,
+        );
+        expect(listed.single.neverSent, isFalse);
+        // And with no terms row at all, never sent.
+        harness.trails.madeHistories = (stored) => const {};
+        final bare = valueOf(
+          await harness.make.pendingMakes(harness.network).first,
+        );
+        expect(bare.single.neverSent, isTrue);
       },
     );
   });

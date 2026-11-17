@@ -152,6 +152,38 @@ void main() {
     },
   );
 
+  for (final paused in [false, true]) {
+    test(
+      'at ${paused ? 2 : 1}, a cancel answered with the order unchanged: the record stays open and followed, the live status kept, no bond said returned',
+      () async {
+        // Security review of #179: an answer that is the order as it was, alive, is no end of it, and nothing was returned.
+        final (harness, record, seen) = await madeAndSeen(
+          move: (harness) {
+            harness.coordinator.lockMakerBond(42);
+            if (paused) harness.coordinator.pause(42);
+          },
+        );
+        harness.coordinator.cancelAnswersUnchanged = true;
+        final done = valueOf(await harness.cancel.execute(record, seen));
+        expect(done, isA<CancelDone>());
+        expect((done as CancelDone).makerBondReturned, isFalse);
+        expect(done.record.closedAt, isNull);
+        expect(
+          done.seen.status,
+          isA<MakerOrderPublic>().having((s) => s.paused, 'paused', paused),
+        );
+        expect(harness.coordinator.order(42).status, paused ? 2 : 1);
+        expect(harness.coordinator.order(42).bondReturned, isFalse);
+        expect(await harness.activeRecords(), [done.record]);
+        // Still followed: the watch reads it as it is.
+        final run = harness.watchOf(done.record);
+        await harness.settle();
+        expect(run.lastStatus.seen.status, isA<MakerOrderPublic>());
+        await run.subscription.cancel();
+      },
+    );
+  }
+
   group('the guards, each alone (functional review of #179)', () {
     TradeRecord withOrigin(TradeRecord record, TradeOrigin origin) =>
         TradeRecord(

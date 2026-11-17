@@ -145,6 +145,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// A hostile coordinator: a cancel that ends the order is answered with the whole order at 4, rather than the reference's short body.
   bool cancelAnswersWholeOrder = false;
 
+  /// A hostile coordinator, or a page of an intermediary: the maker's cancel is answered with the whole order unchanged, as if no cancel had come, and nothing is cancelled (security review of #179).
+  bool cancelAnswersUnchanged = false;
+
   /// A hostile coordinator: it says the robot named no order, whatever it made.
   bool hideOrders = false;
 
@@ -521,6 +524,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     }
     if (guard != null && guard != made.status) {
       return _json(400, {'error_code': 1020, 'bad_request': 'status moved'});
+    }
+    if (cancelAnswersUnchanged) {
+      return _json(200, _orderJson(made, robot, isMaker: true));
     }
     switch (made.status) {
       case 0:
