@@ -66,6 +66,9 @@ export 'src/testing/bolt11_test_invoice.dart'
 // A coordinator and an order of its book played for the tests of the trade use cases (#87): the take, the reads and the cancel as the reference backend answers them, over no network.
 export 'src/testing/scripted_coordinator.dart'
     show ScriptedCoordinator, ScriptedFault, ScriptedRequest;
+// A coordinator that the maker tests make orders on (#179): the make, the maker's reads and cancel, the robot's orders, as the reference backend answers them, over no network.
+export 'src/testing/scripted_maker_coordinator.dart'
+    show ScriptedMadeOrder, ScriptedMakerCoordinator, ScriptedMakerRequest;
 export 'src/domain/p2p_tor_state.dart' show P2pTorReport, P2pTorState;
 // The coordinator images and their pinned sources, which the app's tests load through the app's own asset bundle.
 export 'src/ui/widgets/coordinator_images.dart'

@@ -1,0 +1,505 @@
+import 'dart:async';
+
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:p2p/src/data/p2p_database.dart';
+import 'package:p2p/src/data/robot_binding_repository_impl.dart';
+import 'package:p2p/src/data/trade_record_repository_impl.dart';
+import 'package:p2p/src/data/trade_trail_repository_impl.dart';
+import 'package:p2p/src/domain/garage_key_fingerprint.dart';
+import 'package:p2p/src/domain/interim_trade_robots.dart';
+import 'package:p2p/src/domain/network_garage_key.dart';
+import 'package:p2p/src/domain/p2p_failure.dart';
+import 'package:p2p/src/domain/p2p_waits.dart';
+import 'package:p2p/src/domain/repositories/garage_key_repository.dart';
+import 'package:p2p/src/domain/repositories/trade_record_repository.dart';
+import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
+import 'package:p2p/src/domain/robot_binding.dart';
+import 'package:p2p/src/domain/robot_request_limiter.dart';
+import 'package:p2p/src/domain/trade/bolt11.dart';
+import 'package:p2p/src/domain/trade/trade_make.dart';
+import 'package:p2p/src/domain/trade/trade_storable.dart';
+import 'package:p2p/src/domain/trade_record.dart';
+import 'package:p2p/src/domain/usecases/fetch_robot_usecase.dart';
+import 'package:p2p/src/domain/usecases/put_robot_on_coordinator_usecase.dart';
+import 'package:p2p/src/domain/usecases/read_robot_on_coordinator_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/cancel_trade_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/list_active_trades_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/make_order_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_make_locks.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_read_order.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_take_locks.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_watch_session.dart';
+import 'package:p2p/src/domain/usecases/trade/watch_trade_usecase.dart';
+import 'package:p2p/testing.dart' show ScriptedMakerCoordinator;
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+import 'package:test/test.dart';
+
+import 'trade_harness.dart'
+    show AppKilled, HarnessKeys, HarnessTimer, TradeHarness, WatchRun, tradeKey;
+
+/// Where the make tests stop the app (#179): after each write of a make, and between its answer and its confirmation.
+enum MakeKillAt {
+  none,
+
+  /// After the robot was reserved and bound, before its first contact.
+  afterReservation,
+
+  /// After the pending make, before its terms.
+  afterPendingMake,
+
+  /// After the terms, before the make's request.
+  afterMakerTerms,
+
+  /// After the answer and the read that shows this robot as the maker, before the make is confirmed.
+  beforeConfirm,
+
+  /// After the confirmation, before the first trail.
+  beforeFirstTrail,
+}
+
+/// One run of the app over a database the runs share, for the make: the real repositories, robot layer, limiter, reader and use cases, the coordinator played by [ScriptedMakerCoordinator], a clock and timers the test moves.
+final class MakeHarness {
+  final RobosatsNetwork network;
+  final P2pDatabase database;
+  final ScriptedMakerCoordinator coordinator;
+  final _Clock _clock;
+  MakeKillAt kill = MakeKillAt.none;
+
+  late final RobotBindingRepositoryImpl bindings;
+  late final MakeRecords records;
+  late final MakeTrails trails;
+  late final InterimTradeRobots robots;
+  late final RobotRequestLimiter limiter;
+  late final TradeReader reader;
+  late final MakeOrderUsecase make;
+  late final WatchTradeUsecase watch;
+  late final CancelTradeUsecase cancel;
+  late final ListActiveTradesUsecase list;
+
+  /// The key work of this run.
+  final HarnessKeys keys = HarnessKeys();
+
+  /// Every timer the watch started, in order.
+  final List<HarnessTimer> timers = [];
+
+  final TradeTakeLocks locks = TradeTakeLocks();
+  final TradeMakeLocks makeLocks = TradeMakeLocks();
+  final TradeWatchRegistry watchRegistry = TradeWatchRegistry();
+  final _MakeVault _vault;
+
+  MakeHarness._(this.network, this.database, this.coordinator, this._clock)
+    : _vault = _MakeVault(NetworkGarageKey(network, tradeKey)) {
+    DateTime clock() => _clock.now;
+    bindings = RobotBindingRepositoryImpl(database, clock: clock);
+    records = MakeRecords(
+      TradeRecordRepositoryImpl(database, clock: clock),
+      () => kill,
+    );
+    trails = MakeTrails(TradeTrailRepositoryImpl(database), () => kill);
+    robots = InterimTradeRobots(_vault, records);
+    limiter = RobotRequestLimiter(
+      elapsed: () => _clock.now.difference(DateTime.utc(2026)),
+      delay: (_) async {},
+      random: () => 0.5,
+    );
+    final client = CoordinatorClient(coordinator, clock: clock);
+    final invoices = Bolt11Reader(coordinator.decoder);
+    reader = TradeReader(
+      robots,
+      records,
+      trails,
+      bindings,
+      client,
+      Federation.robosats,
+      invoices,
+      clock: clock,
+      requestOrder: TradeReadOrder(),
+    );
+    final fetch = FetchRobotUsecase(client, bindings, keys);
+    final put = PutRobotOnCoordinatorUsecase(fetch, bindings, limiter);
+    final readRobot = ReadRobotOnCoordinatorUsecase(
+      fetch,
+      bindings,
+      limiter,
+      Federation.robosats,
+    );
+    make = MakeOrderUsecase(
+      client,
+      robots,
+      put,
+      readRobot,
+      records,
+      trails,
+      reader,
+      limiter,
+      invoices,
+      makeLocks,
+      Federation.robosats,
+    );
+    watch = WatchTradeUsecase(
+      reader,
+      limiter,
+      P2pWaits(
+        start: (duration, callback) {
+          final timer = HarnessTimer(
+            _clock.now.add(duration),
+            duration,
+            callback,
+          );
+          timers.add(timer);
+          return timer;
+        },
+        random: () => 0.5,
+      ),
+      watchRegistry,
+    );
+    cancel = CancelTradeUsecase(client, reader, limiter, locks);
+    list = ListActiveTradesUsecase(robots, trails, clock: clock);
+  }
+
+  /// A first run: a new database, the key recorded as drawn here, and [coordinator] answering the make.
+  static Future<MakeHarness> start({
+    RobosatsNetwork network = RobosatsNetwork.testnet,
+  }) async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    final clock = _Clock(DateTime.utc(2026, 11, 14, 9));
+    final database = P2pDatabase.forTesting(NativeDatabase.memory());
+    final coordinator = ScriptedMakerCoordinator(
+      network: network,
+      robots: TradeHarness.robotsOf(network),
+      clock: () => clock.now,
+    );
+    final harness = MakeHarness._(network, database, coordinator, clock);
+    final fingerprint = switch (GarageKeyFingerprint.of(tradeKey)) {
+      Ok(:final value) => value,
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    expect(
+      await harness.bindings.recordGeneratedKey(network, fingerprint),
+      isA<Ok>(),
+    );
+    return harness;
+  }
+
+  /// The app started again over the same database and coordinator, at the same time: nothing kept in memory.
+  MakeHarness restart() =>
+      MakeHarness._(network, database, coordinator, _clock);
+
+  DateTime get now => _clock.now;
+
+  /// Moves the clock by [by], and fires the timers whose time has come, in order.
+  Future<void> elapse(Duration by) async {
+    _clock.now = _clock.now.add(by);
+    while (true) {
+      final due = timers.where(
+        (t) => t.isActive && !t.due.isAfter(_clock.now),
+      );
+      if (due.isEmpty) break;
+      due.first.fire();
+      await settle();
+    }
+    await settle();
+  }
+
+  /// Lets every pending future run.
+  Future<void> settle() => pumpEventQueue(times: 200);
+
+  /// The robot of index [index] among `TradeHarness.robotsOf`.
+  RobotIdentity robot(int index) => TradeHarness.robotsOf(network)[index];
+
+  /// The coordinator of the make.
+  Coordinator get host => coordinator.coordinator;
+
+  /// The make of the tests' order: 100 EUR, a premium of 2 %, a bond of 3 %, three hours of escrow, a public duration of 23:59, Revolut Instant SEPA; buying unless [sell], with a description when given.
+  static MakeOrderRequest request({
+    bool sell = false,
+    double amount = 100,
+    String? description,
+    double premium = 2,
+    RobosatsCurrency? currency,
+  }) {
+    T some<T>(T? value) => value ?? (throw StateError('missing'));
+    return some(
+      MakeOrderRequest.tryCreate(
+        type: sell ? OrderType.sell : OrderType.buy,
+        currency: currency ?? some(RobosatsCurrency.fromId(2)),
+        amount: FixedOrderAmount(some(FiatAmount.tryCreate(amount))),
+        paymentMethod: 'Revolut Instant SEPA',
+        premium: some(Premium.tryCreate(premium)),
+        publicDuration: const Duration(seconds: 86340),
+        escrowDuration: const Duration(seconds: 10800),
+        bondSize: some(BondSize.tryCreate(3)),
+        description: description,
+      ),
+    );
+  }
+
+  /// Makes [request] (by default [MakeHarness.request]) on the coordinator.
+  Future<Result<MakeOutcome, MakeRefusal>> makeOrder([
+    MakeOrderRequest? request,
+  ]) => make.execute(
+    request ?? MakeHarness.request(),
+    coordinator: host,
+    network: network,
+  );
+
+  /// The pending makes, as the database holds them.
+  Future<List<PendingMake>> pendingMakes() async =>
+      switch (await records.watchPendingMakes(network).first) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+
+  /// The active trades, as the database holds them.
+  Future<List<TradeRecord>> activeRecords() async =>
+      switch (await records.watchActiveTrades(network).first) {
+        Ok(:final value) => value,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+
+  /// Every record, closed ones included.
+  Future<List<Map<String, Object?>>> allTrades() async => [
+    for (final row
+        in await database
+            .customSelect('SELECT * FROM trades ORDER BY robot_index')
+            .get())
+      row.data,
+  ];
+
+  /// The stored trail of [record], if any.
+  Future<TradeTrailRecord?> trailOf(TradeRecord record) async =>
+      switch (await trails.historyOf(record)) {
+        Ok(:final value) => value.trail,
+        Err(:final failure) => throw StateError('$failure'),
+      };
+
+  /// Listens to the watch of [record] and collects what it emits.
+  WatchRun watchOf(TradeRecord record, {bool onScreen = true}) {
+    final run = WatchRun();
+    run.subscription = watch
+        .execute(record, signals: const Stream.empty(), onScreen: onScreen)
+        .listen(run.states.add, onDone: () => run.done = true);
+    return run;
+  }
+}
+
+final class _Clock {
+  DateTime now;
+
+  _Clock(this.now);
+}
+
+final class _MakeVault implements GarageKeyRepository {
+  final NetworkGarageKey key;
+
+  _MakeVault(this.key);
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> read(
+    RobosatsNetwork network,
+  ) async => key.network == network
+      ? Ok(key)
+      : const Err(GarageKeyMissingFailure());
+
+  @override
+  Future<Result<NetworkGarageKey, P2pFailure>> create(
+    RobosatsNetwork network,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<Result<void, P2pFailure>> import(
+    RobosatsNetwork network,
+    GarageKey key,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<Result<bool, P2pFailure>> exists(RobosatsNetwork network) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<NetworkRobot, P2pFailure>> firstUsableRobot(
+    RobosatsNetwork network,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<Result<void, P2pFailure>> delete(RobosatsNetwork network) =>
+      throw UnimplementedError();
+}
+
+/// The trade records, stopping the app where the test says, or failing a write of a make.
+final class MakeRecords implements TradeRecordRepository {
+  final TradeRecordRepository _inner;
+  final MakeKillAt Function() _kill;
+
+  /// What the next [recordPendingMake], [confirmMake] or [closePendingMake] gives instead of writing, when set.
+  P2pFailure? pendingFailure;
+  P2pFailure? confirmFailure;
+  P2pFailure? closeFailure;
+
+  /// How many confirmations of a make were asked.
+  int confirms = 0;
+
+  MakeRecords(this._inner, this._kill);
+
+  @override
+  Future<Result<NewTradeStanding, P2pFailure>> newTradeStandingOf(
+    RobosatsNetwork network,
+    GarageKeyFingerprint key,
+  ) => _inner.newTradeStandingOf(network, key);
+
+  @override
+  Future<Result<TradeReservation?, P2pFailure>> reserveForNewTrade(
+    RobotSlot robot,
+    CoordinatorIdentity coordinator,
+  ) async {
+    final reserved = await _inner.reserveForNewTrade(robot, coordinator);
+    if (_kill() == MakeKillAt.afterReservation) throw AppKilled();
+    return reserved;
+  }
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> recordPendingTake(
+    TradeReservation reservation, {
+    required int orderId,
+    required TradeRole role,
+  }) => _inner.recordPendingTake(reservation, orderId: orderId, role: role);
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> recordRecoveredTrade(
+    RobotSlot robot,
+    CoordinatorIdentity coordinator, {
+    required int orderId,
+    required TradeRole role,
+  }) => _inner.recordRecoveredTrade(
+    robot,
+    coordinator,
+    orderId: orderId,
+    role: role,
+  );
+
+  @override
+  Future<Result<PendingMake, P2pFailure>> recordPendingMake(
+    TradeReservation reservation, {
+    required TradeRole role,
+  }) async {
+    if (pendingFailure case final failure?) return Err(failure);
+    final written = await _inner.recordPendingMake(reservation, role: role);
+    if (_kill() == MakeKillAt.afterPendingMake) throw AppKilled();
+    return written;
+  }
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> confirmMake(
+    PendingMake make, {
+    required int orderId,
+  }) async {
+    confirms++;
+    if (_kill() == MakeKillAt.beforeConfirm) throw AppKilled();
+    if (confirmFailure case final failure?) return Err(failure);
+    return _inner.confirmMake(make, orderId: orderId);
+  }
+
+  @override
+  Future<Result<PendingMake, P2pFailure>> closePendingMake(
+    PendingMake make,
+  ) async {
+    if (closeFailure case final failure?) return Err(failure);
+    return _inner.closePendingMake(make);
+  }
+
+  @override
+  Stream<Result<List<PendingMake>, P2pFailure>> watchPendingMakes(
+    RobosatsNetwork network,
+  ) => _inner.watchPendingMakes(network);
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> confirmTake(TradeRecord record) =>
+      _inner.confirmTake(record);
+
+  @override
+  Future<Result<TradeRecord, P2pFailure>> closeTrade(TradeRecord record) =>
+      _inner.closeTrade(record);
+
+  @override
+  Stream<Result<List<TradeRecord>, P2pFailure>> watchActiveTrades(
+    RobosatsNetwork network,
+  ) => _inner.watchActiveTrades(network);
+}
+
+/// The terms and trails, stopping the app, or failing a write, where the test says.
+final class MakeTrails implements TradeTrailRepository {
+  final TradeTrailRepository _inner;
+  final MakeKillAt Function() _kill;
+
+  /// What the next [recordMakerTerms] gives instead of writing, when set.
+  P2pFailure? makerTermsFailure;
+
+  /// What every [storeTrail] gives instead of writing, while set.
+  P2pFailure? storeFailure;
+
+  /// When set, what [makerTermsOf] gives instead of the record stored: a database that reads back otherwise than it wrote.
+  MakerTermsRecord? Function(MakerTermsRecord? stored)? readBack;
+
+  /// How many trails were asked to be stored.
+  int stores = 0;
+
+  MakeTrails(this._inner, this._kill);
+
+  @override
+  Future<Result<void, P2pFailure>> recordTerms(
+    TradeRecord trade,
+    TradeTermsRecord terms,
+  ) => _inner.recordTerms(trade, terms);
+
+  @override
+  Future<Result<void, P2pFailure>> recordMakerTerms(
+    PendingMake make,
+    MakerTermsRecord terms,
+  ) async {
+    if (makerTermsFailure case final failure?) return Err(failure);
+    final written = await _inner.recordMakerTerms(make, terms);
+    if (_kill() == MakeKillAt.afterMakerTerms) throw AppKilled();
+    return written;
+  }
+
+  @override
+  Future<Result<MakerTermsRecord?, P2pFailure>> makerTermsOf(
+    RobotSlot robot,
+  ) async {
+    final stored = await _inner.makerTermsOf(robot);
+    final change = readBack;
+    if (change == null) return stored;
+    return switch (stored) {
+      Ok(:final value) => Ok(change(value)),
+      Err() => stored,
+    };
+  }
+
+  @override
+  Future<Result<TrailStoreOutcome, P2pFailure>> storeTrail(
+    TradeRecord trade,
+    TradeTrailRecord trail,
+  ) {
+    stores++;
+    if (_kill() == MakeKillAt.beforeFirstTrail) throw AppKilled();
+    if (storeFailure case final failure?) return Future.value(Err(failure));
+    return _inner.storeTrail(trade, trail);
+  }
+
+  @override
+  Future<Result<StoredTradeHistory, P2pFailure>> historyOf(TradeRecord trade) =>
+      _inner.historyOf(trade);
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
+    RobosatsNetwork network,
+  ) => _inner.watchHistories(network);
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network) =>
+      _inner.watchMadeHistories(network);
+}

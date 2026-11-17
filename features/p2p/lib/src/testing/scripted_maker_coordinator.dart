@@ -1,0 +1,760 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:primitives/primitives.dart';
+import 'package:robosats/robosats.dart';
+
+import '../domain/trade/bolt11.dart';
+import 'bolt11_test_invoice.dart';
+import 'scripted_coordinator.dart' show ScriptedFault;
+
+/// The kinds of request [ScriptedMakerCoordinator] answers, to aim a [ScriptedFault] at.
+enum ScriptedMakerRequest {
+  /// `GET /api/info/`.
+  info,
+
+  /// `GET /api/limits/`.
+  limits,
+
+  /// `GET /api/robot/`.
+  robot,
+
+  /// `POST /api/make/`.
+  make,
+
+  /// `GET /api/order/`.
+  order,
+
+  /// `POST /api/order/` with the action `cancel`.
+  cancel,
+}
+
+/// One order made by a robot of the test on [ScriptedMakerCoordinator], as the coordinator stores it.
+final class ScriptedMadeOrder {
+  final int id;
+
+  /// The robot that made it.
+  final RobotIdentity maker;
+
+  /// The body of the make, as sent.
+  final Map<String, Object?> body;
+
+  final DateTime createdAt;
+  DateTime expiresAt;
+
+  /// The status the coordinator stores: 0 to 18, as `Order.Status` (`api/models/order.py:35-54`).
+  int status = 0;
+
+  /// The maker bond, made at the maker's first read at 0 (`api/views.py:373-379`), and given again after.
+  Bolt11TestInvoice? bond;
+
+  /// The order's sats at the coordinator's price, as `last_satoshis` (`api/logics.py:262-275`).
+  int lastSatoshis;
+
+  /// Why the order expired (`api/models/order.py:56-61`): 0 not taken, 1 maker bond not locked, 3 invoice not submitted.
+  int? expiryReason;
+
+  /// The current contract: its taker, its deadline (the lock's time and the escrow duration, `api/logics.py:1338-1340`), and for a range the amount taken.
+  RobotIdentity? taker;
+  DateTime? deadline;
+  double? takenAmount;
+
+  /// The maker seller's escrow invoice of the current contract.
+  Bolt11TestInvoice? escrow;
+
+  /// Whether a cancel returned the maker bond, or settled it.
+  bool bondReturned = false;
+  bool bondSettled = false;
+
+  ScriptedMadeOrder._({
+    required this.id,
+    required this.maker,
+    required this.body,
+    required this.createdAt,
+    required this.expiresAt,
+    required this.lastSatoshis,
+  });
+
+  /// The order's type on the wire: 0 a buy order, whose maker buys; 1 a sell order.
+  int get type => body['type'] as int? ?? 0;
+
+  bool get hasRange => body['has_range'] == true;
+
+  int get publicSeconds => (body['public_duration'] as num?)?.toInt() ?? 86400;
+
+  int get escrowSeconds => (body['escrow_duration'] as num?)?.toInt() ?? 10800;
+
+  double get bondSize => (body['bond_size'] as num?)?.toDouble() ?? 3;
+
+  double get premium => (body['premium'] as num?)?.toDouble() ?? 0;
+
+  /// The order's largest amount: its amount, or its range's maximum.
+  double get largestAmount =>
+      ((hasRange ? body['max_amount'] : body['amount']) as num?)?.toDouble() ??
+      0;
+}
+
+/// A coordinator of the federation list that the maker tests make orders on (#179), as the reference backend at commit ff1998c answers a maker (`api/views.py`, `api/logics.py`; design note `docs/design/phase-3-making-an-order.md` § 1.2 to § 1.7, § 5): never a real coordinator, never money.
+///
+/// It answers `GET /api/info/` (the maker fee [makerFee], the DevFund [devfund]), `GET /api/limits/` (the price of each currency in [prices], the bounds from 20,000 to 5,000,000 sats at it, `LimitView`, `api/views.py:1177-1197`), `GET /api/robot/` (a first contact keeps the robot with its key pair; its `active_order_id` while it is the maker of an order at 0 to 3, 6 to 11 or 16, else its `last_order_id`, `api/views.py:725-737`, `Logics.validate_already_maker_or_taker`, `api/logics.py:75-135`), `POST /api/make/` (`MakerView.post`, `api/views.py:90-216`: one active order per robot, 409 with 1000; the size at the price now, 1004 and 1005; the order saved at 0 with 300 s to lock its bond; answered `201` with `ListOrderSerializer`'s fields, `api/serializers.py:83-107`), `GET /api/order/` as the maker reads its order (the bond made at its first read at 0 and given again, error 1022 once past the 300 s then the order at 5 with reason 1, `api/logics.py:1252-1318`; 1043 once cancelled; 1044 to a robot that is no participant of an order that is not public), and the maker's `cancel` (`Logics.cancel_order`, `api/logics.py:1006-1181`: guarded by `cancel_status` against the stored status, 1020 otherwise; at 0 cancelled, at 1 or 2 cancelled with the bond returned, at 6 or 7 cancelled with the bond settled, answered with the short body of `api/views.py:604-615`; 1021 elsewhere).
+/// The test moves an order along by itself ([lockMakerBond], [take], [pause], [backToBook], [expire]), lets the cleaner run ([clean]), makes requests fail ([failNext], [landLate]) or be refused ([refuseNextMake]), and plays a coordinator that lies ([makeAnswerChanges], [orderChanges], [robotAnswerHas], [cancelAnswersWholeOrder], [hideOrders]).
+/// Every robot and invoice is made by the tests from fixed bytes; the invoices are added to [decoder].
+final class ScriptedMakerCoordinator implements CoordinatorTransport {
+  /// The coordinator's bounds of an order, in sats (`MIN_ORDER_SIZE`, `MAX_ORDER_SIZE`).
+  static const int minOrderSats = 20000;
+  static const int maxOrderSats = 5000000;
+
+  /// The time to lock the maker bond (`EXP_MAKER_BOND_INVOICE`, `.env-sample:166`).
+  static const Duration makerBondTime = Duration(seconds: 300);
+
+  /// How long the cleaner takes to expire an order whose time ran out (`clean_orders.py:114-120`).
+  static const Duration cleanerLoop = Duration(seconds: 5);
+
+  final RobosatsNetwork network;
+  final Coordinator coordinator;
+  final DateTime Function() clock;
+
+  /// Reads back every invoice this coordinator made.
+  final Bolt11TestDecoder decoder = Bolt11TestDecoder();
+
+  /// Every request received, in order.
+  final List<CoordinatorRequest> requests = [];
+
+  /// The coordinator's price of a bitcoin, by currency id: what `/api/limits/` gives, and what the orders' sats are computed at.
+  final Map<int, double> prices = {2: 91711.15};
+
+  /// What `/api/info/` announces as the maker fee, and its DevFund donation.
+  double makerFee = 0.00025;
+  double? devfund = 30;
+
+  /// The orders made, by number.
+  final Map<int, ScriptedMadeOrder> orders = {};
+
+  /// The number of the next order made.
+  int nextOrderId;
+
+  /// A hostile coordinator: what the `201` of the next makes says otherwise, a `null` value removing its key, in order.
+  final List<Map<String, Object?>> makeAnswerChanges = [];
+
+  /// A hostile coordinator: what every maker's read of an order says otherwise, by order number, a `null` value removing its key.
+  final Map<int, Map<String, Object?>> orderChanges = {};
+
+  /// A hostile coordinator: what every answer about a robot on `/api/robot/` says otherwise, a `null` value removing its key.
+  final Map<RobotSessionKey, Map<String, Object?>> _robotChanges = {};
+
+  /// A hostile coordinator: a cancel that ends the order is answered with the whole order at 4, rather than the reference's short body.
+  bool cancelAnswersWholeOrder = false;
+
+  /// A hostile coordinator: it says the robot named no order, whatever it made.
+  bool hideOrders = false;
+
+  /// Runs as each request arrives, before it is answered.
+  void Function(CoordinatorRequest request)? onRequest;
+
+  /// When set, every make waits for it once it arrived, before it is answered: a make in flight, as long as the test wants.
+  Future<void>? holdMake;
+
+  final Map<RobotSessionKey, RobotIdentity> _robots;
+  final Map<RobotSessionKey, Map<String, Object?>> _kept = {};
+  final Map<ScriptedMakerRequest, List<ScriptedFault>> _faults = {};
+  final List<int?> _makeRefusals = [];
+  final List<(ScriptedMakerRequest, CoordinatorRequest)> _late = [];
+  int _invoiceSeed = 100;
+
+  ScriptedMakerCoordinator({
+    required this.network,
+    required Iterable<RobotIdentity> robots,
+    required this.clock,
+    String alias = 'temple',
+    this.nextOrderId = 42,
+  }) : coordinator = switch (Federation.robosats.byAlias(alias)) {
+         final found? => found,
+         null => throw ArgumentError('no coordinator $alias'),
+       },
+       _robots = {for (final robot in robots) robot.sessionKey: robot};
+
+  /// The next request of [kind] meets [fault] instead of its answer; several queue up in order.
+  void failNext(ScriptedMakerRequest kind, ScriptedFault fault) =>
+      (_faults[kind] ??= []).add(fault);
+
+  /// The next make is refused before anything is made: an empty `400` (the serializer's) when [code] is `null`, otherwise that error code with the reference's HTTP status.
+  void refuseNextMake(int? code) => _makeRefusals.add(code);
+
+  /// A hostile coordinator: what every answer about [robot] also says, or says otherwise.
+  void robotAnswerHas(RobotIdentity robot, Map<String, Object?> fields) =>
+      _robotChanges[robot.sessionKey] = fields;
+
+  /// The kinds of the requests received, in order.
+  List<ScriptedMakerRequest> get received => [
+    for (final request in requests) _kindOf(request),
+  ];
+
+  /// The order [id], which must exist.
+  ScriptedMadeOrder order(int id) =>
+      orders[id] ?? (throw StateError('no order $id'));
+
+  /// The orders [robot] made, oldest first.
+  List<ScriptedMadeOrder> ordersOf(RobotIdentity robot) => [
+    for (final order in orders.values)
+      if (order.maker.sessionKey == robot.sessionKey) order,
+  ];
+
+  /// The requests held by [ScriptedFault.landsLate] reach the coordinator now, in order, and it acts on them; their answers are gone.
+  void landLate() {
+    final held = List.of(_late);
+    _late.clear();
+    for (final (kind, request) in held) {
+      _answer(kind, request);
+    }
+  }
+
+  /// The maker bond of order [id] locks: the invoice follower publishes the order (`follow_invoices.py:233-240`, `Logics.publish_order`, `api/logics.py:1205-1227`), its deadline the creation and the public duration.
+  void lockMakerBond(int id) {
+    final made = order(id);
+    if (made.status != 0 || made.bond == null) {
+      throw StateError('no maker bond to lock');
+    }
+    made
+      ..status = 1
+      ..expiresAt = made.createdAt.add(Duration(seconds: made.publicSeconds));
+  }
+
+  /// [taker]'s bond locks on public order [id]: a contract (`Logics.finalize_contract`, `api/logics.py:1321-1380`), its sats at the price now, its deadline the lock's time and the escrow duration, for a range the amount taken.
+  void take(int id, RobotIdentity taker, {double? amount}) {
+    final made = order(id);
+    if (made.status != 1) throw StateError('not public');
+    final now = clock().toUtc();
+    made
+      ..taker = taker
+      ..takenAmount = made.hasRange ? amount ?? made.largestAmount : null
+      ..lastSatoshis = _satsOf(made, made.takenAmount ?? made.largestAmount)
+      ..status = 6
+      ..deadline = now.add(Duration(seconds: made.escrowSeconds))
+      ..expiresAt = now.add(Duration(seconds: made.escrowSeconds))
+      ..escrow = null;
+  }
+
+  /// The maker pauses order [id], or resumes it (`Logics.pause_unpause_public_order`, `api/logics.py:1758-1783`): its deadline does not move.
+  void pause(int id) {
+    final made = order(id);
+    made.status = switch (made.status) {
+      1 => 2,
+      2 => 1,
+      _ => throw StateError('neither public nor paused'),
+    };
+  }
+
+  /// The taker of order [id] cancelled or did not act: the order is public again with its first deadline (`Logics.publish_order`, `api/logics.py:1205-1227`).
+  void backToBook(int id) {
+    final made = order(id);
+    made
+      ..status = 1
+      ..taker = null
+      ..takenAmount = null
+      ..escrow = null
+      ..expiresAt = made.createdAt.add(Duration(seconds: made.publicSeconds));
+  }
+
+  /// Order [id] expires with [reason].
+  void expire(int id, {int reason = 0}) {
+    order(id)
+      ..status = 5
+      ..expiryReason = reason;
+  }
+
+  /// The cleaner's loop (`clean_orders.py:48-70`): every order at 0 whose 300 s ran out a loop ago expires, its bond invoice cancelled (`api/logics.py:329-338`).
+  void clean() {
+    final now = clock().toUtc();
+    for (final made in orders.values) {
+      if (made.status == 0 && !now.isBefore(made.expiresAt.add(cleanerLoop))) {
+        made
+          ..status = 5
+          ..expiryReason = 1;
+      }
+    }
+  }
+
+  @override
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
+    CoordinatorRequest request,
+  ) async {
+    requests.add(request);
+    onRequest?.call(request);
+    final kind = _kindOf(request);
+    if (kind == ScriptedMakerRequest.make) {
+      if (holdMake case final hold?) await hold;
+    }
+    clean();
+    final queue = _faults[kind];
+    final fault = queue == null || queue.isEmpty ? null : queue.removeAt(0);
+    if (fault != ScriptedFault.busy && fault != ScriptedFault.unreachable) {
+      request.onSending?.call();
+    }
+    switch (fault) {
+      case ScriptedFault.busy:
+        return const Err(CoordinatorTransportBusy());
+      case ScriptedFault.unreachable:
+        return const Err(CoordinatorUnreachable());
+      case ScriptedFault.timedOut:
+        return const Err(CoordinatorTimedOut());
+      case ScriptedFault.answerLost:
+        _answer(kind, request);
+        return const Err(CoordinatorTimedOut());
+      case ScriptedFault.landsLate:
+        _late.add((kind, request));
+        return const Err(CoordinatorTimedOut());
+      case ScriptedFault.refused:
+        return Ok(_json(403, {'error_code': 1047, 'bad_request': 'refused'}));
+      case ScriptedFault.answerDelayed || ScriptedFault.servedLate:
+        throw UnsupportedError('not played by the maker coordinator');
+      case null:
+        return Ok(_answer(kind, request));
+    }
+  }
+
+  CoordinatorResponse _answer(
+    ScriptedMakerRequest kind,
+    CoordinatorRequest request,
+  ) => switch (kind) {
+    ScriptedMakerRequest.info => _json(200, _info()),
+    ScriptedMakerRequest.limits => _json(200, _limits()),
+    ScriptedMakerRequest.robot => _robot(request),
+    ScriptedMakerRequest.make => _make(_robotOf(request), request),
+    ScriptedMakerRequest.order => _read(_robotOf(request), request),
+    ScriptedMakerRequest.cancel => _cancel(_robotOf(request), request),
+  };
+
+  CoordinatorResponse _make(RobotIdentity robot, CoordinatorRequest request) {
+    if (_kept[robot.sessionKey] == null) {
+      return _json(400, {'error_code': 7001, 'bad_request': 'unknown'});
+    }
+    if (_makeRefusals.isNotEmpty) {
+      final code = _makeRefusals.removeAt(0);
+      if (code == null) {
+        return CoordinatorResponse(
+          statusCode: 400,
+          headers: const {},
+          body: Uint8List(0),
+        );
+      }
+      return _json(code >= 1000 && code <= 1003 ? 409 : 400, {
+        'error_code': code,
+        'bad_request': 'refused',
+      });
+    }
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    if (body is! Map<String, Object?>) {
+      return CoordinatorResponse(
+        statusCode: 400,
+        headers: const {},
+        body: Uint8List(0),
+      );
+    }
+    // One active order per robot (`api/views.py:170-176`).
+    if (_activeOf(robot) != null) {
+      return _json(409, {'error_code': 1000, 'bad_request': 'active'});
+    }
+    final now = clock().toUtc();
+    final made = ScriptedMadeOrder._(
+      id: nextOrderId++,
+      maker: robot,
+      body: Map.unmodifiable(body),
+      createdAt: now,
+      expiresAt: now.add(makerBondTime),
+      lastSatoshis: 0,
+    );
+    made.lastSatoshis = _satsOf(made, made.largestAmount);
+    // The size at the price now (`Logics.validate_order_size`, `api/logics.py:138-177`), the range's minimum against the smallest size.
+    final smallest = made.hasRange
+        ? _satsOf(made, (body['min_amount'] as num?)?.toDouble() ?? 0)
+        : made.lastSatoshis;
+    if (made.lastSatoshis > maxOrderSats) {
+      return _json(400, {'error_code': made.hasRange ? 1007 : 1004});
+    }
+    if (smallest < minOrderSats) {
+      return _json(400, {'error_code': made.hasRange ? 1008 : 1005});
+    }
+    orders[made.id] = made;
+    final answer = <String, Object?>{
+      'id': made.id,
+      'status': 0,
+      'created_at': made.createdAt.toIso8601String(),
+      'expires_at': made.expiresAt.toIso8601String(),
+      'type': made.type,
+      'currency': body['currency'],
+      'amount': _decimal(body['amount'], 8),
+      'has_range': made.hasRange,
+      'min_amount': _decimal(body['min_amount'], 8),
+      'max_amount': _decimal(body['max_amount'], 8),
+      'payment_method': body['payment_method'],
+      'is_explicit': false,
+      'premium': _decimal(body['premium'], 2),
+      'satoshis': null,
+      'maker': 7,
+      'taker': null,
+      'escrow_duration': made.escrowSeconds,
+      'bond_size': _decimal(body['bond_size'], 2),
+      'latitude': null,
+      'longitude': null,
+    };
+    if (makeAnswerChanges.isNotEmpty) {
+      _apply(answer, makeAnswerChanges.removeAt(0));
+    }
+    return _json(201, answer);
+  }
+
+  /// `OrderView.get` for [robot] (`api/views.py:226-528`).
+  CoordinatorResponse _read(RobotIdentity robot, CoordinatorRequest request) {
+    final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final made = id == null ? null : orders[id];
+    if (made == null) {
+      return _json(404, {'bad_request': 'Invalid Order Id'});
+    }
+    if (made.status == 4 || made.status == 12) {
+      return _json(400, {'error_code': 1043, 'bad_request': 'cancelled'});
+    }
+    final isMaker = made.maker.sessionKey == robot.sessionKey;
+    if (!isMaker && made.status != 1) {
+      return _json(403, {'error_code': 1044, 'bad_request': 'not yours'});
+    }
+    if (isMaker && made.status == 0) {
+      // `Logics.gen_maker_hold_invoice` (`api/logics.py:1252-1318`): past its time the order expires and the read answers 1022; otherwise the bond, made once at the price now.
+      if (made.expiresAt.isBefore(clock().toUtc())) {
+        made
+          ..status = 5
+          ..expiryReason = 1;
+        return _json(400, {
+          'error_code': 1022,
+          'bad_request':
+              'Invoice expired. You did not confirm publishing the order in time. Make a new order.',
+        });
+      }
+      if (made.bond == null) {
+        made.lastSatoshis = _satsOf(made, made.largestAmount);
+        made.bond = _invoice(
+          made.lastSatoshis * made.bondSize ~/ 100,
+          "${coordinator.shortAlias} - Publishing 'Order ${made.id}' - Maker bond",
+          makerBondTime,
+        );
+      }
+    }
+    final data = _orderJson(made, robot, isMaker: isMaker);
+    if (isMaker) {
+      if (orderChanges[made.id] case final changes?) _apply(data, changes);
+    }
+    return _json(200, data);
+  }
+
+  /// The maker's cancel (`Logics.cancel_order`, `api/logics.py:1006-1181`, answered by `api/views.py:599-616`).
+  CoordinatorResponse _cancel(RobotIdentity robot, CoordinatorRequest request) {
+    final body = jsonDecode(utf8.decode(request.body ?? const [])) as Object?;
+    final guard = body is Map<String, Object?> ? body['cancel_status'] : null;
+    final id = int.tryParse(request.url.queryParameters['order_id'] ?? '');
+    final made = id == null ? null : orders[id];
+    if (made == null) return _json(404, {'bad_request': 'Invalid Order Id'});
+    if (made.maker.sessionKey != robot.sessionKey) {
+      return _json(403, {'error_code': 1047, 'bad_request': 'not yours'});
+    }
+    if (guard != null && guard != made.status) {
+      return _json(400, {'error_code': 1020, 'bad_request': 'status moved'});
+    }
+    switch (made.status) {
+      case 0:
+        made.status = 4;
+      case 1 || 2:
+        made
+          ..bondReturned = true
+          ..status = 4;
+      case 6 || 7:
+        made
+          ..bondSettled = true
+          ..status = 4;
+      default:
+        return _json(400, {'error_code': 1021, 'bad_request': 'not now'});
+    }
+    if (cancelAnswersWholeOrder) {
+      return _json(200, _orderJson(made, robot, isMaker: true));
+    }
+    return _json(200, {
+      'id': made.id,
+      'status': made.status,
+      'type': made.type,
+      'expires_at': made.expiresAt.toIso8601String(),
+      'bad_request': 'This order has been cancelled',
+    });
+  }
+
+  /// The order [made] as `OrderView.get` describes it to [robot], its maker when [isMaker], with the JSON types the reference writes.
+  Map<String, Object?> _orderJson(
+    ScriptedMadeOrder made,
+    RobotIdentity robot, {
+    required bool isMaker,
+  }) {
+    final now = clock().toUtc();
+    final status = made.status;
+    final buyer = made.type == 0;
+    final taker = made.taker;
+    final body = made.body;
+    final data = <String, Object?>{
+      'id': made.id,
+      'status': status,
+      'created_at': made.createdAt.toIso8601String(),
+      'expires_at': made.expiresAt.toIso8601String(),
+      'type': made.type,
+      'currency': body['currency'],
+      'amount': made.hasRange
+          ? (taker == null ? null : made.takenAmount?.toStringAsFixed(8))
+          : _decimal(body['amount'], 8),
+      'has_range': made.hasRange,
+      'min_amount': _decimal(body['min_amount'], 8),
+      'max_amount': _decimal(body['max_amount'], 8),
+      'payment_method': body['payment_method'],
+      'is_explicit': false,
+      'premium': _decimal(body['premium'], 2),
+      'satoshis': null,
+      'maker': 7,
+      'taker': taker == null ? null : 8,
+      'escrow_duration': made.escrowSeconds,
+      'bond_size': _decimal(body['bond_size'], 2),
+      'latitude': null,
+      'longitude': null,
+      'is_maker': isMaker,
+      'is_taker': false,
+      'is_participant': isMaker,
+      'has_password': body['password'] != null,
+      'total_secs_exp': made.expiresAt
+          .difference(now)
+          .inSeconds
+          .clamp(0, 1 << 31),
+      'maker_nick': made.maker.nickname,
+      'maker_hash_id': made.maker.hashId.hex,
+      'description': body['description'],
+      'maker_status': 'Active',
+      if (taker != null) 'taker_status': 'Active',
+    };
+    if (!isMaker) {
+      data
+        ..['price_now'] = _priceOf(made)
+        ..['premium_now'] = made.premium
+        ..['satoshis_now'] = made.lastSatoshis;
+      return data;
+    }
+    if (status >= 1 && status < 6) {
+      data
+        ..['price_now'] = _priceOf(made)
+        ..['premium_now'] = made.premium;
+    }
+    final fee = (made.lastSatoshis * makerFee).round();
+    final payout = made.lastSatoshis - fee;
+    final escrow = made.lastSatoshis + fee;
+    data
+      ..['is_buyer'] = buyer
+      ..['is_seller'] = !buyer
+      ..['taker_nick'] = taker?.nickname ?? 'None'
+      ..['status_message'] = 'Some label'
+      ..['is_fiat_sent'] = status == 10
+      ..['is_disputed'] = status == 11 || status >= 16
+      ..['ur_nick'] = robot.nickname
+      ..['satoshis_now'] = made.lastSatoshis
+      ..['maker_locked'] = status != 0
+      ..['taker_locked'] = status >= 6
+      ..['escrow_locked'] = status == 8 || status >= 9;
+    if (taker != null) data['taker_hash_id'] = taker.hashId.hex;
+    if (const [6, 7, 8, 10, 11, 13, 14, 15].contains(status)) {
+      data['trade_satoshis'] = buyer ? payout : escrow;
+    }
+    switch (status) {
+      case 0:
+        final bond = made.bond;
+        if (bond != null) {
+          data
+            ..['bond_invoice'] = bond.text
+            ..['bond_satoshis'] = bond.facts.amount.value.toInt();
+        }
+      case 6 || 7 when !buyer:
+        final invoice = made.escrow ??= _invoice(
+          escrow,
+          "${coordinator.shortAlias} - Escrow amount for 'Order ${made.id}'",
+          Duration(seconds: made.escrowSeconds),
+        );
+        data
+          ..['escrow_invoice'] = invoice.text
+          ..['escrow_satoshis'] = invoice.facts.amount.value.toInt();
+      case 6 || 8 when buyer:
+        data
+          ..['invoice_amount'] = payout
+          ..['swap_allowed'] = false
+          ..['swap_failure_reason'] = 'On-the-fly submarine swaps are disabled';
+      case 9 || 10:
+        data
+          ..['asked_for_cancel'] = false
+          ..['chat_last_index'] = 0;
+      case 5:
+        final reason = made.expiryReason ?? 0;
+        data
+          ..['expiry_reason'] = reason
+          ..['expiry_message'] = switch (reason) {
+            1 => 'Maker bond not locked',
+            3 => 'Invoice not submitted',
+            _ => 'Expired not taken',
+          };
+    }
+    if (const [5, 13, 14, 15].contains(status)) {
+      data
+        ..['public_duration'] = made.publicSeconds
+        ..['bond_size'] = _decimal(body['bond_size'], 2);
+    }
+    return data;
+  }
+
+  CoordinatorResponse _robot(CoordinatorRequest request) {
+    final robot = _robotOf(request);
+    final parts = (request.headers['Authorization'] ?? '').split(' | ');
+    if (parts.length == 4) {
+      _kept.putIfAbsent(
+        robot.sessionKey,
+        () => {
+          'public_key': pgpArmorFromWire(parts[1].substring('Public '.length)),
+          'encrypted_private_key': pgpArmorFromWire(
+            parts[2].substring('Private '.length),
+          ),
+          'nostr_pubkey': parts[3].substring('Nostr '.length),
+        },
+      );
+    }
+    final kept = _kept[robot.sessionKey];
+    if (kept == null) {
+      return _json(400, {'error_code': 7001, 'bad_request': 'unknown'});
+    }
+    final active = hideOrders ? null : _activeOf(robot);
+    final made = ordersOf(robot);
+    final data = <String, Object?>{
+      'nickname': robot.nickname,
+      'hash_id': robot.hashId.hex,
+      ...kept,
+      if (active != null) 'active_order_id': active.id,
+      if (active == null && made.isNotEmpty && !hideOrders)
+        'last_order_id': made.last.id,
+    };
+    if (_robotChanges[robot.sessionKey] case final changes?) {
+      _apply(data, changes);
+    }
+    return _json(200, data);
+  }
+
+  /// The order [robot] is the maker of and still engaged in (`Logics.validate_already_maker_or_taker`, `api/logics.py:75-135`), if any.
+  ScriptedMadeOrder? _activeOf(RobotIdentity robot) {
+    for (final made in ordersOf(robot)) {
+      if (const [0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 16].contains(made.status)) {
+        return made;
+      }
+    }
+    return null;
+  }
+
+  RobotIdentity _robotOf(CoordinatorRequest request) {
+    final key = request.robot;
+    final robot = key == null ? null : _robots[key];
+    if (robot == null) throw StateError('a request for no robot of the test');
+    return robot;
+  }
+
+  static ScriptedMakerRequest _kindOf(CoordinatorRequest request) =>
+      switch (request.url.path) {
+        '/api/info/' => ScriptedMakerRequest.info,
+        '/api/limits/' => ScriptedMakerRequest.limits,
+        '/api/robot/' => ScriptedMakerRequest.robot,
+        '/api/make/' => ScriptedMakerRequest.make,
+        '/api/order/' when request.method == CoordinatorHttpMethod.post =>
+          ScriptedMakerRequest.cancel,
+        _ => ScriptedMakerRequest.order,
+      };
+
+  /// `Logics.calc_sats` of [amount] for [made] at the price now, truncated as `satoshis_now` (`api/logics.py:256-275`).
+  int _satsOf(ScriptedMadeOrder made, double amount) =>
+      (amount / (_priceOf(made) * (1 + made.premium / 100)) * 100000000)
+          .truncate();
+
+  double _priceOf(ScriptedMadeOrder made) =>
+      prices[made.body['currency']] ?? (throw StateError('no price'));
+
+  Bolt11TestInvoice _invoice(int sats, String description, Duration expiry) {
+    final invoice = Bolt11TestInvoice(
+      network: network == RobosatsNetwork.mainnet
+          ? Bolt11Network.mainnet
+          : Bolt11Network.testnet,
+      sats: sats,
+      seed: _invoiceSeed++,
+      createdAt: clock().toUtc(),
+      expiry: expiry,
+      description: description,
+    );
+    decoder.add(invoice);
+    return invoice;
+  }
+
+  Map<String, Object?> _info() => {
+    'num_public_buy_orders': 0,
+    'num_public_sell_orders': 0,
+    'book_liquidity': 0,
+    'active_robots_today': 3,
+    'last_day_nonkyc_btc_premium': 2.0,
+    'last_day_volume': 0.5,
+    'lifetime_volume': 10.0,
+    'lnd_version': 'v0.18.0',
+    'cln_version': null,
+    'robosats_running_commit_hash': 'ff1998c',
+    'version': {'major': 0, 'minor': 8, 'patch': 8},
+    'alternative_site': null,
+    'alternative_name': null,
+    'node_alias': coordinator.shortAlias,
+    'node_id': coordinator.nodesPubkeys(network).first,
+    'network': network.name,
+    'maker_fee': makerFee,
+    'taker_fee': 0.00175,
+    'bond_size': 3.0,
+    'min_order_size': minOrderSats,
+    'max_order_size': maxOrderSats,
+    'swap_enabled': false,
+    'max_swap': 0,
+    if (devfund != null) 'devfund': devfund,
+  };
+
+  /// `LimitView.get` (`api/views.py:1177-1197`).
+  Map<String, Object?> _limits() => {
+    for (final MapEntry(key: id, value: price) in prices.entries)
+      '$id': {
+        'code': switch (RobosatsCurrency.fromId(id)) {
+          final currency? => currency.code,
+          null => '?',
+        },
+        'price': price,
+        'min_amount': minOrderSats / 100000000 * price,
+        'max_amount': maxOrderSats / 100000000 * price,
+      },
+  };
+
+  /// [value], a number of the make's body, as the serializer writes a decimal of [places] places, or `null`.
+  static String? _decimal(Object? value, int places) =>
+      value is num ? value.toDouble().toStringAsFixed(places) : null;
+
+  static void _apply(Map<String, Object?> data, Map<String, Object?> changes) {
+    for (final MapEntry(:key, :value) in changes.entries) {
+      if (value == null) {
+        data.remove(key);
+      } else {
+        data[key] = value;
+      }
+    }
+  }
+
+  static CoordinatorResponse _json(int status, Object body) =>
+      CoordinatorResponse(
+        statusCode: status,
+        headers: const {'content-type': 'application/json'},
+        body: utf8.encode(jsonEncode(body)),
+      );
+
+  @override
+  String toString() => 'ScriptedMakerCoordinator(${coordinator.shortAlias})';
+}

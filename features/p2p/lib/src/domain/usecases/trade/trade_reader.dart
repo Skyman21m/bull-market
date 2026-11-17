@@ -294,20 +294,20 @@ final class TradeReader {
         terms.role != record.role) {
       return const TradeNotRestorable(TradeRecordOfAnotherTrade());
     }
+    final stored = history.trail;
     final TradeTrail trail;
-    switch (history.trail) {
-      case final stored?:
-        switch (TradeTrail.restore(stored, terms: terms, now: now())) {
-          case Ok(:final value):
-            trail = value;
-          case Err(:final failure):
-            return TradeNotRestorable(failure);
-        }
-      case null:
-        trail = TradeTrail.forConfirmedMake(
-          terms,
-          record.confirmedAt ?? record.takenAt,
-        );
+    if (stored == null) {
+      trail = TradeTrail.forConfirmedMake(
+        terms,
+        record.confirmedAt ?? record.takenAt,
+      );
+    } else {
+      switch (TradeTrail.restore(stored, terms: terms, now: now())) {
+        case Ok(:final value):
+          trail = value;
+        case Err(:final failure):
+          return TradeNotRestorable(failure);
+      }
     }
     switch (await _robotAndCoordinator(record)) {
       case Ok(value: (final robot, final coordinator)):

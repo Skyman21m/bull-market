@@ -11,7 +11,6 @@ import '../../repositories/trade_trail_repository.dart';
 import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
-import '../../trade/maker_terms.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_make.dart';
 import '../../trade/trade_status.dart';
@@ -307,7 +306,10 @@ final class MakeOrderUsecase {
     if (record == null) {
       return MakeNeverSent(
         make,
-        closed: await _records.closePendingMake(make) is Ok,
+        closed: switch (await _records.closePendingMake(make)) {
+          Ok() => true,
+          Err() => false,
+        },
       );
     }
     final coordinator = _federation.byAlias(make.coordinatorAlias);
