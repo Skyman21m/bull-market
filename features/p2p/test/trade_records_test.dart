@@ -18,8 +18,8 @@ import 'support/trade_orders.dart';
 
 /// The stored forms of a trade (second review of #106): which trail may replace the stored one, the binding of a trail to its trade, a recovered trail through a restart, an end through a restart, the take's own answer as the only start, and the refusals of a restore.
 void main() {
-  late TradeTerms buyer;
-  late TradeTerms seller;
+  late TradeTerms<TakenSide> buyer;
+  late TradeTerms<TakenSide> seller;
   late Bolt11TestDecoder decoder;
   late Bolt11Reader reader;
 

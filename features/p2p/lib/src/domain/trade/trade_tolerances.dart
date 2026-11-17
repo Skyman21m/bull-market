@@ -30,6 +30,17 @@ abstract final class TradeTolerances {
   /// The reference's default is 0.175 % (`FEE` 0.2 % × (1 − `MAKER_FEE_SPLIT` 0.125), `.env-sample:107-110`, `api/views.py:1042-1045`); the coordinators recorded on 2026-11-10 announce 0.17 % to 0.175 % on mainnet and 0.2625 % on testnet (`packages/robosats/test/fixtures/coordinator/*-info.json`). A fee checked only against what the coordinator itself announces would let it ask for anything: 1 % is about four times the highest seen, and a coordinator above it is refused before the take.
   static const double takerFeeCeiling = 0.01;
 
+  /// The highest maker fee `/api/info/` may announce for a make to be allowed, as a fraction of the trade: 1 %, as [takerFeeCeiling] for a taker (design note `docs/design/phase-3-making-an-order.md` § 3.2), and the bound `maker_terms` keeps (`CHECK (maker_fee BETWEEN 0 AND 0.01)`, schema 8).
+  ///
+  /// The reference's default is 0.025 % (`FEE` 0.2 % × `MAKER_FEE_SPLIT` 0.125, `.env-sample:107-110`, `api/views.py:1042`); the coordinators recorded on 2026-11-10 announce 0 % to 0.0375 % (`packages/robosats/test/fixtures/coordinator/*-info.json`). The maker's fee is taken from its payout as a buyer and added to its escrow as a seller (`Logics.payout_amount`, `api/logics.py:650-668`; `Logics.escrow_amount`, `:733-749`), so a fee checked only against what the coordinator itself announces would let it ask for anything.
+  static const double makerFeeCeiling = 0.01;
+
+  /// The factor F of the most « Pay with this wallet » pays for a maker seller's escrow: the sats of the contract's amount at the rate of the creation, times F, with the maker fee of them and [feeSats], rounded down (`MakerTerms.escrowCeilingFor`, design note § 3.3).
+  ///
+  /// A proposal, not a decision: the design note's independent reviewer proposed 2 (§ 3.3), and the factor is an open decision of the owner (§ 7, proposal 7: 1.5, 2, or no ceiling at all). At 2, the ceiling stops « Pay with this wallet » in a normal market only when the bitcoin price halves between the creation and the escrow; above it, « Pay with another wallet » stays, and nothing is a warning.
+  /// It bounds only what this wallet pays: the coordinator fixes the trade's sats at its own price at the take (`Logics.finalize_contract`, `api/logics.py:1332-1335`), which nothing compares with a price (§ 3.3).
+  static const double makerEscrowFactor = 2;
+
   /// How long after a deadline the coordinator's own loops have certainly acted on it: 1 minute.
   ///
   /// The order cleaner runs every 5 s (`api/management/commands/clean_orders.py:114-120`, it expires orders and pre-takes past their `expires_at`), and so does the invoice follower (`follow_invoices.py:27,33-34`, it settles or returns a bond that locked); a minute covers both with room for a slow coordinator.

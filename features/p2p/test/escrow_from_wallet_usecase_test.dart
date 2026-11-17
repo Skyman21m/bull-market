@@ -126,8 +126,11 @@ final class _Seller {
         Err(:final failure) => throw StateError('$failure'),
       };
 
-  Future<TradeTerms> terms() async => switch (await app.reader.open(record)) {
-    TradeOpened(:final trade) => trade.terms,
+  Future<TradeTerms<TakenSide>> terms() async => switch (await app.reader.open(
+    record,
+  )) {
+    TradeOpened(trade: OpenTrade(terms: final TradeTerms<TakenSide> terms)) =>
+      terms,
     _ => throw StateError('not opened'),
   };
 }

@@ -324,6 +324,12 @@ sealed class TradeStatus {
         if (!previous.has<TradeOrderMismatch>()) const TradeOrderMismatch(),
       ], trail);
     }
+    // A maker's trade is not followed by this state machine yet: its positions and edges come with #178 (design note `docs/design/phase-3-making-an-order.md` § 3.2). Until then every answer about it is refused, as of a role this state machine does not know, and the trail is left as it is: nothing is shown or paid. Every factory of [TradeTerms] instantiates the type of its side, so this test is that of a taker's side.
+    if (terms is! TradeTerms<TakenSide>) {
+      return previous._rewarned([
+        if (!previous.has<TradeRoleMismatch>()) const TradeRoleMismatch(),
+      ], trail);
+    }
     final from = trail.position;
     final to = _positionOf(answer, from: from, trail: trail, now: now);
     // An end is refreshed only by an order of the same status, which may say more (a summary, a transaction): being out of the order again says nothing new.
@@ -549,7 +555,7 @@ sealed class TradeStatus {
   /// The checks of an order against the terms of the take and the trade's history (design note § 3.2, as #86 states them).
   static List<TradeWarning> _orderWarnings(
     CoordinatorOrder order,
-    TradeTerms terms,
+    TradeTerms<TakenSide> terms,
     TradePosition to,
     TradePosition from,
     TradeTrail trail,
@@ -609,7 +615,10 @@ sealed class TradeStatus {
   }
 
   /// Whether the order's own terms are not those of the public order taken.
-  static bool _termsChanged(CoordinatorOrder order, TradeTerms terms) {
+  static bool _termsChanged(
+    CoordinatorOrder order,
+    TradeTerms<TakenSide> terms,
+  ) {
     if (order.currency != terms.currency || order.type != terms.type) {
       return true;
     }
@@ -650,7 +659,7 @@ sealed class TradeStatus {
     required TradePosition from,
     required TradePosition to,
     required TradeTrail trail,
-    required TradeTerms terms,
+    required TradeTerms<TakenSide> terms,
     required DateTime now,
     required Bolt11Reader reader,
     required List<TradeWarning> readWarnings,

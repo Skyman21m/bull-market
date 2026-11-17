@@ -44,7 +44,7 @@ final RobotIdentity us = _identityAt(0);
 final RobotIdentity peer = _identityAt(1);
 
 /// The terms of taking the book's order [tradeOrderId] on temple, as a buyer (a sell order) or a seller (a buy order).
-Future<TradeTerms> tradeTerms({
+Future<TradeTerms<TakenSide>> tradeTerms({
   TradeRole role = TradeRole.buyer,
   RobosatsNetwork network = RobosatsNetwork.mainnet,
   bool range = false,

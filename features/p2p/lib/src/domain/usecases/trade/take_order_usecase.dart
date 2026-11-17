@@ -207,7 +207,7 @@ final class TakeOrderUsecase {
         !_nearSats(shown.satoshisNow, read.satoshisNow)) {
       return const Err(TakeOrderChanged());
     }
-    final TradeTerms terms;
+    final TradeTerms<TakenSide> terms;
     switch (TradeTerms.takeRead(
       read,
       rangeAmount: amount?.amount,
@@ -385,7 +385,7 @@ final class TakeOrderUsecase {
       case Err(:final failure):
         return Err(failure);
     }
-    final TradeTerms terms;
+    final TradeTerms<TakenSide> terms;
     switch (TradeTerms.take(
       read.order,
       network: network,
@@ -511,7 +511,7 @@ final class TakeOrderUsecase {
     ReservedRobot reserved, {
     required Coordinator coordinator,
     required RobosatsNetwork network,
-    required TradeTerms terms,
+    required TradeTerms<TakenSide> terms,
     required TakeAmount? amount,
     required OrderPassword? password,
   }) async {
