@@ -1371,6 +1371,14 @@ void main() {
             await settle(tester);
           }
 
+          // In French, the pending make above the form; the stops need the English form's labels.
+          if (code == 'fr') {
+            final pending = _Form()
+              ..listedMakes = [ActivePendingMake(_pending, neverSent: false)];
+            await _show(tester, pending, locale: locale);
+            await capture(tester, '$code-creer-creation-en-attente');
+            return;
+          }
           // The Bull wallet's price read at the press, a line that warns.
           var form = _Form()..holdPrices = true;
           await _show(tester, form, locale: locale);

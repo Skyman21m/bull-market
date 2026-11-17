@@ -803,7 +803,9 @@ void main() {
             makerOrderJson(1),
             makerOrderJson(6, last: _lowSats),
           ]);
-          await tester.tap(find.text('Order').last);
+          await tester.tap(
+            find.text(lookupP2pLocalizations(locale).p2pNavOrder).last,
+          );
           await tester.pump();
           await capture(tester, '$code-createur-6-onglet-ordre');
           await shoot('6-ecart-favorable', [

@@ -57,6 +57,11 @@ void main() {
     await tester.tap(find.text('Create'));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
+    // One page pushed, not two.
+    expect(
+      find.byType(CreateOrderScreen, skipOffstage: false),
+      findsOneWidget,
+    );
     // The top bar's back.
     await tester.tap(
       find
@@ -66,6 +71,7 @@ void main() {
           )
           .first,
     );
+    await settle(tester);
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsNothing);
     expect(find.text('Create'), findsOneWidget);
