@@ -113,7 +113,7 @@ final class TradeStep {
 
 /// What the trade use cases share: opening a recorded trade from its stored terms and trail, reading its order through the robot's places, and keeping what each answer gives (#87).
 ///
-/// It writes the trail only through [TradeTrailRepository.storeTrail], which asks [TradeTrailRecord.whyNotReplace] first; it never returns a status computed from a trail that was not stored, but the stored trail's own; it confirms a record only when an answer shows the robot as the taker, and closes it only at a terminal status whose trail is stored.
+/// It writes the trail only through [TradeTrailRepository.storeTrail], which asks [TradeTrailRecord.whyNotReplace] first; it never returns a status computed from a trail that was not stored, but the stored trail's own; it confirms a take only when an answer shows the robot as the taker (a make is confirmed by the make use case, from a read that [showsMaker], #179), and closes a record only at a terminal status whose trail is stored.
 /// Only the trade use cases and the composition name it (`robot_bindings_architecture_test.dart`): its members write trails and close records.
 /// The network and the coordinator of every call come from the record, checked against the robot's binding; nothing here moves money.
 final class TradeReader {

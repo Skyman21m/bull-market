@@ -7,6 +7,7 @@ import 'package:p2p/src/domain/trade/active_trade.dart';
 import 'package:p2p/src/domain/trade/maker_terms.dart';
 import 'package:p2p/src/domain/trade/trade_edges.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
+import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade/trade_warning.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/testing.dart' show ScriptedFault, ScriptedMakerRequest;
@@ -411,6 +412,94 @@ void main() {
     );
   });
 
+  group('the resolution', () {
+    test(
+      'closes a make whose order the robot names is cancelled (1043): it proves nothing, but nothing was shown',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.coordinator.failNext(
+          ScriptedMakerRequest.make,
+          ScriptedFault.answerLost,
+        );
+        expect(valueOf(await harness.makeOrder()), isA<MakePending>());
+        harness.coordinator.order(42).status = 4;
+        final resolved = await harness.make.resolve(
+          (await harness.pendingMakes()).single,
+        );
+        expect(resolved, isA<MakeNotMade>());
+        expect((resolved as MakeNotMade).refusal, isA<OrderCancelled>());
+        expect(resolved.make.closedAt, isNotNull);
+        expect(harness.records.confirms, 0);
+      },
+    );
+
+    test(
+      'waits for the make in flight: its robot is read only once the make\'s request ended',
+      () async {
+        final harness = await MakeHarness.start();
+        final release = Completer<void>();
+        harness.coordinator.holdMake = release.future;
+        final making = harness.makeOrder();
+        await harness.settle();
+        final pending = (await harness.pendingMakes()).single;
+        int robotReads() => harness.coordinator.requests
+            .where((r) => r.url.path == '/api/robot/')
+            .length;
+        final before = robotReads();
+        final resolving = harness.make.resolve(pending);
+        await harness.settle();
+        // Nothing of the resolution left while the make is held.
+        expect(robotReads(), before);
+        release.complete();
+        expect(valueOf(await making), isA<MakeStarted>());
+        expect(await resolving, isA<MakeNoLongerPending>());
+        expect(makes(harness), 1);
+      },
+    );
+
+    test(
+      'a make whose terms read back otherwise than written is not sent, and closed',
+      () async {
+        final harness = await MakeHarness.start();
+        harness.trails.readBack = (stored) => stored == null
+            ? null
+            : MakerTermsRecord(
+                version: stored.version,
+                network: stored.network,
+                coordinatorAlias: stored.coordinatorAlias,
+                role: stored.role,
+                type: stored.type,
+                currencyId: stored.currencyId,
+                amount: stored.amount,
+                minAmount: stored.minAmount,
+                maxAmount: stored.maxAmount,
+                premiumPercent: stored.premiumPercent + 1,
+                paymentMethod: stored.paymentMethod,
+                bondSizePercent: stored.bondSizePercent,
+                publicSeconds: stored.publicSeconds,
+                escrowSeconds: stored.escrowSeconds,
+                description: stored.description,
+                hasPassword: stored.hasPassword,
+                latitude: stored.latitude,
+                longitude: stored.longitude,
+                createdPrice: stored.createdPrice,
+                makerFee: stored.makerFee,
+              );
+        final made = await harness.makeOrder();
+        expect(
+          made,
+          isA<Err<MakeOutcome, MakeRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<MakeNotRecorded>(),
+          ),
+        );
+        expect(makes(harness), 0);
+        expect(await harness.pendingMakes(), isEmpty);
+      },
+    );
+  });
+
   group('the app killed', () {
     test(
       'after the robot was reserved: no make, no record, the robot never used again',
@@ -576,7 +665,11 @@ void main() {
       'answers the make with another robot\'s order: not taken, the robot\'s own order is',
       () async {
         final harness = await MakeHarness.start();
-        final other = harness.coordinator.inventOrder(harness.robot(5));
+        // Public, so that this robot can read it: the read shows another maker.
+        final other = harness.coordinator.inventOrder(
+          harness.robot(5),
+          status: 1,
+        );
         harness.coordinator.makeAnswerChanges.add({'id': other.id});
         final start = started(await harness.makeOrder());
         expect(start.record.orderId, isNot(other.id));
