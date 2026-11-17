@@ -167,23 +167,29 @@ void main() {
       expect(CustomPaymentMethod.tryCreate(persian)?.text, persian);
     });
 
-    test('one method to a reader: equal without joiners and variation selectors', () {
-      expect(
-        CustomPaymentMethod.sameMethod(
-          'Pay ${chars([0x2764, 0xFE0F])}',
-          'Pay ${chars([0x2764])}',
-        ),
-        isTrue,
-      );
-      expect(
-        CustomPaymentMethod.sameMethod(
-          chars([0x06A9, 0x200C, 0x0628]),
-          chars([0x06A9, 0x0628]),
-        ),
-        isTrue,
-      );
-      expect(CustomPaymentMethod.sameMethod('Revolut', 'Revolut Pro'), isFalse);
-    });
+    test(
+      'one method to a reader: equal without joiners and variation selectors',
+      () {
+        expect(
+          CustomPaymentMethod.sameMethod(
+            'Pay ${chars([0x2764, 0xFE0F])}',
+            'Pay ${chars([0x2764])}',
+          ),
+          isTrue,
+        );
+        expect(
+          CustomPaymentMethod.sameMethod(
+            chars([0x06A9, 0x200C, 0x0628]),
+            chars([0x06A9, 0x0628]),
+          ),
+          isTrue,
+        );
+        expect(
+          CustomPaymentMethod.sameMethod('Revolut', 'Revolut Pro'),
+          isFalse,
+        );
+      },
+    );
 
     test('« Can\'t be empty »: nothing left but spaces', () {
       for (final text in ['', ' ', '    ']) {

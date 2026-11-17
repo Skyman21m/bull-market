@@ -531,12 +531,12 @@ void main() {
           '100.5',
         );
         // The same with the full-width full stop (second functional pass of #181, R13).
-        await tester.enterText(
-          _amountField,
-          '100${chars([0xFF0E])}${'1' * 9}',
-        );
+        await tester.enterText(_amountField, '100${chars([0xFF0E])}${'1' * 9}');
         await settle(tester);
-        expect(tester.widget<TextField>(_amountField).controller?.text, '100.5');
+        expect(
+          tester.widget<TextField>(_amountField).controller?.text,
+          '100.5',
+        );
         await tester.enterText(_premiumField, '1.234');
         await settle(tester);
         expect(tester.widget<TextField>(_premiumField).controller?.text, '2');
