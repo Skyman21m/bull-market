@@ -36,7 +36,7 @@ typedef BondQuoter =
 typedef BondRateChecker =
     Future<Result<WalletRateCheck?, BondPayRefusal>> Function(
       TradeRecord record,
-      P2pWalletQuote quote,
+      P2pWalletQuote walletQuote,
     );
 
 /// [PayBondFromWalletUsecase.payBond].
@@ -242,16 +242,16 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     emit(state._with(step: const BondPayQuoting()));
     final quoted = await _quoter(record, seen);
     if (isClosed) return;
-    final P2pWalletQuote quote;
+    final P2pWalletQuote walletQuote;
     switch (quoted) {
       case Ok(:final value):
-        quote = value;
+        walletQuote = value;
       case Err(:final failure):
         emit(state._with(step: BondPayIdle(refused: failure)));
         return;
     }
     final WalletRateCheck? rate;
-    switch (await _rate?.call(record, quote)) {
+    switch (await _rate?.call(record, walletQuote)) {
       case null || Ok(value: null):
         rate = null;
       case Ok(:final value?):
@@ -261,7 +261,7 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
         return;
     }
     if (isClosed) return;
-    emit(state._with(step: BondPayConfirming(quote, rate: rate)));
+    emit(state._with(step: BondPayConfirming(walletQuote, rate: rate)));
   }
 
   /// Leaves the confirmation without paying.

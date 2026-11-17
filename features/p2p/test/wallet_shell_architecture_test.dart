@@ -935,7 +935,6 @@ const _perFile = <String, Set<String>>{
     'registerLazySingleton',
     // The wallet's price of a bitcoin (#180).
     'getIndexPrice',
-    'Pricer',
     'ReadWalletRateUsecase',
   },
   'public/p2p_wallet_facade.dart': {

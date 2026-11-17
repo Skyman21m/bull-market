@@ -471,14 +471,15 @@ void main() {
     });
 
     test(
-      'too late: the bond\'s end within the wallet\'s margin, nothing offered',
+      'too late: the bond\'s end within the wallet\'s margin, nothing offered, nothing paid',
       () async {
         final made = await _Made.start();
+        final early = await made.seen();
+        final invoice = await made.invoiceShown();
         await made.harness.elapse(const Duration(seconds: 245));
-        final shown = await made.seen();
-        expect(shown.status, isA<WaitingForMakerBond>());
+        // The status a screen kept, by the clock: too late.
         expect(
-          await made.payBond.checkBond(made.record, shown),
+          await made.payBond.checkBond(made.record, early),
           isA<Err<WalletPaymentOffered, BondPayRefusal>>().having(
             (e) => e.failure,
             'failure',
@@ -489,6 +490,29 @@ void main() {
             ),
           ),
         );
+        // A read now: the state machine says it expires soon, which the wallet never pays.
+        final shown = await made.seen();
+        expect(shown.status, isA<WaitingForMakerBond>());
+        expect(shown.status.has<InvoiceExpiringSoon>(), isTrue);
+        expect(
+          await made.payBond.checkBond(made.record, shown),
+          isA<Err<WalletPaymentOffered, BondPayRefusal>>().having(
+            (e) => e.failure,
+            'failure',
+            isA<BondPayNotOffered>(),
+          ),
+        );
+        made.fake.scriptPayment(
+          const Ok(P2pWalletPayment(id: 'never-asked', paymentHash: 'none')),
+        );
+        expect(
+          await made.payBond.payBond(
+            made.record,
+            accepted: made.quoteOf(invoice),
+          ),
+          isA<Err<P2pWalletPayment, BondPayRefusal>>(),
+        );
+        expect(made.fake.paid, isEmpty);
       },
     );
 

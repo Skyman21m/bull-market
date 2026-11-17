@@ -345,6 +345,11 @@ void main() {
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));
+        payments.pays.single.complete(
+          const Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
+        );
+        await tester.pump();
+        await tester.pump();
       },
     );
 
@@ -382,6 +387,11 @@ void main() {
         await tester.tap(find.text('Pay 3,357 sats'));
         await tester.pump();
         expect(payments.pays, hasLength(1));
+        payments.pays.single.complete(
+          const Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
+        );
+        await tester.pump();
+        await tester.pump();
       },
     );
 
