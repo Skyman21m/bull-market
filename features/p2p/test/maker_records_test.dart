@@ -1037,6 +1037,52 @@ void main() {
     });
   });
 
+  group(
+    'the escrows of earlier contracts and the mark of a contract seen late (schema 8 as amended by #178)',
+    () {
+      test(
+        'a first trail, a make\'s or a take\'s, holds neither: the database refuses either at contract 0',
+        () async {
+          final made = await confirmedMake();
+          final take = await pendingTake();
+          expect(await trails.recordTerms(take, takerTerms()), isA<Ok>());
+          Future<void> insert(
+            TradeRecord trade,
+            String earlier,
+            int late,
+          ) => database.customStatement(
+            'INSERT INTO trade_trails (key_fingerprint, robot_index, version, '
+            'network, coordinator_alias, order_id, role, position, read_at, '
+            'breached, history_unknown, earlier_escrows, seen_late) '
+            "VALUES (?, ?, 1, 'testnet', 'temple', ?, 'buyer', 'start', 0, 0, 0, ?, ?)",
+            [
+              trade.robot.keyFingerprint.hex,
+              trade.robot.accountIndex,
+              trade.orderId,
+              earlier,
+              late,
+            ],
+          );
+          for (final trade in [made, take]) {
+            for (final (label, earlier, late) in [
+              ('an earlier escrow', '$hashA;', 0),
+              ('the mark', '', 1),
+              ('both', '$hashA;', 1),
+            ]) {
+              await expectLater(
+                insert(trade, earlier, late),
+                refusedBy(check),
+                reason: '${trade.origin.name}: $label',
+              );
+            }
+            // Neither, and the first trail is written.
+            await insert(trade, '', 0);
+          }
+        },
+      );
+    },
+  );
+
   group('the contract of a make only moves forward, whatever the code:', () {
     const forward = 'a trail only moves forward';
 
