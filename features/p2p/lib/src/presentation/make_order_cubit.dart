@@ -1,3 +1,44 @@
+  Future<void> choose(Coordinator coordinator) async {
+    if (state.locked) return;
+    emit(
+      state._with(
+        coordinator: coordinator,
+        limits: const MakerFormLimitsLoading(),
+        sizeLimitSats: CoordinatorSizeLimit.of(coordinator, _now()).sats,
+        price: const MakeFormPriceNone(),
+      ),
+    );
+    await _readLimits(coordinator);
+  }
+
+  /// Reads the chosen coordinator's limits again, then the Bull wallet's price, when the last read is older than [staleAfter]: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
+  Future<bool> refreshIfStale() async {
+    final coordinator = state.coordinator;
+    final readAt = state.limitsReadAt;
+    if (state.locked || coordinator == null || readAt == null) return false;
+    if (_now().difference(readAt) < staleAfter) return false;
+    await _readLimits(coordinator);
+    return true;
+  }
+
+  /// [coordinator]'s limits read, kept only while it is still the one chosen, then its price compared.
+  Future<void> _readLimits(Coordinator coordinator) async {
+    final read = ++_limitsRead;
+    _priceRead++;
+    final answer = await _fetchLimits(coordinator, state.network);
+    if (isClosed || read != _limitsRead) return;
+    emit(
+      state._with(
+        limits: switch (answer) {
+          Ok(:final value) => MakerFormLimitsRead(value),
+          Err() => const MakerFormLimitsUnreadable(),
+        },
+        limitsReadAt: _now(),
+      ),
+    );
+    await _readPrice();
+  }
+
 import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -152,6 +193,9 @@ final class MakeOrderState {
   final MakeFormPrice price;
   final MakeProgress progress;
 
+  /// When the chosen coordinator's limits were last read, `null` before.
+  final DateTime? limitsReadAt;
+
   const MakeOrderState({
     required this.network,
     required this.currency,
@@ -163,10 +207,18 @@ final class MakeOrderState {
     this.sizeLimitSats = 0,
     this.price = const MakeFormPriceNone(),
     this.progress = const MakeIdle(),
+    this.limitsReadAt,
   });
 
   /// Whether the form is locked: a make runs or has run, so nothing typed changes what was sent.
   bool get locked => progress is! MakeIdle;
+
+  /// Whether the coordinators were drawn and none can be chosen (none listed, or each refuses first contacts in this run): the form says so, with « Retry », rather than « Loading... ».
+  bool get noHost => coordinatorsLoaded && coordinator == null;
+
+  /// The limits the form judges with: unreadable when no coordinator can be chosen, so that the form says « The coordinator limits are not available. » rather than waiting.
+  MakerFormLimits get formLimits =>
+      noHost ? const MakerFormLimitsUnreadable() : limits;
 
   MakeOrderState _with({
     bool? coordinatorsLoaded,
@@ -178,6 +230,7 @@ final class MakeOrderState {
     RobosatsCurrency? currency,
     MakeFormPrice? price,
     MakeProgress? progress,
+    DateTime? limitsReadAt,
   }) => MakeOrderState(
     network: network,
     coordinatorsLoaded: coordinatorsLoaded ?? this.coordinatorsLoaded,
@@ -189,6 +242,7 @@ final class MakeOrderState {
     currency: currency ?? this.currency,
     price: price ?? this.price,
     progress: progress ?? this.progress,
+    limitsReadAt: limitsReadAt ?? this.limitsReadAt,
   );
 }
 
@@ -211,6 +265,12 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   int _limitsRead = 0;
   int _priceRead = 0;
 
+  /// Whether [start] runs.
+  bool _starting = false;
+
+  /// How old the limits and the Bull wallet's price may be when « Create order » is pressed: older, they are read again first ([refreshIfStale]). The reference reads them once when the form opens or the coordinator changes, never again while it stays open (`MakerForm.tsx:102-131`; `Federation.loadCoordinatorData`, `models/Federation.model.ts:763-792`, at a change of connection only).
+  static const Duration staleAfter = Duration(minutes: 3);
+
   MakeOrderCubit(
     RobosatsNetwork network, {
     required RobosatsCurrency currency,
@@ -226,6 +286,23 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
 
   /// Reads every coordinator's `/api/info/` at once, then draws their order by the reference's lottery (`federationLottery`, run once the information is loaded, `models/Federation.model.ts:584-609`): the first one that takes first contacts is the default, as the reference picks the first of its list (`MakerForm.tsx:132-138`); then its limits.
   Future<void> start() async {
+    if (_starting || state.locked) return;
+    _starting = true;
+    try {
+      await _start();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  /// « Retry » when no coordinator could be chosen: the coordinators listed and drawn again.
+  Future<void> retryHosts() async {
+    if (!state.noHost) return;
+    emit(state._with(coordinatorsLoaded: false));
+    await start();
+  }
+
+  Future<void> _start() async {
     final network = state.network;
     final hosts = _listHosts(network).choices;
     final answers = await Future.wait([
@@ -254,7 +331,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         infos: Map.unmodifiable(infos),
       ),
     );
-    if (first != null) unawaited(choose(first.coordinator));
+    if (first != null) await choose(first.coordinator);
   }
 
   /// The coordinator the user chose in « Select Host », or the default: its limits read again, even when it is the one shown (a choice is the reference's way of reading them again, `MakerForm.tsx:102-131`), then its price compared. Nothing while a make runs or has run.

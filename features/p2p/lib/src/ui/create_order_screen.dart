@@ -95,7 +95,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       premium: _premium.text,
     ),
     coordinatorsLoaded: state.coordinatorsLoaded,
-    market: state.limits,
+    market: state.formLimits,
     sizeLimitSats: state.sizeLimitSats,
   );
 
@@ -104,10 +104,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (_asking) return;
     final cubit = context.read<MakeOrderCubit>();
     // The request is the one the summary shows now: the fields are locked from here.
-    final request = _check(cubit.state).request;
+    final shown = _check(cubit.state);
+    final request = shown.request;
     if (request == null || cubit.state.locked) return;
+    final warned = _warns(cubit.state);
     setState(() => _asking = true);
     try {
+      // Limits and a price read more than a few minutes ago are read again first: when the form then judges otherwise (the request, or the price's warning, changed), nothing goes on, and the user sees the fresh form.
+      if (await cubit.refreshIfStale()) {
+        if (!mounted) return;
+        final fresh = cubit.state;
+        if (_check(fresh).request != request || _warns(fresh) != warned) {
+          return;
+        }
+      }
       if (!await cubit.hasGarageKey()) {
         if (!mounted) return;
         await BullDialog.show<void>(
@@ -123,6 +133,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     } finally {
       if (mounted) setState(() => _asking = false);
     }
+  }
+
+  /// Whether the price check of [state] warns, for the currency it shows.
+  static bool _warns(MakeOrderState state) => switch (state.price) {
+    MakeFormPriceChecked(:final check) => check.warns,
+    _ => false,
+  };
+
+  /// « Clear form » (`clearMaker`, `MakerForm.tsx:485-492`): no side chosen, the currency back to USD (`fav.currency` 0, which the form reads as USD), the amount, the payment methods and the premium emptied. The coordinator chosen stays: the reference puts back `defaultMaker.coordinator`, an alias drawn at random when its page loads, not its lottery's.
+  void _clear() {
+    setState(() {
+      _type = null;
+      _amount.clear();
+      _premium.clear();
+      _methods.clear();
+    });
+    final usd = RobosatsCurrency.fromCode('USD');
+    if (usd != null) unawaited(context.read<MakeOrderCubit>().showCurrency(usd));
   }
 
   Future<void> _chooseCurrency(MakeOrderState state) async {
@@ -239,16 +267,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(BullSpacing.md),
                   children: [
-                    const _AdvancedOptions(),
+                    _AdvancedOptions(onClear: locked ? null : _clear),
                     const Gap(BullSpacing.md),
                     _Side(
                       type: _type,
                       enabled: !locked,
-                      onBuy: () => setState(
-                        () => _type = _type == OrderType.buy
-                            ? null
-                            : OrderType.buy,
-                      ),
+                      // As the reference's « Buy », a choice, never a toggle (`MakerForm.tsx:766-775`).
+                      onBuy: () => setState(() => _type = OrderType.buy),
                     ),
                     const Gap(BullSpacing.md),
                     _Amount(
@@ -310,36 +335,56 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 }
 
-/// « Enable advanced options », disabled, with « Coming in a later version. ».
+/// The reference's first row (`MakerForm.tsx:674-723`): « Clear form » at the left, a bin with its tooltip, then « Enable advanced options », disabled, with « Coming in a later version. ».
 class _AdvancedOptions extends StatelessWidget {
-  const _AdvancedOptions();
+  /// « Clear form »; `null` while the form is locked.
+  final VoidCallback? onClear;
+
+  const _AdvancedOptions({required this.onClear});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
-    return MergeSemantics(
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      children: [
+        IconButton(
+          tooltip: l10n.p2pMakeClearForm,
+          onPressed: onClear,
+          color: colors.textMuted,
+          icon: const Icon(Icons.delete_sweep_outlined),
+        ),
+        const Gap(BullSpacing.xs),
+        Expanded(
+          child: MergeSemantics(
+            child: Row(
               children: [
-                Text(
-                  l10n.p2pMakeEnableAdvanced,
-                  style: text.bodyLarge?.copyWith(color: colors.textMuted),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.p2pMakeEnableAdvanced,
+                        style: text.bodyLarge?.copyWith(
+                          color: colors.textMuted,
+                        ),
+                      ),
+                      Text(
+                        l10n.p2pMakeComingLater,
+                        style: text.labelMedium?.copyWith(
+                          color: colors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                  l10n.p2pMakeComingLater,
-                  style: text.labelMedium?.copyWith(color: colors.textMuted),
-                ),
+                const Switch(value: false, onChanged: null),
               ],
             ),
           ),
-          const Switch(value: false, onChanged: null),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -663,7 +708,7 @@ class _Methods extends StatelessWidget {
         if (tooLong) ...[
           const Gap(BullSpacing.xxs),
           Text(
-            l10n.p2pMakeMustBeShorter,
+            l10n.p2pMakeMustBeShorter('${CustomPaymentMethod.maxLength}'),
             style: text.labelMedium?.copyWith(color: colors.error),
           ),
         ],
@@ -730,6 +775,22 @@ class _Coordinator extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
     final coordinator = state.coordinator;
+    if (state.noHost) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Line(l10n.p2pMakeNoHost, color: colors.warning, live: true),
+          const Gap(BullSpacing.xs),
+          TradeButton(
+            label: l10n.p2pCommonRetry,
+            outlined: true,
+            onPressed: enabled
+                ? () => unawaited(context.read<MakeOrderCubit>().retryHosts())
+                : null,
+          ),
+        ],
+      );
+    }
     return Semantics(
       button: true,
       enabled: enabled,
@@ -925,11 +986,12 @@ class _Rate extends StatelessWidget {
     final rate = check.rate;
     final code = state.currency.code;
     final children = <Widget>[
-      if (rate != null)
-        Tooltip(
-          message: l10n.p2pMakeCurrentRateHint,
-          child: _Line(l10n.p2pMakeCurrentRate(formats.orderRate(rate), code)),
-        ),
+      Tooltip(
+        message: l10n.p2pMakeCurrentRateHint,
+        child: rate != null
+            ? _Line(l10n.p2pMakeCurrentRate(formats.orderRate(rate), code))
+            : _RateWaiting(code: code),
+      ),
     ];
     final price = check.price;
     switch (state.price) {
@@ -997,6 +1059,41 @@ class _Rate extends StatelessWidget {
           if (index > 0) const Gap(BullSpacing.xs),
           child,
         ],
+      ],
+    );
+  }
+}
+
+/// « Order current rate: » while the rate is not known: the line stays, a placeholder in place of the figure, as the reference draws a skeleton there (`MakerForm.tsx:1351-1361`).
+class _RateWaiting extends StatelessWidget {
+  final String code;
+
+  const _RateWaiting({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.bull;
+    final l10n = P2pLocalizations.of(context);
+    final style = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(color: colors.textMuted);
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: BullSpacing.xs,
+      children: [
+        Text(l10n.p2pMakeCurrentRateLabel, style: style),
+        ExcludeSemantics(
+          child: Container(
+            width: 64,
+            height: 12,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainer,
+              borderRadius: BorderRadius.circular(BullRadius.xxs),
+            ),
+          ),
+        ),
+        Text(l10n.p2pMakeCurrentRateUnit(code), style: style),
       ],
     );
   }

@@ -7,11 +7,12 @@ import 'package:robosats/src/coordinator/json_fields.dart';
 /// - any space but U+0020 (the no-break and the typographic spaces, the ideographic space, the Braille blank), which a reader cannot tell from it or from nothing;
 /// - the invisible characters: the soft hyphen, the combining grapheme joiner, the Hangul fillers, the Khmer and Mongolian invisible signs, the zero width space, the word joiner and the invisible operators, the deprecated format characters, the byte order mark, the interlinear annotation characters, the Unicode tag block (which can carry a hidden text), and the other format characters (`Cf`) of Unicode 16;
 /// - the private use characters and the noncharacters, which have no agreed glyph;
-/// - a zero width joiner or non-joiner anywhere but alone between two characters that are seen (as in a Persian word written with its zero width non-joiner, or an emoji sequence);
+/// - a zero width joiner or non-joiner anywhere but alone between two characters that are seen, the first of which may carry its variation selector (as in a Persian word written with its zero width non-joiner, or an emoji sequence such as a rainbow flag, U+1F3F3 U+FE0F U+200D U+1F308);
 /// - a variation selector anywhere but right after a character that is seen;
 /// - a combining mark at the start, after a space or a joiner, or more than [maxCombiningMarks] in a row (a text piled up over its neighbours).
 ///
 /// Letters of every script are kept, right-to-left ones included: their order on screen is the Unicode bidirectional algorithm's, which no control of the text can steer once the controls are refused.
+/// Refused on purpose although legitimate somewhere: the flags of England, Scotland and Wales (sequences of the tag block, which can also carry a hidden text), Mongolian free variation selectors (U+180B to U+180F), and a joiner that ends a word (as in an old encoding of Malayalam chillu letters).
 bool isShownAsWritten(String text) {
   if (displayText(text) != text) return false;
   var seen = false;
@@ -25,7 +26,8 @@ bool isShownAsWritten(String text) {
       case _Kind.space:
         if (previous == _Kind.joiner) return false;
       case _Kind.joiner:
-        if (previous != _Kind.seen) return false;
+        // After a character seen, or after the variation selector that follows one, as in the emoji sequences where U+FE0F comes before the joiner (a rainbow flag, a heart on fire).
+        if (previous != _Kind.seen && previous != _Kind.selector) return false;
       case _Kind.selector:
         if (previous != _Kind.seen) return false;
       case _Kind.combining:

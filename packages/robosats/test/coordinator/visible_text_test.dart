@@ -141,6 +141,47 @@ void main() {
       }
     });
 
+    test(
+      'the emoji sequences whose variation selector comes before a joiner (functional review of #181, C1)',
+      () {
+        String of(List<int> codes) => String.fromCharCodes(codes);
+        for (final codes in [
+          // A rainbow flag, a heart on fire, a couple with a heart, an eye in a speech bubble.
+          [0x1F3F3, 0xFE0F, 0x200D, 0x1F308],
+          [0x2764, 0xFE0F, 0x200D, 0x1F525],
+          [0x1F468, 0x200D, 0x2764, 0xFE0F, 0x200D, 0x1F468],
+          [0x1F441, 0xFE0F, 0x200D, 0x1F5E8, 0xFE0F],
+          // A transgender flag, a mending heart, a kiss, a man in a turban, a polar bear, a technologist with a skin tone.
+          [0x1F3F3, 0xFE0F, 0x200D, 0x26A7, 0xFE0F],
+          [0x2764, 0xFE0F, 0x200D, 0x1FA79],
+          [0x1F469, 0x200D, 0x2764, 0xFE0F, 0x200D, 0x1F48B, 0x200D, 0x1F468],
+          [0x1F473, 0x200D, 0x2642, 0xFE0F],
+          [0x1F43B, 0x200D, 0x2744, 0xFE0F],
+          [0x1F9D1, 0x1F3FD, 0x200D, 0x1F4BB],
+        ]) {
+          expect(isShownAsWritten(of(codes)), isTrue, reason: '$codes');
+          expect(
+            isShownAsWritten('Revolut ${of(codes)}'),
+            isTrue,
+            reason: '$codes',
+          );
+        }
+        // Still refused: a joiner first, last, doubled, after an invisible character, or after a selector that follows nothing seen.
+        for (final codes in [
+          [0x200D, 0x1F308],
+          [0x1F3F3, 0xFE0F, 0x200D],
+          [0x1F3F3, 0xFE0F, 0x200D, 0x200D, 0x1F308],
+          [0x1F3F3, 0x200B, 0x200D, 0x1F308],
+          [0x1F3F3, 0xFE0F, 0xFE0F, 0x200D, 0x1F308],
+          [0x20, 0xFE0F, 0x200D, 0x1F308],
+          [0x1F3F3, 0xFE0F, 0x200D, 0x20, 0x1F308],
+          [0x1F3F3, 0xFE0F, 0x200D, 0xFE0F],
+        ]) {
+          expect(isShownAsWritten(of(codes)), isFalse, reason: '$codes');
+        }
+      },
+    );
+
     test('a joiner only alone between two characters that are seen', () {
       for (final text in [
         '\u200cSEPA',

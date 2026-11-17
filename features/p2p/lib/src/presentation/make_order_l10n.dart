@@ -34,7 +34,7 @@ extension MakerFormBlockL10n on MakerFormBlock {
 
 /// Why a make did not happen (#181): a text of the app for each type, never the coordinator's (`AGENTS.md`, « Rules for #180 to #182 »).
 ///
-/// Where the official client shows the coordinator's own message for an error code (`MakerForm.tsx:284-286`), the text is the start of that message, without the figures the coordinator gives.
+/// Where the official client shows the coordinator's own message for an error code (`MakerForm.tsx:284-286`): for 1004 and 1005 the text is the start of that message, without the figures the coordinator gives (`api/errors.py:7-8`); for 1037 it is the project's own, after that message (`api/errors.py:44`).
 extension MakeProblemL10n on MakeProblem {
   /// The text, naming [coordinator], the long alias of the chosen coordinator.
   String toText(BuildContext context, {required String coordinator}) {

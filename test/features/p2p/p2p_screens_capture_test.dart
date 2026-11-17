@@ -2923,9 +2923,9 @@ void main() {
         await showCurrency('EUR');
         await capture('creer-prix-illisible');
 
-        // A reason of the disabled button: the amount below the coordinator's smallest order.
+        // A reason of the disabled button: the amount below the coordinator's smallest order (Ammanaya's is 1,000 sats, about 0.68 EUR with the form's margin).
         await toTop();
-        await tester.enterText(find.byType(TextField).at(0), '5');
+        await tester.enterText(find.byType(TextField).at(0), '0.5');
         await settle();
         await capture('creer-montant-trop-bas');
 

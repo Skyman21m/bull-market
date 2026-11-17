@@ -79,6 +79,9 @@ void main() {
         expect(amount(chars([0x06F1, 0x06F2])).value, 12.0);
         expect(amount(chars([0x0967, 0x0968])).value, 12.0);
         expect(amount(chars([0xFF11, 0xFF12])).value, 12.0);
+        // The full-width full stop and comma, beside the full-width digits (functional review of #181, R5).
+        expect(amount(chars([0xFF11, 0xFF12, 0xFF0E, 0xFF15])).value, 12.5);
+        expect(amount(chars([0xFF11, 0xFF12, 0xFF0C, 0xFF15])).value, 12.5);
         // Each script's zero and nine too.
         expect(amount(chars([0x0661, 0x0660, 0x0669])).value, 109.0);
         expect(amount(chars([0x06F1, 0x06F0, 0x06F9])).value, 109.0);
@@ -105,6 +108,13 @@ void main() {
       expect(
         CustomPaymentMethod.tryCreate('Lydia${char(0x3000)}')?.text,
         'Lydia',
+      );
+      // The ideographic space a Japanese keyboard types is an ordinary space (functional review of #181, R4).
+      expect(
+        CustomPaymentMethod.tryCreate(
+          chars([0x9280, 0x884C, 0x3000, 0x632F, 0x8FBC]),
+        )?.text,
+        chars([0x9280, 0x884C, 0x20, 0x632F, 0x8FBC]),
       );
       expect(
         CustomPaymentMethod.tryCreate('Bank   transfer')?.text,
@@ -133,8 +143,8 @@ void main() {
           chars([0x200B, 0x200B, 0x200B]),
           'SEPA${char(0x200B)}',
           'SEPA${char(0xA0)}Revolut',
-          // Inside: at the ends it is taken off as a space, and the method kept is what is seen.
-          'SEPA${char(0x3000)}Revolut',
+          // Another space than the ideographic one, which is made ordinary.
+          'SEPA${char(0x2007)}Revolut',
           '${char(0xE0041)}${char(0xE0042)}',
           'Revolut${char(0xE0041)}',
           char(0x0301),
@@ -158,8 +168,13 @@ void main() {
 
   group('the form, as the reference judges it', () {
     late CurrencyLimits limits;
+    late CurrencyLimits limitsRecorded;
+    late CurrencyLimits limitsExact;
     setUpAll(() async {
       limits = await limitsAt({2: 91711.15, 1: 100000});
+      limitsRecorded = await limitsAt({2: 66227.95});
+      // Bounds of 100 and 1,000 EUR: the form's are exactly 103 and 980.
+      limitsExact = await limitsOf({2: (50000, 100, 1000)});
     });
 
     MakerFormCheck checkOf({
@@ -225,6 +240,21 @@ void main() {
         expect(premium.limits?.min, closeTo(18.89249 * 1.02, 1e-4));
         final discount = checkOf(premium: '-5.5');
         expect(discount.rate, 86667);
+        // Rounded down, never to the nearest (functional review of #181, R12): 100 / 67,553 × 10^8 × 3 % = 4,440.96.
+        final recorded = MakerFormCheck.of(
+          MakerFormInput(
+            type: OrderType.buy,
+            currency: eur,
+            amount: '100',
+            paymentMethods: const ['Revolut'],
+            premium: '2',
+          ),
+          coordinatorsLoaded: true,
+          market: MakerFormLimitsRead(limitsRecorded),
+          sizeLimitSats: 21 * 100000000,
+        );
+        expect(recorded.rate, 67553);
+        expect(recorded.estimatedBond, 4440);
       },
     );
 
@@ -253,6 +283,22 @@ void main() {
       expect(checkOf(amount: '4493.85').amountProblem, isNotNull);
       // A zero is no number outside the limits, as the reference's `maker.amount &&` (`MakerForm.tsx:884`).
       expect(checkOf(amount: '0').amountProblem, isNull);
+    });
+
+    test('the bounds themselves are allowed (functional review of #181, R12)', () {
+      final market = MakerFormLimitsRead(limitsExact);
+      expect(checkOf(market: market).limits?.min, 103);
+      expect(checkOf(market: market).limits?.max, 980);
+      for (final (amount, allowed) in [
+        ('103', true),
+        ('102.99999999', false),
+        ('980', true),
+        ('980.00000001', false),
+      ]) {
+        final check = checkOf(market: market, amount: amount);
+        expect(check.amountProblem == null, allowed, reason: amount);
+        expect(check.block == null, allowed, reason: amount);
+      }
     });
 
     test('the size limit caps the maximum, without the premium', () {

@@ -51,12 +51,25 @@ final class _Form {
 
   final List<String> limitsAsked = [];
 
+  /// The coordinators that refuse first contacts in this run.
+  final Set<String> refusing = {};
+
+  /// The screen's clock, which a test moves.
+  DateTime now = DateTime.utc(2026, 11, 17);
+
+  /// How many times the vault was asked, and its answer held until the test completes it, when set.
+  int keysAsked = 0;
+  Completer<Result<bool, P2pFailure>>? vault;
+
   MakeOrderCubit cubit() => MakeOrderCubit(
     RobosatsNetwork.mainnet,
     currency: eur,
     listHosts: (network) => RobotHosts(network, [
       for (final coordinator in Federation.robosats.on(network))
-        RobotHost(coordinator, refusesFirstContacts: false),
+        RobotHost(
+          coordinator,
+          refusesFirstContacts: refusing.contains(coordinator.shortAlias),
+        ),
     ]),
     fetchInfo: (coordinator, network) async =>
         coordinator.shortAlias == 'temple'
@@ -76,9 +89,12 @@ final class _Form {
       answers.add(held);
       return held.future;
     },
-    hasGarageKey: (_) async => keys,
+    hasGarageKey: (_) {
+      keysAsked++;
+      return vault?.future ?? Future.value(keys);
+    },
     lottery: CoordinatorLottery(() => 0.5),
-    now: () => DateTime.utc(2026, 11, 17),
+    now: () => now,
     checkPrice: (network, currency, price) {
       pricesAsked.add(currency);
       final check = MakePriceCheck.of(
@@ -222,6 +238,137 @@ void main() {
       expect(find.text('Please enter an amount.'), findsOneWidget);
     });
 
+    testWidgets('« Buy » is a choice, never a toggle', (tester) async {
+      await _show(tester, _Form());
+      await tester.tap(find.text('Buy'));
+      await tester.pump();
+      await tester.tap(find.text('Buy'));
+      await tester.pump();
+      expect(find.text('Buy BTC for 0 EUR at market price'), findsOneWidget);
+    });
+
+    testWidgets(
+      '« Clear form »: no side, USD, the amount, the methods and the premium emptied, the coordinator kept',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        expect(find.text('Buy BTC for 100 EUR at a 2% premium'), findsOneWidget);
+        await tester.tap(find.byTooltip('Clear form'));
+        await settle(tester);
+        expect(find.text('Order for 0 USD at market price'), findsOneWidget);
+        expect(find.text('USD'), findsOneWidget);
+        expect(find.byType(InputChip), findsNothing);
+        expect(tester.widget<TextField>(_amountField).controller?.text, '');
+        expect(tester.widget<TextField>(_premiumField).controller?.text, '');
+        expect(find.text('Temple of Sats'), findsOneWidget);
+        expect(
+          find.text('Please select if you want to buy or sell.'),
+          findsOneWidget,
+        );
+        // USD's price compared once more.
+        expect(form.pricesAsked, [eur, usd]);
+        expect(find.text('Order current rate: 100,000 USD/BTC'), findsOneWidget);
+      },
+    );
+
+    testWidgets('« Clear form » is disabled while a make runs', (tester) async {
+      final form = _Form();
+      await _show(tester, form);
+      await _fill(tester);
+      await tester.tap(_create);
+      await settle(tester);
+      await tester.tap(find.text('Done'));
+      await settle(tester);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byIcon(Icons.delete_sweep_outlined),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets(
+      'no coordinator takes a new robot: said, « Retry » lists them again',
+      (tester) async {
+        final form = _Form();
+        for (final coordinator in Federation.robosats.on(
+          RobosatsNetwork.mainnet,
+        )) {
+          form.refusing.add(coordinator.shortAlias);
+        }
+        await _show(tester, form);
+        expect(
+          find.text('No coordinator can be chosen right now.'),
+          findsOneWidget,
+        );
+        expect(find.text('Loading...'), findsNothing);
+        await tester.tap(find.text('Buy'));
+        await settle(tester);
+        expect(
+          find.text('The coordinator limits are not available.'),
+          findsOneWidget,
+        );
+        form.refusing.clear();
+        await tester.tap(find.text('Retry'));
+        await settle(tester);
+        expect(find.text('Temple of Sats'), findsOneWidget);
+        expect(
+          find.text('No coordinator can be chosen right now.'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'limits and price read more than 3 minutes ago are read again at « Create order »; the same form goes on',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        expect(form.limitsAsked, ['temple']);
+        // Within 3 minutes: nothing read again.
+        form.now = form.now.add(const Duration(minutes: 2));
+        await tester.tap(_create);
+        await settle(tester);
+        expect(form.limitsAsked, ['temple']);
+        await tester.tap(find.text('Go back'));
+        await settle(tester);
+        form.now = form.now.add(const Duration(minutes: 2));
+        await tester.tap(_create);
+        await settle(tester);
+        expect(form.limitsAsked, ['temple', 'temple']);
+        expect(form.pricesAsked, [eur, eur]);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'read again at « Create order », a price now beyond 10 %: no dialog, the fresh warning shown, nothing sent',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        form
+          ..now = form.now.add(const Duration(minutes: 4))
+          ..rate = P2pWalletRateRead(110000);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(find.textContaining('more than 10% below'), findsOneWidget);
+        expect(form.made, isEmpty);
+        // Pressed again, the warning seen: the dialog.
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+      },
+    );
+
     testWidgets(
       'a filled form: the summary, the estimate, the rate and the comparison, from the values sent',
       (tester) async {
@@ -236,7 +383,7 @@ void main() {
         expect(find.text('Order current rate: 93,545 EUR/BTC'), findsOneWidget);
         expect(
           find.text(
-            'For comparison, the Bull wallet\'s indicative price: 91,711 EUR/BTC (Temple of Sats\'s: 91,711, gap 0.00%).',
+            'For comparison, the Bull wallet\'s indicative price: 91,711 EUR/BTC (Temple of Sats: 91,711, gap 0.00%).',
           ),
           findsOneWidget,
         );
@@ -380,9 +527,10 @@ void main() {
         // A method already chosen is not added twice.
         await _addMethod(tester, 'Bank transfer');
         expect(find.byType(InputChip), findsNWidgets(2));
-        // Spaces only: « Can't be empty »; a zero width space: refused, said.
+        // Spaces only: « Can't be empty »; a zero width space: refused, said. Nothing is said before anything is typed.
         await tester.tap(find.byTooltip('Add custom payment method'));
         await settle(tester);
+        expect(find.text('Can\'t be empty'), findsNothing);
         await tester.enterText(find.byType(TextField).last, '   ');
         await tester.pump();
         expect(find.text('Can\'t be empty'), findsOneWidget);
@@ -402,7 +550,7 @@ void main() {
         expect(find.byType(InputChip), findsNWidgets(2));
         // Too long: the reference's line.
         await _addMethod(tester, 'x' * 40);
-        expect(find.text('Must be shorter than 65 characters'), findsOneWidget);
+        expect(find.text('Must be at most 50 characters'), findsOneWidget);
         await tester.tap(find.text('Buy'));
         await tester.enterText(_amountField, '100');
         await settle(tester);
@@ -419,7 +567,10 @@ void main() {
           find.text('The coordinator limits are not available.'),
           findsOneWidget,
         );
-        expect(find.textContaining('Order current rate'), findsNothing);
+        // The line stays, its figure waiting, as the reference's skeleton.
+        expect(find.text('Order current rate:'), findsOneWidget);
+        expect(find.text('EUR/BTC'), findsOneWidget);
+        expect(find.textContaining('Order current rate: '), findsNothing);
         form.unreadable.clear();
         await tester.tap(find.text('Temple of Sats'));
         await settle(tester);
@@ -445,7 +596,9 @@ void main() {
           find.text('The Bitcoin price is not synchronized.'),
           findsOneWidget,
         );
-        expect(find.textContaining('Order current rate'), findsNothing);
+        expect(find.text('Order current rate:'), findsOneWidget);
+        expect(find.text('GBP/BTC'), findsOneWidget);
+        expect(find.textContaining('Order current rate: '), findsNothing);
         expect(find.textContaining('For comparison'), findsNothing);
         expect(form.pricesAsked, [eur]);
       },
@@ -460,7 +613,7 @@ void main() {
         await _show(tester, form);
         await _fill(tester);
         final line = find.text(
-          'For comparison, the Bull wallet\'s indicative price: 110,000 EUR/BTC (Temple of Sats\'s: 91,711, gap -16.63%).',
+          'For comparison, the Bull wallet\'s indicative price: 110,000 EUR/BTC (Temple of Sats: 91,711, gap -16.63%).',
         );
         expect(line, findsOneWidget);
         expect(
@@ -469,7 +622,7 @@ void main() {
         );
         expect(
           find.text(
-            'Temple of Sats\'s price is more than 10% below the Bull wallet\'s: your bond and your trade would be counted in too many sats. Check it before you create the order.',
+            'Temple of Sats\'s price is more than 10% below the Bull wallet\'s: your bond would be larger than it should be. Check it before creating the order.',
           ),
           findsOneWidget,
         );
@@ -488,13 +641,13 @@ void main() {
       await _show(tester, form);
       expect(
         find.text(
-          'For comparison, the Bull wallet\'s indicative price: 80,000 EUR/BTC (Temple of Sats\'s: 91,711, gap +14.64%).',
+          'For comparison, the Bull wallet\'s indicative price: 80,000 EUR/BTC (Temple of Sats: 91,711, gap +14.64%).',
         ),
         findsOneWidget,
       );
       expect(
         find.text(
-          'Temple of Sats\'s price is more than 10% above the Bull wallet\'s: you would receive fewer sats when your order is taken. Check it before you create the order.',
+          'Temple of Sats\'s price is more than 10% above the Bull wallet\'s: you would receive fewer sats when the order is taken. Check it before creating the order.',
         ),
         findsOneWidget,
       );
@@ -621,20 +774,48 @@ void main() {
       expect(_createEnabled(tester), isTrue);
     });
 
-    testWidgets('a double tap on « Create order » opens one dialog', (
-      tester,
-    ) async {
-      final form = _Form();
-      await _show(tester, form);
-      await _fill(tester);
-      await tester.tap(_create);
-      await tester.tap(_create, warnIfMissed: false);
-      await settle(tester);
-      expect(find.byType(StoreTokenDialog), findsOneWidget);
-      await tester.tap(find.text('Done'));
-      await settle(tester);
-      expect(form.made, hasLength(1));
-    });
+    testWidgets(
+      'a second tap while the first press still waits for the vault does nothing: the press\'s own guard',
+      (tester) async {
+        final form = _Form()..vault = Completer();
+        await _show(tester, form);
+        await _fill(tester);
+        // No frame between the two taps: the second reaches the button's handler, which the press's guard stops.
+        await tester.tap(_create);
+        await tester.tap(_create);
+        expect(form.keysAsked, 1);
+        form.vault?.complete(const Ok(true));
+        await settle(tester);
+        expect(
+          find.byType(StoreTokenDialog, skipOffstage: false),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.made, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'a tap once « Store your garage key » is up lands on its barrier: one dialog, one make',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        // The vault answers at once: the dialog is pushed before the second tap, whose point is then the dialog's barrier, not the button (functional review of #181, R3).
+        await tester.tap(_create, warnIfMissed: false);
+        await settle(tester);
+        expect(form.keysAsked, 1);
+        expect(
+          find.byType(StoreTokenDialog, skipOffstage: false),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(form.made, hasLength(1));
+      },
+    );
 
     testWidgets(
       'without a Garage Key: « You do not have a Garage Key », nothing sent',

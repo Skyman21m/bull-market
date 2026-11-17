@@ -9,7 +9,7 @@ import 'trade_make.dart';
 /// The reference reads its fields as `type='number'` inputs (`components/MakerForm/MakerForm.tsx:875-901`, `:1030-1049`, commit ff1998c), which the browser keeps to a plain decimal number; here the text is read as such a number and nothing else:
 /// - spaces at either end are ignored; a space, a letter or a sign `+` inside makes it no number;
 /// - a comma is read as the decimal separator as well as a point, as the take's amount field reads it (`TakeAmountInput`), and only one separator is allowed, so `1,000.5` and `1.000,5` are no numbers rather than guesses;
-/// - the digits of the Arabic-Indic, the Extended Arabic-Indic (Persian) and the Devanagari scripts, and the full-width digits, are read as their values, the Arabic decimal separator (U+066B) as a point; any other character is no number;
+/// - the digits of the Arabic-Indic, the Extended Arabic-Indic (Persian) and the Devanagari scripts, and the full-width digits, are read as their values, the Arabic decimal separator (U+066B) and the full-width full stop (U+FF0E) as a point, the full-width comma (U+FF0C) as a comma; any other character is no number;
 /// - `NaN`, `Infinity`, an exponent, a hexadecimal number, a figure that is not finite once read, more than [maxLength] characters or more decimals than the field keeps are no number;
 /// - a minus sign is read (a negative premium is a discount); `-0` is 0.
 @immutable
@@ -51,7 +51,8 @@ sealed class FormNumber {
     for (final zero in const [0x0660, 0x06F0, 0x0966, 0xFF10]) {
       if (rune >= zero && rune <= zero + 9) return '${rune - zero}';
     }
-    if (rune == 0x066B) return '.';
+    if (rune == 0x066B || rune == 0xFF0E) return '.';
+    if (rune == 0xFF0C) return ',';
     return null;
   }
 
@@ -82,7 +83,7 @@ final class FormNumberValue extends FormNumber {
 
 /// A payment method the user types with « Add custom payment method » (`Dialogs/AddNewPaymentMethodDialog.tsx`, commit ff1998c), as the form keeps it.
 ///
-/// The reference keeps whatever is typed but an empty field (« Can't be empty »). Here the text the form keeps is what other robots will see (#181, from the security review of #194): spaces at its ends are taken off and a run of spaces inside becomes one, so the method shown is the method sent; then it must be seen as it is written ([isShownAsWritten] of `package:robosats`: never a text that shows as empty, nor one with an invisible character, a space other than U+0020, a private use character, or a joiner, a variation selector or a combining mark out of place). Its length is judged with the other methods, as the reference judges the text of them all (« Must be shorter than 65 characters » above [maxLength], `MakerForm.tsx:227`, `:995-999`).
+/// The reference keeps whatever is typed but an empty field (« Can't be empty »). Here the text the form keeps is what other robots will see (#181, from the security review of #194): an ideographic space becomes an ordinary one, spaces at its ends are taken off and a run of spaces inside becomes one, so the method shown is the method sent; then it must be seen as it is written ([isShownAsWritten] of `package:robosats`: never a text that shows as empty, nor one with an invisible character, a space other than U+0020, a private use character, or a joiner, a variation selector or a combining mark out of place). Its length is judged with the other methods, as the reference judges the text of them all (« Must be shorter than 65 characters » above [maxLength], `MakerForm.tsx:227`, `:995-999`).
 @immutable
 final class CustomPaymentMethod {
   /// The longest text of the methods chosen, in UTF-16 units, as the reference counts (`paymentMethodText.length > 50`).
@@ -100,9 +101,11 @@ final class CustomPaymentMethod {
     return CustomPaymentMethod._(text);
   }
 
-  /// [typed] as the form would keep it: its ends' spaces taken off, each run of spaces inside made one.
-  static String keptOf(String typed) =>
-      typed.trim().replaceAll(RegExp(' {2,}'), ' ');
+  /// [typed] as the form would keep it: the ideographic space (U+3000, which a Japanese or Chinese keyboard types in full width) made an ordinary one, its ends' spaces taken off, each run of spaces inside made one.
+  static String keptOf(String typed) => typed
+      .replaceAll('\u3000', ' ')
+      .trim()
+      .replaceAll(RegExp(' {2,}'), ' ');
 
   /// Whether nothing is left of [typed] once its spaces are taken off: the reference's « Can't be empty ».
   static bool isEmpty(String typed) => keptOf(typed).isEmpty;

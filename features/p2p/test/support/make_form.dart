@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:p2p/testing.dart' show ScriptedMakerCoordinator;
 import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
@@ -60,4 +62,41 @@ Future<CoordinatorInfo> infoAt(
     Ok(:final value) => value,
     Err(:final failure) => throw StateError('$failure'),
   };
+}
+
+/// The `/api/limits/` of [entries], each currency id with its `price`, `min_amount` and `max_amount` as given, read by the package as from a coordinator: for bounds that are exact decimals.
+Future<CurrencyLimits> limitsOf(Map<int, (double, double, double)> entries) async {
+  final body = {
+    for (final MapEntry(key: id, value: (price, min, max)) in entries.entries)
+      '$id': {
+        'code': RobosatsCurrency.fromId(id)?.code,
+        'price': price,
+        'min_amount': min,
+        'max_amount': max,
+      },
+  };
+  return switch (await CoordinatorClient(
+    _Answering(body),
+  ).fetchLimits(coordinatorOf('temple'), RobosatsNetwork.mainnet)) {
+    Ok(:final value) => value,
+    Err(:final failure) => throw StateError('$failure'),
+  };
+}
+
+/// A transport that answers [body] to every request.
+final class _Answering implements CoordinatorTransport {
+  final Object body;
+
+  const _Answering(this.body);
+
+  @override
+  Future<Result<CoordinatorResponse, CoordinatorTransportFailure>> send(
+    CoordinatorRequest request,
+  ) async => Ok(
+    CoordinatorResponse(
+      statusCode: 200,
+      headers: const {'content-type': 'application/json'},
+      body: utf8.encode(jsonEncode(body)),
+    ),
+  );
 }
