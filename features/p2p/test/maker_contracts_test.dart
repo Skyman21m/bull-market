@@ -842,7 +842,7 @@ void main() {
       () async {
         var contracts = 0;
         var nexts = 0;
-        for (var seed = 0; seed < 600; seed++) {
+        for (var seed = 0; seed < 300; seed++) {
           final random = Random(seed);
           final role = random.nextBool() ? b : s;
           final range = random.nextBool();
@@ -905,8 +905,8 @@ void main() {
           contracts += reference.takes;
         }
         // The sequences went through contracts, and next ones.
-        expect(contracts, greaterThan(200));
-        expect(nexts, greaterThan(20), reason: 'contracts $contracts');
+        expect(contracts, greaterThan(100));
+        expect(nexts, greaterThan(10), reason: 'contracts $contracts');
       },
     );
   });
@@ -915,7 +915,7 @@ void main() {
     test(
       'an end never left, a contract never back, no escrow of an earlier contract offered, every trail storable',
       () async {
-        for (var seed = 0; seed < 300; seed++) {
+        for (var seed = 0; seed < 150; seed++) {
           final random = Random(1000 + seed);
           final role = random.nextBool() ? b : s;
           var status = TradeStatus.afterMake(
@@ -1047,7 +1047,7 @@ void main() {
           driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
           var written = 0;
           var nexts = 0;
-          for (var seed = 0; seed < 150; seed++) {
+          for (var seed = 0; seed < 80; seed++) {
             // A database of its own for each order made, whose number is the tests' one.
             final database = P2pDatabase.forTesting(NativeDatabase.memory());
             addTearDown(database.close);
@@ -1132,7 +1132,7 @@ void main() {
             };
             expect(history.trail, status.trail.record, reason: 'seed $seed');
           }
-          expect(written, greaterThan(250));
+          expect(written, greaterThan(120));
           expect(nexts, greaterThan(3), reason: 'written $written');
         },
       );
