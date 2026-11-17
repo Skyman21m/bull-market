@@ -52,12 +52,12 @@ void main() {
   testWidgets('« Create » opens the form, and going back leaves it', (
     tester,
   ) async {
-    await open(tester, withGarage: true);
+    final router = await open(tester, withGarage: true);
     expect(find.text('Create'), findsOneWidget);
     await tester.tap(find.text('Create'));
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsOneWidget);
-    await tester.pageBack();
+    router.pop();
     await settle(tester);
     expect(find.byType(CreateOrderScreen), findsNothing);
     expect(find.text('Create'), findsOneWidget);
