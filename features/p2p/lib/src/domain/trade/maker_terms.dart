@@ -304,7 +304,7 @@ final class MakerTerms {
         _ => null,
       };
 
-  /// The most « Pay with this wallet » pays for this maker seller's escrow in the contract of [rangeAmount] ([contractAmount]): the sats of the contract's amount at the rate of the creation, times [TradeTolerances.makerEscrowFactor], with the maker fee of them and [TradeTolerances.feeSats], rounded down (design note § 3.3).
+  /// The most « Pay with this wallet » pays for this maker seller's escrow in the contract of [rangeAmount] ([contractAmount]): the sats of the contract's amount at the rate of the creation, times [TradeTolerances.makerEscrowFactor], with the maker fee of that product and [TradeTolerances.feeSats], rounded down (design note § 3.3): `floor(S × F × (1 + maker fee) + 1)`.
   ///
   /// `null`, so nothing is paid from this wallet, for a buyer (who locks no escrow) and when the contract's amount is not one of these terms ([contractAmount]).
   /// The coordinator asks `round(last_satoshis × (1 + maker_fee))` (`Logics.escrow_amount`, `api/logics.py:733-749`), so with `last_satoshis` up to F times the sats at the creation's rate the escrow is at most that bound's exact value plus half a sat, which [TradeTolerances.feeSats] covers: no escrow of a trade within the factor is refused, and the bound is rounded down, never letting one sat more through.
