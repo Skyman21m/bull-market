@@ -167,7 +167,9 @@ Future<(_Asked, StreamController<TradeWatchState>)> _show(
             BlocProvider.value(value: trade),
             BlocProvider.value(value: page),
           ],
+          // A screen of its own at each show, so that a tab chosen in a show before is not kept.
           child: TradeScreen(
+            key: UniqueKey(),
             now: () => tradeNow,
             coordinatorDetails: (_) => throw StateError('not opened'),
             book: book,
@@ -855,6 +857,10 @@ void main() {
             await tester.tap(confirm.last);
             await tester.pumpAndSettle();
             await capture(tester, '$code-createur-9-dialogue-ecart');
+            await tester.tap(
+              find.text(lookupP2pLocalizations(locale).p2pCommonGoBack),
+            );
+            await tester.pumpAndSettle();
           }
           final before = [
             makerOrderJson(0),

@@ -63,7 +63,7 @@ void main() {
       expect(view.title, TradeTitle.orderPublic);
 
       // Taken by a seller.
-      harness.coordinator.take(record.orderId, harness.robot(7));
+      harness.coordinator.take(record.orderId, harness.robot(4));
       (view, seen) = await read(harness, record);
       expect(seen.status, isA<WaitingForBoth>());
       expect(view.title, TradeTitle.payout);
@@ -86,7 +86,7 @@ void main() {
       // Taken again later, while the app is closed, by another robot: a next contract, its own payout invoice.
       await harness.elapse(const Duration(minutes: 10));
       harness = harness.restart();
-      harness.coordinator.take(record.orderId, harness.robot(8));
+      harness.coordinator.take(record.orderId, harness.robot(5));
       (view, seen) = await read(harness, record);
       expect(seen.status, isA<WaitingForBoth>());
       expect(seen.status.trail.take, 1);
