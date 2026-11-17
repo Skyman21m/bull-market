@@ -31,8 +31,8 @@ const strangerNode =
 final takenAt = tradeNow.subtract(const Duration(seconds: 5));
 
 void main() {
-  late TradeTerms buyer;
-  late TradeTerms seller;
+  late TradeTerms<TakenSide> buyer;
+  late TradeTerms<TakenSide> seller;
   late Bolt11TestDecoder decoder;
   late Bolt11Reader reader;
 
@@ -1505,7 +1505,7 @@ void main() {
     /// The oracle: whether an invoice the wallet was offered passes every check, computed apart from the code under test, from what the generator made, the trade's terms, what the run saw before and the clock.
     bool payable({
       required TradeAnswer answer,
-      required TradeTerms terms,
+      required TradeTerms<TakenSide> terms,
       required CheckedInvoice invoice,
       required String? firstHash,
       required DateTime? lastDeadlineHere,

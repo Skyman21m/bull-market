@@ -8,6 +8,8 @@ import 'trade_status.dart';
 import 'trade_terms.dart';
 import 'trade_warning.dart';
 
+export 'trade_terms.dart' show TakenTradeTerms;
+
 /// The amount chosen in the range of an order, in the order's currency (bitcoin, not sats, for an order in bitcoin), as the take sends it.
 ///
 /// The reference client sends the number typed (`Number(takeAmount)`, `frontend/src/models/Order.model.ts:241`, divided by 10⁸ for an order in sats) and the coordinator keeps 8 decimals, refusing more (`DecimalField(decimal_places=8)`, `api/serializers.py:684`): the amount is rounded to 8 decimals here, and the take checks it against the range of the order read just before it (`min_amount ≤ amount ≤ max_amount`, `api/logics.py:190-194`).
@@ -276,7 +278,7 @@ final class PreparedTake {
   final CoordinatorOrder order;
 
   /// The terms of the take, built from [order] (`TradeTerms.takeRead`): what the take is sent with and checked against once confirmed.
-  final TradeTerms terms;
+  final TradeTerms<TakenSide> terms;
 
   /// The amount chosen in the range of the order, or `null` for a fixed order.
   final TakeAmount? amount;

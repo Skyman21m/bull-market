@@ -28,8 +28,8 @@ final class _ThrowsError implements Bolt11Decoder {
 
 /// The scenarios of the first independent review of #106 (R1 to R10), and the tests that kill the mutants it found surviving (M01, M13, M15, M16 in `trade_status_test.dart`, M22), each as it must now end.
 void main() {
-  late TradeTerms buyer;
-  late TradeTerms seller;
+  late TradeTerms<TakenSide> buyer;
+  late TradeTerms<TakenSide> seller;
   late Bolt11TestDecoder decoder;
   late Bolt11Reader reader;
   final takenAt = tradeNow.subtract(const Duration(seconds: 5));
@@ -97,7 +97,7 @@ void main() {
     return TradeStatus.beforeFirstRead(trail);
   }
 
-  TradeTerms restoredTerms(TradeTerms terms) =>
+  TradeTerms restoredTerms(TradeTerms<TakenSide> terms) =>
       switch (TradeTerms.restore(terms.record)) {
         Ok(:final value) => value,
         Err(:final failure) => fail('$failure'),

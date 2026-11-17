@@ -284,16 +284,22 @@ final class PayBondFromWalletUsecase {
   Result<WalletPaymentOffered, BondPayRefusal> _offered(
     TradeTerms terms,
     TradeStatus status,
-  ) => switch (walletPaymentFor(
-    accepted: switch (step) {
-      InvoiceStep.bond => terms.bondCeiling,
-      InvoiceStep.escrow => terms.escrowCeiling,
-    },
-    status: status,
-    step: step,
-    now: _reader.now(),
-  )) {
-    final WalletPaymentOffered offered => Ok(offered),
-    WalletPaymentRefused(:final reason) => Err(BondPayNotOffered(reason)),
-  };
+  ) {
+    // A maker's bond and escrow are paid under their own ceilings from #180 and #187 (`MakerTerms.bondCeiling`, `MakerTerms.escrowCeilingFor`); until then a maker's terms are never at a step here, as the state machine refuses every answer about a maker's trade.
+    if (terms is! TradeTerms<TakenSide>) {
+      return const Err(BondPayNotAtBondStep());
+    }
+    return switch (walletPaymentFor(
+      accepted: switch (step) {
+        InvoiceStep.bond => terms.bondCeiling,
+        InvoiceStep.escrow => terms.escrowCeiling,
+      },
+      status: status,
+      step: step,
+      now: _reader.now(),
+    )) {
+      final WalletPaymentOffered offered => Ok(offered),
+      WalletPaymentRefused(:final reason) => Err(BondPayNotOffered(reason)),
+    };
+  }
 }
