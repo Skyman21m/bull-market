@@ -96,23 +96,26 @@ void main() {
     );
   });
 
-  test('the wallet\'s price of a bitcoin goes through the port (#180)', () async {
-    final rate = await port.bitcoinRate(
-      RobosatsNetwork.mainnet,
-      RobosatsCurrency.fromCode('USD') ?? fail('no USD'),
-    );
-    expect(
-      rate,
-      isA<P2pWalletRateRead>().having((r) => r.price, 'price', 71657),
-    );
-    expect(
-      await port.bitcoinRate(
+  test(
+    'the wallet\'s price of a bitcoin goes through the port (#180)',
+    () async {
+      final rate = await port.bitcoinRate(
         RobosatsNetwork.mainnet,
-        RobosatsCurrency.fromCode('GBP') ?? fail('no GBP'),
-      ),
-      isA<P2pWalletRateNotPriced>(),
-    );
-  });
+        RobosatsCurrency.fromCode('USD') ?? fail('no USD'),
+      );
+      expect(
+        rate,
+        isA<P2pWalletRateRead>().having((r) => r.price, 'price', 71657),
+      );
+      expect(
+        await port.bitcoinRate(
+          RobosatsNetwork.mainnet,
+          RobosatsCurrency.fromCode('GBP') ?? fail('no GBP'),
+        ),
+        isA<P2pWalletRateNotPriced>(),
+      );
+    },
+  );
 
   tearDown(() async {
     await syncs.finished.close();

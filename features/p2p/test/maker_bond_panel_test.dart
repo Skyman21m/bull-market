@@ -93,8 +93,7 @@ Future<(BondPaymentCubit, Payments, List<TradeSeen>)> _show(
   WidgetTester tester, {
   Result<WalletRateCheck?, BondPayRefusal>? rate,
   Locale locale = const Locale('en'),
-  Future<Result<CancelOutcome, CancelRefusal>> Function(TradeSeen seen)?
-  cancel,
+  Future<Result<CancelOutcome, CancelRefusal>> Function(TradeSeen seen)? cancel,
 }) async {
   tester.view
     ..physicalSize = const Size(390, 844) * 3
@@ -205,16 +204,19 @@ void main() {
     _offered = offer;
   });
 
-  test('the maker bond at 0 is the bond panel\'s, its reference\'s title and step, a free cancel', () {
-    expect(_bondStep.status, isA<WaitingForMakerBond>());
-    final contract = TradeContract(_bondStep, order: _bondStep.order);
-    expect(contract.title, TradeTitle.lockBondToPublish);
-    expect(contract.prompt, TradePrompt.lockInvoice);
-    expect(contract.titleSats, Sats.fromInt(makerBond));
-    expect(contract.step, (1, 5));
-    expect(contract.cancel, TradeCancelOffer.free);
-    expect(contract.bondLine, TradeBondLine.hide);
-  });
+  test(
+    'the maker bond at 0 is the bond panel\'s, its reference\'s title and step, a free cancel',
+    () {
+      expect(_bondStep.status, isA<WaitingForMakerBond>());
+      final contract = TradeContract(_bondStep, order: _bondStep.order);
+      expect(contract.title, TradeTitle.lockBondToPublish);
+      expect(contract.prompt, TradePrompt.lockInvoice);
+      expect(contract.titleSats, Sats.fromInt(makerBond));
+      expect(contract.step, (1, 5));
+      expect(contract.cancel, TradeCancelOffer.free);
+      expect(contract.bondLine, TradeBondLine.hide);
+    },
+  );
 
   testWidgets(
     'status 0: « Lock 3,207 Sats to PUBLISH order (1/5) », « You are BUYING BTC », the wallet\'s slot over the other wallet, « Copy URL » and « Cancel »',
@@ -267,8 +269,7 @@ void main() {
     (tester) async {
       final (_, _, cancelled) = await _show(
         tester,
-        cancel: (seen) async =>
-            Ok(CancelDone(_record, seen)),
+        cancel: (seen) async => Ok(CancelDone(_record, seen)),
       );
       await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
@@ -296,8 +297,7 @@ void main() {
     (tester) async {
       await _show(
         tester,
-        cancel: (seen) async =>
-            Ok(CancelDone(_record, seen)),
+        cancel: (seen) async => Ok(CancelDone(_record, seen)),
       );
       await _reveal(tester, find.text('Cancel'));
       await tester.tap(find.text('Cancel'));
@@ -395,18 +395,18 @@ void main() {
       },
     );
 
-    testWidgets(
-      'a favourable gap: shown, no warning',
-      (tester) async {
-        final (_, payments, _) = await _show(
-          tester,
-          rate: Ok(_rateAt(P2pWalletRateRead(80000))),
-        );
-        await _confirming(tester, payments);
-        expect(find.textContaining('Gap of the invoice: -12.77%'), findsOneWidget);
-        expect(find.textContaining('more than 10%'), findsNothing);
-      },
-    );
+    testWidgets('a favourable gap: shown, no warning', (tester) async {
+      final (_, payments, _) = await _show(
+        tester,
+        rate: Ok(_rateAt(P2pWalletRateRead(80000))),
+      );
+      await _confirming(tester, payments);
+      expect(
+        find.textContaining('Gap of the invoice: -12.77%'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('more than 10%'), findsNothing);
+    });
 
     testWidgets(
       'a currency the wallet does not price: « not checked by the wallet », the price of the creation said weaker',

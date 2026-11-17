@@ -315,9 +315,7 @@ void main() {
     test(
       'the wallet\'s price could not be read: compared with the price of the creation, said so, and the payment still possible',
       () async {
-        final made = await _Made.start(
-          rate: const P2pWalletRateUnavailable(),
-        );
+        final made = await _Made.start(rate: const P2pWalletRateUnavailable());
         final quote = await made.quoted();
         final rate = await made.rateOf(quote);
         expect(rate?.reference, WalletRateReference.createdUnreadable);
@@ -463,10 +461,7 @@ void main() {
       made.harness.coordinator.orderChanges[made.record.orderId] = {
         'premium': '4.00',
       };
-      expect(
-        (await made.seen()).status.has<TradeTermsChanged>(),
-        isTrue,
-      );
+      expect((await made.seen()).status.has<TradeTermsChanged>(), isTrue);
       await made.neverPaid();
     });
 

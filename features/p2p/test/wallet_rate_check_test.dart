@@ -69,55 +69,58 @@ void main() {
     expect(TradeTolerances.walletRateGap, 0.10);
   });
 
-  group('the owner\'s example: 71,657 USD, a premium of +3.5 %, 100 USD, a bond of 3 %', () {
-    // 71,657 × 1.035 = 74,164.995 USD/BTC; 100 USD = 134,834.4997… sats (134,834 truncated as the coordinator does); 3 % = 4,045.03499… sats; 1.1 × that = 4,449.538…
-    final made = terms();
+  group(
+    'the owner\'s example: 71,657 USD, a premium of +3.5 %, 100 USD, a bond of 3 %',
+    () {
+      // 71,657 × 1.035 = 74,164.995 USD/BTC; 100 USD = 134,834.4997… sats (134,834 truncated as the coordinator does); 3 % = 4,045.03499… sats; 1.1 × that = 4,449.538…
+      final made = terms();
 
-    test('4,045 sats expected, at the wallet\'s price', () {
-      final rate = check(made, 4045);
-      expect(rate.expected, Sats.fromInt(4045));
-      expect(rate.reference, WalletRateReference.wallet);
-      expect(rate.checkedByWallet, isTrue);
-      expect(rate.price, 71657);
-      expect(rate.currency.code, 'USD');
-      expect(rate.warns, isFalse);
-      // −0.0865 hundredths of a percent, away from zero: −0.01 %.
-      expect(rate.gapHundredths, BigInt.from(-1));
-    });
+      test('4,045 sats expected, at the wallet\'s price', () {
+        final rate = check(made, 4045);
+        expect(rate.expected, Sats.fromInt(4045));
+        expect(rate.reference, WalletRateReference.wallet);
+        expect(rate.checkedByWallet, isTrue);
+        expect(rate.price, 71657);
+        expect(rate.currency.code, 'USD');
+        expect(rate.warns, isFalse);
+        // −0.0865 hundredths of a percent, away from zero: −0.01 %.
+        expect(rate.gapHundredths, BigInt.from(-1));
+      });
 
-    test('4,449 sats: shown, no warning (+9.99 %)', () {
-      final rate = check(made, 4449);
-      expect(rate.warns, isFalse);
-      expect(rate.gapHundredths, BigInt.from(999));
-    });
+      test('4,449 sats: shown, no warning (+9.99 %)', () {
+        final rate = check(made, 4449);
+        expect(rate.warns, isFalse);
+        expect(rate.gapHundredths, BigInt.from(999));
+      });
 
-    test('4,450 sats: the warning (+10.02 %), the first sat above 10 %', () {
-      final rate = check(made, 4450);
-      expect(rate.warns, isTrue);
-      expect(rate.gapHundredths, BigInt.from(1002));
-      expect(rate.asked, Sats.fromInt(4450));
-      expect(rate.expected, Sats.fromInt(4045));
-    });
+      test('4,450 sats: the warning (+10.02 %), the first sat above 10 %', () {
+        final rate = check(made, 4450);
+        expect(rate.warns, isTrue);
+        expect(rate.gapHundredths, BigInt.from(1002));
+        expect(rate.asked, Sats.fromInt(4450));
+        expect(rate.expected, Sats.fromInt(4045));
+      });
 
-    test(
-      'the coordinator\'s own truncations give the same bound: int(134,834 × 3 / 100) = 4,045, × 1.1 = 4,449.5',
-      () {
-        // The exact bond (4,045.035) is what the rule uses; truncated as the coordinator does, 4,045, it would warn from 4,450 too.
-        final bond = some(made.bondAtPrice(71657));
-        expect(bond.floor(), BigInt.from(4045));
-        expect(
-          bond * ExactRatio.integer(11) / ExactRatio.integer(10) >
-              ExactRatio.integer(4449),
-          isTrue,
-        );
-        expect(
-          bond * ExactRatio.integer(11) / ExactRatio.integer(10) <
-              ExactRatio.integer(4450),
-          isTrue,
-        );
-      },
-    );
-  });
+      test(
+        'the coordinator\'s own truncations give the same bound: int(134,834 × 3 / 100) = 4,045, × 1.1 = 4,449.5',
+        () {
+          // The exact bond (4,045.035) is what the rule uses; truncated as the coordinator does, 4,045, it would warn from 4,450 too.
+          final bond = some(made.bondAtPrice(71657));
+          expect(bond.floor(), BigInt.from(4045));
+          expect(
+            bond * ExactRatio.integer(11) / ExactRatio.integer(10) >
+                ExactRatio.integer(4449),
+            isTrue,
+          );
+          expect(
+            bond * ExactRatio.integer(11) / ExactRatio.integer(10) <
+                ExactRatio.integer(4450),
+            isTrue,
+          );
+        },
+      );
+    },
+  );
 
   group('the threshold, at it and one sat past it', () {
     // 100 USD at 100,000 with no premium: 100,000 sats exactly, a bond of 3,000, the threshold 3,300 exactly.
@@ -150,17 +153,14 @@ void main() {
     },
   );
 
-  test(
-    'a negative premium: −5 % lowers the rate, so more sats are expected',
-    () {
-      // 100,000 × 0.95 = 95,000; 100 USD = 105,263.157… sats; 3 % = 3,157.894…; × 1.1 = 3,473.68…
-      final made = terms(premium: -5);
-      final at = check(made, 3473, P2pWalletRateRead(100000));
-      expect(at.expected, Sats.fromInt(3157));
-      expect(at.warns, isFalse);
-      expect(check(made, 3474, P2pWalletRateRead(100000)).warns, isTrue);
-    },
-  );
+  test('a negative premium: −5 % lowers the rate, so more sats are expected', () {
+    // 100,000 × 0.95 = 95,000; 100 USD = 105,263.157… sats; 3 % = 3,157.894…; × 1.1 = 3,473.68…
+    final made = terms(premium: -5);
+    final at = check(made, 3473, P2pWalletRateRead(100000));
+    expect(at.expected, Sats.fromInt(3157));
+    expect(at.warns, isFalse);
+    expect(check(made, 3474, P2pWalletRateRead(100000)).warns, isTrue);
+  });
 
   test('a range: the bond of its maximum, as the coordinator\'s', () {
     // 50 to 200 USD: the bond of 200 USD, 8,090.0699… sats; × 1.1 = 8,899.07…
@@ -206,10 +206,7 @@ void main() {
       expect(rate.reference, WalletRateReference.createdNotPriced);
       expect(rate.checkedByWallet, isFalse);
       expect(rate.price, 60000);
-      expect(
-        rate.expected.value,
-        some(made.bondAtPrice(60000)).floor(),
-      );
+      expect(rate.expected.value, some(made.bondAtPrice(60000)).floor());
       // The same 10 %: 100 GBP at 62,100 is 161,030.59… sats, 4,830.91… of bond.
       expect(rate.expected, Sats.fromInt(4830));
       expect(check(made, 5314, const P2pWalletRateNotPriced()).warns, isFalse);

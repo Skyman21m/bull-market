@@ -758,13 +758,10 @@ void main() {
           isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
         );
         expect(fake.paid, hasLength(1));
-        expect(
-          switch (await payments.paymentOf(record, InvoiceStep.bond)) {
-            Ok(:final value) => value?.walletPaymentId,
-            Err() => null,
-          },
-          'swap-made',
-        );
+        expect(switch (await payments.paymentOf(record, InvoiceStep.bond)) {
+          Ok(:final value) => value?.walletPaymentId,
+          Err() => null,
+        }, 'swap-made');
       },
     );
 

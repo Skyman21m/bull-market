@@ -654,15 +654,15 @@ class _Contract extends StatelessWidget {
         WaitingForTakerBond() || WaitingForMakerBond(),
       ) =>
         BondPanel(
-        record: record,
-        status: status,
-        seen: contract.seen,
-        walletPayment: walletPayment,
-        now: now,
-        swap: order?.currency.isBitcoin ?? false,
-        seller: record.role == TradeRole.seller,
-        payable: contract.payable,
-      ),
+          record: record,
+          status: status,
+          seen: contract.seen,
+          walletPayment: walletPayment,
+          now: now,
+          swap: order?.currency.isBitcoin ?? false,
+          seller: record.role == TradeRole.seller,
+          payable: contract.payable,
+        ),
       // The seller's escrow (#96), from this wallet (#97) or another.
       (
         TradePrompt.lockEscrow,
