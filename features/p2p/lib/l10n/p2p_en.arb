@@ -2810,7 +2810,7 @@
       }
     }
   },
-  "p2pPayRateWallet": "At this wallet's price, {price} {currency}/BTC, with the order's premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.",
+  "p2pPayRateWallet": "At the Bull wallet's price, {price} {currency}/BTC, with the order's premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.",
   "@p2pPayRateWallet": {
     "description": "The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (RoboSats has no such rule, design note § 3.3): the bond the order implies at the wallet's own price of a bitcoin, read at the moment of paying, with the order's premium, and how far the invoice is from it. {price} is that price, {currency} the order's currency code, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.",
     "placeholders": {
@@ -2828,7 +2828,7 @@
       }
     }
   },
-  "p2pPayRateNotPriced": "This wallet has no price for {currency}: rate not checked. You are trusting {coordinator}'s price: check it yourself before paying.",
+  "p2pPayRateNotPriced": "The Bull wallet has no price for {currency}: rate not checked. You are trusting {coordinator}'s price: check it yourself before paying.",
   "@p2pPayRateNotPriced": {
     "description": "Not in the RoboSats texts: the project's own. The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180): the order's currency is one the wallet's price service does not quote, so nothing is compared and no figure is shown (the owner's decision of 2026-11-17 in the evening, his words, which replaces the comparison with the coordinator's price of the creation); shown alone, in the warning colour, with no « Retry »; the user may still pay. {currency} is the order's currency code, {coordinator} the coordinator's name.",
     "placeholders": {
@@ -2840,7 +2840,7 @@
       }
     }
   },
-  "p2pPayRateUnverified": "This wallet's price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or pay without the check.",
+  "p2pPayRateUnverified": "The Bull wallet's price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or pay without the check.",
   "@p2pPayRateUnverified": {
     "description": "The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet prices the order's currency, but its price of a bitcoin could not be read at the moment of paying (no connection, the price service down, an answer that is no price), so nothing is compared and the coordinator's price of the creation is never cited (the owner's decision of 2026-11-17, with the words « rate not checked ») (functional review of #180, C1: a price announced ten times too low would make a bond ten times too large look right); shown in the warning colour with « Retry », which reads the price again; the user may still pay. {currency} is the order's currency code.",
     "placeholders": {

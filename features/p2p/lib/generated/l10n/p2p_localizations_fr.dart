@@ -2027,14 +2027,8 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateNotPriced(
-    String currency,
-    String coordinator,
-    String price,
-    String expected,
-    String gap,
-  ) {
-    return 'Ce portefeuille n’a pas de prix pour $currency : taux non vérifié par le portefeuille. Au prix que $coordinator a donné à la création de l’ordre, une vérification plus faible, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+  String p2pPayRateNotPriced(String currency, String coordinator) {
+    return 'Ce portefeuille n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de payer.';
   }
 
   @override

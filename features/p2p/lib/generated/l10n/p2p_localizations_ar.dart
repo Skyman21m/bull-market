@@ -2001,14 +2001,8 @@ class P2pLocalizationsAr extends P2pLocalizations {
   }
 
   @override
-  String p2pPayRateNotPriced(
-    String currency,
-    String coordinator,
-    String price,
-    String expected,
-    String gap,
-  ) {
-    return 'This wallet has no price for $currency: rate not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+  String p2pPayRateNotPriced(String currency, String coordinator) {
+    return 'This wallet has no price for $currency: rate not checked. You are trusting $coordinator\'s price: check it yourself before paying.';
   }
 
   @override

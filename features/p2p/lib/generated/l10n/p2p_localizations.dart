@@ -3284,17 +3284,11 @@ abstract class P2pLocalizations {
     String gap,
   );
 
-  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the order's currency is one the wallet's price service does not quote, so the bond is compared with the coordinator's own price read before the make, a weaker reference, said as such. {currency} is the order's currency code, {coordinator} the coordinator's name, {price} its price of the creation, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.
+  /// Not in the RoboSats texts: the project's own. The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180): the order's currency is one the wallet's price service does not quote, so nothing is compared and no figure is shown (the owner's decision of 2026-11-17 in the evening, his words, which replaces the comparison with the coordinator's price of the creation); shown alone, in the warning colour, with no « Retry »; the user may still pay. {currency} is the order's currency code, {coordinator} the coordinator's name.
   ///
   /// In en, this message translates to:
-  /// **'This wallet has no price for {currency}: rate not checked by the wallet. At the price {coordinator} gave when you made the order, a weaker check, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
-  String p2pPayRateNotPriced(
-    String currency,
-    String coordinator,
-    String price,
-    String expected,
-    String gap,
-  );
+  /// **'This wallet has no price for {currency}: rate not checked. You are trusting {coordinator}\'s price: check it yourself before paying.'**
+  String p2pPayRateNotPriced(String currency, String coordinator);
 
   /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet prices the order's currency, but its price of a bitcoin could not be read at the moment of paying (no connection, the price service down, an answer that is no price), so nothing is compared and the coordinator's price of the creation is never cited (the owner's decision of 2026-11-17, with the words « rate not checked ») (functional review of #180, C1: a price announced ten times too low would make a bond ten times too large look right); shown in the warning colour with « Retry », which reads the price again; the user may still pay. {currency} is the order's currency code.
   ///
