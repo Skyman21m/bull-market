@@ -12,7 +12,7 @@ import 'package:test/test.dart';
 /// - The screens (`lib/src/ui/`) name no use case of the trades, no coordinator client, no trade repository, no limiter, no wallet port and no wallet payment offer: they call their cubits only.
 /// - `TakeOrderCubit.take`, `confirm` and `back` are called by `TakeOrderSection` only, the single place a take starts, is confirmed or abandoned (`AGENTS.md`, #119): of the files that name `TakeOrderCubit`, only `lib/src/ui/take_order_section.dart` calls a method of those names (a name without its type, so a file that names the cubit and calls an unrelated `take` would be seen too, which is the safe side).
 /// - The screens of the trade open no link and import no launcher, and only the bond panel (the invoice), the payout panel, the trade screen (the order's address), the chat panel (a message), the chat's actions (« Export », and « Don't trust, verify »: its fields and its « Keys » and « Messages », the token and the encrypted private key among them, as the reference's mobile client) and the end's panel (the transaction id, the payout's address, the trade summary) use the clipboard.
-/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; and nothing the user can reach builds that screen: it is named only in its own file and in `P2pRouter.createPage`, which no file of `lib` calls (the tests and the captures do), so that « Create » stays disabled until #182.
+/// - The create form (#181): `MakeOrderCubit.make`, the only way to `MakeOrderUsecase.execute`, is called by `CreateOrderScreen` only; and nothing the user can reach builds that screen: it is named only in its own file and in `P2pRouter.createPage`, which no file of `lib` calls but the testing seam (for the app's captures), so that « Create » stays disabled until #182.
 /// It cannot see what a cubit hands out, nor code outside `features/p2p/lib`.
 void main() {
   final sources = {
@@ -105,16 +105,17 @@ void main() {
       'lib/src/ui/create_order_screen.dart',
       'lib/src/p2p_router.dart',
     });
-    // `createPage` is declared in the router and called by no file of `lib`, nor torn off.
+    // `createPage` is declared in the router and called by no file of `lib` but the testing seam, which the app never imports (`test/features/p2p/p2p_testing_seam_test.dart`), for the captures.
     expect(sources['lib/src/p2p_router.dart'], contains('createPage('));
     expect({
       for (final MapEntry(key: path, value: source) in sources.entries)
         if (_callsMethod(source, 'createPage') ||
             _namesIn(source).contains('createPage'))
           path,
-    }, isEmpty);
+    }, {'lib/testing.dart'});
     expect(_whereNamed(sources, 'P2pCreateRouteArgs'), {
       'lib/src/p2p_router.dart',
+      'lib/testing.dart',
     });
   });
 

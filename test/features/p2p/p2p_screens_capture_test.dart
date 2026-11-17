@@ -96,7 +96,12 @@ final class _RecordedTransport implements CoordinatorTransport {
           >()
           .future;
     }
-    final endpoint = request.url.path.contains('info') ? 'info' : 'book';
+    final path = request.url.path;
+    final endpoint = path.contains('info')
+        ? 'info'
+        : path.contains('limits')
+        ? 'limits'
+        : 'book';
     final file = File('$_fixtures/$alias-${network.name}-$endpoint.json');
     if (!file.existsSync() && endpoint == 'book' && empty.contains(alias)) {
       return Ok(
@@ -2762,6 +2767,168 @@ void main() {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(seconds: 3)),
         );
+        await tester.pump(const Duration(minutes: 1));
+      },
+    );
+  }
+
+  // The create form (#181), which no path of the tab opens before #182: built by the testing seam over the recorded coordinators' information and limits (temple, lake, freeport, bazaar and ammanaya on mainnet), the Bull wallet's price played by the test. Nothing is made, no robot exists, no money moves.
+  for (final locale in const [Locale('fr'), Locale('en')]) {
+    testWidgets(
+      'captures of the create form in ${locale.languageCode}',
+      skip: directory == null,
+      (tester) async {
+        final out = Directory(directory ?? '.')..createSync(recursive: true);
+        tester.view
+          ..physicalSize = const Size(780, 1688)
+          ..devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+
+        Future<void> capture(String name) async {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.runAsync(() async {
+            final boundary =
+                tester.renderObject(find.byKey(_frame))
+                    as RenderRepaintBoundary;
+            final image = await boundary.toImage(pixelRatio: 2);
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            if (png == null) throw StateError('no PNG for $name');
+            File(
+              '${out.path}/${locale.languageCode}-$name.png',
+            ).writeAsBytesSync(png.buffer.asUint8List());
+          });
+        }
+
+        Future<void> settle() async {
+          for (var i = 0; i < 10; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          await tester.pump(const Duration(seconds: 1));
+        }
+
+        Finder list() => find.byType(Scrollable).first;
+        Future<void> toBottom() async {
+          await tester.drag(list(), const Offset(0, -2000));
+          await settle();
+        }
+
+        Future<void> toTop() async {
+          await tester.drag(list(), const Offset(0, 2000));
+          await settle();
+        }
+
+        final l10n = lookupP2pLocalizations(locale);
+        RobosatsCurrency currency(String code) =>
+            RobosatsCurrency.fromCode(code) ?? (throw StateError(code));
+        FakeSecureStoragePlatform().install();
+        final locator = GetIt.asNewInstance();
+        final tor = StreamController<P2pTorState>.broadcast();
+        addTearDown(tor.close);
+        addTearDown(locator.reset);
+        // The Bull wallet's price of the captures: near the recorded coordinators' price of 66,227.95 EUR, then as each capture needs it.
+        final wallet = FakeP2pWalletPort(Ok(Sats.fromInt(50000)))
+          ..rate = P2pWalletRateRead(66400);
+        setUpP2pForTesting(
+          locator,
+          transport: const _RecordedTransport(RobosatsNetwork.mainnet),
+          torStates: () => tor.stream,
+          clock: () => _now,
+          garageKeys: Secrets(scratchDirectory: () async => '.').garageKeys(),
+          wallet: wallet,
+        );
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: _frame,
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.themeData(AppThemeType.dark),
+              locale: locale,
+              localizationsDelegates: [
+                ...AppLocalizations.localizationsDelegates,
+                P2pLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: createOrderPageForTesting(
+                  locator,
+                  network: RobosatsNetwork.mainnet,
+                  currency: currency('EUR'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await settle();
+        await settle();
+        await capture('creer-vide');
+        await toBottom();
+        await capture('creer-vide-bas');
+        await toTop();
+
+        // Filled: « Buy », 100 EUR, Revolut and a custom method, a premium of 2 %.
+        await tester.tap(find.text(l10n.p2pMakeBuy));
+        await tester.enterText(find.byType(TextField).at(0), '100');
+        await settle();
+        await tester.tap(find.byTooltip(l10n.p2pMakeAddCustomMethod));
+        await settle();
+        await tester.enterText(find.byType(TextField).last, 'Revolut');
+        await settle();
+        await tester.tap(find.text(l10n.p2pMakeAddPaymentMethod));
+        await settle();
+        await tester.enterText(find.byType(TextField).at(1), '2');
+        await settle();
+        await capture('creer-rempli');
+        await toBottom();
+        await capture('creer-rempli-bas');
+
+        // The custom method refused: a zero width space only.
+        await toTop();
+        await tester.tap(find.byTooltip(l10n.p2pMakeAddCustomMethod));
+        await settle();
+        await tester.enterText(
+          find.byType(TextField).last,
+          String.fromCharCode(0x200B),
+        );
+        await settle();
+        await capture('creer-mode-invisible');
+        await tester.tap(find.text(l10n.p2pCommonCancel));
+        await settle();
+
+        // The price check: beyond 10 % either way, a currency the Bull wallet does not price, a price it could not read.
+        var shown = 'EUR';
+        Future<void> showCurrency(String code) async {
+          await toTop();
+          await tester.tap(find.text(shown).first);
+          await settle();
+          await tester.tap(find.text(code).last);
+          await settle();
+          shown = code;
+          await toBottom();
+        }
+
+        wallet.rate = P2pWalletRateRead(80000);
+        await showCurrency('USD');
+        await capture('creer-prix-ecart-bas');
+        wallet.rate = P2pWalletRateRead(55000);
+        await showCurrency('EUR');
+        await capture('creer-prix-ecart-haut');
+        wallet.rate = const P2pWalletRateNotPriced();
+        await showCurrency('GBP');
+        await capture('creer-prix-non-cote');
+        wallet.rate = const P2pWalletRateUnavailable();
+        await showCurrency('EUR');
+        await capture('creer-prix-illisible');
+
+        // A reason of the disabled button: the amount below the coordinator's smallest order.
+        await toTop();
+        await tester.enterText(find.byType(TextField).at(0), '5');
+        await settle();
+        await capture('creer-montant-trop-bas');
+
+        await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(minutes: 1));
       },
     );
