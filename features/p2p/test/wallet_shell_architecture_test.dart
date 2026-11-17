@@ -941,11 +941,9 @@ const _perFile = <String, Set<String>>{
     'P2pWalletAddress',
     'P2pWalletInvoice',
     // The wallet's price of a bitcoin (#180).
-    '_rate',
     'P2pWalletBitcoinRate',
     'ReadWalletRateUsecase',
     'RobosatsCurrency',
-    'currency',
     'payout',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
@@ -1011,11 +1009,9 @@ const _perFile = <String, Set<String>>{
   // The wallet's price of a bitcoin (#180): the pricer the wallet's own screens read, for the payment rule of an order made here. It moves nothing.
   'domain/usecases/read_wallet_rate_usecase.dart': {
     '_indexPrice',
-    'BitcoinNetwork',
     'BitcoinPrice',
     'code',
     'currency',
-    'double',
     'Exception',
     'fiatAmount',
     'IndexPriceReader',
@@ -1026,7 +1022,6 @@ const _perFile = <String, Set<String>>{
     'P2pWalletRateUnavailable',
     'PricerFailure',
     'RobosatsCurrency',
-    'SupportedCurrency',
     'tryFromCode',
   },
 };
