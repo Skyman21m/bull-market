@@ -12,7 +12,7 @@ import 'trade_tolerances.dart';
 /// Three cases:
 /// - [WalletRateAtWallet]: the wallet gave its own price of a bitcoin at the moment of paying, the reference, a price that does not come from the coordinator;
 /// - [WalletRateAtCreation]: the wallet does not price the order's currency, so the coordinator's price read just before the make (`MakerTerms.createdPrice`) is the reference, a weaker one, said as such (the owner's rule);
-/// - [WalletRateUnverified]: the wallet prices the currency but its price could not be read now (or is no price a coordinator could give): **nothing is compared, and the creation's price is never cited**, since a coordinator that announced a price ten times too low would have a bond ten times too large look right against it (functional review of #180, C1; the default the owner's coordinator chose on 2026-11-17, still put to the owner). The screen says the amount is not checked and offers to read the price again.
+/// - [WalletRateUnverified]: the wallet prices the currency but its price could not be read now (or is no price a coordinator could give): **nothing is compared, and the creation's price is never cited**, since a coordinator that announced a price ten times too low would have a bond ten times too large look right against it (functional review of #180, C1; decided by the owner on 2026-11-17). The screen says « rate not checked » (the owner's words: the rate is not checked, not the amount) and offers to read the price again.
 ///
 /// The two comparisons compute the sats expected exactly (`MakerTerms.bondAtPrice`); the one rounding is the display's.
 @immutable
@@ -128,7 +128,7 @@ final class WalletRateAtCreation extends WalletRateCompared {
   String toString() => 'WalletRateAtCreation${warns ? '(warns)' : ''}';
 }
 
-/// Not compared: the wallet prices the currency but its price could not be read now; the amount is not checked, and the screen offers to read the price again.
+/// Not compared: the wallet prices the currency but its price could not be read now; the screen says « rate not checked » and offers to read the price again (the owner's decision of 2026-11-17).
 final class WalletRateUnverified extends WalletRateCheck {
   const WalletRateUnverified._(super.asked, super.currency) : super._();
 

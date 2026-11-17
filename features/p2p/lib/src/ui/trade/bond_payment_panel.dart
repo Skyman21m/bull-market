@@ -460,7 +460,7 @@ class _Confirmation extends StatelessWidget {
   }
 }
 
-/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the reference's price and the bond it gives with the gap of the invoice, said weaker when the price is the coordinator's of the creation for a currency the wallet does not price, and beyond the owner's threshold a red warning with both amounts. When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says the amount is not checked, with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
+/// How the bond quoted compares with the sats expected (the owner's payment rule of 2026-11-17, #180): the reference's price and the bond it gives with the gap of the invoice, said weaker when the price is the coordinator's of the creation for a currency the wallet does not price, and beyond the owner's threshold a red warning with both amounts. When the wallet's price could not be read, nothing is compared and no price is cited: a line in the warning colour says « rate not checked » (the owner's decision of 2026-11-17), with « Retry », which reads the price again. It stops nothing: « Pay » stays offered.
 class _RateLines extends StatelessWidget {
   final WalletRateCheck rate;
   final String coordinator;

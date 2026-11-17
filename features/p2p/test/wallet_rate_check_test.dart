@@ -246,7 +246,7 @@ void main() {
           expect(rate, isNot(isA<WalletRateCompared>()));
           expect(rate.asked, Sats.fromInt(40450));
           expect(rate.currency.code, 'USD');
-          // No red line: there is nothing to compare; the screen says the amount is not checked.
+          // No red line: there is nothing to compare; the screen says « rate not checked ».
           expect(rate.warns, isFalse);
         },
       );

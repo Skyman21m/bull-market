@@ -540,6 +540,45 @@ void main() {
     );
 
     testWidgets(
+      '« Pay » while « Retry » reads: enabled, it pays once, and the late answer of the read is ignored (review of #180, C2)',
+      (tester) async {
+        final reads = <Completer<Result<WalletRateCheck?, BondPayRefusal>>>[];
+        final (cubit, payments, _) = await _show(tester, rateReads: reads);
+        await _confirming(tester, payments);
+        reads.single.complete(Ok(_rateAt(const P2pWalletRateUnavailable())));
+        await tester.pump();
+        await tester.pump();
+        await _reveal(tester, find.text('Retry'));
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        expect(reads, hasLength(2));
+        final pay = find.ancestor(
+          of: find.text('Pay 3,357 sats'),
+          matching: find.byType(TradeButton),
+        );
+        expect(tester.widget<TradeButton>(pay).onPressed, isNotNull);
+        await _reveal(tester, find.text('Pay 3,357 sats'));
+        await tester.tap(find.text('Pay 3,357 sats'));
+        await tester.pump();
+        expect(payments.pays, hasLength(1));
+        expect(cubit.state.step, isA<BondPaySending>());
+        // The read answers once the payment left: nothing of it is shown, and nothing more is paid.
+        reads.last.complete(Ok(_rateAt(P2pWalletRateRead(110000))));
+        await tester.pump();
+        await tester.pump();
+        expect(cubit.state.step, isA<BondPaySending>());
+        expect(find.textContaining('Gap of the invoice'), findsNothing);
+        expect(payments.pays, hasLength(1));
+        payments.pays.single.complete(
+          const Ok(P2pWalletPayment(id: 'swap', paymentHash: testPaymentHash)),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(payments.pays, hasLength(1));
+      },
+    );
+
+    testWidgets(
       '« Retry » that fails again: still « rate not checked », « Retry » offered again, « Pay » still offered',
       (tester) async {
         final reads = <Completer<Result<WalletRateCheck?, BondPayRefusal>>>[];
@@ -726,6 +765,38 @@ void main() {
           expect(step.walletQuote, same(newQuote));
           expect(step.rate, same(fresh));
         }
+        await cubit.close();
+      },
+    );
+
+    test(
+      '« Retry » refused by the records: back to the start, the refusal said, nothing paid (review of #180, R10)',
+      () async {
+        final payments = Payments()..offer = Ok(_offered);
+        var reads = 0;
+        final cubit = cubitOf(payments, () async {
+          reads++;
+          return reads == 1
+              ? Ok(_rateAt(const P2pWalletRateUnavailable()))
+              : const Err(BondPayNotAtBondStep());
+        })..start();
+        payments.follows.single.add(const BondPaymentNone());
+        await pumpEventQueue();
+        final asking = cubit.ask(_bondStep);
+        payments.quotes.single.complete(Ok(walletQuote()));
+        await asking;
+        expect(cubit.state.step, isA<BondPayConfirming>());
+        await cubit.retryRate();
+        expect(reads, 2);
+        expect(
+          cubit.state.step,
+          isA<BondPayIdle>().having(
+            (i) => i.refused,
+            'refused',
+            isA<BondPayNotAtBondStep>(),
+          ),
+        );
+        expect(payments.pays, isEmpty);
         await cubit.close();
       },
     );

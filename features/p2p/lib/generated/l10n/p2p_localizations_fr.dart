@@ -2039,7 +2039,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayRateUnverified(String currency) {
-    return 'Le prix du bitcoin en $currency de ce portefeuille n’a pas pu être lu : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
+    return 'Ce portefeuille n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
   }
 
   @override
