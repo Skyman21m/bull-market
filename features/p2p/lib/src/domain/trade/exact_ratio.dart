@@ -75,7 +75,8 @@ final class ExactRatio implements Comparable<ExactRatio> {
     denominator * other.numerator,
   );
 
-  ExactRatio abs() => numerator.isNegative ? ExactRatio._(-numerator, denominator) : this;
+  ExactRatio abs() =>
+      numerator.isNegative ? ExactRatio._(-numerator, denominator) : this;
 
   /// The largest integer at most this: the one rounding of a rule, down.
   BigInt floor() {
@@ -96,9 +97,8 @@ final class ExactRatio implements Comparable<ExactRatio> {
   }
 
   @override
-  int compareTo(ExactRatio other) => (numerator * other.denominator).compareTo(
-    other.numerator * denominator,
-  );
+  int compareTo(ExactRatio other) =>
+      (numerator * other.denominator).compareTo(other.numerator * denominator);
 
   bool operator <(ExactRatio other) => compareTo(other) < 0;
   bool operator <=(ExactRatio other) => compareTo(other) <= 0;

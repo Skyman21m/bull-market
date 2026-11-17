@@ -126,12 +126,13 @@ final class _Seller {
         Err(:final failure) => throw StateError('$failure'),
       };
 
-  Future<TradeTerms<TakenSide>> terms() async =>
-      switch (await app.reader.open(record)) {
-        TradeOpened(trade: OpenTrade(terms: final TradeTerms<TakenSide> terms)) =>
-          terms,
-        _ => throw StateError('not opened'),
-      };
+  Future<TradeTerms<TakenSide>> terms() async => switch (await app.reader.open(
+    record,
+  )) {
+    TradeOpened(trade: OpenTrade(terms: final TradeTerms<TakenSide> terms)) =>
+      terms,
+    _ => throw StateError('not opened'),
+  };
 }
 
 Matcher _refused(Matcher failure) =>
