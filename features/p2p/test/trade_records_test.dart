@@ -466,7 +466,7 @@ void main() {
     'only the trade\'s own domain and use cases name the fresh trails and the take\'s start',
     () {
       final names = RegExp(
-        r'\b(forPendingTake|afterTake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
+        r'\b(forPendingTake|afterTake|afterMake|TradeTrail\.recovered|TradeTrail\._fresh)\b',
       );
       for (final file in Directory('lib').listSync(recursive: true)) {
         if (file is! File || !file.path.endsWith('.dart')) continue;

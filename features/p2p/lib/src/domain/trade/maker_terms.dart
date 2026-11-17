@@ -366,6 +366,7 @@ final class MakerTerms {
   /// How far the rate the coordinator fixed for the contract of [rangeAmount] ([contractAmount]) is from [createdRate], when the take fixed [tradeSatoshis] sats (`last_satoshis`): `null` when the contract's amount is not one of these terms or [tradeSatoshis] is 0.
   ///
   /// Shown before the escrow of a maker seller and before the payout and « Confirm … sent » of a maker buyer (design note § 3.3); information only.
+  /// Call it only with sats `package:robosats` has already bounded (an order's `satoshis_now`, at most `CoordinatorReadBounds.maxSats`): its exact arithmetic grows with the size of the figures, and a huge number makes it very slow (security review of #177). The state machine calls it so, from the order it reads (`TradeStatus`, #178), and nothing else in the feature calls it.
   TradeRateGap? rateGap({
     required FiatAmount? rangeAmount,
     required Sats tradeSatoshis,

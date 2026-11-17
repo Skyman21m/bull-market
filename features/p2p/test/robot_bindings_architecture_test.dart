@@ -531,6 +531,12 @@ void main() {
         expect(referring((r) => r == 'TradeTrail.recovered'), {
           '${_tradeUseCases}trade_reader.dart',
         });
+        // A maker's trade starts from the first read of its order: nothing in lib/ starts one before the make use case (#179).
+        expect(referring((r) => r == 'TradeStatus.afterMake'), isEmpty);
+        // The gap is computed by the state machine alone, from the order's `satoshis_now`, which `package:robosats` bounds (#178).
+        expect(referring((r) => r == 'MakerTerms.rateGap'), {
+          'lib/src/domain/trade/trade_status.dart',
+        });
       },
     );
 
@@ -2336,7 +2342,10 @@ const _watched = {
     {'recordTerms', 'storeTrail', 'recordMakerTerms'},
   ),
   // The fresh trails of the state machine (#86, #87): only the take starts a trade, only the take and the resolution of a pending take read one on a pending take's trail.
-  'TradeStatus': ('package:p2p/', {'afterTake'}),
+  // A maker's trade starts from the first read of its order (#178), which only the make use case and its resumptions are to name (#179).
+  'TradeStatus': ('package:p2p/', {'afterTake', 'afterMake'}),
+  // The gap from the rate of the creation, slow on a huge figure: only the state machine computes it, from an order the package bounded (#178).
+  'MakerTerms': ('package:p2p/', {'rateGap'}),
   'TradeTrail': ('package:p2p/', {'forPendingTake', 'recovered'}),
   // What the trade use cases share, which writes trails and closes records, and the acknowledgement of a bond lost (review of #117).
   'TradeReader': (
