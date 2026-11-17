@@ -215,6 +215,23 @@ void main() {
         isShownAsWritten('\u06a9\u0627\u0631\u062a\u200c\u0628\u0647'),
         isTrue,
       );
+      // Inside an Indic cluster, a joiner may come before the virama of the letter's script (the Bengali ra-phala; second security review of #181, R9), never before another mark, a virama of another script, or after a Latin letter.
+      expect(isShownAsWritten('\u09b0\u200d\u09cd\u09af'), isTrue);
+      expect(isShownAsWritten('\u0930\u200d\u094d\u092f'), isTrue);
+      expect(isShownAsWritten('\u09b0\u09be\u200d\u09cd\u09af'), isTrue);
+      for (final text in [
+        '\u09b0\u200d\u09be',
+        '\u09b0\u200d\u094d\u09af',
+        '\u0930\u200d\u09cd\u092f',
+        'a\u200d\u094d',
+        'r\u200d\u09cd\u09af',
+        '\u09b0\u200d\u200d\u09cd\u09af',
+        '\u09b0\u200d\u09cd\u09cd\u09cd\u09cd\u09cd\u09cd\u09cd\u09af',
+        '\u200d\u09cd\u09af',
+        ' \u200d\u09cd\u09af',
+      ]) {
+        expect(isShownAsWritten(text), isFalse, reason: jsonEncode(text));
+      }
     });
 
     test('a variation selector only right after a character that is seen', () {
@@ -232,25 +249,26 @@ void main() {
     });
 
     test(
-      'a combining mark not at the start, nor after a space or a joiner, and at most four after one character seen, in every script counted',
+      'a combining mark not at the start, nor after a space or a joiner, and at most six after one character seen, in every script counted',
       () {
-        expect(maxCombiningMarks, 4);
+        expect(maxCombiningMarks, 6);
+        const over = maxCombiningMarks + 1;
         for (final text in [
           '\u0301SEPA',
           'SEPA \u0301',
           'a\u200d\u0301',
-          'a\u0301\u0301\u0301\u0301\u0301',
+          'a${'\u0301' * over}',
           // Alone, or first, in the scripts the review found uncounted (security review of #181).
           '\u064b',
           '\u0489',
           '\u0610Revolut',
           // Piled up in those scripts.
-          'a${'\u0610' * 5}',
-          'a${'\u0489' * 5}',
-          '\u05d1${'\u0591' * 5}',
-          '\u0e01${'\u0e48' * 5}',
-          '\u0915${'\u0901' * 5}',
-          '\u0b95${'\u0bcd' * 5}',
+          'a${'\u0610' * over}',
+          'a${'\u0489' * over}',
+          '\u05d1${'\u0591' * over}',
+          '\u0e01${'\u0e48' * over}',
+          '\u0915${'\u0901' * over}',
+          '\u0b95${'\u0bcd' * over}',
           // A text piled up over its neighbours.
           'Z${'\u0336\u0337\u0338' * 5}algo',
         ]) {
@@ -258,6 +276,7 @@ void main() {
         }
         expect(isShownAsWritten('a\u0301\u0302\u0303'), isTrue);
         expect(isShownAsWritten('a\u0301\u0302\u0303\u0304'), isTrue);
+        expect(isShownAsWritten('a${'\u0301' * maxCombiningMarks}'), isTrue);
         expect(isShownAsWritten('a\u0301\u0302\u0303b\u0301'), isTrue);
       },
     );
@@ -359,6 +378,23 @@ void main() {
           (
             'Hebrew with dagesh, vowel, cantillation and meteg',
             '\u05d1\u05bc\u05b8\u05a3\u05bd',
+            true,
+          ),
+          ('Bengali ra-phala', '\u09b0\u200d\u09cd\u09af', true),
+          ('Bengali, RAB', '\u09b0\u200d\u09cd\u09af\u09be\u09ac', true),
+          (
+            'Bengali, Bank transfer with ra-phala',
+            '\u09ac\u09cd\u09af\u09be\u0999\u09cd\u0995 \u09b0\u200d\u09cd\u09af\u09be\u09aa\u09bf\u09a1',
+            true,
+          ),
+          (
+            'Hebrew shin with its dot, dagesh, vowel, meteg and cantillation',
+            '\u05e9\u05bc\u05c1\u05b8\u05bd\u0591\u05dc',
+            true,
+          ),
+          (
+            'Hebrew, the same with a second accent',
+            '\u05e9\u05bc\u05c1\u05b8\u05bd\u0591\u05a3',
             true,
           ),
           ('Tibetan stack', '\u0f56\u0f66\u0f92\u0fb2\u0f74\u0f56\u0f66', true),
