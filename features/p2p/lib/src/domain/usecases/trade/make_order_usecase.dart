@@ -77,7 +77,8 @@ final class MakeOrderUsecase {
     required MakePriceSeen seen,
   }) => _locks.run(
     network,
-    () => _make(request, coordinator: coordinator, network: network, seen: seen),
+    () =>
+        _make(request, coordinator: coordinator, network: network, seen: seen),
   );
 
   /// Resolves the pending make [make]: whether it made an order, read from the coordinator by its robot (see the class).

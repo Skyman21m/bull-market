@@ -314,7 +314,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     await _readLimits(coordinator);
   }
 
-  /// Reads the chosen coordinator's limits again, then the Bull wallet's price, when the last read is older than [staleAfter]: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
+  /// Reads the chosen coordinator's limits again when the last read is older than [staleAfter], then compares their price, reading the Bull wallet's again only when its last read for the currency is that old too: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
   Future<bool> refreshIfStale() async {
     final coordinator = state.coordinator;
     final readAt = state.limitsReadAt;

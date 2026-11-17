@@ -2909,18 +2909,17 @@ void main() {
           await toBottom();
         }
 
-        // The recorded price of USD, 73,956.8, more than 10 % below 90,000; that of EUR, 66,227.95, more than 10 % above 55,000.
+        // The recorded price of USD, 73,956.8, more than 10 % below 90,000; that of CAD, 104,648.95, more than 10 % above 90,000. A currency read once is not read again within 3 minutes (security review of #181), so each line has its own currency.
         wallet.rate = P2pWalletRateRead(90000);
         await showCurrency('USD');
         await capture('creer-prix-ecart-bas');
-        wallet.rate = P2pWalletRateRead(55000);
-        await showCurrency('EUR');
+        await showCurrency('CAD');
         await capture('creer-prix-ecart-haut');
         wallet.rate = const P2pWalletRateNotPriced();
         await showCurrency('GBP');
         await capture('creer-prix-non-cote');
         wallet.rate = const P2pWalletRateUnavailable();
-        await showCurrency('EUR');
+        await showCurrency('MXN');
         await capture('creer-prix-illisible');
 
         // A reason of the disabled button: the amount below the coordinator's smallest order (Ammanaya's is 1,000 sats, about 0.68 EUR with the form's margin).

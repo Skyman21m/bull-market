@@ -523,6 +523,13 @@ void main() {
           tester.widget<TextField>(_amountField).controller?.text,
           '100.5',
         );
+        // The same with the full-width full stop (second functional pass of #181, R13).
+        await tester.enterText(
+          _amountField,
+          '100${chars([0xFF0E])}${'1' * 9}',
+        );
+        await settle(tester);
+        expect(tester.widget<TextField>(_amountField).controller?.text, '100.5');
         await tester.enterText(_premiumField, '1.234');
         await settle(tester);
         expect(tester.widget<TextField>(_premiumField).controller?.text, '2');
@@ -553,6 +560,10 @@ void main() {
         // A method already chosen is not added twice.
         await _addMethod(tester, 'Bank transfer');
         expect(find.byType(InputChip), findsNWidgets(2));
+        // Nor the same with or without its variation selector (security review of #181).
+        await _addMethod(tester, 'Pay ${chars([0x2764, 0xFE0F])}');
+        await _addMethod(tester, 'Pay ${chars([0x2764])}');
+        expect(find.byType(InputChip), findsNWidgets(3));
         // Spaces only: « Can't be empty »; a zero width space: refused, said. Nothing is said before anything is typed.
         await tester.tap(find.byTooltip('Add custom payment method'));
         await settle(tester);
@@ -573,7 +584,7 @@ void main() {
         expect(find.text('Add payment method'), findsOneWidget);
         await tester.tap(find.text('Cancel'));
         await settle(tester);
-        expect(find.byType(InputChip), findsNWidgets(2));
+        expect(find.byType(InputChip), findsNWidgets(3));
         // Too long: the reference's line.
         await _addMethod(tester, 'x' * 40);
         expect(find.text('Must be at most 50 characters'), findsOneWidget);
@@ -853,20 +864,19 @@ void main() {
       },
     );
 
-    testWidgets(
-      'the fields are locked while the press waits for the vault',
-      (tester) async {
-        final form = _Form()..vault = Completer();
-        await _show(tester, form);
-        await _fill(tester);
-        await tester.tap(_create);
-        await tester.pump();
-        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
-        expect(tester.widget<TextField>(_premiumField).enabled, isFalse);
-        form.vault?.complete(const Ok(true));
-        await settle(tester);
-      },
-    );
+    testWidgets('the fields are locked while the press waits for the vault', (
+      tester,
+    ) async {
+      final form = _Form()..vault = Completer();
+      await _show(tester, form);
+      await _fill(tester);
+      await tester.tap(_create);
+      await tester.pump();
+      expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+      expect(tester.widget<TextField>(_premiumField).enabled, isFalse);
+      form.vault?.complete(const Ok(true));
+      await settle(tester);
+    });
   });
 
   group('the confirmation and the make', () {

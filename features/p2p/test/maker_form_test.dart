@@ -122,7 +122,10 @@ void main() {
         }
         // Not a number at all, or too many decimals: not « beyond precision », the field's other rules say it.
         expect(FormNumber.beyondPrecision('abc', maxDecimals: 8), isFalse);
-        expect(FormNumber.beyondPrecision('1.123456789', maxDecimals: 8), isFalse);
+        expect(
+          FormNumber.beyondPrecision('1.123456789', maxDecimals: 8),
+          isFalse,
+        );
       },
     );
 
@@ -162,6 +165,24 @@ void main() {
         0x200C, 0x06A9, 0x0627, 0x0631, 0x062A,
       ]);
       expect(CustomPaymentMethod.tryCreate(persian)?.text, persian);
+    });
+
+    test('one method to a reader: equal without joiners and variation selectors', () {
+      expect(
+        CustomPaymentMethod.sameMethod(
+          'Pay ${chars([0x2764, 0xFE0F])}',
+          'Pay ${chars([0x2764])}',
+        ),
+        isTrue,
+      );
+      expect(
+        CustomPaymentMethod.sameMethod(
+          chars([0x06A9, 0x200C, 0x0628]),
+          chars([0x06A9, 0x0628]),
+        ),
+        isTrue,
+      );
+      expect(CustomPaymentMethod.sameMethod('Revolut', 'Revolut Pro'), isFalse);
     });
 
     test('« Can\'t be empty »: nothing left but spaces', () {

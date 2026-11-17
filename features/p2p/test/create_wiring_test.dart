@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:get_it/get_it.dart';
+import 'package:p2p/public/p2p_wallet_port.dart';
 import 'package:p2p/src/domain/usecases/has_garage_key_usecase.dart';
 import 'package:p2p/src/presentation/make_order_cubit.dart';
 import 'package:p2p/testing.dart';

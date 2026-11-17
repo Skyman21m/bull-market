@@ -97,6 +97,22 @@ void main() {
     });
   });
 
+  test(
+    'only the make use case refuses a make for a price check changed (security review of #181, C1)',
+    () {
+      expect(_whereNamed(sources, 'MakePriceCheckChanged'), {
+        'lib/src/domain/trade/trade_make.dart',
+        'lib/src/domain/usecases/trade/make_order_usecase.dart',
+        'lib/src/presentation/make_order_cubit.dart',
+        'lib/src/presentation/make_order_l10n.dart',
+      });
+      // Built by the use case only: the cubit and the texts only read it.
+      expect(_whereBuilt(sources, 'MakePriceCheckChanged'), {
+        'lib/src/domain/usecases/trade/make_order_usecase.dart',
+      });
+    },
+  );
+
   test('nothing the user can reach opens the create screen yet (#181)', () {
     expect(_whereNamed(sources, 'CreateOrderScreen'), {
       'lib/src/ui/create_order_screen.dart',
@@ -180,6 +196,19 @@ void main() {
       },
     );
 
+    test('a refusal built elsewhere is seen, a read of it is not', () {
+      expect(
+        _whereBuilt({
+          'lib/a.dart': 'final r = MakePriceCheckChanged(l, s);',
+          'lib/b.dart': 'final r = const MakePriceCheckChanged(l, s);',
+          'lib/c.dart': 'final r = new MakePriceCheckChanged(l, s);',
+          'lib/d.dart':
+              'bool f(Object o) => o is MakePriceCheckChanged; void g(Object o) { if (o case MakePriceCheckChanged(:final limits)) {} }',
+        }, 'MakePriceCheckChanged'),
+        {'lib/a.dart', 'lib/b.dart', 'lib/c.dart'},
+      );
+    });
+
     test('a second caller of the make is seen', () {
       expect(
         _callersOf(
@@ -257,6 +286,38 @@ Set<String> _callersOf(
 String _fileOf(String type) => type
     .replaceAllMapped(RegExp('[A-Z]'), (m) => '_${m[0]?.toLowerCase()}')
     .substring(1);
+
+/// The files of [sources] whose code builds a [type]: a call of its constructor, `const` or not, written with or without `new` (unresolved, a call without `new` reads as a method invocation of the type's name).
+Set<String> _whereBuilt(Map<String, String> sources, String type) => {
+  for (final MapEntry(key: path, value: source) in sources.entries)
+    if (_builds(source, type)) path,
+};
+
+bool _builds(String source, String type) {
+  final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+  final builds = _Builds(type);
+  unit.accept(builds);
+  return builds.found;
+}
+
+final class _Builds extends RecursiveAstVisitor<void> {
+  final String type;
+  bool found = false;
+
+  _Builds(this.type);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.target == null && node.methodName.name == type) found = true;
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    if (node.constructorName.type.name.lexeme == type) found = true;
+    super.visitInstanceCreationExpression(node);
+  }
+}
 
 bool _callsMethod(String source, String method) {
   final unit = parseString(content: source, throwIfDiagnostics: false).unit;

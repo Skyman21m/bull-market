@@ -56,13 +56,16 @@ sealed class FormNumber {
   /// Whether [value] is written back exactly as its digits were typed, [whole] and [fraction], so that what the field shows, what the summary shows and what is sent are one number (security review of #181): `100000000.00000002` reads as the nearest double, which writes `100000000.00000001`, and is refused.
   static bool _roundTrips(String whole, String fraction, double value) {
     final digits = whole.replaceFirst(RegExp('^0+'), '');
-    final typed = '${digits.isEmpty ? '0' : digits}${fraction.isEmpty ? '' : '.$fraction'}';
+    final typed =
+        '${digits.isEmpty ? '0' : digits}${fraction.isEmpty ? '' : '.$fraction'}';
     return value.abs().toStringAsFixed(fraction.length) == typed;
   }
 
   /// Whether [text] is a plain decimal number that a double cannot hold as it is written (see [read]): the field takes no such edit.
   static bool beyondPrecision(String text, {required int maxDecimals}) {
-    if (read(text, maxDecimals: maxDecimals) is! FormNumberInvalid) return false;
+    if (read(text, maxDecimals: maxDecimals) is! FormNumberInvalid) {
+      return false;
+    }
     final unchecked = _read(
       text,
       maxDecimals: maxDecimals,

@@ -252,11 +252,13 @@ final class MakePriceSeen {
           MakePriceVerdict.below ||
           MakePriceVerdict.above:
         final check = checkAt(price);
-        return check != null && MakePriceSeen.of(
-          currency: currency,
-          coordinatorPrice: price,
-          check: check,
-        ).verdict == verdict;
+        return check != null &&
+            MakePriceSeen.of(
+                  currency: currency,
+                  coordinatorPrice: price,
+                  check: check,
+                ).verdict ==
+                verdict;
       case MakePriceVerdict.notRead ||
           MakePriceVerdict.notPriced ||
           MakePriceVerdict.unverified:
