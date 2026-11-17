@@ -1815,6 +1815,47 @@ void main() {
       );
     });
 
+    test(
+      'the escrow at a next contract: cleared or replaced by another, never kept; within a contract, kept',
+      () {
+        final pinned = trailOf(
+          readAt: 1000,
+          position: 'waitingForEscrow',
+          escrowHash: hashA,
+          takeDeadline: deadline,
+          takerHashId: takerOne,
+        );
+        TradeTrailRecord nextWith(String? escrow) => trailOf(
+          readAt: 2000,
+          position: 'waitingForBoth',
+          escrowHash: escrow,
+          take: 1,
+          takeDeadline: deadline + 1,
+          takerHashId: takerTwo,
+        );
+        expect(nextWith(null).whyNotReplace(pinned, madeHere: true), isNull);
+        expect(nextWith(hashB).whyNotReplace(pinned, madeHere: true), isNull);
+        expect(
+          nextWith(hashA).whyNotReplace(pinned, madeHere: true),
+          TrailReplacementRefusal.hashChanged,
+        );
+        TradeTrailRecord sameWith(String? escrow) => trailOf(
+          readAt: 2000,
+          position: 'chatting',
+          escrowHash: escrow,
+          takeDeadline: deadline,
+          takerHashId: takerOne,
+        );
+        expect(sameWith(hashA).whyNotReplace(pinned, madeHere: true), isNull);
+        for (final escrow in [null, hashB]) {
+          expect(
+            sameWith(escrow).whyNotReplace(pinned, madeHere: true),
+            TrailReplacementRefusal.hashChanged,
+          );
+        }
+      },
+    );
+
     test('a taker trail, with no contract, is replaced as before', () {
       final before = trailOf(orderId: 7, position: 'waitingForBoth');
       expect(

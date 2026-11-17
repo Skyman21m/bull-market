@@ -809,7 +809,11 @@ void main() {
           ),
           public,
         );
-        // This robot as the taker, or as no participant.
+        // This robot as the taker, or as no participant: as the taker on the maker's own side too (the buyer of a sell order), which only `is_maker` tells.
+        refused<TradeRoleMismatch>(
+          next(public, await readAnswer(orderJson(6, role: TradeRole.buyer))),
+          public,
+        );
         refused<TradeRoleMismatch>(
           next(public, await readAnswer(orderJson(1))),
           public,
