@@ -616,6 +616,25 @@ void main() {
     expect(source, contains('InvoiceStep.escrow => terms.escrowCeiling,'));
   });
 
+  test(
+    'a maker\'s terms are never offered the wallet, with the refusal of a status not at its step',
+    () {
+      // A guard of money that no test can reach through the use case yet: its reader opens a taker's trade only, until the make use case (#179) and the maker bond's payment (#180); then a test of behaviour replaces this one.
+      final source = File(
+        'lib/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart',
+      ).readAsStringSync();
+      expect(
+        source,
+        contains(
+          '    if (terms is! TradeTerms<TakenSide>) {\n'
+          '      return const Err(BondPayNotAtBondStep());\n'
+          '    }\n'
+          '    return switch (walletPaymentFor(',
+        ),
+      );
+    },
+  );
+
   group('followBond', () {
     test('none recorded: none, and nothing asked of the wallet', () async {
       final setup = await _Setup.start();

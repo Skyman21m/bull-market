@@ -272,13 +272,14 @@ final class MakerTerms {
 
   /// The most a maker bond invoice of this order may ask: the expected bond with the tolerance of a taker's bond on it, [TradeTolerances.price] and [TradeTolerances.roundingSats], rounded down to the sat (design note § 3.2: `TradeTerms.bondCeiling`'s formula on these sats).
   ///
-  /// The coordinator makes the invoice at the maker's first read, seconds after the creation, at its price then (`api/logics.py:1266-1268`), and truncates it twice (the sats, then the bond), so at the price of the creation the bond is at most the expected bond: the tolerance covers a price that moved by up to about 2 % in between. Rounded down: the ceiling is the largest whole sat within the rule, never one more.
+  /// The coordinator makes the invoice at the maker's first read, seconds after the creation, at its price then (`api/logics.py:1266-1268`), and truncates it twice (the sats, then the bond), so at the price of the creation the bond is at most the expected bond, but for the error of its floating-point sats, a fraction of a sat that the 1 sat covers: the tolerance covers a price that rose by up to 2 % or fell by up to 1.96 % in between. Rounded down: the ceiling is the largest whole sat within the rule, never one more.
   Sats get bondCeiling =>
       Sats(_upperBound(_expectedBond, TradeTolerances.price).floor());
 
   /// Whether a maker bond of [bond] sats agrees with these terms: within [TradeTolerances.price] of the expected bond, both ways, plus [TradeTolerances.roundingSats] (the check a taker's bond has, `BondAmountOutsideOrder`), so that every bond it accepts is at most [bondCeiling].
   ///
   /// Both ways, since a bond far from the order's, even below it, says the coordinator computed with other terms.
+  /// A known limit, the taker's too, set by the size of the order rather than of the bond: below it, the coordinator's two truncations (up to 1 sat and a bond size's hundredth) can take a legitimate bond under the lower mark. With S the order's sats at the rate of the creation and x the rise of the price before the bond, a refusal is possible only when S × (0.02 − x / (1 + x)) < 1: below 50 sats of order at the same price, about 738 sats for a price 1.9 % higher, 1,146 sats for 1.95 %, 2,550 sats for 2 %. The smallest order a recorded coordinator allows is 1,000 sats (`packages/robosats/test/fixtures/coordinator/ammanaya-mainnet-limits.json`), so such a refusal needs a price that rose by more than about 1.9 % in the seconds between the make and its first read.
   bool bondAgrees(Sats bond) {
     final expected = _expectedBond;
     final slack =
@@ -307,7 +308,7 @@ final class MakerTerms {
   /// The most « Pay with this wallet » pays for this maker seller's escrow in the contract of [rangeAmount] ([contractAmount]): the sats of the contract's amount at the rate of the creation, times [TradeTolerances.makerEscrowFactor], with the maker fee of that product and [TradeTolerances.feeSats], rounded down (design note § 3.3): `floor(S × F × (1 + maker fee) + 1)`.
   ///
   /// `null`, so nothing is paid from this wallet, for a buyer (who locks no escrow) and when the contract's amount is not one of these terms ([contractAmount]).
-  /// The coordinator asks `round(last_satoshis × (1 + maker_fee))` (`Logics.escrow_amount`, `api/logics.py:733-749`), so with `last_satoshis` up to F times the sats at the creation's rate the escrow is at most that bound's exact value plus half a sat, which [TradeTolerances.feeSats] covers: no escrow of a trade within the factor is refused, and the bound is rounded down, never letting one sat more through.
+  /// The coordinator asks `round(last_satoshis × (1 + maker_fee))` (`Logics.escrow_amount`, `api/logics.py:733-749`), so with `last_satoshis` up to F times the sats at the creation's rate the escrow is at most that bound's exact value plus half a sat, which [TradeTolerances.feeSats] covers: no escrow of a trade within the factor is refused, and the bound is rounded down, never letting one sat more through. That sat lets through an escrow whose trade is up to about 1.5 sats above F times the sats, inherent in covering the coordinator's `round`.
   /// It bounds what this wallet pays, not the coordinator, which fixes `last_satoshis` at its own price at the take (`api/logics.py:1332-1335`): above it, « Pay with another wallet » stays, and it is no warning.
   Sats? escrowCeilingFor(FiatAmount? rangeAmount) {
     final amount = contractAmount(rangeAmount);

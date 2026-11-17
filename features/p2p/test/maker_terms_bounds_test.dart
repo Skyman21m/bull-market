@@ -21,7 +21,7 @@ import 'support/robot_bindings.dart';
 
 /// The bounds of a maker's terms, kept in three places (#177): `MakeOrderRequest.tryCreate` (what is sent), `MakerTerms` (what is checked and stored) and the CHECKs of `maker_terms` (schema 8, what the database keeps). Each bound is tried at its value and one step past it, in all three, which must give the same verdict.
 ///
-/// Where the database is wider by design (it counts no decimals, cleans no text, knows no currency or coordinator), the last group says so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`.
+/// Where the database is wider by design (it counts no decimals, cleans no text, knows no currency, keeps any version from 1, a password and a meeting point), the last groups say so: `MakerTerms.restore` refuses those records, and no code writes them, since every record comes from `MakerTerms.record`. The coordinator is tied by the database to its make's, by the terms to the federation list.
 void main() {
   const testnet = RobosatsNetwork.testnet;
 
@@ -146,10 +146,14 @@ void main() {
     String? description,
     double createdPrice = 93545.25,
     double makerFee = 0.00025,
+    int version = 1,
+    String alias = 'temple',
+    bool hasPassword = false,
+    (double?, double?) place = (null, null),
   }) => MakerTermsRecord(
-    version: 1,
+    version: version,
     network: 'testnet',
-    coordinatorAlias: 'temple',
+    coordinatorAlias: alias,
     role: role,
     type: type,
     currencyId: currencyId,
@@ -162,9 +166,9 @@ void main() {
     publicSeconds: publicSeconds,
     escrowSeconds: escrowSeconds,
     description: description,
-    hasPassword: false,
-    latitude: null,
-    longitude: null,
+    hasPassword: hasPassword,
+    latitude: place.$1,
+    longitude: place.$2,
     createdPrice: createdPrice,
     makerFee: makerFee,
   );
@@ -301,6 +305,36 @@ void main() {
         expect(termsTake(record), isFalse, reason: 'terms: $name');
         expect(await stored(record), isTrue, reason: 'database: $name');
       }
+      // What the request does not carry: a later version, a password and a meeting point (#189) are kept by the database and refused by the terms.
+      final notSent = <String, MakerTermsRecord>{
+        'a later version': base(version: 2),
+        'a password': base(hasPassword: true),
+        'a meeting point': base(place: (48.85, 2.35)),
+      };
+      for (final MapEntry(key: name, value: record) in notSent.entries) {
+        expect(requestTakes(record), isTrue, reason: 'request: $name');
+        expect(termsTake(record), isFalse, reason: 'terms: $name');
+        expect(await stored(record), isTrue, reason: 'database: $name');
+      }
+    },
+  );
+
+  test(
+    'the coordinator: the database ties the terms to their make\'s, the terms to the federation list',
+    () async {
+      // Another coordinator of the list than the make's: the terms take it, the database refuses it (`maker_terms_of_their_make`).
+      final lake = base(alias: 'lake');
+      expect(termsTake(lake), isTrue);
+      expect(await stored(lake), isFalse);
+      // A coordinator the list does not hold: the database holds whatever its make holds, and the terms refuse it with their own reason, as for a coordinator that has left the list since.
+      expect(
+        MakerTerms.restore(base(alias: 'nowhere')),
+        isA<Err<MakerTerms, TradeRecordRefusal>>().having(
+          (e) => e.failure,
+          'failure',
+          isA<TradeCoordinatorGone>(),
+        ),
+      );
     },
   );
 }

@@ -255,6 +255,40 @@ void main() {
     });
   });
 
+  group('MakerTerms equality', () {
+    test(
+      'equal by every term: the request, the network, the coordinator, the price and the fee',
+      () {
+        final made = terms();
+        expect(made, terms());
+        expect(made.hashCode, terms().hashCode);
+        MakerTerms other({
+          RobosatsNetwork network = testnet,
+          Coordinator? on,
+          double createdPrice = 50000,
+          double makerFee = 0.00025,
+          MakeOrderRequest? asked,
+        }) => switch (create(
+          network: network,
+          on: on,
+          createdPrice: createdPrice,
+          makerFee: makerFee,
+          asked: asked,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => throw StateError('$failure'),
+        };
+        expect(other(), made);
+        expect(other(createdPrice: 50000.0001), isNot(made));
+        expect(other(makerFee: 0.0002), isNot(made));
+        expect(other(network: RobosatsNetwork.mainnet), isNot(made));
+        expect(other(on: coordinator('lake')), isNot(made));
+        expect(other(asked: request(premium: 1)), isNot(made));
+        expect(other(asked: request(description: 'Fast')), isNot(made));
+      },
+    );
+  });
+
   group('MakerTerms records', () {
     test('a record round-trips exactly, fixed or range', () {
       for (final made in [
@@ -475,7 +509,11 @@ void main() {
         final random = Random(177);
         var checked = 0;
         for (var i = 0; i < 3000; i++) {
-          final amount = _decimals(random, 10, 20000, 2);
+          // From 0.5 to 20,000, spread evenly on a log scale, so that many orders are small: from about 50 sats.
+          final amount = _round(
+            exp(log(0.5) + random.nextDouble() * log(40000)),
+            2,
+          );
           final price = _decimals(random, 100, 500000, 4);
           final premium = _decimals(random, -50, 100, 2);
           final bond = _decimals(random, 2, 15, 2);
@@ -488,8 +526,9 @@ void main() {
             bond: bond,
             createdPrice: price,
           );
-          // The coordinator's smallest order is 20,000 sats by default (`api/logics.py:31-32`), a bond of 400 sats at least: below 200, the tolerance of 1 sat is not what the check rests on.
-          if (made.expectedBond < 200) continue;
+          // The rule's own limit, set by the size of the order (`MakerTerms.bondAgrees`): with S the order's sats at the rate of the creation, a price 1.9 % higher can take the reference's bond under the lower mark only when S × (0.02 − 0.019 / 1.019) < 1, that is below 738.4 sats; 739, for the rounding of the price to 4 decimals. The smallest order a recorded coordinator allows is 1,000 sats (`ammanaya-mainnet-limits.json`).
+          final orderSats = made.createdSatoshis(made.amount.max).toDouble();
+          if (orderSats < 739) continue;
           for (final move in [
             0.0,
             -0.019,
@@ -510,7 +549,26 @@ void main() {
           }
           checked++;
         }
-        expect(checked, greaterThan(2500));
+        expect(checked, greaterThan(2000));
+      },
+    );
+
+    test(
+      'a known limit, set by the size of the order: a price 2 % higher can take the reference\'s bond on an order of 1,279 sats under the lower mark, 1.9 % cannot',
+      () {
+        // 1.279 USD at 100,000: 1,279 sats; a bond of 15 %: 191.85 expected, 4.837 of tolerance below.
+        final made = terms(
+          amount: FixedOrderAmount(fiat(1.279)),
+          bond: 15,
+          createdPrice: 100000,
+        );
+        expect(made.createdSatoshis(fiat(1.279)), ExactRatio.integer(1279));
+        // At 102,000: 1,253 sats, a bond of 187, 4.85 below.
+        expect(_referenceBond(1.279, 102000, 0, 15), 187);
+        expect(made.bondAgrees(sats(187)), isFalse);
+        // At 101,900: 1,255 sats, a bond of 188, 3.85 below.
+        expect(_referenceBond(1.279, 101900, 0, 15), 188);
+        expect(made.bondAgrees(sats(188)), isTrue);
       },
     );
 
