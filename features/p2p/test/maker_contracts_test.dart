@@ -279,6 +279,39 @@ void main() {
   });
 
   group('a next contract seen late: the maker acting from another client too', () {
+    test(
+      'a contract seen late is said at every read while it lasts, after a restart too',
+      () async {
+        final before = await along(b, [1, 6, 1]);
+        final late = next(before, await made(9, taker: third));
+        expect(late.trail.seenLate, isTrue);
+        final again = next(late, await made(9, taker: third));
+        expect(again.warnings, [isA<ContractSeenLate>()]);
+        final sent = next(again, await made(10, taker: third));
+        expect(sent.warnings, [isA<ContractSeenLate>()]);
+        final restored = switch (TradeTrail.restore(
+          sent.trail.record,
+          terms: madeTerms(),
+          now: tradeNow,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final resumed = TradeStatus.beforeFirstRead(restored);
+        expect(resumed.warnings, [isA<ContractSeenLate>()]);
+        final after = next(resumed, await made(13, taker: third));
+        expect(after.warnings, [isA<ContractSeenLate>()]);
+        expect(after.trail.breached, isFalse);
+        // A next contract read at its steps is not seen late.
+        final atStep = next(
+          before,
+          await made(6, taker: third, deadline: deadline1, take: 1),
+        );
+        expect(atStep.trail.seenLate, isFalse);
+        expect(atStep.warnings, isEmpty);
+      },
+    );
+
     const after = [9, 10, 11, 13, 14, 15, 16, 17, 18];
 
     test(
@@ -319,8 +352,9 @@ void main() {
               read,
               await made(wire, role: role, taker: third),
             );
+            // Said again at every read while the contract lasts (security review of #178).
             if (!read.isTerminal) {
-              expect(again.warnings, isEmpty, reason: label);
+              expect(again.warnings, [isA<ContractSeenLate>()], reason: label);
             }
             expect(again.trail.take, 1, reason: label);
             expect(again.trail.breached, isFalse, reason: label);
@@ -426,8 +460,39 @@ void main() {
           expect((cancelled as Cancelled).bondMayHaveBeenLost, isTrue);
         }
         final bond = await along(b, const []);
+        // At 0 once the bond was shown, it may have been paid, the order taken and cancelled elsewhere, or the bond kept (security review of #178); at the first read no bond existed.
         final atZero = next(bond, const TradeOrderCancelled());
-        expect((atZero as Cancelled).bondMayHaveBeenLost, isFalse);
+        expect((atZero as Cancelled).bondMayHaveBeenLost, isTrue);
+        final first = TradeStatus.afterMake(
+          const TradeOrderCancelled(),
+          terms: madeTerms(),
+          now: tradeNow,
+          reader: reader,
+        );
+        expect((first as Cancelled).bondMayHaveBeenLost, isFalse);
+        // After 6, 7 or 8, for both roles: this maker may have cancelled alone, its bond settled.
+        for (final role in [b, s]) {
+          for (final wires in [
+            [1, 6],
+            [1, 6, 7],
+            [1, 6, 8],
+          ]) {
+            final cancelled = next(
+              await along(role, wires),
+              const TradeOrderCancelled(),
+            );
+            expect(
+              (cancelled as Cancelled).bondMayHaveBeenLost,
+              isTrue,
+              reason: '$role $wires',
+            );
+          }
+          final chat = next(
+            await along(role, [1, 6, 9]),
+            const TradeOrderCancelled(),
+          );
+          expect((chat as Cancelled).bondMayHaveBeenLost, isFalse);
+        }
         // 4 and 12 in an order are never served: error 1043 is.
         final public = await along(b, [1]);
         refused<TradeStatusRegressed>(next(public, await made(4)), public);
@@ -559,47 +624,74 @@ void main() {
       },
     );
 
-    test(
-      'a range: the amount kept, changed or outside the range said',
-      () async {
-        final both = await along(b, [1, 6], range: true);
-        expect(both.warnings, isEmpty);
-        expect(both.trail.takenAmount, 120);
-        final changed = next(
-          both,
-          await made(8, range: true, taken: 130),
-          range: true,
-        );
-        expect(changed.has<TradeTermsChanged>(), isTrue);
-        expect(changed.trail.takenAmount, 120);
-        storable(changed, both);
-        final public = await along(b, [1], range: true);
-        final outside = next(
-          public,
-          await made(6, range: true, taken: 250),
-          range: true,
-        );
-        expect(outside.has<TradeTermsChanged>(), isTrue);
-        expect((outside as WaitingForBoth).rateGap, isNull);
-        // No amount taken at 6 or later: refused, the contract cannot be told.
+    test('a range: the amount kept, changed or outside the range said', () async {
+      final both = await along(b, [1, 6], range: true);
+      expect(both.warnings, isEmpty);
+      expect(both.trail.takenAmount, 120);
+      final changed = next(
+        both,
+        await made(8, range: true, taken: 130),
+        range: true,
+      );
+      expect(changed.has<TradeTermsChanged>(), isTrue);
+      expect(changed.trail.takenAmount, 120);
+      storable(changed, both);
+      final public = await along(b, [1], range: true);
+      // An amount taken outside the range is refused, never kept (security review of #178): at the package's own bound too, which the trail could not even store.
+      for (final taken in [250.0, 49.0, 1e10]) {
         refused<TradeTermsChanged>(
-          next(
-            public,
-            await made(6, range: true, changes: {'amount': null}),
-            range: true,
-          ),
+          next(public, await made(6, range: true, taken: taken), range: true),
           public,
         );
-        // An amount taken before any take.
-        final atZero = TradeStatus.afterMake(
-          await made(0, range: true, changes: {'amount': '120.00000000'}),
-          terms: madeTerms(range: true),
-          now: tradeNow,
-          reader: reader,
+      }
+      // At the very bounds, kept.
+      for (final taken in [50.0, 200.0]) {
+        final atBound = next(
+          public,
+          await made(6, range: true, taken: taken),
+          range: true,
         );
-        expect(atZero.has<TradeTermsChanged>(), isTrue);
-      },
-    );
+        expect(atBound.warnings, isEmpty, reason: '$taken');
+        expect(atBound.trail.takenAmount, taken);
+      }
+      // A fixed order showing another amount, or a range, at 6 or later: refused.
+      final fixed = await along(b, [1]);
+      refused<TradeTermsChanged>(
+        next(fixed, await made(6, changes: {'amount': '101.00000000'})),
+        fixed,
+      );
+      refused<TradeTermsChanged>(
+        next(
+          fixed,
+          await made(
+            6,
+            changes: {
+              'has_range': true,
+              'min_amount': '50.00000000',
+              'max_amount': '200.00000000',
+            },
+          ),
+        ),
+        fixed,
+      );
+      // No amount taken at 6 or later: refused, the contract cannot be told.
+      refused<TradeTermsChanged>(
+        next(
+          public,
+          await made(6, range: true, changes: {'amount': null}),
+          range: true,
+        ),
+        public,
+      );
+      // An amount taken before any take.
+      final atZero = TradeStatus.afterMake(
+        await made(0, range: true, changes: {'amount': '120.00000000'}),
+        terms: madeTerms(range: true),
+        now: tradeNow,
+        reader: reader,
+      );
+      expect(atZero.has<TradeTermsChanged>(), isTrue);
+    });
   });
 
   group('an escrow of an earlier contract', () {
@@ -659,7 +751,94 @@ void main() {
     );
 
     test(
-      'shown after a next contract opened without one: refused, it cannot be told from an earlier one',
+      'an escrow of any earlier contract never comes back, whatever came in between, after a restart too',
+      () async {
+        final e0 = makerEscrowInvoice(take: 0).facts.paymentHash;
+        for (final (label, wire, changes)
+            in <(String, int, Map<String, Object?>)>[
+              ('contract 1 read at 8', 8, {}),
+              (
+                'contract 1 read at 7 without its escrow',
+                7,
+                {'escrow_invoice': null, 'escrow_satoshis': null},
+              ),
+              (
+                'contract 1 read at 6 without its escrow',
+                6,
+                {'escrow_invoice': null, 'escrow_satoshis': null},
+              ),
+            ]) {
+          final c0 = await along(s, [1, 6]);
+          expect(c0.trail.escrowHash, e0);
+          final c1 = next(
+            c0,
+            await made(
+              wire,
+              role: s,
+              taker: third,
+              deadline: deadline1,
+              take: 1,
+              changes: changes,
+            ),
+          );
+          expect(c1.warnings, isEmpty, reason: label);
+          expect(c1.trail.take, 1, reason: label);
+          expect(c1.trail.escrowHash, isNull, reason: label);
+          expect(c1.trail.earlierEscrows, [e0], reason: label);
+          storable(c1, c0);
+          Future<TradeAnswer> contract2() => made(
+            6,
+            role: s,
+            taker: peer,
+            deadline: deadline1.add(const Duration(hours: 1)),
+            escrow: makerEscrowInvoice(take: 0),
+          );
+          final c2 = next(c1, await contract2());
+          expect(c2.trail.take, 2, reason: label);
+          expect(
+            checkedOf(c2).warnings.whereType<EscrowNotOfThisContract>(),
+            hasLength(1),
+            reason: label,
+          );
+          expect(c2.trail.escrowHash, isNull, reason: label);
+          expect(c2.trail.breached, isTrue, reason: label);
+          expect(
+            walletPaymentFor(
+              accepted: Sats.fromInt(1 << 40),
+              status: c2,
+              step: InvoiceStep.escrow,
+              now: tradeNow,
+            ),
+            isA<WalletPaymentRefused>(),
+            reason: label,
+          );
+          storable(c2, c1);
+          // After a restart, from the stored trail alone.
+          final restored = switch (TradeTrail.restore(
+            c1.trail.record,
+            terms: madeTerms(role: s),
+            now: tradeNow,
+          )) {
+            Ok(:final value) => value,
+            Err(:final failure) => fail('$failure'),
+          };
+          final afterRestart = next(
+            TradeStatus.beforeFirstRead(restored),
+            await contract2(),
+          );
+          expect(
+            checkedOf(
+              afterRestart,
+            ).warnings.whereType<EscrowNotOfThisContract>(),
+            hasLength(1),
+            reason: label,
+          );
+        }
+      },
+    );
+
+    test(
+      'shown after a next contract opened without one: refused when it is an earlier contract\'s, pinned when it is new',
       () async {
         final both = await along(s, [1, 6]);
         final opened = next(
@@ -675,27 +854,36 @@ void main() {
         expect(opened.warnings, isEmpty);
         expect(opened.trail.take, 1);
         expect(opened.trail.escrowHash, isNull);
-        for (final escrow in [
-          makerEscrowInvoice(take: 0),
-          makerEscrowInvoice(take: 1),
-        ]) {
-          final after = next(
-            opened,
-            await made(
-              6,
-              role: s,
-              taker: third,
-              deadline: deadline1,
-              escrow: escrow,
-            ),
-          );
-          expect(
-            checkedOf(after).warnings.whereType<EscrowNotOfThisContract>(),
-            hasLength(1),
-          );
-          expect(after.trail.escrowHash, isNull);
-          storable(after, opened);
-        }
+        final earlier = next(
+          opened,
+          await made(
+            6,
+            role: s,
+            taker: third,
+            deadline: deadline1,
+            escrow: makerEscrowInvoice(take: 0),
+          ),
+        );
+        expect(
+          checkedOf(earlier).warnings.whereType<EscrowNotOfThisContract>(),
+          hasLength(1),
+        );
+        expect(earlier.trail.escrowHash, isNull);
+        storable(earlier, opened);
+        // The trail keeps every escrow its earlier contracts pinned: a new one is told from them, and pinned.
+        final fresh = next(
+          opened,
+          await made(
+            6,
+            role: s,
+            taker: third,
+            deadline: deadline1,
+            escrow: makerEscrowInvoice(take: 1),
+          ),
+        );
+        expect(fresh.warnings, isEmpty);
+        expect(fresh.trail.escrowHash, checkedOf(fresh).paymentHash);
+        storable(fresh, opened);
         // In the first contract, no earlier escrow exists: pinned as usual.
         final public = await along(s, [1]);
         final none = next(

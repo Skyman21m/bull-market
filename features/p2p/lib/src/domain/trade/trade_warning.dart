@@ -163,7 +163,7 @@ final class TradeTakerChanged extends TradeWarning {
   bool get isBreachOfTrust => true;
 }
 
-/// An escrow invoice that is not one of the maker's current contract: the very escrow of the contract before, served again at a new one (the coordinator makes a new escrow at each contract, `Logics.publish_order` clearing `trade_escrow`, `api/logics.py:1218`, and `gen_escrow_hold_invoice` making one when none is attached, `:1491-1495`), or an escrow shown in a contract after the first whose opening read carried none, which cannot be compared with the escrows of earlier contracts (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5). A breach of trust; never shown.
+/// An escrow invoice of an earlier contract of a maker's order served again in a later one, whatever came in between (the coordinator makes a new escrow at each contract, `Logics.publish_order` clearing `trade_escrow`, `api/logics.py:1218`, and `gen_escrow_hold_invoice` making one when none is attached, `:1491-1495`): the trail keeps every escrow hash its earlier contracts pinned (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.5; security review of #178). A breach of trust; never shown, never pinned.
 final class EscrowNotOfThisContract extends TradeWarning {
   const EscrowNotOfThisContract();
 
@@ -174,7 +174,7 @@ final class EscrowNotOfThisContract extends TradeWarning {
   bool get isBreachOfTrust => true;
 }
 
-/// A maker's next contract first read from 9 on: the order went back to the book, was taken again and went through its steps while the app did not read, the maker's own step done from another client with the same Garage Key (design note `docs/design/phase-3-making-an-order.md` § 3.2). Information, not a breach: « the trade moved on from another app », which a screen says so that a maker who did not act elsewhere does not send or confirm anything for it.
+/// A maker's current contract was first read from 9 on: the order went back to the book, was taken again and went through its steps while the app did not read, the maker's own step done from another client with the same Garage Key (design note `docs/design/phase-3-making-an-order.md` § 3.2). Information, not a breach, said at every status while that contract lasts, after a restart too (the trail keeps it): « the trade moved on from another app », which a screen says so that a maker who did not act elsewhere does not send or confirm anything for it.
 final class ContractSeenLate extends TradeWarning {
   const ContractSeenLate();
 

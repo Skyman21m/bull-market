@@ -447,6 +447,125 @@ void main() {
         expect(after.trail, bond.trail);
       },
     );
+    test(
+      'a taker told « you are the maker » of an order of the other type, on its own side, is refused (the taker\'s guard, unchanged)',
+      () async {
+        // A taker buyer of a sell order; the answer says this robot made a buy order, and so buys: only `is_maker` tells it.
+        final taker = await tradeTerms();
+        final before = TradeStatus.beforeFirstRead(
+          TradeTrail.forPendingTake(taker, tradeNow),
+        );
+        final after = TradeStatus.from(
+          previous: before,
+          answer: await made(1),
+          terms: taker,
+          now: tradeNow,
+          reader: reader,
+        );
+        expect(after.has<TradeRoleMismatch>(), isTrue);
+        expect(after.trail.made, isFalse);
+        expect(after.trail.breached, isTrue);
+      },
+    );
+
+    test('a trail is restored only at a position of its own side', () async {
+      final maker = first(await made(0)).trail.record;
+      final takerTerms = await tradeTerms();
+      final taker = TradeStatus.beforeFirstRead(
+        TradeTrail.forPendingTake(takerTerms, tradeNow),
+      ).trail.record;
+      TradeTrailRecord at(
+        TradeTrailRecord record,
+        String position, {
+        String earlier = '',
+        bool late = false,
+        int take = 0,
+      }) => TradeTrailRecord(
+        version: record.version,
+        network: record.network,
+        coordinatorAlias: record.coordinatorAlias,
+        orderId: record.orderId,
+        role: record.role,
+        position: position,
+        readAtMicros: record.readAtMicros,
+        bondHash: record.bondHash,
+        escrowHash: null,
+        deadlineMicros: null,
+        bondStepSeenAtMicros: null,
+        bondStepDeadlineMicros: null,
+        breached: false,
+        historyUnknown: false,
+        take: take,
+        takeDeadlineMicros: take > 0 ? 1 : null,
+        earlierEscrows: earlier,
+        seenLate: late,
+      );
+      for (final position in [
+        'bondStep',
+        'preTakeUnavailable',
+        'publicAgain',
+        'notAvailable',
+      ]) {
+        expect(
+          TradeTrail.restore(
+            at(maker, position),
+            terms: termsOf(b),
+            now: tradeNow,
+          ),
+          isA<Err>(),
+          reason: position,
+        );
+      }
+      for (final position in ['makerBondStep', 'public', 'paused']) {
+        expect(
+          TradeTrail.restore(
+            at(taker, position),
+            terms: takerTerms,
+            now: tradeNow,
+          ),
+          isA<Err>(),
+          reason: position,
+        );
+        expect(
+          TradeTrail.restore(
+            at(maker, position),
+            terms: termsOf(b),
+            now: tradeNow,
+          ),
+          isA<Ok>(),
+          reason: position,
+        );
+      }
+      // Earlier escrows and a contract seen late need a contract after the first, and well-formed hashes.
+      final hash = 'a' * 64;
+      expect(
+        TradeTrail.restore(
+          at(maker, 'chatting', earlier: '$hash;', late: true, take: 1),
+          terms: termsOf(b),
+          now: tradeNow,
+        ),
+        isA<Ok>(),
+      );
+      for (final (label, record) in [
+        (
+          'earlier escrows at contract 0',
+          at(maker, 'chatting', earlier: '$hash;'),
+        ),
+        ('seen late at contract 0', at(maker, 'chatting', late: true)),
+        ('no separator', at(maker, 'chatting', earlier: hash, take: 1)),
+        ('a short hash', at(maker, 'chatting', earlier: 'abc;', take: 1)),
+        (
+          'an uppercase hash',
+          at(maker, 'chatting', earlier: '${'A' * 64};', take: 1),
+        ),
+      ]) {
+        expect(
+          TradeTrail.restore(record, terms: termsOf(b), now: tradeNow),
+          isA<Err>(),
+          reason: label,
+        );
+      }
+    });
   });
 
   group('the maker\'s edges', () {

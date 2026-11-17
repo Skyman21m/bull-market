@@ -153,12 +153,17 @@ void main() {
     int index = 0,
     int orderId = 42,
     CoordinatorIdentity? on,
+    TradeRole role = TradeRole.buyer,
   }) async {
-    final make = await pendingMake(index: index, on: on);
+    final make = await pendingMake(index: index, on: on, role: role);
     expect(
       await trails.recordMakerTerms(
         make,
-        makerTerms(alias: (on ?? temple).alias),
+        makerTerms(
+          alias: (on ?? temple).alias,
+          role: role.name,
+          type: role == TradeRole.buyer ? 0 : 1,
+        ),
       ),
       isA<Ok>(),
     );
@@ -194,6 +199,9 @@ void main() {
 
   TradeTrailRecord trailOf({
     int orderId = 42,
+    String role = 'buyer',
+    String earlierEscrows = '',
+    bool seenLate = false,
     String position = 'waitingForBoth',
     int readAt = 1000,
     String? bondHash,
@@ -207,7 +215,7 @@ void main() {
     network: 'testnet',
     coordinatorAlias: 'temple',
     orderId: orderId,
-    role: 'buyer',
+    role: role,
     position: position,
     readAtMicros: readAt,
     bondHash: bondHash,
@@ -221,6 +229,8 @@ void main() {
     takeDeadlineMicros: takeDeadline,
     takerHashId: takerHashId,
     takenAmount: takenAmount,
+    earlierEscrows: earlierEscrows,
+    seenLate: seenLate,
   );
 
   /// The row of `trades` of robot [index].
@@ -1031,13 +1041,22 @@ void main() {
     const forward = 'a trail only moves forward';
 
     /// The trail of a make of robot [index] at [position], at contract 0 with its deadline, taker and amount, its bond and escrow hashes pinned.
-    Future<void> makeAt(int index, String position) async {
-      final made = await confirmedMake(index: index, orderId: 100 + index);
+    /// The trail of a make of robot [index] at [position], of a maker seller there (a maker buyer's 8 never goes back to the book) unless [role] says otherwise.
+    Future<void> makeAt(int index, String position, {TradeRole? role}) async {
+      final side =
+          role ??
+          (position == 'waitingForPayout' ? TradeRole.seller : TradeRole.buyer);
+      final made = await confirmedMake(
+        index: index,
+        orderId: 100 + index,
+        role: side,
+      );
       expect(
         await trails.storeTrail(
           made,
           trailOf(
             orderId: 100 + index,
+            role: side.name,
             position: position,
             bondHash: hashA,
             escrowHash: hashB,
@@ -1054,8 +1073,12 @@ void main() {
       'UPDATE trade_trails SET $change, read_at = read_at + 1 WHERE robot_index = $index',
     );
 
+    /// The escrow held joins those of the earlier contracts in the write that moves `take` (amended by #178 after its security review).
+    const earlierGrows =
+        "earlier_escrows = earlier_escrows || coalesce(escrow_hash || ';', '')";
+
     String moveTo(String position, {int by = 1, int later = 10}) =>
-        "take = take + $by, take_deadline = take_deadline + $later, position = '$position', taker_hash_id = '$takerTwo', escrow_hash = '$hashC'";
+        "take = take + $by, take_deadline = take_deadline + $later, position = '$position', taker_hash_id = '$takerTwo', escrow_hash = '$hashC', $earlierGrows";
 
     test(
       'its contract moves by one, from where a new take is read, to where it is read, with a later deadline',
@@ -1113,7 +1136,7 @@ void main() {
           'takerLostDispute',
         ];
         String lateTo(String position) =>
-            "take = take + 1, position = '$position', taker_hash_id = '$takerTwo', escrow_hash = NULL";
+            "take = take + 1, position = '$position', taker_hash_id = '$takerTwo', escrow_hash = NULL, seen_late = 1, $earlierGrows";
         var index = 0;
         for (final from in [
           'public',
@@ -1282,8 +1305,71 @@ void main() {
         await update(0, moveTo('waitingForBoth'));
         await makeAt(1, 'waitingForEscrow');
         await update(1, '${moveTo('waitingForPayout')}, escrow_hash = NULL');
-        // Cleared at a contract, set again within the next.
+        // The escrow of an earlier contract is never pinned again, whatever came in between; another is, within the next.
+        await expectLater(
+          update(1, "escrow_hash = '$hashB'"),
+          refusedBy(forward),
+        );
         await update(1, "escrow_hash = '$hashD'");
+      },
+    );
+
+    test(
+      'the escrows of earlier contracts only grow, in the write that moves take; a contract seen late is marked so in that write and stays so (amended by #178 after its security review)',
+      () async {
+        await makeAt(0, 'waitingForEscrow');
+        for (final (label, change) in [
+          ('grown without a next contract', "earlier_escrows = '$hashB;'"),
+          ('marked late without a next contract', 'seen_late = 1'),
+          (
+            'a next contract that forgets the escrow it leaves',
+            "take = take + 1, take_deadline = take_deadline + 10, position = 'waitingForBoth', taker_hash_id = '$takerTwo', escrow_hash = NULL",
+          ),
+          (
+            'a next contract that writes another escrow as earlier',
+            "take = take + 1, take_deadline = take_deadline + 10, position = 'waitingForBoth', taker_hash_id = '$takerTwo', escrow_hash = NULL, earlier_escrows = '$hashD;'",
+          ),
+          (
+            'a next contract at a step marked late',
+            '${moveTo('waitingForBoth')}, seen_late = 1',
+          ),
+          (
+            'a contract seen late not marked so',
+            "take = take + 1, position = 'chatting', taker_hash_id = '$takerTwo', escrow_hash = NULL, $earlierGrows",
+          ),
+          (
+            'a contract seen late that pins an escrow',
+            "take = take + 1, position = 'chatting', taker_hash_id = '$takerTwo', escrow_hash = '$hashC', seen_late = 1, $earlierGrows",
+          ),
+          (
+            'a contract seen late from 7 with the same taker',
+            "take = take + 1, position = 'chatting', escrow_hash = NULL, seen_late = 1, $earlierGrows",
+          ),
+        ]) {
+          await expectLater(
+            update(0, change),
+            refusedBy(forward),
+            reason: label,
+          );
+        }
+        // Seen late: marked, and never unmarked while it lasts.
+        await update(
+          0,
+          "take = take + 1, position = 'chatting', taker_hash_id = '$takerTwo', escrow_hash = NULL, seen_late = 1, $earlierGrows",
+        );
+        await expectLater(update(0, 'seen_late = 0'), refusedBy(forward));
+        await update(0, "position = 'fiatSent'");
+      },
+    );
+
+    test(
+      'no next contract from a maker buyer\'s 8, where the order never goes back to the book',
+      () async {
+        await makeAt(0, 'waitingForPayout', role: TradeRole.buyer);
+        await expectLater(
+          update(0, moveTo('waitingForBoth')),
+          refusedBy(forward),
+        );
       },
     );
 
@@ -1892,6 +1978,7 @@ void main() {
           take: 1,
           takeDeadline: takeDeadline ?? deadline,
           takerHashId: takerHashId ?? takerTwo,
+          seenLate: true,
         );
         expect(late().whyNotReplace(kept, madeHere: true), isNull);
         expect(
@@ -1933,18 +2020,42 @@ void main() {
           takeDeadline: deadline,
           takerHashId: takerOne,
         );
-        TradeTrailRecord nextWith(String? escrow) => trailOf(
+        TradeTrailRecord nextWith(String? escrow, {String? earlier}) => trailOf(
           readAt: 2000,
           position: 'waitingForBoth',
           escrowHash: escrow,
           take: 1,
           takeDeadline: deadline + 1,
           takerHashId: takerTwo,
+          earlierEscrows: earlier ?? '$hashA;',
         );
         expect(nextWith(null).whyNotReplace(pinned, madeHere: true), isNull);
         expect(nextWith(hashB).whyNotReplace(pinned, madeHere: true), isNull);
         expect(
           nextWith(hashA).whyNotReplace(pinned, madeHere: true),
+          TrailReplacementRefusal.hashChanged,
+        );
+        // The escrow it leaves joins the earlier ones, exactly, and stays there.
+        for (final earlier in ['', '$hashB;', '$hashA;$hashA;']) {
+          expect(
+            nextWith(
+              null,
+              earlier: earlier,
+            ).whyNotReplace(pinned, madeHere: true),
+            TrailReplacementRefusal.contractMoved,
+            reason: earlier,
+          );
+        }
+        expect(
+          trailOf(
+            readAt: 3000,
+            position: 'waitingForBoth',
+            escrowHash: hashA,
+            take: 1,
+            takeDeadline: deadline + 1,
+            takerHashId: takerTwo,
+            earlierEscrows: '$hashA;',
+          ).whyNotReplace(nextWith(null), madeHere: true),
           TrailReplacementRefusal.hashChanged,
         );
         TradeTrailRecord sameWith(String? escrow) => trailOf(

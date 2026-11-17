@@ -2348,6 +2348,8 @@ final class Schema8 extends i0.VersionedSchema {
         'CHECK(taker_hash_id IS NULL OR(length(taker_hash_id) = 64 AND taker_hash_id NOT GLOB \'*[^0-9a-f]*\'))',
         'CHECK(taken_amount IS NULL OR(taken_amount > 0 AND taken_amount < 10000000000))',
         'CHECK(take = 0 OR take_deadline IS NOT NULL)',
+        'CHECK(typeof(earlier_escrows) = \'text\' AND length(earlier_escrows) % 65 = 0 AND earlier_escrows NOT GLOB \'*[^0-9a-f;]*\' AND typeof(seen_late) = \'integer\' AND seen_late IN (0, 1))',
+        'CHECK(take > 0 OR(earlier_escrows = \'\' AND seen_late = 0))',
         'FOREIGN KEY(key_fingerprint, robot_index)REFERENCES trades(key_fingerprint, robot_index)',
       ],
       columns: [
@@ -2371,6 +2373,8 @@ final class Schema8 extends i0.VersionedSchema {
         _column_58,
         _column_59,
         _column_60,
+        _column_61,
+        _column_62,
       ],
       attachedDatabase: database,
     ),
@@ -2539,7 +2543,7 @@ final class Schema8 extends i0.VersionedSchema {
     'trade_trails_closed',
   );
   final i1.Trigger tradeTrailsForward = i1.Trigger(
-    'CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN (\'succeeded\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\') AND NEW.position IS NOT OLD.position)OR(NEW.take IS NOT OLD.take AND NOT(NEW.take IS OLD.take + 1 AND OLD.position IN (\'public\', \'paused\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND OLD.take_deadline IS NOT NULL AND((NEW.position IN (\'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline)OR(NEW.position IN (\'chatting\', \'fiatSent\', \'inDispute\', \'sendingSats\', \'succeeded\', \'routingFailed\', \'waitingDisputeResolution\', \'makerLostDispute\', \'takerLostDispute\') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL))AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\')))OR(OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)OR(OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)OR(OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)OR(NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)OR(NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)OR(NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)OR(NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)OR(NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)OR((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL)AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\'))BEGIN SELECT RAISE (ABORT, \'a trail only moves forward\');END',
+    'CREATE TRIGGER IF NOT EXISTS trade_trails_forward BEFORE UPDATE ON trade_trails WHEN NEW.key_fingerprint IS NOT OLD.key_fingerprint OR NEW.robot_index IS NOT OLD.robot_index OR NEW.network IS NOT OLD.network OR NEW.coordinator_alias IS NOT OLD.coordinator_alias OR NEW.order_id IS NOT OLD.order_id OR NEW.role IS NOT OLD.role OR NEW.version < OLD.version OR NEW.read_at < OLD.read_at OR NEW.breached < OLD.breached OR NEW.history_unknown IS NOT OLD.history_unknown OR(OLD.bond_hash IS NOT NULL AND NEW.bond_hash IS NOT OLD.bond_hash)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS NOT OLD.escrow_hash AND NEW.take IS OLD.take)OR(OLD.escrow_hash IS NOT NULL AND NEW.escrow_hash IS OLD.escrow_hash AND NEW.take IS NOT OLD.take)OR(OLD.bond_step_seen_at IS NOT NULL AND(NEW.bond_step_seen_at IS NULL OR NEW.bond_step_seen_at < OLD.bond_step_seen_at))OR(OLD.bond_step_deadline IS NOT NULL AND NEW.bond_step_deadline IS NULL)OR(OLD.position IN (\'succeeded\', \'makerLostDispute\', \'takerLostDispute\', \'expired\', \'cancelled\', \'publicAgain\', \'notAvailable\') AND NEW.position IS NOT OLD.position)OR(NEW.take IS NOT OLD.take AND NOT(NEW.take IS OLD.take + 1 AND OLD.position IN (\'public\', \'paused\', \'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NOT(OLD.position = \'waitingForPayout\' AND OLD.role = \'buyer\')AND OLD.take_deadline IS NOT NULL AND((NEW.position IN (\'waitingForBoth\', \'waitingForEscrow\', \'waitingForPayout\') AND NEW.take_deadline IS NOT NULL AND NEW.take_deadline > OLD.take_deadline AND NEW.seen_late = 0)OR(NEW.position IN (\'chatting\', \'fiatSent\', \'inDispute\', \'sendingSats\', \'succeeded\', \'routingFailed\', \'waitingDisputeResolution\', \'makerLostDispute\', \'takerLostDispute\') AND NEW.take_deadline IS OLD.take_deadline AND NEW.taker_hash_id IS NOT NULL AND NEW.escrow_hash IS NULL AND(OLD.position IN (\'public\', \'paused\') OR NEW.taker_hash_id IS NOT OLD.taker_hash_id)AND NEW.seen_late = 1))AND NEW.earlier_escrows IS(OLD.earlier_escrows || coalesce(OLD.escrow_hash || \';\', \'\'))AND EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\')))OR(NEW.take IS OLD.take AND(NEW.earlier_escrows IS NOT OLD.earlier_escrows OR NEW.seen_late IS NOT OLD.seen_late))OR(NEW.escrow_hash IS NOT NULL AND instr(\';\' || NEW.earlier_escrows, \';\' || NEW.escrow_hash || \';\') > 0)OR(OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NULL)OR(OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NULL)OR(OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NULL)OR(NEW.take IS OLD.take AND OLD.take_deadline IS NOT NULL AND NEW.take_deadline IS NOT OLD.take_deadline)OR(NEW.take IS OLD.take AND OLD.taker_hash_id IS NOT NULL AND NEW.taker_hash_id IS NOT OLD.taker_hash_id)OR(NEW.take IS OLD.take AND OLD.taken_amount IS NOT NULL AND NEW.taken_amount IS NOT OLD.taken_amount)OR(NEW.take IS NOT OLD.take AND OLD.taker_hash_id IS NULL AND NEW.taker_hash_id IS NOT NULL)OR(NEW.take IS NOT OLD.take AND OLD.taken_amount IS NULL AND NEW.taken_amount IS NOT NULL)OR((NEW.take_deadline IS NOT NULL OR NEW.taker_hash_id IS NOT NULL OR NEW.taken_amount IS NOT NULL)AND NOT EXISTS (SELECT 1 FROM trades WHERE key_fingerprint = OLD.key_fingerprint AND robot_index = OLD.robot_index AND origin = \'madeHere\'))BEGIN SELECT RAISE (ABORT, \'a trail only moves forward\');END',
     'trade_trails_forward',
   );
   final i1.Index robotBindingsNetwork = i1.Index(
@@ -2752,6 +2756,10 @@ class Shape9 extends i0.VersionedTable {
       columnsByName['taker_hash_id']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<double> get takenAmount =>
       columnsByName['taken_amount']! as i1.GeneratedColumn<double>;
+  i1.GeneratedColumn<String> get earlierEscrows =>
+      columnsByName['earlier_escrows']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get seenLate =>
+      columnsByName['seen_late']! as i1.GeneratedColumn<int>;
 }
 
 i1.GeneratedColumn<int> _column_57(String aliasedName) =>
@@ -2786,6 +2794,24 @@ i1.GeneratedColumn<double> _column_60(String aliasedName) =>
       true,
       type: i1.DriftSqlType.double,
       $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_61(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'earlier_escrows',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'\'',
+      defaultValue: const i1.CustomExpression('\'\''),
+    );
+i1.GeneratedColumn<int> _column_62(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'seen_late',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0 CHECK (seen_late IN (0, 1))',
+      defaultValue: const i1.CustomExpression('0'),
     );
 
 class Shape10 extends i0.VersionedTable {

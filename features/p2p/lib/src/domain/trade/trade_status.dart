@@ -61,6 +61,12 @@ final class TradeTrail {
   final String? takerHashId;
   final double? takenAmount;
 
+  /// The escrow hashes a maker's earlier contracts pinned, oldest first: an escrow of an earlier contract is never taken again (`EscrowNotOfThisContract`), whatever came in between (security review of #178). Empty for a taker.
+  final List<String> earlierEscrows;
+
+  /// Whether a maker's current contract was first read from 9 on (`ContractSeenLate`, said at every status while the contract lasts).
+  final bool seenLate;
+
   const TradeTrail._({
     required this.network,
     required this.coordinatorAlias,
@@ -80,6 +86,8 @@ final class TradeTrail {
     required this.takeDeadline,
     required this.takerHashId,
     required this.takenAmount,
+    required this.earlierEscrows,
+    required this.seenLate,
   });
 
   /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [TradeStatus.afterMake], [forPendingTake] and [recovered] make one.
@@ -106,6 +114,8 @@ final class TradeTrail {
     takeDeadline: null,
     takerHashId: null,
     takenAmount: null,
+    earlierEscrows: const [],
+    seenLate: false,
   );
 
   /// Whether [terms] are a maker's: every factory of [TradeTerms] instantiates the type of its side, so the side tells.
@@ -123,7 +133,7 @@ final class TradeTrail {
 
   /// The trail [record] holds for the trade [terms], resumed at [now], or why not:
   /// - [TradeRecordOfAnotherTrade] when the record is of another order, coordinator, network or role than [terms];
-  /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash or a taker's hash id that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], a last read of the pre-take after the last read, a contract index below 0 or above 0 without its deadline, an amount taken that is not a positive figure below 10^10, or any contract for terms of a taker.
+  /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash or a taker's hash id that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], a last read of the pre-take after the last read, a contract index below 0 or above 0 without its deadline, an amount taken that is not a positive figure below 10^10, escrows of earlier contracts that are not hashes each followed by `;`, or any at contract 0, a contract seen late at contract 0, a position of the other side (a maker's at 0, 1 or 2 for a taker, a pre-taker's for a maker), or any contract for terms of a taker.
   static Result<TradeTrail, TradeRecordRefusal> restore(
     TradeTrailRecord record, {
     required TradeTerms terms,
@@ -149,6 +159,14 @@ final class TradeTrail {
       if (hash != null && !_hash.hasMatch(hash)) return refused;
     }
     final made = _isMade(terms);
+    if (made ? _takerOnly.contains(position) : _makerOnly.contains(position)) {
+      return refused;
+    }
+    final earlier = _escrowsOf(record.earlierEscrows);
+    if (earlier == null ||
+        (record.take == 0 && (earlier.isNotEmpty || record.seenLate))) {
+      return refused;
+    }
     final amount = record.takenAmount;
     if (record.take < 0 ||
         (record.take > 0 && record.takeDeadlineMicros == null) ||
@@ -205,11 +223,38 @@ final class TradeTrail {
         takeDeadline: at(record.takeDeadlineMicros),
         takerHashId: record.takerHashId,
         takenAmount: amount,
+        earlierEscrows: List.unmodifiable(earlier),
+        seenLate: record.seenLate,
       ),
     );
   }
 
   static final RegExp _hash = RegExp(r'^[0-9a-f]{64}$');
+
+  /// The positions of one side only: a maker is never at a pre-taker's, a taker never at a maker's own (design note `docs/design/phase-3-making-an-order.md` § 3.2).
+  static const _takerOnly = {
+    TradePosition.bondStep,
+    TradePosition.preTakeUnavailable,
+    TradePosition.publicAgain,
+    TradePosition.notAvailable,
+  };
+  static const _makerOnly = {
+    TradePosition.makerBondStep,
+    TradePosition.public,
+    TradePosition.paused,
+  };
+
+  /// The escrow hashes [text] holds, each 64 lowercase hexadecimal characters followed by `;`, or `null` when it is not one a trail writes.
+  static List<String>? _escrowsOf(String text) {
+    if (text.isEmpty) return const [];
+    if (!text.endsWith(';')) return null;
+    final hashes = text.substring(0, text.length - 1).split(';');
+    return hashes.every(_hash.hasMatch) ? hashes : null;
+  }
+
+  /// Whether [hash] was pinned by an earlier contract of this trail, or, with [atNext], is the escrow pinned by the contract this read leaves.
+  bool _isEarlierEscrow(String hash, {required bool atNext}) =>
+      earlierEscrows.contains(hash) || (atNext && hash == escrowHash);
 
   /// The bound of an amount taken, as `trade_trails` keeps it (`CHECK (taken_amount > 0 AND taken_amount < 10000000000)`, schema 8): above the order model's (`max_digits=18, decimal_places=8`, `api/models/order.py:77-84`).
   static const double _maxAmount = 1e10;
@@ -245,6 +290,8 @@ final class TradeTrail {
     takeDeadlineMicros: takeDeadline?.toUtc().microsecondsSinceEpoch,
     takerHashId: takerHashId,
     takenAmount: takenAmount,
+    earlierEscrows: earlierEscrows.map((hash) => '$hash;').join(),
+    seenLate: seenLate,
   );
 
   TradeTrail _next({
@@ -279,6 +326,17 @@ final class TradeTrail {
     takeDeadline: contract?.deadline?.toUtc() ?? takeDeadline,
     takerHashId: contract?.taker ?? takerHashId,
     takenAmount: contract?.amount ?? takenAmount,
+    // At a next contract, the escrow the contract left joins those of the earlier ones, in the same write.
+    earlierEscrows: switch ((contract, this.escrowHash)) {
+      (_Contract(isNext: true), final left?) => List.unmodifiable([
+        ...earlierEscrows,
+        left,
+      ]),
+      _ => earlierEscrows,
+    },
+    seenLate: contract != null && contract.isNext
+        ? contract.seenLate
+        : seenLate,
   );
 
   /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
@@ -301,6 +359,8 @@ final class TradeTrail {
     takeDeadline: takeDeadline,
     takerHashId: takerHashId,
     takenAmount: takenAmount,
+    earlierEscrows: earlierEscrows,
+    seenLate: seenLate,
   );
 
   @override
@@ -359,11 +419,11 @@ sealed class TradeStatus {
   const TradeStatus._(this.seenAt, this.warnings, this.trail);
 
   /// The status before any answer is understood on [trail]: a trail restored when the app resumes a recorded trade ([TradeTrail.restore]), a fresh one after recovery ([TradeTrail.recovered]) or for a pending take ([TradeTrail.forPendingTake]). Pass it as `previous` to [from]. A restored trail at an end gives an end at once.
-  static TradeStatus beforeFirstRead(TradeTrail trail) => StatusUnknown._(
-    trail.readAt,
-    [if (trail.breached) const CoordinatorInconsistent()],
-    trail,
-  );
+  static TradeStatus beforeFirstRead(TradeTrail trail) =>
+      StatusUnknown._(trail.readAt, [
+        if (trail.breached) const CoordinatorInconsistent(),
+        if (trail.seenLate) const ContractSeenLate(),
+      ], trail);
 
   /// The first status of a trade this device has just taken: [started], the take's own answer (`OrderTakeStarted`, which only `CoordinatorClient.takeOrder` gives), read at [now] on a fresh trail of [terms].
   ///
@@ -1037,7 +1097,9 @@ sealed class TradeStatus {
       if (trail.breached) const CoordinatorInconsistent(),
       if (!_allowsMade(terms.role, trail, to) || backWithinContract)
         const TradeStatusUnexpected(),
-      if (contract?.seenLate ?? false) const ContractSeenLate(),
+      // Said at every status while the contract seen late lasts, after a restart too: the trail keeps it (security review of #178).
+      if (trail.seenLate || (contract?.seenLate ?? false))
+        const ContractSeenLate(),
     ];
     switch (answer) {
       case TradeOrderRead(:final order):
@@ -1068,7 +1130,10 @@ sealed class TradeStatus {
           bondMayHaveBeenLost:
               _bondMayHaveBeenLost(trail, terms, now) ||
               trail.position == TradePosition.public ||
-              trail.position == TradePosition.paused,
+              trail.position == TradePosition.paused ||
+              // At 0 once the bond was shown: it may have been paid, the order published, taken and cancelled meanwhile, or the bond kept by the coordinator (security review of #178).
+              (trail.position == TradePosition.makerBondStep &&
+                  trail.bondHash != null),
         );
       case TradeOrderNotAvailable():
         // Refused above: a maker is never given error 1044.
@@ -1173,7 +1238,7 @@ sealed class TradeStatus {
   /// At 6, 7 or 8, against the kept contract's deadline: none kept yet, this read opens one (its deadline, taker and amount kept, `take` unchanged); the same deadline and the same taker, the same contract; a later deadline, the next contract (`take` + 1, its deadline, taker and amount), whatever the positions read before, the taker possibly the same robot (a taker whose bond was settled may take again, `api/logics.py:471-483`), but only from the positions a next contract is read from and from which the order can go back to the book (not the chat, nor a maker buyer's 8, `api/logics.py:423-443`); the same or an earlier deadline with another taker, [TradeTakerChanged]; an earlier one with the same taker, the same contract, its deadline moved back ([DeadlineMovedBack]); after a return to the book, a deadline that is not later, refused ([TradeStatusUnexpected]): the book never gives back a contract it ended.
   /// From 9 on: a next contract seen late ([ContractSeenLate], information, no breach) when the trail is where the order can have gone back to the book (`public`, `paused`, 6, 7, and a maker seller's 8) and the read names another taker, or any taker from `public` or `paused`: `take` + 1, the taker and amount read, the contract's deadline kept as the last one read (its own is no longer readable); otherwise the kept taker, or [TradeTakerChanged] (another taker when the trail is in the chat, or at a maker buyer's 8); with none kept (the maker's step done elsewhere, with the Garage Key), this read's taker and amount kept, and no deadline. A next contract taken by the very robot of the contract before, read from 6, 7 or 8 at 9 or later, is not told from the same contract.
   /// The coordinator's clock is taken not to go back: a next contract's deadline is later than the one before only because its take is later (`api/logics.py:1338-1340`); a clock stepped back by more than the time between two takes would make a real next contract look as the same one, or refused.
-  /// A range's order that names no amount taken at 6 or later is refused ([TradeTermsChanged]): the reference always gives it (`api/logics.py:1329-1330`), and the contract cannot be told without it.
+  /// A read at 6 or later whose amount is not the order's is refused ([TradeTermsChanged]): a fixed order's other amount, a range's amount taken missing or outside the range (the reference always gives it, within the range, `api/logics.py:190-194`, `:1329-1330`).
   static _Contract? _contractOf(
     CoordinatorOrder order,
     TradePosition to,
@@ -1185,17 +1250,22 @@ sealed class TradeStatus {
     // `package:robosats` refuses a participant's answer at 6 or later that names no taker.
     final taker = order.taker?.hex;
     if ((!atStep && !afterStep) || taker == null) return null;
+    // The contract's amount is the order's own (security review of #178): a fixed order shows its very amount, a range the amount its take chose, within the range (the reference checks it at the take, `Logics.validate_amount_within_range`, `api/logics.py:190-194`, and keeps it from 6 to the end, `:1329-1330`). Anything else is refused, never kept: kept, it would word « Confirm … sent », and one at the package's own bound (10^10) could not even be stored.
     final double? amount;
+    const refused = TradeTermsChanged();
     switch (maker.amount) {
-      case FixedOrderAmount():
-        amount = null;
+      case FixedOrderAmount(amount: final asked):
+        if (order.amount case FixedOrderAmount(
+          amount: final read,
+        ) when _sameFiat(read.value, asked.value)) {
+          amount = null;
+        } else {
+          return _Contract(take: trail.take, refusal: refused);
+        }
       case RangeOrderAmount():
         final taken = order.takenAmount;
-        if (taken == null) {
-          return _Contract(
-            take: trail.take,
-            refusal: const TradeTermsChanged(),
-          );
+        if (taken == null || maker.contractAmount(taken) == null) {
+          return _Contract(take: trail.take, refusal: refused);
         }
         amount = taken.value;
     }
@@ -1409,12 +1479,10 @@ sealed class TradeStatus {
         now: now,
         readWarnings: readWarnings,
       );
-      // An escrow of a contract after the first is one only when it is the one its contract opened with: never the contract before's, and never one first shown after an opening read that carried none, which nothing can compare with the escrows of earlier contracts (the trail keeps the current one only, schema 8).
+      // An escrow pinned by an earlier contract is never one of a later contract, whatever came in between (a contract read at 8, or at 7 without its escrow): the trail keeps every escrow hash its earlier contracts pinned (security review of #178), and the one this read's next contract leaves.
       if (step == InvoiceStep.escrow &&
           invoice is CheckedInvoice &&
-          (isNext
-              ? invoice.paymentHash == trail.escrowHash
-              : trail.take > 0 && trail.escrowHash == null)) {
+          trail._isEarlierEscrow(invoice.paymentHash, atNext: isNext)) {
         return invoice.withMoreWarnings(const [EscrowNotOfThisContract()]);
       }
       return invoice;
