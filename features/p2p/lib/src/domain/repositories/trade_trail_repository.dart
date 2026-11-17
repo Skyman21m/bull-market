@@ -40,7 +40,7 @@ abstract interface class TradeTrailRepository {
 
   /// Stores [trail] as the trail of [trade]: the first one, or one that replaces the stored one.
   ///
-  /// It reads the stored trail first and asks [TradeTrailRecord.whyNotReplace] of it: a refusal is a [TrailKept] with the reason, and nothing is written.
+  /// It reads the stored trail first and asks [TradeTrailRecord.whyNotReplace] of it, with `madeHere` from [trade]'s origin: a refusal is a [TrailKept] with the reason, and nothing is written.
   /// The write is then conditional on the stored trail being still the one compared, column for column: a write that another write beat in between, as a read that ended late, writes nothing and is a [TrailKept] with no reason, the trail stored then winning.
   /// A trail of a closed trade is never written again ([TrailKept]); a first trail needs the trade's terms recorded and the trade open, or the database refuses it ([P2pStorageFailure]).
   @useResult

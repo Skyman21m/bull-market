@@ -256,8 +256,12 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
         stored = value.trail;
     }
     if (stored != null) {
-      // Always asked first: a trail that may not replace the stored one is never sent to the database.
-      if (trail.whyNotReplace(stored) case final reason?) {
+      // Always asked first: a trail that may not replace the stored one is never sent to the database. A trade made here moves along a maker's edges and contracts (#178).
+      if (trail.whyNotReplace(
+            stored,
+            madeHere: trade.origin == TradeOrigin.madeHere,
+          )
+          case final reason?) {
         return Ok(TrailKept(stored, reason: reason));
       }
     }

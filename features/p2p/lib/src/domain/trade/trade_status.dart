@@ -18,8 +18,9 @@ part 'checked_invoice.dart';
 /// What the trade remembers from one read to the next, so that each answer is checked against the trade's history and not only against itself.
 ///
 /// It must outlive the app: the trade's use cases store its [record] after each read, only when [TradeTrailRecord.mayReplace] allows it over the stored one, and resume a recorded trade with [restore], never with a fresh trail, or a coordinator could swap an invoice, or make a breach forgotten, across a restart (#86, reviews of #106).
-/// A fresh trail comes only from the take's own answer ([TradeStatus.afterTake]), from [forPendingTake] for a take whose answer was lost and which has no trail yet, and from [recovered], for a trade found by recovery, whose history is unknown and on which the wallet never pays.
-/// It belongs to one trade (order, coordinator, network, role): [TradeStatus.from] refuses terms of another trade, and [restore] a record of another trade.
+/// A fresh trail comes only from the take's own answer ([TradeStatus.afterTake]), from [forPendingTake] for a take whose answer was lost and which has no trail yet, from the first read of an order made here ([TradeStatus.afterMake]), and from [recovered], for a trade found by recovery, whose history is unknown and on which the wallet never pays.
+/// It belongs to one trade (order, coordinator, network, role, and whether it was taken or made here): [TradeStatus.from] refuses terms of another trade, and [restore] a record of another trade.
+/// A maker's trail also keeps its current contract (design note `docs/design/phase-3-making-an-order.md` § 3.2): [take], [takeDeadline], [takerHashId], [takenAmount]; a taker's keeps 0 and none of them.
 @immutable
 final class TradeTrail {
   /// The trade this trail belongs to.
@@ -27,6 +28,9 @@ final class TradeTrail {
   final String coordinatorAlias;
   final int orderId;
   final TradeRole role;
+
+  /// Whether the trade is a maker's, of an order made here: its terms are `TradeTerms<MadeSide>`, its edges [TradeEdges.allowsMade]. Not stored: it follows from the terms the trail is restored with.
+  final bool made;
 
   /// Where the trade stood at its last status.
   final TradePosition position;
@@ -51,11 +55,18 @@ final class TradeTrail {
   /// Whether the trail started without the trade's history ([recovered]): every status then carries [TradeHistoryUnknown].
   final bool historyUnknown;
 
+  /// A maker's current contract, each lock of a taker's bond making one (`Logics.finalize_contract`, `api/logics.py:1321-1380`): its index, 0 for the first contract this trail saw; the deadline the coordinator gave it at 6, 7 or 8 (the lock's time and the escrow duration, `:1338-1340`, which only the chat's start changes); its taker's hash id (`taker_hash_id`, `api/views.py:314-317`); and for a range, the amount its take chose (`:1329-1330`). `null` before any contract was read, and always for a taker.
+  final int take;
+  final DateTime? takeDeadline;
+  final String? takerHashId;
+  final double? takenAmount;
+
   const TradeTrail._({
     required this.network,
     required this.coordinatorAlias,
     required this.orderId,
     required this.role,
+    required this.made,
     required this.position,
     required this.readAt,
     required this.bondHash,
@@ -65,9 +76,13 @@ final class TradeTrail {
     required this.bondStepDeadline,
     required this.breached,
     required this.historyUnknown,
+    required this.take,
+    required this.takeDeadline,
+    required this.takerHashId,
+    required this.takenAmount,
   });
 
-  /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [forPendingTake] and [recovered] make one.
+  /// A fresh trail of the trade [terms] at [at]: only [TradeStatus.afterTake], [TradeStatus.afterMake], [forPendingTake] and [recovered] make one.
   factory TradeTrail._fresh(
     TradeTerms terms,
     DateTime at, {
@@ -77,6 +92,7 @@ final class TradeTrail {
     coordinatorAlias: terms.coordinator.shortAlias,
     orderId: terms.orderId,
     role: terms.role,
+    made: _isMade(terms),
     position: TradePosition.start,
     readAt: at.toUtc(),
     bondHash: null,
@@ -86,7 +102,14 @@ final class TradeTrail {
     bondStepDeadline: null,
     breached: false,
     historyUnknown: historyUnknown,
+    take: 0,
+    takeDeadline: null,
+    takerHashId: null,
+    takenAmount: null,
   );
+
+  /// Whether [terms] are a maker's: every factory of [TradeTerms] instantiates the type of its side, so the side tells.
+  static bool _isMade(TradeTerms terms) => terms.side is MadeSide;
 
   /// The trail of a take of [terms] made at [takenAt] whose answer was lost (the request timed out), for the first read of the order after it: the first answer must be one a take gives (the pre-take, or the order out of reach).
   ///
@@ -100,7 +123,7 @@ final class TradeTrail {
 
   /// The trail [record] holds for the trade [terms], resumed at [now], or why not:
   /// - [TradeRecordOfAnotherTrade] when the record is of another order, coordinator, network or role than [terms];
-  /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], or a last read of the pre-take after the last read.
+  /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash or a taker's hash id that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], a last read of the pre-take after the last read, a contract index below 0 or above 0 without its deadline, an amount taken that is not a positive figure below 10^10, or any contract for terms of a taker.
   static Result<TradeTrail, TradeRecordRefusal> restore(
     TradeTrailRecord record, {
     required TradeTerms terms,
@@ -118,14 +141,32 @@ final class TradeTrail {
         .where((value) => value.name == record.position)
         .firstOrNull;
     if (position == null) return refused;
-    for (final hash in [record.bondHash, record.escrowHash]) {
+    for (final hash in [
+      record.bondHash,
+      record.escrowHash,
+      record.takerHashId,
+    ]) {
       if (hash != null && !_hash.hasMatch(hash)) return refused;
+    }
+    final made = _isMade(terms);
+    final amount = record.takenAmount;
+    if (record.take < 0 ||
+        (record.take > 0 && record.takeDeadlineMicros == null) ||
+        (amount != null &&
+            (!amount.isFinite || amount <= 0 || amount >= _maxAmount)) ||
+        (!made &&
+            (record.take != 0 ||
+                record.takeDeadlineMicros != null ||
+                record.takerHashId != null ||
+                amount != null))) {
+      return refused;
     }
     final times = [
       record.readAtMicros,
       record.deadlineMicros,
       record.bondStepSeenAtMicros,
       record.bondStepDeadlineMicros,
+      record.takeDeadlineMicros,
     ];
     if (times.any(
       (micros) => micros != null && (micros < 0 || micros > _maxMicros),
@@ -147,6 +188,7 @@ final class TradeTrail {
         coordinatorAlias: terms.coordinator.shortAlias,
         orderId: terms.orderId,
         role: terms.role,
+        made: made,
         position: position,
         readAt: DateTime.fromMicrosecondsSinceEpoch(
           record.readAtMicros,
@@ -159,21 +201,29 @@ final class TradeTrail {
         bondStepDeadline: at(record.bondStepDeadlineMicros),
         breached: record.breached,
         historyUnknown: record.historyUnknown,
+        take: record.take,
+        takeDeadline: at(record.takeDeadlineMicros),
+        takerHashId: record.takerHashId,
+        takenAmount: amount,
       ),
     );
   }
 
   static final RegExp _hash = RegExp(r'^[0-9a-f]{64}$');
 
+  /// The bound of an amount taken, as `trade_trails` keeps it (`CHECK (taken_amount > 0 AND taken_amount < 10000000000)`, schema 8): above the order model's (`max_digits=18, decimal_places=8`, `api/models/order.py:77-84`).
+  static const double _maxAmount = 1e10;
+
   /// The year 9999, beyond any date a coordinator or the device's clock gives.
   static const _maxMicros = 253402300799999999;
 
-  /// Whether this trail belongs to the trade [terms].
+  /// Whether this trail belongs to the trade [terms], of the same side.
   bool isOf(TradeTerms terms) =>
       network == terms.network &&
       coordinatorAlias == terms.coordinator.shortAlias &&
       orderId == terms.orderId &&
-      role == terms.role;
+      role == terms.role &&
+      made == _isMade(terms);
 
   /// The exact, storable form of this trail: store it after each read, when it [TradeTrailRecord.mayReplace] the stored one (#87).
   TradeTrailRecord get record => TradeTrailRecord(
@@ -191,6 +241,10 @@ final class TradeTrail {
     bondStepDeadlineMicros: bondStepDeadline?.toUtc().microsecondsSinceEpoch,
     breached: breached,
     historyUnknown: historyUnknown,
+    take: take,
+    takeDeadlineMicros: takeDeadline?.toUtc().microsecondsSinceEpoch,
+    takerHashId: takerHashId,
+    takenAmount: takenAmount,
   );
 
   TradeTrail _next({
@@ -202,20 +256,29 @@ final class TradeTrail {
     DateTime? bondStepSeenAt,
     DateTime? bondStepDeadline,
     required bool breached,
+    _Contract? contract,
   }) => TradeTrail._(
     network: network,
     coordinatorAlias: coordinatorAlias,
     orderId: orderId,
     role: role,
+    made: made,
     position: position,
     readAt: readAt.toUtc(),
     bondHash: this.bondHash ?? bondHash,
-    escrowHash: this.escrowHash ?? escrowHash,
+    // A maker's next contract replaces the escrow's pinned hash, in the same write: with the new contract's, or with none (design note `docs/design/phase-3-making-an-order.md` § 3.5).
+    escrowHash: contract != null && contract.isNext
+        ? escrowHash
+        : this.escrowHash ?? escrowHash,
     deadline: deadline?.toUtc(),
     bondStepSeenAt: bondStepSeenAt?.toUtc() ?? this.bondStepSeenAt,
     bondStepDeadline: bondStepDeadline?.toUtc() ?? this.bondStepDeadline,
     breached: this.breached || breached,
     historyUnknown: historyUnknown,
+    take: contract?.take ?? take,
+    takeDeadline: contract?.deadline?.toUtc() ?? takeDeadline,
+    takerHashId: contract?.taker ?? takerHashId,
+    takenAmount: contract?.amount ?? takenAmount,
   );
 
   /// The same trail after a refused answer read at [now]: the breach recorded, and the read too, so that a later write never looks older.
@@ -224,6 +287,7 @@ final class TradeTrail {
     coordinatorAlias: coordinatorAlias,
     orderId: orderId,
     role: role,
+    made: made,
     position: position,
     readAt: now.toUtc().isAfter(readAt) ? now.toUtc() : readAt,
     bondHash: bondHash,
@@ -233,21 +297,47 @@ final class TradeTrail {
     bondStepDeadline: bondStepDeadline,
     breached: true,
     historyUnknown: historyUnknown,
+    take: take,
+    takeDeadline: takeDeadline,
+    takerHashId: takerHashId,
+    takenAmount: takenAmount,
   );
 
   @override
   bool operator ==(Object other) =>
-      other is TradeTrail && other.record == record;
+      other is TradeTrail && other.made == made && other.record == record;
 
   @override
-  int get hashCode => record.hashCode;
+  int get hashCode => Object.hash(made, record);
 
   @override
   String toString() =>
       'TradeTrail($coordinatorAlias#$orderId, ${position.name}, breached: $breached)';
 }
 
-/// What a screen may show, and the wallet may pay, of a taker's trade: one class per status a taker can see (design note § 3.2), built only by [TradeStatus.from] from the coordinator's answers, checked against the terms of the take and the trade's history.
+/// What a maker's read of 6 or later says of its contract, against the one its trail keeps (design note `docs/design/phase-3-making-an-order.md` § 3.2): the trail's contract after the read ([take], [deadline], [taker], [amount], each `null` to keep the trail's), whether the read opens the next contract ([isNext]), whether it moves the contract's deadline back ([movedBack]), and why it is refused ([refusal]), if it is.
+@immutable
+final class _Contract {
+  final int take;
+  final DateTime? deadline;
+  final String? taker;
+  final double? amount;
+  final bool isNext;
+  final bool movedBack;
+  final TradeWarning? refusal;
+
+  const _Contract({
+    required this.take,
+    this.deadline,
+    this.taker,
+    this.amount,
+    this.isNext = false,
+    this.movedBack = false,
+    this.refusal,
+  });
+}
+
+/// What a screen may show, and the wallet may pay, of a trade: one class per status a taker can see (design note § 3.2), and those a maker sees of its own order (`docs/design/phase-3-making-an-order.md` § 3.2: [WaitingForMakerBond], [MakerOrderPublic]), built only by [TradeStatus.from] from the coordinator's answers, checked against the terms of the take or of the make and the trade's history.
 ///
 /// The screens map each class to a panel and add no rule of their own (#88); [warnings] holds every check that failed, none of which ever triggers an action.
 /// Nothing in a status is printed: its [toString] names its class and its warnings.
@@ -289,13 +379,31 @@ sealed class TradeStatus {
     reader: reader,
   );
 
+  /// The first status of an order this device has just made: [firstRead], the first answer about it once the make is known to have made it (design note `docs/design/phase-3-making-an-order.md` § 3.4), read at [now] on a fresh trail of [terms].
+  ///
+  /// The only way to start a maker's trade, named only where § 3.4 starts its trail (after the make's own answer, at the resolution of a make whose answer was lost, and for a confirmed make whose first trail was not written): the first read can only be the maker bond (0), the order expired at 0 (5) or error 1043, since no bond invoice exists before that read; anything else is refused or warned as an edge the reference never takes. Error 1043 ends the trade but proves nothing about the maker (its answer names no participant, `api/views.py:258-260`), so it never confirms a make.
+  static TradeStatus afterMake(
+    TradeAnswer firstRead, {
+    required TradeTerms<MadeSide> terms,
+    required DateTime now,
+    required Bolt11Reader reader,
+  }) => from(
+    previous: beforeFirstRead(
+      TradeTrail._fresh(terms, now, historyUnknown: false),
+    ),
+    answer: firstRead,
+    terms: terms,
+    now: now,
+    reader: reader,
+  );
+
   /// Where the trade stands for the edges of [TradeEdges].
   TradePosition get position;
 
   /// Whether the trade is over for this robot: a terminal status is never left by [from].
   bool get isTerminal => position.isTerminal;
 
-  /// The hold invoice this robot must lock at this status, checked: the bond at the pre-take, the escrow of a seller at 6 and 7; `null` elsewhere.
+  /// The hold invoice this robot must lock at this status, checked: the bond at the pre-take, the maker bond at 0, the escrow of a seller at 6 and 7; `null` elsewhere.
   StepInvoice? get invoice => null;
 
   /// Whether this status has a warning of type [T].
@@ -306,8 +414,8 @@ sealed class TradeStatus {
 
   /// The status of the trade [terms] after [answer], read at [now], when the last status was [previous]: a pure function, with no clock, no I/O and no randomness, which [reader] decodes invoices for.
   ///
-  /// [previous] is the last status, or [beforeFirstRead] of the trade's trail: there is no status without a trail, and a fresh trail only at the take ([afterTake]), for a pending take, or after recovery.
-  /// Terms of another trade than the trail's are refused ([TradeOrderMismatch]), and the trail is left as it is.
+  /// [previous] is the last status, or [beforeFirstRead] of the trade's trail: there is no status without a trail, and a fresh trail only at the take ([afterTake]), at the first read of an order made here ([afterMake]), for a pending take, or after recovery.
+  /// Terms of another trade than the trail's are refused ([TradeOrderMismatch]), and the trail is left as it is. Terms of a maker (`TradeTerms<MadeSide>`) are followed along a maker's edges ([TradeEdges.allowsMade]) with a maker's checks (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.3), the rules below applying the same.
   /// - A terminal [previous] is never left: any answer returns [previous] as it is, but an order of the same status (5, 14, 17, 18), which refreshes it.
   /// - An answer refused as a whole leaves [previous] in place with the reason added ([TradeOrderMismatch], [TradeRoleMismatch], [TradeStatusRegressed], or [TradeStatusUnexpected] for an unlisted edge into a terminal position).
   /// - Any other answer gives its status, with [TradeStatusUnexpected] when its edge is not one of [TradeEdges], and the warnings of the order's checks and of its invoice.
@@ -324,7 +432,11 @@ sealed class TradeStatus {
         if (!previous.has<TradeOrderMismatch>()) const TradeOrderMismatch(),
       ], trail);
     }
-    // A maker's trade is not followed by this state machine yet: its positions and edges come with #178 (design note `docs/design/phase-3-making-an-order.md` § 3.2). Until then every answer about it is refused, as of a role this state machine does not know, and the trail is left as it is: nothing is shown or paid. Every factory of [TradeTerms] instantiates the type of its side, so this test is that of a taker's side.
+    // A maker's trade has its own positions, edges and checks (#178). Every factory of [TradeTerms] instantiates the type of its side, so these tests are those of the side.
+    if (terms is TradeTerms<MadeSide>) {
+      return _fromMade(previous, answer, terms, now, reader);
+    }
+    // No other side exists: refused, as of a role this state machine does not know, and the trail left as it is.
     if (terms is! TradeTerms<TakenSide>) {
       return previous._rewarned([
         if (!previous.has<TradeRoleMismatch>()) const TradeRoleMismatch(),
@@ -822,9 +934,19 @@ sealed class TradeStatus {
       case TradePosition.waitingDisputeResolution:
         return WaitingDisputeResolution._(now, readWarnings, nextTrail());
       case TradePosition.makerLostDispute:
-        return DisputeWon._(now, readWarnings, nextTrail());
+        return DisputeWon._(
+          now,
+          readWarnings,
+          nextTrail(),
+          position: TradePosition.makerLostDispute,
+        );
       case TradePosition.takerLostDispute:
-        return DisputeLost._(now, readWarnings, nextTrail());
+        return DisputeLost._(
+          now,
+          readWarnings,
+          nextTrail(),
+          position: TradePosition.takerLostDispute,
+        );
       case TradePosition.expired:
         return Expired._(
           now,
@@ -851,6 +973,588 @@ sealed class TradeStatus {
           TradePosition.notAvailable ||
           TradePosition.preTakeUnavailable:
         // Not the position of an order read.
+        return StatusUnknown._(now, readWarnings, nextTrail());
+      case TradePosition.makerBondStep ||
+          TradePosition.public ||
+          TradePosition.paused:
+        // Never the position of a taker's read ([_positionOf]).
+        return StatusUnknown._(now, readWarnings, nextTrail());
+    }
+  }
+
+  // A maker's trade (#178; design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.3): the same rules as a taker's, along a maker's edges, with a maker's checks.
+
+  /// [from] for a maker's [terms].
+  static TradeStatus _fromMade(
+    TradeStatus previous,
+    TradeAnswer answer,
+    TradeTerms<MadeSide> terms,
+    DateTime now,
+    Bolt11Reader reader,
+  ) {
+    final trail = previous.trail;
+    final maker = terms.side.maker;
+    final from = trail.position;
+    final to = _madePositionOf(answer);
+    // An end is refreshed only by an order of the same status, as a taker's.
+    if (previous.isTerminal && (to != from || answer is! TradeOrderRead)) {
+      return previous;
+    }
+    final contract = switch (answer) {
+      TradeOrderRead(:final order) when to != null => _contractOf(
+        order,
+        to,
+        trail,
+        maker,
+      ),
+      _ => null,
+    };
+    final refusal = _madeRefusalOf(answer, terms, trail, to, contract);
+    if (refusal != null || to == null) {
+      // [_madeRefusalOf] refuses every answer without a position.
+      final reason = refusal ?? const TradeStatusRegressed();
+      return previous._rewarned([
+        if (!previous.warnings.any(
+          (warning) => warning.runtimeType == reason.runtimeType,
+        ))
+          reason,
+      ], trail._breach(now));
+    }
+    final readWarnings = <TradeWarning>[
+      if (trail.historyUnknown) const TradeHistoryUnknown(),
+      if (trail.breached) const CoordinatorInconsistent(),
+      if (!_allowsMade(terms.role, trail, to)) const TradeStatusUnexpected(),
+    ];
+    switch (answer) {
+      case TradeOrderRead(:final order):
+        return _ofMadeOrder(
+          order,
+          to: to,
+          trail: trail,
+          terms: terms,
+          now: now,
+          reader: reader,
+          contract: contract,
+          readWarnings: [
+            ...readWarnings,
+            ..._madeOrderWarnings(order, maker, to, from, trail, contract),
+          ],
+        );
+      case TradeOrderCancelled():
+        return Cancelled._(
+          now,
+          readWarnings,
+          trail._next(
+            position: TradePosition.cancelled,
+            readAt: now,
+            deadline: null,
+            breached: _breaches(readWarnings),
+          ),
+          bondMayHaveBeenLost: _bondMayHaveBeenLost(trail, terms, now),
+        );
+      case TradeOrderNotAvailable():
+        // Refused above: a maker is never given error 1044.
+        return previous;
+    }
+  }
+
+  /// Whether a maker's trade of [role] may move from [trail]'s position to [to]: any first answer of a trade whose history is lost, otherwise the edges of [TradeEdges.allowsMade].
+  static bool _allowsMade(TradeRole role, TradeTrail trail, TradePosition to) =>
+      (trail.historyUnknown && trail.position == TradePosition.start) ||
+      TradeEdges.allowsMade(role, trail.position, to);
+
+  /// The position an answer shows to a maker, or `null` for what a maker is never shown: error 1044, and 3, 4 or 12 in an order (status 3 is shown only to a robot that holds a pre-take, which a maker cannot, `api/views.py:381-396`, `api/logics.py:75-100`; 4 and 12 are error 1043, `api/views.py:258-260`).
+  static TradePosition? _madePositionOf(TradeAnswer answer) => switch (answer) {
+    TradeOrderCancelled() => TradePosition.cancelled,
+    TradeOrderNotAvailable() => null,
+    TradeOrderRead(:final order) => switch (order.status) {
+      CoordinatorOrderStatus.waitingForMakerBond => TradePosition.makerBondStep,
+      CoordinatorOrderStatus.public => TradePosition.public,
+      CoordinatorOrderStatus.paused => TradePosition.paused,
+      CoordinatorOrderStatus.expired => TradePosition.expired,
+      CoordinatorOrderStatus.waitingForCollateralAndInvoice =>
+        TradePosition.waitingForBoth,
+      CoordinatorOrderStatus.waitingForCollateral =>
+        TradePosition.waitingForEscrow,
+      CoordinatorOrderStatus.waitingForInvoice =>
+        TradePosition.waitingForPayout,
+      CoordinatorOrderStatus.sendingFiat => TradePosition.chatting,
+      CoordinatorOrderStatus.fiatSent => TradePosition.fiatSent,
+      CoordinatorOrderStatus.inDispute => TradePosition.inDispute,
+      CoordinatorOrderStatus.sendingSats => TradePosition.sendingSats,
+      CoordinatorOrderStatus.successful => TradePosition.succeeded,
+      CoordinatorOrderStatus.routingFailed => TradePosition.routingFailed,
+      CoordinatorOrderStatus.waitingForDisputeResolution =>
+        TradePosition.waitingDisputeResolution,
+      CoordinatorOrderStatus.makerLostDispute => TradePosition.makerLostDispute,
+      CoordinatorOrderStatus.takerLostDispute => TradePosition.takerLostDispute,
+      CoordinatorOrderStatus.waitingForTakerBond ||
+      CoordinatorOrderStatus.cancelled ||
+      CoordinatorOrderStatus.collaborativelyCancelled => null,
+    },
+  };
+
+  /// Why a maker's [answer] is refused as a whole, or `null` when it is not.
+  static TradeWarning? _madeRefusalOf(
+    TradeAnswer answer,
+    TradeTerms<MadeSide> terms,
+    TradeTrail trail,
+    TradePosition? to,
+    _Contract? contract,
+  ) {
+    if (answer case TradeOrderRead(:final order)) {
+      if (order.coordinator != terms.coordinator ||
+          order.network != terms.network ||
+          order.id != terms.orderId) {
+        return const TradeOrderMismatch();
+      }
+      // `package:robosats` has checked that the roles agree with each other, with the order's type and with the robot that asked: a maker's answer shows this robot as the maker, on the side its order gives it (a buy order's maker buys), the mirror of a taker's rule.
+      if (!order.isMaker || order.isBuyer != (terms.role == TradeRole.buyer)) {
+        return const TradeRoleMismatch();
+      }
+    }
+    // Error 1044 goes only to a robot that is neither the maker nor the taker of an order that is not public (`api/views.py:269-275`): never to a maker.
+    if (answer is TradeOrderNotAvailable) return const TradeStatusUnexpected();
+    if (to == null) return const TradeStatusRegressed();
+    // The maker bond is one invoice for the order's whole life (`api/logics.py:1259-1263`), asked only until it locks (`follow_invoices.py:233-240`): the bond step is never shown again after it.
+    if (to == TradePosition.makerBondStep &&
+        trail.position != TradePosition.start &&
+        trail.position != TradePosition.makerBondStep) {
+      return const TradeStatusRegressed();
+    }
+    // A coordinator does not end a trade in this app's eyes by an answer that contradicts its history, as for a taker.
+    if (to.isTerminal && !_allowsMade(terms.role, trail, to)) {
+      return const TradeStatusUnexpected();
+    }
+    return contract?.refusal;
+  }
+
+  /// The positions of a maker's contract that carry its deadline (`api/logics.py:1338-1340`, unchanged from 6 to 7, 6 to 8 and at 7 and 8, `:920-924`, `:946`, `:1471-1473`), and those a next contract is read from (as `trade_trails_forward` lets `take` move, schema 8).
+  static const _contractSteps = {
+    TradePosition.waitingForBoth,
+    TradePosition.waitingForEscrow,
+    TradePosition.waitingForPayout,
+  };
+  static const _beforeNextContract = {
+    TradePosition.public,
+    TradePosition.paused,
+    TradePosition.waitingForBoth,
+    TradePosition.waitingForEscrow,
+    TradePosition.waitingForPayout,
+  };
+
+  /// What a maker's read of [order] at [to] says of its contract against the one [trail] keeps (design note `docs/design/phase-3-making-an-order.md` § 3.2), or `null` for a read that names none: 0, 1, 2, and 5, which may name a contract the trail never saw (one that expired at 6, 7 or 8 after a return to the book) and says nothing of the current one.
+  ///
+  /// At 6, 7 or 8, against the kept contract's deadline: none kept yet, this read opens one (its deadline, taker and amount kept, `take` unchanged); the same deadline and the same taker, the same contract; a later deadline, the next contract (`take` + 1, its deadline, taker and amount), whatever the positions read before, the taker possibly the same robot (a taker whose bond was settled may take again, `api/logics.py:471-483`), but only from the positions a next contract is read from, the chat never going back to the book; the same or an earlier deadline with another taker, [TradeTakerChanged]; an earlier one with the same taker, the same contract, its deadline moved back ([DeadlineMovedBack]); after a return to the book, a deadline that is not later, refused ([TradeStatusUnexpected]): the book never gives back a contract it ended.
+  /// From 9 on: the kept taker, or [TradeTakerChanged]; with none kept (the maker's step done elsewhere, with the Garage Key), this read's taker and amount kept, and no deadline.
+  /// A range's order that names no amount taken at 6 or later is refused ([TradeTermsChanged]): the reference always gives it (`api/logics.py:1329-1330`), and the contract cannot be told without it.
+  static _Contract? _contractOf(
+    CoordinatorOrder order,
+    TradePosition to,
+    TradeTrail trail,
+    MakerTerms maker,
+  ) {
+    final atStep = _contractSteps.contains(to);
+    final afterStep = !atStep && order.status.wire >= 9;
+    // `package:robosats` refuses a participant's answer at 6 or later that names no taker.
+    final taker = order.taker?.hex;
+    if ((!atStep && !afterStep) || taker == null) return null;
+    final double? amount;
+    switch (maker.amount) {
+      case FixedOrderAmount():
+        amount = null;
+      case RangeOrderAmount():
+        final taken = order.takenAmount;
+        if (taken == null) {
+          return _Contract(take: trail.take, refusal: const TradeTermsChanged());
+        }
+        amount = taken.value;
+    }
+    final keptTaker = trail.takerHashId;
+    final kept = trail.takeDeadline;
+    if (afterStep || kept == null) {
+      if (keptTaker != null && keptTaker != taker) {
+        return _Contract(take: trail.take, refusal: const TradeTakerChanged());
+      }
+      return _Contract(
+        take: trail.take,
+        deadline: kept ?? (atStep ? order.expiresAt : null),
+        taker: keptTaker ?? taker,
+        amount: trail.takenAmount ?? amount,
+      );
+    }
+    final deadline = order.expiresAt;
+    if (deadline.isAfter(kept)) {
+      if (!_beforeNextContract.contains(trail.position)) {
+        // From the chat on, no contract comes back to a step: the edge says it ([TradeStatusUnexpected]), and nothing of the contract is written.
+        return _Contract(take: trail.take);
+      }
+      return _Contract(
+        take: trail.take + 1,
+        deadline: deadline,
+        taker: taker,
+        amount: amount,
+        isNext: true,
+      );
+    }
+    if (trail.position == TradePosition.public ||
+        trail.position == TradePosition.paused) {
+      return _Contract(
+        take: trail.take,
+        refusal: const TradeStatusUnexpected(),
+      );
+    }
+    if (keptTaker != null && keptTaker != taker) {
+      return _Contract(take: trail.take, refusal: const TradeTakerChanged());
+    }
+    return _Contract(
+      take: trail.take,
+      taker: keptTaker ?? taker,
+      amount: trail.takenAmount ?? amount,
+      movedBack: deadline.isBefore(kept),
+    );
+  }
+
+  /// The checks of a maker's [order] against what the maker asked and the trade's history (design note `docs/design/phase-3-making-an-order.md` § 3.2, § 3.3).
+  ///
+  /// No check compares the trade's sats with a price: the coordinator fixes them at the take, at its price then, up to a day after the make (`api/logics.py:1332-1335`), and a warning on them would fire after any move of the market (§ 3.3); the gap from the rate of the creation is information ([MakerTerms.rateGap]), and the wallet's ceiling bounds what it pays ([MakerTerms.escrowCeilingFor]).
+  static List<TradeWarning> _madeOrderWarnings(
+    CoordinatorOrder order,
+    MakerTerms maker,
+    TradePosition to,
+    TradePosition from,
+    TradeTrail trail,
+    _Contract? contract,
+  ) {
+    final warnings = <TradeWarning>[];
+    if (_madeTermsChanged(order, maker, to, trail, contract)) {
+      warnings.add(const TradeTermsChanged());
+    }
+    // The maker bond, made at the maker's first read seconds after the make, at the coordinator's price then (`api/logics.py:1266-1268`).
+    if (order.bondInvoice case final bond? when to == TradePosition.makerBondStep) {
+      if (!maker.bondAgrees(bond.satoshis)) {
+        warnings.add(const BondAmountOutsideOrder());
+      }
+    }
+    final trade = order.tradeSatoshis;
+    final Sats? paid;
+    switch (maker.role) {
+      case TradeRole.seller:
+        final escrow = order.escrowInvoice?.satoshis;
+        if (escrow != null && escrow != trade) {
+          warnings.add(const EscrowAmountMismatch());
+        }
+        paid = escrow ?? trade;
+      case TradeRole.buyer:
+        final payout = order.payoutInvoiceAmount;
+        if (payout != null && payout != trade) {
+          warnings.add(const PayoutAmountMismatch());
+        }
+        paid = payout ?? trade;
+    }
+    // From the take on, `satoshis_now` is the order's `last_satoshis`, the trade's sats fixed then (`api/views.py:324`): the fee is what the escrow adds to them, or the payout takes from them (`api/logics.py:650-668`, `:733-749`).
+    if (order.isParticipant && order.status.wire >= 6) {
+      final last = order.satoshisNow;
+      if (last == null ||
+          (paid != null && !maker.feeAgrees(tradeSatoshis: last, paid: paid))) {
+        warnings.add(const MakerFeeAboveAnnounced());
+      }
+    }
+    final movedBack =
+        (contract?.movedBack ?? false) ||
+        switch (trail.deadline) {
+          final earlier? => from == to && order.expiresAt.isBefore(earlier),
+          null => false,
+        };
+    if (movedBack) warnings.add(const DeadlineMovedBack());
+    return warnings;
+  }
+
+  /// Whether a maker's [order] read at [to] is not the order it asked: its type, currency, premium (an order made here is never priced in sats), bond size, escrow duration, payment method text as sent, password (none before issue #189), public duration where the read gives it (5, 13 to 15, `api/views.py:490-498`), fixed amount or range's bounds; and for a range, an amount taken before any take (0 to 2), outside the range, or other than the one the trail keeps for the same contract (another amount at a next contract being that contract's own).
+  static bool _madeTermsChanged(
+    CoordinatorOrder order,
+    MakerTerms maker,
+    TradePosition to,
+    TradeTrail trail,
+    _Contract? contract,
+  ) {
+    if (order.currency != maker.currency || order.type != maker.type) {
+      return true;
+    }
+    if (!_samePercent(order.bondSize.percent, maker.bondSize.percent) ||
+        order.escrowDuration != maker.escrowDuration) {
+      return true;
+    }
+    if (order.isExplicit || order.explicitSatoshis != null) return true;
+    final premium = order.premium;
+    if (premium == null ||
+        !_samePercent(premium.percent, maker.premium.percent)) {
+      return true;
+    }
+    if (order.paymentMethods.text != maker.request.paymentMethod) return true;
+    if (order.hasPassword) return true;
+    if (order.publicDuration case final shown?
+        when shown != maker.publicDuration) {
+      return true;
+    }
+    switch ((maker.amount, order.amount)) {
+      case (
+        FixedOrderAmount(amount: final asked),
+        FixedOrderAmount(:final amount),
+      ):
+        return !_sameFiat(amount.value, asked.value);
+      case (
+        RangeOrderAmount(min: final askedMin, max: final askedMax),
+        RangeOrderAmount(:final min, :final max),
+      ):
+        if (!_sameFiat(min.value, askedMin.value) ||
+            !_sameFiat(max.value, askedMax.value)) {
+          return true;
+        }
+        final taken = order.takenAmount;
+        if (taken == null) return false;
+        if (to == TradePosition.makerBondStep ||
+            to == TradePosition.public ||
+            to == TradePosition.paused) {
+          return true;
+        }
+        if (maker.contractAmount(taken) == null) return true;
+        final kept = trail.takenAmount;
+        return contract != null &&
+            !contract.isNext &&
+            kept != null &&
+            !_sameFiat(taken.value, kept);
+      default:
+        return true;
+    }
+  }
+
+  static TradeStatus _ofMadeOrder(
+    CoordinatorOrder order, {
+    required TradePosition to,
+    required TradeTrail trail,
+    required TradeTerms<MadeSide> terms,
+    required DateTime now,
+    required Bolt11Reader reader,
+    required _Contract? contract,
+    required List<TradeWarning> readWarnings,
+  }) {
+    final maker = terms.side.maker;
+    final breached = _breaches(readWarnings);
+    final deadline = order.expiresAt;
+    final role = terms.role;
+    final isNext = contract?.isNext ?? false;
+
+    StepInvoice? invoiceOf(HoldInvoice? hold, InvoiceStep step) {
+      if (hold == null) return null;
+      final invoice = _checkStepInvoice(
+        hold: hold,
+        step: step,
+        terms: terms,
+        reader: reader,
+        // A next contract asks a new escrow (`api/logics.py:1218`, `:1491-1495`): the pinned one is compared below, not kept.
+        pinnedHash: switch (step) {
+          InvoiceStep.bond => trail.bondHash,
+          InvoiceStep.escrow => isNext ? null : trail.escrowHash,
+        },
+        stepDeadline: deadline,
+        now: now,
+        readWarnings: readWarnings,
+      );
+      // An escrow of a contract after the first is one only when it is the one its contract opened with: never the contract before's, and never one first shown after an opening read that carried none, which nothing can compare with the escrows of earlier contracts (the trail keeps the current one only, schema 8).
+      if (step == InvoiceStep.escrow &&
+          invoice is CheckedInvoice &&
+          (isNext
+              ? invoice.paymentHash == trail.escrowHash
+              : trail.take > 0 && trail.escrowHash == null)) {
+        return invoice.withMoreWarnings(const [EscrowNotOfThisContract()]);
+      }
+      return invoice;
+    }
+
+    List<TradeWarning> warningsWith(StepInvoice? invoice) => switch (invoice) {
+      CheckedInvoice(:final warnings) => warnings,
+      UnusableInvoice(:final reason) => [...readWarnings, reason],
+      null => readWarnings,
+    };
+
+    // An escrow not of this contract is never pinned, so that each later read of it is refused again.
+    String? hashOf(StepInvoice? invoice) => switch (invoice) {
+      CheckedInvoice(:final paymentHash, :final warnings)
+          when !warnings.any((w) => w is EscrowNotOfThisContract) =>
+        paymentHash,
+      _ => null,
+    };
+
+    TradeTrail nextTrail({StepInvoice? bond, StepInvoice? escrow}) =>
+        trail._next(
+          position: to,
+          readAt: now,
+          bondHash: hashOf(bond),
+          escrowHash: hashOf(escrow),
+          deadline: deadline,
+          // The invoice's own checks count too: a changed payment hash, or an escrow not of this contract, is a breach.
+          breached: breached || _breaches(warningsWith(bond ?? escrow)),
+          contract: contract,
+        );
+
+    StepInvoice? escrowForSeller() => role == TradeRole.seller
+        ? invoiceOf(order.escrowInvoice, InvoiceStep.escrow)
+        : null;
+
+    switch (to) {
+      case TradePosition.makerBondStep:
+        final bond = invoiceOf(order.bondInvoice, InvoiceStep.bond);
+        if (bond == null) {
+          return StatusUnknown._(now, readWarnings, nextTrail());
+        }
+        return WaitingForMakerBond._(
+          now,
+          warningsWith(bond),
+          nextTrail(bond: bond),
+          bond: bond,
+          deadline: deadline,
+          stepDuration: order.stepDuration,
+        );
+      case TradePosition.public || TradePosition.paused:
+        final next = nextTrail();
+        return MakerOrderPublic._(
+          now,
+          readWarnings,
+          next,
+          paused: to == TradePosition.paused,
+          deadline: deadline,
+          backInBook: next.takeDeadline != null,
+        );
+      case TradePosition.waitingForBoth:
+        final escrow = escrowForSeller();
+        return WaitingForBoth._(
+          now,
+          warningsWith(escrow),
+          nextTrail(escrow: escrow),
+          role: role,
+          escrow: escrow,
+          payoutAmount: order.payoutInvoiceAmount,
+          tradeSatoshis: order.tradeSatoshis,
+          deadline: deadline,
+          currency: terms.currency,
+          escrowDuration: terms.escrowDuration,
+        );
+      case TradePosition.waitingForEscrow:
+        final escrow = escrowForSeller();
+        return WaitingForEscrow._(
+          now,
+          warningsWith(escrow),
+          nextTrail(escrow: escrow),
+          role: role,
+          escrow: escrow,
+          tradeSatoshis: order.tradeSatoshis,
+          deadline: deadline,
+          currency: terms.currency,
+          escrowDuration: terms.escrowDuration,
+        );
+      case TradePosition.waitingForPayout:
+        return WaitingForPayout._(
+          now,
+          readWarnings,
+          nextTrail(),
+          role: role,
+          payoutAmount: order.payoutInvoiceAmount,
+          tradeSatoshis: order.tradeSatoshis,
+          deadline: deadline,
+        );
+      case TradePosition.chatting || TradePosition.fiatSent:
+        final next = nextTrail();
+        // The contract's fiat amount: the order's fixed amount, or the range's amount its take chose, kept with the contract ([_contractOf] refuses a range's order without it).
+        final amount = switch (maker.amount) {
+          FixedOrderAmount(:final amount) => amount,
+          RangeOrderAmount() => switch (next.takenAmount) {
+            final kept? => FiatAmount.tryCreate(kept),
+            null => null,
+          },
+        };
+        if (amount == null) return StatusUnknown._(now, readWarnings, next);
+        return Chatting._(
+          now,
+          readWarnings,
+          next,
+          role: role,
+          fiatSent: to == TradePosition.fiatSent,
+          askedToCancel: order.askedToCancel ?? false,
+          peerAskedToCancel: order.peerAskedToCancel ?? false,
+          chatLastIndex: order.chatLastIndex,
+          deadline: deadline,
+          amount: amount,
+          currency: terms.currency,
+        );
+      case TradePosition.inDispute:
+        return InDispute._(
+          now,
+          readWarnings,
+          nextTrail(),
+          statementSubmitted: order.statementSubmitted ?? false,
+        );
+      case TradePosition.sendingSats:
+        return SendingSats._(
+          now,
+          readWarnings,
+          nextTrail(),
+          role: role,
+          summary: order.summary,
+        );
+      case TradePosition.routingFailed:
+        return RoutingFailed._(
+          now,
+          readWarnings,
+          nextTrail(),
+          role: role,
+          retries: order.payoutRetries,
+          nextAttempt: order.nextPayoutRetry,
+          reason: order.payoutFailureReason,
+          invoiceExpired: order.payoutInvoiceExpired ?? false,
+          tradeSatoshis: order.tradeSatoshis,
+          summary: order.summary,
+        );
+      case TradePosition.succeeded:
+        return Succeeded._(
+          now,
+          readWarnings,
+          nextTrail(),
+          role: role,
+          summary: order.summary,
+          onchainPayout: order.onchainPayout,
+        );
+      case TradePosition.waitingDisputeResolution:
+        return WaitingDisputeResolution._(now, readWarnings, nextTrail());
+      // 17 and 18 by side: for a maker, 17 « Maker lost dispute » is its loss and 18 its win (`api/models/order.py:52-53`).
+      case TradePosition.makerLostDispute:
+        return DisputeLost._(
+          now,
+          readWarnings,
+          nextTrail(),
+          position: TradePosition.makerLostDispute,
+        );
+      case TradePosition.takerLostDispute:
+        return DisputeWon._(
+          now,
+          readWarnings,
+          nextTrail(),
+          position: TradePosition.takerLostDispute,
+        );
+      case TradePosition.expired:
+        return Expired._(
+          now,
+          readWarnings,
+          nextTrail(),
+          reason: order.expiryReason,
+        );
+      case TradePosition.start ||
+          TradePosition.cancelled ||
+          TradePosition.notAvailable ||
+          TradePosition.preTakeUnavailable ||
+          TradePosition.bondStep ||
+          TradePosition.publicAgain:
+        // Never the position of a maker's read ([_madePositionOf]).
         return StatusUnknown._(now, readWarnings, nextTrail());
     }
   }
@@ -893,6 +1597,78 @@ final class WaitingForTakerBond extends TradeStatus {
         bond: _invoiceWith(bond, more),
         deadline: deadline,
         stepDuration: stepDuration,
+      );
+}
+
+/// 0, for a maker: the order waits for this robot's maker bond, [bond], before [deadline] (« Lock {{amountSats}} Sats to PUBLISH order »), the order's own, 300 s after the make by default (`api/views.py:190`); paying it publishes the order (`follow_invoices.py:233-240`).
+final class WaitingForMakerBond extends TradeStatus {
+  /// The maker bond invoice, checked: shown and paid only as its warnings allow.
+  final StepInvoice bond;
+
+  /// When the order expires unpaid (`expires_at`), and how long the step lasts in all (`total_secs_exp`).
+  final DateTime deadline;
+  final Duration stepDuration;
+
+  const WaitingForMakerBond._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.bond,
+    required this.deadline,
+    required this.stepDuration,
+  }) : super._();
+
+  @override
+  TradePosition get position => TradePosition.makerBondStep;
+
+  @override
+  StepInvoice get invoice => bond;
+
+  @override
+  TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
+      WaitingForMakerBond._(
+        seenAt,
+        [...warnings, ...more],
+        trail,
+        bond: _invoiceWith(bond, more),
+        deadline: deadline,
+        stepDuration: stepDuration,
+      );
+}
+
+/// 1 and 2, for a maker: the order is public (« Your order is public »), or paused (« Your order is paused »), with this robot's maker bond locked; not an end, even when the order came back to the book after a contract.
+final class MakerOrderPublic extends TradeStatus {
+  /// 2: the maker paused it, and nobody can take it until it resumes.
+  final bool paused;
+
+  /// When the order expires untaken, its bond returned (`expires_at`): the make's time and the public duration, the same after a return to the book (`api/logics.py:1207-1209`).
+  final DateTime deadline;
+
+  /// Whether the order went back to the book after a contract (the taker cancelled at 6 or 7, or let its step run out, `api/logics.py:404-421`, `:445-458`, `:1108-1130`): the maker bond still locked, and the next take a new contract.
+  final bool backInBook;
+
+  const MakerOrderPublic._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.paused,
+    required this.deadline,
+    required this.backInBook,
+  }) : super._();
+
+  @override
+  TradePosition get position =>
+      paused ? TradePosition.paused : TradePosition.public;
+
+  @override
+  TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
+      MakerOrderPublic._(
+        seenAt,
+        [...warnings, ...more],
+        trail,
+        paused: paused,
+        deadline: deadline,
+        backInBook: backInBook,
       );
 }
 
@@ -1220,28 +1996,38 @@ final class WaitingDisputeResolution extends TradeStatus {
       WaitingDisputeResolution._(seenAt, [...warnings, ...more], trail);
 }
 
-/// 17: the maker lost the dispute, so this taker won it (« You have won the dispute »). Terminal.
+/// This robot won the dispute (« You have won the dispute »): 17 for a taker, the maker having lost it; 18 for a maker, the taker having lost it ([position] keeps the coordinator's name). Terminal.
 final class DisputeWon extends TradeStatus {
-  const DisputeWon._(super.seenAt, super.warnings, super.trail) : super._();
-
   @override
-  TradePosition get position => TradePosition.makerLostDispute;
+  final TradePosition position;
+
+  const DisputeWon._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.position,
+  }) : super._();
 
   @override
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
-      DisputeWon._(seenAt, [...warnings, ...more], trail);
+      DisputeWon._(seenAt, [...warnings, ...more], trail, position: position);
 }
 
-/// 18: this taker lost the dispute (« You have lost the dispute »). Terminal.
+/// This robot lost the dispute (« You have lost the dispute »): 18 for a taker, 17 for a maker ([position] keeps the coordinator's name). Terminal.
 final class DisputeLost extends TradeStatus {
-  const DisputeLost._(super.seenAt, super.warnings, super.trail) : super._();
-
   @override
-  TradePosition get position => TradePosition.takerLostDispute;
+  final TradePosition position;
+
+  const DisputeLost._(
+    super.seenAt,
+    super.warnings,
+    super.trail, {
+    required this.position,
+  }) : super._();
 
   @override
   TradeStatus _rewarned(List<TradeWarning> more, TradeTrail trail) =>
-      DisputeLost._(seenAt, [...warnings, ...more], trail);
+      DisputeLost._(seenAt, [...warnings, ...more], trail, position: position);
 }
 
 /// 5: the order ran out of time (« The order has expired »), for [reason]. Terminal.

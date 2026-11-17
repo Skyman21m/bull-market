@@ -83,11 +83,14 @@ final class ListActiveTradesUsecase {
     return out.stream;
   }
 
-  /// Where [record] stands by [history], restored as the watch restores it.
+  /// Where [record] stands by [history], restored as the watch restores it; a trade made here is listed as unrestorable, as the watch opens it (`TradeReader.open`, until #179).
   ActiveTradeStanding _standingOf(
     TradeRecord record,
     StoredTradeHistory? history,
   ) {
+    if (record.origin == TradeOrigin.madeHere) {
+      return const ActiveTradeUnrestorable(TradeRecordMalformed());
+    }
     final terms = history?.terms;
     // The take sends its request only once its terms and its first trail are written.
     if (record.isPendingTake && (terms == null || history?.trail == null)) {

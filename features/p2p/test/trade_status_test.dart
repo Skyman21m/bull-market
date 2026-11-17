@@ -1993,7 +1993,11 @@ int? _wireOrNull(TradePosition position) => switch (position) {
   TradePosition.cancelled ||
   TradePosition.notAvailable ||
   TradePosition.preTakeUnavailable ||
-  TradePosition.publicAgain => null,
+  TradePosition.publicAgain ||
+  // A maker's positions (#178): never a taker's.
+  TradePosition.makerBondStep ||
+  TradePosition.public ||
+  TradePosition.paused => null,
   _ => _wireOf(position),
 };
 
@@ -2016,7 +2020,10 @@ int _wireOf(TradePosition position) => switch (position) {
   TradePosition.start ||
   TradePosition.cancelled ||
   TradePosition.notAvailable ||
-  TradePosition.preTakeUnavailable => throw StateError('$position'),
+  TradePosition.preTakeUnavailable ||
+  TradePosition.makerBondStep ||
+  TradePosition.public ||
+  TradePosition.paused => throw StateError('$position'),
 };
 
 final class _Answering implements Bolt11Decoder {
