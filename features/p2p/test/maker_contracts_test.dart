@@ -1420,168 +1420,306 @@ void main() {
     );
   });
 
-  group(
-    'every trail of the reference\'s sequences, written to p2p.sqlite schema 8',
-    () {
-      const testnet = RobosatsNetwork.testnet;
-      final fingerprint = switch (GarageKey.fromBytes(
-        Uint8List.fromList(List<int>.generate(32, (i) => 3 + i)),
-      )) {
-        Ok(value: final key) => switch (GarageKeyFingerprint.of(key)) {
-          Ok(:final value) => value,
-          Err(:final failure) => throw StateError('$failure'),
-        },
+  group('every trail of the reference\'s sequences, written to p2p.sqlite schema 8', () {
+    const testnet = RobosatsNetwork.testnet;
+    final fingerprint = switch (GarageKey.fromBytes(
+      Uint8List.fromList(List<int>.generate(32, (i) => 3 + i)),
+    )) {
+      Ok(value: final key) => switch (GarageKeyFingerprint.of(key)) {
+        Ok(:final value) => value,
         Err(:final failure) => throw StateError('$failure'),
-      };
-      final temple = switch (CoordinatorIdentity.of(
-        coordinator('temple'),
-        testnet,
-      )) {
-        final identity? => identity,
-        null => throw StateError('temple is not on testnet'),
-      };
+      },
+      Err(:final failure) => throw StateError('$failure'),
+    };
+    final temple = switch (CoordinatorIdentity.of(
+      coordinator('temple'),
+      testnet,
+    )) {
+      final identity? => identity,
+      null => throw StateError('temple is not on testnet'),
+    };
 
-      bool stored(Result<TrailStoreOutcome, P2pFailure> outcome) =>
-          switch (outcome) {
-            Ok(value: TrailStored()) => true,
-            _ => false,
-          };
+    bool stored(Result<TrailStoreOutcome, P2pFailure> outcome) =>
+        switch (outcome) {
+          Ok(value: TrailStored()) => true,
+          _ => false,
+        };
 
-      /// [seeds] orders of the reference, every trail written by the real repository to a database of its own; with [secondClient], the maker also acts from another client.
-      Future<(int, int, int)> written(
-        int seeds, {
-        required int first,
-        bool secondClient = false,
-      }) async {
-        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-        var writes = 0;
-        var nexts = 0;
-        var late = 0;
-        for (var seed = first; seed < first + seeds; seed++) {
-          // A database of its own for each order made, whose number is the tests' one.
-          final database = P2pDatabase.forTesting(NativeDatabase.memory());
-          addTearDown(database.close);
-          final bindings = bindingsInMemory(database: database);
-          final trades = TradeRecordRepositoryImpl(
-            database,
-            clock: () => tradeNow,
-          );
-          final trails = TradeTrailRepositoryImpl(database);
-          expect(
-            await bindings.recordGeneratedKey(testnet, fingerprint),
-            isA<Ok>(),
-          );
-          final random = Random(seed);
-          final role = random.nextBool() ? b : s;
-          final range = random.nextBool();
-          final reference = MakerReference(
-            role,
-            range: range,
-            random: random,
-            secondClient: secondClient,
-          );
-          final terms = reference.terms(network: testnet);
-          final reservation = switch (await trades.reserveForNewTrade(
-            RobotSlot(testnet, fingerprint, 0),
-            temple,
-          )) {
-            Ok(value: final reservation?) => reservation,
-            final other => fail('not reserved: $other'),
-          };
-          final make = switch (await trades.recordPendingMake(
-            reservation,
-            role: role,
-          )) {
-            Ok(:final value) => value,
-            Err(:final failure) => fail('$failure'),
-          };
-          expect(
-            await trails.recordMakerTerms(make, terms.side.maker.record),
-            isA<Ok>(),
-          );
-          final record = switch (await trades.confirmMake(
-            make,
-            orderId: terms.orderId,
-          )) {
-            Ok(:final value) => value,
-            Err(:final failure) => fail('$failure'),
-          };
+    /// [seeds] orders of the reference, every trail written by the real repository to a database of its own; with [secondClient], the maker also acts from another client.
+    Future<(int, int, int)> written(
+      int seeds, {
+      required int first,
+      bool secondClient = false,
+    }) async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      var writes = 0;
+      var nexts = 0;
+      var late = 0;
+      for (var seed = first; seed < first + seeds; seed++) {
+        // A database of its own for each order made, whose number is the tests' one.
+        final database = P2pDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(database.close);
+        final bindings = bindingsInMemory(database: database);
+        final trades = TradeRecordRepositoryImpl(
+          database,
+          clock: () => tradeNow,
+        );
+        final trails = TradeTrailRepositoryImpl(database);
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprint),
+          isA<Ok>(),
+        );
+        final random = Random(seed);
+        final role = random.nextBool() ? b : s;
+        final range = random.nextBool();
+        final reference = MakerReference(
+          role,
+          range: range,
+          random: random,
+          secondClient: secondClient,
+        );
+        final terms = reference.terms(network: testnet);
+        final reservation = switch (await trades.reserveForNewTrade(
+          RobotSlot(testnet, fingerprint, 0),
+          temple,
+        )) {
+          Ok(value: final reservation?) => reservation,
+          final other => fail('not reserved: $other'),
+        };
+        final make = switch (await trades.recordPendingMake(
+          reservation,
+          role: role,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(
+          await trails.recordMakerTerms(make, terms.side.maker.record),
+          isA<Ok>(),
+        );
+        final record = switch (await trades.confirmMake(
+          make,
+          orderId: terms.orderId,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
 
-          var now = tradeNow;
-          var status = TradeStatus.afterMake(
-            await reference.read(decoder, network: testnet),
+        var now = tradeNow;
+        var status = TradeStatus.afterMake(
+          await reference.read(decoder, network: testnet),
+          terms: terms,
+          now: now,
+          reader: reader,
+        );
+        expect(
+          stored(await trails.storeTrail(record, status.trail.record)),
+          isTrue,
+        );
+        for (var step = 0; step < 60 && !status.isTerminal; step++) {
+          reference.step();
+          if (!reference.ended && random.nextInt(secondClient ? 8 : 3) != 0) {
+            continue;
+          }
+          // The clock moves at each read, by up to five seconds.
+          now = now.add(Duration(seconds: random.nextInt(6)));
+          final before = status;
+          status = TradeStatus.from(
+            previous: before,
+            answer: await reference.read(decoder, network: testnet),
             terms: terms,
             now: now,
             reader: reader,
           );
+          if (status.has<ContractSeenLate>()) late++;
+          expect(
+            status.warnings.where((w) => w is! ContractSeenLate),
+            isEmpty,
+            reason: 'seed $seed: $status',
+          );
+          if (status.trail.take > before.trail.take) nexts++;
           expect(
             stored(await trails.storeTrail(record, status.trail.record)),
             isTrue,
+            reason: 'seed $seed step $step: $before → $status',
           );
-          for (var step = 0; step < 60 && !status.isTerminal; step++) {
-            reference.step();
-            if (!reference.ended && random.nextInt(secondClient ? 8 : 3) != 0) {
-              continue;
-            }
-            // The clock moves at each read, by up to five seconds.
-            now = now.add(Duration(seconds: random.nextInt(6)));
-            final before = status;
-            status = TradeStatus.from(
-              previous: before,
-              answer: await reference.read(decoder, network: testnet),
-              terms: terms,
-              now: now,
-              reader: reader,
-            );
-            if (status.has<ContractSeenLate>()) late++;
-            expect(
-              status.warnings.where((w) => w is! ContractSeenLate),
-              isEmpty,
-              reason: 'seed $seed: $status',
-            );
-            if (status.trail.take > before.trail.take) nexts++;
-            expect(
-              stored(await trails.storeTrail(record, status.trail.record)),
-              isTrue,
-              reason: 'seed $seed step $step: $before → $status',
-            );
-            writes++;
-          }
-          final history = switch (await trails.historyOf(record)) {
-            Ok(:final value) => value,
-            Err(:final failure) => fail('$failure'),
-          };
-          expect(history.trail, status.trail.record, reason: 'seed $seed');
+          writes++;
         }
-        return (writes, nexts, late);
+        final history = switch (await trails.historyOf(record)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(history.trail, status.trail.record, reason: 'seed $seed');
       }
+      return (writes, nexts, late);
+    }
 
-      test(
-        'the database writes every one of them, next contracts\' escrows included',
-        () async {
-          final (writes, nexts, late) = await written(120, first: 5000);
-          expect(writes, greaterThan(200));
-          expect(nexts, greaterThanOrEqualTo(12), reason: 'writes $writes');
-          expect(late, 0);
-        },
-      );
+    test(
+      'an escrow of an earlier contract stays refused after a restart, from the stored trail alone',
+      () async {
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        final database = P2pDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(database.close);
+        final bindings = bindingsInMemory(database: database);
+        final trades = TradeRecordRepositoryImpl(
+          database,
+          clock: () => tradeNow,
+        );
+        final trails = TradeTrailRepositoryImpl(database);
+        expect(
+          await bindings.recordGeneratedKey(testnet, fingerprint),
+          isA<Ok>(),
+        );
+        final terms = madeTerms(role: s, network: testnet);
+        final reservation = switch (await trades.reserveForNewTrade(
+          RobotSlot(testnet, fingerprint, 0),
+          temple,
+        )) {
+          Ok(value: final reservation?) => reservation,
+          final other => fail('not reserved: $other'),
+        };
+        final make = switch (await trades.recordPendingMake(
+          reservation,
+          role: s,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        expect(
+          await trails.recordMakerTerms(make, terms.side.maker.record),
+          isA<Ok>(),
+        );
+        final record = switch (await trades.confirmMake(
+          make,
+          orderId: terms.orderId,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        Bolt11TestInvoice escrowOf(int take) =>
+            makerEscrowInvoice(take: take, network: Bolt11Network.testnet);
+        Future<TradeAnswer> read(
+          int status, {
+          RobotIdentity? taker,
+          DateTime? deadline,
+          Bolt11TestInvoice? escrow,
+        }) async {
+          final bond = makerBondInvoice(network: Bolt11Network.testnet);
+          final invoice = escrow ?? escrowOf(0);
+          decoder
+            ..add(bond)
+            ..add(invoice);
+          return readAnswer(
+            makerOrderJson(
+              status,
+              role: s,
+              taker: taker,
+              deadline: deadline,
+              bond: bond,
+              escrow: invoice,
+            ),
+            network: testnet,
+          );
+        }
 
-      test(
-        'and with the maker acting from another client too, next contracts seen late included',
-        () async {
-          final (writes, nexts, late) = await written(
-            1000,
-            first: 20000,
-            secondClient: true,
+        var status = TradeStatus.afterMake(
+          await read(0),
+          terms: terms,
+          now: tradeNow,
+          reader: reader,
+        );
+        for (final answer in [
+          await read(1),
+          await read(6),
+          // Contract 1, read at 8: no escrow, the one of contract 0 kept as earlier.
+          await read(8, taker: third, deadline: deadline1),
+        ]) {
+          status = TradeStatus.from(
+            previous: status,
+            answer: answer,
+            terms: terms,
+            now: tradeNow,
+            reader: reader,
           );
-          expect(writes, greaterThan(100));
-          expect(
-            late,
-            greaterThanOrEqualTo(7),
-            reason: 'nexts $nexts, writes $writes',
-          );
-        },
-      );
-    },
-  );
+          expect(switch (await trails.storeTrail(record, status.trail.record)) {
+            Ok(value: TrailStored()) => true,
+            _ => false,
+          }, isTrue);
+        }
+        // The app killed: the trail is read back and restored alone.
+        final stored = switch (await trails.historyOf(record)) {
+          Ok(value: StoredTradeHistory(trail: final trail?)) => trail,
+          final other => fail('$other'),
+        };
+        expect(stored.earlierEscrows, '${escrowOf(0).facts.paymentHash};');
+        final restored = switch (TradeTrail.restore(
+          stored,
+          terms: terms,
+          now: tradeNow,
+        )) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final contract2 = TradeStatus.from(
+          previous: TradeStatus.beforeFirstRead(restored),
+          answer: await read(
+            6,
+            taker: peer,
+            deadline: deadline1.add(const Duration(hours: 1)),
+            escrow: escrowOf(0),
+          ),
+          terms: terms,
+          now: tradeNow,
+          reader: reader,
+        );
+        expect(
+          checkedOf(contract2).warnings.whereType<EscrowNotOfThisContract>(),
+          hasLength(1),
+        );
+        expect(switch (await trails.storeTrail(
+          record,
+          contract2.trail.record,
+        )) {
+          Ok(value: TrailStored()) => true,
+          _ => false,
+        }, isTrue);
+        // Whatever the code, the database never pins it again.
+        await expectLater(
+          database.customStatement(
+            "UPDATE trade_trails SET escrow_hash = '${escrowOf(0).facts.paymentHash}', read_at = read_at + 1",
+          ),
+          throwsA(
+            predicate((e) => '$e'.contains('a trail only moves forward')),
+          ),
+        );
+      },
+    );
+
+    test(
+      'the database writes every one of them, next contracts\' escrows included',
+      () async {
+        final (writes, nexts, late) = await written(120, first: 5000);
+        expect(writes, greaterThan(200));
+        expect(nexts, greaterThanOrEqualTo(12), reason: 'writes $writes');
+        expect(late, 0);
+      },
+    );
+
+    test(
+      'and with the maker acting from another client too, next contracts seen late included',
+      () async {
+        final (writes, nexts, late) = await written(
+          1000,
+          first: 20000,
+          secondClient: true,
+        );
+        expect(writes, greaterThan(100));
+        expect(
+          late,
+          greaterThanOrEqualTo(7),
+          reason: 'nexts $nexts, writes $writes',
+        );
+      },
+    );
+  });
 }
