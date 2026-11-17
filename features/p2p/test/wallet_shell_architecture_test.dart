@@ -933,10 +933,20 @@ const _perFile = <String, Set<String>>{
     'ReceiveWalletInvoiceUsecase',
     'registerFactory',
     'registerLazySingleton',
+    // The wallet's price of a bitcoin (#180).
+    'getIndexPrice',
+    'Pricer',
+    'ReadWalletRateUsecase',
   },
   'public/p2p_wallet_facade.dart': {
     'P2pWalletAddress',
     'P2pWalletInvoice',
+    // The wallet's price of a bitcoin (#180).
+    '_rate',
+    'P2pWalletBitcoinRate',
+    'ReadWalletRateUsecase',
+    'RobosatsCurrency',
+    'currency',
     'payout',
     'PayCheckedInvoiceUsecase',
     'QuoteInvoicePaymentUsecase',
@@ -999,6 +1009,27 @@ const _perFile = <String, Set<String>>{
     'IssuedQuotes',
     'issue',
   },
+  // The wallet's price of a bitcoin (#180): the pricer the wallet's own screens read, for the payment rule of an order made here. It moves nothing.
+  'domain/usecases/read_wallet_rate_usecase.dart': {
+    '_indexPrice',
+    'BitcoinNetwork',
+    'BitcoinPrice',
+    'code',
+    'currency',
+    'double',
+    'Exception',
+    'fiatAmount',
+    'IndexPriceReader',
+    'isFinite',
+    'P2pWalletBitcoinRate',
+    'P2pWalletRateNotPriced',
+    'P2pWalletRateRead',
+    'P2pWalletRateUnavailable',
+    'PricerFailure',
+    'RobosatsCurrency',
+    'SupportedCurrency',
+    'tryFromCode',
+  },
 };
 
 /// The imports each of these files may have besides [_shellImports], and no other file.
@@ -1008,7 +1039,15 @@ const _perFileImports = <String, Set<String>>{
     'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
   },
   'data/wallet_invoice_repository_impl.dart': {'package:bull_sdk/boltz.dart'},
-  'p2p_wallet_locator.dart': {'package:get_it/get_it.dart'},
+  'p2p_wallet_locator.dart': {
+    'package:get_it/get_it.dart',
+    // The pricer the wallet's own screens read (#180).
+    'package:bull_pricer/bull_pricer.dart',
+  },
+  'domain/usecases/read_wallet_rate_usecase.dart': {
+    'package:bull_pricer/bull_pricer.dart',
+    'package:primitives/primitives.dart',
+  },
   'domain/usecases/receive_wallet_invoice_usecase.dart': {
     'package:bb_mobile/core/wallet/domain/usecases/get_receive_address_usecase.dart',
   },

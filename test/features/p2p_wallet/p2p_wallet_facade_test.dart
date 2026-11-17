@@ -8,6 +8,7 @@ import 'package:bb_mobile/features/p2p_wallet/domain/entities/issued_quotes.dart
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/read_wallet_rate_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_address_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
@@ -15,6 +16,7 @@ import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payme
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
 import 'package:bb_mobile/features/swap/public/swap_facade.dart';
 import 'package:bull_logger/bull_logger.dart';
+import 'package:bull_pricer/bull_pricer.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 
@@ -81,6 +83,34 @@ void main() {
         FakeGetWallets(const Ok([])),
         FakeRefundAddress(journal),
       ),
+      // The wallet's price of a bitcoin (#180), tested in its own file: a pricer that gives 71,657.
+      ReadWalletRateUsecase(
+        ({required network, required currency}) async => Ok(
+          BitcoinPrice(
+            currency: currency,
+            fiatAmount: 71657,
+            fetchedAt: testNow,
+          ),
+        ),
+      ),
+    );
+  });
+
+  test('the wallet\'s price of a bitcoin goes through the port (#180)', () async {
+    final rate = await port.bitcoinRate(
+      RobosatsNetwork.mainnet,
+      RobosatsCurrency.fromCode('USD') ?? fail('no USD'),
+    );
+    expect(
+      rate,
+      isA<P2pWalletRateRead>().having((r) => r.price, 'price', 71657),
+    );
+    expect(
+      await port.bitcoinRate(
+        RobosatsNetwork.mainnet,
+        RobosatsCurrency.fromCode('GBP') ?? fail('no GBP'),
+      ),
+      isA<P2pWalletRateNotPriced>(),
     );
   });
 

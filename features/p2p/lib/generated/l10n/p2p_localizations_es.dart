@@ -1228,6 +1228,11 @@ class P2pLocalizationsEs extends P2pLocalizations {
   }
 
   @override
+  String p2pTradeTitleLockBondPublish(String amountSats) {
+    return 'Lock $amountSats Sats to PUBLISH order';
+  }
+
+  @override
   String p2pTradeTitleLockEscrow(String amountSats) {
     return 'Lock $amountSats Sats as collateral';
   }
@@ -1983,6 +1988,43 @@ class P2pLocalizationsEs extends P2pLocalizations {
   @override
   String p2pPayTotal(String total, String left) {
     return 'Total: $total sats. Left in Instant payments: $left sats.';
+  }
+
+  @override
+  String p2pPayRateWallet(
+    String price,
+    String currency,
+    String expected,
+    String gap,
+  ) {
+    return 'At this wallet\'s price, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+  }
+
+  @override
+  String p2pPayRateNotPriced(
+    String currency,
+    String coordinator,
+    String price,
+    String expected,
+    String gap,
+  ) {
+    return 'This wallet has no price for $currency: the amount is not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+  }
+
+  @override
+  String p2pPayRateUnreadable(
+    String coordinator,
+    String price,
+    String currency,
+    String expected,
+    String gap,
+  ) {
+    return 'This wallet\'s price could not be read: the amount is not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+  }
+
+  @override
+  String p2pPayRateWarning(String threshold, String asked, String expected) {
+    return 'This bond is more than $threshold above that: $asked sats asked, $expected sats expected. Check it before you pay.';
   }
 
   @override

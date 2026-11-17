@@ -182,9 +182,8 @@ class BondPaymentCubit extends Cubit<BondPaymentState> {
     this._running, {
     this._stillWaitingAfter = BondPaymentCubit.stillWaitingAfter,
     this.step = InvoiceStep.bond,
-    BondRateChecker? rate,
-  }) : _rate = rate,
-       super(const BondPaymentState());
+    this._rate,
+  }) : super(const BondPaymentState());
 
   /// Reads the balance and looks for a payment of the bond made earlier: once.
   void start() {
