@@ -13,6 +13,7 @@ import 'package:p2p/src/domain/trade/wallet_rate_check.dart';
 import 'package:p2p/src/domain/trade_record.dart';
 import 'package:p2p/src/domain/usecases/trade/bond_payments_in_flight.dart';
 import 'package:p2p/src/domain/usecases/trade/pay_bond_from_wallet_usecase.dart';
+import 'package:p2p/src/domain/usecases/trade/trade_reader.dart';
 import 'package:p2p/testing.dart';
 import 'package:test/test.dart';
 
@@ -640,6 +641,69 @@ void main() {
             expect(
               await payBond.checkBond(record, seen),
               isA<Err<WalletPaymentOffered, BondPayRefusal>>(),
+              reason: step.name,
+            );
+            expect(
+              await payBond.quoteBond(record, seen),
+              isA<Err<P2pWalletQuote, BondPayRefusal>>(),
+              reason: step.name,
+            );
+          }
+          expect(fake.quoted, isEmpty);
+          expect(fake.paid, isEmpty);
+          expect(fake.ratesAsked, isEmpty);
+        },
+      );
+
+      test(
+        'at $status, a coordinator that fixes a tiny trade, coherent everywhere (1,000 sats): no warning, an escrow under the bond\'s ceiling, and still never offered nor quoted by either instance (security review of #180, C1)',
+        () async {
+          final harness = await MakeHarness.start();
+          final record = switch (await harness.makeOrder(
+            MakeHarness.request(sell: true),
+          )) {
+            Ok(value: final MakeStarted started) => started.record,
+            final other => fail('$other'),
+          };
+          harness.coordinator
+            ..lockMakerBond(record.orderId)
+            ..take(record.orderId, harness.robot(5));
+          final made = harness.coordinator.order(record.orderId)
+            ..lastSatoshis = 1000
+            ..status = status;
+          expect(made.lastSatoshis, 1000);
+          final run = harness.watchOf(record);
+          await harness.settle();
+          final seen = run.lastStatus.seen;
+          await run.subscription.cancel();
+          // What makes the case: the state machine finds nothing wrong (no warning on the trade's sats, § 3.3), and the escrow is below the maker bond's ceiling, so only the guard of the maker's side refuses it.
+          expect(seen.stored, isTrue);
+          expect(seen.status.warnings, isEmpty);
+          final invoice = seen.status.invoice;
+          expect(invoice, isA<CheckedInvoice>());
+          if (invoice is! CheckedInvoice) return;
+          expect(invoice.step, InvoiceStep.escrow);
+          expect(invoice.passedEveryCheck, isTrue);
+          final ceiling = switch (await harness.reader.open(record)) {
+            TradeOpened(:final trade) => trade.terms.bondCeiling,
+            final other => fail('$other'),
+          };
+          expect(invoice.amount.value, lessThan(ceiling.value));
+          final fake = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)));
+          for (final step in InvoiceStep.values) {
+            final payBond = _Made._payBondOf(
+              harness,
+              fake,
+              TradePaymentRepositoryImpl(harness.database),
+              step: step,
+            );
+            expect(
+              await payBond.checkBond(record, seen),
+              isA<Err<WalletPaymentOffered, BondPayRefusal>>().having(
+                (e) => e.failure,
+                'failure',
+                isA<BondPayNotAtBondStep>(),
+              ),
               reason: step.name,
             );
             expect(

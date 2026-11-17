@@ -1,5 +1,8 @@
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/read_wallet_rate_usecase.dart';
+import 'dart:async';
+
 import 'package:bull_pricer/bull_pricer.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:p2p/p2p.dart';
 import 'package:primitives/primitives.dart' show BitcoinNetwork;
@@ -82,6 +85,30 @@ void main() {
         );
       }
       expect(asked, 0);
+    },
+  );
+
+  test(
+    'a pricer that never answers: unavailable once its own bound has passed, on a fake clock (security review of #180, R5)',
+    () {
+      fakeAsync((time) {
+        final usecase = ReadWalletRateUsecase(
+          ({required network, required currency}) =>
+              Completer<Result<BitcoinPrice, PricerFailure>>().future,
+        );
+        P2pWalletBitcoinRate? rate;
+        unawaited(
+          usecase
+              .execute(RobosatsNetwork.mainnet, currency('USD'))
+              .then((value) => rate = value),
+        );
+        // Above the pricer's own bounds (10 s and 2 s), so that it cuts only a read that would never end.
+        expect(ReadWalletRateUsecase.readBound, const Duration(seconds: 15));
+        time.elapse(const Duration(seconds: 14));
+        expect(rate, isNull);
+        time.elapse(const Duration(seconds: 1));
+        expect(rate, isA<P2pWalletRateUnavailable>());
+      });
     },
   );
 

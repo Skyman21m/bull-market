@@ -115,6 +115,8 @@ final class WalletRateAtWallet extends WalletRateCompared {
 }
 
 /// Compared at the coordinator's price of the creation, the wallet having no price for the order's currency: a weaker reference, said as such.
+///
+/// What it is worth for the maker bond, honestly (security review of #180, R1, R2): the bond this wallet can pay is already within 2 % and 1 sat of the coordinator's own estimate at that same price (`MakerTerms.bondAgrees`; otherwise a warning, and nothing paid), so the 10 % warning can in practice never show at status 0 (only for an expected bond under about 12.5 sats), and a price of the creation that lies passes without red: the line compares the coordinator with itself. `MakerTerms.bondCeiling`, computed from that same price, bounds nothing against such a lie. The behaviour is the owner's rule; how it is shown for a currency the wallet does not price is put to him.
 final class WalletRateAtCreation extends WalletRateCompared {
   WalletRateAtCreation._of(
     super.asked,

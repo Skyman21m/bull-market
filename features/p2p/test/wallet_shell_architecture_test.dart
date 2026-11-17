@@ -1021,6 +1021,10 @@ const _perFile = <String, Set<String>>{
     'P2pWalletRateRead',
     'P2pWalletRateUnavailable',
     'PricerFailure',
+    // Its own bound on the pricer's wait (security review of #180, R5).
+    'readBound',
+    'seconds',
+    'timeout',
     'RobosatsCurrency',
     'tryFromCode',
   },
