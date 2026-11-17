@@ -2903,6 +2903,13 @@ void main() {
           await toTop();
           await tester.tap(find.text(shown).first);
           await settle();
+          // The currencies' sheet builds its rows as they scroll into view.
+          await tester.scrollUntilVisible(
+            find.text(code),
+            300,
+            scrollable: find.byType(Scrollable).last,
+          );
+          await settle();
           await tester.tap(find.text(code).last);
           await settle();
           shown = code;
