@@ -1,9 +1,11 @@
 import 'package:bull_ui/bull_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:primitives/primitives.dart';
 import 'package:robosats/robosats.dart';
 
 import '../../../generated/l10n/p2p_localizations.dart';
 import '../../domain/trade/maker_terms.dart';
+import '../../domain/trade_record.dart';
 import '../../presentation/p2p_formats.dart';
 
 /// The line of a maker's trade that says how far the rate the coordinator fixed at the take is from the rate when the order was made (design note `docs/design/phase-3-making-an-order.md` § 3.3, « The gap », #182): before « Submit » of a maker buyer's payout and in its « Confirm … sent », information only, never a warning and never a gate.

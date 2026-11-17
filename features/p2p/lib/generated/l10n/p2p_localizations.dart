@@ -5025,7 +5025,7 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own (design note § 3.10): a make whose answer was lost, which stays pending and is resolved from its line of « Active trades » (#182); the form makes nothing more meanwhile.
   ///
   /// In en, this message translates to:
-  /// **'Bull Market does not know yet whether {coordinator} made your order. It keeps checking.'**
+  /// **'Bull Market does not know yet whether {coordinator} made your order. Check it again below, or set it aside.'**
   String p2pMakePending(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: a make the coordinator certainly did not make, or that never left.
@@ -5121,20 +5121,154 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the make read the coordinator's price again just before it would reserve a robot, and the price check under the form would not be the one the user saw (`MakePriceCheckChanged`, security review of #181, C1); nothing was sent with a robot, the form shows the new check. « Create order » is the button's label.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator}\'s price changed since it was shown. Check the comparison, then press « Create order » again.'**
+  /// **'{coordinator}\'s price changed since it was shown. Check the comparison, then press \"Create order\" again.'**
   String p2pMakePriceCheckChanged(String coordinator);
 
   /// Not in the RoboSats texts: the project's own: « Create order » read the coordinator's limits and the Bull wallet's price again, more than 3 minutes old, and the form now shows another request or another price check: the press went no further (security review of #181, C2).
   ///
   /// In en, this message translates to:
-  /// **'The limits and prices were read again and changed. Check the form, then press « Create order » again.'**
+  /// **'The limits and prices were read again and changed. Check the form, then press \"Create order\" again.'**
   String get p2pMakePricesReadAgain;
 
   /// Not in the RoboSats texts: the project's own: « Create order » was pressed while the Bull wallet's price was being read; once read, the form shows another price check than at the press, so the press went no further (second security review of #181, R8).
   ///
   /// In en, this message translates to:
-  /// **'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.'**
+  /// **'The price comparison has just been updated. Check it, then press \"Create order\" again.'**
   String get p2pMakePriceReadAtPress;
+
+  /// The official client's text: the maker's title at status 1 (`TradeBox/index.tsx:390-405`, #182), the English of its code, which neither `en.json` nor `fr.json` lists (design note § 1.11); the French is the project's.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order is public'**
+  String get p2pTradeTitleOrderPublic;
+
+  /// The official client's text: the maker's title at status 2 (`TradeBox/index.tsx:406-420`, #182), the English of its code, which neither `en.json` nor `fr.json` lists; the French is the project's. Shown only when the order was paused from another app: pausing comes with #184.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order is paused'**
+  String get p2pTradeTitleOrderPaused;
+
+  /// The official client's text, word for word (`TradeBox/Prompts/PublicWait.tsx:86-89`, #182, design note § 7, proposal 6), which `en.json` and `fr.json` do not list; the French is the project's. Bull Market does not ring yet (no notification before the end of the project): said in the trial script. {hours} and {minutes} are the order's escrow duration, whole hours then the minutes left (`depositHoursMinutes`, `:42-50`).
+  ///
+  /// In en, this message translates to:
+  /// **'Be patient while robots check the book. This box will ring 🔊 once a robot takes your order, then you will have {hours}h {minutes}m to reply. If you do not reply, you risk losing your bond.'**
+  String p2pTradePublicWait(String hours, String minutes);
+
+  /// The official client's text (`frontend/static/locales/en.json:774`, `TradeBox/Prompts/PublicWait.tsx:95`, #182) and its French (`fr.json:774`).
+  ///
+  /// In en, this message translates to:
+  /// **'If the order expires untaken, your bond will return to you (no action needed).'**
+  String get p2pTradePublicExpiresUntaken;
+
+  /// The official client's text (`frontend/static/locales/en.json:777`, `TradeBox/Prompts/PublicWait.tsx:109-111`, #182); the French is `fr.json:777`'s with « ordres » for « commandes », the app's word. Under the count of the book's orders in {currencyCode}, the order's currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'Public orders for {currencyCode}'**
+  String p2pTradePublicOrdersFor(String currencyCode);
+
+  /// The official client's text « Premium rank » (`frontend/static/locales/en.json:776`, `fr.json:776`) followed by the rank, as `TradeBox/Prompts/PublicWait.tsx:141` writes them (#182). {rank} is a whole number, or 0.5 when the book holds at most one order of the same currency and side (the reference's own value).
+  ///
+  /// In en, this message translates to:
+  /// **'Premium rank {rank}%'**
+  String p2pTradePremiumRank(String rank);
+
+  /// The official client's text (`frontend/static/locales/en.json:773`, `TradeBox/Prompts/PublicWait.tsx:142-144`, #182); the French is `fr.json:773`'s with « ordres » for « commandes ».
+  ///
+  /// In en, this message translates to:
+  /// **'Among public {currencyCode} orders (higher is cheaper)'**
+  String p2pTradePremiumRankAmong(String currencyCode);
+
+  /// The official client's text (`frontend/static/locales/en.json:764`, `TradeBox/Prompts/Paused.tsx:23-33`, #182); the French is `fr.json:764`'s with « ordre » for « commande ».
+  ///
+  /// In en, this message translates to:
+  /// **'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.'**
+  String get p2pTradePausedText;
+
+  /// Not in the RoboSats texts: the project's own: in place of the reference's « Unpause Order » button (`Prompts/Paused.tsx`), which comes with the pause (#184); a paused order is seen only when it was paused from another app (#182).
+  ///
+  /// In en, this message translates to:
+  /// **'\"Unpause Order\" is coming in a later version.'**
+  String get p2pTradeUnpauseLater;
+
+  /// The official client's text, built as `Your ${isMaker ? 'maker' : 'taker'} bond is ${status}` (`TradeBox/BondStatus.tsx:39`, #182), which `en.json` and `fr.json` do not list for a maker; the French is the project's, in the words of `p2pTradeBondLocked`.
+  ///
+  /// In en, this message translates to:
+  /// **'Your maker bond is locked'**
+  String get p2pTradeMakerBondLocked;
+
+  /// The official client's text (`TradeBox/BondStatus.tsx:39`, #182); the French is the project's, in the words of `p2pTradeBondUnlocked`.
+  ///
+  /// In en, this message translates to:
+  /// **'Your maker bond is unlocked'**
+  String get p2pTradeMakerBondUnlocked;
+
+  /// The official client's text (`TradeBox/BondStatus.tsx:39`, #182); the French is the project's, in the words of `p2pTradeBondSettled`.
+  ///
+  /// In en, this message translates to:
+  /// **'Your maker bond is settled'**
+  String get p2pTradeMakerBondSettled;
+
+  /// Not in the RoboSats texts: the project's own (design note § 3.3, « The gap », #182): before « Submit » of the payout and in « Confirm … sent » of a maker buyer, information only. {sats} is the order's sats fixed at the take (`satoshis_now`), {amount} the contract's amount, {rate} and {createdRate} rates of a bitcoin written as « Order current rate », {gap} the gap in percent with its sign, such as « +2.50% ».
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator} fixed {sats} sats for {amount} {currencyCode} when your order was taken: a rate of {rate} {currencyCode}/BTC, {gap} from the rate when you made it ({createdRate}).'**
+  String p2pTradeRateGap(
+    String coordinator,
+    String sats,
+    String amount,
+    String currencyCode,
+    String rate,
+    String gap,
+    String createdRate,
+  );
+
+  /// Not in the RoboSats texts: the project's own: a next contract seen late (`ContractSeenLate`, design note § 3.2, #178), information and not a breach, said for as long as that contract lasts (#182); it replaces « Unexpected change on the coordinator's side », which read as an alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.'**
+  String get p2pTradeWarnContractSeenLate;
+
+  /// Not in the RoboSats texts: the project's own: a pending make being resolved (`MakeOrderUsecase.resolve`, design note § 3.4, #182).
+  ///
+  /// In en, this message translates to:
+  /// **'Checking with {coordinator}…'**
+  String p2pPendingMakeChecking(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: a pending make that a resolution left pending (design note § 3.4, #182).
+  ///
+  /// In en, this message translates to:
+  /// **'Not known yet whether {coordinator} made this order. No bond is asked until it is known.'**
+  String p2pPendingMakeUnknown(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: the way out of a pending make that does not resolve (reviews of #179, #182): the app stops checking it, never makes it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Set aside'**
+  String get p2pPendingMakeSetAside;
+
+  /// Not in the RoboSats texts: the project's own: the title of the dialog of « Set aside » (#182).
+  ///
+  /// In en, this message translates to:
+  /// **'Set this order aside?'**
+  String get p2pPendingMakeSetAsideTitle;
+
+  /// Not in the RoboSats texts: the project's own: what « Set aside » does (#182, functional review of #179): an order made but never shown waits at 0 for a bond nobody sees and expires 300 s after its creation by default (`api/logics.py:329-338`).
+  ///
+  /// In en, this message translates to:
+  /// **'Bull Market will stop checking it. An order may still exist at {coordinator}: no bond was paid for it from this app, and it expires on its own a few minutes after it was made.'**
+  String p2pPendingMakeSetAsideText(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: why « Create order » is disabled while a pending make of the network exists (security review of #181, S2; #182).
+  ///
+  /// In en, this message translates to:
+  /// **'An order of yours is still being created. Check it again or set it aside before creating another.'**
+  String get p2pMakePendingFirst;
+
+  /// Not in the RoboSats texts: the project's own: going back while the make is sent (security review of #181, S1; #182): the page stays, so that the user is taken to the order or to its pending make.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait for the answer of {coordinator} before leaving: your order is being created.'**
+  String p2pMakeSendingStay(String coordinator);
 }
 
 class _P2pLocalizationsDelegate

@@ -3190,7 +3190,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pMakePending(String coordinator) {
-    return 'Bull Market ne sait pas encore si $coordinator a créé votre ordre. Il continue de vérifier.';
+    return 'Bull Market ne sait pas encore si $coordinator a créé votre ordre. Vérifiez-le de nouveau ci-dessous, ou écartez-le.';
   }
 
   @override
@@ -3265,5 +3265,101 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String get p2pMakePriceReadAtPress =>
-      'Le prix du portefeuille Bull était en cours de lecture quand vous avez appuyé sur « Créer l’ordre ». Vérifiez la comparaison des prix sous le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».';
+      'La comparaison des prix vient d’être mise à jour. Vérifiez-la, puis appuyez de nouveau sur « Créer l’ordre ».';
+
+  @override
+  String get p2pTradeTitleOrderPublic => 'Votre ordre est public';
+
+  @override
+  String get p2pTradeTitleOrderPaused => 'Votre ordre est en pause';
+
+  @override
+  String p2pTradePublicWait(String hours, String minutes) {
+    return 'Patientez pendant que les robots consultent le carnet. Cette boîte sonnera 🔊 dès qu’un robot prendra votre ordre ; vous aurez alors $hours h $minutes min pour répondre. Si vous ne répondez pas, vous risquez de perdre votre caution.';
+  }
+
+  @override
+  String get p2pTradePublicExpiresUntaken =>
+      'Si l’ordre expire sans être pris, votre caution vous sera rendue (aucune action nécessaire).';
+
+  @override
+  String p2pTradePublicOrdersFor(String currencyCode) {
+    return 'Ordres publics pour $currencyCode';
+  }
+
+  @override
+  String p2pTradePremiumRank(String rank) {
+    return 'Classement de prime $rank %';
+  }
+
+  @override
+  String p2pTradePremiumRankAmong(String currencyCode) {
+    return 'Parmi les ordres publics en $currencyCode (plus élevé est moins cher)';
+  }
+
+  @override
+  String get p2pTradePausedText =>
+      'Votre ordre public a été mis en pause. Pour le moment, il ne peut être ni vu ni pris par d’autres robots. Vous pouvez choisir de le reprendre à tout moment.';
+
+  @override
+  String get p2pTradeUnpauseLater =>
+      '« Reprendre l’ordre » arrive dans une version ultérieure.';
+
+  @override
+  String get p2pTradeMakerBondLocked => 'Votre caution de créateur est bloquée';
+
+  @override
+  String get p2pTradeMakerBondUnlocked =>
+      'Votre caution de créateur est débloquée';
+
+  @override
+  String get p2pTradeMakerBondSettled =>
+      'Votre caution de créateur est débitée';
+
+  @override
+  String p2pTradeRateGap(
+    String coordinator,
+    String sats,
+    String amount,
+    String currencyCode,
+    String rate,
+    String gap,
+    String createdRate,
+  ) {
+    return '$coordinator a fixé $sats sats pour $amount $currencyCode quand votre ordre a été pris : un taux de $rate $currencyCode/BTC, $gap par rapport au taux à sa création ($createdRate).';
+  }
+
+  @override
+  String get p2pTradeWarnContractSeenLate =>
+      'Votre ordre a été repris et cet échange a avancé sans que Bull Market en voie les étapes, comme quand votre clé de garage sert dans une autre app. Vérifiez l’échange dans cette app avant d’agir ici.';
+
+  @override
+  String p2pPendingMakeChecking(String coordinator) {
+    return 'Vérification auprès de $coordinator…';
+  }
+
+  @override
+  String p2pPendingMakeUnknown(String coordinator) {
+    return 'On ne sait pas encore si $coordinator a créé cet ordre. Aucune caution n’est demandée tant qu’on ne le sait pas.';
+  }
+
+  @override
+  String get p2pPendingMakeSetAside => 'Écarter';
+
+  @override
+  String get p2pPendingMakeSetAsideTitle => 'Écarter cet ordre ?';
+
+  @override
+  String p2pPendingMakeSetAsideText(String coordinator) {
+    return 'Bull Market cessera de le vérifier. Un ordre peut encore exister chez $coordinator : aucune caution n’a été payée pour lui depuis cette app, et il expire seul quelques minutes après sa création.';
+  }
+
+  @override
+  String get p2pMakePendingFirst =>
+      'Un de vos ordres est encore en cours de création. Vérifiez-le de nouveau ou écartez-le avant d’en créer un autre.';
+
+  @override
+  String p2pMakeSendingStay(String coordinator) {
+    return 'Attendez la réponse de $coordinator avant de quitter : votre ordre est en cours de création.';
+  }
 }

@@ -207,7 +207,7 @@ class PendingMakesCubit extends Cubit<PendingMakesState> {
       steps: {
         for (final MapEntry(:key, :value) in state.steps.entries)
           if (key != make.robot) key: value,
-        if (step != null) make.robot: step,
+        make.robot: ?step,
       },
     ),
   );

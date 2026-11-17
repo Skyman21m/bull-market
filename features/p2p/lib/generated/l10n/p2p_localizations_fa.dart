@@ -3146,7 +3146,7 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String p2pMakePending(String coordinator) {
-    return 'Bull Market does not know yet whether $coordinator made your order. It keeps checking.';
+    return 'Bull Market does not know yet whether $coordinator made your order. Check it again below, or set it aside.';
   }
 
   @override
@@ -3211,14 +3211,108 @@ class P2pLocalizationsFa extends P2pLocalizations {
 
   @override
   String p2pMakePriceCheckChanged(String coordinator) {
-    return '$coordinator\'s price changed since it was shown. Check the comparison, then press « Create order » again.';
+    return '$coordinator\'s price changed since it was shown. Check the comparison, then press \"Create order\" again.';
   }
 
   @override
   String get p2pMakePricesReadAgain =>
-      'The limits and prices were read again and changed. Check the form, then press « Create order » again.';
+      'The limits and prices were read again and changed. Check the form, then press \"Create order\" again.';
 
   @override
   String get p2pMakePriceReadAtPress =>
-      'The Bull wallet\'s price was being read when « Create order » was pressed. Check the price comparison under the form, then press « Create order » again.';
+      'The price comparison has just been updated. Check it, then press \"Create order\" again.';
+
+  @override
+  String get p2pTradeTitleOrderPublic => 'Your order is public';
+
+  @override
+  String get p2pTradeTitleOrderPaused => 'Your order is paused';
+
+  @override
+  String p2pTradePublicWait(String hours, String minutes) {
+    return 'Be patient while robots check the book. This box will ring 🔊 once a robot takes your order, then you will have ${hours}h ${minutes}m to reply. If you do not reply, you risk losing your bond.';
+  }
+
+  @override
+  String get p2pTradePublicExpiresUntaken =>
+      'If the order expires untaken, your bond will return to you (no action needed).';
+
+  @override
+  String p2pTradePublicOrdersFor(String currencyCode) {
+    return 'Public orders for $currencyCode';
+  }
+
+  @override
+  String p2pTradePremiumRank(String rank) {
+    return 'Premium rank $rank%';
+  }
+
+  @override
+  String p2pTradePremiumRankAmong(String currencyCode) {
+    return 'Among public $currencyCode orders (higher is cheaper)';
+  }
+
+  @override
+  String get p2pTradePausedText =>
+      'Your public order has been paused. At the moment it cannot be seen or taken by other robots. You can choose to unpause it at any time.';
+
+  @override
+  String get p2pTradeUnpauseLater =>
+      '\"Unpause Order\" is coming in a later version.';
+
+  @override
+  String get p2pTradeMakerBondLocked => 'Your maker bond is locked';
+
+  @override
+  String get p2pTradeMakerBondUnlocked => 'Your maker bond is unlocked';
+
+  @override
+  String get p2pTradeMakerBondSettled => 'Your maker bond is settled';
+
+  @override
+  String p2pTradeRateGap(
+    String coordinator,
+    String sats,
+    String amount,
+    String currencyCode,
+    String rate,
+    String gap,
+    String createdRate,
+  ) {
+    return '$coordinator fixed $sats sats for $amount $currencyCode when your order was taken: a rate of $rate $currencyCode/BTC, $gap from the rate when you made it ($createdRate).';
+  }
+
+  @override
+  String get p2pTradeWarnContractSeenLate =>
+      'Your order was taken again and this trade moved on without Bull Market seeing its steps, as when your Garage Key is used in another app. Check the trade in that app before acting here.';
+
+  @override
+  String p2pPendingMakeChecking(String coordinator) {
+    return 'Checking with $coordinator…';
+  }
+
+  @override
+  String p2pPendingMakeUnknown(String coordinator) {
+    return 'Not known yet whether $coordinator made this order. No bond is asked until it is known.';
+  }
+
+  @override
+  String get p2pPendingMakeSetAside => 'Set aside';
+
+  @override
+  String get p2pPendingMakeSetAsideTitle => 'Set this order aside?';
+
+  @override
+  String p2pPendingMakeSetAsideText(String coordinator) {
+    return 'Bull Market will stop checking it. An order may still exist at $coordinator: no bond was paid for it from this app, and it expires on its own a few minutes after it was made.';
+  }
+
+  @override
+  String get p2pMakePendingFirst =>
+      'An order of yours is still being created. Check it again or set it aside before creating another.';
+
+  @override
+  String p2pMakeSendingStay(String coordinator) {
+    return 'Wait for the answer of $coordinator before leaving: your order is being created.';
+  }
 }
