@@ -91,7 +91,8 @@ class _AddPaymentMethodDialogState extends State<AddPaymentMethodDialog> {
             decoration: InputDecoration(
               labelText: '${l10n.p2pMakeCustomMethodLabel} *',
               errorText: error,
-              errorMaxLines: 3,
+              // The French refusal takes four lines on a phone of 360 points.
+              errorMaxLines: 6,
               filled: true,
               fillColor: colors.surface,
               enabledBorder: border(colors.outline),
