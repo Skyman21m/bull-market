@@ -305,19 +305,33 @@ void main() {
     );
 
     test(
-      'a currency the wallet does not price: compared with the price of the creation, said weaker',
+      'a currency the wallet does not price, at a price of the creation ten times too low: no figure, not compared, and the bond still paid (the owner\'s decision of 2026-11-17 in the evening)',
       () async {
+        // 100 GBP at 6,000 announced for about 60,000: the coordinator's bond, ten times too large, agrees with its own estimate.
         final made = await _Made.start(
           code: 'GBP',
-          price: 60000,
+          price: 6000,
           rate: const P2pWalletRateNotPriced(),
         );
         final quote = await made.quoted();
-        final rate = await made.comparedOf(quote);
-        expect(rate, isA<WalletRateAtCreation>());
-        expect(rate.price, 60000);
-        expect(rate.warns, isFalse);
+        final rate = await made.rateOf(quote);
+        expect(rate, isA<WalletRateNotPriced>());
+        expect(rate, isNot(isA<WalletRateCompared>()));
+        expect(rate?.warns, isFalse);
+        expect(rate?.asked, quote.amount);
         expect(made.fake.ratesAsked.single.$2.code, 'GBP');
+        made.fake.scriptPayment(
+          Ok(
+            P2pWalletPayment(
+              id: 'swap-gbp',
+              paymentHash: quote.invoice.paymentHash,
+            ),
+          ),
+        );
+        expect(
+          await made.payBond.payBond(made.record, accepted: quote),
+          isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
+        );
       },
     );
 

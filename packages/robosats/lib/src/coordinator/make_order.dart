@@ -5,6 +5,7 @@ import 'package:robosats/src/coordinator/json_fields.dart';
 import 'package:robosats/src/coordinator/order_values.dart';
 import 'package:robosats/src/coordinator/robosats_currency.dart';
 import 'package:robosats/src/coordinator/robosats_network.dart';
+import 'package:robosats/src/coordinator/visible_text.dart';
 import 'package:robosats/src/robosats_failure.dart';
 
 /// What a maker asks a coordinator to make, checked before anything is sent: the body of `POST /api/make/` (`CoordinatorClient.makeOrder`).
@@ -92,7 +93,7 @@ final class MakeOrderRequest {
   /// - [bondSize]: at most [bondSizeDecimals] decimals.
   /// - [description]: `null`, or 1 to [maxDescriptionCodePoints] code points of clean text.
   ///
-  /// A clean text is what `displayText` leaves as it is, with no space at either end: no control character, no line break, no bidirectional control, no unpaired surrogate.
+  /// A clean text is what `displayText` leaves as it is, with no space at either end: no control character, no line break, no bidirectional control, no unpaired surrogate; and, since #181, a text every character of which is seen as it is written ([isShownAsWritten]): never one that shows as empty, nor one with an invisible character, a space other than U+0020, a private use character or a joiner, a variation selector or a combining mark out of its place, which the coordinator would store and show to every robot that reads the order.
   static MakeOrderRequest? tryCreate({
     required OrderType type,
     required RobosatsCurrency currency,
@@ -164,7 +165,7 @@ final class MakeOrderRequest {
       text.length <= 2 * maxCodePoints &&
       text.runes.length <= maxCodePoints &&
       text.trim() == text &&
-      displayText(text) == text;
+      isShownAsWritten(text);
 
   /// The decimals of [value] as it is written in JSON, the shortest text that reads back as [value], which is also how the coordinator reads the number (`str` of a Python `float`, then `Decimal`).
   static int _decimalsOf(double value) {

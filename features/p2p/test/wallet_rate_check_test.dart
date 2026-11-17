@@ -215,21 +215,39 @@ void main() {
   });
 
   group(
-    'a currency the wallet does not price: the price of the creation, said weaker',
+    'a currency the wallet does not price: nothing compared, no figure (the owner\'s decision of 2026-11-17 in the evening)',
     () {
-      test('a currency the wallet does not price', () {
+      test(
+        'the reviewer\'s scenario: a price of the creation ten times too low in GBP, a bond ten times too large: nothing reassuring, no warning to compute, the price of the creation never the reference',
+        () {
+          // 100 GBP announced at 6,000 for about 60,000: 48,309 sats of bond, which the coordinator's estimate accepts.
+          final lied = terms(code: 'GBP', createdPrice: 6000);
+          expect(lied.bondAgrees(Sats.fromInt(48309)), isTrue);
+          for (final asked in [48309, 4830, 1]) {
+            final rate = checkOf(
+              lied,
+              asked,
+              const P2pWalletRateNotPriced(),
+            );
+            expect(rate, isA<WalletRateNotPriced>(), reason: '$asked');
+            expect(rate, isNot(isA<WalletRateCompared>()));
+            expect(rate.asked, Sats.fromInt(asked));
+            expect(rate.currency.code, 'GBP');
+            expect(rate.warns, isFalse);
+          }
+        },
+      );
+
+      test('distinct from a price that could not be read', () {
         final made = terms(code: 'GBP', createdPrice: 60000);
-        final rate = check(made, 4000, const P2pWalletRateNotPriced());
-        expect(rate, isA<WalletRateAtCreation>());
-        expect(rate.price, 60000);
-        expect(rate.expected.value, some(made.bondAtPrice(60000)).floor());
-        // The same 10 %: 100 GBP at 62,100 is 161,030.59… sats, 4,830.91… of bond.
-        expect(rate.expected, Sats.fromInt(4830));
         expect(
-          check(made, 5314, const P2pWalletRateNotPriced()).warns,
-          isFalse,
+          checkOf(made, 4830, const P2pWalletRateNotPriced()),
+          isNot(isA<WalletRateUnverified>()),
         );
-        expect(check(made, 5315, const P2pWalletRateNotPriced()).warns, isTrue);
+        expect(
+          checkOf(made, 4830, const P2pWalletRateUnavailable()),
+          isNot(isA<WalletRateNotPriced>()),
+        );
       });
     },
   );
