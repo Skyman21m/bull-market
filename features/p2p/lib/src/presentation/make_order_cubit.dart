@@ -1,44 +1,3 @@
-  Future<void> choose(Coordinator coordinator) async {
-    if (state.locked) return;
-    emit(
-      state._with(
-        coordinator: coordinator,
-        limits: const MakerFormLimitsLoading(),
-        sizeLimitSats: CoordinatorSizeLimit.of(coordinator, _now()).sats,
-        price: const MakeFormPriceNone(),
-      ),
-    );
-    await _readLimits(coordinator);
-  }
-
-  /// Reads the chosen coordinator's limits again, then the Bull wallet's price, when the last read is older than [staleAfter]: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
-  Future<bool> refreshIfStale() async {
-    final coordinator = state.coordinator;
-    final readAt = state.limitsReadAt;
-    if (state.locked || coordinator == null || readAt == null) return false;
-    if (_now().difference(readAt) < staleAfter) return false;
-    await _readLimits(coordinator);
-    return true;
-  }
-
-  /// [coordinator]'s limits read, kept only while it is still the one chosen, then its price compared.
-  Future<void> _readLimits(Coordinator coordinator) async {
-    final read = ++_limitsRead;
-    _priceRead++;
-    final answer = await _fetchLimits(coordinator, state.network);
-    if (isClosed || read != _limitsRead) return;
-    emit(
-      state._with(
-        limits: switch (answer) {
-          Ok(:final value) => MakerFormLimitsRead(value),
-          Err() => const MakerFormLimitsUnreadable(),
-        },
-        limitsReadAt: _now(),
-      ),
-    );
-    await _readPrice();
-  }
-
 import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -337,8 +296,6 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// The coordinator the user chose in « Select Host », or the default: its limits read again, even when it is the one shown (a choice is the reference's way of reading them again, `MakerForm.tsx:102-131`), then its price compared. Nothing while a make runs or has run.
   Future<void> choose(Coordinator coordinator) async {
     if (state.locked) return;
-    final read = ++_limitsRead;
-    _priceRead++;
     emit(
       state._with(
         coordinator: coordinator,
@@ -347,6 +304,23 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         price: const MakeFormPriceNone(),
       ),
     );
+    await _readLimits(coordinator);
+  }
+
+  /// Reads the chosen coordinator's limits again, then the Bull wallet's price, when the last read is older than [staleAfter]: called by « Create order » before its dialogs, so that the form never warns or reassures on an old rate when the user confirms; never in a loop. Whether anything was read.
+  Future<bool> refreshIfStale() async {
+    final coordinator = state.coordinator;
+    final readAt = state.limitsReadAt;
+    if (state.locked || coordinator == null || readAt == null) return false;
+    if (_now().difference(readAt) < staleAfter) return false;
+    await _readLimits(coordinator);
+    return true;
+  }
+
+  /// [coordinator]'s limits read, kept only while it is still the one chosen, then its price compared.
+  Future<void> _readLimits(Coordinator coordinator) async {
+    final read = ++_limitsRead;
+    _priceRead++;
     final answer = await _fetchLimits(coordinator, state.network);
     if (isClosed || read != _limitsRead) return;
     emit(
@@ -355,6 +329,7 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
           Ok(:final value) => MakerFormLimitsRead(value),
           Err() => const MakerFormLimitsUnreadable(),
         },
+        limitsReadAt: _now(),
       ),
     );
     await _readPrice();

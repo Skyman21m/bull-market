@@ -2028,7 +2028,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pPayRateNotPriced(String currency, String coordinator) {
-    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de payer.';
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix annoncé par $coordinator : vérifiez-le vous-même avant de payer.';
   }
 
   @override
@@ -3041,7 +3041,9 @@ class P2pLocalizationsFr extends P2pLocalizations {
   String get p2pMakeAddPaymentMethod => 'Ajouter un mode de paiement';
 
   @override
-  String get p2pMakeMustBeShorter => 'Doit être plus court que 65 caractères';
+  String p2pMakeMustBeShorter(String max) {
+    return 'Doit faire au plus $max caractères';
+  }
 
   @override
   String p2pMakeRemoveMethod(String method) {
@@ -3156,22 +3158,22 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String coordinatorPrice,
     String gap,
   ) {
-    return 'Pour comparaison, prix indicatif du portefeuille Bull : $walletPrice $currency/BTC (celui de $coordinator : $coordinatorPrice, écart $gap).';
+    return 'Pour comparaison, prix indicatif du portefeuille Bull : $walletPrice $currency/BTC ($coordinator : $coordinatorPrice, écart $gap).';
   }
 
   @override
   String p2pMakeRateBelow(String coordinator, String threshold) {
-    return 'Le prix de $coordinator est plus de $threshold sous celui du portefeuille Bull : votre caution et votre échange seraient comptés en trop de sats. Vérifiez-le avant de créer l’ordre.';
+    return 'Le prix annoncé par $coordinator est inférieur de plus de $threshold à celui du portefeuille Bull : votre caution serait plus grosse que prévu. Vérifiez-le avant de créer l’ordre.';
   }
 
   @override
   String p2pMakeRateAbove(String coordinator, String threshold) {
-    return 'Le prix de $coordinator est plus de $threshold au-dessus de celui du portefeuille Bull : vous recevriez moins de sats à la prise de votre ordre. Vérifiez-le avant de créer l’ordre.';
+    return 'Le prix annoncé par $coordinator est supérieur de plus de $threshold à celui du portefeuille Bull : vous recevriez moins de sats quand l’ordre sera pris. Vérifiez-le avant de créer l’ordre.';
   }
 
   @override
   String p2pMakeRateNotPriced(String currency, String coordinator) {
-    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix de $coordinator : vérifiez-le vous-même avant de créer l’ordre.';
+    return 'Le portefeuille Bull n’a pas de prix pour $currency : taux non vérifié. Vous faites confiance au prix annoncé par $coordinator : vérifiez-le vous-même avant de créer l’ordre.';
   }
 
   @override
@@ -3234,6 +3236,21 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pMakeBookFull(String coordinator) {
-    return 'Le carnet de $coordinator est complet.';
+    return 'Le carnet est complet chez $coordinator.';
   }
+
+  @override
+  String get p2pMakeClearForm => 'Effacer le formulaire';
+
+  @override
+  String get p2pMakeCurrentRateLabel => 'Taux actuel de l’ordre :';
+
+  @override
+  String p2pMakeCurrentRateUnit(String currencyCode) {
+    return '$currencyCode/BTC';
+  }
+
+  @override
+  String get p2pMakeNoHost =>
+      'Aucun coordinateur ne peut être choisi pour l’instant.';
 }

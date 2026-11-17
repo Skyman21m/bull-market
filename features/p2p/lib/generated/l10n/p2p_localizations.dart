@@ -4806,11 +4806,11 @@ abstract class P2pLocalizations {
   /// **'Add payment method'**
   String get p2pMakeAddPaymentMethod;
 
-  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 502), with its French (`fr.json`, line 502). Under the payment methods when their text is longer than 50 characters, the reference's bound, although its text says 65 (`MakerForm.tsx:227`, `:995-999`, sic).
+  /// Adapted from the official client's « Must be shorter than 65 characters » (`frontend/static/locales/en.json` at commit ff1998c, line 502; `MakerForm.tsx:995-999`), shown under the payment methods when their text is longer than the reference's own bound of 50 characters (`MakerForm.tsx:227`): the figure is the true one, 50, where the reference's text says 65 (the owner's decision of 2026-11-17, #181). {max} is 50.
   ///
   /// In en, this message translates to:
-  /// **'Must be shorter than 65 characters'**
-  String get p2pMakeMustBeShorter;
+  /// **'Must be at most {max} characters'**
+  String p2pMakeMustBeShorter(String max);
 
   /// Not in the RoboSats texts: the project's own: what a screen reader says of the cross of a payment method chosen in the create form, which takes it off as the reference's chip does (`AutocompletePayments.tsx`, `onDelete`). {method} is the method's name.
   ///
@@ -4974,10 +4974,10 @@ abstract class P2pLocalizations {
   /// **'You must fill the form correctly'**
   String get p2pMakeWhyFormIncorrect;
 
-  /// Not in the RoboSats texts: the project's own, the owner's words of 2026-11-17: under « Order current rate » in the create form (#181), the Bull wallet's price of a bitcoin beside the chosen coordinator's, both without the premium, and how far the coordinator's is from the wallet's. {walletPrice} and {coordinatorPrice} are the prices, {currency} the currency code, {coordinator} the coordinator's name, {gap} the gap with its sign and percent sign.
+  /// Not in the RoboSats texts: the project's own, the owner's words of 2026-11-17, the coordinator named alone after the functional review of #181 (no « de {coordinator} », which French would elide before a vowel): under « Order current rate » in the create form (#181), the Bull wallet's price of a bitcoin beside the chosen coordinator's, both without the premium, and how far the coordinator's is from the wallet's. {walletPrice} and {coordinatorPrice} are the prices, {currency} the currency code, {coordinator} the coordinator's name, {gap} the gap with its sign and percent sign.
   ///
   /// In en, this message translates to:
-  /// **'For comparison, the Bull wallet\'s indicative price: {walletPrice} {currency}/BTC ({coordinator}\'s: {coordinatorPrice}, gap {gap}).'**
+  /// **'For comparison, the Bull wallet\'s indicative price: {walletPrice} {currency}/BTC ({coordinator}: {coordinatorPrice}, gap {gap}).'**
   String p2pMakeRateCompare(
     String walletPrice,
     String currency,
@@ -4989,13 +4989,13 @@ abstract class P2pLocalizations {
   /// Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold below the Bull wallet's; « Create order » stays offered. {threshold} is the threshold, such as « 10% ».
   ///
   /// In en, this message translates to:
-  /// **'{coordinator}\'s price is more than {threshold} below the Bull wallet\'s: your bond and your trade would be counted in too many sats. Check it before you create the order.'**
+  /// **'{coordinator}\'s price is more than {threshold} below the Bull wallet\'s: your bond would be larger than it should be. Check it before creating the order.'**
   String p2pMakeRateBelow(String coordinator, String threshold);
 
   /// Not in the RoboSats texts: the project's own: the red warning of the create form (#181) when the coordinator's price is more than the owner's threshold above the Bull wallet's, for a buy order (the only side this version makes); « Create order » stays offered.
   ///
   /// In en, this message translates to:
-  /// **'{coordinator}\'s price is more than {threshold} above the Bull wallet\'s: you would receive fewer sats when your order is taken. Check it before you create the order.'**
+  /// **'{coordinator}\'s price is more than {threshold} above the Bull wallet\'s: you would receive fewer sats when the order is taken. Check it before creating the order.'**
   String p2pMakeRateAbove(String coordinator, String threshold);
 
   /// Not in the RoboSats texts: the project's own: in the create form (#181), the order's currency is one the Bull wallet does not price: no figure, no « Retry » (the owner's decision of 2026-11-17 in the evening, his words of the maker bond's line, written for the creation).
@@ -5088,11 +5088,35 @@ abstract class P2pLocalizations {
   /// **'Your order is too small.'**
   String get p2pMakeTooSmall;
 
-  /// After the coordinator's message of error 1037 (`api/errors.py:44`, commit ff1998c), which the official client shows, without its limit. The French is the project's.
+  /// Not in the RoboSats texts: the project's own, after the coordinator's error 1037 (`api/errors.py:44`, commit ff1998c: « The RoboSats {coordinator_alias} coordinator book is at full capacity! Current limit is {max_public_orders} orders »), which the official client shows; written by the project, without the coordinator's limit, followed by « The order was not created. ».
   ///
   /// In en, this message translates to:
-  /// **'The book of {coordinator} is at full capacity.'**
+  /// **'{coordinator}\'s book is full.'**
   String p2pMakeBookFull(String coordinator);
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 483), with its French (`fr.json`, line 483). The tooltip of the bin at the top left of the create form (`MakerForm.tsx:676-698`), which empties the form (`clearMaker`).
+  ///
+  /// In en, this message translates to:
+  /// **'Clear form'**
+  String get p2pMakeClearForm;
+
+  /// The official client's text (`frontend/static/locales/en.json` at commit ff1998c, line 505); its `fr.json` says « commande », the French is the project's, in the vocabulary of its catalogue (« ordre »). The start of the line « Order current rate: » while the rate is not known yet, followed by a placeholder and the currency, as the reference draws it with a skeleton (`MakerForm.tsx:1351-1361`).
+  ///
+  /// In en, this message translates to:
+  /// **'Order current rate:'**
+  String get p2pMakeCurrentRateLabel;
+
+  /// The end of the line « Order current rate: » while the rate is not known yet (`MakerForm.tsx:1360`): the currency per bitcoin.
+  ///
+  /// In en, this message translates to:
+  /// **'{currencyCode}/BTC'**
+  String p2pMakeCurrentRateUnit(String currencyCode);
+
+  /// Not in the RoboSats texts: the project's own: the create form (#181) when no coordinator of the network takes a new robot (each refused too many robots in this run of the app, or none is listed), with « Retry », which lists them again.
+  ///
+  /// In en, this message translates to:
+  /// **'No coordinator can be chosen right now.'**
+  String get p2pMakeNoHost;
 }
 
 class _P2pLocalizationsDelegate

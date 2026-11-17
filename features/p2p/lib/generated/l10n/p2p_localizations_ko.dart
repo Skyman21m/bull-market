@@ -3002,7 +3002,9 @@ class P2pLocalizationsKo extends P2pLocalizations {
   String get p2pMakeAddPaymentMethod => 'Add payment method';
 
   @override
-  String get p2pMakeMustBeShorter => 'Must be shorter than 65 characters';
+  String p2pMakeMustBeShorter(String max) {
+    return 'Must be at most $max characters';
+  }
 
   @override
   String p2pMakeRemoveMethod(String method) {
@@ -3112,17 +3114,17 @@ class P2pLocalizationsKo extends P2pLocalizations {
     String coordinatorPrice,
     String gap,
   ) {
-    return 'For comparison, the Bull wallet\'s indicative price: $walletPrice $currency/BTC ($coordinator\'s: $coordinatorPrice, gap $gap).';
+    return 'For comparison, the Bull wallet\'s indicative price: $walletPrice $currency/BTC ($coordinator: $coordinatorPrice, gap $gap).';
   }
 
   @override
   String p2pMakeRateBelow(String coordinator, String threshold) {
-    return '$coordinator\'s price is more than $threshold below the Bull wallet\'s: your bond and your trade would be counted in too many sats. Check it before you create the order.';
+    return '$coordinator\'s price is more than $threshold below the Bull wallet\'s: your bond would be larger than it should be. Check it before creating the order.';
   }
 
   @override
   String p2pMakeRateAbove(String coordinator, String threshold) {
-    return '$coordinator\'s price is more than $threshold above the Bull wallet\'s: you would receive fewer sats when your order is taken. Check it before you create the order.';
+    return '$coordinator\'s price is more than $threshold above the Bull wallet\'s: you would receive fewer sats when the order is taken. Check it before creating the order.';
   }
 
   @override
@@ -3190,6 +3192,20 @@ class P2pLocalizationsKo extends P2pLocalizations {
 
   @override
   String p2pMakeBookFull(String coordinator) {
-    return 'The book of $coordinator is at full capacity.';
+    return '$coordinator\'s book is full.';
   }
+
+  @override
+  String get p2pMakeClearForm => 'Clear form';
+
+  @override
+  String get p2pMakeCurrentRateLabel => 'Order current rate:';
+
+  @override
+  String p2pMakeCurrentRateUnit(String currencyCode) {
+    return '$currencyCode/BTC';
+  }
+
+  @override
+  String get p2pMakeNoHost => 'No coordinator can be chosen right now.';
 }
