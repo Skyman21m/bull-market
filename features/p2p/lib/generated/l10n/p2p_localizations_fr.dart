@@ -3163,7 +3163,7 @@ class P2pLocalizationsFr extends P2pLocalizations {
 
   @override
   String p2pMakeRateBelow(String coordinator, String threshold) {
-    return 'Le prix annoncé par $coordinator est inférieur de plus de $threshold à celui du portefeuille Bull : votre caution serait plus grosse que prévu. Vérifiez-le avant de créer l’ordre.';
+    return 'Le prix annoncé par $coordinator est inférieur de plus de $threshold à celui du portefeuille Bull : votre caution serait plus élevée que prévu. Vérifiez-le avant de créer l’ordre.';
   }
 
   @override
@@ -3253,4 +3253,13 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String get p2pMakeNoHost =>
       'Aucun coordinateur ne peut être choisi pour l’instant.';
+
+  @override
+  String p2pMakePriceCheckChanged(String coordinator) {
+    return 'Le prix annoncé par $coordinator a changé depuis son affichage. Vérifiez la comparaison, puis appuyez de nouveau sur « Créer l’ordre ».';
+  }
+
+  @override
+  String get p2pMakePricesReadAgain =>
+      'Les limites et les prix ont été relus et ont changé. Vérifiez le formulaire, puis appuyez de nouveau sur « Créer l’ordre ».';
 }

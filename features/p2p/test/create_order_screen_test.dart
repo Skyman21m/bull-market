@@ -51,6 +51,12 @@ final class _Form {
 
   final List<String> limitsAsked = [];
 
+  /// The limits the coordinators answer, the test's by default.
+  CurrencyLimits? limits;
+
+  /// The price checks the makes were sent with.
+  final List<MakePriceSeen> seenSent = [];
+
   /// The coordinators that refuse first contacts in this run.
   final Set<String> refusing = {};
 
@@ -79,10 +85,11 @@ final class _Form {
       limitsAsked.add(coordinator.shortAlias);
       return unreadable.contains(coordinator.shortAlias)
           ? const Err(CoordinatorUnreachable())
-          : Ok(_limits);
+          : Ok(limits ?? _limits);
     },
-    make: (request, {required coordinator, required network}) {
+    make: (request, {required coordinator, required network, required seen}) {
       made.add(request);
+      seenSent.add(seen);
       final now = answer;
       if (now != null) return Future.value(now);
       final held = Completer<Result<MakeOutcome, MakeRefusal>>();
@@ -170,6 +177,12 @@ Future<void> _addMethod(WidgetTester tester, String text) async {
   await tester.enterText(find.byType(TextField).last, text);
   await tester.pump();
   await tester.tap(find.text('Add payment method'));
+  await settle(tester);
+}
+
+/// 100 typed in the amount: the Bull wallet's price is read from then on.
+Future<void> _typeAmount(WidgetTester tester) async {
+  await tester.enterText(_amountField, '100');
   await settle(tester);
 }
 
@@ -269,8 +282,8 @@ void main() {
           find.text('Please select if you want to buy or sell.'),
           findsOneWidget,
         );
-        // USD's price compared once more.
-        expect(form.pricesAsked, [eur, usd]);
+        // « Clear form » reads no price: the amount is emptied (security review of #181).
+        expect(form.pricesAsked, [eur]);
         expect(
           find.text('Order current rate: 100,000 USD/BTC'),
           findsOneWidget,
@@ -606,7 +619,8 @@ void main() {
         expect(find.text('GBP/BTC'), findsOneWidget);
         expect(find.textContaining('Order current rate: '), findsNothing);
         expect(find.textContaining('For comparison'), findsNothing);
-        expect(form.pricesAsked, [eur]);
+        // No amount typed: nothing read (security review of #181).
+        expect(form.pricesAsked, isEmpty);
       },
     );
   });
@@ -645,6 +659,7 @@ void main() {
     testWidgets('beyond 10 % above: the warning of fewer sats', (tester) async {
       final form = _Form()..rate = P2pWalletRateRead(80000);
       await _show(tester, form);
+      await _typeAmount(tester);
       expect(
         find.text(
           'For comparison, the Bull wallet\'s indicative price: 80,000 EUR/BTC (Temple of Sats: 91,711, gap +14.64%).',
@@ -662,6 +677,7 @@ void main() {
     testWidgets('within 10 %: no warning', (tester) async {
       final form = _Form()..rate = P2pWalletRateRead(100000);
       await _show(tester, form);
+      await _typeAmount(tester);
       expect(find.textContaining('gap -8.29%'), findsOneWidget);
       expect(find.textContaining('more than 10%'), findsNothing);
     });
@@ -671,6 +687,7 @@ void main() {
       (tester) async {
         final form = _Form()..rate = const P2pWalletRateNotPriced();
         await _show(tester, form);
+        await _typeAmount(tester);
         expect(
           find.text(
             'The Bull wallet has no price for EUR: rate not checked. You are trusting Temple of Sats\'s price: check it yourself before creating the order.',
@@ -687,6 +704,7 @@ void main() {
       (tester) async {
         final form = _Form()..rate = const P2pWalletRateUnavailable();
         await _show(tester, form);
+        await _typeAmount(tester);
         expect(
           find.text(
             'The Bull wallet\'s price of a bitcoin in EUR could not be read: rate not checked.',
@@ -707,6 +725,7 @@ void main() {
       (tester) async {
         final form = _Form()..holdPrices = true;
         await _show(tester, form);
+        await _typeAmount(tester);
         expect(
           find.text('Reading the Bull wallet\'s price for comparison…'),
           findsOneWidget,
@@ -734,6 +753,111 @@ void main() {
         );
         await settle(tester);
         expect(find.textContaining('100,000 USD/BTC'), findsWidgets);
+      },
+    );
+
+    testWidgets('no amount typed: no price read, no comparison line', (
+      tester,
+    ) async {
+      final form = _Form();
+      await _show(tester, form);
+      expect(form.pricesAsked, isEmpty);
+      expect(find.textContaining('For comparison'), findsNothing);
+      expect(find.text('Order current rate: 91,711 EUR/BTC'), findsOneWidget);
+      await _typeAmount(tester);
+      expect(form.pricesAsked, [eur]);
+      expect(find.textContaining('For comparison'), findsOneWidget);
+    });
+
+    testWidgets(
+      'read again at the press, a comparison gone « rate not checked »: no dialog, said, nothing sent (security review of #181, C2)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        form
+          ..now = form.now.add(const Duration(minutes: 4))
+          ..rate = const P2pWalletRateUnavailable();
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(
+          find.text(
+            'The limits and prices were read again and changed. Check the form, then press « Create order » again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('could not be read'), findsOneWidget);
+        expect(form.made, isEmpty);
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'read again at the press, limits that now refuse the amount: no dialog, the reason shown (functional review of #181, R14)',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        form
+          ..now = form.now.add(const Duration(minutes: 4))
+          ..limits = await tester.runAsync(
+            () => limitsOf({2: (91711.15, 150, 4000)}),
+          );
+        await tester.tap(_create);
+        await settle(tester);
+        expect(find.byType(StoreTokenDialog), findsNothing);
+        expect(
+          find.text('The amount is outside the allowed limits.'),
+          findsOneWidget,
+        );
+        expect(form.made, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a make refused because the price changed at the make: the app\'s words, the new check shown, a second press possible',
+      (tester) async {
+        final form = _Form();
+        await _show(tester, form);
+        await _fill(tester);
+        final lower = await tester.runAsync(() => limitsAt({2: 9171.115}));
+        form.answer = Err(
+          MakePriceCheckChanged(
+            lower ?? (throw StateError('no limits')),
+            MakePriceSeen.of(currency: eur, coordinatorPrice: 9171.115),
+          ),
+        );
+        await tester.tap(_create);
+        await settle(tester);
+        await tester.tap(find.text('Done'));
+        await settle(tester);
+        expect(
+          find.text(
+            'Temple of Sats\'s price changed since it was shown. Check the comparison, then press « Create order » again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('more than 10% below'), findsOneWidget);
+        expect(form.seenSent.single.verdict, MakePriceVerdict.within);
+        expect(_createEnabled(tester), isTrue);
+      },
+    );
+
+    testWidgets(
+      'the fields are locked while the press waits for the vault',
+      (tester) async {
+        final form = _Form()..vault = Completer();
+        await _show(tester, form);
+        await _fill(tester);
+        await tester.tap(_create);
+        await tester.pump();
+        expect(tester.widget<TextField>(_amountField).enabled, isFalse);
+        expect(tester.widget<TextField>(_premiumField).enabled, isFalse);
+        form.vault?.complete(const Ok(true));
+        await settle(tester);
       },
     );
   });

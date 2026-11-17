@@ -20,6 +20,17 @@ import 'support/make_form.dart';
 import 'support/make_harness.dart';
 
 /// The create form's cubit (#181): the default coordinator by the reference's lottery, the limits of the coordinator chosen, the price check of the owner's decision of 2026-11-17, and the make, once.
+/// [cubit]'s make of [request], with the coordinator and the price check the form shows, as the screen's press passes them.
+Future<void> _makeVia(MakeOrderCubit cubit, MakeOrderRequest request) =>
+    cubit.make(
+      request,
+      coordinator:
+          cubit.state.coordinator ?? (throw StateError('no coordinator')),
+      seen:
+          cubit.seen() ??
+          MakePriceSeen.of(currency: request.currency, coordinatorPrice: 1),
+    );
+
 void main() {
   group('over the make use case and its scripted coordinator', () {
     /// The cubit of [harness]'s network, its only coordinator Temple of Sats, the make the real use case's.
@@ -76,7 +87,7 @@ void main() {
         expect(cubit.state.coordinator, harness.host);
         expect(cubit.state.limits, isA<MakerFormLimitsRead>());
         final request = requestOf(cubit.state);
-        await Future.wait([cubit.make(request), cubit.make(request)]);
+        await Future.wait([_makeVia(cubit, request), _makeVia(cubit, request)]);
         await harness.settle();
         expect(makes(harness), 1);
         final made = cubit.state.progress;
@@ -99,7 +110,7 @@ void main() {
         expect(run.lastStatus.seen.status, isA<WaitingForMakerBond>());
         await run.subscription.cancel();
         // Made: nothing more is made, and no other coordinator is chosen.
-        await cubit.make(request);
+        await _makeVia(cubit, request);
         await cubit.choose(coordinatorOf('lake'));
         expect(makes(harness), 1);
         expect(cubit.state.coordinator, harness.host);
@@ -114,7 +125,7 @@ void main() {
         addTearDown(cubit.close);
         await cubit.start();
         await harness.settle();
-        await cubit.make(MakeHarness.request(currency: usd));
+        await _makeVia(cubit, MakeHarness.request(currency: usd));
         await harness.settle();
         expect(
           cubit.state.progress,
@@ -130,7 +141,7 @@ void main() {
         );
         expect(makes(harness), 0);
         expect(await harness.allTrades(), isEmpty);
-        await cubit.make(requestOf(cubit.state));
+        await _makeVia(cubit, requestOf(cubit.state));
         await harness.settle();
         expect(cubit.state.progress, isA<MakeMade>());
       },
@@ -145,7 +156,7 @@ void main() {
         addTearDown(cubit.close);
         await cubit.start();
         await harness.settle();
-        await cubit.make(requestOf(cubit.state));
+        await _makeVia(cubit, requestOf(cubit.state));
         await harness.settle();
         expect(
           cubit.state.progress,
@@ -176,12 +187,12 @@ void main() {
         await cubit.start();
         await harness.settle();
         final request = requestOf(cubit.state);
-        await cubit.make(request);
+        await _makeVia(cubit, request);
         await harness.settle();
         expect(cubit.state.progress, isA<MakeUncertain>());
         expect(cubit.state.locked, isTrue);
         expect(await harness.pendingMakes(), hasLength(1));
-        await cubit.make(request);
+        await _makeVia(cubit, request);
         await harness.settle();
         expect(makes(harness), 1);
       },
@@ -208,6 +219,10 @@ void main() {
         addTearDown(cubit.close);
         await cubit.start();
         await harness.settle();
+        // Nothing read until an amount is typed.
+        expect(asked, isEmpty);
+        await cubit.wantPrice(true);
+        await harness.settle();
         expect(asked, [(harness.network, eur, 91711.15)]);
         expect(
           cubit.state.price,
@@ -219,6 +234,119 @@ void main() {
         );
       },
     );
+    group('the price seen at the press, checked again by the make (security review of #181, C1)', () {
+      /// The cubit over [harness], the Bull wallet's price being [wallet], an amount typed.
+      Future<MakeOrderCubit> shown(
+        MakeHarness harness,
+        P2pWalletBitcoinRate wallet,
+      ) async {
+        final cubit = cubitOver(
+          harness,
+          checkPrice: (network, currency, price) async => MakePriceCheck.of(
+            currency: currency,
+            coordinatorPrice: price,
+            wallet: wallet,
+          ),
+        );
+        addTearDown(cubit.close);
+        await cubit.start();
+        await harness.settle();
+        await cubit.wantPrice(true);
+        await harness.settle();
+        return cubit;
+      }
+
+      test(
+        'the reviewer\'s scenario: a fair price shown, ten times too low at the make: refused before any robot, the red check shown, then a second press makes the order',
+        () async {
+          final harness = await MakeHarness.start();
+          final cubit = await shown(harness, P2pWalletRateRead(91711.15));
+          expect(cubit.seen()?.verdict, MakePriceVerdict.within);
+          final request = requestOf(cubit.state);
+          harness.coordinator.prices[2] = 9171.115;
+          await _makeVia(cubit, request);
+          await harness.settle();
+          expect(
+            cubit.state.progress,
+            isA<MakeIdle>().having(
+              (idle) => idle.problem,
+              'problem',
+              isA<MakeWasRefused>().having(
+                (refused) => refused.refusal,
+                'refusal',
+                isA<MakePriceCheckChanged>(),
+              ),
+            ),
+          );
+          expect(makes(harness), 0);
+          expect(await harness.allTrades(), isEmpty);
+          expect(await harness.pendingMakes(), isEmpty);
+          expect(cubit.seen()?.verdict, MakePriceVerdict.below);
+          // Pressed again, the red seen: made, at the price shown.
+          await _makeVia(cubit, requestOf(cubit.state));
+          await harness.settle();
+          expect(cubit.state.progress, isA<MakeMade>());
+          expect(makes(harness), 1);
+        },
+      );
+
+      test('a price that moves within the threshold: made', () async {
+        final harness = await MakeHarness.start();
+        final cubit = await shown(harness, P2pWalletRateRead(91711.15));
+        final request = requestOf(cubit.state);
+        harness.coordinator.prices[2] = 93000;
+        await _makeVia(cubit, request);
+        await harness.settle();
+        expect(cubit.state.progress, isA<MakeMade>());
+      });
+
+      test('a red check seen and still red: made', () async {
+        final harness = await MakeHarness.start();
+        final cubit = await shown(harness, P2pWalletRateRead(110000));
+        expect(cubit.seen()?.verdict, MakePriceVerdict.below);
+        final request = requestOf(cubit.state);
+        harness.coordinator.prices[2] = 91000;
+        await _makeVia(cubit, request);
+        await harness.settle();
+        expect(cubit.state.progress, isA<MakeMade>());
+      });
+
+      for (final (name, wallet, verdict) in [
+        (
+          'a currency the Bull wallet does not price',
+          const P2pWalletRateNotPriced(),
+          MakePriceVerdict.notPriced,
+        ),
+        (
+          'a Bull wallet\'s price that could not be read',
+          const P2pWalletRateUnavailable(),
+          MakePriceVerdict.unverified,
+        ),
+      ]) {
+        test(
+          '$name: made within 10 % of the price shown, refused beyond',
+          () async {
+            final harness = await MakeHarness.start();
+            final cubit = await shown(harness, wallet);
+            expect(cubit.seen()?.verdict, verdict);
+            harness.coordinator.prices[2] = 91711.15 * 0.85;
+            await _makeVia(cubit, requestOf(cubit.state));
+            await harness.settle();
+            expect(makes(harness), 0);
+            expect(await harness.allTrades(), isEmpty);
+            expect(
+              (cubit.state.limits as MakerFormLimitsRead).limits[eur]?.price,
+              91711.15 * 0.85,
+            );
+            harness.coordinator.prices[2] = 91711.15 * 0.85 * 1.05;
+            await _makeVia(cubit, requestOf(cubit.state));
+            await harness.settle();
+            expect(cubit.state.progress, isA<MakeMade>());
+          },
+        );
+      }
+    });
+
   });
 
   group('over fakes', () {
@@ -263,11 +391,12 @@ void main() {
             }
             return Ok(limits);
           },
-          make: (request, {required coordinator, required network}) =>
+          make:
+              (request, {required coordinator, required network, required seen}) =>
               throw StateError('no make here'),
           hasGarageKey: (_) async => const Ok(true),
           lottery: CoordinatorLottery(() => 0.5),
-          now: () => DateTime.utc(2026, 11, 17),
+          now: () => calls.now,
           checkPrice: wallet
               ? (network, currency, price) async {
                   calls.priceAsked.add((currency, price));
@@ -339,6 +468,7 @@ void main() {
         await pumpEventQueue();
         final late = Completer<Result<CurrencyLimits, CoordinatorFailure>>();
         calls.heldLimits['temple'] = late;
+        await cubit.wantPrice(true);
         unawaited(cubit.choose(coordinatorOf('temple')));
         await pumpEventQueue();
         expect(cubit.state.limits, isA<MakerFormLimitsLoading>());
@@ -356,7 +486,9 @@ void main() {
         await cubit.choose(coordinatorOf('lake'));
         expect(cubit.state.limits, isA<MakerFormLimitsRead>());
         expect(calls.limitsAsked, ['temple', 'temple', 'lake', 'lake']);
-        expect(calls.priceAsked.length, 2);
+        // Compared again from the Bull wallet's price read less than 3 minutes ago: no other request (security review of #181).
+        expect(calls.priceAsked.length, 1);
+        expect(cubit.state.price, isA<MakeFormPriceChecked>());
       },
     );
 
@@ -368,6 +500,8 @@ void main() {
         addTearDown(cubit.close);
         await cubit.start();
         await pumpEventQueue();
+        expect(calls.priceAsked, isEmpty);
+        await cubit.wantPrice(true);
         expect(calls.priceAsked, [(eur, 91711.15)]);
         calls.holdPrices = true;
         unawaited(cubit.showCurrency(usd));
@@ -401,6 +535,7 @@ void main() {
         final cubit = cubitOf(calls);
         addTearDown(cubit.close);
         await cubit.start();
+        await cubit.wantPrice(true);
         await pumpEventQueue();
         expect(
           (cubit.state.price as MakeFormPriceChecked).check,
@@ -436,6 +571,7 @@ void main() {
       final cubit = cubitOf(calls);
       addTearDown(cubit.close);
       await cubit.start();
+      await cubit.wantPrice(true);
       await pumpEventQueue();
       expect(
         (cubit.state.price as MakeFormPriceChecked).check,
@@ -445,11 +581,172 @@ void main() {
       expect(calls.priceAsked, hasLength(1));
     });
 
+    test(
+      'the Bull wallet\'s price outside Tor: only once an amount is typed, never for « Clear form », not again within 3 minutes for the currency whatever the host, again after',
+      () async {
+        final calls = _Calls();
+        final cubit = cubitOf(calls);
+        addTearDown(cubit.close);
+        await cubit.start();
+        await pumpEventQueue();
+        expect(calls.priceAsked, isEmpty);
+        expect(cubit.state.price, isA<MakeFormPriceNone>());
+        await cubit.wantPrice(true);
+        expect(calls.priceAsked, hasLength(1));
+        // The amount taken away, then typed again: nothing read anew.
+        await cubit.wantPrice(false);
+        await cubit.wantPrice(true);
+        expect(calls.priceAsked, hasLength(1));
+        // « Clear form »: the amount emptied, USD shown, nothing asked.
+        await cubit.wantPrice(false);
+        await cubit.showCurrency(usd);
+        expect(calls.priceAsked, hasLength(1));
+        expect(cubit.state.price, isA<MakeFormPriceNone>());
+        await cubit.showCurrency(eur);
+        await cubit.wantPrice(true);
+        expect(calls.priceAsked, hasLength(1));
+        // Another host, or the same, within 3 minutes: compared from the price already read.
+        await cubit.choose(coordinatorOf('lake'));
+        await cubit.choose(coordinatorOf('lake'));
+        expect(calls.priceAsked, hasLength(1));
+        expect(cubit.state.price, isA<MakeFormPriceChecked>());
+        // After 3 minutes, the next host's limits bring a new read.
+        calls.now = calls.now.add(const Duration(minutes: 4));
+        await cubit.choose(coordinatorOf('temple'));
+        expect(calls.priceAsked, hasLength(2));
+      },
+    );
+
+    test(
+      'refreshed at the press only when the limits are more than 3 minutes old',
+      () async {
+        final calls = _Calls();
+        final cubit = cubitOf(calls);
+        addTearDown(cubit.close);
+        await cubit.start();
+        await cubit.wantPrice(true);
+        calls.now = calls.now.add(const Duration(minutes: 2));
+        expect(await cubit.refreshIfStale(), isFalse);
+        expect(calls.limitsAsked, hasLength(1));
+        calls.now = calls.now.add(const Duration(minutes: 2));
+        expect(await cubit.refreshIfStale(), isTrue);
+        expect(calls.limitsAsked, hasLength(2));
+        expect(calls.priceAsked, hasLength(2));
+      },
+    );
+
+    test(
+      'what the form shows at the press: the verdict of its line, and its change when the price service goes silent (security review of #181, C2)',
+      () async {
+        final calls = _Calls();
+        final cubit = cubitOf(calls);
+        addTearDown(cubit.close);
+        await cubit.start();
+        expect(cubit.seen()?.verdict, MakePriceVerdict.notRead);
+        await cubit.wantPrice(true);
+        final before = cubit.seen();
+        expect(before?.verdict, MakePriceVerdict.within);
+        calls
+          ..now = calls.now.add(const Duration(minutes: 4))
+          ..rate = const P2pWalletRateUnavailable();
+        expect(await cubit.refreshIfStale(), isTrue);
+        final after = cubit.seen();
+        expect(after?.verdict, MakePriceVerdict.unverified);
+        expect(
+          before != null && after != null && after.sameLineAs(before),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'a make refused because the price changed: the new limits and the check at their price shown, nothing read anew, the form free',
+      () async {
+        final calls = _Calls();
+        final lower = await limitsAt({2: 9171.115});
+        MakePriceSeen? sent;
+        final cubit = MakeOrderCubit(
+          RobosatsNetwork.mainnet,
+          currency: eur,
+          listHosts: (network) => RobotHosts(network, [
+            RobotHost(coordinatorOf('temple'), refusesFirstContacts: false),
+          ]),
+          fetchInfo: (_, _) async => const Err(CoordinatorUnreachable()),
+          fetchLimits: (_, _) async => Ok(limits),
+          make:
+              (
+                request, {
+                required coordinator,
+                required network,
+                required seen,
+              }) async {
+                sent = seen;
+                return Err(
+                  MakePriceCheckChanged(
+                    lower,
+                    MakePriceSeen.of(
+                      currency: eur,
+                      coordinatorPrice: 9171.115,
+                      check: seen.checkAt(9171.115),
+                    ),
+                  ),
+                );
+              },
+          hasGarageKey: (_) async => const Ok(true),
+          lottery: CoordinatorLottery(() => 0.5),
+          now: () => calls.now,
+          checkPrice: (network, currency, price) async {
+            calls.priceAsked.add((currency, price));
+            return MakePriceCheck.of(
+              currency: currency,
+              coordinatorPrice: price,
+              wallet: P2pWalletRateRead(91711.15),
+            );
+          },
+        );
+        addTearDown(cubit.close);
+        await cubit.start();
+        await cubit.wantPrice(true);
+        final request = MakerFormCheck.of(
+          MakerFormInput(
+            type: OrderType.buy,
+            currency: eur,
+            amount: '100',
+            paymentMethods: const ['Revolut'],
+            premium: '',
+          ),
+          coordinatorsLoaded: true,
+          market: cubit.state.limits,
+          sizeLimitSats: cubit.state.sizeLimitSats,
+        ).request;
+        await _makeVia(cubit, request ?? (throw StateError('no request')));
+        expect(sent?.verdict, MakePriceVerdict.within);
+        expect(
+          cubit.state.progress,
+          isA<MakeIdle>().having(
+            (idle) => idle.problem,
+            'problem',
+            isA<MakeWasRefused>(),
+          ),
+        );
+        expect(
+          (cubit.state.limits as MakerFormLimitsRead).limits[eur]?.price,
+          9171.115,
+        );
+        final shown = (cubit.state.price as MakeFormPriceChecked).check;
+        expect(shown, isA<MakePriceCompared>());
+        expect((shown as MakePriceCompared).side, MakePriceSide.below);
+        expect(calls.priceAsked, hasLength(1));
+        expect(cubit.seen()?.verdict, MakePriceVerdict.below);
+      },
+    );
+
     test('without the wallet\'s port, no price is read', () async {
       final calls = _Calls();
       final cubit = cubitOf(calls, wallet: false);
       addTearDown(cubit.close);
       await cubit.start();
+      await cubit.wantPrice(true);
       await pumpEventQueue();
       expect(cubit.state.price, isA<MakeFormPriceNone>());
       expect(calls.priceAsked, isEmpty);
@@ -462,7 +759,8 @@ void main() {
         listHosts: (network) => RobotHosts(network, const []),
         fetchInfo: (_, _) => throw StateError('none'),
         fetchLimits: (_, _) => throw StateError('none'),
-        make: (request, {required coordinator, required network}) =>
+        make:
+            (request, {required coordinator, required network, required seen}) =>
             throw StateError('none'),
         hasGarageKey: (_) async => const Err(P2pStorageFailure()),
         lottery: CoordinatorLottery(() => 0.5),
@@ -489,4 +787,7 @@ final class _Calls {
   final heldPrices = <Completer<MakePriceCheck>>[];
   P2pWalletBitcoinRate rate = P2pWalletRateRead(91711.15);
   bool holdPrices = false;
+
+  /// The cubit's clock.
+  DateTime now = DateTime.utc(2026, 11, 17);
 }

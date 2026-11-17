@@ -3208,4 +3208,13 @@ class P2pLocalizationsBg extends P2pLocalizations {
 
   @override
   String get p2pMakeNoHost => 'No coordinator can be chosen right now.';
+
+  @override
+  String p2pMakePriceCheckChanged(String coordinator) {
+    return '$coordinator\'s price changed since it was shown. Check the comparison, then press « Create order » again.';
+  }
+
+  @override
+  String get p2pMakePricesReadAgain =>
+      'The limits and prices were read again and changed. Check the form, then press « Create order » again.';
 }

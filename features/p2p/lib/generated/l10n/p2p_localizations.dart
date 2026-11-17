@@ -5117,6 +5117,18 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'No coordinator can be chosen right now.'**
   String get p2pMakeNoHost;
+
+  /// Not in the RoboSats texts: the project's own: the make read the coordinator's price again just before it would reserve a robot, and the price check under the form would not be the one the user saw (`MakePriceCheckChanged`, security review of #181, C1); nothing was sent with a robot, the form shows the new check. « Create order » is the button's label.
+  ///
+  /// In en, this message translates to:
+  /// **'{coordinator}\'s price changed since it was shown. Check the comparison, then press « Create order » again.'**
+  String p2pMakePriceCheckChanged(String coordinator);
+
+  /// Not in the RoboSats texts: the project's own: « Create order » read the coordinator's limits and the Bull wallet's price again, more than 3 minutes old, and the form now shows another request or another price check: the press went no further (security review of #181, C2).
+  ///
+  /// In en, this message translates to:
+  /// **'The limits and prices were read again and changed. Check the form, then press « Create order » again.'**
+  String get p2pMakePricesReadAgain;
 }
 
 class _P2pLocalizationsDelegate
