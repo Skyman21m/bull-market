@@ -2099,6 +2099,12 @@ abstract class P2pLocalizations {
   /// **'Lock {amountSats} Sats to TAKE order'**
   String p2pTradeTitleLockBond(String amountSats);
 
+  /// The official client's text: the maker's title at status 0 (`TradeBox/index.tsx:379-389`, #180), which neither `en.json` nor `fr.json` lists (design note `docs/design/phase-3-making-an-order.md` § 1.11); the French is the project's, in the words of `p2pTradeTitleLockBond`. {amountSats} is the maker bond in sats (`bond_satoshis`), written in the conventions of the language.
+  ///
+  /// In en, this message translates to:
+  /// **'Lock {amountSats} Sats to PUBLISH order'**
+  String p2pTradeTitleLockBondPublish(String amountSats);
+
   /// The official client's text: the seller's title at 6 and 7, in the warning colour (`TradeBox/index.tsx:479-485`, `:497-503`, #96), which neither `en.json` nor `fr.json` lists (design note § 1.7); the French is the design note's. {amountSats} is the escrow in sats (`escrow_satoshis`), written in the conventions of the language.
   ///
   /// In en, this message translates to:
@@ -3266,6 +3272,41 @@ abstract class P2pLocalizations {
   /// In en, this message translates to:
   /// **'Total: {total} sats. Left in Instant payments: {left} sats.'**
   String p2pPayTotal(String total, String left);
+
+  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (RoboSats has no such rule, design note § 3.3): the bond the order implies at the wallet's own price of a bitcoin, read at the moment of paying, with the order's premium, and how far the invoice is from it. {price} is that price, {currency} the order's currency code, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.
+  ///
+  /// In en, this message translates to:
+  /// **'At this wallet\'s price, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
+  String p2pPayRateWallet(
+    String price,
+    String currency,
+    String expected,
+    String gap,
+  );
+
+  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the order's currency is one the wallet's price service does not quote, so the bond is compared with the coordinator's own price read before the make, a weaker reference, said as such. {currency} is the order's currency code, {coordinator} the coordinator's name, {price} its price of the creation, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet has no price for {currency}: rate not checked by the wallet. At the price {coordinator} gave when you made the order, a weaker check, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
+  String p2pPayRateNotPriced(
+    String currency,
+    String coordinator,
+    String price,
+    String expected,
+    String gap,
+  );
+
+  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet prices the order's currency, but its price of a bitcoin could not be read at the moment of paying (no connection, the price service down, an answer that is no price), so nothing is compared and the coordinator's price of the creation is never cited (the owner's decision of 2026-11-17, with the words « rate not checked ») (functional review of #180, C1: a price announced ten times too low would make a bond ten times too large look right); shown in the warning colour with « Retry », which reads the price again; the user may still pay. {currency} is the order's currency code.
+  ///
+  /// In en, this message translates to:
+  /// **'This wallet\'s price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or pay without the check.'**
+  String p2pPayRateUnverified(String currency);
+
+  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the red warning when the invoice asks more than the owner's threshold above the bond expected; the user may still pay. {threshold} is the threshold with its percent sign, {asked} the sats the invoice asks, {expected} the sats expected.
+  ///
+  /// In en, this message translates to:
+  /// **'This bond is more than {threshold} above that: {asked} sats asked, {expected} sats expected. Check it before you pay.'**
+  String p2pPayRateWarning(String threshold, String asked, String expected);
 
   /// The panel of « Pay with this wallet » at status 3 (#100), the project's own text (RoboSats has no such panel: the owner's request), from the study of #100 § 4: the confirmation's button, the only tap that pays.
   ///

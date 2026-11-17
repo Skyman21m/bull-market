@@ -20,7 +20,7 @@ import '../widgets/order_detail_row.dart';
 import '../widgets/trade_button.dart';
 import 'wallet_payment_section.dart';
 
-/// The prompt of status 3, the taker's bond to lock: the official client's `Prompts/LockInvoice.tsx` (concept `bond`, commit ff1998c) in the wallet's look, with the owner's layout (#88).
+/// The prompt of status 3, the taker's bond to lock, and of a maker's 0, the maker bond to lock before the order is published (#180, `TradeBox/index.tsx:379-389`): the official client's `Prompts/LockInvoice.tsx` (concept `bond`, commit ff1998c) in the wallet's look, with the owner's layout (#88), the same for both.
 ///
 /// From the top: « You are BUYING BTC », or « You are SELLING BTC » for a taker who sells (#96); the slot of « Pay with this wallet » ([WalletPaymentSection], empty today); « Pay with another wallet », which holds what the reference shows: « See Compatible Wallets » (the link shown for copy, never opened), the QR code of the invoice in capitals and « Copy to clipboard », with the facts read from the invoice under the QR code (amount, expiry, network, description: design note § 4.4); then « This is a hold invoice… ».
 /// « Pay with another wallet » is open at first while the wallet's slot offers nothing, as today.
@@ -28,7 +28,9 @@ import 'wallet_payment_section.dart';
 /// Tapping the QR code opens nothing (the reference opens `lightning:`; the feature cannot open a link).
 class BondPanel extends StatelessWidget {
   final TradeRecord record;
-  final WaitingForTakerBond status;
+
+  /// The bond's step: a taker's `WaitingForTakerBond` or a maker's `WaitingForMakerBond`, whose invoice the panel shows; a status without one draws nothing.
+  final TradeStatus status;
 
   /// [status] as the screen shows it, which the wallet's slot is given.
   final TradeSeen seen;
@@ -66,14 +68,17 @@ class BondPanel extends StatelessWidget {
     final colors = context.bull;
     final text = Theme.of(context).textTheme;
     final l10n = P2pLocalizations.of(context);
+    final invoice = status.invoice;
+    if (invoice == null || invoice.step != InvoiceStep.bond) {
+      return const SizedBox.shrink();
+    }
     final request = WalletPaymentRequest(
       record: record,
       status: status,
       seen: seen,
-      amount: status.bond.orderAmount,
-      invoiceExpired: invoiceExpiredAt(status.bond, now),
+      amount: invoice.orderAmount,
+      invoiceExpired: invoiceExpiredAt(invoice, now),
     );
-    final invoice = status.bond;
     // Past the invoice's end the wallet offers nothing more, but a payment it made or is making is still said (the slot decides).
     final slot = payable
         ? WalletPaymentSection.offer(context, walletPayment, request)

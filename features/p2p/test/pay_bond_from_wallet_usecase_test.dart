@@ -75,6 +75,12 @@ final class _Wallet implements P2pWalletPort {
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
     RobosatsNetwork network,
   ) => fake.newReceiveAddress(network);
+
+  @override
+  Future<P2pWalletBitcoinRate> bitcoinRate(
+    RobosatsNetwork network,
+    RobosatsCurrency currency,
+  ) => fake.bitcoinRate(network, currency);
 }
 
 /// Payments that cannot be written.
@@ -619,7 +625,7 @@ void main() {
   });
 
   group('a maker\'s trade, opened by the reader since #179', () {
-    // The guard of money that keeps a maker's bond and escrow from this wallet until #180 and #187: a test of behaviour, as this file's earlier pin of its text announced (security review of #179).
+    // The guard of money: since #180 a maker's bond at 0 is paid from this wallet, its escrow at 6 and 7 not until #187; tests of behaviour, as this file's earlier pin of its text announced (security review of #179). The maker bond's rules and refusals in full: `maker_bond_from_wallet_test.dart`.
     Future<void> neverPaid({
       required bool sell,
       required InvoiceStep step,
@@ -690,13 +696,74 @@ void main() {
       expect(fake.paid, isEmpty);
     }
 
-    test('the maker bond at 0: never offered, quoted or paid', () async {
-      await neverPaid(
-        sell: false,
-        step: InvoiceStep.bond,
-        at: isA<WaitingForMakerBond>(),
-      );
-    });
+    test(
+      'the maker bond at 0: offered, quoted and paid since #180, under the step bond, and never by the escrow\'s instance',
+      () async {
+        final harness = await MakeHarness.start();
+        final made = await harness.makeOrder(MakeHarness.request());
+        final record = switch (made) {
+          Ok(value: final MakeStarted started) => started.record,
+          final other => fail('$other'),
+        };
+        final run = harness.watchOf(record);
+        await harness.settle();
+        final seen = run.lastStatus.seen;
+        await run.subscription.cancel();
+        expect(seen.stored, isTrue);
+        expect(seen.status, isA<WaitingForMakerBond>());
+        final fake = FakeP2pWalletPort(Ok(Sats.fromInt(5000000)));
+        final payments = TradePaymentRepositoryImpl(harness.database);
+        PayBondFromWalletUsecase payBondOf(InvoiceStep step) =>
+            PayBondFromWalletUsecase(
+              harness.reader,
+              harness.limiter,
+              payments,
+              fake,
+              harness.locks,
+              BondPaymentsInFlight(),
+              step: step,
+            );
+        expect(
+          await payBondOf(InvoiceStep.escrow).checkBond(record, seen),
+          isA<Err<Object?, BondPayRefusal>>(),
+        );
+        final payBond = payBondOf(InvoiceStep.bond);
+        final offered = switch (await payBond.checkBond(record, seen)) {
+          Ok(:final value) => value,
+          Err(:final failure) => fail('$failure'),
+        };
+        final quote = P2pWalletQuote(
+          invoice: offered.walletInvoice,
+          payin: Sats(offered.walletInvoice.amount.value + BigInt.from(120)),
+          networkFee: Sats.fromInt(27),
+          balance: Sats.fromInt(5000000),
+          quotedAt: harness.now,
+        );
+        fake
+          ..scriptQuote(Ok(quote))
+          ..scriptPayment(
+            Ok(
+              P2pWalletPayment(
+                id: 'swap-made',
+                paymentHash: quote.invoice.paymentHash,
+              ),
+            ),
+          );
+        expect(
+          await payBond.quoteBond(record, seen),
+          isA<Ok<P2pWalletQuote, BondPayRefusal>>(),
+        );
+        expect(
+          await payBond.payBond(record, accepted: quote),
+          isA<Ok<P2pWalletPayment, BondPayRefusal>>(),
+        );
+        expect(fake.paid, hasLength(1));
+        expect(switch (await payments.paymentOf(record, InvoiceStep.bond)) {
+          Ok(:final value) => value?.walletPaymentId,
+          Err() => null,
+        }, 'swap-made');
+      },
+    );
 
     for (final status in [6, 7]) {
       test(

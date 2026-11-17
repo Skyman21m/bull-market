@@ -214,7 +214,8 @@ const testPaymentHash =
 /// Like the real port, [payInvoice] takes a quote once (a quote presented again is `P2pWalletQuoteStale`, without taking an answer) and gives an invoice one attempt: once a payment of a payment hash was answered with a handle (or `P2pWalletBroadcastUnknown`, `P2pWalletPaymentInterrupted`), a later payment of that hash is `P2pWalletPaymentExists` with the progress last set for it (preparing when none), without taking an answer either.
 /// [watchPayment] gives the last progress given to [setProgress] for that payment, then each new one; a refusal ends the stream. [findPayment] answers what [setFound] gave for the hash, `null` otherwise.
 /// Each [newLightningInvoice] takes the next answer of [scriptInvoice], each [newReceiveAddress] the next of [scriptAddress], in order, and fails with a `StateError` when none is left.
-/// It records what it was asked: [balanceRequests], [quoted], [paid], [found], [invoicesAsked] and [addressesAsked].
+/// [bitcoinRate] answers [rate], `P2pWalletRateUnavailable` until the test sets it.
+/// It records what it was asked: [balanceRequests], [quoted], [paid], [found], [invoicesAsked], [addressesAsked] and [ratesAsked].
 @visibleForTesting
 final class FakeP2pWalletPort implements P2pWalletPort {
   Result<Sats, P2pWalletRefusal> _balance;
@@ -417,6 +418,21 @@ final class FakeP2pWalletPort implements P2pWalletPort {
   ) async {
     found.add(paymentHash);
     return Ok(_found[paymentHash]);
+  }
+
+  /// What [bitcoinRate] answers, whatever the currency: unavailable until a test sets it.
+  P2pWalletBitcoinRate rate = const P2pWalletRateUnavailable();
+
+  /// The prices asked, with their network and currency, in order.
+  final List<(RobosatsNetwork, RobosatsCurrency)> ratesAsked = [];
+
+  @override
+  Future<P2pWalletBitcoinRate> bitcoinRate(
+    RobosatsNetwork network,
+    RobosatsCurrency currency,
+  ) async {
+    ratesAsked.add((network, currency));
+    return rate;
   }
 }
 

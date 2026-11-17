@@ -13,6 +13,7 @@ import '../../trade/trade_status.dart';
 import '../../trade/trade_terms.dart';
 import '../../trade/trade_watch.dart';
 import '../../trade/wallet_payment.dart';
+import '../../trade/wallet_rate_check.dart';
 import '../../trade_record.dart';
 import 'bond_payments_in_flight.dart';
 import 'trade_reader.dart';
@@ -20,10 +21,11 @@ import 'trade_take_locks.dart';
 
 /// Pays a trade's bond (#100, W4), or a seller's escrow (#97), from the wallet's Instant Payments wallet, inside the trade screen: the only caller of [P2pWalletPort.payInvoice] (`wallet_port_architecture_test.dart`).
 ///
-/// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], the escrow from a stored `WaitingForBoth` or `WaitingForEscrow` within [TradeTerms.escrowCeiling]; the methods keep the bond's names, the step it was written for first.
+/// One instance per [step], the same code for both: the bond is paid from a stored `WaitingForTakerBond` within [TradeTerms.bondCeiling], or for an order made here from a stored `WaitingForMakerBond` within the same getter, which is then `MakerTerms.bondCeiling` (#180); the escrow from a stored `WaitingForBoth` or `WaitingForEscrow` within [TradeTerms.escrowCeiling], a taker's only (a maker seller's escrow is #187's, refused here whatever its status); the methods keep the bond's names, the step it was written for first.
 ///
 /// - [watchBalance]: what the Instant Payments wallet can spend, as the wallet reads it.
-/// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
+/// - [quoteBond]: on the user's tap of « Pay with this wallet » only, the swap service's quote for the invoice the status shown offers (`walletPaymentFor`, at most the bond the take's or the make's terms imply, [TradeTerms.bondCeiling]); nothing is created at the service.
+/// - [rateOfBond]: for an order made here, once the quote is given and before the confirmation is shown, how the bond quoted compares with the bond at the wallet's own price of a bitcoin ([WalletRateCheck], the owner's payment rule of 2026-11-17); `null` for a take, whose rule is the take's. Information and a warning for the confirmation: it never refuses, and [payBond] never reads it.
 /// - [payBond]: on the user's confirmation of that quote only, one action of the order at a time ([TradeTakeLocks], shared with the take and the payout). It reads the order again with the trade's robot, keeps what the read gives, and pays only when the status it now stores is [step]'s and `walletPaymentFor` offers the very invoice quoted; the payment is recorded ([TradePaymentRepository.recordStart]) before the wallet is asked, and the wallet's id of it after.
 /// - [followBond]: where the payment recorded for the trade stands, from the wallet's records ([P2pWalletPort.findPayment], then [P2pWalletPort.watchPayment]); it pays nothing.
 ///
@@ -94,6 +96,34 @@ final class PayBondFromWalletUsecase {
       Ok(:final value) => Ok(value),
       Err(:final failure) => Err(BondPayWalletRefused(failure)),
     };
+  }
+
+  /// For an order made here, how the bond of [quote] (the swap service's quote [quoteBond] gave) compares with the bond the order implies at the wallet's own price of a bitcoin, read now through the wallet's port (the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3); `null` for a take, and for the escrow's step, whose rules are their own (#187).
+  ///
+  /// Asked once the quote is given, before the confirmation is shown: the price is the one of the moment of paying. The amount compared is the quote's invoice's, the one the wallet pays. It refuses nothing: a bond beyond the owner's threshold is shown in red, and [payBond] still pays what the user confirms. The wallet's price is asked only for a maker's bond, never at a take.
+  Future<Result<WalletRateCheck?, BondPayRefusal>> rateOfBond(
+    TradeRecord record,
+    P2pWalletQuote quote,
+  ) async {
+    if (step != InvoiceStep.bond) return const Ok(null);
+    final TradeTerms terms;
+    switch (await _reader.open(record)) {
+      case TradeOpened(:final trade):
+        terms = trade.terms;
+      case TradeNotRestorable() || TradeTakeNeverSent():
+        return const Err(BondPayNotAtBondStep());
+      case TradeNotOpened(:final failure):
+        return Err(BondPayRecordsUnreadable(failure));
+    }
+    switch (terms.side) {
+      case TakenSide():
+        return const Ok(null);
+      case MadeSide(:final maker):
+        final rate = await _wallet.bitcoinRate(maker.network, maker.currency);
+        return Ok(
+          WalletRateCheck.ofMakerBond(maker, asked: quote.amount, wallet: rate),
+        );
+    }
   }
 
   /// Pays the [step] of [record] within [accepted], the quote the user confirmed.
@@ -274,9 +304,10 @@ final class PayBondFromWalletUsecase {
     }
   }
 
-  /// Whether [status] is the step of [step]: the bond's pre-take, or the statuses that await the seller's escrow (`walletPaymentFor` then offers only an escrow invoice, which a buyer's status never holds).
+  /// Whether [status] is the step of [step]: the bond's pre-take or, for an order made here, the maker bond at 0 (#180), or the statuses that await the seller's escrow (`walletPaymentFor` then offers only an escrow invoice, which a buyer's status never holds). Which of them the trade's own terms may be paid at, [_offered] says.
   bool _atStep(TradeStatus status) => switch (step) {
-    InvoiceStep.bond => status is WaitingForTakerBond,
+    InvoiceStep.bond =>
+      status is WaitingForTakerBond || status is WaitingForMakerBond,
     InvoiceStep.escrow =>
       status is WaitingForBoth || status is WaitingForEscrow,
   };
@@ -285,15 +316,25 @@ final class PayBondFromWalletUsecase {
     TradeTerms terms,
     TradeStatus status,
   ) {
-    // A maker's bond and escrow are paid under their own rules from #180 and #187 (the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3); until then nothing is offered on a maker's terms, whatever its status: since #178 the state machine follows a maker's trade, and since #179 the reader opens one, so this refusal is what keeps a maker's bond and escrow from this wallet.
-    if (terms is! TradeTerms<TakenSide>) {
-      return const Err(BondPayNotAtBondStep());
-    }
-    return switch (walletPaymentFor(
-      accepted: switch (step) {
+    final Sats accepted;
+    if (terms is TradeTerms<TakenSide>) {
+      // A taker is never at a maker's step: its terms are paid at its own steps only.
+      if (status is WaitingForMakerBond) {
+        return const Err(BondPayNotAtBondStep());
+      }
+      accepted = switch (step) {
         InvoiceStep.bond => terms.bondCeiling,
         InvoiceStep.escrow => terms.escrowCeiling,
-      },
+      };
+    } else {
+      // An order made here: its maker bond at 0 only (#180), within `MakerTerms.bondCeiling` (`TradeTerms.bondCeiling` of a maker's side), the bond at the creation's price with the state machine's tolerance; the owner's payment rule then compares the quote with the wallet's own price ([rateOfBond]). A maker seller's escrow at 6 and 7 is paid under its own rules from #187: until then nothing is offered for it, whatever its status.
+      if (step != InvoiceStep.bond || status is! WaitingForMakerBond) {
+        return const Err(BondPayNotAtBondStep());
+      }
+      accepted = terms.bondCeiling;
+    }
+    return switch (walletPaymentFor(
+      accepted: accepted,
       status: status,
       step: step,
       now: _reader.now(),

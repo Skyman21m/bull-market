@@ -10,11 +10,13 @@ import 'package:bb_mobile/features/p2p_wallet/domain/repositories/wallet_payment
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/find_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/pay_checked_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/quote_invoice_payment_usecase.dart';
+import 'package:bb_mobile/features/p2p_wallet/domain/usecases/read_wallet_rate_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_address_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/receive_wallet_invoice_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_instant_balance_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/domain/usecases/watch_wallet_payment_usecase.dart';
 import 'package:bb_mobile/features/p2p_wallet/public/p2p_wallet_facade.dart';
+import 'package:bull_pricer/bull_pricer.dart';
 import 'package:get_it/get_it.dart';
 
 /// Registers the wallet's side of the P2P feature's wallet port; nothing is read, asked or paid until the port is used.
@@ -46,6 +48,7 @@ class P2pWalletLocator {
     );
     locator.registerLazySingleton<P2pWalletFacade>(
       () => P2pWalletFacade(
+        locator(),
         locator(),
         locator(),
         locator(),
@@ -94,6 +97,10 @@ class P2pWalletLocator {
     );
     locator.registerFactory<ReceiveWalletAddressUsecase>(
       () => ReceiveWalletAddressUsecase(locator(), locator()),
+    );
+    // The wallet's own price of a bitcoin (#180), from the pricer its own screens read: for the payment rule of an order made here.
+    locator.registerFactory<ReadWalletRateUsecase>(
+      () => const ReadWalletRateUsecase(Pricer.getIndexPrice),
     );
   }
 }

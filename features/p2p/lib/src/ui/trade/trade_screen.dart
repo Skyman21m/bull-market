@@ -243,11 +243,11 @@ class _TradeScreenState extends State<TradeScreen> with WidgetsBindingObserver {
                       line,
                       const Gap(BullSpacing.sm),
                     ],
-                    // After status 3, where a bond paid by this wallet stands (in progress, refunded, kept, under review); at status 3 the panel itself says it.
+                    // After status 3, or a maker's 0 (#180), where a bond paid by this wallet stands (in progress, refunded, kept, under review); at the bond's step the panel itself says it.
                     if (widget.walletBondLine case final bondLine?
                         when view is! TradeWaiting &&
                             !(view is TradeContract &&
-                                view.status is WaitingForTakerBond)) ...[
+                                view.prompt == TradePrompt.lockInvoice)) ...[
                       bondLine(
                         context,
                         // Locked only while the bond is (the reference's bond line « locked »).
@@ -648,16 +648,21 @@ class _Contract extends StatelessWidget {
       coordinator: coordinator,
     );
     return switch ((contract.prompt, status)) {
-      (TradePrompt.lockInvoice, final WaitingForTakerBond bond) => BondPanel(
-        record: record,
-        status: bond,
-        seen: contract.seen,
-        walletPayment: walletPayment,
-        now: now,
-        swap: order?.currency.isBitcoin ?? false,
-        seller: record.role == TradeRole.seller,
-        payable: contract.payable,
-      ),
+      // The taker's bond at 3, or the maker bond at 0 (#180): the same prompt (`Prompts/LockInvoice.tsx`, concept `bond`).
+      (
+        TradePrompt.lockInvoice,
+        WaitingForTakerBond() || WaitingForMakerBond(),
+      ) =>
+        BondPanel(
+          record: record,
+          status: status,
+          seen: contract.seen,
+          walletPayment: walletPayment,
+          now: now,
+          swap: order?.currency.isBitcoin ?? false,
+          seller: record.role == TradeRole.seller,
+          payable: contract.payable,
+        ),
       // The seller's escrow (#96), from this wallet (#97) or another.
       (
         TradePrompt.lockEscrow,

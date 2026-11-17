@@ -298,6 +298,24 @@ final class MakerTerms {
   /// The maker bond the order implies, in sats at the rate of the creation, for display: an estimate, the bond invoice states the amount to lock.
   double get expectedBond => _expectedBond.toDouble();
 
+  /// The maker bond the order implies at [price], a price of one bitcoin in the order's currency that is not the creation's, exactly: the bond size of the sats of the order's largest amount (the maximum of a range) at [price] with the order's premium, the formula of [_expectedBond] (`Logics.calc_sats`, `api/logics.py:256-259`; `api/logics.py:1266-1268`), before any rounding.
+  ///
+  /// For the owner's payment rule of 2026-11-17 (design note § 3.3, `WalletRateCheck`), at the wallet's own price at the moment of paying. `null` when [price] is not a price [create] would take for [createdPrice] (not finite, below [minCreatedPrice], not below [maxCreatedPrice]), so that every figure computed from it is finite.
+  ExactRatio? bondAtPrice(double price) {
+    if (!price.isFinite ||
+        price < minCreatedPrice ||
+        price >= maxCreatedPrice) {
+      return null;
+    }
+    final rate =
+        _exact(price) * (_hundred + _exact(request.premium.percent)) / _hundred;
+    return _exact(request.amount.max.value) *
+        _satsPerBitcoin /
+        rate *
+        _exact(request.bondSize.percent) /
+        _hundred;
+  }
+
   /// The most a maker bond invoice of this order may ask: the expected bond with the tolerance of a taker's bond on it, [TradeTolerances.price] and [TradeTolerances.roundingSats], rounded down to the sat (design note § 3.2: `TradeTerms.bondCeiling`'s formula on these sats).
   ///
   /// The coordinator makes the invoice at the maker's first read, seconds after the creation, at its price then (`api/logics.py:1266-1268`), and truncates it twice (the sats, then the bond), so at the price of the creation the bond is at most the expected bond, but for the error of its floating-point sats, a fraction of a sat that the 1 sat covers: the tolerance covers a price that rose by up to 2 % or fell by up to 1.96 % in between. Rounded down: the ceiling is the largest whole sat within the rule, never one more.

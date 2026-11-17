@@ -167,6 +167,9 @@ extension TradeTitleL10n on TradeTitle {
     final l10n = P2pLocalizations.of(context);
     return switch (this) {
       TradeTitle.lockBond => l10n.p2pTradeTitleLockBond(amountSats),
+      TradeTitle.lockBondToPublish => l10n.p2pTradeTitleLockBondPublish(
+        amountSats,
+      ),
       TradeTitle.lockEscrow => l10n.p2pTradeTitleLockEscrow(amountSats),
       TradeTitle.collateralLocked => l10n.p2pTradeTitleCollateralLocked,
       TradeTitle.chatWithBuyer => l10n.p2pTradeTitleChatWithBuyer,

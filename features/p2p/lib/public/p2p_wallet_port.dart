@@ -1,5 +1,5 @@
 import 'package:primitives/primitives.dart';
-import 'package:robosats/robosats.dart' show RobosatsNetwork;
+import 'package:robosats/robosats.dart' show RobosatsCurrency, RobosatsNetwork;
 
 import '../src/domain/checked_bolt11_invoice.dart';
 
@@ -72,6 +72,50 @@ abstract interface class P2pWalletPort {
   Future<Result<P2pWalletAddress, P2pWalletRefusal>> newReceiveAddress(
     RobosatsNetwork network,
   );
+
+  /// The wallet's own price of one bitcoin in [currency] on [network], as its home screen shows the balance in a fiat currency (#180, the owner's payment rule of 2026-11-17, design note `docs/design/phase-3-making-an-order.md` § 3.3): what a payment for an order made here is compared with before the user confirms it, a price that does not come from the coordinator.
+  ///
+  /// [P2pWalletRateNotPriced] for a currency the wallet's price service does not quote, without asking anything; [P2pWalletRateUnavailable] when the price could not be read (no connection, the service down or busy, an answer that is no price). It never throws for these, and it moves nothing.
+  /// What the wallet's price service learns, since P2P otherwise talks only over Tor: unless the wallet read the same price less than a minute before (its cache, shared with its own screens), one HTTPS POST over clearnet to Bull Bitcoin's public price API (its testnet host on testnet), a JSON-RPC `getRate` from BTC to [currency]'s code, with the user's IP address and no API key; never the order, the invoice or anything of the trade. A currency other than the wallet's display currency tells the service which currency the user is about to pay for. The owner accepted this request outside Tor on 2026-11-17. When it leaves: just after the swap service's quote, which gives that service the bond's exact amount, and before the confirmation, so even when the user then goes back; each « Retry » sends one more (a failure is not cached). Were one operator to see both the price service and the swap service, it could tie together the IP address, the bond's amount and the order's currency, the currency being what this request adds (an assumption of the security review of #180, not something the code establishes). The host is `api.bullbitcoin.com` (`api05.bullbitcoin.dev` on testnet), as `packages/bull_pricer/lib/src/data/datasources/pricer_api_datasource.dart:13-14` names it. The call waits as long as the wallet's pricer does (about 10 s at most, `ReadWalletRateUsecase` of the shell says where).
+  /// For an order made here, a price that could not be read is said « rate not checked »: nothing is compared, and the coordinator's price is never cited for a currency the wallet prices (`WalletRateCheck`).
+  Future<P2pWalletBitcoinRate> bitcoinRate(
+    RobosatsNetwork network,
+    RobosatsCurrency currency,
+  );
+}
+
+/// The wallet's price of one bitcoin in a currency ([P2pWalletPort.bitcoinRate]), or why there is none: a type, never a text of the price service.
+sealed class P2pWalletBitcoinRate {
+  const P2pWalletBitcoinRate();
+
+  @override
+  String toString() => runtimeType.toString();
+}
+
+/// The wallet's price: [price] units of the currency for one bitcoin, finite and above zero.
+final class P2pWalletRateRead extends P2pWalletBitcoinRate {
+  final double price;
+
+  /// Throws an [ArgumentError] when [price] is not finite or not above zero: the implementation of the port gives no such price.
+  P2pWalletRateRead(this.price) {
+    if (!price.isFinite || price <= 0) {
+      throw ArgumentError('A price is a finite figure above zero');
+    }
+  }
+
+  /// Never the price.
+  @override
+  String toString() => 'P2pWalletRateRead';
+}
+
+/// The wallet's price service does not quote this currency: the wallet has no price for it.
+final class P2pWalletRateNotPriced extends P2pWalletBitcoinRate {
+  const P2pWalletRateNotPriced();
+}
+
+/// The wallet's price could not be read now.
+final class P2pWalletRateUnavailable extends P2pWalletBitcoinRate {
+  const P2pWalletRateUnavailable();
 }
 
 /// A Lightning invoice the wallet made for the payout ([P2pWalletPort.newLightningInvoice]): its exact text, the amount it asks, when it expires, and what the Instant Payments wallet receives once it is paid, the swap service's fee taken out of the amount.

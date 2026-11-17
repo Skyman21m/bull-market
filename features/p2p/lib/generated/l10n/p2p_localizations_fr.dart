@@ -1248,6 +1248,11 @@ class P2pLocalizationsFr extends P2pLocalizations {
   }
 
   @override
+  String p2pTradeTitleLockBondPublish(String amountSats) {
+    return 'Bloquez $amountSats sats pour PUBLIER l’ordre';
+  }
+
+  @override
   String p2pTradeTitleLockEscrow(String amountSats) {
     return 'Bloquez $amountSats sats en garantie';
   }
@@ -2009,6 +2014,37 @@ class P2pLocalizationsFr extends P2pLocalizations {
   @override
   String p2pPayTotal(String total, String left) {
     return 'Total : $total sats. Reste dans Paiements instantanés : $left sats.';
+  }
+
+  @override
+  String p2pPayRateWallet(
+    String price,
+    String currency,
+    String expected,
+    String gap,
+  ) {
+    return 'Au prix de ce portefeuille, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+  }
+
+  @override
+  String p2pPayRateNotPriced(
+    String currency,
+    String coordinator,
+    String price,
+    String expected,
+    String gap,
+  ) {
+    return 'Ce portefeuille n’a pas de prix pour $currency : taux non vérifié par le portefeuille. Au prix que $coordinator a donné à la création de l’ordre, une vérification plus faible, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+  }
+
+  @override
+  String p2pPayRateUnverified(String currency) {
+    return 'Ce portefeuille n’a pas pu lire son prix du bitcoin en $currency : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
+  }
+
+  @override
+  String p2pPayRateWarning(String threshold, String asked, String expected) {
+    return 'Cette caution dépasse ce montant de plus de $threshold : $asked sats demandés, $expected sats attendus. Vérifiez-la avant de payer.';
   }
 
   @override
