@@ -148,6 +148,9 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
   /// A hostile coordinator: it says the robot named no order, whatever it made.
   bool hideOrders = false;
 
+  /// A hostile coordinator: the next make saves its order, then answers with this refusal code, as if it had refused before making anything.
+  int? refuseAfterMaking;
+
   /// Runs as each request arrives, before it is answered.
   void Function(CoordinatorRequest request)? onRequest;
 
@@ -198,6 +201,49 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
     for (final order in orders.values)
       if (order.maker.sessionKey == robot.sessionKey) order,
   ];
+
+  /// A hostile coordinator invents an order made by [maker], at [status], with the body of [like] (an order of the test) or a make of 100 EUR, created at [createdAt] (now by default): no make was sent for it.
+  ScriptedMadeOrder inventOrder(
+    RobotIdentity maker, {
+    int status = 0,
+    ScriptedMadeOrder? like,
+    DateTime? createdAt,
+  }) {
+    final now = clock().toUtc();
+    final made = ScriptedMadeOrder._(
+      id: nextOrderId++,
+      maker: maker,
+      body:
+          like?.body ??
+          const {
+            'type': 0,
+            'currency': 2,
+            'amount': 100,
+            'has_range': false,
+            'min_amount': null,
+            'max_amount': null,
+            'payment_method': 'Revolut Instant SEPA',
+            'is_explicit': false,
+            'premium': 2,
+            'satoshis': null,
+            'public_duration': 86340,
+            'escrow_duration': 10800,
+            'bond_size': 3,
+            'latitude': null,
+            'longitude': null,
+            'password': null,
+            'description': null,
+          },
+      createdAt: createdAt ?? now,
+      expiresAt: (createdAt ?? now).add(
+        status == 0 ? makerBondTime : const Duration(seconds: 86340),
+      ),
+      lastSatoshis: 0,
+    )..status = status;
+    made.lastSatoshis = _satsOf(made, made.largestAmount);
+    orders[made.id] = made;
+    return made;
+  }
 
   /// The requests held by [ScriptedFault.landsLate] reach the coordinator now, in order, and it acts on them; their answers are gone.
   void landLate() {
@@ -375,6 +421,10 @@ final class ScriptedMakerCoordinator implements CoordinatorTransport {
       return _json(400, {'error_code': made.hasRange ? 1008 : 1005});
     }
     orders[made.id] = made;
+    if (refuseAfterMaking case final code?) {
+      refuseAfterMaking = null;
+      return _json(400, {'error_code': code, 'bad_request': 'refused'});
+    }
     final answer = <String, Object?>{
       'id': made.id,
       'status': 0,

@@ -80,7 +80,7 @@ final class MakeOrderUsecase {
 
   /// Resolves the pending make [make]: whether it made an order, read from the coordinator by its robot (see the class).
   ///
-  /// [MakeStarted] when an order is found that shows its robot as the maker; [MakeNotMade] when none can be, the make closed; [MakeNeverSent] when its terms were never written, the make closed with no request; [MakePending] otherwise, for a later resolution.
+  /// [MakeStarted] when an order is found that shows its robot as the maker; [MakeNotMade] when none can be, the make closed; [MakeNeverSent] when its terms were never written, the make closed with no request; [MakeNoLongerPending] when the records no longer hold it pending (confirmed or closed since), nothing sent; [MakePending] otherwise, for a later resolution.
   Future<MakeOutcome> resolve(PendingMake make) =>
       _locks.run(make.network, () => _resolve(make));
 
@@ -294,7 +294,16 @@ final class MakeOrderUsecase {
   }
 
   Future<MakeOutcome> _resolve(PendingMake make) async {
-    if (!make.isActive) return MakeNotMade(make);
+    if (!make.isActive) return MakeNoLongerPending(make);
+    // The make as the records hold it now: one confirmed or closed since it was listed is not resolved again, and its robot not read.
+    switch (await _records.watchPendingMakes(make.network).first) {
+      case Ok(:final value) when value.any((m) => m.robot == make.robot):
+        break;
+      case Ok():
+        return MakeNoLongerPending(make);
+      case Err():
+        return MakePending(make, MakePendingReason.unread);
+    }
     final MakerTermsRecord? record;
     switch (await _trails.makerTermsOf(make.robot)) {
       case Ok(:final value):
@@ -365,13 +374,7 @@ final class MakeOrderUsecase {
     return switch (await _readMade(make, robot, coordinator, requests, named)) {
       _Read(:final order, :final times)
           when _isOurs(make, coordinator, named, order) =>
-        _confirm(
-        make,
-        robot,
-        coordinator,
-        order,
-        times,
-      ),
+        _confirm(make, robot, coordinator, order, times),
       _Read() => MakePending(make, MakePendingReason.notRecognized),
       // Error 1043 proves nothing about the maker, but leaves nothing to pay: no invoice was ever shown for this make.
       _Cancelled() => _notMade(make, refusal: const OrderCancelled()),
@@ -510,10 +513,12 @@ final class MakeOrderUsecase {
   };
 
   /// [failure], once the pending make [make], whose request was never sent, is closed: best effort, its resolution closing it otherwise ([MakeNeverSent], or the robot naming no order).
-  Future<P2pFailure> _closedUnsent(PendingMake make, P2pFailure failure) async =>
-      switch (await _records.closePendingMake(make)) {
-        Ok() || Err() => failure,
-      };
+  Future<P2pFailure> _closedUnsent(
+    PendingMake make,
+    P2pFailure failure,
+  ) async => switch (await _records.closePendingMake(make)) {
+    Ok() || Err() => failure,
+  };
 }
 
 /// What a read of an order by the robot of a make gave.

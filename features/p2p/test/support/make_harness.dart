@@ -194,9 +194,7 @@ final class MakeHarness {
   Future<void> elapse(Duration by) async {
     _clock.now = _clock.now.add(by);
     while (true) {
-      final due = timers.where(
-        (t) => t.isActive && !t.due.isAfter(_clock.now),
-      );
+      final due = timers.where((t) => t.isActive && !t.due.isAfter(_clock.now));
       if (due.isEmpty) break;
       due.first.fire();
       await settle();
@@ -300,9 +298,8 @@ final class _MakeVault implements GarageKeyRepository {
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> read(
     RobosatsNetwork network,
-  ) async => key.network == network
-      ? Ok(key)
-      : const Err(GarageKeyMissingFailure());
+  ) async =>
+      key.network == network ? Ok(key) : const Err(GarageKeyMissingFailure());
 
   @override
   Future<Result<NetworkGarageKey, P2pFailure>> create(

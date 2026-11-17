@@ -194,6 +194,16 @@ final class MakeNeverSent extends MakeOutcome {
   String toString() => 'MakeNeverSent($make, closed: $closed)';
 }
 
+/// [make] is no longer pending: another resolution, in this run, confirmed or closed it since it was listed; nothing was sent, and the lists of the records say where it stands now.
+final class MakeNoLongerPending extends MakeOutcome {
+  final PendingMake make;
+
+  const MakeNoLongerPending(this.make);
+
+  @override
+  String toString() => 'MakeNoLongerPending($make)';
+}
+
 /// Whether [make] made an order is not known yet: it stays pending, and its resolution (`MakeOrderUsecase.resolve`) reads the robot again; no bond is shown for it.
 final class MakePending extends MakeOutcome {
   final PendingMake make;

@@ -136,7 +136,7 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
 
   /// The terms of the makes of one network and their trails (#179): a pending make has terms and no trail, a trail is never written without its terms (the trigger `trade_trails_of_their_trade`). The terms' columns keep their names, the trail's are named `trail_` then their column.
   static const String _madeHistoriesSql =
-      'maker_terms.key_fingerprint AS made_key_fingerprint, '
+      'SELECT maker_terms.key_fingerprint AS made_key_fingerprint, '
       'maker_terms.robot_index AS made_robot_index, '
       'maker_terms.version AS version, '
       'maker_terms.network AS network, '
