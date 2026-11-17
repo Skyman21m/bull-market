@@ -57,9 +57,10 @@ final class P2pFormats {
   }
 
   /// A price of a bitcoin, as the reference writes « Order current rate »: 5 significant digits (`toPrecision(5)`, `components/MakerForm/MakerForm.tsx:168`), then the language's number format, which keeps at most 3 decimals (`new Intl.NumberFormat(settings.language)`, `:515`, `:1349`): `71,657`, `110,000`, `33.457`.
-  String orderRate(double price) => (NumberFormat.decimalPattern(
-    _locale,
-  )..maximumFractionDigits = 3).format(double.parse(price.toStringAsPrecision(5)));
+  String orderRate(double price) =>
+      (NumberFormat.decimalPattern(_locale)..maximumFractionDigits = 3).format(
+        double.parse(price.toStringAsPrecision(5)),
+      );
 
   /// A threshold given as a fraction, as a whole percentage such as `10%`.
   String threshold(double fraction) =>

@@ -3287,7 +3287,7 @@ abstract class P2pLocalizations {
   /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the order's currency is one the wallet's price service does not quote, so the bond is compared with the coordinator's own price read before the make, a weaker reference, said as such. {currency} is the order's currency code, {coordinator} the coordinator's name, {price} its price of the creation, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.
   ///
   /// In en, this message translates to:
-  /// **'This wallet has no price for {currency}: the amount is not checked by the wallet. At the price {coordinator} gave when you made the order, a weaker check, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
+  /// **'This wallet has no price for {currency}: rate not checked by the wallet. At the price {coordinator} gave when you made the order, a weaker check, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
   String p2pPayRateNotPriced(
     String currency,
     String coordinator,
@@ -3296,17 +3296,11 @@ abstract class P2pLocalizations {
     String gap,
   );
 
-  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet's price of a bitcoin could not be read at the moment of paying (no connection, the price service down), so the bond is compared with the coordinator's own price read before the make, a weaker reference, said as such; a default of #180 that the owner did not decide. {coordinator} is the coordinator's name, {price} its price of the creation, {currency} the order's currency code, {expected} the bond expected in sats, {gap} the gap of the invoice with its sign and percent sign.
+  /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text: the wallet prices the order's currency, but its price of a bitcoin could not be read at the moment of paying (no connection, the price service down, an answer that is no price), so nothing is compared and the coordinator's price of the creation is never cited (the owner's decision of 2026-11-17, with the words « rate not checked ») (functional review of #180, C1: a price announced ten times too low would make a bond ten times too large look right); shown in the warning colour with « Retry », which reads the price again; the user may still pay. {currency} is the order's currency code.
   ///
   /// In en, this message translates to:
-  /// **'This wallet\'s price could not be read: the amount is not checked by the wallet. At the price {coordinator} gave when you made the order, a weaker check, {price} {currency}/BTC, with the order\'s premium, this bond is worth {expected} sats. Gap of the invoice: {gap}.'**
-  String p2pPayRateUnreadable(
-    String coordinator,
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  );
+  /// **'This wallet\'s price of a bitcoin in {currency} could not be read: rate not checked. You can try again, or pay without the check.'**
+  String p2pPayRateUnverified(String currency);
 
   /// The confirmation of « Pay with this wallet » for the maker bond at status 0 (#180), the project's own text for the owner's payment rule of 2026-11-17 (design note § 3.3): the red warning when the invoice asks more than the owner's threshold above the bond expected; the user may still pay. {threshold} is the threshold with its percent sign, {asked} the sats the invoice asks, {expected} the sats expected.
   ///

@@ -106,12 +106,8 @@ sealed class WalletRateCompared extends WalletRateCheck {
 
 /// Compared at the wallet's own price of a bitcoin, read at the moment of paying.
 final class WalletRateAtWallet extends WalletRateCompared {
-  WalletRateAtWallet._of(
-    Sats asked,
-    ExactRatio expected,
-    double price,
-    RobosatsCurrency currency,
-  ) : super._(asked, expected, price, currency);
+  WalletRateAtWallet._of(super.asked, super.exact, super.price, super.currency)
+    : super._();
 
   /// Never an amount nor a price.
   @override
@@ -121,11 +117,11 @@ final class WalletRateAtWallet extends WalletRateCompared {
 /// Compared at the coordinator's price of the creation, the wallet having no price for the order's currency: a weaker reference, said as such.
 final class WalletRateAtCreation extends WalletRateCompared {
   WalletRateAtCreation._of(
-    Sats asked,
-    ExactRatio expected,
-    double price,
-    RobosatsCurrency currency,
-  ) : super._(asked, expected, price, currency);
+    super.asked,
+    super.exact,
+    super.price,
+    super.currency,
+  ) : super._();
 
   /// Never an amount nor a price.
   @override

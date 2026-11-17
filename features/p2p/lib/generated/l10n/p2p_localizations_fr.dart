@@ -2034,18 +2034,12 @@ class P2pLocalizationsFr extends P2pLocalizations {
     String expected,
     String gap,
   ) {
-    return 'Ce portefeuille n’a pas de prix pour $currency : le montant n’est pas vérifié par le portefeuille. Au prix que $coordinator a donné à la création de l’ordre, une vérification plus faible, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+    return 'Ce portefeuille n’a pas de prix pour $currency : taux non vérifié par le portefeuille. Au prix que $coordinator a donné à la création de l’ordre, une vérification plus faible, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
   }
 
   @override
-  String p2pPayRateUnreadable(
-    String coordinator,
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  ) {
-    return 'Le prix de ce portefeuille n’a pas pu être lu : le montant n’est pas vérifié par le portefeuille. Au prix que $coordinator a donné à la création de l’ordre, une vérification plus faible, $price $currency/BTC, avec la prime de l’ordre, cette caution vaut $expected sats. Écart de la facture : $gap.';
+  String p2pPayRateUnverified(String currency) {
+    return 'Le prix du bitcoin en $currency de ce portefeuille n’a pas pu être lu : taux non vérifié. Vous pouvez réessayer, ou payer sans cette vérification.';
   }
 
   @override

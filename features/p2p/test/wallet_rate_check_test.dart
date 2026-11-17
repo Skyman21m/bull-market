@@ -214,20 +214,25 @@ void main() {
     );
   });
 
-  group('a currency the wallet does not price: the price of the creation, said weaker', () {
-    test('a currency the wallet does not price', () {
-      final made = terms(code: 'GBP', createdPrice: 60000);
-      final rate = check(made, 4000, const P2pWalletRateNotPriced());
-      expect(rate, isA<WalletRateAtCreation>());
-      expect(rate.price, 60000);
-      expect(rate.expected.value, some(made.bondAtPrice(60000)).floor());
-      // The same 10 %: 100 GBP at 62,100 is 161,030.59… sats, 4,830.91… of bond.
-      expect(rate.expected, Sats.fromInt(4830));
-      expect(check(made, 5314, const P2pWalletRateNotPriced()).warns, isFalse);
-      expect(check(made, 5315, const P2pWalletRateNotPriced()).warns, isTrue);
-    });
-
-  });
+  group(
+    'a currency the wallet does not price: the price of the creation, said weaker',
+    () {
+      test('a currency the wallet does not price', () {
+        final made = terms(code: 'GBP', createdPrice: 60000);
+        final rate = check(made, 4000, const P2pWalletRateNotPriced());
+        expect(rate, isA<WalletRateAtCreation>());
+        expect(rate.price, 60000);
+        expect(rate.expected.value, some(made.bondAtPrice(60000)).floor());
+        // The same 10 %: 100 GBP at 62,100 is 161,030.59… sats, 4,830.91… of bond.
+        expect(rate.expected, Sats.fromInt(4830));
+        expect(
+          check(made, 5314, const P2pWalletRateNotPriced()).warns,
+          isFalse,
+        );
+        expect(check(made, 5315, const P2pWalletRateNotPriced()).warns, isTrue);
+      });
+    },
+  );
 
   group(
     'the wallet prices the currency but its price could not be read: nothing compared, the creation\'s price never cited (review of #180, C1)',

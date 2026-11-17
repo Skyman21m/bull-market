@@ -2008,18 +2008,12 @@ class P2pLocalizationsPt extends P2pLocalizations {
     String expected,
     String gap,
   ) {
-    return 'This wallet has no price for $currency: the amount is not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+    return 'This wallet has no price for $currency: rate not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
   }
 
   @override
-  String p2pPayRateUnreadable(
-    String coordinator,
-    String price,
-    String currency,
-    String expected,
-    String gap,
-  ) {
-    return 'This wallet\'s price could not be read: the amount is not checked by the wallet. At the price $coordinator gave when you made the order, a weaker check, $price $currency/BTC, with the order\'s premium, this bond is worth $expected sats. Gap of the invoice: $gap.';
+  String p2pPayRateUnverified(String currency) {
+    return 'This wallet\'s price of a bitcoin in $currency could not be read: rate not checked. You can try again, or pay without the check.';
   }
 
   @override

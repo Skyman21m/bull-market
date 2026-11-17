@@ -93,8 +93,8 @@ Future<(BondPaymentCubit, Payments, List<TradeSeen>)> _show(
   WidgetTester tester, {
   Result<WalletRateCheck?, BondPayRefusal>? rate,
 
-  /// When given, the answers of the comparison in order, each read of the price taking the next one (« Retry »); [reads] counts them.
-  List<Completer<Result<WalletRateCheck?, BondPayRefusal>>>? reads,
+  /// When given, the answers of the comparison in order, each read of the price taking the next one (« Retry »).
+  List<Completer<Result<WalletRateCheck?, BondPayRefusal>>>? rateReads,
   Locale locale = const Locale('en'),
   Future<Result<CancelOutcome, CancelRefusal>> Function(TradeSeen seen)? cancel,
 }) async {
@@ -137,9 +137,9 @@ Future<(BondPaymentCubit, Payments, List<TradeSeen>)> _show(
     payments.follow,
     (record) => payments.running,
     rate: (record, quote) {
-      if (reads != null) {
+      if (rateReads != null) {
         final answer = Completer<Result<WalletRateCheck?, BondPayRefusal>>();
-        reads.add(answer);
+        rateReads.add(answer);
         return answer.future;
       }
       return Future.value(rate ?? const Ok(null));
@@ -503,11 +503,9 @@ void main() {
       '« Retry » reads the price again for the same quote: the comparison comes, here with its red warning',
       (tester) async {
         final reads = <Completer<Result<WalletRateCheck?, BondPayRefusal>>>[];
-        final (_, payments, _) = await _show(tester, reads: reads);
+        final (_, payments, _) = await _show(tester, rateReads: reads);
         await _confirming(tester, payments);
-        reads.single.complete(
-          Ok(_rateAt(const P2pWalletRateUnavailable())),
-        );
+        reads.single.complete(Ok(_rateAt(const P2pWalletRateUnavailable())));
         await tester.pump();
         await tester.pump();
         await _reveal(tester, find.text('Retry'));
@@ -531,7 +529,10 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.text('Retry'), findsNothing);
-        expect(find.textContaining('Gap of the invoice: +19.95%'), findsOneWidget);
+        expect(
+          find.textContaining('Gap of the invoice: +19.95%'),
+          findsOneWidget,
+        );
         expect(find.textContaining('more than 10%'), findsOneWidget);
         // The same quote: no second quote asked of the swap service.
         expect(payments.quotes, hasLength(1));
@@ -542,7 +543,7 @@ void main() {
       '« Retry » that fails again: still « rate not checked », « Retry » offered again, « Pay » still offered',
       (tester) async {
         final reads = <Completer<Result<WalletRateCheck?, BondPayRefusal>>>[];
-        final (_, payments, _) = await _show(tester, reads: reads);
+        final (_, payments, _) = await _show(tester, rateReads: reads);
         await _confirming(tester, payments);
         reads.single.complete(Ok(_rateAt(const P2pWalletRateUnavailable())));
         await tester.pump();
@@ -674,7 +675,11 @@ void main() {
         expect(answers, hasLength(2));
         expect(
           cubit.state.step,
-          isA<BondPayConfirming>().having((c) => c.retrying, 'retrying', isTrue),
+          isA<BondPayConfirming>().having(
+            (c) => c.retrying,
+            'retrying',
+            isTrue,
+          ),
         );
         // « Go back » while it reads: what the read gives is dropped.
         cubit.dismiss();
