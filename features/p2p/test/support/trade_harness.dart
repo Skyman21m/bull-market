@@ -409,6 +409,11 @@ final class TestTrails implements TradeTrailRepository {
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
     RobosatsNetwork network,
   ) => _inner.watchHistories(network);
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network) =>
+      _inner.watchMadeHistories(network);
 }
 
 /// A timer of the watch, which the harness fires when its time comes.

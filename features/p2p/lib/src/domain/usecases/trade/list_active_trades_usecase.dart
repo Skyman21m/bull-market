@@ -16,7 +16,7 @@ import '../../trade_robots.dart';
 
 /// The active trades of a network, each with where its stored trail says it stands, for the « Active trades » list (#87, #88): read from the device only, nothing sent.
 ///
-/// A new list after each write of the records, the terms or the trails; a trade whose records cannot be restored is listed as [ActiveTradeUnrestorable], never left out; a database that cannot be read gives a [P2pStorageFailure] in place of the list, never an empty one.
+/// A new list after each write of the records, the terms or the trails; a trade made here is read from its maker's terms (#179); a trade whose records cannot be restored is listed as [ActiveTradeUnrestorable], never left out; a database that cannot be read gives a [P2pStorageFailure] in place of the list, never an empty one.
 final class ListActiveTradesUsecase {
   final TradeRobots _robots;
   final TradeTrailRepository _trails;
@@ -33,23 +33,37 @@ final class ListActiveTradesUsecase {
   ) {
     Result<List<TradeRecord>, P2pFailure>? records;
     Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>? histories;
+    Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>? made;
     StreamSubscription<Result<List<TradeRecord>, P2pFailure>>? recordsSub;
     StreamSubscription<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>>?
     historiesSub;
+    StreamSubscription<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>?
+    madeSub;
     late final StreamController<Result<List<ActiveTrade>, P2pFailure>> out;
 
     void emit() {
-      final (r, h) = (records, histories);
-      if (r == null || h == null) return;
-      switch ((r, h)) {
-        case (Err(:final failure), _) || (_, Err(:final failure)):
+      final (r, h, m) = (records, histories, made);
+      if (r == null || h == null || m == null) return;
+      switch ((r, h, m)) {
+        case (Err(:final failure), _, _) ||
+            (_, Err(:final failure), _) ||
+            (_, _, Err(:final failure)):
           out.add(Err(failure));
-        case (Ok(value: final list), Ok(value: final map)):
+        case (
+          Ok(value: final list),
+          Ok(value: final map),
+          Ok(value: final makes),
+        ):
           out.add(
             Ok(
               List.unmodifiable([
                 for (final record in list)
-                  ActiveTrade(record, _standingOf(record, map[record.robot])),
+                  ActiveTrade(
+                    record,
+                    record.origin == TradeOrigin.madeHere
+                        ? _madeStandingOf(record, makes[record.robot])
+                        : _standingOf(record, map[record.robot]),
+                  ),
               ]),
             ),
           );
@@ -74,23 +88,66 @@ final class ListActiveTradesUsecase {
           histories = value;
           emit();
         }, onError: failed);
+        madeSub = _trails.watchMadeHistories(network).listen((value) {
+          made = value;
+          emit();
+        }, onError: failed);
       },
       onCancel: () async {
         await recordsSub?.cancel();
         await historiesSub?.cancel();
+        await madeSub?.cancel();
       },
     );
     return out.stream;
   }
 
-  /// Where [record] stands by [history], restored as the watch restores it; a trade made here is listed as unrestorable, as the watch opens it (`TradeReader.open`, until #179).
+  /// Where [record], a trade made here, stands by [history], restored as the watch restores it (`TradeReader.open`, #179): its maker's terms ([TradeTerms.restoreMade]), never a taker's; a confirmed make without its first trail at its start, its first read to come.
+  ActiveTradeStanding _madeStandingOf(
+    TradeRecord record,
+    StoredMadeHistory? history,
+  ) {
+    final termsRecord = history?.terms;
+    if (history == null || termsRecord == null || history.unreadable) {
+      return const ActiveTradeUnrestorable(TradeRecordMalformed());
+    }
+    final TradeTerms<MadeSide> terms;
+    switch (TradeTerms.restoreMade(termsRecord, orderId: record.orderId)) {
+      case Ok(:final value):
+        terms = value;
+      case Err(:final failure):
+        return ActiveTradeUnrestorable(failure);
+    }
+    if (terms.network != record.network ||
+        terms.coordinator.shortAlias != record.coordinatorAlias ||
+        terms.role != record.role) {
+      return const ActiveTradeUnrestorable(TradeRecordOfAnotherTrade());
+    }
+    final trail = history.trail;
+    if (trail == null) {
+      return const ActiveTradeAt(
+        TradePosition.start,
+        deadline: null,
+        breached: false,
+        historyUnknown: false,
+      );
+    }
+    return switch (TradeTrail.restore(trail, terms: terms, now: _clock())) {
+      Ok(:final value) => ActiveTradeAt(
+        value.position,
+        deadline: value.deadline,
+        breached: value.breached,
+        historyUnknown: value.historyUnknown,
+      ),
+      Err(:final failure) => ActiveTradeUnrestorable(failure),
+    };
+  }
+
+  /// Where [record], a trade taken here or taken over, stands by [history], restored as the watch restores it.
   ActiveTradeStanding _standingOf(
     TradeRecord record,
     StoredTradeHistory? history,
   ) {
-    if (record.origin == TradeOrigin.madeHere) {
-      return const ActiveTradeUnrestorable(TradeRecordMalformed());
-    }
     final terms = history?.terms;
     // The take sends its request only once its terms and its first trail are written.
     if (record.isPendingTake && (terms == null || history?.trail == null)) {

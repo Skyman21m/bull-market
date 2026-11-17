@@ -1111,6 +1111,11 @@ final class _UnreadableTrails implements TradeTrailRepository {
           Err() => result,
         },
       );
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network) =>
+      _inner.watchMadeHistories(network);
 }
 
 /// The trails, the first write answered as kept over the trail stored (as when another write came first), the next ones written.
@@ -1161,4 +1166,9 @@ final class _KeptOnce implements TradeTrailRepository {
   Stream<Result<Map<RobotSlot, StoredTradeHistory>, P2pFailure>> watchHistories(
     RobosatsNetwork network,
   ) => _inner.watchHistories(network);
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network) =>
+      _inner.watchMadeHistories(network);
 }

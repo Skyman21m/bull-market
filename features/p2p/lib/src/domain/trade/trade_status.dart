@@ -131,6 +131,14 @@ final class TradeTrail {
   factory TradeTrail.recovered(TradeTerms terms, DateTime now) =>
       TradeTrail._fresh(terms, now, historyUnknown: true);
 
+  /// The trail of an order made here and confirmed at [confirmedAt] whose first trail was not written (the app killed between the confirmation and that write, or the write refused), for its first read: the first answer must be one the make's first read gives (the maker bond at 0, the order expired at 0, or error 1043), as [TradeStatus.afterMake] takes it (design note `docs/design/phase-3-making-an-order.md` § 3.4).
+  ///
+  /// Only for a confirmed make that has no trail recorded: no invoice was ever shown for it, since an invoice is shown only from a stored status, so no history is lost. [TradeStatus.from] over [TradeStatus.beforeFirstRead] of this trail is [TradeStatus.afterMake]. A written rule of #179, pinned by its architecture test (only the make use case and the reader that resumes a recorded trade name this factory): the domain cannot know whether a trail was recorded.
+  factory TradeTrail.forConfirmedMake(
+    TradeTerms<MadeSide> terms,
+    DateTime confirmedAt,
+  ) => TradeTrail._fresh(terms, confirmedAt, historyUnknown: false);
+
   /// The trail [record] holds for the trade [terms], resumed at [now], or why not:
   /// - [TradeRecordOfAnotherTrade] when the record is of another order, coordinator, network or role than [terms];
   /// - [TradeRecordMalformed] when it is not one [TradeTrail.record] wrote: an unknown version or position, a payment hash or a taker's hash id that is not 64 lowercase hexadecimal characters, a time out of range, a read after [now] by more than [TradeTolerances.clockStep], a last read of the pre-take after the last read, a contract index below 0 or above 0 without its deadline, an amount taken that is not a positive figure below 10^10, escrows of earlier contracts that are not hashes each followed by `;`, or any at contract 0, a contract seen late at contract 0, a position of the other side (a maker's at 0, 1 or 2 for a taker, a pre-taker's for a maker), or any contract for terms of a taker.
@@ -1411,8 +1419,15 @@ sealed class TradeStatus {
     }
     if (order.paymentMethods.text != maker.request.paymentMethod) return true;
     if (order.hasPassword) return true;
+    // What the make's answer does not carry (`ListOrderSerializer`, `api/serializers.py:83-107`), compared at every read that gives it (#179, after the functional review of #178): the description, given to the maker at every read (`api/views.py:280`), as sent (`MakeOrderRequest` refuses a text the coordinator would store otherwise), so that no bond is shown without the warning for an order whose description is not the one asked.
+    if (order.description != maker.request.description) return true;
     if (order.publicDuration case final shown?
         when shown != maker.publicDuration) {
+      return true;
+    }
+    // The public duration while the order is public or paused: its deadline is then the creation plus the public duration, which a pause does not move and a return to the book sets again (`Logics.publish_order`, `api/logics.py:1205-1209`; `t_to_expire`, `api/models/order.py:310-341`).
+    if ((to == TradePosition.public || to == TradePosition.paused) &&
+        order.expiresAt.difference(order.createdAt) != maker.publicDuration) {
       return true;
     }
     switch ((maker.amount, order.amount)) {

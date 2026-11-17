@@ -134,6 +134,56 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
       'trade_terms.robot_index WHERE trade_terms.network = ? '
       'ORDER BY trade_terms.key_fingerprint, trade_terms.robot_index';
 
+  /// The terms of the makes of one network and their trails (#179): a pending make has terms and no trail, a trail is never written without its terms (the trigger `trade_trails_of_their_trade`). The terms' columns keep their names, the trail's are named `trail_` then their column.
+  static const String _madeHistoriesSql =
+      'maker_terms.key_fingerprint AS made_key_fingerprint, '
+      'maker_terms.robot_index AS made_robot_index, '
+      'maker_terms.version AS version, '
+      'maker_terms.network AS network, '
+      'maker_terms.coordinator_alias AS coordinator_alias, '
+      'maker_terms.role AS role, '
+      'maker_terms.order_type AS order_type, '
+      'maker_terms.currency_id AS currency_id, '
+      'maker_terms.amount AS amount, '
+      'maker_terms.min_amount AS min_amount, '
+      'maker_terms.max_amount AS max_amount, '
+      'maker_terms.premium_percent AS premium_percent, '
+      'maker_terms.payment_method AS payment_method, '
+      'maker_terms.bond_size_percent AS bond_size_percent, '
+      'maker_terms.public_seconds AS public_seconds, '
+      'maker_terms.escrow_seconds AS escrow_seconds, '
+      'maker_terms.description AS description, '
+      'maker_terms.has_password AS has_password, '
+      'maker_terms.latitude AS latitude, '
+      'maker_terms.longitude AS longitude, '
+      'maker_terms.created_price AS created_price, '
+      'maker_terms.maker_fee AS maker_fee, '
+      'trade_trails.key_fingerprint AS trail_key_fingerprint, '
+      'trade_trails.version AS trail_version, '
+      'trade_trails.network AS trail_network, '
+      'trade_trails.coordinator_alias AS trail_coordinator_alias, '
+      'trade_trails.order_id AS trail_order_id, '
+      'trade_trails.role AS trail_role, '
+      'trade_trails.position AS trail_position, '
+      'trade_trails.read_at AS trail_read_at, '
+      'trade_trails.bond_hash AS trail_bond_hash, '
+      'trade_trails.escrow_hash AS trail_escrow_hash, '
+      'trade_trails.deadline AS trail_deadline, '
+      'trade_trails.bond_step_seen_at AS trail_bond_step_seen_at, '
+      'trade_trails.bond_step_deadline AS trail_bond_step_deadline, '
+      'trade_trails.breached AS trail_breached, '
+      'trade_trails.history_unknown AS trail_history_unknown, '
+      'trade_trails.take AS trail_take, '
+      'trade_trails.take_deadline AS trail_take_deadline, '
+      'trade_trails.taker_hash_id AS trail_taker_hash_id, '
+      'trade_trails.taken_amount AS trail_taken_amount, '
+      'trade_trails.earlier_escrows AS trail_earlier_escrows, '
+      'trade_trails.seen_late AS trail_seen_late '
+      'FROM maker_terms LEFT JOIN trade_trails ON trade_trails.key_fingerprint = '
+      'maker_terms.key_fingerprint AND trade_trails.robot_index = '
+      'maker_terms.robot_index WHERE maker_terms.network = ? '
+      'ORDER BY maker_terms.key_fingerprint, maker_terms.robot_index';
+
   final P2pDatabase _database;
 
   const TradeTrailRepositoryImpl(this._database);
@@ -369,6 +419,54 @@ final class TradeTrailRepositoryImpl implements TradeTrailRepository {
                 return;
               }
               histories[RobotSlot(network, key, index)] = _historyFrom(data);
+            }
+            sink.add(Ok(Map.unmodifiable(histories)));
+          },
+          handleError: (error, stackTrace, sink) {
+            if (error is Exception) {
+              sink.add(const Err(P2pStorageFailure()));
+            } else {
+              sink.addError(error, stackTrace);
+            }
+          },
+        ),
+      );
+
+  @override
+  Stream<Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>>
+  watchMadeHistories(RobosatsNetwork network) => _database
+      .customSelect(
+        _madeHistoriesSql,
+        variables: [Variable.withString(network.name)],
+        readsFrom: {_database.storedMakerTerms, _database.storedTradeTrails},
+      )
+      .watch()
+      .transform(
+        StreamTransformer<
+          List<QueryRow>,
+          Result<Map<RobotSlot, StoredMadeHistory>, P2pFailure>
+        >.fromHandlers(
+          handleData: (rows, sink) {
+            final histories = <RobotSlot, StoredMadeHistory>{};
+            for (final row in rows) {
+              final data = row.data;
+              final key = switch (data['made_key_fingerprint']) {
+                final String hex => GarageKeyFingerprint.stored(hex),
+                _ => null,
+              };
+              final index = data['made_robot_index'];
+              if (key == null || index is! int) {
+                sink.add(const Err(P2pStorageFailure()));
+                return;
+              }
+              final terms = _makerTermsFrom(data);
+              final trailPresent = data['trail_key_fingerprint'] != null;
+              final trail = trailPresent ? _trailFrom(data) : null;
+              histories[RobotSlot(network, key, index)] = StoredMadeHistory(
+                terms: terms,
+                trail: trail,
+                unreadable: terms == null || (trailPresent && trail == null),
+              );
             }
             sink.add(Ok(Map.unmodifiable(histories)));
           },
