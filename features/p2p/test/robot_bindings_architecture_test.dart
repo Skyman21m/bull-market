@@ -1457,6 +1457,16 @@ class RobotCoordinatorCubit {
       ])
         database.constants[name],
     });
+    // The database writes through its pinned `customStatement`s only, and reads through `customSelect` (pinned below): no `customInsert`, `customWriteReturning` or `customUpdate`, whose text could start with an exempted literal of the step's copies (security review of #176, C1).
+    expect(
+      database.invoked.intersection({
+        'customInsert',
+        'customWriteReturning',
+        'customUpdate',
+        'customSelect',
+      }),
+      {'customSelect'},
+    );
     // Its two `customSelect`s, the steps' looks at a table and at a column, and its pragmas as written: no other statement could turn the foreign keys off (review of #102).
     expect(database.calls.where((call) => call.startsWith('customSelect(')), [
       // The step to schema 7's look at a table's text (#97).
