@@ -138,3 +138,139 @@ final class MakePriceUnverified extends MakePriceCheck {
   @override
   String toString() => 'MakePriceUnverified';
 }
+
+/// What the user saw of the price check under « Create order » when pressing it (#181, security review C1, C2): the verdict of the line shown, the coordinator's price it was drawn from, and the Bull wallet's price when one was compared.
+enum MakePriceVerdict {
+  /// No line: the Bull wallet's price was not read (no amount typed yet, a read still running, or no wallet).
+  notRead,
+
+  /// Compared, within the threshold.
+  within,
+
+  /// Compared, the coordinator's price more than the threshold below the Bull wallet's.
+  below,
+
+  /// Compared, the coordinator's price more than the threshold above the Bull wallet's.
+  above,
+
+  /// The Bull wallet does not price the currency.
+  notPriced,
+
+  /// The Bull wallet's price could not be read.
+  unverified,
+}
+
+/// The price check as the user saw it at the press, handed to the make so that an order is never made on a coordinator's price whose comparison the user did not see (security review of #181, C1).
+///
+/// The make reads `/api/limits/` again just before it reserves a robot, and keeps that price as the terms' `createdPrice`; [holdsAt] tells whether the user would see the same thing at that price: the same verdict against the same Bull wallet's price when one was compared, or, without one, a price within [TradeTolerances.walletRateGap] of the one shown (the estimated bond shown is then still the order's). It never refuses for a price itself: a red verdict seen is kept.
+@immutable
+final class MakePriceSeen {
+  final RobosatsCurrency currency;
+
+  /// The coordinator's price the line was drawn from, without the premium (`/api/limits/`).
+  final double coordinatorPrice;
+
+  final MakePriceVerdict verdict;
+
+  /// The Bull wallet's price compared, for [MakePriceVerdict.within], [MakePriceVerdict.below] and [MakePriceVerdict.above].
+  final double? walletPrice;
+
+  const MakePriceSeen._(
+    this.currency,
+    this.coordinatorPrice,
+    this.verdict,
+    this.walletPrice,
+  );
+
+  /// What a line of [check] says for [coordinatorPrice] of [currency], or no line when [check] is `null`.
+  factory MakePriceSeen.of({
+    required RobosatsCurrency currency,
+    required double coordinatorPrice,
+    MakePriceCheck? check,
+  }) => switch (check) {
+    null => MakePriceSeen._(
+      currency,
+      coordinatorPrice,
+      MakePriceVerdict.notRead,
+      null,
+    ),
+    MakePriceCompared(:final walletPrice, :final side) => MakePriceSeen._(
+      currency,
+      coordinatorPrice,
+      switch (side) {
+        MakePriceSide.within => MakePriceVerdict.within,
+        MakePriceSide.below => MakePriceVerdict.below,
+        MakePriceSide.above => MakePriceVerdict.above,
+      },
+      walletPrice,
+    ),
+    MakePriceNotPriced() => MakePriceSeen._(
+      currency,
+      coordinatorPrice,
+      MakePriceVerdict.notPriced,
+      null,
+    ),
+    MakePriceUnverified() => MakePriceSeen._(
+      currency,
+      coordinatorPrice,
+      MakePriceVerdict.unverified,
+      null,
+    ),
+  };
+
+  /// The check the user would see at [price], a coordinator's price read again: compared again with the same Bull wallet's price when one was compared, nothing read anew; `null` when there was none.
+  MakePriceCheck? checkAt(double price) {
+    final wallet = walletPrice;
+    return switch (verdict) {
+      MakePriceVerdict.within ||
+      MakePriceVerdict.below ||
+      MakePriceVerdict.above when wallet != null => MakePriceCheck.of(
+        currency: currency,
+        coordinatorPrice: price,
+        wallet: P2pWalletRateRead(wallet),
+      ),
+      MakePriceVerdict.notPriced => MakePriceCheck.of(
+        currency: currency,
+        coordinatorPrice: price,
+        wallet: const P2pWalletRateNotPriced(),
+      ),
+      MakePriceVerdict.unverified => MakePriceCheck.of(
+        currency: currency,
+        coordinatorPrice: price,
+        wallet: const P2pWalletRateUnavailable(),
+      ),
+      _ => null,
+    };
+  }
+
+  /// Whether the user would see the same at [price], a coordinator's price of [currency] read again just before the make (see the class).
+  bool holdsAt(double price) {
+    final now = MakePriceCheck._price(price);
+    if (now == null) return false;
+    switch (verdict) {
+      case MakePriceVerdict.within ||
+          MakePriceVerdict.below ||
+          MakePriceVerdict.above:
+        final check = checkAt(price);
+        return check != null && MakePriceSeen.of(
+          currency: currency,
+          coordinatorPrice: price,
+          check: check,
+        ).verdict == verdict;
+      case MakePriceVerdict.notRead ||
+          MakePriceVerdict.notPriced ||
+          MakePriceVerdict.unverified:
+        final shown = MakePriceCheck._price(coordinatorPrice);
+        if (shown == null) return false;
+        return (now - shown).abs() <= shown * MakePriceCompared._gap;
+    }
+  }
+
+  /// Whether [other] shows the user the same line as this: the same verdict (the prices themselves may move within it).
+  bool sameLineAs(MakePriceSeen other) =>
+      other.currency == currency && other.verdict == verdict;
+
+  /// Never a price.
+  @override
+  String toString() => 'MakePriceSeen(${verdict.name})';
+}

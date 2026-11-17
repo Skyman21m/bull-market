@@ -38,6 +38,7 @@ typedef MakeOrder =
       MakeOrderRequest request, {
       required Coordinator coordinator,
       required RobosatsNetwork network,
+      required MakePriceSeen seen,
     });
 
 /// `CheckMakePriceUsecase.execute`: the chosen coordinator's price compared with the wallet's.
@@ -227,6 +228,12 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
   /// Whether [start] runs.
   bool _starting = false;
 
+  /// Whether an amount is typed ([wantPrice]): only then is the Bull wallet's price read.
+  bool _wanted = false;
+
+  /// The last read of the Bull wallet's price: its currency, when it came, and the check it gave.
+  ({RobosatsCurrency currency, DateTime at, MakePriceCheck check})? _lastPrice;
+
   /// How old the limits and the Bull wallet's price may be when « Create order » is pressed: older, they are read again first ([refreshIfStale]). The reference reads them once when the form opens or the coordinator changes, never again while it stays open (`MakerForm.tsx:102-131`; `Federation.loadCoordinatorData`, `models/Federation.model.ts:763-792`, at a change of connection only).
   static const Duration staleAfter = Duration(minutes: 3);
 
@@ -335,31 +342,70 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
     await _readPrice();
   }
 
-  /// The currency the form shows: its price compared, once, when the coordinator's limits give one.
+  /// The currency the form shows: its price compared when an amount is typed ([wantPrice]), from the last read of the Bull wallet's price for that currency when it is less than [staleAfter] old.
   Future<void> showCurrency(RobosatsCurrency currency) async {
-    if (currency == state.currency) return;
+    if (state.locked || currency == state.currency) return;
     _priceRead++;
     emit(state._with(currency: currency, price: const MakeFormPriceNone()));
     await _readPrice();
   }
 
+  /// Whether the user typed an amount (a number above zero): the Bull wallet's price is read, outside Tor, only for someone about to make an order (security review of #181), and only then; « Clear form » and an amount taken away ask nothing more, the line shown, if any, staying as it was.
+  Future<void> wantPrice(bool wanted) async {
+    if (wanted == _wanted) return;
+    _wanted = wanted;
+    if (wanted) await _readPrice();
+  }
+
   /// « Retry » of a wallet's price that could not be read: read once more, never while a read runs.
   Future<void> retryPrice() async {
+    if (state.locked) return;
     if (state.price case MakeFormPriceChecked(check: MakePriceUnverified())) {
-      await _readPrice();
+      await _readPrice(again: true);
     }
   }
 
-  Future<void> _readPrice() async {
+  /// The Bull wallet's price compared with the coordinator's, when an amount is typed and the coordinator gives a price: from the last read for the currency when it is less than [staleAfter] old (none is sent then, whatever the coordinator chosen), else read; [again] (« Retry ») always reads.
+  Future<void> _readPrice({bool again = false}) async {
     final check = _checkPrice;
     final coordinatorPrice = _usablePrice();
-    if (check == null || coordinatorPrice == null) return;
-    final read = ++_priceRead;
+    if (check == null || coordinatorPrice == null || !_wanted) return;
     final currency = state.currency;
+    final last = _lastPrice;
+    if (!again &&
+        last != null &&
+        last.currency == currency &&
+        _now().difference(last.at) < staleAfter) {
+      _priceRead++;
+      final seen = MakePriceSeen.of(
+        currency: currency,
+        coordinatorPrice: coordinatorPrice,
+        check: last.check,
+      );
+      final now = seen.checkAt(coordinatorPrice);
+      if (now != null) emit(state._with(price: MakeFormPriceChecked(now)));
+      return;
+    }
+    final read = ++_priceRead;
     emit(state._with(price: const MakeFormPriceReading()));
     final result = await check(state.network, currency, coordinatorPrice);
     if (isClosed || read != _priceRead) return;
+    _lastPrice = (currency: currency, at: _now(), check: result);
     emit(state._with(price: MakeFormPriceChecked(result)));
+  }
+
+  /// The price check as the form shows it now ([MakePriceSeen]), for the press of « Create order »: `null` when the coordinator gives no usable price for the currency, when no order can be made anyway.
+  MakePriceSeen? seen() {
+    final coordinatorPrice = _usablePrice();
+    if (coordinatorPrice == null) return null;
+    return MakePriceSeen.of(
+      currency: state.currency,
+      coordinatorPrice: coordinatorPrice,
+      check: switch (state.price) {
+        MakeFormPriceChecked(:final check) => check,
+        _ => null,
+      },
+    );
   }
 
   /// The chosen coordinator's price for the currency shown, when the make's terms would take it.
@@ -383,17 +429,36 @@ class MakeOrderCubit extends Cubit<MakeOrderState> {
         Err() => false,
       };
 
-  /// Makes [request] on the chosen coordinator: once at a time, and never after a make that made, or may have made, an order. The screen calls it after « Store your garage key », with the request of the form it locked at the press.
-  Future<void> make(MakeOrderRequest request) async {
-    final coordinator = state.coordinator;
-    if (coordinator == null || state.progress is! MakeIdle) return;
+  /// Makes [request] on [coordinator], the price check shown being [seen] (all three taken at the press): once at a time, and never after a make that made, or may have made, an order. The screen calls it after « Store your garage key ».
+  ///
+  /// When the price read just before the make would show another check ([MakePriceCheckChanged], security review of #181), nothing was sent with a robot: the form shows the coordinator's limits and the check at that price, the Bull wallet's price compared being the one already shown (nothing is read anew), and the user may press again having seen it.
+  Future<void> make(
+    MakeOrderRequest request, {
+    required Coordinator coordinator,
+    required MakePriceSeen seen,
+  }) async {
+    if (state.progress is! MakeIdle || state.coordinator != coordinator) return;
     emit(state._with(progress: const MakeSending()));
     final result = await _make(
       request,
       coordinator: coordinator,
       network: state.network,
+      seen: seen,
     );
     if (isClosed) return;
+    if (result case Err(failure: MakePriceCheckChanged(:final limits))) {
+      _limitsRead++;
+      _priceRead++;
+      final price = limits[seen.currency]?.price;
+      final check = price == null ? null : seen.checkAt(price);
+      emit(
+        state._with(
+          limits: MakerFormLimitsRead(limits),
+          limitsReadAt: _now(),
+          price: check == null ? null : MakeFormPriceChecked(check),
+        ),
+      );
+    }
     emit(
       state._with(
         progress: switch (result) {

@@ -75,6 +75,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   /// Whether a dialog of the press is open, or the make is being handed to the cubit: a second press opens nothing more and the fields stay locked.
   bool _asking = false;
 
+  /// Whether the last press read the limits and the price again and stopped there, the form showing something else: a line says so until the next press.
+  bool _readAgain = false;
+
   /// Completes when the screen goes away: « Select Host » and the coordinator dialog it opened close then.
   final _gone = Completer<void>();
 
@@ -99,24 +102,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     sizeLimitSats: state.sizeLimitSats,
   );
 
-  /// « Create order »: the request of the form as shown, then « You do not have a Garage Key » or « Store your garage key », whose « Done » sends it.
+  /// « Create order »: the request of the form as shown, then « You do not have a Garage Key » or « Store your garage key », whose « Done » sends it with the coordinator and the price check shown at the press.
+  ///
+  /// Limits and a price read more than a few minutes ago are read again first: when the form then shows another request or another price check (not only another red warning: a comparison gone « rate not checked » too, security review of #181, C2), nothing goes on and the user sees the fresh form, said by a line.
   Future<void> _press() async {
     if (_asking) return;
     final cubit = context.read<MakeOrderCubit>();
-    // The request is the one the summary shows now: the fields are locked from here.
-    final shown = _check(cubit.state);
-    final request = shown.request;
-    if (request == null || cubit.state.locked) return;
-    final warned = _warns(cubit.state);
-    setState(() => _asking = true);
+    // The request, the coordinator and the price check are those the form shows now: the fields are locked from here.
+    final request = _check(cubit.state).request;
+    final coordinator = cubit.state.coordinator;
+    var seen = cubit.seen();
+    if (request == null ||
+        coordinator == null ||
+        seen == null ||
+        cubit.state.locked) {
+      return;
+    }
+    setState(() {
+      _asking = true;
+      _readAgain = false;
+    });
     try {
-      // Limits and a price read more than a few minutes ago are read again first: when the form then judges otherwise (the request, or the price's warning, changed), nothing goes on, and the user sees the fresh form.
       if (await cubit.refreshIfStale()) {
         if (!mounted) return;
-        final fresh = cubit.state;
-        if (_check(fresh).request != request || _warns(fresh) != warned) {
+        final fresh = cubit.seen();
+        if (_check(cubit.state).request != request ||
+            fresh == null ||
+            !fresh.sameLineAs(seen)) {
+          setState(() => _readAgain = true);
           return;
         }
+        seen = fresh;
       }
       if (!await cubit.hasGarageKey()) {
         if (!mounted) return;
@@ -129,17 +145,23 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       if (!mounted) return;
       final done = await StoreTokenDialog.show(context);
       if (!mounted || !done) return;
-      unawaited(cubit.make(request));
+      unawaited(cubit.make(request, coordinator: coordinator, seen: seen));
     } finally {
       if (mounted) setState(() => _asking = false);
     }
   }
 
-  /// Whether the price check of [state] warns, for the currency it shows.
-  static bool _warns(MakeOrderState state) => switch (state.price) {
-    MakeFormPriceChecked(:final check) => check.warns,
-    _ => false,
-  };
+  /// The amount typed: the Bull wallet's price is compared only once an amount above zero is typed (security review of #181).
+  void _amountChanged() {
+    setState(() {});
+    final value = FormNumber.read(
+      _amount.text,
+      maxDecimals: MakerFormCheck.amountDecimals,
+    ).value;
+    unawaited(
+      context.read<MakeOrderCubit>().wantPrice(value != null && value > 0),
+    );
+  }
 
   /// « Clear form » (`clearMaker`, `MakerForm.tsx:485-492`): no side chosen, the currency back to USD (`fav.currency` 0, which the form reads as USD), the amount, the payment methods and the premium emptied. The coordinator chosen stays: the reference puts back `defaultMaker.coordinator`, an alias drawn at random when its page loads, not its lottery's.
   void _clear() {
@@ -148,10 +170,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _amount.clear();
       _premium.clear();
       _methods.clear();
+      _readAgain = false;
     });
+    final cubit = context.read<MakeOrderCubit>();
+    unawaited(cubit.wantPrice(false));
     final usd = RobosatsCurrency.fromCode('USD');
     if (usd != null) {
-      unawaited(context.read<MakeOrderCubit>().showCurrency(usd));
+      unawaited(cubit.showCurrency(usd));
     }
   }
 
@@ -211,7 +236,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final method = await AddPaymentMethodDialog.show(context);
     if (method == null || !mounted) return;
     setState(() {
-      if (!_methods.contains(method.text)) _methods.add(method.text);
+      if (!_methods.any(
+        (chosen) => CustomPaymentMethod.sameMethod(chosen, method.text),
+      )) {
+        _methods.add(method.text);
+      }
     });
   }
 
@@ -283,7 +312,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       currency: state.currency,
                       problem: check.amountProblem,
                       enabled: !locked,
-                      onChanged: () => setState(() {}),
+                      onChanged: _amountChanged,
                       onCurrency: () => unawaited(_chooseCurrency(state)),
                     ),
                     const Gap(BullSpacing.md),
@@ -317,6 +346,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       check: check,
                       state: state,
                       asking: _asking,
+                      readAgain: _readAgain,
                       coordinator: coordinatorName,
                       onPressed: () => unawaited(_press()),
                     ),
@@ -458,8 +488,12 @@ final class _DecimalsFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     final text = newValue.text;
-    final separator = text.lastIndexOf(RegExp('[.,\u066b]'));
+    final separator = text.lastIndexOf(RegExp('[.,\u066b\uff0e\uff0c]'));
     if (separator >= 0 && text.length - separator - 1 > decimals) {
+      return oldValue;
+    }
+    // A number a double cannot hold as typed is not taken either: the field never shows a number the form would read otherwise.
+    if (FormNumber.beyondPrecision(text, maxDecimals: decimals)) {
       return oldValue;
     }
     return newValue;
@@ -913,6 +947,9 @@ class _CreateButton extends StatelessWidget {
   final MakerFormCheck check;
   final MakeOrderState state;
   final bool asking;
+
+  /// Whether the last press read the limits and the price again and stopped, the form showing something else.
+  final bool readAgain;
   final String coordinator;
   final VoidCallback onPressed;
 
@@ -920,6 +957,7 @@ class _CreateButton extends StatelessWidget {
     required this.check,
     required this.state,
     required this.asking,
+    required this.readAgain,
     required this.coordinator,
     required this.onPressed,
   });
@@ -939,6 +977,8 @@ class _CreateButton extends StatelessWidget {
     final lines = <Widget>[
       if (block != null && progress is MakeIdle)
         _Line(block.toText(context), live: true),
+      if (readAgain && progress is MakeIdle)
+        _Line(l10n.p2pMakePricesReadAgain, color: colors.warning, live: true),
       if (progress is MakeSending) _Line(l10n.p2pMakeCreating, live: true),
       if (progress is MakeUncertain) ...[
         _Line(l10n.p2pMakeCreating, live: true),

@@ -10,7 +10,7 @@ import 'trade_make.dart';
 /// - spaces at either end are ignored; a space, a letter or a sign `+` inside makes it no number;
 /// - a comma is read as the decimal separator as well as a point, as the take's amount field reads it (`TakeAmountInput`), and only one separator is allowed, so `1,000.5` and `1.000,5` are no numbers rather than guesses;
 /// - the digits of the Arabic-Indic, the Extended Arabic-Indic (Persian) and the Devanagari scripts, and the full-width digits, are read as their values, the Arabic decimal separator (U+066B) and the full-width full stop (U+FF0E) as a point, the full-width comma (U+FF0C) as a comma; any other character is no number;
-/// - `NaN`, `Infinity`, an exponent, a hexadecimal number, a figure that is not finite once read, more than [maxLength] characters or more decimals than the field keeps are no number;
+/// - `NaN`, `Infinity`, an exponent, a hexadecimal number, a figure that is not finite once read, more than [maxLength] characters or more decimals than the field keeps are no number, and so is a number that a double cannot hold as it is written (it would be read, shown and sent as its nearest double);
 /// - a minus sign is read (a negative premium is a discount); `-0` is 0.
 @immutable
 sealed class FormNumber {
@@ -20,7 +20,14 @@ sealed class FormNumber {
   static const int maxLength = 20;
 
   /// What [text] says, with at most [maxDecimals] decimals.
-  static FormNumber read(String text, {required int maxDecimals}) {
+  static FormNumber read(String text, {required int maxDecimals}) =>
+      _read(text, maxDecimals: maxDecimals, checkRoundTrip: true);
+
+  static FormNumber _read(
+    String text, {
+    required int maxDecimals,
+    required bool checkRoundTrip,
+  }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return const FormNumberEmpty();
     if (trimmed.length > maxLength) return const FormNumberInvalid();
@@ -40,7 +47,28 @@ sealed class FormNumber {
       '$sign${whole.isEmpty ? '0' : whole}${fraction.isEmpty ? '' : '.$fraction'}',
     );
     if (value == null || !value.isFinite) return const FormNumberInvalid();
+    if (checkRoundTrip && !_roundTrips(whole, fraction, value)) {
+      return const FormNumberInvalid();
+    }
     return FormNumberValue(value == 0 ? 0.0 : value);
+  }
+
+  /// Whether [value] is written back exactly as its digits were typed, [whole] and [fraction], so that what the field shows, what the summary shows and what is sent are one number (security review of #181): `100000000.00000002` reads as the nearest double, which writes `100000000.00000001`, and is refused.
+  static bool _roundTrips(String whole, String fraction, double value) {
+    final digits = whole.replaceFirst(RegExp('^0+'), '');
+    final typed = '${digits.isEmpty ? '0' : digits}${fraction.isEmpty ? '' : '.$fraction'}';
+    return value.abs().toStringAsFixed(fraction.length) == typed;
+  }
+
+  /// Whether [text] is a plain decimal number that a double cannot hold as it is written (see [read]): the field takes no such edit.
+  static bool beyondPrecision(String text, {required int maxDecimals}) {
+    if (read(text, maxDecimals: maxDecimals) is! FormNumberInvalid) return false;
+    final unchecked = _read(
+      text,
+      maxDecimals: maxDecimals,
+      checkRoundTrip: false,
+    );
+    return unchecked is FormNumberValue;
   }
 
   /// A plain decimal number: an optional minus, digits, and one separator with its decimals, or a separator and decimals; the whole part is the first group, the decimals the second.
@@ -104,6 +132,19 @@ final class CustomPaymentMethod {
   /// [typed] as the form would keep it: the ideographic space (U+3000, which a Japanese or Chinese keyboard types in full width) made an ordinary one, its ends' spaces taken off, each run of spaces inside made one.
   static String keptOf(String typed) =>
       typed.replaceAll('\u3000', ' ').trim().replaceAll(RegExp(' {2,}'), ' ');
+
+  /// Whether [a] and [b] are one method to a reader: equal once their joiners (U+200C, U+200D) and variation selectors are taken off, so that the form never adds one twice (security review of #181).
+  static bool sameMethod(String a, String b) => _bare(a) == _bare(b);
+
+  static String _bare(String text) => String.fromCharCodes(
+    text.runes.where(
+      (rune) =>
+          rune != 0x200C &&
+          rune != 0x200D &&
+          !(rune >= 0xFE00 && rune <= 0xFE0F) &&
+          !(rune >= 0xE0100 && rune <= 0xE01EF),
+    ),
+  );
 
   /// Whether nothing is left of [typed] once its spaces are taken off: the reference's « Can't be empty ».
   static bool isEmpty(String typed) => keptOf(typed).isEmpty;

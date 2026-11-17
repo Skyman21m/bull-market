@@ -17,6 +17,7 @@ import 'package:p2p/src/domain/repositories/trade_trail_repository.dart';
 import 'package:p2p/src/domain/robot_binding.dart';
 import 'package:p2p/src/domain/robot_request_limiter.dart';
 import 'package:p2p/src/domain/trade/bolt11.dart';
+import 'package:p2p/src/domain/trade/make_price_check.dart';
 import 'package:p2p/src/domain/trade/trade_make.dart';
 import 'package:p2p/src/domain/trade/trade_storable.dart';
 import 'package:p2p/src/domain/trade_record.dart';
@@ -251,14 +252,24 @@ final class MakeHarness {
     );
   }
 
-  /// Makes [request] (by default [MakeHarness.request]) on the coordinator.
+  /// Makes [request] (by default [MakeHarness.request]) on the coordinator, the price check seen at the press being [seen], by default none read at the coordinator's present price (#181).
   Future<Result<MakeOutcome, MakeRefusal>> makeOrder([
     MakeOrderRequest? request,
-  ]) => make.execute(
-    request ?? MakeHarness.request(),
-    coordinator: host,
-    network: network,
-  );
+    MakePriceSeen? seen,
+  ]) {
+    final asked = request ?? MakeHarness.request();
+    return make.execute(
+      asked,
+      coordinator: host,
+      network: network,
+      seen:
+          seen ??
+          MakePriceSeen.of(
+            currency: asked.currency,
+            coordinatorPrice: coordinator.prices[asked.currency.id] ?? 1,
+          ),
+    );
+  }
 
   /// The pending makes, as the database holds them.
   Future<List<PendingMake>> pendingMakes() async =>

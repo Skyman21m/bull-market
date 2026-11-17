@@ -61,6 +61,7 @@ extension MakeProblemL10n on MakeProblem {
           cause.toRobotText(context, coordinator: coordinator),
         ),
         MakeNotRecorded() => l10n.p2pMakeNotRecorded,
+        MakePriceCheckChanged() => l10n.p2pMakePriceCheckChanged(coordinator),
       },
       MakeWasNotMade(:final refusal) => switch (refusal) {
         null => l10n.p2pMakeNotMade,

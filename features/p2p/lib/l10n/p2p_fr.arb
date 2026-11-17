@@ -801,7 +801,7 @@
   "p2pMakeWhyNoPaymentMethod": "Veuillez sélectionner un mode de paiement.",
   "p2pMakeWhyFormIncorrect": "Vous devez remplir le formulaire correctement",
   "p2pMakeRateCompare": "Pour comparaison, prix indicatif du portefeuille Bull : {walletPrice} {currency}/BTC ({coordinator} : {coordinatorPrice}, écart {gap}).",
-  "p2pMakeRateBelow": "Le prix annoncé par {coordinator} est inférieur de plus de {threshold} à celui du portefeuille Bull : votre caution serait plus grosse que prévu. Vérifiez-le avant de créer l’ordre.",
+  "p2pMakeRateBelow": "Le prix annoncé par {coordinator} est inférieur de plus de {threshold} à celui du portefeuille Bull : votre caution serait plus élevée que prévu. Vérifiez-le avant de créer l’ordre.",
   "p2pMakeRateAbove": "Le prix annoncé par {coordinator} est supérieur de plus de {threshold} à celui du portefeuille Bull : vous recevriez moins de sats quand l’ordre sera pris. Vérifiez-le avant de créer l’ordre.",
   "p2pMakeRateNotPriced": "Le portefeuille Bull n’a pas de prix pour {currency} : taux non vérifié. Vous faites confiance au prix annoncé par {coordinator} : vérifiez-le vous-même avant de créer l’ordre.",
   "p2pMakeRateUnverified": "Le portefeuille Bull n’a pas pu lire son prix du bitcoin en {currency} : taux non vérifié.",
@@ -822,5 +822,7 @@
   "p2pMakeClearForm": "Effacer le formulaire",
   "p2pMakeCurrentRateLabel": "Taux actuel de l’ordre :",
   "p2pMakeCurrentRateUnit": "{currencyCode}/BTC",
-  "p2pMakeNoHost": "Aucun coordinateur ne peut être choisi pour l’instant."
+  "p2pMakeNoHost": "Aucun coordinateur ne peut être choisi pour l’instant.",
+  "p2pMakePriceCheckChanged": "Le prix annoncé par {coordinator} a changé depuis son affichage. Vérifiez la comparaison, puis appuyez de nouveau sur « Créer l’ordre ».",
+  "p2pMakePricesReadAgain": "Les limites et les prix ont été relus et ont changé. Vérifiez le formulaire, puis appuyez de nouveau sur « Créer l’ordre »."
 }

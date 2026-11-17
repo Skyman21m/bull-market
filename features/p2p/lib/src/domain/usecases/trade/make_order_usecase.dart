@@ -11,6 +11,7 @@ import '../../repositories/trade_trail_repository.dart';
 import '../../robot_binding.dart';
 import '../../robot_request_limiter.dart';
 import '../../trade/bolt11.dart';
+import '../../trade/make_price_check.dart';
 import '../../trade/trade_answer.dart';
 import '../../trade/trade_make.dart';
 import '../../trade/trade_status.dart';
@@ -28,7 +29,7 @@ import 'trade_reader.dart';
 /// Makes an order on a coordinator as its maker, for a fresh robot of this device, and resolves a make whose answer was lost: the only place a maker's trade starts (#179, design note `docs/design/phase-3-making-an-order.md` § 3.4).
 ///
 /// One make, or resolution of a pending make, at a time per network in the process ([TradeMakeLocks]). In this order, each step only once the one before it succeeded:
-/// 1. without a robot: the coordinator is in the federation list on the network; its `/api/info/` (the maker fee) and `/api/limits/` (the price and the limits of the order's currency) are read once, at once, anonymously (no robot's token, as the book); the amount is within the limits the reference's form allows ([MakerAmountLimits]); the terms are built ([MakerTerms.create]): a make refused here costs no robot;
+/// 1. without a robot: the coordinator is in the federation list on the network; its `/api/info/` (the maker fee) and `/api/limits/` (the price and the limits of the order's currency) are read once, at once, anonymously (no robot's token, as the book); the price check the user saw under the form still holds at that price ([MakePriceSeen.holdsAt], #181), else [MakePriceCheckChanged]; the amount is within the limits the reference's form allows ([MakerAmountLimits]); the terms are built ([MakerTerms.create]): a make refused here costs no robot;
 /// 2. a fresh robot is reserved and bound to the coordinator ([TradeRobots.robotForNewTrade]), then put on it ([PutRobotOnCoordinatorUsecase]); a robot the coordinator already knew, or that held an order, is not used, nor one whose Garage Key was deleted or replaced meanwhile: so the robot never had another order on that coordinator, which is what makes the resolution sound;
 /// 3. the pending make and its terms are written, in that order ([TradeRecordRepository.recordPendingMake], [TradeTrailRepository.recordMakerTerms]), and the terms read back and compared with those built: the make is refused (and the pending make closed) when any of it fails;
 /// 4. `makeOrder` is sent once, with exactly the terms' request ([MakerTerms.request]), through the robot's places in [RobotRequestLimiter] (a busy transport, which sends nothing, is tried again as the limiter says), and never again, whatever it gives;
@@ -65,17 +66,18 @@ final class MakeOrderUsecase {
     this._federation,
   );
 
-  /// Makes the order of [request] on [coordinator] and [network].
+  /// Makes the order of [request] on [coordinator] and [network], the price check under the form being [seen] when the user pressed « Create order » (#181).
   ///
-  /// [Err]: the make was not sent ([MakeRefusal]); a robot reserved by then stays bound to the coordinator, without a trade, and is never used again.
+  /// [Err]: the make was not sent ([MakeRefusal]); a robot reserved by then stays bound to the coordinator, without a trade, and is never used again. [MakePriceCheckChanged] when the price read just before the make would show the user another check than [seen] (security review of #181, C1): refused before any robot.
   /// [Ok]: the make was sent, or may have left; [MakeOutcome] says what it gave.
   Future<Result<MakeOutcome, MakeRefusal>> execute(
     MakeOrderRequest request, {
     required Coordinator coordinator,
     required RobosatsNetwork network,
+    required MakePriceSeen seen,
   }) => _locks.run(
     network,
-    () => _make(request, coordinator: coordinator, network: network),
+    () => _make(request, coordinator: coordinator, network: network, seen: seen),
   );
 
   /// Resolves the pending make [make]: whether it made an order, read from the coordinator by its robot (see the class).
@@ -152,6 +154,7 @@ final class MakeOrderUsecase {
     MakeOrderRequest request, {
     required Coordinator coordinator,
     required RobosatsNetwork network,
+    required MakePriceSeen seen,
   }) async {
     // 1. The coordinator, its fee and its price, with no robot.
     final listed = _federation.byAlias(coordinator.shortAlias);
@@ -177,6 +180,19 @@ final class MakeOrderUsecase {
         final found = value[request.currency];
         if (found == null) return const Err(MakePriceUnknown());
         limit = found;
+        // The price check the user saw, at the price this make keeps: another line than the one seen stops here, before any robot (#181).
+        if (seen.currency != request.currency || !seen.holdsAt(found.price)) {
+          return Err(
+            MakePriceCheckChanged(
+              value,
+              MakePriceSeen.of(
+                currency: request.currency,
+                coordinatorPrice: found.price,
+                check: seen.checkAt(found.price),
+              ),
+            ),
+          );
+        }
       case Err(:final failure):
         return Err(MakeCoordinatorUnreadable(failure));
     }
