@@ -69,9 +69,8 @@ final class _Form {
   Completer<Result<bool, P2pFailure>>? vault;
 
   /// The network's pending makes as the records list them (#182): none by default; a test adds to [pendingMakes] and the list follows.
-  final pendingMakes = StreamController<
-    Result<List<ActivePendingMake>, P2pFailure>
-  >.broadcast();
+  final pendingMakes =
+      StreamController<Result<List<ActivePendingMake>, P2pFailure>>();
   List<ActivePendingMake> listedMakes = const [];
 
   /// What a resolution of a pending make gives, and the makes resolved and set aside.
@@ -81,10 +80,7 @@ final class _Form {
 
   PendingMakesCubit pendingCubit() => PendingMakesCubit(
     RobosatsNetwork.mainnet,
-    (network) async* {
-      yield Ok(listedMakes);
-      yield* pendingMakes.stream;
-    },
+    (network) => pendingMakes.stream,
     (make) async {
       resolved.add(make);
       return resolution?.call(make) ??
@@ -164,6 +160,7 @@ Future<(List<TradeRecord>, MakeOrderCubit)> _show(
   addTearDown(tester.view.reset);
   final cubit = form.cubit();
   addTearDown(cubit.close);
+  form.pendingMakes.add(Ok(form.listedMakes));
   final pending = form.pendingCubit()..start();
   addTearDown(pending.close);
   final opened = <TradeRecord>[];

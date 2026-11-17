@@ -63,9 +63,7 @@ final _record = TradeRecord(
 
 /// What the cubit's use cases were asked, and what they answer.
 final class _Makes {
-  final list = StreamController<
-    Result<List<ActivePendingMake>, P2pFailure>
-  >.broadcast();
+  final list = StreamController<Result<List<ActivePendingMake>, P2pFailure>>();
   List<ActivePendingMake> listed = [ActivePendingMake(_make, neverSent: false)];
   final List<PendingMake> resolved = [];
   final List<PendingMake> dismissed = [];
@@ -73,12 +71,15 @@ final class _Makes {
       MakePending(make, MakePendingReason.notRecognized);
   Result<bool, P2pFailure> dismissal = const Ok(true);
 
-  PendingMakesCubit cubit() => PendingMakesCubit(
+  /// The cubit, the records' first list [listed] already given.
+  PendingMakesCubit cubit() {
+    list.add(Ok(listed));
+    return _cubit();
+  }
+
+  PendingMakesCubit _cubit() => PendingMakesCubit(
     RobosatsNetwork.mainnet,
-    (network) async* {
-      yield Ok(listed);
-      yield* list.stream;
-    },
+    (network) => list.stream,
     (make) {
       resolved.add(make);
       return resolution(make);
@@ -151,7 +152,7 @@ Future<(List<TradeRecord>, List<void>, PendingMakesCubit)> _sheet(
   return (opened, created, cubit);
 }
 
-T _value<T, F>(Result<T, F> result) => switch (result) {
+T _value<T, F extends Failure>(Result<T, F> result) => switch (result) {
   Ok(:final value) => value,
   Err(:final failure) => throw StateError('$failure'),
 };
@@ -219,7 +220,7 @@ void main() {
         expect(await harness.pendingMakes(), isEmpty);
         expect(_value(await harness.makeOrder()), isA<MakeStarted>());
         final records = await harness.activeRecords();
-        expect(records.single.robot.index, isNot(0));
+        expect(records.single.robot.accountIndex, isNot(0));
       },
     );
   });

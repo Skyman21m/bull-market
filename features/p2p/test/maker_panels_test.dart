@@ -98,7 +98,7 @@ Future<List<TradeSeen>> _chain(List<Object> answers) async {
 Future<TradeSeen> _at(List<Object> answers) async =>
     (await _chain(answers)).last;
 
-/// A contract fixed for 101,000 sats where the creation's rate gave 106,900: a rate higher by 5.84 %, fewer sats for the maker buyer.
+/// A contract fixed for 101,000 sats where the creation's rate gave 106,900: a rate higher by 5.85 %, fewer sats for the maker buyer.
 const _lowSats = 101000;
 
 /// What the screen asked of the trade's cubit.
@@ -367,15 +367,21 @@ void main() {
       '« Cancel » at 1 cancels at once, with no dialog, for the status shown (`CancelButton.tsx:30`, `:79-80`)',
       (tester) async {
         final seen = await _at([makerOrderJson(0), makerOrderJson(1)]);
-        final (asked, _) = await _show(tester, seen);
+        final (asked, _) = await _show(
+          tester,
+          seen,
+          cancel: (seen) async =>
+              Ok(CancelDone(_record, seen, makerBondReturned: true)),
+        );
         await _reveal(tester, find.text('Cancel'));
         await tester.tap(find.text('Cancel'));
         await tester.pump();
         expect(find.text('Cancel the order?'), findsNothing);
         expect(find.byType(ConfirmCancelDialog), findsNothing);
         expect(asked.cancels, hasLength(1));
-        expect(identical(asked.cancels.single.$1, seen), isTrue);
+        expect(asked.cancels.single.$1.status, same(seen.status));
         expect(asked.cancels.single.$2, isNull);
+        await tester.pump(const Duration(seconds: 31));
       },
     );
 
@@ -494,7 +500,7 @@ void main() {
         expect(find.text('Your maker bond is locked'), findsOneWidget);
         expect(
           find.text(
-            'Temple of Sats fixed 101,000 sats for 100 EUR when your order was taken: a rate of 99,010 EUR/BTC, +5.84% from the rate when you made it (93,545).',
+            'Temple of Sats fixed 101,000 sats for 100 EUR when your order was taken: a rate of 99,010 EUR/BTC, +5.85% from the rate when you made it (93,545).',
           ),
           findsOneWidget,
         );
@@ -565,7 +571,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(ConfirmFiatSentDialog),
-            matching: find.textContaining('+5.84% from the rate'),
+            matching: find.textContaining('+5.85% from the rate'),
           ),
           findsOneWidget,
         );
@@ -636,15 +642,18 @@ void main() {
         expect(next.status.warnings, isEmpty);
         await _show(tester, next);
         expect(find.textContaining('(3/5)'), findsOneWidget);
-        expect(find.textContaining('+5.84% from the rate'), findsOneWidget);
+        expect(find.textContaining('+5.85% from the rate'), findsOneWidget);
       },
     );
 
     testWidgets(
       'a next contract seen late: its own words, in the text colour, not « Unexpected change »',
       (tester) async {
+        // Back in the book after contract 0, then read in the chat with another taker: the order was taken again unseen.
         final seen = await _at([
           makerOrderJson(0),
+          makerOrderJson(1),
+          makerOrderJson(6),
           makerOrderJson(1),
           makerOrderJson(9, taker: third),
         ]);
